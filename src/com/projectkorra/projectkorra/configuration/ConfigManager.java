@@ -920,15 +920,15 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.Passive.GracefulDescent.Enabled", true);
 
 			config.addDefault("Abilities.Air.AirBlast.Enabled", true);
-			config.addDefault("Abilities.Air.AirBlast.Speed", 15);
+			config.addDefault("Abilities.Air.AirBlast.Speed", 25);
 			config.addDefault("Abilities.Air.AirBlast.Range", 20);
-			config.addDefault("Abilities.Air.AirBlast.Radius", .5);
+			config.addDefault("Abilities.Air.AirBlast.Radius", 2);
 			config.addDefault("Abilities.Air.AirBlast.SelectRange", 10);
 			config.addDefault("Abilities.Air.AirBlast.SelectParticles", 4);
 			config.addDefault("Abilities.Air.AirBlast.Particles", 6);
 			config.addDefault("Abilities.Air.AirBlast.Cooldown", 500);
-			config.addDefault("Abilities.Air.AirBlast.Push.Self", 2.0);
-			config.addDefault("Abilities.Air.AirBlast.Push.Entities", 1.6);
+			config.addDefault("Abilities.Air.AirBlast.Push.Self", 2.5);
+			config.addDefault("Abilities.Air.AirBlast.Push.Entities", 3.5);
 			config.addDefault("Abilities.Air.AirBlast.CanFlickLevers", true);
 			config.addDefault("Abilities.Air.AirBlast.CanOpenDoors", true);
 			config.addDefault("Abilities.Air.AirBlast.CanPressButtons", true);
