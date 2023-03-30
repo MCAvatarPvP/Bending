@@ -50,6 +50,9 @@ public class EarthBlast extends EarthAbility {
 	private Location destination;
 	private Location firstDestination;
 	private Block sourceBlock;
+	private Location source;
+	private Material sourceMat;
+	private boolean sourceHole;
 
 	public EarthBlast(final Player player) {
 		super(player);
@@ -67,6 +70,7 @@ public class EarthBlast extends EarthAbility {
 		this.pushFactor = getConfig().getDouble("Abilities.Earth.EarthBlast.Push");
 		this.selectRange = getConfig().getDouble("Abilities.Earth.EarthBlast.SelectRange");
 		this.time = System.currentTimeMillis();
+		this.sourceHole = getConfig().getBoolean("Abilities.Earth.EarthBlast.SourceHole");
 		this.interval = (long) (1000.0 / this.speed);
 
 		if (this.bPlayer.isAvatarState()) {
@@ -181,6 +185,8 @@ public class EarthBlast extends EarthAbility {
 		}
 
 		this.sourceBlock = block;
+		this.source = block.getLocation();
+		this.sourceMat = block.getType();
 		this.focusBlock();
 		return true;
 	}
@@ -298,6 +304,11 @@ public class EarthBlast extends EarthAbility {
 					this.sourceBlock.setType(this.sourceType);
 
 					moveEarthBlock(this.sourceBlock, block);
+					//revert air block
+					boolean sourceHoles = getConfig().getBoolean("Properties.Earth.SourceHoles");
+					if (!sourceHoles && !sourceHole && source.getBlock().getType() != sourceMat) {
+						source.getBlock().setType(sourceMat);
+					}
 
 					if (block.getType() == Material.SAND) {
 						block.setType(Material.SANDSTONE);

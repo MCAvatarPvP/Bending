@@ -714,6 +714,7 @@ public class ConfigManager {
 
 			config.addDefault("Properties.Earth.DynamicSourcing", true);
 			config.addDefault("Properties.Earth.RevertEarthbending", true);
+			config.addDefault("Properties.Earth.SourceHoles", true);
 			config.addDefault("Properties.Earth.SafeRevert", true);
 			config.addDefault("Properties.Earth.RevertCheckTime", 300000);
 			config.addDefault("Properties.Earth.CanBendWithWeapons", true);
@@ -1332,6 +1333,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Earth.EarthBlast.Range", 30);
 			config.addDefault("Abilities.Earth.EarthBlast.Speed", 35);
 			config.addDefault("Abilities.Earth.EarthBlast.Revert", true);
+			config.addDefault("Abilities.Earth.EarthBlast.SourceHole", false);
 			config.addDefault("Abilities.Earth.EarthBlast.Damage", 3);
 			config.addDefault("Abilities.Earth.EarthBlast.Push", 0.3);
 			config.addDefault("Abilities.Earth.EarthBlast.Cooldown", 500);
