@@ -304,8 +304,6 @@ public class EarthBlast extends EarthAbility {
 					this.sourceBlock.setType(this.sourceType);
 
 					moveEarthBlock(this.sourceBlock, block);
-					//revert air block
-					boolean sourceHoles = getConfig().getBoolean("Properties.Earth.SourceHoles");
 					if (!sourceHoles && !sourceHole && source.getBlock().getType() != sourceMat) {
 						source.getBlock().setType(sourceMat);
 					}

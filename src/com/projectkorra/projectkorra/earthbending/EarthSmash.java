@@ -1,9 +1,8 @@
 package com.projectkorra.projectkorra.earthbending;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 
+import com.projectkorra.projectkorra.util.*;
 import org.bukkit.Effect;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -20,10 +19,6 @@ import com.projectkorra.projectkorra.ability.EarthAbility;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.command.Commands;
-import com.projectkorra.projectkorra.util.ClickType;
-import com.projectkorra.projectkorra.util.DamageHandler;
-import com.projectkorra.projectkorra.util.ParticleEffect;
-import com.projectkorra.projectkorra.util.TempBlock;
 
 public class EarthSmash extends EarthAbility {
 
@@ -81,6 +76,8 @@ public class EarthSmash extends EarthAbility {
 	private ArrayList<Entity> affectedEntities;
 	private ArrayList<BlockRepresenter> currentBlocks;
 	private ArrayList<TempBlock> affectedBlocks;
+	private boolean sourceHole;
+	private Map<Block, Material> tempAirBlocks;
 
 	public EarthSmash(final Player player, final ClickType type) {
 		super(player);
@@ -92,6 +89,7 @@ public class EarthSmash extends EarthAbility {
 		this.affectedEntities = new ArrayList<>();
 		this.currentBlocks = new ArrayList<>();
 		this.affectedBlocks = new ArrayList<>();
+		this.tempAirBlocks = new HashMap<>();
 
 		if (type == ClickType.SHIFT_DOWN || type == ClickType.SHIFT_UP && !player.isSneaking()) {
 			final EarthSmash flySmash = flyingInSmashCheck(player);
@@ -169,6 +167,7 @@ public class EarthSmash extends EarthAbility {
 		this.cooldown = getConfig().getLong("Abilities.Earth.EarthSmash.Cooldown");
 		this.flightDuration = getConfig().getLong("Abilities.Earth.EarthSmash.Flight.Duration");
 		this.duration = getConfig().getLong("Abilities.Earth.EarthSmash.Duration");
+		this.sourceHole = getConfig().getBoolean("Abilities.Earth.EarthSmash.SourceHole");
 
 		if (bPlayer.isAvatarState()) {
 			this.selectRange = getConfig().getDouble("Abilities.Avatar.AvatarState.Earth.EarthSmash.SelectRange");
@@ -232,6 +231,13 @@ public class EarthSmash extends EarthAbility {
 		} else if (this.state == State.LIFTING) {
 			if (System.currentTimeMillis() - this.delay >= this.liftAnimationInterval) {
 				this.delay = System.currentTimeMillis();
+				if (!sourceHoles && !sourceHole && animationCounter >= 4) {
+					for (Map.Entry<Block, Material> entry : tempAirBlocks.entrySet()) {
+						entry.getKey().setType(entry.getValue());
+					}
+
+					animationCounter++;
+				}
 				this.animateLift();
 			}
 		} else if (this.state == State.GRABBED) {
@@ -388,6 +394,7 @@ public class EarthSmash extends EarthAbility {
 						if ((Math.abs(x) + Math.abs(z)) % 2 == 1) {
 							final Block block = this.location.clone().add(x, -2, z).getBlock();
 							if (this.isEarthbendable(block)) {
+								tempAirBlocks.put(block, block.getType());
 								addTempAirBlock(block);
 							}
 						}
@@ -395,6 +402,7 @@ public class EarthSmash extends EarthAbility {
 						// Remove the first level of dirt.
 						final Block block = this.location.clone().add(x, -1, z).getBlock();
 						if (this.isEarthbendable(block)) {
+							tempAirBlocks.put(block, block.getType());
 							addTempAirBlock(block);
 						}
 					}

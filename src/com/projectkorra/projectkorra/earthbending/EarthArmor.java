@@ -98,7 +98,6 @@ public class EarthArmor extends EarthAbility {
 					|| (TempBlock.isTempBlock(oldLegsBlock) && !isBendableEarthTempBlock(oldLegsBlock))) {
 				return;
 			}
-			boolean sourceHoles = getConfig().getBoolean("Properties.Earth.SourceHoles");
 			if (!sourceHoles && !sourceHole) {
 				if (isEarthRevertOn()) {
 					addTempAirBlock(oldHeadBlock);

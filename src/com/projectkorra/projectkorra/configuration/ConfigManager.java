@@ -1421,6 +1421,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Earth.LavaFlow.RevertMaterial", "STONE");
 
 			config.addDefault("Abilities.Earth.EarthSmash.Enabled", true);
+			config.addDefault("Abilities.Earth.EarthSmash.SourceHole", false);
 			config.addDefault("Abilities.Earth.EarthSmash.Duration", 30000);
 			config.addDefault("Abilities.Earth.EarthSmash.SelectRange", 12);
 			config.addDefault("Abilities.Earth.EarthSmash.ChargeTime", 1500);
