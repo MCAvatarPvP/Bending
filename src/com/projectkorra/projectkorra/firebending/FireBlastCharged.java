@@ -33,6 +33,7 @@ public class FireBlastCharged extends FireAbility {
 	private boolean launched;
 	private boolean canDamageBlocks;
 	private boolean dissipate;
+	private boolean ignoreCooldowns;
 	private long time;
 	@Attribute(Attribute.CHARGE_DURATION)
 	private long chargeTime;
@@ -61,7 +62,7 @@ public class FireBlastCharged extends FireAbility {
 	public FireBlastCharged(final Player player) {
 		super(player);
 
-		if (!this.bPlayer.canBend(this) || hasAbility(player, FireBlastCharged.class)) {
+		if (!this.bPlayer.canBendIgnoreCooldowns(this) || hasAbility(player, FireBlastCharged.class)) {
 			return;
 		}
 
@@ -69,6 +70,7 @@ public class FireBlastCharged extends FireAbility {
 		this.launched = false;
 		this.canDamageBlocks = getConfig().getBoolean("Abilities.Fire.FireBlast.Charged.DamageBlocks");
 		this.dissipate = getConfig().getBoolean("Abilities.Fire.FireBlast.Dissipate");
+		this.ignoreCooldowns = getConfig().getBoolean("Abilities.Fire.FireBlast.Charged.IgnoreCooldowns");
 		this.chargeTime = (long) applyInverseModifiers(getConfig().getLong("Abilities.Fire.FireBlast.Charged.ChargeTime"));
 		this.cooldown = applyModifiersCooldown(getConfig().getLong("Abilities.Fire.FireBlast.Charged.Cooldown"));
 		this.time = System.currentTimeMillis();
@@ -82,6 +84,9 @@ public class FireBlastCharged extends FireAbility {
 		this.fireTicks = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.Charged.FireTicks"));
 		this.innerRadius = this.damageRadius / 2;
 
+		if (!ignoreCooldowns && bPlayer.isOnCooldown(getName())) {
+			return;
+		}
 
 		//this.applyModifiers();
 
@@ -280,10 +285,10 @@ public class FireBlastCharged extends FireAbility {
 
 	@Override
 	public void progress() {
-		if (!this.bPlayer.canBendIgnoreBinds(this) && !this.launched) {
+		if (!this.bPlayer.canBendIgnoreBindsCooldowns(this) && !this.launched) {
 			this.remove();
 			return;
-		} else if (!this.bPlayer.canBendIgnoreCooldowns(CoreAbility.getAbility("FireBlast")) && !this.launched) {
+		} else if (!ignoreCooldowns && bPlayer.isOnCooldown(getName()) && !this.launched) {
 			this.remove();
 			return;
 		} else if (!this.player.isSneaking() && !this.charged) {
