@@ -55,7 +55,6 @@ public class EarthArmor extends EarthAbility {
 	@Attribute("GoldHearts")
 	private int maxGoldHearts;
 	private TempArmor armor;
-	private boolean sourceHole;
 
 	public EarthArmor(final Player player) {
 		super(player);
@@ -71,7 +70,6 @@ public class EarthArmor extends EarthAbility {
 		this.maxDuration = getConfig().getLong("Abilities.Earth.EarthArmor.MaxDuration");
 		this.selectRange = getConfig().getDouble("Abilities.Earth.EarthArmor.SelectRange");
 		this.maxGoldHearts = getConfig().getInt("Abilities.Earth.EarthArmor.GoldHearts");
-		this.sourceHole = getConfig().getBoolean("Abilities.Earth.EarthArmor.SourceHole");
 
 		if (this.bPlayer.isAvatarState()) {
 			this.cooldown = getConfig().getLong("Abilities.Avatar.AvatarState.Earth.EarthArmor.Cooldown");
@@ -98,7 +96,7 @@ public class EarthArmor extends EarthAbility {
 					|| (TempBlock.isTempBlock(oldLegsBlock) && !isBendableEarthTempBlock(oldLegsBlock))) {
 				return;
 			}
-			if (!sourceHoles && !sourceHole) {
+			if (bPlayer.areSourceHolesOn()) {
 				if (isEarthRevertOn()) {
 					addTempAirBlock(oldHeadBlock);
 					addTempAirBlock(oldLegsBlock);

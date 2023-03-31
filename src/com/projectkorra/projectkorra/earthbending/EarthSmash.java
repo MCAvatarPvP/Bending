@@ -76,7 +76,6 @@ public class EarthSmash extends EarthAbility {
 	private ArrayList<Entity> affectedEntities;
 	private ArrayList<BlockRepresenter> currentBlocks;
 	private ArrayList<TempBlock> affectedBlocks;
-	private boolean sourceHole;
 	private Map<Block, Material> tempAirBlocks;
 
 	public EarthSmash(final Player player, final ClickType type) {
@@ -167,7 +166,6 @@ public class EarthSmash extends EarthAbility {
 		this.cooldown = getConfig().getLong("Abilities.Earth.EarthSmash.Cooldown");
 		this.flightDuration = getConfig().getLong("Abilities.Earth.EarthSmash.Flight.Duration");
 		this.duration = getConfig().getLong("Abilities.Earth.EarthSmash.Duration");
-		this.sourceHole = getConfig().getBoolean("Abilities.Earth.EarthSmash.SourceHole");
 
 		if (bPlayer.isAvatarState()) {
 			this.selectRange = getConfig().getDouble("Abilities.Avatar.AvatarState.Earth.EarthSmash.SelectRange");
@@ -231,7 +229,7 @@ public class EarthSmash extends EarthAbility {
 		} else if (this.state == State.LIFTING) {
 			if (System.currentTimeMillis() - this.delay >= this.liftAnimationInterval) {
 				this.delay = System.currentTimeMillis();
-				if (!sourceHoles && !sourceHole && animationCounter >= 4) {
+				if (!bPlayer.areSourceHolesOn() && animationCounter >= 4) {
 					for (Map.Entry<Block, Material> entry : tempAirBlocks.entrySet()) {
 						entry.getKey().setType(entry.getValue());
 					}

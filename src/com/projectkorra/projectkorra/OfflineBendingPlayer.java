@@ -56,6 +56,7 @@ public class OfflineBendingPlayer {
     protected final UUID uuid;
     protected boolean permaRemoved;
     protected boolean toggled;
+    protected boolean sourceHoles;
     protected boolean allPassivesToggled;
     protected boolean loading;
 
@@ -144,6 +145,7 @@ public class OfflineBendingPlayer {
                     final String subelementField = rs2.getString("subelement");
                     final String elementField = rs2.getString("element");
                     final String permaremovedField = rs2.getString("permaremoved");
+                    final String sourceholesField = rs2.getString("sourceholes");
 
                     //Load the elements
                     if (elementField != null && !elementField.equalsIgnoreCase("NULL")) {
@@ -360,6 +362,9 @@ public class OfflineBendingPlayer {
 
                     //Load permaRemove
                     if (permaremovedField != null && permaremovedField.equalsIgnoreCase("true")) bPlayer.permaRemoved = true;
+
+                    //Load sourceholes
+                    if (sourceholesField != null && sourceholesField.equalsIgnoreCase("true")) bPlayer.sourceHoles = true;
 
                     //Load cooldowns
                     if (ProjectKorra.isDatabaseCooldownsEnabled()) {
@@ -879,6 +884,10 @@ public class OfflineBendingPlayer {
         return this.permaRemoved;
     }
 
+    public boolean areSourceHolesOn() {
+        return this.sourceHoles;
+    }
+
     /**
      * Checks if the {@link BendingPlayer} has bending toggled on.
      *
@@ -932,6 +941,11 @@ public class OfflineBendingPlayer {
     public void setPermaRemoved(final boolean permaRemoved) {
         this.permaRemoved = permaRemoved;
         DBConnection.sql.modifyQuery("UPDATE pk_players SET permaremoved = '" + (permaRemoved ? "true" : "false") + "' WHERE uuid = '" + uuid + "'");
+    }
+
+    public void toggleSourceHoles() {
+        this.sourceHoles = !this.sourceHoles;
+        DBConnection.sql.modifyQuery("UPDATE pk_players SET sourceholes = '" + (sourceHoles ? "true" : "false") + "' WHERE uuid = '" + uuid + "'");
     }
 
     public void toggleBending() {
@@ -1070,6 +1084,7 @@ public class OfflineBendingPlayer {
         bendingPlayer.toggled = offlineBendingPlayer.toggled;
         bendingPlayer.allPassivesToggled = offlineBendingPlayer.allPassivesToggled;
         bendingPlayer.permaRemoved = offlineBendingPlayer.permaRemoved;
+        bendingPlayer.sourceHoles = offlineBendingPlayer.sourceHoles;
         bendingPlayer.cooldowns.putAll(offlineBendingPlayer.cooldowns);
         bendingPlayer.loading = false;
 
@@ -1095,6 +1110,7 @@ public class OfflineBendingPlayer {
         offlineBendingPlayer.toggled = bendingPlayer.toggled;
         offlineBendingPlayer.allPassivesToggled = bendingPlayer.allPassivesToggled;
         offlineBendingPlayer.permaRemoved = bendingPlayer.permaRemoved;
+        offlineBendingPlayer.sourceHoles = bendingPlayer.sourceHoles;
         offlineBendingPlayer.cooldowns.putAll(bendingPlayer.cooldowns);
         offlineBendingPlayer.loading = false;
         offlineBendingPlayer.lastAccessed = System.currentTimeMillis();

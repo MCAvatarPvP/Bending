@@ -40,7 +40,6 @@ public abstract class EarthAbility extends ElementalAbility {
 	private static final Map<Block, Information> MOVED_EARTH = new ConcurrentHashMap<Block, Information>();
 	private static final Map<Integer, Information> TEMP_AIR_LOCATIONS = new ConcurrentHashMap<Integer, Information>();
 	private static final ArrayList<Block> PREVENT_PHYSICS = new ArrayList<Block>();
-	public static final boolean sourceHoles = getConfig().getBoolean("Properties.Earth.SourceHoles");
 
 	public EarthAbility(final Player player) {
 		super(player);

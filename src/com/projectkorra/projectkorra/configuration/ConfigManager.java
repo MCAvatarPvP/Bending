@@ -203,6 +203,11 @@ public class ConfigManager {
 			config.addDefault("Commands.PermaRemove.Removed", "Your bending has been permanently removed.");
 			config.addDefault("Commands.PermaRemove.RemovedConfirm", "You have removed the bending of {target}.");
 
+			config.addDefault("Commands.SourceHoles.Description", "This command toggles SourceHoles on/off.");
+			config.addDefault("Commands.SourceHoles.InvalidPlayer", "That player could not be found.");
+			config.addDefault("Commands.SourceHoles.ToggledOn", "SourceHoles are now toggled on.");
+			config.addDefault("Commands.SourceHoles.ToggledOff", "SourceHoles are now toggled off.");
+
 			config.addDefault("Commands.Invincible.Description", "This command will make you immune to all bending damage. Once you use this command, you will stay invincible until you log off or use this command again.");
 			config.addDefault("Commands.Invincible.ToggledOn", "You are now invincible to all bending damage and effects. Use this command again to disable this.");
 			config.addDefault("Commands.Invincible.ToggledOff", "You are no longer invincible to all bending damage and effects.");
@@ -714,7 +719,6 @@ public class ConfigManager {
 
 			config.addDefault("Properties.Earth.DynamicSourcing", true);
 			config.addDefault("Properties.Earth.RevertEarthbending", true);
-			config.addDefault("Properties.Earth.SourceHoles", true);
 			config.addDefault("Properties.Earth.SafeRevert", true);
 			config.addDefault("Properties.Earth.RevertCheckTime", 300000);
 			config.addDefault("Properties.Earth.CanBendWithWeapons", true);
@@ -1322,7 +1326,6 @@ public class ConfigManager {
 			config.addDefault("Abilities.Earth.Collapse.Wall.Cooldown", 500);
 
 			config.addDefault("Abilities.Earth.EarthArmor.Enabled", true);
-			config.addDefault("Abilities.Earth.EarthArmor.SourceHole", false);
 			config.addDefault("Abilities.Earth.EarthArmor.SelectRange", 10);
 			config.addDefault("Abilities.Earth.EarthArmor.GoldHearts", 4);
 			config.addDefault("Abilities.Earth.EarthArmor.Cooldown", 7500);
@@ -1334,7 +1337,6 @@ public class ConfigManager {
 			config.addDefault("Abilities.Earth.EarthBlast.Range", 30);
 			config.addDefault("Abilities.Earth.EarthBlast.Speed", 35);
 			config.addDefault("Abilities.Earth.EarthBlast.Revert", true);
-			config.addDefault("Abilities.Earth.EarthBlast.SourceHole", false);
 			config.addDefault("Abilities.Earth.EarthBlast.Damage", 3);
 			config.addDefault("Abilities.Earth.EarthBlast.Push", 0.3);
 			config.addDefault("Abilities.Earth.EarthBlast.Cooldown", 500);
@@ -1421,7 +1423,6 @@ public class ConfigManager {
 			config.addDefault("Abilities.Earth.LavaFlow.RevertMaterial", "STONE");
 
 			config.addDefault("Abilities.Earth.EarthSmash.Enabled", true);
-			config.addDefault("Abilities.Earth.EarthSmash.SourceHole", false);
 			config.addDefault("Abilities.Earth.EarthSmash.Duration", 30000);
 			config.addDefault("Abilities.Earth.EarthSmash.SelectRange", 12);
 			config.addDefault("Abilities.Earth.EarthSmash.ChargeTime", 1500);

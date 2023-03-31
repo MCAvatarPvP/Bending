@@ -118,6 +118,7 @@ public class Commands {
 		new HelpCommand();
 		new InvincibleCommand();
 		new PermaremoveCommand();
+		new SourceHolesCommand();
 		new PresetCommand();
 		new ReloadCommand();
 		new RemoveCommand();
