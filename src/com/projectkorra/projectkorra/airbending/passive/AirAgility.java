@@ -17,6 +17,7 @@ public class AirAgility extends AirAbility implements PassiveAbility {
 	private int jumpPower;
 	@Attribute(Attribute.SPEED)
 	private int speedPower;
+	private boolean requiresSprinting;
 
 	public AirAgility(final Player player) {
 		super(player);
@@ -26,11 +27,12 @@ public class AirAgility extends AirAbility implements PassiveAbility {
 	public void setFields() {
 		this.jumpPower = ConfigManager.getConfig().getInt("Abilities.Air.Passive.AirAgility.JumpPower") - 1;
 		this.speedPower = ConfigManager.getConfig().getInt("Abilities.Air.Passive.AirAgility.SpeedPower") - 1;
+		this.requiresSprinting = ConfigManager.getConfig().getBoolean("Abilities.Air.Passive.AirAgility.RequiresSprinting");
 	}
 
 	@Override
 	public void progress() {
-		if (!this.player.isSprinting() || !this.bPlayer.canUsePassive(this) || !this.bPlayer.canBendPassive(this)) {
+		if (this.requiresSprinting && !this.player.isSprinting() || !this.bPlayer.canUsePassive(this) || !this.bPlayer.canBendPassive(this)) {
 			return;
 		}
 

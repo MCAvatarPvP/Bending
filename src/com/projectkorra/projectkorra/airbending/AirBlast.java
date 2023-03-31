@@ -273,7 +273,6 @@ public class AirBlast extends AirAbility {
 
 		if (this.location.getWorld().equals(this.origin.getWorld())) {
 			knockback *= 1 - this.location.distance(this.origin) / (2 * this.range);
-			player.sendMessage("call");
 		}
 		
 		if (GeneralMethods.isSolid(entity.getLocation().add(0, -0.5, 0).getBlock()) && source == null) {
