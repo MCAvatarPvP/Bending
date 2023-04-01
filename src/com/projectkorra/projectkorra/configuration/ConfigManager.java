@@ -100,6 +100,7 @@ public class ConfigManager {
 			if (!config.contains("Board.Extras")) {
 				config.addDefault("Board.Extras.RaiseEarthWall", ChatColor.GREEN.getName());
 				config.addDefault("Board.Extras.SurgeWave", ChatColor.AQUA.getName());
+				config.addDefault("Board.Extras.FireBlastCharged", ChatColor.RED.getName());
 			}
 
 			config.addDefault("Extras.Water.NightMessage", "Your waterbending has become empowered due to the moon rising.");
@@ -1191,6 +1192,7 @@ public class ConfigManager {
 
 			config.addDefault("Abilities.Water.WaterArms.Enabled", true);
 			config.addDefault("Abilities.Water.WaterArms.DisplayBoundMsg", false);
+			config.addDefault("Abilities.Water.WaterArms.FallDamage", false);
 
 			config.addDefault("Abilities.Water.WaterArms.Arms.InitialLength", 4);
 			config.addDefault("Abilities.Water.WaterArms.Arms.SourceGrabRange", 12);
@@ -1491,6 +1493,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Earth.EarthPillars.Cooldown", 8000);
 			config.addDefault("Abilities.Earth.EarthPillars.Radius", 9);
 			config.addDefault("Abilities.Earth.EarthPillars.Knockup", 1.2);
+			config.addDefault("Abilities.Earth.EarthPillars.RequireOnGround", true);
 			config.addDefault("Abilities.Earth.EarthPillars.Damage.Enabled", true);
 			config.addDefault("Abilities.Earth.EarthPillars.Damage.Value", 2);
 			config.addDefault("Abilities.Earth.EarthPillars.FallThreshold", 12);
@@ -1518,6 +1521,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.FireBlast.Speed", 20);
 			config.addDefault("Abilities.Fire.FireBlast.Range", 20);
 			config.addDefault("Abilities.Fire.FireBlast.CollisionRadius", 1.0);
+			config.addDefault("Abilities.Fire.FireBlast.GroundFireRadius", 1.0);
 			config.addDefault("Abilities.Fire.FireBlast.Knockback", 0.3);
 			config.addDefault("Abilities.Fire.FireBlast.Damage", 3);
 			config.addDefault("Abilities.Fire.FireBlast.Cooldown", 1500);
@@ -1532,7 +1536,6 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.FireBlast.Charged.MaximumDamage", 4);
 			config.addDefault("Abilities.Fire.FireBlast.Charged.DamageRadius", 4);
 			config.addDefault("Abilities.Fire.FireBlast.Charged.DamageBlocks", true);
-			config.addDefault("Abilities.Fire.FireBlast.Charged.IgnoreCooldowns", false);
 			config.addDefault("Abilities.Fire.FireBlast.Charged.ExplosionRadius", 1);
 			config.addDefault("Abilities.Fire.FireBlast.Charged.Range", 20);
 			config.addDefault("Abilities.Fire.FireBlast.Charged.FireTicks", 0);

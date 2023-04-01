@@ -35,13 +35,14 @@ public class EarthPillars extends EarthAbility implements ComboAbility {
 	private double fallThreshold;
 	private boolean damaging;
 	private boolean firstTime;
+	private boolean requireOnGround;
 	private Map<RaiseEarth, LivingEntity> entities;
 
 	public EarthPillars(final Player player, final boolean fall) {
 		super(player);
 		this.setFields(fall);
 
-		if (!this.bPlayer.canBendIgnoreBinds(this) || !isEarthbendable(player.getLocation().getBlock().getRelative(BlockFace.DOWN).getType(), true, true, false)) {
+		if (!this.bPlayer.canBendIgnoreBinds(this) || !isEarthbendable(player.getLocation().getBlock().getRelative(BlockFace.DOWN).getType(), true, true, false) && requireOnGround) {
 			return;
 		}
 
@@ -60,6 +61,7 @@ public class EarthPillars extends EarthAbility implements ComboAbility {
 		this.radius = getConfig().getDouble("Abilities.Earth.EarthPillars.Radius");
 		this.damage = getConfig().getDouble("Abilities.Earth.EarthPillars.Damage.Value");
 		this.knockup = getConfig().getDouble("Abilities.Earth.EarthPillars.Knockup");
+		this.requireOnGround = getConfig().getBoolean("Abilities.Earth.EarthPillars.RequireOnGround");
 		this.damaging = getConfig().getBoolean("Abilities.Earth.EarthPillars.Damage.Enabled");
 		this.entities = new HashMap<>();
 

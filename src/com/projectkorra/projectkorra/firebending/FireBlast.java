@@ -54,6 +54,7 @@ public class FireBlast extends FireAbility {
 	@Attribute(Attribute.SPEED)
 	private double speed;
 	private double collisionRadius;
+	private double groundFireRadius;
 	@Attribute(Attribute.FIRE_TICK)
 	private double fireTicks;
 	@Attribute(Attribute.KNOCKBACK)
@@ -116,6 +117,7 @@ public class FireBlast extends FireAbility {
 		this.range = applyModifiersRange(getConfig().getDouble("Abilities.Fire.FireBlast.Range"));
 		this.speed = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.Speed"));
 		this.collisionRadius = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.CollisionRadius"));
+		this.groundFireRadius = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.GroundFireRadius"));
 		this.fireTicks = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.FireTicks"));
 		this.knockback = getConfig().getDouble("Abilities.Fire.FireBlast.Knockback");
 		this.flameRadius = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.FlameParticleRadius"));
@@ -129,14 +131,14 @@ public class FireBlast extends FireAbility {
 		}
 
 		if (this.showParticles) {
-			playFirebendingParticles(this.location, 6, this.flameRadius, this.flameRadius, this.flameRadius);
+			playFirebendingParticles(this.location, 3, this.flameRadius, this.flameRadius, this.flameRadius);
 		}
 
 		BlockIterator blocks = new BlockIterator(this.getLocation().getWorld(), this.location.toVector(), this.direction, 0, (int) Math.ceil(this.direction.clone().multiply(speedFactor).length()));
 
 		while (blocks.hasNext() && checkLocation(blocks.next()));
-		
-		this.location.add(this.direction.clone().multiply(speedFactor));
+
+		this.location.add(this.direction.clone().multiply(speedFactor/2));
 
 		if (this.random.nextInt(4) == 0) {
 			playFirebendingSound(this.location);
@@ -196,7 +198,7 @@ public class FireBlast extends FireAbility {
 	}
 
 	private void ignite(final Location location) {
-		for (final Block block : GeneralMethods.getBlocksAroundPoint(location, this.collisionRadius)) {
+		for (final Block block : GeneralMethods.getBlocksAroundPoint(location, this.groundFireRadius)) {
 			if (isIgnitable(block) && !this.safeBlocks.contains(block) && !RegionProtection.isRegionProtected(this, block.getLocation())) {
 				if (canFireGrief()) { //Regrow the plant or snow LATER since the fire destroys the block
 					if (isPlant(block) || isSnow(block)) {
@@ -229,12 +231,14 @@ public class FireBlast extends FireAbility {
 			return;
 		}
 
-		Entity entity = GeneralMethods.getClosestEntity(this.location, this.collisionRadius);
-		if (entity != null) {
-			this.affect(entity);
-		}
+		for (int i = 0; i < 2; i++) {
+			Entity entity = GeneralMethods.getClosestEntity(this.location, this.collisionRadius);
+			if (entity != null) {
+				this.affect(entity);
+			}
 
-		this.advanceLocation();
+			this.advanceLocation();
+		}
 	}
 
 	/**
