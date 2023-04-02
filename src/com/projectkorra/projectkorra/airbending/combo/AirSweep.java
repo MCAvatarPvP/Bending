@@ -22,7 +22,6 @@ import com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformatio
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.command.Commands;
 import com.projectkorra.projectkorra.firebending.combo.FireComboStream;
-import com.projectkorra.projectkorra.util.ClickType;
 import com.projectkorra.projectkorra.util.DamageHandler;
 
 public class AirSweep extends AirAbility implements ComboAbility {
@@ -215,6 +214,10 @@ public class AirSweep extends AirAbility implements ComboAbility {
 							if (this.damage != 0) {
 								if (entity instanceof LivingEntity) {
 									DamageHandler.damageEntity(entity, this.damage, this);
+									boolean falldamage = getConfig().getBoolean("Abilities.Air.AirSweep.FallDamageOthers");
+									if (entity instanceof Player && !affectedEntitiesByPush.contains(entity) && !falldamage) {
+										affectedEntitiesByPush.add((Player) entity);
+									}
 								}
 							}
 						}

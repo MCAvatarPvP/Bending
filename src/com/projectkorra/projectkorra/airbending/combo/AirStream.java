@@ -17,7 +17,6 @@ import com.projectkorra.projectkorra.ability.ComboAbility;
 import com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.command.Commands;
-import com.projectkorra.projectkorra.util.ClickType;
 
 public class AirStream extends AirAbility implements ComboAbility {
 
@@ -159,7 +158,6 @@ public class AirStream extends AirAbility implements ComboAbility {
 			}
 			if (!entity.equals(this.player) && !this.affectedEntities.contains(entity)) {
 				this.affectedEntities.add(entity);
-				affectedEntitiesByPush.add(entity);
 			}
 		}
 
@@ -170,6 +168,10 @@ public class AirStream extends AirAbility implements ComboAbility {
 			final Vector force = GeneralMethods.getDirection(entity.getLocation(), this.currentLoc);
 			GeneralMethods.setVelocity(this, entity, force.clone().normalize().multiply(this.speed));
 			entity.setFallDistance(0F);
+			boolean falldamage = getConfig().getBoolean("Abilities.Air.AirStream.FallDamageOthers");
+			if (entity instanceof Player && !affectedEntitiesByPush.contains(entity) && !falldamage) {
+				affectedEntitiesByPush.add((Player) entity);
+			}
 		}
 	}
 

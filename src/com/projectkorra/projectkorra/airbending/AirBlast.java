@@ -242,6 +242,8 @@ public class AirBlast extends AirAbility {
 
 	private void affect(final Entity entity) {
 		if (entity instanceof Player) {
+			boolean falldamage = getConfig().getBoolean("Abilities.Air.AirBlast.FallDamageOthers");
+			if (!affectedEntitiesByPush.contains(entity) && !falldamage) affectedEntitiesByPush.add((Player) entity);
 			if (Commands.invincible.contains(((Player) entity).getName())) {
 				return;
 			}
@@ -251,14 +253,11 @@ public class AirBlast extends AirAbility {
 		double knockback = this.pushFactorForOthers;
 
 		if (isUser) {
-			affectedEntitiesByPush.add(entity);
 			if (isFromOtherOrigin) {
 				knockback = this.pushFactor;
 			} else {
 				return;
 			}
-		} else {
-			affectedEntitiesByPush.add(entity);
 		}
 
 		//beta 9 used entity velocity
