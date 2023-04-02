@@ -542,12 +542,10 @@ public class PKListener implements Listener {
 		final Entity entity = event.getEntity();
 
 		if (event.getCause() == DamageCause.FIRE && FireAbility.getSourcePlayers().containsKey(entity.getLocation().getBlock())) {
-			entity.sendMessage("call1");
 			new FireDamageTimer(entity, FireAbility.getSourcePlayers().get(entity.getLocation().getBlock()));
 		}
 
 		if (FireDamageTimer.isEnflamed(entity) && event.getCause() == DamageCause.FIRE_TICK) {
-			entity.sendMessage("call2");
 			event.setCancelled(true);
 			FireDamageTimer.dealFlameDamage(entity);
 		}
@@ -877,7 +875,6 @@ public class PKListener implements Listener {
 		if (event.getEntity() instanceof Player) {
 			final Player player = (Player) event.getEntity();
 			final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-			player.sendMessage("1");
 
 			if (bPlayer == null) {
 				return;
