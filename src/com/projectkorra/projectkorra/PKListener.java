@@ -901,11 +901,6 @@ public class PKListener implements Listener {
 				}
 			}
 
-			if (AirAbility.affectedEntitiesByPush.contains(player) && event.getCause() == DamageCause.FALL) {
-				event.setCancelled(true);
-				AirAbility.affectedEntitiesByPush.remove(player);
-			}
-
 			CoreAbility gd = CoreAbility.getAbility(GracefulDescent.class);
 			CoreAbility ds = CoreAbility.getAbility(DensityShift.class);
 			CoreAbility hs = CoreAbility.getAbility(HydroSink.class);
@@ -921,6 +916,11 @@ public class PKListener implements Listener {
 			boolean fallDamage = ConfigManager.getConfig().getBoolean("Abilities.Water.WaterArms.FallDamage");
 			if (wa != null && bPlayer.hasElement(Element.WATER) && event.getCause() == DamageCause.FALL && !fallDamage) {
 				event.setCancelled(true);
+			}
+
+			if (AirAbility.affectedEntitiesByPush.contains(player) && event.getCause() == DamageCause.FALL) {
+				event.setCancelled(true);
+				AirAbility.affectedEntitiesByPush.remove(player);
 			}
 
 			if (ab != null && bPlayer.hasElement(Element.CHI) && event.getCause() == DamageCause.FALL && bPlayer.canBendPassive(ab) && bPlayer.canUsePassive(ab) && ab.isEnabled() && PassiveManager.hasPassive(player, ab)) {
