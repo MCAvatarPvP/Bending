@@ -542,12 +542,22 @@ public class PKListener implements Listener {
 		final Entity entity = event.getEntity();
 
 		if (event.getCause() == DamageCause.FIRE && FireAbility.getSourcePlayers().containsKey(entity.getLocation().getBlock())) {
+			entity.sendMessage("call1");
 			new FireDamageTimer(entity, FireAbility.getSourcePlayers().get(entity.getLocation().getBlock()));
 		}
 
 		if (FireDamageTimer.isEnflamed(entity) && event.getCause() == DamageCause.FIRE_TICK) {
+			entity.sendMessage("call2");
 			event.setCancelled(true);
 			FireDamageTimer.dealFlameDamage(entity);
+		}
+
+		int maxFireTicks = ConfigManager.getConfig().getInt("Properties.Fire.MaxFireTickDuration");
+		int maxLavaTicks = ConfigManager.getConfig().getInt("Properties.Earth.MaxLavaTickDuration");
+		if (event.getCause() == DamageCause.FIRE && entity.getFireTicks() > maxFireTicks) {
+			entity.setFireTicks(maxFireTicks);
+		} else if (event.getCause() == DamageCause.LAVA && entity.getFireTicks() > maxLavaTicks) {
+			entity.setFireTicks(maxLavaTicks);
 		}
 
 		if (entity instanceof Player) {
@@ -867,6 +877,7 @@ public class PKListener implements Listener {
 		if (event.getEntity() instanceof Player) {
 			final Player player = (Player) event.getEntity();
 			final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
+			player.sendMessage("1");
 
 			if (bPlayer == null) {
 				return;
@@ -893,6 +904,11 @@ public class PKListener implements Listener {
 				}
 			}
 
+			if (AirAbility.affectedEntitiesByPush.contains(player) && event.getCause() == DamageCause.FALL) {
+				event.setCancelled(true);
+				AirAbility.affectedEntitiesByPush.remove(player);
+			}
+
 			CoreAbility gd = CoreAbility.getAbility(GracefulDescent.class);
 			CoreAbility ds = CoreAbility.getAbility(DensityShift.class);
 			CoreAbility hs = CoreAbility.getAbility(HydroSink.class);
@@ -906,7 +922,9 @@ public class PKListener implements Listener {
 			}
 
 			boolean fallDamage = ConfigManager.getConfig().getBoolean("Abilities.Water.WaterArms.FallDamage");
-			if (wa != null && bPlayer.hasElement(Element.WATER) && !fallDamage) event.setCancelled(true);
+			if (wa != null && bPlayer.hasElement(Element.WATER) && event.getCause() == DamageCause.FALL && !fallDamage) {
+				event.setCancelled(true);
+			}
 
 			if (ab != null && bPlayer.hasElement(Element.CHI) && event.getCause() == DamageCause.FALL && bPlayer.canBendPassive(ab) && bPlayer.canUsePassive(ab) && ab.isEnabled() && PassiveManager.hasPassive(player, ab)) {
 				final double initdamage = event.getDamage();
