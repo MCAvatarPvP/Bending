@@ -210,6 +210,8 @@ public class AirSuction extends AirAbility {
 				
 				if (entity.getEntityId() != player.getEntityId()) {
 					knockback = this.pushFactorForOthers;
+				} else {
+					affectedEntitiesByPush.add(entity);
 				}
 				
 				final double max = this.speed;

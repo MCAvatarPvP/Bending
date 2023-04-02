@@ -251,11 +251,14 @@ public class AirBlast extends AirAbility {
 		double knockback = this.pushFactorForOthers;
 
 		if (isUser) {
+			affectedEntitiesByPush.add(entity);
 			if (isFromOtherOrigin) {
 				knockback = this.pushFactor;
 			} else {
 				return;
 			}
+		} else {
+			affectedEntitiesByPush.add(entity);
 		}
 
 		//beta 9 used entity velocity
@@ -468,6 +471,7 @@ public class AirBlast extends AirAbility {
 				continue;
 			}
 			this.affect(entity);
+
 		}
 
 		this.advanceLocation();

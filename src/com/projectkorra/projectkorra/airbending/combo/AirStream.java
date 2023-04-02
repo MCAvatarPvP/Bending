@@ -159,6 +159,7 @@ public class AirStream extends AirAbility implements ComboAbility {
 			}
 			if (!entity.equals(this.player) && !this.affectedEntities.contains(entity)) {
 				this.affectedEntities.add(entity);
+				affectedEntitiesByPush.add(entity);
 			}
 		}
 

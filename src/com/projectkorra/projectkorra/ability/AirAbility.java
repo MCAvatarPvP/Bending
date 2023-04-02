@@ -19,6 +19,8 @@ import com.projectkorra.projectkorra.util.ParticleEffect;
 
 public abstract class AirAbility extends ElementalAbility {
 
+	public static List<Entity> affectedEntitiesByPush = new ArrayList<>();
+
 	public AirAbility(final Player player) {
 		super(player);
 	}

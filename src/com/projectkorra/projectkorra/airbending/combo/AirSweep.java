@@ -38,6 +38,9 @@ public class AirSweep extends AirAbility implements ComboAbility {
 	private double range;
 	@Attribute(Attribute.KNOCKBACK)
 	private double knockback;
+	@Attribute(Attribute.HEIGHT)
+	private double heightOffset;
+	private boolean oldKnockback;
 	private Location origin;
 	private Location currentLoc;
 	private Location destination;
@@ -64,6 +67,8 @@ public class AirSweep extends AirAbility implements ComboAbility {
 		this.range = getConfig().getDouble("Abilities.Air.AirSweep.Range");
 		this.speed = getConfig().getDouble("Abilities.Air.AirSweep.Speed");
 		this.knockback = getConfig().getDouble("Abilities.Air.AirSweep.Knockback");
+		this.heightOffset = getConfig().getDouble("Abilities.Air.AirSweep.HeightOffset");
+		this.oldKnockback = getConfig().getBoolean("Abilities.Air.AirSweep.OldKnockback");
 		this.cooldown = getConfig().getLong("Abilities.Air.AirSweep.Cooldown");
 		this.radius = getConfig().getDouble("Abilities.Air.AirSweep.Radius");
 
@@ -144,7 +149,7 @@ public class AirSweep extends AirAbility implements ComboAbility {
 		if (this.destination == null) {
 			this.destination = GeneralMethods.getMainHandLocation(player).add(GeneralMethods.getMainHandLocation(player).getDirection().normalize().multiply(10));
 			final Vector origToDest = GeneralMethods.getDirection(this.origin, this.destination);
-			final Location hand = GeneralMethods.getMainHandLocation(player);
+			final Location hand = GeneralMethods.getMainHandLocation(player).add(0, heightOffset, 0);
 			for (double i = 0; i < 30; i++) {
 				final Location endLoc = this.origin.clone().add(origToDest.clone().multiply(i / 30));
 				if (GeneralMethods.locationEqualsIgnoreDirection(hand, endLoc)) {
@@ -199,7 +204,8 @@ public class AirSweep extends AirAbility implements ComboAbility {
 					}
 					if (!entity.equals(this.player) && !(entity instanceof Player && Commands.invincible.contains(((Player) entity).getName()))) {
 						if (this.knockback != 0) {
-							final Vector force = fstream.getLocation().getDirection();
+							Vector force = fstream.getLocation().getDirection();
+							if (oldKnockback) force = fstream.getDirection();
 							GeneralMethods.setVelocity(this, entity, force.clone().multiply(this.knockback));
 							new HorizontalVelocityTracker(entity, this.player, 200l, this);
 							entity.setFallDistance(0);
