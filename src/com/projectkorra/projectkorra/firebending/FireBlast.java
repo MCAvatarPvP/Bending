@@ -9,7 +9,6 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.BlastFurnace;
 import org.bukkit.block.Block;
-import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.type.Campfire;
 import org.bukkit.block.Furnace;
 import org.bukkit.block.Smoker;
@@ -23,7 +22,6 @@ import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.Element.SubElement;
 import com.projectkorra.projectkorra.ability.AirAbility;
-import com.projectkorra.projectkorra.ability.BlueFireAbility;
 import com.projectkorra.projectkorra.ability.FireAbility;
 import com.projectkorra.projectkorra.ability.util.Collision;
 import com.projectkorra.projectkorra.attribute.Attribute;
@@ -55,6 +53,8 @@ public class FireBlast extends FireAbility {
 	private double speed;
 	private double collisionRadius;
 	private double groundFireRadius;
+	@Attribute(Attribute.RADIUS)
+	private double hitRadius;
 	@Attribute(Attribute.FIRE_TICK)
 	private double fireTicks;
 	@Attribute(Attribute.KNOCKBACK)
@@ -118,6 +118,7 @@ public class FireBlast extends FireAbility {
 		this.speed = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.Speed"));
 		this.collisionRadius = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.CollisionRadius"));
 		this.groundFireRadius = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.GroundFireRadius"));
+		this.hitRadius = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.HitRadius"));
 		this.fireTicks = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.FireTicks"));
 		this.knockback = getConfig().getDouble("Abilities.Fire.FireBlast.Knockback");
 		this.flameRadius = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.FlameParticleRadius"));
@@ -232,7 +233,7 @@ public class FireBlast extends FireAbility {
 		}
 
 		for (int i = 0; i < 2; i++) {
-			Entity entity = GeneralMethods.getClosestEntity(this.location, this.collisionRadius);
+			Entity entity = GeneralMethods.getClosestEntity(this.location, this.hitRadius);
 			if (entity != null) {
 				this.affect(entity);
 			}

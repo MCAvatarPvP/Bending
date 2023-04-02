@@ -727,6 +727,7 @@ public class ConfigManager {
 			config.addDefault("Properties.Earth.MetalBlocks", metalBlocks);
 			config.addDefault("Properties.Earth.SandBlocks", sandBlocks);
 			config.addDefault("Properties.Earth.MetalPowerFactor", 1.5);
+			config.addDefault("Properties.Earth.MaxLavaTickDuration", 60);
 			config.addDefault("Properties.Earth.PlaySound", true);
 			config.addDefault("Properties.Earth.EarthSound.Sound", "ENTITY_GHAST_SHOOT");
 			config.addDefault("Properties.Earth.EarthSound.Volume", 1);
@@ -746,6 +747,7 @@ public class ConfigManager {
 			config.addDefault("Properties.Fire.PlaySound", true);
 			config.addDefault("Properties.Fire.FireGriefing", false);
 			config.addDefault("Properties.Fire.RevertTicks", 12000L);
+			config.addDefault("Properties.Fire.MaxFireTickDuration", 40);
 			config.addDefault("Properties.Fire.FireSound.Sound", "BLOCK_FIRE_AMBIENT");
 			config.addDefault("Properties.Fire.FireSound.Volume", 1);
 			config.addDefault("Properties.Fire.FireSound.Pitch", 1);
@@ -926,6 +928,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.Passive.GracefulDescent.Enabled", true);
 
 			config.addDefault("Abilities.Air.AirBlast.Enabled", true);
+			config.addDefault("Abilities.Air.AirBlast.FallDamageOthers", false);
 			config.addDefault("Abilities.Air.AirBlast.Speed", 25);
 			config.addDefault("Abilities.Air.AirBlast.Range", 20);
 			config.addDefault("Abilities.Air.AirBlast.Radius", 2);
@@ -977,6 +980,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.AirSpout.Interval", 100);
 
 			config.addDefault("Abilities.Air.AirSuction.Enabled", true);
+			config.addDefault("Abilities.Air.AirSuction.FallDamageOthers", false);
 			config.addDefault("Abilities.Air.AirSuction.Speed", 25);
 			config.addDefault("Abilities.Air.AirSuction.Range", 20);
 			config.addDefault("Abilities.Air.AirSuction.SelectRange", 10);
@@ -1026,6 +1030,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.Suffocate.AnimationSpeed", 1.0);
 
 			config.addDefault("Abilities.Air.Tornado.Enabled", true);
+			config.addDefault("Abilities.Air.Tornado.FallDamageOthers", false);
 			config.addDefault("Abilities.Air.Tornado.Cooldown", 0);
 			config.addDefault("Abilities.Air.Tornado.Duration", 0);
 			config.addDefault("Abilities.Air.Tornado.Radius", 10);
@@ -1049,16 +1054,20 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.AirStream.Enabled", true);
 			config.addDefault("Abilities.Air.AirStream.Speed", 0.5);
 			config.addDefault("Abilities.Air.AirStream.Range", 40);
+			config.addDefault("Abilities.Air.AirStream.FallDamageOthers", false);
 			config.addDefault("Abilities.Air.AirStream.EntityCarry.Duration", 4000);
 			config.addDefault("Abilities.Air.AirStream.EntityCarry.Height", 14);
 			config.addDefault("Abilities.Air.AirStream.Cooldown", 7000);
 			config.addDefault("Abilities.Air.AirStream.Combination", Arrays.asList("AirShield:SNEAK_DOWN", "AirSuction:LEFT_CLICK", "AirBlast:LEFT_CLICK"));
 
 			config.addDefault("Abilities.Air.AirSweep.Enabled", true);
+			config.addDefault("Abilities.Air.AirSweep.FallDamageOthers", false);
 			config.addDefault("Abilities.Air.AirSweep.Speed", 1.4);
 			config.addDefault("Abilities.Air.AirSweep.Range", 14);
 			config.addDefault("Abilities.Air.AirSweep.Damage", 3);
 			config.addDefault("Abilities.Air.AirSweep.Knockback", 3.5);
+			config.addDefault("Abilities.Air.AirSweep.OldKnockback", true);
+			config.addDefault("Abilities.Air.AirSweep.HeightOffset", 0);
 			config.addDefault("Abilities.Air.AirSweep.Cooldown", 6000);
 			config.addDefault("Abilities.Air.AirSweep.Radius", 1);
 			config.addDefault("Abilities.Air.AirSweep.Combination", Arrays.asList("AirSwipe:LEFT_CLICK", "AirSwipe:LEFT_CLICK", "AirBurst:SNEAK_DOWN", "AirBurst:LEFT_CLICK"));
@@ -1437,6 +1446,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Earth.EarthSmash.Lift.Knockup", 1.1);
 			config.addDefault("Abilities.Earth.EarthSmash.Lift.Range", 3.5);
 			config.addDefault("Abilities.Earth.EarthSmash.Flight.Enabled", true);
+			config.addDefault("Abilities.Earth.EarthSmash.Flight.IgnoreBinds", false);
 			config.addDefault("Abilities.Earth.EarthSmash.Flight.Speed", 0.72);
 			config.addDefault("Abilities.Earth.EarthSmash.Flight.Duration", 3000);
 			config.addDefault("Abilities.Earth.EarthSmash.Flight.AnimationInterval", 0);
@@ -1522,6 +1532,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.FireBlast.Range", 20);
 			config.addDefault("Abilities.Fire.FireBlast.CollisionRadius", 1.0);
 			config.addDefault("Abilities.Fire.FireBlast.GroundFireRadius", 1.0);
+			config.addDefault("Abilities.Fire.FireBlast.HitRadius", 1.0);
 			config.addDefault("Abilities.Fire.FireBlast.Knockback", 0.3);
 			config.addDefault("Abilities.Fire.FireBlast.Damage", 3);
 			config.addDefault("Abilities.Fire.FireBlast.Cooldown", 1500);
@@ -1633,6 +1644,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.FireKick.Damage", 3.0);
 			config.addDefault("Abilities.Fire.FireKick.Cooldown", 6000);
 			config.addDefault("Abilities.Fire.FireKick.Speed", 1);
+			config.addDefault("Abilities.Fire.FireKick.CollisionRadius", 0.3);
 			config.addDefault("Abilities.Fire.FireKick.Combination", Arrays.asList("FireBlast:LEFT_CLICK", "FireBlast:LEFT_CLICK", "FireBlast:SNEAK_DOWN", "FireBlast:LEFT_CLICK"));
 
 			config.addDefault("Abilities.Fire.FireSpin.Enabled", true);
@@ -1650,6 +1662,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.FireWheel.Cooldown", 6000);
 			config.addDefault("Abilities.Fire.FireWheel.FireTicks", 2.5);
 			config.addDefault("Abilities.Fire.FireWheel.Height", 2);
+			config.addDefault("Abilities.Fire.FireWheel.Radius", 1);
 			config.addDefault("Abilities.Fire.FireWheel.Combination", Arrays.asList("FireShield:SNEAK_DOWN", "FireShield:RIGHT_CLICK_BLOCK", "FireShield:RIGHT_CLICK_BLOCK", "Blaze:SNEAK_UP"));
 
 			config.addDefault("Abilities.Fire.JetBlast.Enabled", true);

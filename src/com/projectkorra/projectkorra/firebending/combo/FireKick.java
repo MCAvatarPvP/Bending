@@ -31,6 +31,7 @@ public class FireKick extends FireAbility implements ComboAbility {
 	private double speed;
 	@Attribute(Attribute.RANGE)
 	private double range;
+	private double collisionRadius;
 	private Location location;
 	private Location destination;
 	private ArrayList<LivingEntity> affectedEntities;
@@ -50,6 +51,7 @@ public class FireKick extends FireAbility implements ComboAbility {
 		this.range = applyModifiersRange(getConfig().getDouble("Abilities.Fire.FireKick.Range"));
 		this.cooldown = applyModifiersCooldown(getConfig().getLong("Abilities.Fire.FireKick.Cooldown"));
 		this.speed = getConfig().getLong("Abilities.Fire.FireKick.Speed");
+		this.collisionRadius = getConfig().getDouble("Abilities.Fire.FireKick.CollisionRadius");
 
 		if (this.bPlayer.isAvatarState()) {
 			this.cooldown = 0;
@@ -183,6 +185,11 @@ public class FireKick extends FireAbility implements ComboAbility {
 	@Override
 	public Location getLocation() {
 		return this.location;
+	}
+
+	@Override
+	public double getCollisionRadius() {
+		return this.collisionRadius;
 	}
 
 	@Override

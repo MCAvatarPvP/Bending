@@ -30,6 +30,7 @@ public class EarthSmash extends EarthAbility {
 	private boolean allowGrab;
 	@Attribute("AllowFlight")
 	private boolean allowFlight;
+	private boolean ignoreBinds;
 	private int animationCounter;
 	private int progressCounter;
 	private int requiredBendableBlocks;
@@ -76,7 +77,6 @@ public class EarthSmash extends EarthAbility {
 	private ArrayList<Entity> affectedEntities;
 	private ArrayList<BlockRepresenter> currentBlocks;
 	private ArrayList<TempBlock> affectedBlocks;
-	private Map<Block, Material> tempAirBlocks;
 
 	public EarthSmash(final Player player, final ClickType type) {
 		super(player);
@@ -88,7 +88,6 @@ public class EarthSmash extends EarthAbility {
 		this.affectedEntities = new ArrayList<>();
 		this.currentBlocks = new ArrayList<>();
 		this.affectedBlocks = new ArrayList<>();
-		this.tempAirBlocks = new HashMap<>();
 
 		if (type == ClickType.SHIFT_DOWN || type == ClickType.SHIFT_UP && !player.isSneaking()) {
 			final EarthSmash flySmash = flyingInSmashCheck(player);
@@ -152,6 +151,7 @@ public class EarthSmash extends EarthAbility {
 		this.hitRadius = getConfig().getDouble("Abilities.Earth.EarthSmash.Shoot.CollisionRadius");
 		this.allowGrab = getConfig().getBoolean("Abilities.Earth.EarthSmash.Grab.Enabled");
 		this.allowFlight = getConfig().getBoolean("Abilities.Earth.EarthSmash.Flight.Enabled");
+		this.ignoreBinds = getConfig().getBoolean("Abilities.Earth.EarthSmash.Flight.IgnoreBinds");
 		this.selectRange = getConfig().getDouble("Abilities.Earth.EarthSmash.SelectRange");
 		this.grabRange = getConfig().getDouble("Abilities.Earth.EarthSmash.Grab.Range");
 		this.shootRange = getConfig().getDouble("Abilities.Earth.EarthSmash.Shoot.Range");
@@ -195,7 +195,11 @@ public class EarthSmash extends EarthAbility {
 				return;
 			}
 		} else if (this.state == State.FLYING || this.state == State.GRABBED) {
-			if (!this.bPlayer.canBendIgnoreCooldowns(this)) {
+			if (!this.bPlayer.canBendIgnoreBindsCooldowns(this)) {
+				this.remove();
+				return;
+			}
+			if (!bPlayer.getBoundAbilityName().equalsIgnoreCase(getName()) && !ignoreBinds) {
 				this.remove();
 				return;
 			}
@@ -229,13 +233,6 @@ public class EarthSmash extends EarthAbility {
 		} else if (this.state == State.LIFTING) {
 			if (System.currentTimeMillis() - this.delay >= this.liftAnimationInterval) {
 				this.delay = System.currentTimeMillis();
-				if (!bPlayer.areSourceHolesOn() && animationCounter >= 4) {
-					for (Map.Entry<Block, Material> entry : tempAirBlocks.entrySet()) {
-						entry.getKey().setType(entry.getValue());
-					}
-
-					animationCounter++;
-				}
 				this.animateLift();
 			}
 		} else if (this.state == State.GRABBED) {
@@ -391,16 +388,14 @@ public class EarthSmash extends EarthAbility {
 					for (int z = -1; z <= 1; z++) {
 						if ((Math.abs(x) + Math.abs(z)) % 2 == 1) {
 							final Block block = this.location.clone().add(x, -2, z).getBlock();
-							if (this.isEarthbendable(block)) {
-								tempAirBlocks.put(block, block.getType());
+							if (this.isEarthbendable(block) && bPlayer.areSourceHolesOn()) {
 								addTempAirBlock(block);
 							}
 						}
 
 						// Remove the first level of dirt.
 						final Block block = this.location.clone().add(x, -1, z).getBlock();
-						if (this.isEarthbendable(block)) {
-							tempAirBlocks.put(block, block.getType());
+						if (this.isEarthbendable(block) && bPlayer.areSourceHolesOn()) {
 							addTempAirBlock(block);
 						}
 					}
@@ -471,6 +466,7 @@ public class EarthSmash extends EarthAbility {
 	 * block shows up in that map.
 	 */
 	public void checkRemainingBlocks() {
+		if (animationCounter < 4 && !bPlayer.areSourceHolesOn()) return;
 		for (int i = 0; i < this.currentBlocks.size(); i++) {
 			final BlockRepresenter brep = this.currentBlocks.get(i);
 			final Block block = this.location.clone().add(brep.getX(), brep.getY(), brep.getZ()).getBlock();

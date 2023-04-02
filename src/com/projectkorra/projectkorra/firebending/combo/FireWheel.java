@@ -58,6 +58,7 @@ public class FireWheel extends FireAbility implements ComboAbility {
 		this.cooldown = applyModifiersCooldown(getConfig().getLong("Abilities.Fire.FireWheel.Cooldown"));
 		this.fireTicks = getConfig().getDouble("Abilities.Fire.FireWheel.FireTicks");
 		this.height = applyModifiers(getConfig().getInt("Abilities.Fire.FireWheel.Height"));
+		this.radius = applyModifiers(getConfig().getDouble("Abilities.Fire.FireWheel.Radius"));
 
 		this.bPlayer.addCooldown(this);
 		this.affectedEntities = new ArrayList<LivingEntity>();
@@ -81,7 +82,6 @@ public class FireWheel extends FireAbility implements ComboAbility {
 			this.height = getConfig().getInt("Abilities.Avatar.AvatarState.Fire.FireWheel.Height");
 		}
 
-		this.radius = this.height / 2;
 		this.origin = player.getLocation().clone().add(0, this.radius, 0);
 
 		this.start();
