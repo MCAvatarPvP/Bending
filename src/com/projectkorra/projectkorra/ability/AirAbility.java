@@ -181,4 +181,13 @@ public abstract class AirAbility extends ElementalAbility {
 		removeAirSpouts(loc, 1.5, source);
 	}
 
+	public static void checkFallDamage() {
+		for (int i = 0; i < AirAbility.affectedEntitiesByPush.size(); i++) {
+			Player player = AirAbility.affectedEntitiesByPush.get(i);
+
+			if (player.isOnGround()) AirAbility.affectedEntitiesByPush.remove(player);
+			else player.setFallDistance(0);
+		}
+	}
+
 }

@@ -918,11 +918,6 @@ public class PKListener implements Listener {
 				event.setCancelled(true);
 			}
 
-			if (AirAbility.affectedEntitiesByPush.contains(player) && event.getCause() == DamageCause.FALL) {
-				event.setCancelled(true);
-				AirAbility.affectedEntitiesByPush.remove(player);
-			}
-
 			if (ab != null && bPlayer.hasElement(Element.CHI) && event.getCause() == DamageCause.FALL && bPlayer.canBendPassive(ab) && bPlayer.canUsePassive(ab) && ab.isEnabled() && PassiveManager.hasPassive(player, ab)) {
 				final double initdamage = event.getDamage();
 				final double newdamage = event.getDamage() * Acrobatics.getFallReductionFactor();
