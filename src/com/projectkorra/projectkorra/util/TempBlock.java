@@ -221,7 +221,7 @@ public class TempBlock {
 		//If the block has been changed by the time we revert (e.g. block place). Also, we ignore fire since it isn't worth the time
 		if (block.getType() != this.newData.getMaterial() && block.getType() != Material.FIRE && block.getType() != Material.SOUL_FIRE) {
 			//Get the drops of the original block and drop them in the world
-			GeneralMethods.dropItems(block, GeneralMethods.getDrops(block, this.state.getType(), this.state.getBlockData()));
+			//GeneralMethods.dropItems(block, GeneralMethods.getDrops(block, this.state.getType(), this.state.getBlockData()));
 		} else {
 			//Revert the original blockstate
 			state.update(true, applyPhysics(state.getType())
