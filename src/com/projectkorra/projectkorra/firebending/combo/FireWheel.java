@@ -36,6 +36,7 @@ public class FireWheel extends FireAbility implements ComboAbility {
 	@Attribute(Attribute.HEIGHT)
 	private double height;
 	private double radius;
+	private double circleRadius;
 	@Attribute(Attribute.SPEED)
 	private double speed;
 	@Attribute(Attribute.FIRE_TICK)
@@ -59,6 +60,7 @@ public class FireWheel extends FireAbility implements ComboAbility {
 		this.fireTicks = getConfig().getDouble("Abilities.Fire.FireWheel.FireTicks");
 		this.height = applyModifiers(getConfig().getInt("Abilities.Fire.FireWheel.Height"));
 		this.radius = applyModifiers(getConfig().getDouble("Abilities.Fire.FireWheel.Radius"));
+		this.circleRadius = applyModifiers(getConfig().getDouble("Abilities.Fire.FireWheel.CircleRadius"));
 
 		this.bPlayer.addCooldown(this);
 		this.affectedEntities = new ArrayList<LivingEntity>();
@@ -132,9 +134,9 @@ public class FireWheel extends FireAbility implements ComboAbility {
 
 		for (double i = -180; i <= 180; i += 3) {
 			final Location tempLoc = this.location.clone();
-			final Vector newDir = this.direction.clone().multiply(this.radius * Math.cos(Math.toRadians(i)));
+			final Vector newDir = this.direction.clone().multiply(this.circleRadius * Math.cos(Math.toRadians(i)));
 			tempLoc.add(newDir);
-			tempLoc.setY(tempLoc.getY() + (this.radius * Math.sin(Math.toRadians(i))));
+			tempLoc.setY(tempLoc.getY() + (this.circleRadius * Math.sin(Math.toRadians(i))));
 			playFirebendingParticles(tempLoc, 0, 0, 0, 0);
 		}
 
