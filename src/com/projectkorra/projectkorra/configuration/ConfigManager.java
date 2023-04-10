@@ -1663,6 +1663,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.FireWheel.FireTicks", 2.5);
 			config.addDefault("Abilities.Fire.FireWheel.Height", 2);
 			config.addDefault("Abilities.Fire.FireWheel.Radius", 1);
+			config.addDefault("Abilities.Fire.FireWheel.HeightRadius", 1);
 			config.addDefault("Abilities.Fire.FireWheel.CircleRadius", 1);
 			config.addDefault("Abilities.Fire.FireWheel.Combination", Arrays.asList("FireShield:SNEAK_DOWN", "FireShield:RIGHT_CLICK_BLOCK", "FireShield:RIGHT_CLICK_BLOCK", "Blaze:SNEAK_UP"));
 
