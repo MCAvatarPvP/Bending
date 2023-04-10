@@ -177,6 +177,7 @@ public class AirSpout extends AirAbility {
 	@Override
 	public void remove() {
 		super.remove();
+		this.removeFlight();
 		this.flightHandler.removeInstance(this.player, this.getName());
 	}
 
