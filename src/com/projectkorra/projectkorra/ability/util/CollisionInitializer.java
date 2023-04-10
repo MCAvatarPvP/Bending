@@ -15,6 +15,7 @@ import com.projectkorra.projectkorra.airbending.Tornado;
 import com.projectkorra.projectkorra.airbending.combo.AirStream;
 import com.projectkorra.projectkorra.airbending.combo.AirSweep;
 import com.projectkorra.projectkorra.airbending.flight.FlightMultiAbility;
+import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.earthbending.Catapult;
 import com.projectkorra.projectkorra.earthbending.Collapse;
 import com.projectkorra.projectkorra.earthbending.EarthArmor;
@@ -133,7 +134,7 @@ public class CollisionInitializer {
 		CoreAbility.getAbility(WaterSpoutWave.class);
 
 		final CoreAbility[] smallAbils = { airSwipe, earthBlast, waterManipulation, iceBlast, iceSpikeBlast, fireBlast };
-		final CoreAbility[] largeAbils = { earthSmash, airShield, fireBlastCharged, fireKick, fireSpin, fireWheel, airSweep, iceBullet };
+		final CoreAbility[] largeAbils = { earthSmash, airShield, fireBlastCharged, fireSpin, fireWheel, airSweep, iceBullet };
 		final CoreAbility[] comboAbils = { fireKick, fireSpin, fireWheel, airSweep, iceBullet };
 		final CoreAbility[] removeSpoutAbils = { airSwipe, earthBlast, waterManipulation, iceBlast, iceSpikeBlast, fireBlast, fireBlastCharged, earthSmash, fireKick, fireSpin, fireWheel, airSweep, iceBullet };
 		final CoreAbility[] ignoreAbils = { airBlast, airSuction, blazeArc, combustion };
@@ -179,6 +180,22 @@ public class CollisionInitializer {
 		this.collisionManager.addCollision(new Collision(fireManipulation, waterManipulation, false, true));
 		this.collisionManager.addCollision(new Collision(fireManipulation, earthBlast, false, true));
 		this.collisionManager.addCollision(new Collision(fireManipulation, airSweep, false, true));
+
+		if (ConfigManager.getConfig().getBoolean("Abilities.Fire.FireKick.CollidesWithSmash"))
+			this.collisionManager.addCollision(new Collision(fireKick, earthSmash, true, true));
+		this.collisionManager.addCollision(new Collision(fireKick, airShield, true, true));
+		this.collisionManager.addCollision(new Collision(fireKick, fireBlastCharged, true, true));
+		this.collisionManager.addCollision(new Collision(fireKick, fireSpin, true, true));
+		this.collisionManager.addCollision(new Collision(fireKick, fireWheel, true, true));
+		this.collisionManager.addCollision(new Collision(fireKick, airSweep, true, true));
+		this.collisionManager.addCollision(new Collision(fireKick, iceBullet, true, true));
+
+		this.collisionManager.addCollision(new Collision(fireKick, airSwipe, false, true));
+		this.collisionManager.addCollision(new Collision(fireKick, earthBlast, false, true));
+		this.collisionManager.addCollision(new Collision(fireKick, waterManipulation, false, true));
+		this.collisionManager.addCollision(new Collision(fireKick, iceBlast, false, true));
+		this.collisionManager.addCollision(new Collision(fireKick, iceSpikeBlast, false, true));
+		this.collisionManager.addCollision(new Collision(fireKick, fireBlast, false, true));
 	}
 
 	/**
