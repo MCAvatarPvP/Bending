@@ -112,7 +112,7 @@ public class FireWheel extends FireAbility implements ComboAbility {
 			return;
 		}
 
-		Block topBlock = GeneralMethods.getTopBlock(this.location, (int) this.heightRadius, (int)this.heightRadius + 2);
+		Block topBlock = GeneralMethods.getTopBlock(this.location.clone().add(0, -circleRadius/2, 0), this.heightRadius - 1, this.heightRadius + 1);
 		if (topBlock.getType().equals(Material.SNOW)) {
 			topBlock.breakNaturally();
 			topBlock = topBlock.getRelative(BlockFace.DOWN);
