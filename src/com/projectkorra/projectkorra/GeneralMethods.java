@@ -770,7 +770,7 @@ public class GeneralMethods {
 	 */
 	public static List<Entity> getEntitiesAroundPoint(final Location location, final double radius) {
 		return getEntitiesAroundPoint(location, radius, entity -> {
-			if (!(entity.isDead() || (entity instanceof Player && ((Player) entity).getGameMode().equals(GameMode.SPECTATOR))) || entity instanceof ArmorStand && ((ArmorStand) entity).isMarker() || entity instanceof ArmorStand && ((ArmorStand) entity).isInvisible() && !ConfigManager.getConfig().getBoolean("Properties.AffectArmorStands")) {
+			if (entity.isDead() || (entity instanceof Player && ((Player) entity).getGameMode().equals(GameMode.SPECTATOR)) || entity instanceof ArmorStand && ((ArmorStand) entity).isMarker() || entity instanceof ArmorStand && ((ArmorStand) entity).isInvisible() && !ConfigManager.getConfig().getBoolean("Properties.AffectArmorStands")) {
 				return false;
 			}
 			return true;

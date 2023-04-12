@@ -132,11 +132,7 @@ import org.bukkit.Material;
 import org.bukkit.Statistic;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
-import org.bukkit.entity.Entity;
-import org.bukkit.entity.EntityType;
-import org.bukkit.entity.FallingBlock;
-import org.bukkit.entity.LivingEntity;
-import org.bukkit.entity.Player;
+import org.bukkit.entity.*;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -2023,16 +2019,6 @@ public class PKListener implements Listener {
 	public void onPluginUnload(PluginDisableEvent event) {
 		RegionProtection.unloadPlugin((JavaPlugin) event.getPlugin());
 		BendingPlayer.HOOKS.remove((JavaPlugin) event.getPlugin());
-	}
-
-	@EventHandler
-	public void onAbilityVelocity(AbilityVelocityAffectEntityEvent event) {
-		if (!ConfigManager.getConfig().getBoolean("Properties.AffectArmorStands")) {
-			Entity entity = event.getAffected();
-			if (entity.getType() == EntityType.ARMOR_STAND) {
-				event.setCancelled(true);
-			}
-		}
 	}
 
 	public static HashMap<Player, String> getBendingPlayerDeath() {
