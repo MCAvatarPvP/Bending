@@ -71,14 +71,7 @@ import com.projectkorra.projectkorra.earthbending.metal.MetalClips;
 import com.projectkorra.projectkorra.earthbending.passive.DensityShift;
 import com.projectkorra.projectkorra.earthbending.passive.EarthPassive;
 import com.projectkorra.projectkorra.earthbending.passive.FerroControl;
-import com.projectkorra.projectkorra.event.EntityBendingDeathEvent;
-import com.projectkorra.projectkorra.event.HorizontalVelocityChangeEvent;
-import com.projectkorra.projectkorra.event.PlayerBindChangeEvent;
-import com.projectkorra.projectkorra.event.PlayerChangeElementEvent;
-import com.projectkorra.projectkorra.event.PlayerChangeSubElementEvent;
-import com.projectkorra.projectkorra.event.PlayerJumpEvent;
-import com.projectkorra.projectkorra.event.PlayerStanceChangeEvent;
-import com.projectkorra.projectkorra.event.PlayerSwingEvent;
+import com.projectkorra.projectkorra.event.*;
 import com.projectkorra.projectkorra.firebending.Blaze;
 import com.projectkorra.projectkorra.firebending.BlazeRing;
 import com.projectkorra.projectkorra.firebending.FireBlast;
@@ -2030,6 +2023,16 @@ public class PKListener implements Listener {
 	public void onPluginUnload(PluginDisableEvent event) {
 		RegionProtection.unloadPlugin((JavaPlugin) event.getPlugin());
 		BendingPlayer.HOOKS.remove((JavaPlugin) event.getPlugin());
+	}
+
+	@EventHandler
+	public void onAbilityVelocity(AbilityVelocityAffectEntityEvent event) {
+		if (!ConfigManager.getConfig().getBoolean("Properties.AffectArmorStands")) {
+			Entity entity = event.getAffected();
+			if (entity.getType() == EntityType.ARMOR_STAND) {
+				event.setCancelled(true);
+			}
+		}
 	}
 
 	public static HashMap<Player, String> getBendingPlayerDeath() {

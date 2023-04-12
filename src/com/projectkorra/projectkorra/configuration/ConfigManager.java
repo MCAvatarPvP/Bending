@@ -661,6 +661,7 @@ public class ConfigManager {
 			config.addDefault("Properties.DatabaseCooldowns", true);
 			config.addDefault("Properties.BendingBoard", true);
 			config.addDefault("Properties.BendingPreview", true);
+			config.addDefault("Properties.AffectArmorStands", false);
 			config.addDefault("Properties.BendingAffectFallingSand.Normal", true);
 			config.addDefault("Properties.BendingAffectFallingSand.NormalStrengthMultiplier", 1.0);
 			config.addDefault("Properties.BendingAffectFallingSand.TNT", true);
