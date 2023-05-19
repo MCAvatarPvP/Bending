@@ -12,7 +12,8 @@ public class ConfigType {
 	public static final ConfigType DEFAULT = new ConfigType("Default");
 	public static final ConfigType PRESETS = new ConfigType("Presets");
 	public static final ConfigType LANGUAGE = new ConfigType("Language");
-	public static final ConfigType[] CORE_TYPES = { DEFAULT, PRESETS, LANGUAGE };
+	public static final ConfigType COLLISION = new ConfigType("Collision");
+	public static final ConfigType[] CORE_TYPES = { DEFAULT, PRESETS, LANGUAGE, COLLISION };
 
 	private final String string;
 

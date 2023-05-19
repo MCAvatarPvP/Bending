@@ -2,6 +2,7 @@ package com.projectkorra.projectkorra.ability.util;
 
 import java.util.ArrayList;
 
+import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.airbending.AirBlast;
 import com.projectkorra.projectkorra.airbending.AirBurst;
@@ -183,20 +184,20 @@ public class CollisionInitializer {
 		this.collisionManager.addCollision(new Collision(fireManipulation, airSweep, false, true));
 
 		FileConfiguration collisionConfig = ConfigManager.collisionConfig.get();
-		collisionConfig.getKeys(false).forEach(s -> {
+		for (String s : collisionConfig.getStringList("Collisions")) {
 			String[] strings = s.split(", ");
-			if (strings.length < 2) return;
-
-			for (int i = 0; i < this.collisionManager.getCollisions().size(); i++) {
-				Collision collision = this.collisionManager.getCollisions().get(i);
-				if (collision.getAbilityFirst().getName().equalsIgnoreCase(strings[0])
-						&& collision.getAbilitySecond().getName().equalsIgnoreCase(strings[1])
-				|| collision.getAbilityFirst().getName().equalsIgnoreCase(strings[1])
-						&& collision.getAbilitySecond().getName().equalsIgnoreCase(strings[0])) {
-					this.collisionManager.getCollisions().remove(collision);
+			if (strings.length == 2) {
+				for (int i = 0; i < this.collisionManager.getCollisions().size(); i++) {
+					Collision collision = this.collisionManager.getCollisions().get(i);
+					if (collision.getAbilityFirst().getName().equalsIgnoreCase(strings[0])
+							&& collision.getAbilitySecond().getName().equalsIgnoreCase(strings[1])
+						|| collision.getAbilityFirst().getName().equalsIgnoreCase(strings[1])
+							&& collision.getAbilitySecond().getName().equalsIgnoreCase(strings[0])) {
+						this.collisionManager.getCollisions().remove(collision);
+					}
 				}
 			}
-		});
+		}
 	}
 
 	/**

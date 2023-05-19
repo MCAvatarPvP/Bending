@@ -25,6 +25,7 @@ public class ConfigManager {
 		configCheck(ConfigType.DEFAULT);
 		configCheck(ConfigType.LANGUAGE);
 		configCheck(ConfigType.PRESETS);
+		configCheck(ConfigType.COLLISION);
 	}
 
 	public static void configCheck(final ConfigType type) {
@@ -46,6 +47,10 @@ public class ConfigManager {
 			config.addDefault("Example", abilities);
 
 			presetConfig.save();
+		} else if (type == ConfigType.COLLISION) {
+			config = collisionConfig.get();
+			config.addDefault("Collisions", Arrays.asList("FirstAbil, SecondAbil"));
+			collisionConfig.save();
 		} else if (type == ConfigType.LANGUAGE) {
 			config = languageConfig.get();
 
