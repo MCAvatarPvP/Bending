@@ -1,6 +1,8 @@
 package com.projectkorra.projectkorra.ability.util;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.airbending.AirBlast;
@@ -134,7 +136,7 @@ public class CollisionInitializer {
 		CoreAbility.getAbility(WaterSpoutWave.class);
 
 		final CoreAbility[] smallAbils = { airSwipe, earthBlast, waterManipulation, iceBlast, iceSpikeBlast, fireBlast };
-		final CoreAbility[] largeAbils = { earthSmash, airShield, fireBlastCharged, fireSpin, fireWheel, airSweep, iceBullet };
+		final CoreAbility[] largeAbils = { earthSmash, airShield, fireBlastCharged, fireKick, fireSpin, fireWheel, airSweep, iceBullet };
 		final CoreAbility[] comboAbils = { fireKick, fireSpin, fireWheel, airSweep, iceBullet };
 		final CoreAbility[] removeSpoutAbils = { airSwipe, earthBlast, waterManipulation, iceBlast, iceSpikeBlast, fireBlast, fireBlastCharged, earthSmash, fireKick, fireSpin, fireWheel, airSweep, iceBullet };
 		final CoreAbility[] ignoreAbils = { airBlast, airSuction, blazeArc, combustion };
@@ -181,21 +183,41 @@ public class CollisionInitializer {
 		this.collisionManager.addCollision(new Collision(fireManipulation, earthBlast, false, true));
 		this.collisionManager.addCollision(new Collision(fireManipulation, airSweep, false, true));
 
-		if (ConfigManager.getConfig().getBoolean("Abilities.Fire.FireKick.CollidesWithSmash"))
-			this.collisionManager.addCollision(new Collision(fireKick, earthSmash, true, true));
-		this.collisionManager.addCollision(new Collision(fireKick, airShield, true, true));
-		this.collisionManager.addCollision(new Collision(fireKick, fireBlastCharged, true, true));
-		this.collisionManager.addCollision(new Collision(fireKick, fireSpin, true, true));
-		this.collisionManager.addCollision(new Collision(fireKick, fireWheel, true, true));
-		this.collisionManager.addCollision(new Collision(fireKick, airSweep, true, true));
-		this.collisionManager.addCollision(new Collision(fireKick, iceBullet, true, true));
-
-		this.collisionManager.addCollision(new Collision(fireKick, airSwipe, false, true));
-		this.collisionManager.addCollision(new Collision(fireKick, earthBlast, false, true));
-		this.collisionManager.addCollision(new Collision(fireKick, waterManipulation, false, true));
-		this.collisionManager.addCollision(new Collision(fireKick, iceBlast, false, true));
-		this.collisionManager.addCollision(new Collision(fireKick, iceSpikeBlast, false, true));
-		this.collisionManager.addCollision(new Collision(fireKick, fireBlast, false, true));
+		for (int i = 0; i < this.collisionManager.getCollisions().size(); i++) {
+			Collision collision = this.collisionManager.getCollisions().get(i);
+			if (ConfigManager.getConfig().getBoolean("Abilities.Fire.FireKick.CollidesWithSmash")
+					&& collision.getAbilityFirst().getName().equalsIgnoreCase("FireKick")
+					&& collision.getAbilitySecond().getName().equalsIgnoreCase("EarthSmash")
+			) this.collisionManager.getCollisions().remove(collision);
+			else if (ConfigManager.getConfig().getBoolean("Abilities.Fire.FireKick.CollidesWithSmash")
+					&& collision.getAbilityFirst().getName().equalsIgnoreCase("EarthSmash")
+					&& collision.getAbilitySecond().getName().equalsIgnoreCase("FireKick")
+			) this.collisionManager.getCollisions().remove(collision);
+			else if (ConfigManager.getConfig().getBoolean("Abilities.Fire.FireBlast.CollidesWithSpin")
+					&& collision.getAbilityFirst().getName().equalsIgnoreCase("FireBlast")
+					&& collision.getAbilitySecond().getName().equalsIgnoreCase("FireSpin")
+			) this.collisionManager.getCollisions().remove(collision);
+			else if (ConfigManager.getConfig().getBoolean("Abilities.Fire.FireBlast.CollidesWithSpin")
+					&& collision.getAbilityFirst().getName().equalsIgnoreCase("FireSpin")
+					&& collision.getAbilitySecond().getName().equalsIgnoreCase("FireBlast")
+			) this.collisionManager.getCollisions().remove(collision);
+			else if (ConfigManager.getConfig().getBoolean("Abilities.Fire.FireBlast.CollidesWithKick")
+					&& collision.getAbilityFirst().getName().equalsIgnoreCase("FireBlast")
+					&& collision.getAbilitySecond().getName().equalsIgnoreCase("FireKick")
+			) this.collisionManager.getCollisions().remove(collision);
+			else if (ConfigManager.getConfig().getBoolean("Abilities.Fire.FireBlast.CollidesWithKick")
+					&& collision.getAbilityFirst().getName().equalsIgnoreCase("FireKick")
+					&& collision.getAbilitySecond().getName().equalsIgnoreCase("FireBlast")
+			) this.collisionManager.getCollisions().remove(collision);
+			else if (ConfigManager.getConfig().getBoolean("Abilities.Fire.FireWheel.CollidesWithWheel")
+					&& collision.getAbilityFirst().getName().equalsIgnoreCase("FireWheel")
+					&& collision.getAbilitySecond().getName().equalsIgnoreCase("FireWheel")
+			) this.collisionManager.getCollisions().remove(collision);
+			else if (ConfigManager.getConfig().getBoolean("Abilities.Fire.FireSpin.CollidesWithSpin")
+					&& collision.getAbilityFirst().getName().equalsIgnoreCase("FireSpin")
+					&& collision.getAbilitySecond().getName().equalsIgnoreCase("FireSpin")
+			) this.collisionManager.getCollisions().remove(collision);
+		}
 	}
 
 	/**
