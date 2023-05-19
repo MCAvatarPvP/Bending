@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.projectkorra.projectkorra.ability.util.Collision;
 import org.bukkit.Location;
 import org.bukkit.Sound;
 import org.bukkit.block.Block;
@@ -349,6 +350,12 @@ public class FireBlastCharged extends FireAbility {
 		if (this.charged) {
 			this.bPlayer.addCooldown("FireBlastCharged", this.cooldown);
 		}
+	}
+
+	@Override
+	public void handleCollision(Collision collision) {
+		super.handleCollision(collision);
+		if (collision.isRemovingFirst()) explode();
 	}
 
 	@Override
