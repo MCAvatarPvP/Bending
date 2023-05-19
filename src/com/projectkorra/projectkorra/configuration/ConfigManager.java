@@ -15,11 +15,13 @@ public class ConfigManager {
 	public static Config presetConfig;
 	public static Config defaultConfig;
 	public static Config languageConfig;
+	public static Config collisionConfig;
 
 	public ConfigManager() {
 		presetConfig = new Config(new File("presets.yml"));
 		defaultConfig = new Config(new File("config.yml"));
 		languageConfig = new Config(new File("language.yml"));
+		collisionConfig = new Config(new File("collision.yml"));
 		configCheck(ConfigType.DEFAULT);
 		configCheck(ConfigType.LANGUAGE);
 		configCheck(ConfigType.PRESETS);

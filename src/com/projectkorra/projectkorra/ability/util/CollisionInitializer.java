@@ -1,8 +1,6 @@
 package com.projectkorra.projectkorra.ability.util;
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.airbending.AirBlast;
@@ -55,6 +53,7 @@ import com.projectkorra.projectkorra.waterbending.combo.IceWave;
 import com.projectkorra.projectkorra.waterbending.healing.HealingWaters;
 import com.projectkorra.projectkorra.waterbending.ice.IceBlast;
 import com.projectkorra.projectkorra.waterbending.ice.IceSpikeBlast;
+import org.bukkit.configuration.file.FileConfiguration;
 
 /**
  * CollisionInitializer is used to create the default Collisions for a given
@@ -183,41 +182,21 @@ public class CollisionInitializer {
 		this.collisionManager.addCollision(new Collision(fireManipulation, earthBlast, false, true));
 		this.collisionManager.addCollision(new Collision(fireManipulation, airSweep, false, true));
 
-		for (int i = 0; i < this.collisionManager.getCollisions().size(); i++) {
-			Collision collision = this.collisionManager.getCollisions().get(i);
-			if (ConfigManager.getConfig().getBoolean("Abilities.Fire.FireKick.CollidesWithSmash")
-					&& collision.getAbilityFirst().getName().equalsIgnoreCase("FireKick")
-					&& collision.getAbilitySecond().getName().equalsIgnoreCase("EarthSmash")
-			) this.collisionManager.getCollisions().remove(collision);
-			else if (ConfigManager.getConfig().getBoolean("Abilities.Fire.FireKick.CollidesWithSmash")
-					&& collision.getAbilityFirst().getName().equalsIgnoreCase("EarthSmash")
-					&& collision.getAbilitySecond().getName().equalsIgnoreCase("FireKick")
-			) this.collisionManager.getCollisions().remove(collision);
-			else if (ConfigManager.getConfig().getBoolean("Abilities.Fire.FireBlast.CollidesWithSpin")
-					&& collision.getAbilityFirst().getName().equalsIgnoreCase("FireBlast")
-					&& collision.getAbilitySecond().getName().equalsIgnoreCase("FireSpin")
-			) this.collisionManager.getCollisions().remove(collision);
-			else if (ConfigManager.getConfig().getBoolean("Abilities.Fire.FireBlast.CollidesWithSpin")
-					&& collision.getAbilityFirst().getName().equalsIgnoreCase("FireSpin")
-					&& collision.getAbilitySecond().getName().equalsIgnoreCase("FireBlast")
-			) this.collisionManager.getCollisions().remove(collision);
-			else if (ConfigManager.getConfig().getBoolean("Abilities.Fire.FireBlast.CollidesWithKick")
-					&& collision.getAbilityFirst().getName().equalsIgnoreCase("FireBlast")
-					&& collision.getAbilitySecond().getName().equalsIgnoreCase("FireKick")
-			) this.collisionManager.getCollisions().remove(collision);
-			else if (ConfigManager.getConfig().getBoolean("Abilities.Fire.FireBlast.CollidesWithKick")
-					&& collision.getAbilityFirst().getName().equalsIgnoreCase("FireKick")
-					&& collision.getAbilitySecond().getName().equalsIgnoreCase("FireBlast")
-			) this.collisionManager.getCollisions().remove(collision);
-			else if (ConfigManager.getConfig().getBoolean("Abilities.Fire.FireWheel.CollidesWithWheel")
-					&& collision.getAbilityFirst().getName().equalsIgnoreCase("FireWheel")
-					&& collision.getAbilitySecond().getName().equalsIgnoreCase("FireWheel")
-			) this.collisionManager.getCollisions().remove(collision);
-			else if (ConfigManager.getConfig().getBoolean("Abilities.Fire.FireSpin.CollidesWithSpin")
-					&& collision.getAbilityFirst().getName().equalsIgnoreCase("FireSpin")
-					&& collision.getAbilitySecond().getName().equalsIgnoreCase("FireSpin")
-			) this.collisionManager.getCollisions().remove(collision);
-		}
+		FileConfiguration collisionConfig = ConfigManager.collisionConfig.get();
+		collisionConfig.getKeys(false).forEach(s -> {
+			String[] strings = s.split(", ");
+			if (strings.length < 2) return;
+
+			for (int i = 0; i < this.collisionManager.getCollisions().size(); i++) {
+				Collision collision = this.collisionManager.getCollisions().get(i);
+				if (collision.getAbilityFirst().getName().equalsIgnoreCase(strings[0])
+						&& collision.getAbilitySecond().getName().equalsIgnoreCase(strings[1])
+				|| collision.getAbilityFirst().getName().equalsIgnoreCase(strings[1])
+						&& collision.getAbilitySecond().getName().equalsIgnoreCase(strings[0])) {
+					this.collisionManager.getCollisions().remove(collision);
+				}
+			}
+		});
 	}
 
 	/**
