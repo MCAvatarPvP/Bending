@@ -116,7 +116,7 @@ public class FireBlast extends FireAbility {
 		this.cooldown = applyModifiersCooldown(getConfig().getLong("Abilities.Fire.FireBlast.Cooldown"));
 		this.range = applyModifiersRange(getConfig().getDouble("Abilities.Fire.FireBlast.Range"));
 		this.speed = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.Speed"));
-		this.collisionRadius = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.CollisionRadius"));
+		this.collisionRadius = getConfig().getDouble("Abilities.Fire.FireBlast.CollisionRadius");
 		this.groundFireRadius = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.GroundFireRadius"));
 		this.hitRadius = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.HitRadius"));
 		this.fireTicks = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.FireTicks"));
