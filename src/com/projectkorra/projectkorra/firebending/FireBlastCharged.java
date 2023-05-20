@@ -52,6 +52,7 @@ public class FireBlastCharged extends FireAbility {
 	private double damageRadius;
 	@Attribute("Explosion" + Attribute.RANGE)
 	private double explosionRadius;
+	private double funThingVelocity;
 	private double innerRadius;
 	@Attribute(Attribute.FIRE_TICK)
 	private double fireTicks;
@@ -82,6 +83,7 @@ public class FireBlastCharged extends FireAbility {
 		this.damageRadius = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.Charged.DamageRadius"));
 		this.explosionRadius = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.Charged.ExplosionRadius"));
 		this.fireTicks = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.Charged.FireTicks"));
+		this.funThingVelocity = getConfig().getDouble("Abilities.Fire.FireBlast.Charged.FunThing");
 		this.innerRadius = this.damageRadius / 2;
 
 		if (bPlayer.isOnCooldown("FireBlastCharged")) {
@@ -234,6 +236,10 @@ public class FireBlastCharged extends FireAbility {
 						}
 
 						DamageHandler.damageEntity(entity, damage, this);
+						if (funThingVelocity != 0) {
+							Vector vec = entity.getLocation().toVector().subtract(location.toVector());
+							GeneralMethods.setVelocity(this, entity, vec.normalize().multiply(1));
+						}
 					}
 				}
 				this.location.getWorld().playSound(this.location, Sound.ENTITY_GENERIC_EXPLODE, 5, 1);
@@ -303,7 +309,7 @@ public class FireBlastCharged extends FireAbility {
 			this.launched = true;
 			this.location = this.player.getEyeLocation();
 			this.origin = this.location.clone();
-			this.direction = this.location.getDirection().normalize().multiply(this.collisionRadius);
+			this.direction = this.location.getDirection().normalize().multiply(this.collisionRadius/2);
 		}
 
 		if (System.currentTimeMillis() > this.time + this.interval) {
@@ -327,20 +333,22 @@ public class FireBlastCharged extends FireAbility {
 				this.explode();
 				return;
 			}
-			this.location = this.location.clone().add(this.direction);
-			if (this.location.distanceSquared(this.origin) > this.range * this.range) {
-				this.remove();
-				return;
-			}
+			for (double i = 0; i < collisionRadius; i += collisionRadius/2) {
+				this.location = this.location.clone().add(this.direction);
+				if (this.location.distanceSquared(this.origin) > this.range * this.range) {
+					this.remove();
+					return;
+				}
 
-			if (GeneralMethods.isSolid(this.location.getBlock())) {
-				this.explode();
-				return;
-			} else if (this.location.getBlock().isLiquid()) {
-				this.remove();
-				return;
+				if (GeneralMethods.isSolid(this.location.getBlock())) {
+					this.explode();
+					return;
+				} else if (this.location.getBlock().isLiquid()) {
+					this.remove();
+					return;
+				}
+				if (i >= collisionRadius / 2) this.executeFireball();
 			}
-			this.executeFireball();
 		}
 	}
 
