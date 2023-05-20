@@ -238,7 +238,7 @@ public class FireBlastCharged extends FireAbility {
 						DamageHandler.damageEntity(entity, damage, this);
 						if (funThingVelocity != 0) {
 							Vector vec = entity.getLocation().toVector().subtract(location.toVector());
-							GeneralMethods.setVelocity(this, entity, vec.normalize().multiply(1));
+							GeneralMethods.setVelocity(this, entity, vec.normalize().multiply(funThingVelocity));
 						}
 					}
 				}
