@@ -86,7 +86,11 @@ public class DamageHandler {
 			final EntityDamageByEntityEvent finalEvent = new EntityDamageByEntityEvent(source, entity, DamageCause.CUSTOM, damage);
 			final double prevHealth = lent.getHealth();
 			lent.damage(damage, source);
-			final double nextHealth = lent.getHealth();
+			double nextHealth = lent.getHealth();
+			if (nextHealth == prevHealth) {
+				lent.damage(damage);
+				nextHealth = lent.getHealth();
+			}
 			entity.setLastDamageCause(finalEvent);
 
 			if (Bukkit.getPluginManager().isPluginEnabled("NoCheatPlus") && source != null) {

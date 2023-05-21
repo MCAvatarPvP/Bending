@@ -45,6 +45,8 @@ public class FireBlastCharged extends FireAbility {
 	private double minDamage;
 	@Attribute("Max" + Attribute.DAMAGE)
 	private double maxDamage;
+	private double explosionMinDamage;
+	private double explosionMaxDamage;
 	@Attribute(Attribute.RANGE)
 	private double range;
 	private double collisionRadius;
@@ -79,6 +81,8 @@ public class FireBlastCharged extends FireAbility {
 		this.collisionRadius = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.Charged.CollisionRadius"));
 		this.minDamage = applyModifiersDamage(getConfig().getDouble("Abilities.Fire.FireBlast.Charged.MinimumDamage"));
 		this.maxDamage = applyModifiersDamage(getConfig().getDouble("Abilities.Fire.FireBlast.Charged.MaximumDamage"));
+		this.explosionMinDamage = getConfig().getDouble("Abilities.Fire.FireBlast.Charged.ExplosionMinimumDamage");
+		this.explosionMaxDamage = getConfig().getDouble("Abilities.Fire.FireBlast.Charged.ExplosionMaximumDamage");
 		this.range = applyModifiersRange(getConfig().getDouble("Abilities.Fire.FireBlast.Charged.Range"));
 		this.damageRadius = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.Charged.DamageRadius"));
 		this.explosionRadius = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.Charged.ExplosionRadius"));
@@ -226,13 +230,13 @@ public class FireBlastCharged extends FireAbility {
 				final List<Entity> entities = GeneralMethods.getEntitiesAroundPoint(this.location, this.damageRadius);
 				for (final Entity entity : entities) {
 					if (entity instanceof LivingEntity) {
-						final double slope = -(this.maxDamage * .5) / (this.damageRadius - this.innerRadius);
+						final double slope = -(this.explosionMaxDamage * .5) / (this.damageRadius - this.innerRadius);
 						double damage = 0;
 						if (entity.getWorld().equals(this.location.getWorld())) {
-							damage = slope * (entity.getLocation().distance(this.location) - this.innerRadius) + this.maxDamage;
+							damage = slope * (entity.getLocation().distance(this.location) - this.innerRadius) + this.explosionMaxDamage;
 						}
-						if (damage < this.minDamage) {
-							damage = this.minDamage;
+						if (damage < this.explosionMinDamage) {
+							damage = this.explosionMinDamage;
 						}
 
 						DamageHandler.damageEntity(entity, damage, this);
