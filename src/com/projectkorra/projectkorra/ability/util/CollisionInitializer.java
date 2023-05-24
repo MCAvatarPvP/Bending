@@ -191,8 +191,8 @@ public class CollisionInitializer {
 					Collision collision = this.collisionManager.getCollisions().get(i);
 					if (collision.getAbilityFirst().getName().equalsIgnoreCase(strings[0])
 							&& collision.getAbilitySecond().getName().equalsIgnoreCase(strings[1])
-						|| collision.getAbilityFirst().getName().equalsIgnoreCase(strings[1])
-							&& collision.getAbilitySecond().getName().equalsIgnoreCase(strings[0])) {
+						|| collision.getAbilityFirst().getClass().getName().equalsIgnoreCase(strings[1])
+							&& collision.getAbilitySecond().getClass().getName().equalsIgnoreCase(strings[0])) {
 						this.collisionManager.getCollisions().remove(collision);
 					}
 				}
