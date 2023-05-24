@@ -58,7 +58,7 @@ public class BlazeArc extends FireAbility {
 			}
 		}
 
-		if (isIgnitable(block)) {
+		if (isIgnitable(block) && !isWater(block)) {
 			createTempFire(block.getLocation(), DISSIPATE_REMOVE_TIME);
 		}
 	}
