@@ -37,17 +37,22 @@ public class AirScooter extends AirAbility {
 	private ArrayList<Double> angles;
 	private Slime slime;
 	private Boolean useslime;
+	private boolean requiresSprint;
+	private boolean requiresJump;
 
 	private double phi = 0;
 
 	public AirScooter(final Player player) {
 		super(player);
 
+		this.requiresSprint = getConfig().getBoolean("Abilities.Air.AirScooter.RequiresSprint");
+		this.requiresJump = getConfig().getBoolean("Abilities.Air.AirScooter.RequiresJump");
+
 		if (check(player)) {
 			return;
-		} else if (!player.isSprinting() || GeneralMethods.isSolid(player.getEyeLocation().getBlock()) || ElementalAbility.isWater(player.getEyeLocation().getBlock())) {
+		} else if (!player.isSprinting() && requiresSprint || GeneralMethods.isSolid(player.getEyeLocation().getBlock()) || ElementalAbility.isWater(player.getEyeLocation().getBlock())) {
 			return;
-		} else if (GeneralMethods.isSolid(player.getLocation().add(0, -.5, 0).getBlock())) {
+		} else if (GeneralMethods.isSolid(player.getLocation().add(0, -.5, 0).getBlock()) && requiresJump) {
 			return;
 		} else if (this.bPlayer.isOnCooldown(this)) {
 			return;
