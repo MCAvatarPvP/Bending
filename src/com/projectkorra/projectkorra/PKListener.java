@@ -99,6 +99,7 @@ import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.FlightHandler;
 import com.projectkorra.projectkorra.util.FlightHandler.Flight;
 import com.projectkorra.projectkorra.util.MovementHandler;
+import com.projectkorra.projectkorra.util.MovementHandle;
 import com.projectkorra.projectkorra.util.PassiveHandler;
 import com.projectkorra.projectkorra.util.StatisticsManager;
 import com.projectkorra.projectkorra.util.StatisticsMethods;
@@ -1242,7 +1243,7 @@ public class PKListener implements Listener {
 		final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
 
 		try (MCTiming timing = TimingPlayerMoveMovementHandlerCheck.startTiming()) {
-			if (MovementHandler.isStopped(player)) {
+			if (MovementHandle.isStopped(player)) {
 				if (event.getTo().getX() != event.getFrom().getX() || event.getTo().getZ() != event.getFrom().getZ() || event.getTo().getY() > event.getFrom().getY()) {
 					event.setCancelled(true);
 				}

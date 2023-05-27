@@ -59,7 +59,7 @@ public class Lightning extends LightningAbility {
 	@Attribute("StunChance")
 	private double stunChance;
 	@Attribute("Stun" + Attribute.DURATION)
-	private double stunDuration;
+	private long stunDuration;
 	@Attribute("MaxArcAngle")
 	private double maxArcAngle;
 	private double particleRotation;
@@ -105,7 +105,7 @@ public class Lightning extends LightningAbility {
 		this.chainArcChance = applyModifiers(getConfig().getDouble("Abilities.Fire.Lightning.ChainArcChance"));
 		this.waterArcRange = applyModifiers(getConfig().getDouble("Abilities.Fire.Lightning.WaterArcRange"));
 		this.stunChance = applyModifiers(getConfig().getDouble("Abilities.Fire.Lightning.StunChance"));
-		this.stunDuration = applyModifiers(getConfig().getDouble("Abilities.Fire.Lightning.StunDuration"));
+		this.stunDuration = getConfig().getLong("Abilities.Fire.Lightning.StunDuration");
 		this.maxChainArcs = applyModifiers(getConfig().getInt("Abilities.Fire.Lightning.MaxChainArcs"));
 		this.waterArcs = (int) applyModifiers(getConfig().getInt("Abilities.Fire.Lightning.WaterArcs"));
 		this.chargeTime = applyInverseModifiers(getConfig().getLong("Abilities.Fire.Lightning.ChargeTime"));
@@ -143,7 +143,7 @@ public class Lightning extends LightningAbility {
 		playLightningbendingHitSound(this.player.getLocation());
 		DamageHandler.damageEntity(lent, this.damage, this);
 		if (ThreadLocalRandom.current().nextDouble() <= this.stunChance) {
-			final MovementHandler mh = new MovementHandler(lent, this);
+			final MovementHandler mh = new MovementHandler(lent, CoreAbility.getAbility(Lightning.class));
 			mh.stopWithDuration((long) this.stunDuration, Element.LIGHTNING.getColor() + "* Electrocuted *");
 		}
 	}

@@ -6,7 +6,7 @@ import java.util.UUID;
 
 import co.aikar.timings.lib.MCTiming;
 
-import com.projectkorra.projectkorra.util.TempFallingBlock;
+import com.projectkorra.projectkorra.util.*;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.World;
@@ -17,10 +17,6 @@ import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.earthbending.metal.MetalClips;
 import com.projectkorra.projectkorra.object.HorizontalVelocityTracker;
-import com.projectkorra.projectkorra.util.ActionBar;
-import com.projectkorra.projectkorra.util.RevertChecker;
-import com.projectkorra.projectkorra.util.TempArmor;
-import com.projectkorra.projectkorra.util.TempPotionEffect;
 import com.projectkorra.projectkorra.waterbending.blood.Bloodbending;
 
 public class BendingManager implements Runnable {
@@ -109,6 +105,7 @@ public class BendingManager implements Runnable {
 
 	@Override
 	public void run() {
+		MovementHandler.tickAll();
 		this.interval = System.currentTimeMillis() - this.time;
 		this.time = System.currentTimeMillis();
 		ProjectKorra.time_step = this.interval;
