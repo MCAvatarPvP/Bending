@@ -144,7 +144,7 @@ public class Lightning extends LightningAbility {
 		DamageHandler.damageEntity(lent, this.damage, this);
 		if (ThreadLocalRandom.current().nextDouble() <= this.stunChance) {
 			final MovementHandler mh = new MovementHandler(lent, CoreAbility.getAbility(Lightning.class));
-			mh.stopWithDuration((long) this.stunDuration, Element.LIGHTNING.getColor() + "* Electrocuted *");
+			mh.stopWithDuration(this.stunDuration, Element.LIGHTNING.getColor() + "* Electrocuted *");
 		}
 	}
 

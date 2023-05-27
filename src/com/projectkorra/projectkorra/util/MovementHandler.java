@@ -45,7 +45,7 @@ public class MovementHandler {
 	}
 
 	private void tick() {
-		if (duration > 0 && System.currentTimeMillis() >= startTime + duration) reset();
+		if (duration != 0 && System.currentTimeMillis() >= startTime + duration) reset();
 		if (entity instanceof Player) {
 			Player player = (Player) entity;
 			Location loc = player.getLocation();
