@@ -789,7 +789,7 @@ public class Lightning extends LightningAbility {
 		return this.stunDuration;
 	}
 
-	public void setStunDuration(final double stunDuration) {
+	public void setStunDuration(final long stunDuration) {
 		this.stunDuration = stunDuration;
 	}
 
