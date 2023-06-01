@@ -183,14 +183,14 @@ public class FireBlast extends FireAbility {
 	}
 	private void affect(final Entity entity) {
 		if (entity.getUniqueId() != this.player.getUniqueId() && !RegionProtection.isRegionProtected(this, entity.getLocation()) && !((entity instanceof Player) && Commands.invincible.contains(((Player) entity).getName()))) {
-			if (this.bPlayer.isAvatarState()) {
-				GeneralMethods.setVelocity(this, entity, this.direction.clone().multiply(AvatarState.getValue(this.knockback)));
-			} else {
-				GeneralMethods.setVelocity(this, entity, this.direction.clone().multiply(this.knockback));
-			}
 			if (entity instanceof LivingEntity) {
 				entity.setFireTicks((int) (this.fireTicks * 20));
 				DamageHandler.damageEntity(entity, this.damage, this);
+				if (this.bPlayer.isAvatarState()) {
+					GeneralMethods.setVelocity(this, entity, this.direction.clone().multiply(AvatarState.getValue(this.knockback)));
+				} else {
+					GeneralMethods.setVelocity(this, entity, this.direction.clone().multiply(this.knockback));
+				}
 				AirAbility.breakBreathbendingHold(entity);
 				new FireDamageTimer(entity, this.player, this);
 				this.remove();
