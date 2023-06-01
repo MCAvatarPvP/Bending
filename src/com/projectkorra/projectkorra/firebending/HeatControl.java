@@ -107,7 +107,10 @@ public class HeatControl extends FireAbility {
 		} else if (this.heatControlType == HeatControlType.MELT) {
 			this.meltLocation = GeneralMethods.getTargetedLocation(player, this.meltRange);
 
-			if (extinguish()) this.bPlayer.addCooldown(this.getName() + "Extinguish", this.extinguishCooldown);
+			if (extinguish(meltLocation)) {
+				player.sendMessage("extinguish pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work");
+				this.bPlayer.addCooldown(this.getName() + "Extinguish", this.extinguishCooldown);
+			}
 			for (final Block block : GeneralMethods.getBlocksAroundPoint(this.meltLocation, this.meltRadius)) {
 
 				if (isMeltable(block)) {
@@ -188,7 +191,7 @@ public class HeatControl extends FireAbility {
 				return;
 			}
 
-			extinguish();
+			extinguish(player.getLocation());
 
 		} else if (this.heatControlType == HeatControlType.SOLIDIFY) {
 
@@ -299,12 +302,12 @@ public class HeatControl extends FireAbility {
 		return true;
 	}
 
-	private boolean extinguish() {
+	private boolean extinguish(Location location) {
 		boolean result = false;
 		final Set<Material> blocks = new HashSet<>();
 		blocks.addAll(Arrays.asList(getTransparentMaterials()));
 
-		for (final Block block : GeneralMethods.getBlocksAroundPoint(this.player.getLocation(), this.extinguishRadius)) {
+		for (final Block block : GeneralMethods.getBlocksAroundPoint(location, this.extinguishRadius)) {
 			final Material material = block.getType();
 			if (isFire(material) && !GeneralMethods.isRegionProtectedFromBuild(this, block.getLocation())) {
 
