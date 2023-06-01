@@ -1626,8 +1626,9 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.Lightning.Range", 20.0);
 			config.addDefault("Abilities.Fire.Lightning.ChargeTime", 2500);
 			config.addDefault("Abilities.Fire.Lightning.Cooldown", 500);
+			config.addDefault("Abilities.Fire.Lightning.RedirectionDuration", 2500);
 			config.addDefault("Abilities.Fire.Lightning.StunChance", 0.20);
-			config.addDefault("Abilities.Fire.Lightning.StunDuration", 30.0);
+			config.addDefault("Abilities.Fire.Lightning.StunDuration", 1500);
 			config.addDefault("Abilities.Fire.Lightning.MaxArcAngle", 2.5);
 			config.addDefault("Abilities.Fire.Lightning.SubArcChance", 0.00125);
 			config.addDefault("Abilities.Fire.Lightning.ChainArcRange", 6.0);
@@ -1638,6 +1639,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.Lightning.SelfHitWater", true);
 			config.addDefault("Abilities.Fire.Lightning.SelfHitClose", false);
 			config.addDefault("Abilities.Fire.Lightning.ArcOnIce", false);
+			config.addDefault("Abilities.Fire.Lightning.RedirectionOnCD", true);
 			config.addDefault("Abilities.Fire.Lightning.AllowOnFireJet", true);
 
 			config.addDefault("Abilities.Fire.WallOfFire.Enabled", true);

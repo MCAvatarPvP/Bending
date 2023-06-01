@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
+import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.firebending.FireJet;
 import org.bukkit.Location;
@@ -65,6 +66,9 @@ public class Lightning extends LightningAbility {
 	private double particleRotation;
 	@Attribute(Attribute.COOLDOWN)
 	private long cooldown;
+	private long redirectionDuration;
+	private boolean canRedirectOnCD;
+	private long startTime;
 	private State state;
 	private Location origin;
 	private Location destination;
@@ -76,7 +80,7 @@ public class Lightning extends LightningAbility {
 	public Lightning(final Player player) {
 		super(player);
 
-		if (!this.bPlayer.canBend(this)) {
+		if (!this.bPlayer.canBendIgnoreCooldowns(this)) {
 			return;
 		}
 		if (hasAbility(player, Lightning.class)) {
@@ -88,6 +92,7 @@ public class Lightning extends LightningAbility {
 		this.charged = false;
 		this.hitWater = false;
 		this.hitIce = false;
+		this.startTime = System.currentTimeMillis();
 		this.state = State.START;
 		this.affectedEntities = new ArrayList<>();
 		this.arcs = new ArrayList<>();
@@ -110,6 +115,8 @@ public class Lightning extends LightningAbility {
 		this.waterArcs = (int) applyModifiers(getConfig().getInt("Abilities.Fire.Lightning.WaterArcs"));
 		this.chargeTime = applyInverseModifiers(getConfig().getLong("Abilities.Fire.Lightning.ChargeTime"));
 		this.cooldown = applyModifiersCooldown(getConfig().getLong("Abilities.Fire.Lightning.Cooldown"));
+		this.redirectionDuration = getConfig().getLong("Abilities.Fire.Lightning.RedirectionDuration");
+		this.canRedirectOnCD = getConfig().getBoolean("Abilities.Fire.Lightning.RedirectionOnCD");
 		this.allowOnFireJet = getConfig().getBoolean("Abilities.Fire.Lightning.AllowOnFireJet");
 
 		/*this.range = this.getDayFactor(this.range);
@@ -194,9 +201,11 @@ public class Lightning extends LightningAbility {
 
 		if (this.state == State.START) {
 			if (this.bPlayer.isOnCooldown(this)) {
-				this.remove();
+				if (!canRedirectOnCD || !player.isSneaking()) remove();
+				if (System.currentTimeMillis() - startTime > this.chargeTime) remove();
+				this.startTime = System.currentTimeMillis();
 				return;
-			} else if (System.currentTimeMillis() - this.getStartTime() > this.chargeTime) {
+			} else if (System.currentTimeMillis() - this.startTime > this.chargeTime) {
 				this.charged = true;
 			}
 
@@ -552,8 +561,9 @@ public class Lightning extends LightningAbility {
 							playLightningbendingSound(Lightning.this.player.getLocation());
 							final Player p = (Player) lent;
 							final Lightning light = getAbility(p, Lightning.class);
-							if (light != null && light.state == State.START) {
+							if (light != null && light.state == State.START && System.currentTimeMillis() <= light.getStartTime() + redirectionDuration) {
 								light.charged = true;
+								if (canRedirectOnCD) BendingPlayer.getBendingPlayer(p).removeCooldown(CoreAbility.getAbility(Lightning.class));
 								Lightning.this.remove();
 								return;
 							}
