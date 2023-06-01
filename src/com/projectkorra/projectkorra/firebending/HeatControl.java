@@ -107,11 +107,7 @@ public class HeatControl extends FireAbility {
 		} else if (this.heatControlType == HeatControlType.MELT) {
 			this.meltLocation = GeneralMethods.getTargetedLocation(player, this.meltRange);
 
-			if (isFire(meltLocation.getBlock())) {
-				this.remove();
-				new HeatControl(player, HeatControlType.EXTINGUISH);
-				return;
-			}
+			if (extinguish()) this.bPlayer.addCooldown(this.getName() + "Extinguish", this.extinguishCooldown);
 			for (final Block block : GeneralMethods.getBlocksAroundPoint(this.meltLocation, this.meltRadius)) {
 
 				if (isMeltable(block)) {
@@ -192,19 +188,7 @@ public class HeatControl extends FireAbility {
 				return;
 			}
 
-			final Set<Material> blocks = new HashSet<>();
-			for (final Material material : getTransparentMaterials()) {
-				blocks.add(material);
-			}
-
-			for (final Block block : GeneralMethods.getBlocksAroundPoint(this.player.getLocation(), this.extinguishRadius)) {
-				final Material material = block.getType();
-				if (isFire(material) && !GeneralMethods.isRegionProtectedFromBuild(this, block.getLocation())) {
-
-					block.setType(Material.AIR);
-					block.getWorld().playEffect(block.getLocation(), Effect.EXTINGUISH, 0);
-				}
-			}
+			extinguish();
 
 		} else if (this.heatControlType == HeatControlType.SOLIDIFY) {
 
@@ -313,6 +297,23 @@ public class HeatControl extends FireAbility {
 			player.setFireTicks(80);
 		}
 		return true;
+	}
+
+	private boolean extinguish() {
+		boolean result = false;
+		final Set<Material> blocks = new HashSet<>();
+		blocks.addAll(Arrays.asList(getTransparentMaterials()));
+
+		for (final Block block : GeneralMethods.getBlocksAroundPoint(this.player.getLocation(), this.extinguishRadius)) {
+			final Material material = block.getType();
+			if (isFire(material) && !GeneralMethods.isRegionProtectedFromBuild(this, block.getLocation())) {
+
+				block.setType(Material.AIR);
+				block.getWorld().playEffect(block.getLocation(), Effect.EXTINGUISH, 0);
+				result = true;
+			}
+		}
+		return result;
 	}
 
 	public static void melt(final Player player, final Block block) {
