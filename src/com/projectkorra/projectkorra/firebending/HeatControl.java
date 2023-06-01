@@ -106,6 +106,12 @@ public class HeatControl extends FireAbility {
 
 		} else if (this.heatControlType == HeatControlType.MELT) {
 			this.meltLocation = GeneralMethods.getTargetedLocation(player, this.meltRange);
+
+			if (isFire(meltLocation.getBlock())) {
+				this.remove();
+				new HeatControl(player, HeatControlType.EXTINGUISH);
+				return;
+			}
 			for (final Block block : GeneralMethods.getBlocksAroundPoint(this.meltLocation, this.meltRadius)) {
 
 				if (isMeltable(block)) {
