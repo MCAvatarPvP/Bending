@@ -94,7 +94,7 @@ public class DamageHandler {
 			}
 			if (!lent.isOnGround()) {
 				Vector vec = new Vector(0, 0.2, 0);
-				lent.setVelocity(lent.getVelocity().add(vec));
+				lent.setVelocity(lent.getVelocity().multiply(vec));
 			}
 			entity.setLastDamageCause(finalEvent);
 
