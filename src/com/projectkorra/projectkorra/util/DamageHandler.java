@@ -16,11 +16,12 @@ import com.projectkorra.projectkorra.event.EntityBendingDeathEvent;
 
 import fr.neatmonster.nocheatplus.checks.CheckType;
 import fr.neatmonster.nocheatplus.hooks.NCPExemptionManager;
+import org.bukkit.util.Vector;
 
 public class DamageHandler {
 
 	private static boolean checkTicks(LivingEntity entity, double damage) {
-		return entity.getNoDamageTicks() > entity.getMaximumNoDamageTicks() / 2.0f && damage <= entity.getLastDamage();
+		return entity.getNoDamageTicks() > entity.getMaximumNoDamageTicks() / 2 && damage <= entity.getLastDamage();
 	}
 
 	/**
@@ -90,6 +91,10 @@ public class DamageHandler {
 			if (nextHealth == prevHealth) {
 				lent.damage(damage);
 				nextHealth = lent.getHealth();
+			}
+			if (!lent.isOnGround()) {
+				Vector vec = new Vector(0, 0.2, 0);
+				lent.setVelocity(lent.getVelocity().add(vec));
 			}
 			entity.setLastDamageCause(finalEvent);
 
