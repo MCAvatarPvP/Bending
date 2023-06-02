@@ -57,6 +57,11 @@ public class AirScooter extends AirAbility {
 		} else if (this.bPlayer.isOnCooldown(this)) {
 			return;
 		}
+		this.getFloor();
+		if (this.floorblock == null) {
+			this.remove();
+			return;
+		}
 
 		this.speed = getConfig().getDouble("Abilities.Air.AirScooter.Speed");
 		this.interval = getConfig().getDouble("Abilities.Air.AirScooter.Interval");
