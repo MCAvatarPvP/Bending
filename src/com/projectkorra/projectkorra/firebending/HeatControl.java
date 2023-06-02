@@ -59,6 +59,8 @@ public class HeatControl extends FireAbility {
 	private long extinguishCooldown;
 	@Attribute("Extinguish" + Attribute.RADIUS)
 	private double extinguishRadius;
+	private double extinguishRange;
+	private boolean isSneak;
 
 	// HeatControl Melt variables.
 	@Attribute("Melt" + Attribute.RANGE)
@@ -107,10 +109,7 @@ public class HeatControl extends FireAbility {
 		} else if (this.heatControlType == HeatControlType.MELT) {
 			this.meltLocation = GeneralMethods.getTargetedLocation(player, this.meltRange);
 
-			if (extinguish(meltLocation)) {
-				player.sendMessage("extinguish pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work pls work");
-				this.bPlayer.addCooldown(this.getName() + "Extinguish", this.extinguishCooldown);
-			}
+			new HeatControl(player, HeatControlType.EXTINGUISH).isSneak = false;
 			for (final Block block : GeneralMethods.getBlocksAroundPoint(this.meltLocation, this.meltRadius)) {
 
 				if (isMeltable(block)) {
@@ -123,7 +122,7 @@ public class HeatControl extends FireAbility {
 				return;
 			} else if (getLavaBlock(player, this.solidifyRange) == null) {
 				this.remove();
-				new HeatControl(player, HeatControlType.EXTINGUISH);
+				new HeatControl(player, HeatControlType.EXTINGUISH).isSneak = true;
 				return;
 			}
 
@@ -140,6 +139,7 @@ public class HeatControl extends FireAbility {
 		} else if (this.heatControlType == HeatControlType.EXTINGUISH) {
 			this.extinguishCooldown = applyModifiersCooldown(getConfig().getLong("Abilities.Fire.HeatControl.Extinguish.Cooldown"));
 			this.extinguishRadius = applyModifiers(getConfig().getLong("Abilities.Fire.HeatControl.Extinguish.Radius"));
+			this.extinguishRange = getConfig().getDouble("Abilities.Fire.HeatControl.Extinguish.Range");
 		} else if (this.heatControlType == HeatControlType.MELT) {
 			this.meltRange = applyModifiersRange(getConfig().getDouble("Abilities.Fire.HeatControl.Melt.Range"));
 			this.meltRadius = applyModifiers(getConfig().getDouble("Abilities.Fire.HeatControl.Melt.Radius"));
@@ -185,13 +185,20 @@ public class HeatControl extends FireAbility {
 
 		} else if (this.heatControlType == HeatControlType.EXTINGUISH) {
 
-			if (!this.player.isSneaking()) {
+			if (!this.player.isSneaking() && isSneak) {
 				this.bPlayer.addCooldown(this.getName() + "Extinguish", this.extinguishCooldown);
 				this.remove();
 				return;
 			}
 
-			extinguish(player.getLocation());
+			if (isSneak) {
+				extinguish(player.getLocation());
+			}
+			else {
+				extinguish(GeneralMethods.getTargetedLocation(player, extinguishRange));
+				this.bPlayer.addCooldown(this.getName() + "Extinguish", this.extinguishCooldown);
+				this.remove();
+			}
 
 		} else if (this.heatControlType == HeatControlType.SOLIDIFY) {
 
@@ -308,8 +315,8 @@ public class HeatControl extends FireAbility {
 		blocks.addAll(Arrays.asList(getTransparentMaterials()));
 
 		for (final Block block : GeneralMethods.getBlocksAroundPoint(location, this.extinguishRadius)) {
-			final Material material = block.getType();
-			if (isFire(material) && !GeneralMethods.isRegionProtectedFromBuild(this, block.getLocation())) {
+
+			if (isFire(block) && !GeneralMethods.isRegionProtectedFromBuild(this, block.getLocation())) {
 
 				block.setType(Material.AIR);
 				block.getWorld().playEffect(block.getLocation(), Effect.EXTINGUISH, 0);
