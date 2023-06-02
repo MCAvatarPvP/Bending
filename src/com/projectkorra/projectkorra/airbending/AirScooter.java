@@ -57,8 +57,8 @@ public class AirScooter extends AirAbility {
 		} else if (this.bPlayer.isOnCooldown(this)) {
 			return;
 		}
-		this.getFloor();
-		if (this.floorblock == null) {
+
+		if (isInAir(player.getLocation())) {
 			this.remove();
 			return;
 		}
@@ -114,6 +114,15 @@ public class AirScooter extends AirAbility {
 			return true;
 		}
 		return false;
+	}
+
+	private boolean isInAir(Location location) {
+		for (int i = 0; i < maxHeightFromGround; i++) {
+			if (GeneralMethods.isSolid(location.add(0, -i, 0).getBlock())) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/*
