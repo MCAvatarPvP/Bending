@@ -117,7 +117,8 @@ public class AirScooter extends AirAbility {
 
 	private boolean isInAir(Location location) {
 		for (int i = 0; i < 7; i++) {
-			if (GeneralMethods.isSolid(location.add(0, -i, 0).getBlock())) {
+			Block block = location.clone().add(0, -i, 0).getBlock();
+			if (GeneralMethods.isSolid(block) || ElementalAbility.isWater(block)) {
 				return false;
 			}
 		}
