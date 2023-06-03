@@ -116,7 +116,7 @@ public class AirScooter extends AirAbility {
 	}
 
 	private boolean isInAir(Location location) {
-		for (int i = 0; i < (int) this.maxHeightFromGround; i++) {
+		for (int i = 0; i < 7; i++) {
 			if (GeneralMethods.isSolid(location.add(0, -i, 0).getBlock())) {
 				return false;
 			}
