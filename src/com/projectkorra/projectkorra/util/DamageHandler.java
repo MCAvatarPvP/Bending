@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.configuration.ConfigManager;
 import org.bukkit.Bukkit;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Entity;
@@ -93,8 +94,9 @@ public class DamageHandler {
 				nextHealth = lent.getHealth();
 			}
 			if (!lent.isOnGround()) {
-				Vector vec = new Vector(0, 0.2, 0);
-				lent.setVelocity(lent.getVelocity().multiply(vec));
+				double y = ConfigManager.getConfig().getDouble("Properties.HitUpwardPush");
+				Vector vec = new Vector(0, y, 0);
+				lent.setVelocity(lent.getVelocity().add(vec));
 			}
 			entity.setLastDamageCause(finalEvent);
 
