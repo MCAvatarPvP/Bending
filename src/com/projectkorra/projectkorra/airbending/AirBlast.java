@@ -135,7 +135,7 @@ public class AirBlast extends AirAbility {
 			this.pushFactorForOthers = getConfig().getDouble("Abilities.Avatar.AvatarState.Air.AirBlast.Push.Entities");
 		}
 
-		this.pushFactor *= modifiedPushFactor;
+		this.pushFactor = modifiedPushFactor;
 
 		this.start();
 	}
@@ -243,7 +243,7 @@ public class AirBlast extends AirAbility {
 	private void affect(final Entity entity) {
 		if (entity instanceof Player) {
 			boolean falldamage = getConfig().getBoolean("Abilities.Air.AirBlast.FallDamageOthers");
-			if (!affectedEntitiesByPush.contains(entity) && !falldamage) affectedEntitiesByPush.add((Player) entity);
+			if (!affectedEntitiesByPush.contains(entity) && entity.getUniqueId() != player.getUniqueId() && !falldamage) affectedEntitiesByPush.add((Player) entity);
 			if (Commands.invincible.contains(((Player) entity).getName())) {
 				return;
 			}
@@ -259,6 +259,8 @@ public class AirBlast extends AirAbility {
 				return;
 			}
 		}
+
+		if (source != null) knockback = this.pushFactor;
 
 		//beta 9 used entity velocity
 		Vector velocity = entity.getVelocity();

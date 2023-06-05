@@ -160,7 +160,7 @@ public class Tornado extends AirAbility {
 
 						if (entity instanceof Player) {
 							boolean falldamage = getConfig().getBoolean("Abilities.Air.Tornado.FallDamageOthers");
-							if (!affectedEntitiesByPush.contains(entity) && !falldamage) {
+							if (!affectedEntitiesByPush.contains(entity) && entity.getUniqueId() != player.getUniqueId() && !falldamage) {
 								affectedEntitiesByPush.add((Player) entity);
 							}
 							if (Commands.invincible.contains(((Player) entity).getName())) {
