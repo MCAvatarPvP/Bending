@@ -18,24 +18,32 @@ import com.projectkorra.projectkorra.util.ActionBar;
 
 public class ChiPassive {
 	public static boolean willChiBlock(final Player attacker, final Player player) {
+		final QuickStrike quickStrike = CoreAbility.getAbility(player, QuickStrike.class);
+		final SwiftKick swiftKick = CoreAbility.getAbility(player, SwiftKick.class);
+		double newChance = getChance();
+
+		if (quickStrike != null) {
+			newChance += quickStrike.getBlockChance();
+		} else if (swiftKick != null) {
+			newChance += swiftKick.getBlockChance();
+		}
+
+		willChiBlock(attacker, player, newChance);
+
+		return true;
+	}
+
+	public static boolean willChiBlock(final Player attacker, final Player player, double chance) {
 		final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
 		if (bPlayer == null) {
 			return false;
 		}
 
 		final ChiAbility stance = bPlayer.getStance();
-		final QuickStrike quickStrike = CoreAbility.getAbility(player, QuickStrike.class);
-		final SwiftKick swiftKick = CoreAbility.getAbility(player, SwiftKick.class);
-		double newChance = getChance();
+		double newChance = chance;
 
 		if (stance != null && stance instanceof AcrobatStance) {
 			newChance += ((AcrobatStance) stance).getChiBlockBoost();
-		}
-
-		if (quickStrike != null) {
-			newChance += quickStrike.getBlockChance();
-		} else if (swiftKick != null) {
-			newChance += swiftKick.getBlockChance();
 		}
 
 		if (Math.random() > newChance / 100.0) {
