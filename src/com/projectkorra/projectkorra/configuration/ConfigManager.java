@@ -675,6 +675,7 @@ public class ConfigManager {
 			config.addDefault("Properties.BendingAffectFallingSand.TNTStrengthMultiplier", 1.0);
 			config.addDefault("Properties.GlobalCooldown", 500);
 			config.addDefault("Properties.HitUpwardPush", 1.0);
+			config.addDefault("Properties.HitUpwardMinimumY", -0.7);
 			config.addDefault("Properties.TogglePassivesWithAllBending", true);
 			config.addDefault("Properties.SeaLevel", 62);
 			config.addDefault("Properties.ChooseCooldown", 0L);

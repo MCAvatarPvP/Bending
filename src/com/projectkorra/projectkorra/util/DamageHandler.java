@@ -93,10 +93,11 @@ public class DamageHandler {
 				lent.damage(damage);
 				nextHealth = lent.getHealth();
 			}
-			if (!lent.isOnGround()) {
-				double y = ConfigManager.getConfig().getDouble("Properties.HitUpwardPush");
-				Vector vec = new Vector(0, y, 0);
-				lent.setVelocity(lent.getVelocity().add(vec));
+			if (!lent.isOnGround() && lent.getVelocity().getY() < 0) {
+				//double y = ConfigManager.getConfig().getDouble("Properties.HitUpwardPush");
+				Vector vel = lent.getVelocity();
+				vel.setY(0);
+				lent.setVelocity(vel);
 			}
 			entity.setLastDamageCause(finalEvent);
 
