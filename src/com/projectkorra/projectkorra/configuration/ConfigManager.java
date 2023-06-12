@@ -1629,6 +1629,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.Lightning.Range", 20.0);
 			config.addDefault("Abilities.Fire.Lightning.ChargeTime", 2500);
 			config.addDefault("Abilities.Fire.Lightning.Cooldown", 500);
+			config.addDefault("Abilities.Fire.Lightning.RedirectionDamageMultiplier", 1.1);
 			config.addDefault("Abilities.Fire.Lightning.RedirectionDuration", 2500);
 			config.addDefault("Abilities.Fire.Lightning.StunChance", 0.20);
 			config.addDefault("Abilities.Fire.Lightning.StunDuration", 1500);

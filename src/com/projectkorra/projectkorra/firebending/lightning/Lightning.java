@@ -49,6 +49,7 @@ public class Lightning extends LightningAbility {
 	private double subArcChance;
 	@Attribute(Attribute.DAMAGE)
 	private double damage;
+	private double damageMultiplierRedirection;
 	@Attribute("MaxChainArcs")
 	private double maxChainArcs;
 	@Attribute("Chain" + Attribute.RANGE)
@@ -104,6 +105,7 @@ public class Lightning extends LightningAbility {
 		this.arcOnIce = getConfig().getBoolean("Abilities.Fire.Lightning.ArcOnIce");
 		this.range = applyModifiersRange(getConfig().getDouble("Abilities.Fire.Lightning.Range"));
 		this.damage = applyModifiersDamage(getConfig().getDouble("Abilities.Fire.Lightning.Damage"));
+		this.damageMultiplierRedirection = getConfig().getDouble("Abilities.Fire.Lightning.RedirectionDamageMultiplier");
 		this.maxArcAngle = getConfig().getDouble("Abilities.Fire.Lightning.MaxArcAngle");
 		this.subArcChance = getConfig().getDouble("Abilities.Fire.Lightning.SubArcChance");
 		this.chainRange = applyModifiersRange(getConfig().getDouble("Abilities.Fire.Lightning.ChainArcRange"));
@@ -563,6 +565,7 @@ public class Lightning extends LightningAbility {
 							final Lightning light = getAbility(p, Lightning.class);
 							if (light != null && light.state == State.START && System.currentTimeMillis() <= light.getStartTime() + redirectionDuration) {
 								light.charged = true;
+								if (damageMultiplierRedirection != 0) light.setDamage(Lightning.this.damage * damageMultiplierRedirection);
 								if (canRedirectOnCD) BendingPlayer.getBendingPlayer(p).removeCooldown(CoreAbility.getAbility(Lightning.class));
 								Lightning.this.remove();
 								return;
