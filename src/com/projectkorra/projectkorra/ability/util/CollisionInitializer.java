@@ -189,10 +189,10 @@ public class CollisionInitializer {
 			if (strings.length == 2) {
 				for (int i = 0; i < this.collisionManager.getCollisions().size(); i++) {
 					Collision collision = this.collisionManager.getCollisions().get(i);
-					if (collision.getAbilityFirst().getClass().getName().equalsIgnoreCase(strings[0])
-							&& collision.getAbilitySecond().getClass().getName().equalsIgnoreCase(strings[1])
-						|| collision.getAbilityFirst().getClass().getName().equalsIgnoreCase(strings[1])
-							&& collision.getAbilitySecond().getClass().getName().equalsIgnoreCase(strings[0])) {
+					if (collision.getAbilityFirst().getClass().getSimpleName().equalsIgnoreCase(strings[0])
+							&& collision.getAbilitySecond().getClass().getSimpleName().equalsIgnoreCase(strings[1])
+						|| collision.getAbilityFirst().getClass().getSimpleName().equalsIgnoreCase(strings[1])
+							&& collision.getAbilitySecond().getClass().getSimpleName().equalsIgnoreCase(strings[0])) {
 						this.collisionManager.getCollisions().remove(collision);
 					}
 				}
