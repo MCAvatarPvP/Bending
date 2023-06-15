@@ -39,11 +39,16 @@ public class FastSwim extends WaterAbility implements PassiveAbility {
 
 	@Override
 	public void progress() {
-		if (!this.bPlayer.canUsePassive(this) || !this.bPlayer.canBendPassive(this) || CoreAbility.hasAbility(this.player, WaterSpout.class) || CoreAbility.hasAbility(this.player, EarthArmor.class)) {
+		if (!this.bPlayer.canUsePassive(this) || !this.bPlayer.canBendPassive(this) || CoreAbility.hasAbility(this.player, EarthArmor.class)) {
 			this.remove();
 			return;
 		}
-		
+
+		//Don't remove, for SpoutHop - avoids forcing SpoutHop users to re-sneak and recreate FastSwim (Less clunky)
+		if (CoreAbility.hasAbility(this.player, WaterSpout.class)) {
+			return;
+		}
+
 		if (CoreAbility.hasAbility(this.player, WaterArms.class) && !this.allowWaterArms) {
 			this.remove();
 			return;
