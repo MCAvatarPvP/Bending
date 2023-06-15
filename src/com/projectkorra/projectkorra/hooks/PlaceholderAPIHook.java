@@ -12,6 +12,8 @@ import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 
+import java.util.List;
+
 public class PlaceholderAPIHook extends PlaceholderExpansion {
 
 	private final ProjectKorra plugin;
@@ -74,6 +76,26 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
 				if (abil != null) {
 					return TimeUtil.formatTime(bPlayer.getCooldown(string) == -1 ? 0 : bPlayer.getCooldown(string) - System.currentTimeMillis());
 				}
+			}
+		} else if (params.startsWith("bound_")) {
+			String string = params.substring("bound_".length());
+
+			if (string.startsWith("element_")) {
+				string = params.substring("element_".length());
+				List<CoreAbility> abils = CoreAbility.getAbilitiesByElement(Element.getElement(string));
+				int result = 0;
+				result++;
+
+				for (String s : bPlayer.getAbilities().values()) {
+					if (abils.contains(CoreAbility.getAbility(s))) result++;
+				}
+
+				return String.valueOf(result);
+			} else {
+				for (String s : bPlayer.getAbilities().values()) {
+					if (s.equalsIgnoreCase(string)) return "true";
+				}
+				return "false";
 			}
 		}
 
