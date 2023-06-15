@@ -1500,6 +1500,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Earth.RaiseEarth.Wall.Cooldown", 500);
 
 			config.addDefault("Abilities.Earth.Shockwave.Enabled", true);
+			config.addDefault("Abilities.Earth.Shockwave.FallDamageOthers", false);
 			config.addDefault("Abilities.Earth.Shockwave.FallThreshold", 12);
 			config.addDefault("Abilities.Earth.Shockwave.ChargeTime", 2500);
 			config.addDefault("Abilities.Earth.Shockwave.Cooldown", 6000);
