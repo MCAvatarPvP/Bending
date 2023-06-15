@@ -1524,6 +1524,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Earth.EarthPillars.Damage.Enabled", true);
 			config.addDefault("Abilities.Earth.EarthPillars.Damage.Value", 2);
 			config.addDefault("Abilities.Earth.EarthPillars.FallThreshold", 12);
+			config.addDefault("Abilities.Earth.EarthPillars.FallDamageOthers", false);
 			config.addDefault("Abilities.Earth.EarthPillars.Combination", Arrays.asList("Shockwave:SNEAK_DOWN", "Shockwave:SNEAK_UP", "Shockwave:SNEAK_DOWN", "Catapult:SNEAK_UP"));
 
 			config.addDefault("Abilities.Fire.Blaze.Enabled", true);
