@@ -19,8 +19,6 @@ import com.projectkorra.projectkorra.util.ParticleEffect;
 
 public abstract class AirAbility extends ElementalAbility {
 
-	public static List<Player> affectedEntitiesByPush = new ArrayList<>();
-
 	public AirAbility(final Player player) {
 		super(player);
 	}
@@ -179,15 +177,6 @@ public abstract class AirAbility extends ElementalAbility {
 	@Deprecated
 	public static void removeAirSpouts(final Location loc, final Player source) {
 		removeAirSpouts(loc, 1.5, source);
-	}
-
-	public static void checkFallDamage() {
-		for (int i = 0; i < AirAbility.affectedEntitiesByPush.size(); i++) {
-			Player player = AirAbility.affectedEntitiesByPush.get(i);
-
-			if (player.isOnGround()) AirAbility.affectedEntitiesByPush.remove(player);
-			else player.setFallDistance(0);
-		}
 	}
 
 }

@@ -105,6 +105,7 @@ public class BendingManager implements Runnable {
 
 	@Override
 	public void run() {
+		ElementalAbility.checkFallDamage();
 		MovementHandler.tickAll();
 		this.interval = System.currentTimeMillis() - this.time;
 		this.time = System.currentTimeMillis();

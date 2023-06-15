@@ -41,6 +41,8 @@ public abstract class ElementalAbility extends CoreAbility {
 	private static final Set<String> SAND_BLOCKS = new HashSet<String>();
 	private static final Set<String> SNOW_BLOCKS = new HashSet<String>();
 
+	public static List<Player> affectedEntitiesByPush = new ArrayList<>();
+
 	static {
 		TRANSPARENT.clear();
 		for (final Material mat : Material.values()) {
@@ -260,5 +262,14 @@ public abstract class ElementalAbility extends CoreAbility {
 		addTags(PLANT_BLOCKS, getConfig().getStringList("Properties.Water.PlantBlocks"));
 		addTags(SAND_BLOCKS, getConfig().getStringList("Properties.Earth.SandBlocks"));
 		addTags(SNOW_BLOCKS, getConfig().getStringList("Properties.Water.SnowBlocks"));
+	}
+
+	public static void checkFallDamage() {
+		for (int i = 0; i < affectedEntitiesByPush.size(); i++) {
+			Player player = affectedEntitiesByPush.get(i);
+
+			if (player.isOnGround()) affectedEntitiesByPush.remove(player);
+			else player.setFallDistance(0);
+		}
 	}
 }

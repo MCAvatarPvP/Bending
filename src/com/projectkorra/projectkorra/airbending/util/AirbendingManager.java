@@ -16,7 +16,6 @@ public class AirbendingManager implements Runnable {
 	@Override
 	public void run() {
 		AirBlast.progressOrigins();
-		AirAbility.checkFallDamage();
 	}
 
 }
