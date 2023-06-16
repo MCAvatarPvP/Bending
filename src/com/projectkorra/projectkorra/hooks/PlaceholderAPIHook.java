@@ -12,6 +12,7 @@ import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 
+import java.util.Arrays;
 import java.util.List;
 
 public class PlaceholderAPIHook extends PlaceholderExpansion {
@@ -81,16 +82,20 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
 			String string = params.substring("bound_".length());
 
 			if (string.startsWith("element_")) {
-				string = params.substring("element_".length());
-				List<CoreAbility> abils = CoreAbility.getAbilitiesByElement(Element.getElement(string));
+				string = string.substring("element_".length());
+				Element firstElement = Element.getElement(string);
 				int result = 0;
-				result++;
+
+				if (!bPlayer.hasElement(firstElement)) return "0";
 
 				for (String s : bPlayer.getAbilities().values()) {
-					if (abils.contains(CoreAbility.getAbility(s))) result++;
+					Element element = CoreAbility.getAbility(s).getElement();
+					if (element instanceof Element.SubElement) element = ((Element.SubElement) element).getParentElement();
+
+					if (firstElement.equals(element)) result++;
 				}
 
-				return String.valueOf(result);
+				return "" + result;
 			} else {
 				for (String s : bPlayer.getAbilities().values()) {
 					if (s.equalsIgnoreCase(string)) return "true";
