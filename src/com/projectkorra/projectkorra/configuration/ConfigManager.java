@@ -1083,6 +1083,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.AirSweep.HeightOffset", 0);
 			config.addDefault("Abilities.Air.AirSweep.Cooldown", 6000);
 			config.addDefault("Abilities.Air.AirSweep.Radius", 1);
+			config.addDefault("Abilities.Air.AirSweep.ActivationDelayTicks", 8);
 			config.addDefault("Abilities.Air.AirSweep.Combination", Arrays.asList("AirSwipe:LEFT_CLICK", "AirSwipe:LEFT_CLICK", "AirBurst:SNEAK_DOWN", "AirBurst:LEFT_CLICK"));
 
 			config.addDefault("Abilities.Water.Passive.FastSwim.Enabled", true);
