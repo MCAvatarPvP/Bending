@@ -25,6 +25,7 @@ public class BlazeArc extends FireAbility {
 	private double speed;
 	private Location origin;
 	private Location location;
+	private Location previousLocation;
 	private Vector direction;
 
 	public BlazeArc(final Player player, final Location location, final Vector direction, final double range) {
@@ -44,6 +45,7 @@ public class BlazeArc extends FireAbility {
 		this.direction.setY(0);
 		this.direction = this.direction.clone().normalize();
 		this.location = this.location.clone().add(this.direction);
+		this.previousLocation = null;
 
 		this.time = System.currentTimeMillis();
 		this.start();
@@ -72,7 +74,13 @@ public class BlazeArc extends FireAbility {
 			this.location = this.location.clone().add(this.direction);
 			this.time = System.currentTimeMillis();
 
+			if (previousLocation != null && !isFire(previousLocation.getBlock())) {
+				remove();
+				return;
+			}
+
 			final Block block = this.location.getBlock();
+			previousLocation = location.clone();
 			if (isFire(block.getType())) {
 				return;
 			} 
