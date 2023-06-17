@@ -170,6 +170,7 @@ public class AirScooter extends AirAbility {
 		}
 
 		Vector velocity = this.player.getEyeLocation().getDirection().clone().normalize();
+		velocity = velocity.setY(0);
 		velocity = velocity.clone().normalize().multiply(this.speed);
 		/*
 		 * checks the players speed and ends the move if they are going too slow
