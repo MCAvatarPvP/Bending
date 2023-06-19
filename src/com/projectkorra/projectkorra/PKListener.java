@@ -749,6 +749,18 @@ public class PKListener implements Listener {
 		}
 	}
 
+	@EventHandler
+	private void onAbilityVelocity(AbilityVelocityAffectEntityEvent event) {
+		if (!(event.getAffected() instanceof Player)) return;
+
+		Player player = (Player) event.getAffected();
+		BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
+
+		if (bPlayer == null || event.getVelocity().getY() < 0) return;
+
+		if (bPlayer.hasElement(Element.AIR) || bPlayer.hasElement(Element.EARTH)) player.setFallDistance(0);
+	}
+
 	@EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
 	public void onInventoryClick(final InventoryClickEvent event) {
 		for (final MetalClips clips : CoreAbility.getAbilities(MetalClips.class)) {
