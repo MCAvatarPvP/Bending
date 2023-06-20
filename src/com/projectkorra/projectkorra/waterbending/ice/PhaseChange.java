@@ -75,6 +75,7 @@ public class PhaseChange extends IceAbility {
 	private double meltSpeed = 8;
 	private double meltTicks = 0;
 	private boolean allowMeltFlow;
+	private boolean instantMelt;
 	private final CopyOnWriteArrayList<Block> melted_blocks = new CopyOnWriteArrayList<>();
 
 	public PhaseChange(final Player player, final PhaseChangeType type) {
@@ -124,7 +125,8 @@ public class PhaseChange extends IceAbility {
 			}
 			final Location l = GeneralMethods.getTargetedLocation(this.player, this.sourceRange);
 			this.resetMeltLocation(l);
-			this.meltArea(l, this.meltRadius);
+			if (!instantMelt) this.meltArea(l, this.meltRadius);
+			else this.meltArea(l, (int) this.meltMaxRadius);
 		}
 
 		if (this.active_types.contains(PhaseChangeType.CUSTOM)) {
@@ -178,6 +180,7 @@ public class PhaseChange extends IceAbility {
 				this.meltSpeed = applyModifiers(getConfig().getDouble("Abilities.Water.PhaseChange.Melt.Speed"));
 				this.meltMaxRadius = applyModifiers(getConfig().getDouble("Abilities.Water.PhaseChange.Melt.Radius"));
 				this.allowMeltFlow = getConfig().getBoolean("Abilities.Water.PhaseChange.Melt.AllowFlow");
+				this.instantMelt = getConfig().getBoolean("Abilities.Water.PhaseChange.Melt.Instant");
 				return;
 			case CUSTOM:
 				this.depth = (int) applyModifiers(getConfig().getInt("Abilities.Water.PhaseChange.Freeze.Depth"));
@@ -312,7 +315,7 @@ public class PhaseChange extends IceAbility {
 
 	public void meltArea(final Location center, final int radius) {
 		final List<Block> ice = new ArrayList<Block>();
-		for (final Location l : GeneralMethods.getCircle(center, radius, 3, true, true, 0)) {
+		for (final Location l : GeneralMethods.getCircle(center, radius, 3, !instantMelt, true, 0)) {
 			if (isIce(l.getBlock()) || isSnow(l.getBlock())) {
 				ice.add(l.getBlock());
 

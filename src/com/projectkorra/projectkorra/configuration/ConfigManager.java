@@ -1167,6 +1167,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Water.PhaseChange.Melt.Speed", 8.0);
 			config.addDefault("Abilities.Water.PhaseChange.Melt.Radius", 7);
 			config.addDefault("Abilities.Water.PhaseChange.Melt.AllowFlow", true);
+			config.addDefault("Abilities.Water.PhaseChange.Melt.Instant", true);
 
 			config.addDefault("Abilities.Water.Surge.Enabled", true);
 			config.addDefault("Abilities.Water.Surge.Wave.Radius", 3);
