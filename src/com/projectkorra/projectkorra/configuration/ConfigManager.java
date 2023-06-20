@@ -1297,6 +1297,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Water.WaterSpout.Interval", 50);
 			config.addDefault("Abilities.Water.WaterSpout.BlockSpiral", true);
 			config.addDefault("Abilities.Water.WaterSpout.Particles", false);
+			config.addDefault("Abilities.Water.WaterSpout.FallDamage", false);
 			config.addDefault("Abilities.Water.WaterSpout.SpoutHop.Enabled", true);
 			config.addDefault("Abilities.Water.WaterSpout.SpoutHop.Power", 0.85);
 			config.addDefault("Abilities.Water.WaterSpout.SpoutHop.Cooldown", 0);
