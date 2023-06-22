@@ -26,7 +26,8 @@ public class FireManipulation extends FireAbility {
 	private long streamCooldown;
 	private double streamRange;
 	private double streamDamage;
-	private double streamSpeed;
+	private double streamSpeed, streamSideSpeed;
+	private double streamCollisionRadius, shieldCollisionRadius;
 	private int streamParticles;
 	private boolean streamSneaking = true;
 	private long streamRemoveTime = 0;
@@ -65,11 +66,14 @@ public class FireManipulation extends FireAbility {
 			this.streamRange = applyModifiersRange(getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.Range"));
 			this.streamDamage = applyModifiersDamage(getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.Damage"));
 			this.streamSpeed = getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.Speed");
+			this.streamSideSpeed = getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.SideSpeed");
+			this.streamCollisionRadius = getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.CollisionRadius");
 			this.streamParticles = getConfig().getInt("Abilities.Fire.FireManipulation.Stream.Particles");
 
 			this.shieldCooldown = applyModifiersCooldown(getConfig().getLong("Abilities.Fire.FireManipulation.Shield.Cooldown"));
 			this.shieldRange = applyModifiersRange(getConfig().getDouble("Abilities.Fire.FireManipulation.Shield.Range"));
 			this.shieldDamage = applyModifiersDamage(getConfig().getDouble("Abilities.Fire.FireManipulation.Shield.Damage"));
+			this.shieldCollisionRadius = getConfig().getDouble("Abilities.Fire.FireManipulation.Shield.CollisionRadius");
 			this.shieldParticles = getConfig().getInt("Abilities.Fire.FireManipulation.Shield.Particles");
 			this.maxDuration = (long) applyModifiers(getConfig().getLong("Abilities.Fire.FireManipulation.Shield.MaxDuration"));
 			this.points = new ConcurrentHashMap<>();
@@ -159,6 +163,12 @@ public class FireManipulation extends FireAbility {
 					return;
 				}
 			}
+			Location playerLoc = player.getLocation();
+			double distance = playerLoc.distance(shotPoint);
+			Location targetLoc = playerLoc.clone().add(playerLoc.getDirection().normalize().multiply(distance));
+			Vector sideDir = targetLoc.toVector().subtract(shotPoint.toVector()).normalize().multiply(streamSideSpeed);
+			shotPoint.add(sideDir);
+
 			this.shotPoint.add(direction.multiply(this.streamSpeed));
 			if (this.shotPoint.distance(this.origin) > this.streamRange) {
 				this.bPlayer.addCooldown(this, this.streamCooldown);
@@ -223,6 +233,6 @@ public class FireManipulation extends FireAbility {
 
 	@Override
 	public double getCollisionRadius() {
-		return 0.4;
+		return fireManipulationType == FireManipulationType.CLICK ? streamCollisionRadius : shieldCollisionRadius;
 	}
 }
