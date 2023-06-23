@@ -166,7 +166,8 @@ public class FireManipulation extends FireAbility {
 			Location playerLoc = player.getLocation();
 			double distance = playerLoc.distance(shotPoint);
 			Location targetLoc = playerLoc.clone().add(playerLoc.getDirection().normalize().multiply(distance));
-			Vector sideDir = targetLoc.toVector().subtract(shotPoint.toVector()).normalize().multiply(streamSideSpeed);
+			Vector sideDir = targetLoc.toVector().subtract(shotPoint.toVector()).normalize();
+			sideDir.multiply(Math.min(targetLoc.distance(shotPoint), streamSideSpeed));
 			shotPoint.add(sideDir);
 
 			this.shotPoint.add(direction.multiply(this.streamSpeed));
