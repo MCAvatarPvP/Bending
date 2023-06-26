@@ -108,7 +108,7 @@ public class ConfigManager {
 			if (!config.contains("Board.Extras")) {
 				config.addDefault("Board.Extras.RaiseEarthWall", Element.EARTH.getColor());
 				config.addDefault("Board.Extras.SurgeWave", Element.WATER.getColor());
-				config.addDefault("Board.Extras.FireBlastCharged", Element.WATER.getColor());
+				config.addDefault("Board.Extras.FireBlastCharged", Element.FIRE.getColor());
 			}
 
 			config.addDefault("Extras.Water.NightMessage", "Your waterbending has become empowered due to the moon rising.");

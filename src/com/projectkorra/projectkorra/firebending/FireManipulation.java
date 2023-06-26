@@ -23,15 +23,7 @@ public class FireManipulation extends FireAbility {
 	}
 
 	// Configurable variables.
-	private long streamCooldown;
-	private double streamRange;
-	private double streamDamage;
-	private double streamSpeed, streamSideSpeed;
-	private double streamCollisionRadius, shieldCollisionRadius;
-	private int streamParticles;
-	private boolean streamSneaking = true;
-	private long streamRemoveTime = 0;
-	private Vector streamSneakDirection;
+	private double shieldCollisionRadius;
 
 	private long shieldCooldown;
 	private double shieldRange;
@@ -42,12 +34,7 @@ public class FireManipulation extends FireAbility {
 	// Instance related variables.
 	private FireManipulationType fireManipulationType;
 
-	private boolean firing;
-	private boolean charging;
 	private Map<Location, Long> points;
-	private Location shotPoint;
-	private Location origin;
-	private Location focalPoint;
 
 	public FireManipulation(final Player player, final FireManipulationType fireManipulationType) {
 		super(player);
@@ -62,14 +49,6 @@ public class FireManipulation extends FireAbility {
 
 	public void setFields() {
 		if (this.fireManipulationType == FireManipulationType.SHIFT) {
-			this.streamCooldown = applyModifiersCooldown(getConfig().getLong("Abilities.Fire.FireManipulation.Stream.Cooldown"));
-			this.streamRange = applyModifiersRange(getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.Range"));
-			this.streamDamage = applyModifiersDamage(getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.Damage"));
-			this.streamSpeed = getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.Speed");
-			this.streamSideSpeed = getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.SideSpeed");
-			this.streamCollisionRadius = getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.CollisionRadius");
-			this.streamParticles = getConfig().getInt("Abilities.Fire.FireManipulation.Stream.Particles");
-
 			this.shieldCooldown = applyModifiersCooldown(getConfig().getLong("Abilities.Fire.FireManipulation.Shield.Cooldown"));
 			this.shieldRange = applyModifiersRange(getConfig().getDouble("Abilities.Fire.FireManipulation.Shield.Range"));
 			this.shieldDamage = applyModifiersDamage(getConfig().getDouble("Abilities.Fire.FireManipulation.Shield.Damage"));
@@ -84,11 +63,8 @@ public class FireManipulation extends FireAbility {
 
 	public void click() {
 		if (System.currentTimeMillis() - this.getStartTime() > 1500) {
-			if (!this.firing && !this.charging) {
-				this.charging = true;
-				this.focalPoint = GeneralMethods.getTargetedLocation(this.player, this.shieldRange * 2);
-				this.origin = this.player.getLocation().clone();
-			}
+			new FireManipulationStream(player, this);
+			this.remove();
 		}
 	}
 
@@ -99,7 +75,7 @@ public class FireManipulation extends FireAbility {
 			return;
 		}
 
-		if (!this.firing && !this.charging) {
+//		if (!this.firing && !this.charging) {
 			if (!this.player.isSneaking()) {
 				this.bPlayer.addCooldown(this, this.shieldCooldown);
 				this.remove();
@@ -116,7 +92,7 @@ public class FireManipulation extends FireAbility {
 					this.points.remove(point);
 					return;
 				}
-				playFirebendingParticles(point, 12, 0.25, 0.25, 0.25);
+				playFirebendingParticles(point, shieldParticles, 0.25, 0.25, 0.25);
 				for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(point, 1.2D)) {
 					if (entity instanceof LivingEntity && entity.getUniqueId() != this.player.getUniqueId()) {
 						DamageHandler.damageEntity(entity, this.shieldDamage, this);
@@ -126,72 +102,72 @@ public class FireManipulation extends FireAbility {
 					playFirebendingSound(point);
 				}
 			}
-		} else if (!this.firing && this.charging) {
-			if (!this.player.isSneaking()) {
-				this.bPlayer.addCooldown(this, this.streamCooldown);
-				this.remove();
-				return;
-			}
-			boolean readyToFire = true;
-			for (final Location point : this.points.keySet()) {
-				if (point.distance(this.focalPoint) > 1) {
-					readyToFire = false;
-				}
-			}
-			if (readyToFire) {
-				this.shotPoint = this.focalPoint.clone();
-				this.firing = true;
-				return;
-			}
-			for (final Location point : this.points.keySet()) {
-				final Vector direction = this.focalPoint.toVector().subtract(point.toVector());
-				point.add(direction.clone().multiply(this.streamSpeed / 5));
-				playFirebendingParticles(point, this.shieldParticles, 0.25, 0.25, 0.25);
-			}
-		} else {
-			Vector direction = this.player.getLocation().getDirection().clone();
-			if (this.streamSneaking && !this.player.isSneaking()) {
-				this.streamSneaking = false;
-				this.streamRemoveTime = System.currentTimeMillis();
-				this.streamSneakDirection = direction;
-			}
-			if (!this.streamSneaking) {
-				direction = this.streamSneakDirection;
-				if (System.currentTimeMillis() - this.streamRemoveTime > 1000) {
-					this.bPlayer.addCooldown(this, this.streamCooldown);
-					this.remove();
-					return;
-				}
-			}
-			Location playerLoc = player.getLocation();
-			double distance = playerLoc.distance(shotPoint);
-			Location targetLoc = playerLoc.clone().add(playerLoc.getDirection().normalize().multiply(distance));
-			Vector sideDir = targetLoc.toVector().subtract(shotPoint.toVector()).normalize();
-			sideDir.multiply(Math.min(targetLoc.distance(shotPoint), streamSideSpeed));
-			shotPoint.add(sideDir);
-
-			this.shotPoint.add(direction.multiply(this.streamSpeed));
-			if (this.shotPoint.distance(this.origin) > this.streamRange) {
-				this.bPlayer.addCooldown(this, this.streamCooldown);
-				this.remove();
-				return;
-			}
-			if (GeneralMethods.isSolid(this.shotPoint.getBlock())) {
-				this.bPlayer.addCooldown(this);
-				this.remove();
-				return;
-			}
-
-			playFirebendingParticles(this.shotPoint, this.streamParticles, 0.5, 0.5, 0.5);
-			for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(this.shotPoint, 2)) {
-				if (entity instanceof LivingEntity && entity.getUniqueId() != this.player.getUniqueId()) {
-					DamageHandler.damageEntity(entity, this.streamDamage, this);
-				}
-			}
-			if (new Random().nextInt(5) == 0) {
-				playFirebendingSound(this.shotPoint);
-			}
-		}
+//		} else if (!this.firing && this.charging) {
+//			if (!this.player.isSneaking()) {
+//				this.bPlayer.addCooldown(this, this.streamCooldown);
+//				this.remove();
+//				return;
+//			}
+//			boolean readyToFire = true;
+//			for (final Location point : this.points.keySet()) {
+//				if (point.distance(this.focalPoint) > 1) {
+//					readyToFire = false;
+//				}
+//			}
+//			if (readyToFire) {
+//				this.shotPoint = this.focalPoint.clone();
+//				this.firing = true;
+//				return;
+//			}
+//			for (final Location point : this.points.keySet()) {
+//				final Vector direction = this.focalPoint.toVector().subtract(point.toVector());
+//				point.add(direction.clone().multiply(this.streamSpeed / 5));
+//				playFirebendingParticles(point, this.shieldParticles, 0.25, 0.25, 0.25);
+//			}
+//		} else {
+//			Vector direction = this.player.getLocation().getDirection().clone();
+//			if (this.streamSneaking && !this.player.isSneaking()) {
+//				this.streamSneaking = false;
+//				this.streamRemoveTime = System.currentTimeMillis();
+//				this.streamSneakDirection = direction;
+//			}
+//			if (!this.streamSneaking) {
+//				direction = this.streamSneakDirection;
+//				if (System.currentTimeMillis() - this.streamRemoveTime > 1000) {
+//					this.bPlayer.addCooldown(this, this.streamCooldown);
+//					this.remove();
+//					return;
+//				}
+//			}
+//			Location playerLoc = player.getLocation();
+//			double distance = playerLoc.distance(shotPoint);
+//			Location targetLoc = playerLoc.clone().add(playerLoc.getDirection().normalize().multiply(distance));
+//			Vector sideDir = targetLoc.toVector().subtract(shotPoint.toVector()).normalize();
+//			sideDir.multiply(Math.min(targetLoc.distance(shotPoint), streamSideSpeed));
+//			shotPoint.add(sideDir);
+//
+//			this.shotPoint.add(direction.multiply(this.streamSpeed));
+//			if (this.shotPoint.distance(this.origin) > this.streamRange) {
+//				this.bPlayer.addCooldown(this, this.streamCooldown);
+//				this.remove();
+//				return;
+//			}
+//			if (GeneralMethods.isSolid(this.shotPoint.getBlock())) {
+//				this.bPlayer.addCooldown(this);
+//				this.remove();
+//				return;
+//			}
+//
+//			playFirebendingParticles(this.shotPoint, this.streamParticles, 0.5, 0.5, 0.5);
+//			for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(this.shotPoint, 2)) {
+//				if (entity instanceof LivingEntity && entity.getUniqueId() != this.player.getUniqueId()) {
+//					DamageHandler.damageEntity(entity, this.streamDamage, this);
+//				}
+//			}
+//			if (new Random().nextInt(5) == 0) {
+//				playFirebendingSound(this.shotPoint);
+//			}
+//		}
 	}
 
 	@Override
@@ -228,12 +204,16 @@ public class FireManipulation extends FireAbility {
 		return locations;
 	}
 
+	public Map<Location, Long> getPoints() {
+		return points;
+	}
+
 	public FireManipulationType getFireManipulationType() {
 		return this.fireManipulationType;
 	}
 
 	@Override
 	public double getCollisionRadius() {
-		return fireManipulationType == FireManipulationType.CLICK ? streamCollisionRadius : shieldCollisionRadius;
+		return shieldCollisionRadius;
 	}
 }

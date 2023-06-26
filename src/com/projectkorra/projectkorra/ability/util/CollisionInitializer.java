@@ -26,14 +26,7 @@ import com.projectkorra.projectkorra.earthbending.EarthTunnel;
 import com.projectkorra.projectkorra.earthbending.RaiseEarth;
 import com.projectkorra.projectkorra.earthbending.Ripple;
 import com.projectkorra.projectkorra.earthbending.lava.LavaFlow;
-import com.projectkorra.projectkorra.firebending.BlazeArc;
-import com.projectkorra.projectkorra.firebending.FireBlast;
-import com.projectkorra.projectkorra.firebending.FireBlastCharged;
-import com.projectkorra.projectkorra.firebending.FireBurst;
-import com.projectkorra.projectkorra.firebending.FireJet;
-import com.projectkorra.projectkorra.firebending.FireManipulation;
-import com.projectkorra.projectkorra.firebending.FireShield;
-import com.projectkorra.projectkorra.firebending.WallOfFire;
+import com.projectkorra.projectkorra.firebending.*;
 import com.projectkorra.projectkorra.firebending.combo.FireKick;
 import com.projectkorra.projectkorra.firebending.combo.FireSpin;
 import com.projectkorra.projectkorra.firebending.combo.FireWheel;
@@ -116,6 +109,7 @@ public class CollisionInitializer {
 		final CoreAbility fireWheel = CoreAbility.getAbility(FireWheel.class);
 		final CoreAbility fireShield = CoreAbility.getAbility(FireShield.class);
 		final CoreAbility fireManipulation = CoreAbility.getAbility(FireManipulation.class);
+		final CoreAbility fireManipulationStream = CoreAbility.getAbility(FireManipulationStream.class);
 		CoreAbility.getAbility(Lightning.class);
 		CoreAbility.getAbility(WallOfFire.class);
 
@@ -182,6 +176,14 @@ public class CollisionInitializer {
 		this.collisionManager.addCollision(new Collision(fireManipulation, waterManipulation, false, true));
 		this.collisionManager.addCollision(new Collision(fireManipulation, earthBlast, false, true));
 		this.collisionManager.addCollision(new Collision(fireManipulation, airSweep, false, true));
+
+		this.collisionManager.addCollision(new Collision(fireManipulationStream, airBlast, false, true));
+		this.collisionManager.addCollision(new Collision(fireManipulationStream, airSuction, false, true));
+		this.collisionManager.addCollision(new Collision(fireManipulationStream, fireBlast, false, true));
+		this.collisionManager.addCollision(new Collision(fireManipulationStream, fireBlastCharged, false, true));
+		this.collisionManager.addCollision(new Collision(fireManipulationStream, waterManipulation, false, true));
+		this.collisionManager.addCollision(new Collision(fireManipulationStream, earthBlast, false, true));
+		this.collisionManager.addCollision(new Collision(fireManipulationStream, airSweep, false, true));
 
 		FileConfiguration collisionConfig = ConfigManager.collisionConfig.get();
 		for (String s : collisionConfig.getStringList("Collisions")) {
