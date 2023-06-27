@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.projectkorra.projectkorra.util.ParticleEffect;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
@@ -86,6 +87,13 @@ public class FireManipulation extends FireAbility {
 			this.remove();
 			return;
 		}
+
+		if (System.currentTimeMillis() - this.getStartTime() > minimumShootTime) {
+			Location location = player.getEyeLocation();
+			location.add(location.getDirection());
+			playFirebendingParticles(location, 1, .01, .01, .01);
+		}
+
 		final Location targetLocation = GeneralMethods.getTargetedLocation(this.player, this.shieldRange);
 		this.points.put(targetLocation, System.currentTimeMillis());
 		for (final Location point : this.points.keySet()) {
