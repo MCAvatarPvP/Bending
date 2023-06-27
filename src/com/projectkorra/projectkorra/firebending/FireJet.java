@@ -30,6 +30,7 @@ public class FireJet extends FireAbility {
 	private Random random;
 	private Boolean previousGlidingState;
 	private Boolean showGliding;
+	private int particleAmount;
 
 	public FireJet(final Player player) {
 		super(player);
@@ -53,6 +54,7 @@ public class FireJet extends FireAbility {
 		this.cooldown = applyModifiersCooldown(getConfig().getLong("Abilities.Fire.FireJet.Cooldown"));
 		this.showGliding = getConfig().getBoolean("Abilities.Fire.FireJet.ShowGliding");
 		this.random = new Random();
+		this.particleAmount = 10;
 
 		this.speed = this.getDayFactor(this.speed);
 		final Block block = player.getLocation().getBlock();
@@ -93,7 +95,7 @@ public class FireJet extends FireAbility {
 				playFirebendingSound(this.player.getLocation());
 			}
 
-			playFirebendingParticles(this.player.getLocation(), 10, 0.3, 0.3, 0.3);
+			playFirebendingParticles(this.player.getLocation(), particleAmount, 0.3, 0.3, 0.3);
 			double timefactor;
 
 			if (this.bPlayer.isAvatarState() && this.avatarStateToggled) {
@@ -150,6 +152,14 @@ public class FireJet extends FireAbility {
 
 	public void setAvatarStateToggled(final boolean avatarStateToggled) {
 		this.avatarStateToggled = avatarStateToggled;
+	}
+
+	public int getParticleAmount() {
+		return particleAmount;
+	}
+
+	public void setParticleAmount(int particleAmount) {
+		this.particleAmount = particleAmount;
 	}
 
 	public long getTime() {

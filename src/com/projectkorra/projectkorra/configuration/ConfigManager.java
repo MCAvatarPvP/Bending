@@ -1711,6 +1711,8 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.JetBlaze.Cooldown", 6000);
 			config.addDefault("Abilities.Fire.JetBlaze.FireTicks", 2.5);
 			config.addDefault("Abilities.Fire.JetBlaze.Duration", 5000);
+			config.addDefault("Abilities.Fire.JetBlaze.FirstParticleAmount", 10);
+			config.addDefault("Abilities.Fire.JetBlaze.SecondParticleAmount", 8);
 			config.addDefault("Abilities.Fire.JetBlaze.Combination", Arrays.asList("FireJet:SNEAK_DOWN", "FireJet:SNEAK_UP", "FireJet:SNEAK_DOWN", "FireJet:SNEAK_UP", "Blaze:SNEAK_DOWN", "Blaze:SNEAK_UP", "FireJet:LEFT_CLICK"));
 
 			config.addDefault("Abilities.Chi.Passive.Acrobatics.Enabled", true);

@@ -37,6 +37,7 @@ public class JetBlaze extends FireAbility implements ComboAbility {
 	private ArrayList<FireComboStream> tasks;
 	@Attribute(Attribute.DURATION)
 	private long duration;
+	private int firstParticleAmount, secondParticleAmount;
 
 	public JetBlaze(final Player player) {
 		super(player);
@@ -55,6 +56,8 @@ public class JetBlaze extends FireAbility implements ComboAbility {
 		this.speed = getConfig().getDouble("Abilities.Fire.JetBlaze.Speed");
 		this.cooldown = applyModifiersCooldown(getConfig().getLong("Abilities.Fire.JetBlaze.Cooldown"));
 		this.fireTicks = getConfig().getDouble("Abilities.Fire.JetBlaze.FireTicks");
+		this.firstParticleAmount = getConfig().getInt("Abilities.Fire.JetBlaze.FirstParticleAmount");
+		this.secondParticleAmount = getConfig().getInt("Abilities.Fire.JetBlaze.SecondParticleAmount");
 
 		if (this.bPlayer.isAvatarState()) {
 			this.cooldown = 0;
@@ -91,13 +94,14 @@ public class JetBlaze extends FireAbility implements ComboAbility {
 			final FireJet fj = getAbility(this.player, FireJet.class);
 			fj.setSpeed(this.speed);
 			fj.setDuration(this.duration);
+			fj.setParticleAmount(firstParticleAmount);
 
 			final FireComboStream fs = new FireComboStream(this.player, this, this.direction, this.player.getLocation(), 5, 1);
-			fs.setDensity(8);
+			fs.setDensity(secondParticleAmount);
 			fs.setSpread(1.0F);
 			fs.setUseNewParticles(true);
 			fs.setCollisionRadius(2);
-			fs.setParticleEffect(ParticleEffect.SMOKE_LARGE);
+			fs.setParticleEffect(ParticleEffect.SMOKE_NORMAL);
 			fs.setDamage(this.damage);
 			fs.setFireTicks(this.fireTicks);
 			fs.runTaskTimer(ProjectKorra.plugin, 0, 1L);
