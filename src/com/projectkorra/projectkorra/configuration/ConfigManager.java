@@ -1600,6 +1600,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.FireManipulation.Stream.SideSpeed", 0.0);
 			config.addDefault("Abilities.Fire.FireManipulation.Stream.CollisionRadius", 0.4);
 			config.addDefault("Abilities.Fire.FireManipulation.Stream.Particles", 50);
+			config.addDefault("Abilities.Fire.FireManipulation.Stream.MinimumShootTime", 1500);
 
 			config.addDefault("Abilities.Fire.FireManipulation.Shield.Cooldown", 6000);
 			config.addDefault("Abilities.Fire.FireManipulation.Shield.Range", 4);
