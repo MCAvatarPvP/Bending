@@ -1,0 +1,188 @@
+package com.projectkorra.projectkorra.firebending;
+
+import com.projectkorra.projectkorra.GeneralMethods;
+import com.projectkorra.projectkorra.ability.FireAbility;
+import com.projectkorra.projectkorra.util.DamageHandler;
+import org.bukkit.Location;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Player;
+import org.bukkit.util.Vector;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
+
+public class FireManipulationStream extends FireAbility {
+
+	private long streamCooldown;
+	private double streamRange;
+	private double streamDamage;
+	private double streamSpeed, streamSideSpeed;
+	private double streamCollisionRadius;
+	private int streamParticles;
+	private boolean streamSneaking = true;
+	private long streamRemoveTime = 0;
+	private Vector streamSneakDirection;
+
+	private double shieldRange;
+	private int shieldParticles;
+
+	private boolean firing;
+	private Map<Location, Long> points;
+	private Location shotPoint;
+	private Location origin;
+	private Location focalPoint;
+
+	private FireManipulation parentAbility;
+
+	public FireManipulationStream(Player player, FireManipulation parentAbility) {
+		super(player);
+
+		this.parentAbility = parentAbility;
+		setFields();
+		player.sendMessage("start");
+		start();
+	}
+
+	public void setFields() {
+		this.streamCooldown = applyModifiersCooldown(getConfig().getLong("Abilities.Fire.FireManipulation.Stream.Cooldown"));
+		this.streamRange = applyModifiersRange(getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.Range"));
+		this.streamDamage = applyModifiersDamage(getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.Damage"));
+		this.streamSpeed = getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.Speed");
+		this.streamSideSpeed = getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.SideSpeed");
+		this.streamCollisionRadius = getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.CollisionRadius");
+		this.streamParticles = getConfig().getInt("Abilities.Fire.FireManipulation.Stream.Particles");
+
+		this.shieldRange = applyModifiersRange(getConfig().getDouble("Abilities.Fire.FireManipulation.Shield.Range"));
+		this.shieldParticles = getConfig().getInt("Abilities.Fire.FireManipulation.Shield.Particles");
+
+		this.focalPoint = GeneralMethods.getTargetedLocation(this.player, this.shieldRange * 2);
+		this.origin = this.player.getLocation().clone();
+		this.points = new ConcurrentHashMap<>();
+		points.putAll(parentAbility.getPoints());
+	}
+
+	@Override
+	public void progress() {
+		player.sendMessage("progress");
+		if (!this.bPlayer.canBend(this)) {
+			this.remove();
+			return;
+		}
+
+		if (!this.firing) {
+			if (!this.player.isSneaking()) {
+				this.bPlayer.addCooldown(this, this.streamCooldown);
+				this.remove();
+				return;
+			}
+			boolean readyToFire = true;
+			for (final Location point : this.points.keySet()) {
+				if (point.distance(this.focalPoint) > 1) {
+					readyToFire = false;
+				}
+			}
+			if (readyToFire) {
+				this.shotPoint = this.focalPoint.clone();
+				this.firing = true;
+				return;
+			}
+			for (final Location point : this.points.keySet()) {
+				final Vector direction = this.focalPoint.toVector().subtract(point.toVector());
+				point.add(direction.clone().multiply(this.streamSpeed / 5));
+				playFirebendingParticles(point, this.shieldParticles, 0.25, 0.25, 0.25);
+			}
+		} else {
+			Vector direction = this.player.getLocation().getDirection().clone();
+			if (this.streamSneaking && !this.player.isSneaking()) {
+				this.streamSneaking = false;
+				this.streamRemoveTime = System.currentTimeMillis();
+				this.streamSneakDirection = direction;
+			}
+			if (!this.streamSneaking) {
+				direction = this.streamSneakDirection;
+				if (System.currentTimeMillis() - this.streamRemoveTime > 1000) {
+					this.bPlayer.addCooldown(this, this.streamCooldown);
+					this.remove();
+					return;
+				}
+			}
+			Location playerLoc = player.getLocation();
+			double distance = playerLoc.distance(shotPoint);
+			Location targetLoc = playerLoc.clone().add(playerLoc.getDirection().normalize().multiply(distance));
+			Vector sideDir = targetLoc.toVector().subtract(shotPoint.toVector()).normalize();
+			sideDir.multiply(Math.min(targetLoc.distance(shotPoint), streamSideSpeed));
+			shotPoint.add(sideDir);
+
+			this.shotPoint.add(direction.multiply(this.streamSpeed));
+			if (this.shotPoint.distance(this.origin) > this.streamRange) {
+				this.bPlayer.addCooldown(this, this.streamCooldown);
+				this.remove();
+				return;
+			}
+			if (GeneralMethods.isSolid(this.shotPoint.getBlock())) {
+				this.bPlayer.addCooldown(this);
+				this.remove();
+				return;
+			}
+
+			playFirebendingParticles(this.shotPoint, this.streamParticles, 0.5, 0.5, 0.5);
+			for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(this.shotPoint, 2)) {
+				if (entity instanceof LivingEntity && entity.getUniqueId() != this.player.getUniqueId()) {
+					DamageHandler.damageEntity(entity, this.streamDamage, this);
+				}
+			}
+			if (new Random().nextInt(5) == 0) {
+				playFirebendingSound(this.shotPoint);
+			}
+		}
+	}
+
+	@Override
+	public void remove() {
+		super.remove();
+		parentAbility.remove();
+	}
+
+	@Override
+	public boolean isSneakAbility() {
+		return true;
+	}
+
+	@Override
+	public boolean isHarmlessAbility() {
+		return false;
+	}
+
+	@Override
+	public long getCooldown() {
+		return 0;
+	}
+
+	@Override
+	public String getName() {
+		return "FireManipulation";
+	}
+
+	@Override
+	public Location getLocation() {
+		return null;
+	}
+
+	@Override
+	public List<Location> getLocations() {
+		final List<Location> locations = new ArrayList<>();
+		if (this.points != null) {
+			locations.addAll(this.points.keySet());
+		}
+		return locations;
+	}
+
+	@Override
+	public double getCollisionRadius() {
+		return streamCollisionRadius;
+	}
+}
