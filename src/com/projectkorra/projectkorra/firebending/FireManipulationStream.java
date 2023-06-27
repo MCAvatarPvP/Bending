@@ -43,7 +43,6 @@ public class FireManipulationStream extends FireAbility {
 
 		this.parentAbility = parentAbility;
 		setFields();
-		player.sendMessage("start");
 		start();
 	}
 
@@ -67,7 +66,6 @@ public class FireManipulationStream extends FireAbility {
 
 	@Override
 	public void progress() {
-		player.sendMessage("progress");
 		if (!this.bPlayer.canBend(this)) {
 			this.remove();
 			return;
