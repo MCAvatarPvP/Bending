@@ -39,6 +39,7 @@ public class AirScooter extends AirAbility {
 	private Boolean useslime;
 	private boolean requiresSprint;
 	private boolean requiresJump;
+	private boolean canFly, wasFlying;
 
 	private double phi = 0;
 
@@ -73,8 +74,10 @@ public class AirScooter extends AirAbility {
 		this.angles = new ArrayList<>();
 
 		this.flightHandler.createInstance(player, this.getName());
-		player.setAllowFlight(true);
-		player.setFlying(true);
+		wasFlying = player.isFlying();
+		canFly = player.getAllowFlight();
+		player.setAllowFlight(false);
+		player.setFlying(false);
 
 		player.setSprinting(false);
 		player.setSneaking(false);
@@ -241,6 +244,8 @@ public class AirScooter extends AirAbility {
 			this.slime.remove();
 		}
 		this.flightHandler.removeInstance(this.player, this.getName());
+		this.player.setAllowFlight(canFly);
+		this.player.setFlying(wasFlying);
 		this.bPlayer.addCooldown(this);
 	}
 
