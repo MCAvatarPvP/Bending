@@ -1,9 +1,6 @@
 package com.projectkorra.projectkorra.board;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -19,11 +16,14 @@ import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 
 import net.md_5.bungee.api.ChatColor;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Represents a player's scoreboard for bending purposes
  */
 public class BendingBoard {
+
+	private static final char[] CHAT_CHARS = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
 	
 	public static class BoardSlot {
 		
@@ -43,17 +43,20 @@ public class BendingBoard {
 
 		@SuppressWarnings("deprecation")
 		private void formTeam() {
-			this.team = board.registerNewTeam("slot" + this.slot);
-			this.entry = ChatColor.values()[slot % 10] + "" + ChatColor.values()[slot % 16];
+			this.team = board.getTeam("slot" + this.slot) == null
+					? board.registerNewTeam("slot" + this.slot)
+					: board.getTeam("slot" + this.slot);
+			this.entry = "\u00A7" + CHAT_CHARS[slot % 10] + "" + "\u00A7" + CHAT_CHARS[slot % 16];
 			
 			team.addEntry(entry);
 		}
 		
 		private void set() {
-			obj.getScore(entry).setScore(-slot);
+			int s = Math.min(slot, 11);
+			obj.getScore(entry).setScore(-s);
 		}
 		
-		public void update(String prefix, String name) {
+		public void update(@NotNull String prefix, @NotNull String name) {
 			team.setPrefix(prefix);
 			team.setSuffix(name);
 			set();
@@ -64,20 +67,17 @@ public class BendingBoard {
 			set();
 		}
 
-		public void decreaseSlot() {
-			--this.slot;
-			clear(true);
-		}
-
 		public void clear(boolean formNewTeam) {
-			String prefix = team.getPrefix(), suffix = team.getSuffix();
-			board.resetScores(entry);
-			team.unregister();
-			if (formNewTeam) {
-				formTeam();
-				update(prefix, suffix);
+			//Make sure the team hasn't already been unregistered
+			if (team.getScoreboard() != null && team.getScoreboard().getTeam("slot" + this.slot) != null) {
+				String prefix = team.getPrefix(), suffix = team.getSuffix();
+				team.unregister();
+				if (formNewTeam) {
+					formTeam();
+					update(prefix, suffix);
+				}
 			}
-			next.ifPresent(BoardSlot::decreaseSlot);
+			board.resetScores(entry);
 		}
 		
 		private void setNext(BoardSlot slot) {
@@ -91,6 +91,7 @@ public class BendingBoard {
 	
 	private final BoardSlot[] slots = new BoardSlot[9];
 	private final Map<String, BoardSlot> misc = new HashMap<>();
+	private final Queue<Integer> miscSlotIds = new LinkedList<>();
 	private BoardSlot miscTail = null;
 
 	private final Player player;
@@ -121,6 +122,10 @@ public class BendingBoard {
 		prefix = ChatColor.stripColor(ConfigManager.languageConfig.get().getString("Board.Prefix.Text"));
 		emptySlot = ChatColor.translateAlternateColorCodes('&', ConfigManager.languageConfig.get().getString("Board.EmptySlot"));
 		miscSeparator = ChatColor.translateAlternateColorCodes('&', ConfigManager.languageConfig.get().getString("Board.MiscSeparator"));
+
+		for (int i = 0; i < 9; i++) {
+			miscSlotIds.add(i);
+		}
 
 		updateAll();
 	}
@@ -242,6 +247,7 @@ public class BendingBoard {
 				}
 				
 				slot.clear(false);
+				miscSlotIds.add(slot.slot - 10);
 				return null;
 			});
 				
@@ -249,7 +255,7 @@ public class BendingBoard {
 				bendingBoard.resetScores(miscSeparator);
 			}
 		} else if (!misc.containsKey(name)) {
-			BoardSlot slot = new BoardSlot(bendingBoard, bendingSlots, 10 + misc.size());
+			BoardSlot slot = new BoardSlot(bendingBoard, bendingSlots, 10 + miscSlotIds.poll());
 			slot.update(String.join("", Collections.nCopies(ChatColor.stripColor(prefix).length() + 1, " ")), color + "" + ChatColor.STRIKETHROUGH + name);
 			
 			if (miscTail != null) {
