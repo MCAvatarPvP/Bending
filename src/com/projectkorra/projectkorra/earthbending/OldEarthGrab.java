@@ -19,7 +19,7 @@ import java.util.Set;
 
 public class OldEarthGrab extends EarthAbility {
 
-	private enum Type {
+	public enum Type {
 		SELF, OTHERS
 	}
 
@@ -34,20 +34,23 @@ public class OldEarthGrab extends EarthAbility {
 	private long cooldown;
 	private Set<Block> checked;
 
-	private Vector direction;
-	private double range;
 	@Attribute(Attribute.RANGE)
 	private double maxRange;
 	private Location loc;
+	private LivingEntity target;
 
 	public OldEarthGrab(Player player, Type type) {
 		super(player);
 
+		if (!this.bPlayer.canBend(this)) {
+			return;
+		}
+
 		this.type = type;
 		this.center = player.getLocation().clone().subtract(0, 1, 0);
-		this.radius = getConfig().getDouble("Abilities.Earth.EarthDome.Radius");
-		this.height = getConfig().getInt("Abilities.Earth.EarthDome.Height");
-		this.cooldown = getConfig().getLong("Abilities.Earth.EarthDome.Cooldown");
+		this.radius = getConfig().getDouble("Abilities.Earth.OldEarthGrab.Radius");
+		this.height = getConfig().getInt("Abilities.Earth.OldEarthGrab.Height");
+		this.cooldown = getConfig().getLong("Abilities.Earth.OldEarthGrab.Cooldown");
 		this.checked = new HashSet<>();
 
 		if (type == Type.OTHERS) {
@@ -59,9 +62,13 @@ public class OldEarthGrab extends EarthAbility {
 			if (!isEarthbendable(this.loc.getBlock().getRelative(BlockFace.DOWN).getType(), true, true, true)) {
 				return;
 			}
-			this.range = 0;
-			this.direction = this.loc.getDirection().setY(0);
-			this.maxRange = getConfig().getDouble("Abilities.Earth.EarthDome.Range");
+			this.maxRange = getConfig().getDouble("Abilities.Earth.OldEarthGrab.Range");
+			Entity t = GeneralMethods.getTargetedEntity(player, maxRange);
+			if (t instanceof LivingEntity) {
+				target = (LivingEntity) t;
+			}
+
+			if (target == null) return;
 		}
 
 		this.start();
@@ -70,59 +77,26 @@ public class OldEarthGrab extends EarthAbility {
 	@Override
 	public void progress() {
 		if (type == Type.SELF) {
-			run();
+			run(center);
 		} else {
 			if (!this.player.isOnline() || this.player.isDead()) {
 				this.remove(true);
 				return;
 			}
-			if (this.range >= this.maxRange) {
-				this.remove(true);
-				return;
-			}
-			if (GeneralMethods.isRegionProtectedFromBuild(this.player, this.loc)) {
-				this.remove(true);
-				return;
-			}
 
-			this.range++;
-			this.loc.add(this.direction.normalize());
-			Block top = GeneralMethods.getTopBlock(this.loc, 2);
-
-			while (!this.isEarthbendable(top)) {
-				if (this.isTransparent(top)) {
-					top = top.getRelative(BlockFace.DOWN);
-				} else {
-					this.remove(true);
-					return;
-				}
-			}
-
-			if (!this.isTransparent(top.getRelative(BlockFace.UP))) {
-				this.remove(true);
-				return;
-			}
-
-			this.loc.setY(top.getY() + 1);
-
-			ParticleEffect.CRIT.display(this.loc, 9, 0.4, 0, 0.4, 0.001);
-			ParticleEffect.BLOCK_DUST.display(this.loc, 7, 0.2, 0.1, 0.2, 0.001, this.loc.getBlock().getRelative(BlockFace.DOWN).getBlockData());
-
-			for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(this.loc, 2)) {
-				if (!(entity instanceof LivingEntity) || entity.getEntityId() == this.player.getEntityId()) {
-					continue;
-				}
-
-				run();
+			if (target == null || target.isDead()) {
 				this.remove(false);
 				return;
 			}
+
+			run(target.getLocation().clone().subtract(0, 1, 0));
+			this.remove(false);
 		}
 	}
 
-	private void run() {
+	private void run(Location loc) {
 		for (int i = 0; i < 2; i++) {
-			for (final Location check : this.getCircle(this.center, this.radius + i, 10)) {
+			for (final Location check : this.getCircle(loc, this.radius + i, 10)) {
 				Block currBlock = check.getBlock();
 				if (this.checked.contains(currBlock)) {
 					continue;
@@ -146,7 +120,7 @@ public class OldEarthGrab extends EarthAbility {
 	public void remove(final boolean cooldown) {
 		super.remove();
 		if (cooldown) {
-			this.bPlayer.addCooldown("EarthDome", getConfig().getLong("Abilities.Earth.EarthDome.Cooldown"));
+			this.bPlayer.addCooldown("OldEarthGrab", getConfig().getLong("Abilities.Earth.OldEarthGrab.Cooldown"));
 		}
 	}
 

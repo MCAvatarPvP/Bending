@@ -1391,6 +1391,12 @@ public class ConfigManager {
 			config.addDefault("Abilities.Earth.EarthGrab.TrapHP", 3);
 			config.addDefault("Abilities.Earth.EarthGrab.DamageThreshold", 4);
 
+			config.addDefault("Abilities.Earth.OldEarthGrab.Enabled", true);
+			config.addDefault("Abilities.Earth.OldEarthGrab.Cooldown", 10000);
+			config.addDefault("Abilities.Earth.OldEarthGrab.Radius", 2);
+			config.addDefault("Abilities.Earth.OldEarthGrab.Range", 14);
+			config.addDefault("Abilities.Earth.OldEarthGrab.Height", 3);
+
 			config.addDefault("Abilities.Earth.EarthTunnel.Enabled", true);
 			config.addDefault("Abilities.Earth.EarthTunnel.RevertCheckTime", 300000);
 			config.addDefault("Abilities.Earth.EarthTunnel.Cooldown", 0);

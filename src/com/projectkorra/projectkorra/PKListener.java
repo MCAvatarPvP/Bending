@@ -49,19 +49,8 @@ import com.projectkorra.projectkorra.chiblocking.passive.Acrobatics;
 import com.projectkorra.projectkorra.chiblocking.passive.ChiPassive;
 import com.projectkorra.projectkorra.command.Commands;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
-import com.projectkorra.projectkorra.earthbending.Catapult;
-import com.projectkorra.projectkorra.earthbending.Collapse;
-import com.projectkorra.projectkorra.earthbending.CollapseWall;
-import com.projectkorra.projectkorra.earthbending.EarthArmor;
-import com.projectkorra.projectkorra.earthbending.EarthBlast;
-import com.projectkorra.projectkorra.earthbending.EarthGrab;
+import com.projectkorra.projectkorra.earthbending.*;
 import com.projectkorra.projectkorra.earthbending.EarthGrab.GrabMode;
-import com.projectkorra.projectkorra.earthbending.EarthSmash;
-import com.projectkorra.projectkorra.earthbending.EarthTunnel;
-import com.projectkorra.projectkorra.earthbending.RaiseEarth;
-import com.projectkorra.projectkorra.earthbending.RaiseEarthWall;
-import com.projectkorra.projectkorra.earthbending.Shockwave;
-import com.projectkorra.projectkorra.earthbending.Tremorsense;
 import com.projectkorra.projectkorra.earthbending.combo.EarthPillars;
 import com.projectkorra.projectkorra.earthbending.lava.LavaFlow;
 import com.projectkorra.projectkorra.earthbending.lava.LavaFlow.AbilityType;
@@ -1513,6 +1502,8 @@ public class PKListener implements Listener {
 						new RaiseEarthWall(player);
 					} else if (abil.equalsIgnoreCase("Collapse")) {
 						new CollapseWall(player);
+					} else if (abil.equalsIgnoreCase("OldEarthGrab")) {
+						new OldEarthGrab(player, OldEarthGrab.Type.SELF);
 					} else if (abil.equalsIgnoreCase("Shockwave")) {
 						new Shockwave(player, false);
 					} else if (abil.equalsIgnoreCase("EarthTunnel")) {
@@ -1743,6 +1734,8 @@ public class PKListener implements Listener {
 						new RaiseEarth(player);
 					} else if (abil.equalsIgnoreCase("Collapse")) {
 						new Collapse(player);
+					} else if (abil.equalsIgnoreCase("OldEarthGrab")) {
+						new OldEarthGrab(player, OldEarthGrab.Type.OTHERS);
 					} else if (abil.equalsIgnoreCase("Shockwave")) {
 						Shockwave.coneShockwave(player);
 					} else if (abil.equalsIgnoreCase("EarthArmor")) {
