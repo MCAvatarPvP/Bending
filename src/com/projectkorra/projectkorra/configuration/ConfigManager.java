@@ -1346,6 +1346,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Earth.Catapult.StageTimeMult", 2.0);
 			config.addDefault("Abilities.Earth.Catapult.Angle", 45);
 			config.addDefault("Abilities.Earth.Catapult.CancelWithAngle", false);
+			config.addDefault("Abilities.Earth.Catapult.RemoveFireTick", true);
 
 			config.addDefault("Abilities.Earth.Collapse.Enabled", true);
 			config.addDefault("Abilities.Earth.Collapse.SelectRange", 20);

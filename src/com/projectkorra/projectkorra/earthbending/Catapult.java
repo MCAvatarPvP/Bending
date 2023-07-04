@@ -33,6 +33,7 @@ public class Catapult extends EarthAbility {
 	private double angle;
 	private boolean cancelWithAngle;
 	private BlockData bentBlockData;
+	private boolean removeFireTick;
 
 	public Catapult(final Player player, final boolean sneak) {
 		super(player);
@@ -61,6 +62,7 @@ public class Catapult extends EarthAbility {
 		this.cooldown = getConfig().getLong("Abilities.Earth.Catapult.Cooldown");
 		this.angle = Math.toRadians(getConfig().getDouble("Abilities.Earth.Catapult.Angle"));
 		this.cancelWithAngle = getConfig().getBoolean("Abilities.Earth.Catapult.CancelWithAngle");
+		this.removeFireTick = getConfig().getBoolean("Abilities.Earth.Catapult.RemoveFireTick");
 		this.activationHandled = false;
 		this.stage = 1;
 		this.stageStart = System.currentTimeMillis();
@@ -76,7 +78,7 @@ public class Catapult extends EarthAbility {
 				GeneralMethods.setVelocity(this, entity, apply);
 			}
 		}
-		this.moveEarth(this.origin.clone().subtract(direction), direction, 3, false);
+		if (bPlayer.areSourceHolesOn()) this.moveEarth(this.origin.clone().subtract(direction), direction, 3, false);
 	}
 
 	@Override
@@ -136,7 +138,8 @@ public class Catapult extends EarthAbility {
 		this.target = tar;
 		final Vector apply = this.target.clone().toVector().subtract(this.origin.clone().toVector());
 		GeneralMethods.setVelocity(this, this.player, apply);
-		if (bPlayer.areSourceHolesOn()) this.moveEarth(apply, direction);
+		this.moveEarth(apply, direction);
+		if (removeFireTick) player.setFireTicks(0);
 		this.remove();
 	}
 
