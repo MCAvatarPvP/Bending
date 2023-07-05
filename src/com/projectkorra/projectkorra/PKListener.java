@@ -518,8 +518,11 @@ public class PKListener implements Listener {
 		int maxLavaTicks = ConfigManager.getConfig().getInt("Properties.Earth.MaxLavaTickDuration");
 		if (event.getCause() == DamageCause.FIRE && entity.getFireTicks() > maxFireTicks) {
 			entity.setFireTicks(maxFireTicks);
-		} else if (event.getCause() == DamageCause.LAVA && entity.getFireTicks() > maxLavaTicks) {
-			entity.setFireTicks(maxLavaTicks);
+		} else if (event.getCause() == DamageCause.LAVA) {
+			if (entity.getFireTicks() > maxLavaTicks) entity.setFireTicks(maxLavaTicks);
+
+			double maxLavaDmg = ConfigManager.getConfig().getDouble("Properties.Earth.MaxLavaDamage");
+			if (event.getDamage() > maxLavaDmg) event.setDamage(maxLavaDmg);
 		}
 
 		if (entity instanceof Player) {

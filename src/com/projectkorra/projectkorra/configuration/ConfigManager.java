@@ -738,6 +738,7 @@ public class ConfigManager {
 			config.addDefault("Properties.Earth.MetalBlocks", metalBlocks);
 			config.addDefault("Properties.Earth.SandBlocks", sandBlocks);
 			config.addDefault("Properties.Earth.MetalPowerFactor", 1.5);
+			config.addDefault("Properties.Earth.MaxLavaDamage", 1);
 			config.addDefault("Properties.Earth.MaxLavaTickDuration", 60);
 			config.addDefault("Properties.Earth.PlaySound", true);
 			config.addDefault("Properties.Earth.EarthSound.Sound", "ENTITY_GHAST_SHOOT");
