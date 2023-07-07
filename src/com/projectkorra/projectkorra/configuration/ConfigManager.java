@@ -1518,6 +1518,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Earth.Shockwave.Damage", 4);
 			config.addDefault("Abilities.Earth.Shockwave.Knockback", 1.1);
 			config.addDefault("Abilities.Earth.Shockwave.Range", 15);
+			config.addDefault("Abilities.Earth.Shockwave.LeftClickRange", 15);
 			config.addDefault("Abilities.Earth.Shockwave.Angle", 40);
 
 			config.addDefault("Abilities.Earth.Tremorsense.Enabled", true);
@@ -1566,6 +1567,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.FireBlast.Damage", 3);
 			config.addDefault("Abilities.Fire.FireBlast.Cooldown", 1500);
 			config.addDefault("Abilities.Fire.FireBlast.Dissipate", false);
+			config.addDefault("Abilities.Fire.FireBlast.CanGoThroughLava", true);
 			config.addDefault("Abilities.Fire.FireBlast.FireTicks", 0);
 			config.addDefault("Abilities.Fire.FireBlast.SmokeParticleRadius", 0.3);
 			config.addDefault("Abilities.Fire.FireBlast.FlameParticleRadius", 0.275);
@@ -1589,6 +1591,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.FireBurst.ChargeTime", 3500);
 			config.addDefault("Abilities.Fire.FireBurst.Cooldown", 0);
 			config.addDefault("Abilities.Fire.FireBurst.Range", 14);
+			config.addDefault("Abilities.Fire.FireBurst.LeftClickRange", 14);
 			config.addDefault("Abilities.Fire.FireBurst.AnglePhi", 10);
 			config.addDefault("Abilities.Fire.FireBurst.AngleTheta", 10);
 			config.addDefault("Abilities.Fire.FireBurst.ParticlesPercentage", 5);

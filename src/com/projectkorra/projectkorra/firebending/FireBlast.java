@@ -59,6 +59,7 @@ public class FireBlast extends FireAbility {
 	private double fireTicks;
 	@Attribute(Attribute.KNOCKBACK)
 	private double knockback;
+	private boolean canGoThroughLava;
 	private double flameRadius;
 	private Random random;
 	private Location location;
@@ -89,9 +90,11 @@ public class FireBlast extends FireAbility {
 	public FireBlast(final Player player) {
 		super(player);
 
+		this.canGoThroughLava = getConfig().getBoolean("Abilities.Fire.FireBlast.CanGoThroughLava");
+		Material mat = player.getEyeLocation().getBlock().getType();
 		if (this.bPlayer.isOnCooldown("FireBlast")) {
 			return;
-		} else if (player.getEyeLocation().getBlock().isLiquid() || FireBlastCharged.isCharging(player)) {
+		} else if ((mat == Material.WATER || !canGoThroughLava && mat == Material.LAVA) || FireBlastCharged.isCharging(player)) {
 			return;
 		}
 
@@ -147,7 +150,7 @@ public class FireBlast extends FireAbility {
 	}
 
 	public boolean checkLocation(Block block) {
-		if (block.isLiquid()) {
+		if (block.getType() == Material.WATER || !canGoThroughLava && block.getType() == Material.LAVA) {
 			this.remove();
 			return false;
 		}

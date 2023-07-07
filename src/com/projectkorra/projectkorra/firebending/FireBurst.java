@@ -99,6 +99,7 @@ public class FireBurst extends FireAbility {
 
 					if (direction.angle(vector) <= angle) {
 						final FireBlast fblast = new FireBlast(location, direction.normalize(), this.player, this.damage, safeBlocks);
+						range = getConfig().getDouble("Abilities.Fire.FireBurst.LeftClickRange");
 						fblast.setRange(this.range);
 						fblast.setFireBurst(true);
 					}
