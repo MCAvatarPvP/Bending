@@ -33,6 +33,7 @@ public class Ripple extends EarthAbility {
 	private double damage;
 	@Attribute(Attribute.KNOCKBACK)
 	private double knockback;
+	private double radius;
 	private Vector direction;
 	private Location origin;
 	private Location location;
@@ -61,6 +62,7 @@ public class Ripple extends EarthAbility {
 		this.range = getConfig().getDouble("Abilities.Earth.Shockwave.Range");
 		this.damage = getConfig().getDouble("Abilities.Earth.Shockwave.Damage");
 		this.knockback = getConfig().getDouble("Abilities.Earth.Shockwave.Knockback");
+		this.radius = getConfig().getDouble("Abilities.Earth.Shockwave.Radius");
 		this.direction = direction.clone().normalize();
 		this.origin = origin.clone();
 		this.location = origin.clone();
@@ -262,7 +264,7 @@ public class Ripple extends EarthAbility {
 			length = 2;
 		}
 		if (this.moveEarth(block, new Vector(0, 1, 0), length, false)) {
-			for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(block.getLocation().clone().add(0, 1, 0), 2)) {
+			for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(block.getLocation().clone().add(0, 1, 0), radius)) {
 				if (entity.getEntityId() != this.player.getEntityId() && !this.entities.contains(entity)) {
 					if (!(entity instanceof FallingBlock)) {
 						this.entities.add(entity);

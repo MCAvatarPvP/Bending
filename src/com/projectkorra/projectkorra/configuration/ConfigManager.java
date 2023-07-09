@@ -1518,6 +1518,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Earth.Shockwave.Damage", 4);
 			config.addDefault("Abilities.Earth.Shockwave.Knockback", 1.1);
 			config.addDefault("Abilities.Earth.Shockwave.Range", 15);
+			config.addDefault("Abilities.Earth.Shockwave.Radius", 2);
 			config.addDefault("Abilities.Earth.Shockwave.LeftClickRange", 15);
 			config.addDefault("Abilities.Earth.Shockwave.Angle", 40);
 
