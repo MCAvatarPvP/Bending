@@ -31,12 +31,14 @@ public class FireManipulation extends FireAbility {
 	private double shieldDamage;
 	private int shieldParticles;
 	private long maxDuration;
+	private long damageInterval;
 	private long minimumShootTime;
 
 	// Instance related variables.
 	private FireManipulationType fireManipulationType;
 
 	private Map<Location, Long> points;
+	private int damageTick;
 
 	public FireManipulation(final Player player, final FireManipulationType fireManipulationType) {
 		super(player);
@@ -57,8 +59,9 @@ public class FireManipulation extends FireAbility {
 			this.shieldCollisionRadius = getConfig().getDouble("Abilities.Fire.FireManipulation.Shield.CollisionRadius");
 			this.shieldParticles = getConfig().getInt("Abilities.Fire.FireManipulation.Shield.Particles");
 			this.maxDuration = (long) applyModifiers(getConfig().getLong("Abilities.Fire.FireManipulation.Shield.MaxDuration"));
-			this.points = new ConcurrentHashMap<>();
+			this.damageInterval = getConfig().getLong("Abilities.Fire.FireManipulation.Shield.DamageInterval");
 			this.minimumShootTime = getConfig().getLong("Abilities.Fire.FireManipulation.Stream.MinimumShootTime");
+			this.points = new ConcurrentHashMap<>();
 		} else if (this.fireManipulationType == FireManipulationType.CLICK) {
 
 		}
@@ -102,9 +105,12 @@ public class FireManipulation extends FireAbility {
 				return;
 			}
 			playFirebendingParticles(point, shieldParticles, 0.25, 0.25, 0.25);
-			for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(point, 1.2D)) {
-				if (entity instanceof LivingEntity && entity.getUniqueId() != this.player.getUniqueId()) {
-					DamageHandler.damageEntity(entity, this.shieldDamage, this);
+			if (System.currentTimeMillis() - this.getStartTime() > this.damageTick * this.damageInterval) {
+				this.damageTick++;
+				for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(point, 1.2D)) {
+					if (entity instanceof LivingEntity && entity.getUniqueId() != this.player.getUniqueId()) {
+						DamageHandler.damageEntity(entity, this.shieldDamage, this);
+					}
 				}
 			}
 			if (new Random().nextInt(this.points.keySet().size()) == 0) {
