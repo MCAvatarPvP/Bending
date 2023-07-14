@@ -241,7 +241,7 @@ public class FireBlastCharged extends FireAbility {
 
 			if (this.canDamageBlocks && this.explosionRadius > 0 && canFireGrief()) {
 				for (final Block block : GeneralMethods.getBlocksAroundPoint(this.location, this.explosionRadius)) {
-					if (explosionPower >= block.getType().getBlastResistance()) {
+					if (explosionPower >= (double) block.getType().getBlastResistance()) {
 						new TempBlock(block, Material.AIR.createBlockData(), damagedRevertTime);
 					}
 				}
