@@ -6,7 +6,9 @@ import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.projectkorra.projectkorra.ability.util.Collision;
+import com.projectkorra.projectkorra.util.TempBlock;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
@@ -54,6 +56,8 @@ public class FireBlastCharged extends FireAbility {
 	private double damageRadius;
 	@Attribute("Explosion" + Attribute.RANGE)
 	private double explosionRadius;
+	private double explosionPower;
+	private long damagedRevertTime;
 	private double funThingVelocity;
 	private double innerRadius;
 	@Attribute(Attribute.FIRE_TICK)
@@ -86,6 +90,8 @@ public class FireBlastCharged extends FireAbility {
 		this.range = applyModifiersRange(getConfig().getDouble("Abilities.Fire.FireBlast.Charged.Range"));
 		this.damageRadius = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.Charged.DamageRadius"));
 		this.explosionRadius = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.Charged.ExplosionRadius"));
+		this.explosionPower = getConfig().getDouble("Abilities.Fire.FireBlast.Charged.ExplosionPower");
+		this.damagedRevertTime = getConfig().getLong("Abilities.Fire.FireBlast.Charged.DamagedBlocksRevertTime");
 		this.fireTicks = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.Charged.FireTicks"));
 		this.funThingVelocity = getConfig().getDouble("Abilities.Fire.FireBlast.Charged.FunThing");
 		this.innerRadius = this.damageRadius / 2;
@@ -213,42 +219,36 @@ public class FireBlastCharged extends FireAbility {
 		}
 
 		if (explode) {
-			if (this.canDamageBlocks && this.explosionRadius > 0 && canFireGrief()) {
-				this.explosion = this.player.getWorld().spawn(this.location, TNTPrimed.class);
-				this.explosion.setFuseTicks(0);
-				double yield = this.explosionRadius;
+			final List<Entity> entities = GeneralMethods.getEntitiesAroundPoint(this.location, this.damageRadius);
+			for (final Entity entity : entities) {
+				if (entity instanceof LivingEntity) {
+					final double slope = -(this.explosionMaxDamage * .5) / (this.damageRadius - this.innerRadius);
+					double damage = 0;
+					if (entity.getWorld().equals(this.location.getWorld())) {
+						damage = slope * (entity.getLocation().distance(this.location) - this.innerRadius) + this.explosionMaxDamage;
+					}
+					if (damage < this.explosionMinDamage) {
+						damage = this.explosionMinDamage;
+					}
 
-				if (!this.bPlayer.isAvatarState()) {
-					yield = getDayFactor(yield, this.player.getWorld());
-				} else {
-					yield = AvatarState.getValue(yield);
-				}
-
-				this.explosion.setYield((float) yield);
-				EXPLOSIONS.put(this.explosion, this);
-			} else {
-				final List<Entity> entities = GeneralMethods.getEntitiesAroundPoint(this.location, this.damageRadius);
-				for (final Entity entity : entities) {
-					if (entity instanceof LivingEntity) {
-						final double slope = -(this.explosionMaxDamage * .5) / (this.damageRadius - this.innerRadius);
-						double damage = 0;
-						if (entity.getWorld().equals(this.location.getWorld())) {
-							damage = slope * (entity.getLocation().distance(this.location) - this.innerRadius) + this.explosionMaxDamage;
-						}
-						if (damage < this.explosionMinDamage) {
-							damage = this.explosionMinDamage;
-						}
-
-						DamageHandler.damageEntity(entity, damage, this);
-						if (funThingVelocity != 0) {
-							Vector vec = entity.getLocation().toVector().subtract(location.toVector());
-							GeneralMethods.setVelocity(this, entity, vec.normalize().multiply(funThingVelocity));
-						}
+					DamageHandler.damageEntity(entity, damage, this);
+					if (funThingVelocity != 0) {
+						Vector vec = entity.getLocation().toVector().subtract(location.toVector());
+						GeneralMethods.setVelocity(this, entity, vec.normalize().multiply(funThingVelocity));
 					}
 				}
-				this.location.getWorld().playSound(this.location, Sound.ENTITY_GENERIC_EXPLODE, 5, 1);
-				ParticleEffect.EXPLOSION_HUGE.display(this.location, 1, 0, 0, 0);
 			}
+
+			if (this.canDamageBlocks && this.explosionRadius > 0 && canFireGrief()) {
+				for (final Block block : GeneralMethods.getBlocksAroundPoint(this.location, this.explosionRadius)) {
+					if (explosionPower >= block.getType().getBlastResistance()) {
+						new TempBlock(block, Material.AIR.createBlockData(), damagedRevertTime);
+					}
+				}
+			}
+
+			this.location.getWorld().playSound(this.location, Sound.ENTITY_GENERIC_EXPLODE, 5, 1);
+			ParticleEffect.EXPLOSION_HUGE.display(this.location, 1, 0, 0, 0);
 		}
 
 		this.ignite(this.location);

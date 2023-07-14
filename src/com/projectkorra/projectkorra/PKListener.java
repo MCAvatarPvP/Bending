@@ -743,6 +743,16 @@ public class PKListener implements Listener {
 
 	@EventHandler
 	private void onAbilityVelocity(AbilityVelocityAffectEntityEvent event) {
+		for (String s : ConfigManager.collisionConfig.get().getStringList("FallingBlockCollisions")) {
+			String[] abilities = s.split(", ");
+			if (abilities.length != 2) continue;
+
+			if (event.getAffected().hasMetadata(abilities[0].toLowerCase())
+					&& event.getAbility().getName().equalsIgnoreCase(abilities[1])) {
+				event.setCancelled(true);
+			}
+		}
+
 		if (!(event.getAffected() instanceof Player)) return;
 
 		Player player = (Player) event.getAffected();

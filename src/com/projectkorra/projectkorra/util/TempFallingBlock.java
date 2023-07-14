@@ -1,10 +1,12 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.entity.FallingBlock;
+import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
@@ -29,6 +31,7 @@ public class TempFallingBlock {
         this.fallingblock = location.getWorld().spawnFallingBlock(location, data.clone());
         this.fallingblock.setVelocity(velocity);
         this.fallingblock.setDropItem(false);
+        this.fallingblock.setMetadata(ability.getName().toLowerCase(), new FixedMetadataValue(ProjectKorra.plugin, this));
         this.ability = ability;
         this.creation = System.currentTimeMillis();
         this.expire = expire;

@@ -50,7 +50,8 @@ public class ConfigManager {
 			presetConfig.save();
 		} else if (type == ConfigType.COLLISION) {
 			config = collisionConfig.get();
-			config.addDefault("Collisions", Arrays.asList("FirstAbil, SecondAbil"));
+			config.addDefault("Collisions", Arrays.asList("FirstAbility, SecondAbility"));
+			config.addDefault("FallingBlockCollisions", Arrays.asList("FallingBlockAbility, VelocityAbility"));
 			collisionConfig.save();
 		} else if (type == ConfigType.LANGUAGE) {
 			config = languageConfig.get();
