@@ -62,6 +62,7 @@ public class FireManipulation extends FireAbility {
 			this.damageInterval = getConfig().getLong("Abilities.Fire.FireManipulation.Shield.DamageInterval");
 			this.minimumShootTime = getConfig().getLong("Abilities.Fire.FireManipulation.Stream.MinimumShootTime");
 			this.points = new ConcurrentHashMap<>();
+			damageTick = 0;
 		} else if (this.fireManipulationType == FireManipulationType.CLICK) {
 
 		}

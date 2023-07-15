@@ -1610,6 +1610,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.FireManipulation.Stream.Cooldown", 12000);
 			config.addDefault("Abilities.Fire.FireManipulation.Stream.Range", 50);
 			config.addDefault("Abilities.Fire.FireManipulation.Stream.Damage", 2);
+			config.addDefault("Abilities.Fire.FireManipulation.Stream.DamageInterval", 0);
 			config.addDefault("Abilities.Fire.FireManipulation.Stream.Speed", 0.75);
 			config.addDefault("Abilities.Fire.FireManipulation.Stream.SideSpeed", 0.0);
 			config.addDefault("Abilities.Fire.FireManipulation.Stream.CollisionRadius", 0.4);

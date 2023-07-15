@@ -20,6 +20,7 @@ public class FireManipulationStream extends FireAbility {
 	private long streamCooldown;
 	private double streamRange;
 	private double streamDamage;
+	private long damageInterval;
 	private double streamSpeed, streamSideSpeed;
 	private double streamCollisionRadius;
 	private int streamParticles;
@@ -35,6 +36,7 @@ public class FireManipulationStream extends FireAbility {
 	private Location shotPoint;
 	private Location origin;
 	private Location focalPoint;
+	private int damageTick;
 
 	private FireManipulation parentAbility;
 
@@ -50,6 +52,7 @@ public class FireManipulationStream extends FireAbility {
 		this.streamCooldown = applyModifiersCooldown(getConfig().getLong("Abilities.Fire.FireManipulation.Stream.Cooldown"));
 		this.streamRange = applyModifiersRange(getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.Range"));
 		this.streamDamage = applyModifiersDamage(getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.Damage"));
+		this.damageInterval = getConfig().getLong("Abilities.Fire.FireManipulation.Stream.DamageInterval");
 		this.streamSpeed = getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.Speed");
 		this.streamSideSpeed = getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.SideSpeed");
 		this.streamCollisionRadius = getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.CollisionRadius");
@@ -62,6 +65,7 @@ public class FireManipulationStream extends FireAbility {
 		this.origin = this.player.getLocation().clone();
 		this.points = new ConcurrentHashMap<>();
 		points.putAll(parentAbility.getPoints());
+		damageTick = 0;
 	}
 
 	@Override
@@ -128,9 +132,12 @@ public class FireManipulationStream extends FireAbility {
 			}
 
 			playFirebendingParticles(this.shotPoint, this.streamParticles, 0.5, 0.5, 0.5);
-			for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(this.shotPoint, 2)) {
-				if (entity instanceof LivingEntity && entity.getUniqueId() != this.player.getUniqueId()) {
-					DamageHandler.damageEntity(entity, this.streamDamage, this);
+			if (System.currentTimeMillis() - this.getStartTime() > this.damageTick * this.damageInterval) {
+				this.damageTick++;
+				for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(this.shotPoint, 2)) {
+					if (entity instanceof LivingEntity && entity.getUniqueId() != this.player.getUniqueId()) {
+						DamageHandler.damageEntity(entity, this.streamDamage, this);
+					}
 				}
 			}
 			if (new Random().nextInt(5) == 0) {
