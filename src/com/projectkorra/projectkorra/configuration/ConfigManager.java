@@ -1619,6 +1619,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.FireManipulation.Shield.Cooldown", 6000);
 			config.addDefault("Abilities.Fire.FireManipulation.Shield.Range", 4);
 			config.addDefault("Abilities.Fire.FireManipulation.Shield.Damage", 1);
+			config.addDefault("Abilities.Fire.FireManipulation.Shield.DamageInterval", 0);
 			config.addDefault("Abilities.Fire.FireManipulation.Shield.CollisionRadius", 0.4);
 			config.addDefault("Abilities.Fire.FireManipulation.Shield.MaxDuration", 5000L);
 			config.addDefault("Abilities.Fire.FireManipulation.Shield.Particles", 12);
