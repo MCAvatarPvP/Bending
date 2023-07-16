@@ -1582,6 +1582,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.FireBlast.Charged.ExplosionMaximumDamage", 4);
 			config.addDefault("Abilities.Fire.FireBlast.Charged.DamageRadius", 4);
 			config.addDefault("Abilities.Fire.FireBlast.Charged.DamageBlocks", true);
+			config.addDefault("Abilities.Fire.FireBlast.Charged.DamagedBlocksRevertTime", 3000);
 			config.addDefault("Abilities.Fire.FireBlast.Charged.ExplosionRadius", 1);
 			config.addDefault("Abilities.Fire.FireBlast.Charged.ExplosionPower", 6);
 			config.addDefault("Abilities.Fire.FireBlast.Charged.FunThing", 0);

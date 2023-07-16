@@ -11,6 +11,7 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
@@ -239,7 +240,7 @@ public class FireBlastCharged extends FireAbility {
 				}
 			}
 
-			if (this.canDamageBlocks && this.explosionRadius > 0 && canFireGrief()) {
+			if (this.canDamageBlocks && this.explosionRadius > 0) {
 				for (final Block block : GeneralMethods.getBlocksAroundPoint(this.location, this.explosionRadius)) {
 					if (explosionPower >= (double) block.getType().getBlastResistance()) {
 						new TempBlock(block, Material.AIR.createBlockData(), damagedRevertTime);
@@ -286,8 +287,8 @@ public class FireBlastCharged extends FireAbility {
 	}
 
 	private void ignite(final Location location) {
-		for (final Block block : GeneralMethods.getBlocksAroundPoint(location, this.collisionRadius)) {
-			if (isIgnitable(block)) {
+		for (final Block block : GeneralMethods.getBlocksAroundPoint(location, this.explosionRadius)) {
+			if (isIgnitable(block) && block.getRelative(BlockFace.DOWN).getType().isSolid()) {
 				createTempFire(block.getLocation());
 			}
 		}
