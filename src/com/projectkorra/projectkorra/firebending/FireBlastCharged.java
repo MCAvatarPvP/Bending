@@ -63,6 +63,7 @@ public class FireBlastCharged extends FireAbility {
 	private double innerRadius;
 	@Attribute(Attribute.FIRE_TICK)
 	private double fireTicks;
+	private double fireRadius;
 	private TNTPrimed explosion;
 	private Location origin;
 	private Location location;
@@ -94,6 +95,7 @@ public class FireBlastCharged extends FireAbility {
 		this.explosionPower = getConfig().getDouble("Abilities.Fire.FireBlast.Charged.ExplosionPower");
 		this.damagedRevertTime = getConfig().getLong("Abilities.Fire.FireBlast.Charged.DamagedBlocksRevertTime");
 		this.fireTicks = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.Charged.FireTicks"));
+		this.fireRadius = getConfig().getDouble("Abilities.Fire.FireBlast.Charged.FireRadius");
 		this.funThingVelocity = getConfig().getDouble("Abilities.Fire.FireBlast.Charged.FunThing");
 		this.innerRadius = this.damageRadius / 2;
 
@@ -287,7 +289,7 @@ public class FireBlastCharged extends FireAbility {
 	}
 
 	private void ignite(final Location location) {
-		for (final Block block : GeneralMethods.getBlocksAroundPoint(location, this.explosionRadius)) {
+		for (final Block block : GeneralMethods.getBlocksAroundPoint(location, this.fireRadius)) {
 			if (isIgnitable(block) && block.getRelative(BlockFace.DOWN).getType().isSolid()) {
 				createTempFire(block.getLocation());
 			}

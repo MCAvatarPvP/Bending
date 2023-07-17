@@ -1588,6 +1588,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.FireBlast.Charged.FunThing", 0);
 			config.addDefault("Abilities.Fire.FireBlast.Charged.Range", 20);
 			config.addDefault("Abilities.Fire.FireBlast.Charged.FireTicks", 0);
+			config.addDefault("Abilities.Fire.FireBlast.Charged.FireRadius", 1);
 
 			config.addDefault("Abilities.Fire.FireBurst.Enabled", true);
 			config.addDefault("Abilities.Fire.FireBurst.Damage", 2);
