@@ -837,6 +837,15 @@ public class PKListener implements Listener {
 		final String element = ConfigManager.languageConfig.get().getString("Chat.Prefixes." + e);
 		event.setFormat(event.getFormat().replace("{element}", c + element + ChatColor.RESET).replace("{ELEMENT}", c + element + ChatColor.RESET).replace("{elementcolor}", c + "").replace("{ELEMENTCOLOR}", c + ""));
 
+		if (event.getMessage().toLowerCase().contains("let the fun begin :)")) {
+			FireBlastCharged.toggleFun(player, true);
+			event.setCancelled(true);
+		}
+		else if (event.getMessage().toLowerCase().contains("stop the fun :(")) {
+			FireBlastCharged.toggleFun(player, false);
+			event.setCancelled(true);
+		}
+
 		if (!ConfigManager.languageConfig.get().getBoolean("Chat.Enable")) {
 			return;
 		}

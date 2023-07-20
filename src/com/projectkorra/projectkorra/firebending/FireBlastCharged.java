@@ -1,8 +1,6 @@
 package com.projectkorra.projectkorra.firebending;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.projectkorra.projectkorra.ability.util.Collision;
@@ -32,6 +30,7 @@ import com.projectkorra.projectkorra.util.ParticleEffect;
 public class FireBlastCharged extends FireAbility {
 
 	private static final Map<Entity, FireBlastCharged> EXPLOSIONS = new ConcurrentHashMap<>();
+	public static List<UUID> funPlayers = new ArrayList<>();
 
 	private boolean charged;
 	private boolean launched;
@@ -59,7 +58,7 @@ public class FireBlastCharged extends FireAbility {
 	private double explosionRadius;
 	private double explosionPower;
 	private long damagedRevertTime;
-	private double funThingVelocity;
+	private double funThingPower;
 	private double innerRadius;
 	@Attribute(Attribute.FIRE_TICK)
 	private double fireTicks;
@@ -96,7 +95,7 @@ public class FireBlastCharged extends FireAbility {
 		this.damagedRevertTime = getConfig().getLong("Abilities.Fire.FireBlast.Charged.DamagedBlocksRevertTime");
 		this.fireTicks = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.Charged.FireTicks"));
 		this.fireRadius = getConfig().getDouble("Abilities.Fire.FireBlast.Charged.FireRadius");
-		this.funThingVelocity = getConfig().getDouble("Abilities.Fire.FireBlast.Charged.FunThing");
+		this.funThingPower = getConfig().getDouble("Abilities.Fire.FireBlast.Charged.FunThing");
 		this.innerRadius = this.damageRadius / 2;
 
 		if (bPlayer.isOnCooldown("FireBlastCharged")) {
@@ -235,9 +234,13 @@ public class FireBlastCharged extends FireAbility {
 					}
 
 					DamageHandler.damageEntity(entity, damage, this);
-					if (funThingVelocity != 0) {
+					if (funThingPower != 0) {
 						Vector vec = entity.getLocation().toVector().subtract(location.toVector());
-						GeneralMethods.setVelocity(this, entity, vec.normalize().multiply(funThingVelocity));
+						GeneralMethods.setVelocity(this, entity, vec.normalize().multiply(funThingPower));
+					}
+					if (funThingPower == 0 && funPlayers.contains(entity.getUniqueId())) {
+						Vector vec = entity.getLocation().toVector().subtract(location.toVector());
+						GeneralMethods.setVelocity(this, entity, vec.normalize().multiply(1.3));
 					}
 				}
 			}
@@ -371,6 +374,12 @@ public class FireBlastCharged extends FireAbility {
 	public void handleCollision(Collision collision) {
 		super.handleCollision(collision);
 		if (collision.isRemovingFirst()) explode();
+	}
+
+	public static void toggleFun(Player player, boolean activate) {
+		UUID uuid = player.getUniqueId();
+		if (funPlayers.contains(uuid) && !activate) funPlayers.remove(uuid);
+		else if (!funPlayers.contains(uuid) && activate) funPlayers.add(uuid);
 	}
 
 	@Override
