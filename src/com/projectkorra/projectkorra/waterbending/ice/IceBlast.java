@@ -21,6 +21,7 @@ import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.IceAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.util.BlockSource;
+import com.projectkorra.projectkorra.util.BlockSource.BlockSourceType;
 import com.projectkorra.projectkorra.util.ClickType;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
@@ -75,7 +76,8 @@ public class IceBlast extends IceAbility {
 		}
 
 		block(player);
-		final Block sourceBlock = BlockSource.getWaterSourceBlock(player, this.range, ClickType.SHIFT_DOWN, false, true, false, this.allowSnow, false);
+		final Block sourceBlock = BlockSource.getSourceBlock(player, this.range, BlockSourceType.ICE, ClickType.SHIFT_DOWN);
+		if (sourceBlock == null && allowSnow) BlockSource.getSourceBlock(player, this.range, BlockSourceType.SNOW, ClickType.SHIFT_DOWN);
 		final IceBlast oldAbil = getAbility(player, IceBlast.class);
 		if (oldAbil != null) {
 			oldAbil.setSourceBlock(sourceBlock == null ? oldAbil.getSourceBlock() : sourceBlock);
