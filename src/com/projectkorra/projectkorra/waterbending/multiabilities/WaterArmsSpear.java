@@ -51,6 +51,7 @@ public class WaterArmsSpear extends WaterAbility {
 	private long usageCooldown;
 	@Attribute(Attribute.DAMAGE)
 	private double spearDamage;
+	private double spearRadius;
 	private Arm arm;
 	private Location location;
 	private Location initLocation;
@@ -75,6 +76,7 @@ public class WaterArmsSpear extends WaterAbility {
 		this.spearDurationFullMoon = getConfig().getLong("Abilities.Water.WaterArms.Spear.NightAugments.Duration.FullMoon");
 		this.usageCooldown = applyInverseModifiers(getConfig().getLong("Abilities.Water.WaterArms.Arms.Cooldowns.UsageCooldown.Spear"));
 		this.spearDamage = applyModifiers(getConfig().getDouble("Abilities.Water.WaterArms.Spear.Damage"));
+		this.spearRadius = getConfig().getDouble("Abilities.Water.WaterArms.Spear.Radius");
 		this.spearLocations = new ArrayList<>();
 
 		this.getNightAugments();
@@ -161,7 +163,7 @@ public class WaterArmsSpear extends WaterAbility {
 
 	private void progressSpear() {
 		for (int i = 0; i < 2; i++) {
-			for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(this.location, 2)) {
+			for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(this.location, spearRadius)) {
 				if (entity instanceof LivingEntity && entity.getEntityId() != this.player.getEntityId() && !(entity instanceof ArmorStand)) {
 					this.hitEntity = true;
 					this.location = entity.getLocation();

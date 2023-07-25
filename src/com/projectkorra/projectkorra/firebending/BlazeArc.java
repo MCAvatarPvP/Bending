@@ -41,6 +41,8 @@ public class BlazeArc extends FireAbility {
 		this.origin = location.clone();
 		this.location = this.origin.clone();
 
+		if (!location.getBlock().getRelative(BlockFace.DOWN).getType().isSolid()) location.add(0,-1,0);
+
 		this.direction = direction.clone();
 		this.direction.setY(0);
 		this.direction = this.direction.clone().normalize();

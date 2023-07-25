@@ -1262,6 +1262,7 @@ public class ConfigManager {
 
 			config.addDefault("Abilities.Water.WaterArms.Spear.Range", 30);
 			config.addDefault("Abilities.Water.WaterArms.Spear.Damage", 3);
+			config.addDefault("Abilities.Water.WaterArms.Spear.Radius", 2);
 			config.addDefault("Abilities.Water.WaterArms.Spear.DamageEnabled", true);
 			config.addDefault("Abilities.Water.WaterArms.Spear.SphereRadius", 2);
 			config.addDefault("Abilities.Water.WaterArms.Spear.Duration", 4500);
