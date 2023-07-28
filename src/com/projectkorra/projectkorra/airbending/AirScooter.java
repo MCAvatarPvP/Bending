@@ -110,9 +110,10 @@ public class AirScooter extends AirAbility {
 	 * @param player The player to check
 	 * @return false If player doesn't have an instance
 	 */
-	public static boolean check(final Player player) {
-		if (hasAbility(player, AirScooter.class)) {
-			getAbility(player, AirScooter.class).remove();
+	private boolean check(final Player player) {
+		final AirScooter scooter = getAbility(player, AirScooter.class);
+		if (scooter != null) {
+			scooter.remove();
 			return true;
 		}
 		return false;
