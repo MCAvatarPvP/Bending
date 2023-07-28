@@ -263,3 +263,18 @@ permissions:
   bending.donor:
     default: false
     description: Grants the Donor tag.
+  bending.element.air:
+    default: true
+    description: Grants access to all Air abilities
+  bending.element.earth:
+    default: true
+    description: Grants access to all Earth abilities
+  bending.element.fire:
+    default: true
+    description: Grants access to all Fire abilities
+  bending.element.water:
+    default: true
+    description: Grants access to all Water abilities
+  bending.element.chi:
+    default: true
+    description: Grants access to all Chi abilities

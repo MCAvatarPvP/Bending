@@ -204,6 +204,8 @@ public class BendingPlayer extends OfflineBendingPlayer {
 
 		if (element == null || this.player == null) {
 			return false;
+		} else if (!this.player.hasPermission("bending.element." + GeneralMethods.getParentElement(ability.getElement()).getName())) {
+			return false;
 		} else if (!this.player.hasPermission("bending." + element.getName() + ".passive")) {
 			return false;
 		} else if (!this.player.hasPermission("bending.ability." + ability.getName())) {
@@ -250,6 +252,8 @@ public class BendingPlayer extends OfflineBendingPlayer {
 
 	public boolean canBind(final CoreAbility ability) {
 		if (ability == null || !this.player.isOnline() || !ability.isEnabled()) {
+			return false;
+		} else if (!this.player.hasPermission("bending.element." + GeneralMethods.getParentElement(ability.getElement()).getName())) {
 			return false;
 		} else if (!this.player.hasPermission("bending.ability." + ability.getName())) {
 			return false;

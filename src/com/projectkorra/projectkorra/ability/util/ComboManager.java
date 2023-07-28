@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.projectkorra.projectkorra.GeneralMethods;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -61,6 +62,8 @@ public class ComboManager {
 
 		final ComboAbilityInfo comboAbil = checkForValidCombo(player);
 		if (comboAbil == null) {
+			return;
+		} else if (!player.hasPermission("bending.element." + GeneralMethods.getParentElement(CoreAbility.getAbility(comboAbil.getName()).getElement()).getName())) {
 			return;
 		} else if (!player.hasPermission("bending.ability." + comboAbil.getName())) {
 			return;
