@@ -1082,6 +1082,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.AirSweep.Damage", 3);
 			config.addDefault("Abilities.Air.AirSweep.Knockback", 3.5);
 			config.addDefault("Abilities.Air.AirSweep.OldKnockback", true);
+			config.addDefault("Abilities.Air.AirSweep.OldBehavior", true);
 			config.addDefault("Abilities.Air.AirSweep.HeightOffset", 0);
 			config.addDefault("Abilities.Air.AirSweep.Cooldown", 6000);
 			config.addDefault("Abilities.Air.AirSweep.Radius", 1);

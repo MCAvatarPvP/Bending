@@ -41,6 +41,7 @@ public class AirSweep extends AirAbility implements ComboAbility {
 	@Attribute(Attribute.HEIGHT)
 	private double heightOffset;
 	private boolean oldKnockback;
+	private boolean oldBehavior;
 	private Location origin;
 	private Location currentLoc;
 	private Location destination;
@@ -69,6 +70,7 @@ public class AirSweep extends AirAbility implements ComboAbility {
 		this.knockback = getConfig().getDouble("Abilities.Air.AirSweep.Knockback");
 		this.heightOffset = getConfig().getDouble("Abilities.Air.AirSweep.HeightOffset");
 		this.oldKnockback = getConfig().getBoolean("Abilities.Air.AirSweep.OldKnockback");
+		this.oldBehavior = getConfig().getBoolean("Abilities.Air.AirSweep.OldBehavior");
 		this.cooldown = getConfig().getLong("Abilities.Air.AirSweep.Cooldown");
 		this.radius = getConfig().getDouble("Abilities.Air.AirSweep.Radius");
 		this.activationDelayTicks = getConfig().getInt("Abilities.Air.AirSweep.ActivationDelayTicks");
@@ -143,14 +145,19 @@ public class AirSweep extends AirAbility implements ComboAbility {
 		if (this.origin == null) {
 			this.direction = this.player.getEyeLocation().getDirection().normalize();
 			this.origin = GeneralMethods.getMainHandLocation(player).add(this.direction.clone().multiply(10));
+			if (oldBehavior) this.origin = this.player.getLocation().add(this.direction.clone().multiply(10));
 		}
 		if (this.progressCounter < activationDelayTicks) {
 			return;
 		}
 		if (this.destination == null) {
 			this.destination = GeneralMethods.getMainHandLocation(player).add(GeneralMethods.getMainHandLocation(player).getDirection().normalize().multiply(10));
+			Location hand = GeneralMethods.getMainHandLocation(player).add(0, heightOffset, 0);
+			if (oldBehavior) {
+				this.destination = this.player.getLocation().add(player.getEyeLocation().getDirection().normalize().multiply(10));
+				hand = this.player.getLocation();
+			}
 			final Vector origToDest = GeneralMethods.getDirection(this.origin, this.destination);
-			final Location hand = GeneralMethods.getMainHandLocation(player).add(0, heightOffset, 0);
 			for (double i = 0; i < 30; i++) {
 				final Location endLoc = this.origin.clone().add(origToDest.clone().multiply(i / 30));
 				if (GeneralMethods.locationEqualsIgnoreDirection(hand, endLoc)) {
