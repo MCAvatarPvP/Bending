@@ -204,8 +204,6 @@ public class BendingPlayer extends OfflineBendingPlayer {
 
 		if (element == null || this.player == null) {
 			return false;
-		} else if (!this.player.hasPermission("bending.element." + GeneralMethods.getParentElement(ability.getElement()).getName())) {
-			return false;
 		} else if (!this.player.hasPermission("bending." + element.getName() + ".passive")) {
 			return false;
 		} else if (!this.player.hasPermission("bending.ability." + ability.getName())) {

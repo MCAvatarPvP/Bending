@@ -63,8 +63,6 @@ public class ComboManager {
 		final ComboAbilityInfo comboAbil = checkForValidCombo(player);
 		if (comboAbil == null) {
 			return;
-		} else if (!player.hasPermission("bending.element." + GeneralMethods.getParentElement(CoreAbility.getAbility(comboAbil.getName()).getElement()).getName())) {
-			return;
 		} else if (!player.hasPermission("bending.ability." + comboAbil.getName())) {
 			return;
 		}

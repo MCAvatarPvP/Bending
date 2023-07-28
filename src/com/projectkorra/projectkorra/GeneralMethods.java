@@ -202,8 +202,7 @@ public class GeneralMethods {
 	}
 
 	public static boolean canView(final Player player, final String ability) {
-		return player.hasPermission("bending.ability." + ability)
-				&& player.hasPermission("bending.element." + getParentElement(CoreAbility.getAbility(ability).getElement()).getName());
+		return player.hasPermission("bending.ability." + ability);
 	}
 
 	public static Element getParentElement(Element element) {
