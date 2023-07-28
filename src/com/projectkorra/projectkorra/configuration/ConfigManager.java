@@ -1629,10 +1629,12 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.FireManipulation.Stream.Range", 50);
 			config.addDefault("Abilities.Fire.FireManipulation.Stream.Damage", 2);
 			config.addDefault("Abilities.Fire.FireManipulation.Stream.DamageInterval", 0);
+			config.addDefault("Abilities.Fire.FireManipulation.Stream.MaxDuration", 0);
 			config.addDefault("Abilities.Fire.FireManipulation.Stream.Speed", 0.75);
 			config.addDefault("Abilities.Fire.FireManipulation.Stream.SideSpeed", 0.0);
 			config.addDefault("Abilities.Fire.FireManipulation.Stream.CollisionRadius", 0.4);
 			config.addDefault("Abilities.Fire.FireManipulation.Stream.Particles", 50);
+			config.addDefault("Abilities.Fire.FireManipulation.Stream.RangeEnabled", true);
 			config.addDefault("Abilities.Fire.FireManipulation.Stream.MinimumShootTime", 1500);
 
 			config.addDefault("Abilities.Fire.FireManipulation.Shield.Cooldown", 6000);

@@ -21,10 +21,12 @@ public class FireManipulationStream extends FireAbility {
 	private double streamRange;
 	private double streamDamage;
 	private long damageInterval;
+	private long streamMaxDuration;
 	private double streamSpeed, streamSideSpeed;
 	private double streamCollisionRadius;
 	private int streamParticles;
 	private boolean streamSneaking = true;
+	private boolean streamRangeEnabled;
 	private long streamRemoveTime = 0;
 	private Vector streamSneakDirection;
 
@@ -37,6 +39,7 @@ public class FireManipulationStream extends FireAbility {
 	private Location origin;
 	private Location focalPoint;
 	private int damageTick;
+	private long time;
 
 	private FireManipulation parentAbility;
 
@@ -53,10 +56,12 @@ public class FireManipulationStream extends FireAbility {
 		this.streamRange = applyModifiersRange(getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.Range"));
 		this.streamDamage = applyModifiersDamage(getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.Damage"));
 		this.damageInterval = getConfig().getLong("Abilities.Fire.FireManipulation.Stream.DamageInterval");
+		this.streamMaxDuration = getConfig().getLong("Abilities.Fire.FireManipulation.Stream.MaxDuration");
 		this.streamSpeed = getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.Speed");
 		this.streamSideSpeed = getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.SideSpeed");
 		this.streamCollisionRadius = getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.CollisionRadius");
 		this.streamParticles = getConfig().getInt("Abilities.Fire.FireManipulation.Stream.Particles");
+		this.streamRangeEnabled = getConfig().getBoolean("Abilities.Fire.FireManipulation.Stream.RangeEnabled");
 
 		this.shieldRange = applyModifiersRange(getConfig().getDouble("Abilities.Fire.FireManipulation.Shield.Range"));
 		this.shieldParticles = getConfig().getInt("Abilities.Fire.FireManipulation.Shield.Particles");
@@ -90,6 +95,7 @@ public class FireManipulationStream extends FireAbility {
 			if (readyToFire) {
 				this.shotPoint = this.focalPoint.clone();
 				this.firing = true;
+				time = System.currentTimeMillis();
 				return;
 			}
 			for (final Location point : this.points.keySet()) {
@@ -98,7 +104,8 @@ public class FireManipulationStream extends FireAbility {
 				playFirebendingParticles(point, this.shieldParticles, 0.25, 0.25, 0.25);
 			}
 		} else {
-			Vector direction = this.player.getLocation().getDirection().clone();
+			Location dest = GeneralMethods.getTargetedLocation(this.player, this.streamRange, getTransparentMaterials());
+			Vector direction = GeneralMethods.getDirection(shotPoint, dest).normalize();
 			if (this.streamSneaking && !this.player.isSneaking()) {
 				this.streamSneaking = false;
 				this.streamRemoveTime = System.currentTimeMillis();
@@ -120,13 +127,20 @@ public class FireManipulationStream extends FireAbility {
 			shotPoint.add(sideDir);
 
 			this.shotPoint.add(direction.multiply(this.streamSpeed));
-			if (this.shotPoint.distance(this.origin) > this.streamRange) {
+			if (this.streamRangeEnabled && this.shotPoint.distance(this.origin) > this.streamRange) {
+				player.sendMessage("range");
+				this.bPlayer.addCooldown(this, this.streamCooldown);
+				this.remove();
+				return;
+			}
+			if (this.streamMaxDuration != 0 && System.currentTimeMillis() > time + this.streamMaxDuration) {
+				player.sendMessage("duration");
 				this.bPlayer.addCooldown(this, this.streamCooldown);
 				this.remove();
 				return;
 			}
 			if (GeneralMethods.isSolid(this.shotPoint.getBlock())) {
-				this.bPlayer.addCooldown(this);
+				this.bPlayer.addCooldown(this, this.streamCooldown);
 				this.remove();
 				return;
 			}
