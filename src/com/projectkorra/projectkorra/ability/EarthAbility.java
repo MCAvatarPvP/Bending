@@ -270,7 +270,6 @@ public abstract class EarthAbility extends ElementalAbility {
 
 		if (MOVED_EARTH.containsKey(block)) {
 			info = MOVED_EARTH.get(block);
-			MOVED_EARTH.remove(block);
 
 		} else {
 			info = new Information();
@@ -598,6 +597,15 @@ public abstract class EarthAbility extends ElementalAbility {
 		}
 	}
 
+	public static void revertAirBlock(Block block) {
+		int i = 0;
+		for (Information info : TEMP_AIR_LOCATIONS.values()) {
+			if (block.equals(info.getBlock())) break;
+			i++;
+		}
+		revertAirBlock(i);
+	}
+
 	public static boolean revertBlock(final Block block) {
 		if (!isEarthRevertOn()) {
 			MOVED_EARTH.remove(block);
@@ -613,6 +621,7 @@ public abstract class EarthAbility extends ElementalAbility {
 			}
 
 			if (block.equals(sourceblock)) {
+				revertAirBlock(sourceblock);
 				info.getState().update(true, false);
 				if (RaiseEarth.blockInAllAffectedBlocks(sourceblock)) {
 					RaiseEarth.revertAffectedBlock(sourceblock);
@@ -631,6 +640,7 @@ public abstract class EarthAbility extends ElementalAbility {
 			}
 
 			if (ElementalAbility.isAir(sourceblock.getType()) || sourceblock.isLiquid()) {
+				revertAirBlock(sourceblock);
 				info.getState().update(true, false);
 			} else {
 
