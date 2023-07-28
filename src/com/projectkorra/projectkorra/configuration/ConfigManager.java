@@ -707,6 +707,9 @@ public class ConfigManager {
 			config.addDefault("Properties.Air.CanBendWithWeapons", false);
 			config.addDefault("Properties.Air.Particles", "spell");
 			config.addDefault("Properties.Air.PlaySound", true);
+			config.addDefault("Properties.Air.MaxLavaTickDuration", 60);
+			config.addDefault("Properties.Air.MinFireTickDuration", 20);
+			config.addDefault("Properties.Air.MaxFireTickDuration", 40);
 			config.addDefault("Properties.Air.Sound.Sound", "ENTITY_CREEPER_HURT");
 			config.addDefault("Properties.Air.Sound.Volume", 1);
 			config.addDefault("Properties.Air.Sound.Pitch", 2);
@@ -718,6 +721,9 @@ public class ConfigManager {
 			config.addDefault("Properties.Water.IceBlocks", iceBlocks);
 			config.addDefault("Properties.Water.PlantBlocks", plantBlocks);
 			config.addDefault("Properties.Water.SnowBlocks", snowBlocks);
+			config.addDefault("Properties.Water.MaxLavaTickDuration", 60);
+			config.addDefault("Properties.Water.MinFireTickDuration", 20);
+			config.addDefault("Properties.Water.MaxFireTickDuration", 40);
 			config.addDefault("Properties.Water.NightFactor", 1.25);
 			config.addDefault("Properties.Water.PlaySound", true);
 			config.addDefault("Properties.Water.WaterSound.Sound", "BLOCK_WATER_AMBIENT");
@@ -741,6 +747,8 @@ public class ConfigManager {
 			config.addDefault("Properties.Earth.MetalPowerFactor", 1.5);
 			config.addDefault("Properties.Earth.MaxLavaDamage", 1);
 			config.addDefault("Properties.Earth.MaxLavaTickDuration", 60);
+			config.addDefault("Properties.Earth.MinFireTickDuration", 20);
+			config.addDefault("Properties.Earth.MaxFireTickDuration", 40);
 			config.addDefault("Properties.Earth.PlaySound", true);
 			config.addDefault("Properties.Earth.EarthSound.Sound", "ENTITY_GHAST_SHOOT");
 			config.addDefault("Properties.Earth.EarthSound.Volume", 1);
@@ -760,6 +768,8 @@ public class ConfigManager {
 			config.addDefault("Properties.Fire.PlaySound", true);
 			config.addDefault("Properties.Fire.FireGriefing", false);
 			config.addDefault("Properties.Fire.RevertTicks", 12000L);
+			config.addDefault("Properties.Fire.MaxLavaTickDuration", 60);
+			config.addDefault("Properties.Fire.MinFireTickDuration", 20);
 			config.addDefault("Properties.Fire.MaxFireTickDuration", 40);
 			config.addDefault("Properties.Fire.FireSound.Sound", "BLOCK_FIRE_AMBIENT");
 			config.addDefault("Properties.Fire.FireSound.Volume", 1);
@@ -781,6 +791,9 @@ public class ConfigManager {
 			config.addDefault("Properties.Fire.BlueFire.RangeFactor", 1.2);
 
 			config.addDefault("Properties.Chi.CanBendWithWeapons", true);
+			config.addDefault("Properties.Chi.MaxLavaTickDuration", 60);
+			config.addDefault("Properties.Chi.MinFireTickDuration", 20);
+			config.addDefault("Properties.Chi.MaxFireTickDuration", 40);
 
 			final ArrayList<String> disabledWorlds = new ArrayList<String>();
 			disabledWorlds.add("TestWorld");

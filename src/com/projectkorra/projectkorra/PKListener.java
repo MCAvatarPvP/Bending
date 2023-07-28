@@ -514,22 +514,25 @@ public class PKListener implements Listener {
 			FireDamageTimer.dealFlameDamage(entity);
 		}
 
-		int maxFireTicks = ConfigManager.getConfig().getInt("Properties.Fire.MaxFireTickDuration");
-		int maxLavaTicks = ConfigManager.getConfig().getInt("Properties.Earth.MaxLavaTickDuration");
-		if (event.getCause() == DamageCause.FIRE && entity.getFireTicks() > maxFireTicks) {
-			entity.setFireTicks(maxFireTicks);
-		} else if (event.getCause() == DamageCause.LAVA) {
-			if (entity.getFireTicks() > maxLavaTicks) entity.setFireTicks(maxLavaTicks);
-
-			double maxLavaDmg = ConfigManager.getConfig().getDouble("Properties.Earth.MaxLavaDamage");
-			if (event.getDamage() > maxLavaDmg) event.setDamage(maxLavaDmg);
-		}
-
 		if (entity instanceof Player) {
 			final Player player = (Player) entity;
 			final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
 			if (bPlayer == null) {
 				return;
+			}
+
+			Element element = GeneralMethods.getParentElement(bPlayer.getBoundAbility().getElement());
+			int minFireTicks = ConfigManager.getConfig().getInt("Properties." + element.getName() + ".MinFireTickDuration");
+			int maxFireTicks = ConfigManager.getConfig().getInt("Properties." + element.getName() + ".MaxFireTickDuration");
+			int maxLavaTicks = ConfigManager.getConfig().getInt("Properties." + element.getName() + ".MaxLavaTickDuration");
+			if (event.getCause() == DamageCause.FIRE) {
+				if (player.getFireTicks() < minFireTicks) player.setFireTicks(minFireTicks);
+				else if (player.getFireTicks() > maxFireTicks) player.setFireTicks(maxFireTicks);
+			} else if (event.getCause() == DamageCause.LAVA) {
+				if (player.getFireTicks() > maxLavaTicks) player.setFireTicks(maxLavaTicks);
+
+				double maxLavaDmg = ConfigManager.getConfig().getDouble("Properties.Earth.MaxLavaDamage");
+				if (event.getDamage() > maxLavaDmg) event.setDamage(maxLavaDmg);
 			}
 
 			if (CoreAbility.hasAbility(player, EarthGrab.class)) {
