@@ -30,6 +30,7 @@ public class EarthSmash extends EarthAbility {
 	private boolean allowGrab;
 	@Attribute("AllowFlight")
 	private boolean allowFlight;
+	private boolean redirectOnCd;
 	private boolean ignoreBinds;
 	private int animationCounter;
 	private int progressCounter;
@@ -101,7 +102,7 @@ public class EarthSmash extends EarthAbility {
 
 			EarthSmash grabbedSmash = this.aimingAtSmashCheck(player, State.LIFTED);
 			if (grabbedSmash == null) {
-				if (this.bPlayer.isOnCooldown(this)) {
+				if (!redirectOnCd && this.bPlayer.isOnCooldown(this)) {
 					return;
 				}
 				grabbedSmash = this.aimingAtSmashCheck(player, State.SHOT);
@@ -151,6 +152,7 @@ public class EarthSmash extends EarthAbility {
 		this.hitRadius = getConfig().getDouble("Abilities.Earth.EarthSmash.Shoot.CollisionRadius");
 		this.allowGrab = getConfig().getBoolean("Abilities.Earth.EarthSmash.Grab.Enabled");
 		this.allowFlight = getConfig().getBoolean("Abilities.Earth.EarthSmash.Flight.Enabled");
+		this.redirectOnCd = getConfig().getBoolean("Abilities.Earth.EarthSmash.RedirectOnCooldown");
 		this.ignoreBinds = getConfig().getBoolean("Abilities.Earth.EarthSmash.Flight.IgnoreBinds");
 		this.selectRange = getConfig().getDouble("Abilities.Earth.EarthSmash.SelectRange");
 		this.grabRange = getConfig().getDouble("Abilities.Earth.EarthSmash.Grab.Range");
