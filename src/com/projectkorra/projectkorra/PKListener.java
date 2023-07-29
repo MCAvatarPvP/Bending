@@ -1429,6 +1429,8 @@ public class PKListener implements Listener {
 			BlockSource.update(player, ClickType.SHIFT_DOWN);
 		}
 
+		AirScooter.check(player);
+
 		final CoreAbility coreAbil = bPlayer.getBoundAbility();
 		final String abil = bPlayer.getBoundAbilityName();
 
@@ -1679,6 +1681,7 @@ public class PKListener implements Listener {
 		}
 
 		BlockSource.update(player, ClickType.LEFT_CLICK);
+		boolean canRideScooter = AirScooter.check(player);
 
 		String abil = bPlayer.getBoundAbilityName();
 		final CoreAbility coreAbil = bPlayer.getBoundAbility();
@@ -1698,7 +1701,7 @@ public class PKListener implements Listener {
 						AirSuction.shoot(player);
 					} else if (abil.equalsIgnoreCase("AirBurst")) {
 						AirBurst.coneBurst(player);
-					} else if (abil.equalsIgnoreCase("AirScooter")) {
+					} else if (abil.equalsIgnoreCase("AirScooter") && canRideScooter) {
 						new AirScooter(player);
 					} else if (abil.equalsIgnoreCase("AirSpout")) {
 						new AirSpout(player);
