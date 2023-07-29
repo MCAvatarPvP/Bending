@@ -22,6 +22,7 @@ import com.projectkorra.projectkorra.util.BlockSource;
 import com.projectkorra.projectkorra.util.ClickType;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.TempBlock;
+import com.projectkorra.projectkorra.util.Information;
 
 public class EarthBlast extends EarthAbility {
 	private boolean isProgressing;
@@ -301,9 +302,11 @@ public class EarthBlast extends EarthAbility {
 				if (isEarthRevertOn()) {
 					this.sourceBlock.setType(this.sourceType);
 
+					Information info = getMovedEarth().get(sourceBlock);
 					moveEarthBlock(this.sourceBlock, block);
 					if (!bPlayer.areSourceHolesOn() && source.getBlock().getType() != sourceMat) {
 						source.getBlock().setType(sourceMat);
+						if (info != null) getMovedEarth().put(source.getBlock(), info);
 					}
 
 					if (block.getType() == Material.SAND) {
