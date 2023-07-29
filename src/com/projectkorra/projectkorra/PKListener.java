@@ -1681,7 +1681,7 @@ public class PKListener implements Listener {
 		}
 
 		BlockSource.update(player, ClickType.LEFT_CLICK);
-		boolean canRideScooter = AirScooter.check(player);
+		boolean canRideScooter = !AirScooter.check(player);
 
 		String abil = bPlayer.getBoundAbilityName();
 		final CoreAbility coreAbil = bPlayer.getBoundAbility();
