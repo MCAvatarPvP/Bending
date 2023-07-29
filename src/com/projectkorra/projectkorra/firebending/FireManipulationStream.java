@@ -54,7 +54,7 @@ public class FireManipulationStream extends FireAbility {
 	public void setFields() {
 		this.streamCooldown = applyModifiersCooldown(getConfig().getLong("Abilities.Fire.FireManipulation.Stream.Cooldown"));
 		this.streamRange = applyModifiersRange(getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.Range"));
-		this.streamDamage = applyModifiersDamage(getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.Damage"));
+		this.streamDamage = getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.Damage");
 		this.damageInterval = getConfig().getLong("Abilities.Fire.FireManipulation.Stream.DamageInterval");
 		this.streamMaxDuration = getConfig().getLong("Abilities.Fire.FireManipulation.Stream.MaxDuration");
 		this.streamSpeed = getConfig().getDouble("Abilities.Fire.FireManipulation.Stream.Speed");
@@ -121,7 +121,8 @@ public class FireManipulationStream extends FireAbility {
 			}
 			Location playerLoc = player.getLocation();
 			double distance = playerLoc.distance(shotPoint);
-			Location targetLoc = playerLoc.clone().add(playerLoc.getDirection().normalize().multiply(distance));
+			Location targetLoc = GeneralMethods.getTargetedLocation(player, distance, getTransparentMaterials());
+			targetLoc = playerLoc.clone().add(targetLoc);
 			Vector sideDir = targetLoc.toVector().subtract(shotPoint.toVector()).normalize();
 			sideDir.multiply(Math.min(targetLoc.distance(shotPoint), streamSideSpeed));
 			shotPoint.add(sideDir);
