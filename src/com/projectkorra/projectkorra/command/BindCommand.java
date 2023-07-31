@@ -5,6 +5,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
+import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.util.ChatUtil;
 import org.bukkit.ChatColor;
 import org.bukkit.command.CommandSender;
@@ -88,7 +89,7 @@ public class BindCommand extends PKCommand {
 		if (bPlayer == null) {
 			ChatUtil.sendBrandingMessage(sender, ChatColor.RED + this.loadingInfo);
 			return;
-		} else if (coreAbil == null || !bPlayer.canBind(coreAbil)) {
+		} else if (coreAbil == null || !bPlayer.canBind(coreAbil) || !sender.hasPermission("bending.element." + GeneralMethods.getParentElement(coreAbil.getElement()).getName())) {
 			if (coreAbil != null && coreAbil.getElement() != Element.AVATAR && !bPlayer.hasElement(coreAbil.getElement())) {
 				if (coreAbil.getElement() instanceof SubElement) {
 					final SubElement sub = (SubElement) coreAbil.getElement();
@@ -122,7 +123,7 @@ public class BindCommand extends PKCommand {
 		if (args.size() == 0) {
 			if (bPlayer != null) {
 				for (final CoreAbility coreAbil : CoreAbility.getAbilities()) {
-					if (!coreAbil.isHiddenAbility() && bPlayer.canBind(coreAbil) && !(coreAbil instanceof PassiveAbility || coreAbil instanceof ComboAbility) && !abilities.contains(coreAbil.getName())) {
+					if (!coreAbil.isHiddenAbility() && bPlayer.canBind(coreAbil) && sender.hasPermission("bending.element." + GeneralMethods.getParentElement(coreAbil.getElement()).getName()) && !(coreAbil instanceof PassiveAbility || coreAbil instanceof ComboAbility) && !abilities.contains(coreAbil.getName())) {
 						abilities.add(coreAbil.getName());
 					}
 				}

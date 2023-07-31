@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
+import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.util.MultiAbilityManager;
 import com.projectkorra.projectkorra.util.ChatUtil;
 import org.bukkit.Bukkit;
@@ -113,7 +114,7 @@ public class CopyCommand extends PKCommand {
 			boolean boundAll = true;
 			for (int i = 1; i <= 9; i++) {
 				final CoreAbility coreAbil = CoreAbility.getAbility(abilities.get(i));
-				if (coreAbil != null && !target.canBind(coreAbil)) {
+				if (coreAbil != null && (!target.canBind(coreAbil) || !sender.hasPermission("bending.element." + GeneralMethods.getParentElement(coreAbil.getElement()).getName()))) {
 					abilities.remove(i);
 					boundAll = false;
 				}

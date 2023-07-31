@@ -251,8 +251,6 @@ public class BendingPlayer extends OfflineBendingPlayer {
 	public boolean canBind(final CoreAbility ability) {
 		if (ability == null || !this.player.isOnline() || !ability.isEnabled()) {
 			return false;
-		} else if (!this.player.hasPermission("bending.element." + GeneralMethods.getParentElement(ability.getElement()).getName())) {
-			return false;
 		} else if (!this.player.hasPermission("bending.ability." + ability.getName())) {
 			return false;
 		} else if (!this.hasElement(ability.getElement()) && !(ability instanceof AvatarAbility && !((AvatarAbility) ability).requireAvatar())) {

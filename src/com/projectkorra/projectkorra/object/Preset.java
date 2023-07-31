@@ -11,6 +11,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.projectkorra.projectkorra.GeneralMethods;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -140,7 +141,7 @@ public class Preset {
 		boolean boundAll = true;
 		for (int i = 1; i <= 9; i++) {
 			final CoreAbility coreAbil = CoreAbility.getAbility(abilities.get(i));
-			if (coreAbil != null && !bPlayer.canBind(coreAbil)) {
+			if (coreAbil != null && (!bPlayer.canBind(coreAbil) || !player.hasPermission("bending.element." + GeneralMethods.getParentElement(coreAbil.getElement()).getName()))) {
 				abilities.remove(i);
 				boundAll = false;
 			}
@@ -251,7 +252,7 @@ public class Preset {
 
 			for (int i = 1; i <= 9; i++) {
 				final CoreAbility coreAbil = CoreAbility.getAbility(abilities.get(i));
-				if (coreAbil != null && !bPlayer.canBind(coreAbil)) {
+				if (coreAbil != null && (!bPlayer.canBind(coreAbil) || !player.hasPermission("bending.element." + GeneralMethods.getParentElement(coreAbil.getElement()).getName()))) {
 					abilities.remove(i);
 					boundAll = false;
 				}
