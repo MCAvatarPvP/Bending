@@ -956,6 +956,17 @@ public class PKListener implements Listener {
 		}
 	}
 
+	@EventHandler(priority = EventPriority.LOWEST)
+	public void onFall(EntityDamageEvent event) {
+		if (event.getEntity() instanceof Player) {
+			Player player = (Player) event.getEntity();
+			if (event.getCause() == DamageCause.FALL && ElementalAbility.affectedEntitiesByPush.contains(player)) {
+				event.setCancelled(true);
+				ElementalAbility.affectedEntitiesByPush.remove(player);
+			}
+		}
+	}
+
 	@EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
 	public void onPlayerDamageByPlayer(final EntityDamageByEntityEvent e) {
 		final Entity source = e.getDamager();

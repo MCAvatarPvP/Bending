@@ -269,7 +269,6 @@ public abstract class ElementalAbility extends CoreAbility {
 			Player player = affectedEntitiesByPush.get(i);
 
 			if (player.isOnGround()) affectedEntitiesByPush.remove(player);
-			else player.setFallDistance(0);
 		}
 	}
 }
