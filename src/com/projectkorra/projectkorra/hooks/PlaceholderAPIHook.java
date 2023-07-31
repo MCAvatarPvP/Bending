@@ -2,6 +2,7 @@ package com.projectkorra.projectkorra.hooks;
 
 import static java.util.stream.Collectors.joining;
 
+import com.projectkorra.projectkorra.ability.Ability;
 import com.projectkorra.projectkorra.util.TimeUtil;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.entity.Player;
@@ -89,7 +90,9 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
 				if (!bPlayer.hasElement(firstElement)) return "0";
 
 				for (String s : bPlayer.getAbilities().values()) {
-					Element element = CoreAbility.getAbility(s).getElement();
+					Ability ability = CoreAbility.getAbility(s);
+					if (ability == null) continue;
+					Element element = ability.getElement();
 					if (element instanceof Element.SubElement) element = ((Element.SubElement) element).getParentElement();
 
 					if (firstElement.equals(element)) result++;
