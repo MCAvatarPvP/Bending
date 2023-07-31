@@ -39,6 +39,7 @@ public class FireManipulation extends FireAbility {
 
 	private Map<Location, Long> points;
 	private int damageTick;
+	private long time;
 
 	public FireManipulation(final Player player, final FireManipulationType fireManipulationType) {
 		super(player);
@@ -63,6 +64,7 @@ public class FireManipulation extends FireAbility {
 			this.minimumShootTime = getConfig().getLong("Abilities.Fire.FireManipulation.Stream.MinimumShootTime");
 			this.points = new ConcurrentHashMap<>();
 			damageTick = 0;
+			time = System.currentTimeMillis();
 		} else if (this.fireManipulationType == FireManipulationType.CLICK) {
 
 		}
@@ -86,7 +88,7 @@ public class FireManipulation extends FireAbility {
 			this.bPlayer.addCooldown(this, this.shieldCooldown);
 			this.remove();
 			return;
-		} else if (System.currentTimeMillis() - this.getStartTime() > this.maxDuration) {
+		} else if (System.currentTimeMillis() - time > this.maxDuration) {
 			this.bPlayer.addCooldown(this, this.shieldCooldown);
 			this.remove();
 			return;
@@ -96,6 +98,8 @@ public class FireManipulation extends FireAbility {
 			Location location = player.getEyeLocation();
 			location.add(location.getDirection());
 			playFirebendingParticles(location, 1, .01, .01, .01);
+		} else {
+			time = System.currentTimeMillis();
 		}
 
 		final Location targetLocation = GeneralMethods.getTargetedLocation(this.player, this.shieldRange);
@@ -109,7 +113,7 @@ public class FireManipulation extends FireAbility {
 			if (System.currentTimeMillis() - this.getStartTime() > this.damageTick * this.damageInterval) {
 				this.damageTick++;
 				for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(point, 1.2D)) {
-					if (entity instanceof LivingEntity && entity.getUniqueId() != this.player.getUniqueId()) {
+					if (entity instanceof LivingEntity && entity.getUniqueId() != this.player.getUniqueId() && shieldDamage != 0) {
 						DamageHandler.damageEntity(entity, this.shieldDamage, this);
 					}
 				}
