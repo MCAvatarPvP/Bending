@@ -1632,6 +1632,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.FireManipulation.Stream.MaxDuration", 0);
 			config.addDefault("Abilities.Fire.FireManipulation.Stream.Speed", 0.75);
 			config.addDefault("Abilities.Fire.FireManipulation.Stream.SideSpeed", 0.0);
+			config.addDefault("Abilities.Fire.FireManipulation.Stream.Radius", 2.0);
 			config.addDefault("Abilities.Fire.FireManipulation.Stream.CollisionRadius", 0.4);
 			config.addDefault("Abilities.Fire.FireManipulation.Stream.Particles", 50);
 			config.addDefault("Abilities.Fire.FireManipulation.Stream.RangeEnabled", true);
