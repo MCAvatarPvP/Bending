@@ -262,6 +262,8 @@ public class AirBlast extends AirAbility {
 
 		if (source != null) knockback = this.pushFactor;
 
+		if (knockback == 0) return;
+
 		//beta 9 used entity velocity
 		Vector velocity = entity.getVelocity();
 		final double max = this.speed / this.speedFactor;
