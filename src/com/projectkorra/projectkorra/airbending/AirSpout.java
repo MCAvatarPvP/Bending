@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
+import com.projectkorra.projectkorra.ability.CoreAbility;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -41,6 +42,9 @@ public class AirSpout extends AirAbility {
 		if (!this.bPlayer.canBend(this)) {
 			return;
 		}
+
+		AirScooter scooter = CoreAbility.getAbility(player, AirScooter.class);
+		if (scooter != null) scooter.remove();
 
 		this.angle = 0;
 		this.cooldown = getConfig().getLong("Abilities.Air.AirSpout.Cooldown");
@@ -90,21 +94,13 @@ public class AirSpout extends AirAbility {
 	}
 
 	private void allowFlight() {
-		if (!this.player.getAllowFlight()) {
-			this.player.setAllowFlight(true);
-		}
-		if (!this.player.isFlying()) {
-			this.player.setFlying(true);
-		}
+		this.player.setAllowFlight(true);
+		this.player.setFlying(true);
 	}
 
 	private void removeFlight() {
-		if (this.player.isFlying()) {
-			this.player.setFlying(false);
-		}
-		if (this.player.getAllowFlight()) {
-			this.player.setAllowFlight(false);
-		}
+		this.player.setFlying(false);
+		this.player.setAllowFlight(false);
 	}
 
 	private boolean isWithinMaxSpoutHeight(final double threshold) {
@@ -177,8 +173,8 @@ public class AirSpout extends AirAbility {
 	@Override
 	public void remove() {
 		super.remove();
-		this.removeFlight();
 		this.flightHandler.removeInstance(this.player, this.getName());
+		this.removeFlight();
 	}
 
 	private void rotateAirColumn(final Block block) {
