@@ -38,6 +38,7 @@ import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.Sound;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.BlockState;
@@ -1688,6 +1689,23 @@ public class GeneralMethods {
 
 	public static FallingBlock spawnFallingBlock(final Location loc, final Material type, final BlockData data) {
 		return loc.getWorld().spawnFallingBlock(loc, data);
+	}
+
+	public static void playSound(Location loc, Sound defaultSound, String sound, float volume, float pitch) {
+		if (sound == null) return;
+
+		if (sound.contains(":")) {
+			loc.getWorld().playSound(loc, sound, volume, pitch);
+		} else {
+			Sound s = defaultSound;
+			try {
+				s = Sound.valueOf(sound);
+			} catch (final IllegalArgumentException exception) {
+				ProjectKorra.log.warning("Sound name '" + sound + "' is not valid.");
+			} finally {
+				loc.getWorld().playSound(loc, s, volume, pitch);
+			}
+		}
 	}
 
 	public static boolean playerHeadIsInBlock(final Player player, final Block block) {

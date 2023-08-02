@@ -139,14 +139,9 @@ public abstract class AirAbility extends ElementalAbility {
 			final float pitch = (float) getConfig().getDouble("Properties.Air.Sound.Pitch");
 
 			Sound sound = Sound.ENTITY_CREEPER_HURT;
+			String soundString = getConfig().getString("Properties.Air.Sound.Sound");
 
-			try {
-				sound = Sound.valueOf(getConfig().getString("Properties.Air.Sound.Sound"));
-			} catch (final IllegalArgumentException exception) {
-				ProjectKorra.log.warning("Your current value for 'Properties.Air.Sound.Sound' is not valid.");
-			} finally {
-				loc.getWorld().playSound(loc, sound, volume, pitch);
-			}
+			GeneralMethods.playSound(loc, sound, soundString, volume, pitch);
 		}
 	}
 

@@ -181,13 +181,9 @@ public abstract class FireAbility extends ElementalAbility {
 			final float pitch = (float) getConfig().getDouble("Properties.Fire.CombustionSound.Pitch");
 
 			Sound sound = Sound.ENTITY_FIREWORK_ROCKET_BLAST;
-			try {
-				sound = Sound.valueOf(getConfig().getString("Properties.Fire.CombustionSound.Sound"));
-			} catch (final IllegalArgumentException exception) {
-				ProjectKorra.log.warning("Your current value for 'Properties.Fire.CombustionSound.Sound' is not valid.");
-			} finally {
-				loc.getWorld().playSound(loc, sound, volume, pitch);
-			}
+			String soundString = getConfig().getString("Properties.Fire.CombustionSound.Sound");
+
+			GeneralMethods.playSound(loc, sound, soundString, volume, pitch);
 		}
 	}
 
@@ -205,13 +201,9 @@ public abstract class FireAbility extends ElementalAbility {
 			final float pitch = (float) getConfig().getDouble("Properties.Fire.FireSound.Pitch");
 
 			Sound sound = Sound.BLOCK_FIRE_AMBIENT;
-			try {
-				sound = Sound.valueOf(getConfig().getString("Properties.Fire.FireSound.Sound"));
-			} catch (final IllegalArgumentException exception) {
-				ProjectKorra.log.warning("Your current value for 'Properties.Fire.FireSound.Sound' is not valid.");
-			} finally {
-				loc.getWorld().playSound(loc, sound, volume, pitch);
-			}
+			String soundString = getConfig().getString("Properties.Fire.FireSound.Sound");
+
+			GeneralMethods.playSound(loc, sound, soundString, volume, pitch);
 		}
 	}
 
@@ -229,13 +221,9 @@ public abstract class FireAbility extends ElementalAbility {
 			final float pitch = (float) getConfig().getDouble("Properties.Fire.LightningSound.Pitch");
 
 			Sound sound = Sound.ENTITY_CREEPER_HURT;
-			try {
-				sound = Sound.valueOf(getConfig().getString("Properties.Fire.LightningSound.Sound"));
-			} catch (final IllegalArgumentException exception) {
-				ProjectKorra.log.warning("Your current value for 'Properties.Fire.LightningSound.Sound' is not valid.");
-			} finally {
-				loc.getWorld().playSound(loc, sound, volume, pitch);
-			}
+			String soundString = getConfig().getString("Properties.Fire.LightningSound.Sound");
+
+			GeneralMethods.playSound(loc, sound, soundString, volume, pitch);
 		}
 	}
 
@@ -245,13 +233,9 @@ public abstract class FireAbility extends ElementalAbility {
 			final float pitch = (float) getConfig().getDouble("Properties.Fire.LightningCharge.Pitch");
 
 			Sound sound = Sound.BLOCK_BEEHIVE_WORK;
-			try {
-				sound = Sound.valueOf(getConfig().getString("Properties.Fire.LightningCharge.Sound"));
-			} catch (final IllegalArgumentException exception) {
-				ProjectKorra.log.warning("Your current value for 'Properties.Fire.LightningCharge.Sound' is not valid.");
-			} finally {
-				loc.getWorld().playSound(loc, sound, volume, pitch);
-			}
+			String soundString = getConfig().getString("Properties.Fire.LightningCharge.Sound");
+
+			GeneralMethods.playSound(loc, sound, soundString, volume, pitch);
 		}
 	}
 	
@@ -261,13 +245,9 @@ public abstract class FireAbility extends ElementalAbility {
 			final float pitch = (float) getConfig().getDouble("Properties.Fire.LightningHit.Pitch");
 
 			Sound sound = Sound.ENTITY_LIGHTNING_BOLT_THUNDER;
-			try {
-				sound = Sound.valueOf(getConfig().getString("Properties.Fire.LightningHit.Sound"));
-			} catch (final IllegalArgumentException exception) {
-				ProjectKorra.log.warning("Your current value for 'Properties.Fire.LightningHit.Sound' is not valid.");
-			} finally {
-				loc.getWorld().playSound(loc, sound, volume, pitch);
-			}
+			String soundString = getConfig().getString("Properties.Fire.LightningHit.Sound");
+
+			GeneralMethods.playSound(loc, sound, soundString, volume, pitch);
 		}
 	}
 

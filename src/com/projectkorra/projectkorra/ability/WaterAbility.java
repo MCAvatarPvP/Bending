@@ -302,14 +302,9 @@ public abstract class WaterAbility extends ElementalAbility {
 			final float pitch = (float) getConfig().getDouble("Properties.Water.IceSound.Pitch");
 
 			Sound sound = Sound.ITEM_FLINTANDSTEEL_USE;
+			String soundString = getConfig().getString("Properties.Water.IceSound.Sound");
 
-			try {
-				sound = Sound.valueOf(getConfig().getString("Properties.Water.IceSound.Sound"));
-			} catch (final IllegalArgumentException exception) {
-				ProjectKorra.log.warning("Your current value for 'Properties.Water.IceSound.Sound' is not valid.");
-			} finally {
-				loc.getWorld().playSound(loc, sound, volume, pitch);
-			}
+			GeneralMethods.playSound(loc, sound, soundString, volume, pitch);
 		}
 	}
 
@@ -319,14 +314,9 @@ public abstract class WaterAbility extends ElementalAbility {
 			final float pitch = (float) getConfig().getDouble("Properties.Water.PlantSound.Pitch");
 
 			Sound sound = Sound.BLOCK_GRASS_STEP;
+			String soundString = getConfig().getString("Properties.Water.PlantSound.Sound");
 
-			try {
-				sound = Sound.valueOf(getConfig().getString("Properties.Water.PlantSound.Sound"));
-			} catch (final IllegalArgumentException exception) {
-				ProjectKorra.log.warning("Your current value for 'Properties.Water.PlantSound.Sound' is not valid.");
-			} finally {
-				loc.getWorld().playSound(loc, sound, volume, pitch);
-			}
+			GeneralMethods.playSound(loc, sound, soundString, volume, pitch);
 		}
 	}
 
@@ -336,14 +326,9 @@ public abstract class WaterAbility extends ElementalAbility {
 			final float pitch = (float) getConfig().getDouble("Properties.Water.WaterSound.Pitch");
 
 			Sound sound = Sound.BLOCK_WATER_AMBIENT;
+			String soundString = getConfig().getString("Properties.Water.WaterSound.Sound");
 
-			try {
-				sound = Sound.valueOf(getConfig().getString("Properties.Water.WaterSound.Sound"));
-			} catch (final IllegalArgumentException exception) {
-				ProjectKorra.log.warning("Your current value for 'Properties.Water.WaterSound.Sound' is not valid.");
-			} finally {
-				loc.getWorld().playSound(loc, sound, volume, pitch);
-			}
+			GeneralMethods.playSound(loc, sound, soundString, volume, pitch);
 		}
 	}
 
