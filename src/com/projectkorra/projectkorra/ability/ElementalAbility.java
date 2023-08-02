@@ -6,6 +6,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Set;
+import java.util.Map;
+import java.util.HashMap;
 
 import com.projectkorra.projectkorra.region.RegionProtection;
 import org.bukkit.Bukkit;
@@ -41,7 +43,7 @@ public abstract class ElementalAbility extends CoreAbility {
 	private static final Set<String> SAND_BLOCKS = new HashSet<String>();
 	private static final Set<String> SNOW_BLOCKS = new HashSet<String>();
 
-	public static List<Player> affectedEntitiesByPush = new ArrayList<>();
+	public static Map<Player, Long> affectedEntitiesByPush = new HashMap<>();
 
 	static {
 		TRANSPARENT.clear();
@@ -264,11 +266,4 @@ public abstract class ElementalAbility extends CoreAbility {
 		addTags(SNOW_BLOCKS, getConfig().getStringList("Properties.Water.SnowBlocks"));
 	}
 
-	public static void checkFallDamage() {
-		for (int i = 0; i < affectedEntitiesByPush.size(); i++) {
-			Player player = affectedEntitiesByPush.get(i);
-
-			if (player.isOnGround()) affectedEntitiesByPush.remove(player);
-		}
-	}
 }

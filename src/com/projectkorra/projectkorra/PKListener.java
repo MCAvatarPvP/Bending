@@ -960,10 +960,23 @@ public class PKListener implements Listener {
 	public void onFall(EntityDamageEvent event) {
 		if (event.getEntity() instanceof Player) {
 			Player player = (Player) event.getEntity();
-			if (event.getCause() == DamageCause.FALL && ElementalAbility.affectedEntitiesByPush.contains(player)) {
+			if (event.getCause() == DamageCause.FALL && ElementalAbility.affectedEntitiesByPush.containsKey(player)) {
 				event.setCancelled(true);
 				ElementalAbility.affectedEntitiesByPush.remove(player);
 			}
+		}
+	}
+
+	@EventHandler(priority = EventPriority.LOW)
+	public void onLand(PlayerMoveEvent event) {
+		Player player = event.getPlayer();
+		if (!ElementalAbility.affectedEntitiesByPush.containsKey(player)) return;
+		long time = ElementalAbility.affectedEntitiesByPush.get(player) + 100;
+
+		if (System.currentTimeMillis() > time && player.isOnGround()) {
+			ProjectKorra.plugin.getServer().getScheduler().runTaskLater(ProjectKorra.plugin, (task) -> {
+				ElementalAbility.affectedEntitiesByPush.remove(player);
+			}, 1);
 		}
 	}
 

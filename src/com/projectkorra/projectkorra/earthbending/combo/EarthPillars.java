@@ -106,8 +106,8 @@ public class EarthPillars extends EarthAbility implements ComboAbility {
 					}
 					GeneralMethods.setVelocity(this, lent, new Vector(0, this.knockup, 0));
 					boolean falldamage = getConfig().getBoolean("Abilities.Earth.EarthPillars.FallDamageOthers");
-					if (lent instanceof Player && !affectedEntitiesByPush.contains(lent) && !falldamage) {
-						affectedEntitiesByPush.add((Player) lent);
+					if (lent instanceof Player && !affectedEntitiesByPush.containsKey(lent) && !falldamage) {
+						affectedEntitiesByPush.put((Player) lent, System.currentTimeMillis());
 					}
 				}
 				if (this.damaging) {
