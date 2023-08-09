@@ -286,7 +286,7 @@ public class Ripple extends EarthAbility {
 
 		final Vector vector = this.direction.clone();
 		vector.setY(.5);
-		final double knock = this.bPlayer.isAvatarState() ? AvatarState.getValue(this.knockback) : this.knockback;
+		final double knock = this.bPlayer.isAvatarState() ? AvatarState.getValue(bPlayer, this.knockback) : this.knockback;
 		GeneralMethods.setVelocity(this, entity, vector.clone().normalize().multiply(knock));
 		boolean falldamage = getConfig().getBoolean("Abilities.Earth.Shockwave.FallDamageOthers");
 		if (entity instanceof Player && !affectedEntitiesByPush.containsKey(entity) && !falldamage) {

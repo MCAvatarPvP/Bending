@@ -983,8 +983,8 @@ public abstract class CoreAbility implements Ability {
 	/**
 	 * @return the current FileConfiguration for the plugin
 	 */
-	public static FileConfiguration getConfig() {
-		return ConfigManager.getConfig();
+	public FileConfiguration getConfig() {
+		return ConfigManager.getConfig(bPlayer);
 	}
 
 	/**

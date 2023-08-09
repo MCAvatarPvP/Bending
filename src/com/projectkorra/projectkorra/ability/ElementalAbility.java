@@ -9,6 +9,7 @@ import java.util.Set;
 import java.util.Map;
 import java.util.HashMap;
 
+import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -258,12 +259,12 @@ public abstract class ElementalAbility extends CoreAbility {
 	}
 
 	public static void setupBendableMaterials() {
-		addTags(EARTH_BLOCKS, getConfig().getStringList( "Properties.Earth.EarthBlocks"));
-		addTags(ICE_BLOCKS, getConfig().getStringList("Properties.Water.IceBlocks"));
-		addTags(METAL_BLOCKS, getConfig().getStringList("Properties.Earth.MetalBlocks"));
-		addTags(PLANT_BLOCKS, getConfig().getStringList("Properties.Water.PlantBlocks"));
-		addTags(SAND_BLOCKS, getConfig().getStringList("Properties.Earth.SandBlocks"));
-		addTags(SNOW_BLOCKS, getConfig().getStringList("Properties.Water.SnowBlocks"));
+		addTags(EARTH_BLOCKS, ConfigManager.getConfig().getStringList( "Properties.Earth.EarthBlocks"));
+		addTags(ICE_BLOCKS, ConfigManager.getConfig().getStringList("Properties.Water.IceBlocks"));
+		addTags(METAL_BLOCKS, ConfigManager.getConfig().getStringList("Properties.Earth.MetalBlocks"));
+		addTags(PLANT_BLOCKS, ConfigManager.getConfig().getStringList("Properties.Water.PlantBlocks"));
+		addTags(SAND_BLOCKS, ConfigManager.getConfig().getStringList("Properties.Earth.SandBlocks"));
+		addTags(SNOW_BLOCKS, ConfigManager.getConfig().getStringList("Properties.Water.SnowBlocks"));
 	}
 
 }

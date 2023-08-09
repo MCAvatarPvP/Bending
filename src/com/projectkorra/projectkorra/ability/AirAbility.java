@@ -3,6 +3,7 @@ package com.projectkorra.projectkorra.ability;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.projectkorra.projectkorra.configuration.ConfigManager;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
@@ -72,7 +73,7 @@ public abstract class AirAbility extends ElementalAbility {
 	 * @return Config specified ParticleEffect
 	 */
 	public static ParticleEffect getAirbendingParticles() {
-		final String particle = getConfig().getString("Properties.Air.Particles");
+		final String particle = ConfigManager.getConfig().getString("Properties.Air.Particles");
 		if (particle == null) {
 			return ParticleEffect.CLOUD;
 		} else if (particle.equalsIgnoreCase("spell")) {
@@ -134,12 +135,12 @@ public abstract class AirAbility extends ElementalAbility {
 	 * @param loc The location to play the sound at
 	 */
 	public static void playAirbendingSound(final Location loc) {
-		if (getConfig().getBoolean("Properties.Air.PlaySound")) {
-			final float volume = (float) getConfig().getDouble("Properties.Air.Sound.Volume");
-			final float pitch = (float) getConfig().getDouble("Properties.Air.Sound.Pitch");
+		if (ConfigManager.getConfig().getBoolean("Properties.Air.PlaySound")) {
+			final float volume = (float) ConfigManager.getConfig().getDouble("Properties.Air.Sound.Volume");
+			final float pitch = (float) ConfigManager.getConfig().getDouble("Properties.Air.Sound.Pitch");
 
 			Sound sound = Sound.ENTITY_CREEPER_HURT;
-			String soundString = getConfig().getString("Properties.Air.Sound.Sound");
+			String soundString = ConfigManager.getConfig().getString("Properties.Air.Sound.Sound");
 
 			GeneralMethods.playSound(loc, sound, soundString, volume, pitch);
 		}

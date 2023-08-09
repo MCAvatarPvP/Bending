@@ -3,6 +3,7 @@ package com.projectkorra.projectkorra.earthbending;
 import java.util.HashSet;
 import java.util.Set;
 
+import com.projectkorra.projectkorra.configuration.ConfigManager;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
@@ -286,7 +287,7 @@ public class EarthTunnel extends EarthAbility {
 	}
 
 	public static void setupBendableMaterials() {
-		addTags(IGNORED_BLOCKS, getConfig().getStringList("Abilities.Earth.EarthTunnel.IgnoredBlocks"));
+		addTags(IGNORED_BLOCKS, ConfigManager.getConfig().getStringList("Abilities.Earth.EarthTunnel.IgnoredBlocks"));
 	}
 
 	static {

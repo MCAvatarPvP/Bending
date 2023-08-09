@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.chiblocking.passive;
 
+import com.projectkorra.projectkorra.BendingPlayer;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 
@@ -12,8 +13,8 @@ public class ChiSaturation extends ChiAbility implements PassiveAbility {
 		super(player);
 	}
 
-	public static double getExhaustionFactor() {
-		return ConfigManager.getConfig().getDouble("Abilities.Chi.Passive.ChiSaturation.ExhaustionFactor");
+	public static double getExhaustionFactor(BendingPlayer bPlayer) {
+		return ConfigManager.getConfig(bPlayer).getDouble("Abilities.Chi.Passive.ChiSaturation.ExhaustionFactor");
 	}
 
 	@Override

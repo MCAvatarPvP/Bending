@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.function.Predicate;
 import com.google.common.reflect.ClassPath;
 import com.projectkorra.projectkorra.command.PKCommand;
+import com.projectkorra.projectkorra.object.Style;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.ChatUtil;
 import com.projectkorra.projectkorra.util.TempFallingBlock;
@@ -1367,6 +1368,8 @@ public class GeneralMethods {
 		ConfigManager.defaultConfig.reload();
 		ConfigManager.languageConfig.reload();
 		ConfigManager.presetConfig.reload();
+		ConfigManager.collisionConfig.reload();
+		Style.reloadStyles();
 		Arrays.stream(Element.getElements()).forEach(e -> {e.setColor(null); e.setSubColor(null);}); //Load colors from config again
 		Arrays.stream(Element.getSubElements()).forEach(e -> {e.setColor(null); e.setSubColor(null);}); //Same for subs
 		ElementalAbility.clearBendableMaterials(); // Clear and re-cache the material lists on reload.

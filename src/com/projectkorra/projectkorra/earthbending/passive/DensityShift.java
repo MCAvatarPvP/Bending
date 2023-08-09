@@ -55,7 +55,7 @@ public class DensityShift extends EarthAbility implements PassiveAbility {
 
 						if (!SAND_BLOCKS.contains(tb)) {
 							SAND_BLOCKS.add(tb);
-							tb.setRevertTime(getDuration());
+							tb.setRevertTime(getDuration(bPlayer));
 							tb.setRevertTask(() -> SAND_BLOCKS.remove(tb));
 						}
 					}
@@ -98,8 +98,8 @@ public class DensityShift extends EarthAbility implements PassiveAbility {
 		return SAND_BLOCKS;
 	}
 
-	public static long getDuration() {
-		return ConfigManager.getConfig().getLong("Abilities.Earth.Passive.Duration");
+	public static long getDuration(BendingPlayer bPlayer) {
+		return ConfigManager.getConfig(bPlayer).getLong("Abilities.Earth.Passive.Duration");
 	}
 
 	@Override

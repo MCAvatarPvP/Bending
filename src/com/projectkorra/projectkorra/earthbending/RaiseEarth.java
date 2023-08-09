@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.projectkorra.projectkorra.BendingPlayer;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
@@ -69,7 +70,7 @@ public class RaiseEarth extends EarthAbility {
 	}
 
 	public RaiseEarth(final Player player, final Location origin) {
-		this(player, origin, ConfigManager.getConfig().getInt("Abilities.Earth.RaiseEarth.Column.Height"));
+		this(player, origin, ConfigManager.getConfig(BendingPlayer.getBendingPlayer(player)).getInt("Abilities.Earth.RaiseEarth.Column.Height"));
 	}
 
 	public RaiseEarth(final Player player, final Location origin, final int height) {

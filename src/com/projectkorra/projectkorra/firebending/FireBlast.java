@@ -190,7 +190,7 @@ public class FireBlast extends FireAbility {
 				entity.setFireTicks((int) (this.fireTicks * 20));
 				DamageHandler.damageEntity(entity, this.damage, this);
 				if (this.bPlayer.isAvatarState()) {
-					GeneralMethods.setVelocity(this, entity, entity.getVelocity().multiply(AvatarState.getValue(this.knockback)));
+					GeneralMethods.setVelocity(this, entity, entity.getVelocity().multiply(AvatarState.getValue(bPlayer, this.knockback)));
 //					GeneralMethods.setVelocity(this, entity, this.direction.clone().multiply(AvatarState.getValue(this.knockback)));
 				} else {
 					GeneralMethods.setVelocity(this, entity, entity.getVelocity().multiply(this.knockback));
