@@ -186,21 +186,23 @@ public class CollisionInitializer {
 		this.collisionManager.addCollision(new Collision(fireManipulationStream, earthBlast, false, true));
 		this.collisionManager.addCollision(new Collision(fireManipulationStream, airSweep, false, true));
 
-		FileConfiguration collisionConfig = ConfigManager.collisionConfig.get();
-		for (String s : collisionConfig.getStringList("Collisions")) {
-			String[] abilities = s.split(", ");
-			if (abilities.length == 2) {
-				for (int i = 0; i < this.collisionManager.getCollisions().size(); i++) {
-					Collision collision = this.collisionManager.getCollisions().get(i);
-					if (collision.getAbilityFirst().getClass().getSimpleName().equalsIgnoreCase(abilities[0])
-							&& collision.getAbilitySecond().getClass().getSimpleName().equalsIgnoreCase(abilities[1])
-						|| collision.getAbilityFirst().getClass().getSimpleName().equalsIgnoreCase(abilities[1])
-							&& collision.getAbilitySecond().getClass().getSimpleName().equalsIgnoreCase(abilities[0])) {
-						this.collisionManager.getCollisions().remove(collision);
+		ProjectKorra.plugin.getServer().getScheduler().runTaskLater(ProjectKorra.plugin, () -> {
+			FileConfiguration collisionConfig = ConfigManager.collisionConfig.get();
+			for (String s : collisionConfig.getStringList("Collisions")) {
+				String[] abilities = s.split(", ");
+				if (abilities.length == 2) {
+					for (int i = 0; i < this.collisionManager.getCollisions().size(); i++) {
+						Collision collision = this.collisionManager.getCollisions().get(i);
+						if (collision.getAbilityFirst().getClass().getSimpleName().equalsIgnoreCase(abilities[0])
+								&& collision.getAbilitySecond().getClass().getSimpleName().equalsIgnoreCase(abilities[1])
+								|| collision.getAbilityFirst().getClass().getSimpleName().equalsIgnoreCase(abilities[1])
+								&& collision.getAbilitySecond().getClass().getSimpleName().equalsIgnoreCase(abilities[0])) {
+							this.collisionManager.getCollisions().remove(collision);
+						}
 					}
 				}
 			}
-		}
+		}, 5);
 	}
 
 	/**
