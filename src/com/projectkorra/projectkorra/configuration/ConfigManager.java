@@ -1853,8 +1853,4 @@ public class ConfigManager {
 	public static FileConfiguration getConfig(BendingPlayer bPlayer) {
 		return ConfigManager.defaultConfig.get(bPlayer);
 	}
-
-	public static void reloadStyleConfigs() {
-		for (Config config : styleConfigs) config.reload();
-	}
 }
