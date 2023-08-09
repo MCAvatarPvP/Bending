@@ -6,6 +6,7 @@ import com.projectkorra.projectkorra.ability.util.MultiAbilityManager;
 import com.projectkorra.projectkorra.command.CooldownCommand;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.event.PlayerBindChangeEvent;
+import com.projectkorra.projectkorra.object.Style;
 import com.projectkorra.projectkorra.storage.DBConnection;
 import com.projectkorra.projectkorra.util.ChatUtil;
 import com.projectkorra.projectkorra.util.Cooldown;
@@ -55,6 +56,7 @@ public class OfflineBendingPlayer {
     protected final OfflinePlayer player;
     protected final UUID uuid;
     protected boolean permaRemoved;
+    protected Style style;
     protected boolean toggled;
     protected boolean sourceHoles;
     protected boolean allPassivesToggled;
@@ -144,6 +146,7 @@ public class OfflineBendingPlayer {
                     }
                     final String subelementField = rs2.getString("subelement");
                     final String elementField = rs2.getString("element");
+                    final String styleField = rs2.getString("style");
                     final String permaremovedField = rs2.getString("permaremoved");
                     final String sourceholesField = rs2.getString("sourceholes");
 
@@ -359,6 +362,9 @@ public class OfflineBendingPlayer {
                             }
                         }.runTaskTimer(ProjectKorra.plugin, 0, 5);
                     } else func.test(abilitiesClone); //Addon elements should be loaded by now
+
+                    //Load styles
+                    if (styleField != null && Style.hasStyle(styleField)) bPlayer.style = Style.getStyle(styleField);
 
                     //Load permaRemove
                     if (permaremovedField != null && permaremovedField.equalsIgnoreCase("true")) bPlayer.permaRemoved = true;
@@ -884,6 +890,10 @@ public class OfflineBendingPlayer {
         return this.permaRemoved;
     }
 
+    public Style getStyle() {
+        return style;
+    }
+
     public boolean areSourceHolesOn() {
         return this.sourceHoles;
     }
@@ -941,6 +951,11 @@ public class OfflineBendingPlayer {
     public void setPermaRemoved(final boolean permaRemoved) {
         this.permaRemoved = permaRemoved;
         DBConnection.sql.modifyQuery("UPDATE pk_players SET permaremoved = '" + (permaRemoved ? "true" : "false") + "' WHERE uuid = '" + uuid + "'");
+    }
+
+    public void setStyle(Style style) {
+        this.style = style;
+        DBConnection.sql.modifyQuery("UPDATE pk_players SET style = '" + style.getName() + "' WHERE uuid = '" + uuid + "'");
     }
 
     public void toggleSourceHoles() {
@@ -1084,6 +1099,7 @@ public class OfflineBendingPlayer {
         bendingPlayer.toggled = offlineBendingPlayer.toggled;
         bendingPlayer.allPassivesToggled = offlineBendingPlayer.allPassivesToggled;
         bendingPlayer.permaRemoved = offlineBendingPlayer.permaRemoved;
+        bendingPlayer.style = offlineBendingPlayer.style;
         bendingPlayer.sourceHoles = offlineBendingPlayer.sourceHoles;
         bendingPlayer.cooldowns.putAll(offlineBendingPlayer.cooldowns);
         bendingPlayer.loading = false;
@@ -1110,6 +1126,7 @@ public class OfflineBendingPlayer {
         offlineBendingPlayer.toggled = bendingPlayer.toggled;
         offlineBendingPlayer.allPassivesToggled = bendingPlayer.allPassivesToggled;
         offlineBendingPlayer.permaRemoved = bendingPlayer.permaRemoved;
+        offlineBendingPlayer.style = bendingPlayer.style;
         offlineBendingPlayer.sourceHoles = bendingPlayer.sourceHoles;
         offlineBendingPlayer.cooldowns.putAll(bendingPlayer.cooldowns);
         offlineBendingPlayer.loading = false;

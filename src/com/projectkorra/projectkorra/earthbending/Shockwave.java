@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.earthbending;
 
+import com.projectkorra.projectkorra.configuration.ConfigManager;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
@@ -111,7 +112,7 @@ public class Shockwave extends EarthAbility {
 					final double rtheta = Math.toRadians(theta);
 					final Vector vector = new Vector(Math.cos(rtheta), 0, Math.sin(rtheta));
 					if (vector.angle(player.getEyeLocation().getDirection()) < shockWave.angle) {
-						shockWave.range = getConfig().getDouble("Abilities.Earth.Shockwave.LeftClickRange");
+						shockWave.range = ConfigManager.getConfig(shockWave.bPlayer).getDouble("Abilities.Earth.Shockwave.LeftClickRange");
 						new Ripple(player, vector.normalize()).setRange(shockWave.range);
 					}
 				}

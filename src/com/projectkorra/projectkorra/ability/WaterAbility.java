@@ -3,6 +3,7 @@ package com.projectkorra.projectkorra.ability;
 import java.util.HashSet;
 import java.util.Set;
 
+import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -151,7 +152,7 @@ public abstract class WaterAbility extends ElementalAbility {
 	}
 
 	public static double getNightFactor() {
-		return getConfig().getDouble("Properties.Water.NightFactor");
+		return ConfigManager.getConfig().getDouble("Properties.Water.NightFactor");
 	}
 
 	public static double getNightFactor(final double value, final World world) {
@@ -297,36 +298,36 @@ public abstract class WaterAbility extends ElementalAbility {
 	}
 
 	public static void playIcebendingSound(final Location loc) {
-		if (getConfig().getBoolean("Properties.Water.PlaySound")) {
-			final float volume = (float) getConfig().getDouble("Properties.Water.IceSound.Volume");
-			final float pitch = (float) getConfig().getDouble("Properties.Water.IceSound.Pitch");
+		if (ConfigManager.getConfig().getBoolean("Properties.Water.PlaySound")) {
+			final float volume = (float) ConfigManager.getConfig().getDouble("Properties.Water.IceSound.Volume");
+			final float pitch = (float) ConfigManager.getConfig().getDouble("Properties.Water.IceSound.Pitch");
 
 			Sound sound = Sound.ITEM_FLINTANDSTEEL_USE;
-			String soundString = getConfig().getString("Properties.Water.IceSound.Sound");
+			String soundString = ConfigManager.getConfig().getString("Properties.Water.IceSound.Sound");
 
 			GeneralMethods.playSound(loc, sound, soundString, volume, pitch);
 		}
 	}
 
 	public static void playPlantbendingSound(final Location loc) {
-		if (getConfig().getBoolean("Properties.Water.PlaySound")) {
-			final float volume = (float) getConfig().getDouble("Properties.Water.PlantSound.Volume");
-			final float pitch = (float) getConfig().getDouble("Properties.Water.PlantSound.Pitch");
+		if (ConfigManager.getConfig().getBoolean("Properties.Water.PlaySound")) {
+			final float volume = (float) ConfigManager.getConfig().getDouble("Properties.Water.PlantSound.Volume");
+			final float pitch = (float) ConfigManager.getConfig().getDouble("Properties.Water.PlantSound.Pitch");
 
 			Sound sound = Sound.BLOCK_GRASS_STEP;
-			String soundString = getConfig().getString("Properties.Water.PlantSound.Sound");
+			String soundString = ConfigManager.getConfig().getString("Properties.Water.PlantSound.Sound");
 
 			GeneralMethods.playSound(loc, sound, soundString, volume, pitch);
 		}
 	}
 
 	public static void playWaterbendingSound(final Location loc) {
-		if (getConfig().getBoolean("Properties.Water.PlaySound")) {
-			final float volume = (float) getConfig().getDouble("Properties.Water.WaterSound.Volume");
-			final float pitch = (float) getConfig().getDouble("Properties.Water.WaterSound.Pitch");
+		if (ConfigManager.getConfig().getBoolean("Properties.Water.PlaySound")) {
+			final float volume = (float) ConfigManager.getConfig().getDouble("Properties.Water.WaterSound.Volume");
+			final float pitch = (float) ConfigManager.getConfig().getDouble("Properties.Water.WaterSound.Pitch");
 
 			Sound sound = Sound.BLOCK_WATER_AMBIENT;
-			String soundString = getConfig().getString("Properties.Water.WaterSound.Sound");
+			String soundString = ConfigManager.getConfig().getString("Properties.Water.WaterSound.Sound");
 
 			GeneralMethods.playSound(loc, sound, soundString, volume, pitch);
 		}

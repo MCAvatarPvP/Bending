@@ -41,9 +41,6 @@ public class PassiveHandler {
 			return;
 		}
 
-		double air = AirSaturation.getExhaustionFactor();
-		double chi = ChiSaturation.getExhaustionFactor();
-
 		if (ConfigManager.defaultConfig.get().getStringList("Properties.DisabledWorlds").contains(player.getWorld().getName())) {
 			return;
 		}
@@ -57,6 +54,9 @@ public class PassiveHandler {
 		if (bPlayer == null) {
 			return;
 		}
+
+		double air = AirSaturation.getExhaustionFactor(bPlayer);
+		double chi = ChiSaturation.getExhaustionFactor(bPlayer);
 
 		if (!PassiveManager.hasPassive(player, airsat)) {
 			air = 0;

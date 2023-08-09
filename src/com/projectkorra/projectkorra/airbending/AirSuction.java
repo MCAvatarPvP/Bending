@@ -5,6 +5,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
+import com.projectkorra.projectkorra.BendingPlayer;
+import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import org.bukkit.Effect;
 import org.bukkit.Location;
@@ -179,7 +181,7 @@ public class AirSuction extends AirAbility {
 			}
 		}
 
-		return GeneralMethods.getTargetedLocation(this.player, getSelectRange(), ignore);
+		return GeneralMethods.getTargetedLocation(this.player, getSelectRange(bPlayer), ignore);
 	}
 
 	@Override
@@ -423,12 +425,12 @@ public class AirSuction extends AirAbility {
 		this.canAffectSelf = affect;
 	}
 
-	public static int getSelectParticles() {
-		return getConfig().getInt("Abilities.Air.AirSuction.SelectParticles");
+	public static int getSelectParticles(BendingPlayer bPlayer) {
+		return ConfigManager.getConfig(bPlayer).getInt("Abilities.Air.AirSuction.SelectParticles");
 	}
 
-	public static double getSelectRange() {
-		return getConfig().getDouble("Abilities.Air.AirSuction.SelectRange");
+	public static double getSelectRange(BendingPlayer bPlayer) {
+		return ConfigManager.getConfig(bPlayer).getDouble("Abilities.Air.AirSuction.SelectRange");
 	}
 
 }

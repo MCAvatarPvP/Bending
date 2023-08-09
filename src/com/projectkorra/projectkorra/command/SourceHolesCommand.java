@@ -37,12 +37,6 @@ public class SourceHolesCommand extends PKCommand {
 		}
 	}
 
-	/**
-	 * Toggles player's SourceHoles
-	 *
-	 * @param sender The CommandSender who issued the sourceholes command
-	 * @param target The Player who's SourceHoles will be toggled
-	 */
 	private void toggleHoles(final CommandSender sender, final String target) {
 		final OfflinePlayer player = Bukkit.getOfflinePlayer(target);
 		if (!player.isOnline() && !player.hasPlayedBefore()) {
@@ -56,12 +50,6 @@ public class SourceHolesCommand extends PKCommand {
 		});
 	}
 
-	/**
-	 * Checks if the sender has the permission 'bending.admin.permaremove'. If
-	 * not, it tells them they don't have permission to use the command.
-	 *
-	 * @return True if they have the permission, false otherwise
-	 */
 	@Override
 	public boolean hasPermission(CommandSender sender) {
 		if (!sender.hasPermission("bending.admin.sourceholes")) {

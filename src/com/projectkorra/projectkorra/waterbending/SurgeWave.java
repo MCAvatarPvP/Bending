@@ -224,7 +224,7 @@ public class SurgeWave extends WaterAbility {
 
 			this.range = this.getNightFactor(this.range);
 			if (this.bPlayer.isAvatarState()) {
-				this.knockback = AvatarState.getValue(this.knockback);
+				this.knockback = AvatarState.getValue(bPlayer, this.knockback);
 			}
 
 			final Entity target = GeneralMethods.getTargetedEntity(this.player, this.range);

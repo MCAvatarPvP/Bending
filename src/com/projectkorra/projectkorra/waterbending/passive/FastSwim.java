@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.waterbending.passive;
 
+import com.projectkorra.projectkorra.BendingPlayer;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 
@@ -29,10 +30,10 @@ public class FastSwim extends WaterAbility implements PassiveAbility {
 			return;
 		}
 
-		this.cooldown = ConfigManager.getConfig().getLong("Abilities.Water.Passive.FastSwim.Cooldown");
-		this.swimSpeed = ConfigManager.getConfig().getDouble("Abilities.Water.Passive.FastSwim.SpeedFactor");
-		this.duration = ConfigManager.getConfig().getLong("Abilities.Water.Passive.FastSwim.Duration");
-		this.allowWaterArms = ConfigManager.getConfig().getBoolean("Abilities.Water.Passive.FastSwim.AllowWaterArms");
+		this.cooldown = getConfig().getLong("Abilities.Water.Passive.FastSwim.Cooldown");
+		this.swimSpeed = getConfig().getDouble("Abilities.Water.Passive.FastSwim.SpeedFactor");
+		this.duration = getConfig().getLong("Abilities.Water.Passive.FastSwim.Duration");
+		this.allowWaterArms = getConfig().getBoolean("Abilities.Water.Passive.FastSwim.AllowWaterArms");
 
 		this.start();
 	}
@@ -72,8 +73,8 @@ public class FastSwim extends WaterAbility implements PassiveAbility {
 		}
 	}
 
-	public static double getSwimSpeed() {
-		return ConfigManager.getConfig().getDouble("Abilities.Water.Passive.FastSwim.SpeedFactor");
+	public static double getSwimSpeed(BendingPlayer bPlayer) {
+		return ConfigManager.getConfig(bPlayer).getDouble("Abilities.Water.Passive.FastSwim.SpeedFactor");
 	}
 
 	@Override

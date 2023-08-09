@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.ability;
 
 import com.projectkorra.projectkorra.GeneralMethods;
+import com.projectkorra.projectkorra.configuration.ConfigManager;
 import org.bukkit.Location;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
@@ -30,12 +31,12 @@ public abstract class AvatarAbility extends ElementalAbility {
 	}
 
 	public static void playAvatarSound(final Location loc) {
-		if (getConfig().getBoolean("Abilities.Avatar.AvatarState.PlaySound")) {
-			final float volume = (float) getConfig().getDouble("Abilities.Avatar.AvatarState.Sound.Volume");
-			final float pitch = (float) getConfig().getDouble("Abilities.Avatar.AvatarState.Sound.Pitch");
+		if (ConfigManager.getConfig().getBoolean("Abilities.Avatar.AvatarState.PlaySound")) {
+			final float volume = (float) ConfigManager.getConfig().getDouble("Abilities.Avatar.AvatarState.Sound.Volume");
+			final float pitch = (float) ConfigManager.getConfig().getDouble("Abilities.Avatar.AvatarState.Sound.Pitch");
 
 			Sound sound = Sound.BLOCK_ANVIL_LAND;
-			String soundString = getConfig().getString("Abilities.Avatar.AvatarState.Sound.Sound");
+			String soundString = ConfigManager.getConfig().getString("Abilities.Avatar.AvatarState.Sound.Sound");
 
 			GeneralMethods.playSound(loc, sound, soundString, volume, pitch);
 		}

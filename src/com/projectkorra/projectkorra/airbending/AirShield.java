@@ -149,8 +149,8 @@ public class AirShield extends AirAbility {
 
 				final Vector velocity = entity.getVelocity().clone();
 				if (this.bPlayer.isAvatarState()) {
-					velocity.setX(AvatarState.getValue(vx));
-					velocity.setZ(AvatarState.getValue(vz));
+					velocity.setX(AvatarState.getValue(bPlayer, vx));
+					velocity.setZ(AvatarState.getValue(bPlayer, vz));
 				} else {
 					velocity.setX(vx);
 					velocity.setZ(vz);

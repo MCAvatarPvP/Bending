@@ -73,7 +73,7 @@ public abstract class FireAbility extends ElementalAbility {
 	 * place a temp fire block.
 	 */
 	public static boolean canFireGrief() {
-		return getConfig().getBoolean("Properties.Fire.FireGriefing");
+		return ConfigManager.getConfig().getBoolean("Properties.Fire.FireGriefing");
 	}
 
 	/**
@@ -81,7 +81,7 @@ public abstract class FireAbility extends ElementalAbility {
 	 * fire dissipates or is destroyed.
 	 */
 	public void createTempFire(final Location loc) {
-		createTempFire(loc, getConfig().getLong("Properties.Fire.RevertTicks") + (long) ((new Random()).nextDouble() * getConfig().getLong("Properties.Fire.RevertTicks")));
+		createTempFire(loc, ConfigManager.getConfig().getLong("Properties.Fire.RevertTicks") + (long) ((new Random()).nextDouble() * ConfigManager.getConfig().getLong("Properties.Fire.RevertTicks")));
 	}
 
 	public void createTempFire(final Location loc, final long time) {
@@ -96,7 +96,7 @@ public abstract class FireAbility extends ElementalAbility {
 	}
 
 	public static double getDayFactor() {
-		return getConfig().getDouble("Properties.Fire.DayFactor");
+		return ConfigManager.getConfig().getDouble("Properties.Fire.DayFactor");
 	}
 
 	/**
@@ -176,12 +176,12 @@ public abstract class FireAbility extends ElementalAbility {
 	}
 
 	public static void playCombustionSound(final Location loc) {
-		if (getConfig().getBoolean("Properties.Fire.PlaySound")) {
-			final float volume = (float) getConfig().getDouble("Properties.Fire.CombustionSound.Volume");
-			final float pitch = (float) getConfig().getDouble("Properties.Fire.CombustionSound.Pitch");
+		if (ConfigManager.getConfig().getBoolean("Properties.Fire.PlaySound")) {
+			final float volume = (float) ConfigManager.getConfig().getDouble("Properties.Fire.CombustionSound.Volume");
+			final float pitch = (float) ConfigManager.getConfig().getDouble("Properties.Fire.CombustionSound.Pitch");
 
 			Sound sound = Sound.ENTITY_FIREWORK_ROCKET_BLAST;
-			String soundString = getConfig().getString("Properties.Fire.CombustionSound.Sound");
+			String soundString = ConfigManager.getConfig().getString("Properties.Fire.CombustionSound.Sound");
 
 			GeneralMethods.playSound(loc, sound, soundString, volume, pitch);
 		}
@@ -196,12 +196,12 @@ public abstract class FireAbility extends ElementalAbility {
 	}
 
 	public static void playFirebendingSound(final Location loc) {
-		if (getConfig().getBoolean("Properties.Fire.PlaySound")) {
-			final float volume = (float) getConfig().getDouble("Properties.Fire.FireSound.Volume");
-			final float pitch = (float) getConfig().getDouble("Properties.Fire.FireSound.Pitch");
+		if (ConfigManager.getConfig().getBoolean("Properties.Fire.PlaySound")) {
+			final float volume = (float) ConfigManager.getConfig().getDouble("Properties.Fire.FireSound.Volume");
+			final float pitch = (float) ConfigManager.getConfig().getDouble("Properties.Fire.FireSound.Pitch");
 
 			Sound sound = Sound.BLOCK_FIRE_AMBIENT;
-			String soundString = getConfig().getString("Properties.Fire.FireSound.Sound");
+			String soundString = ConfigManager.getConfig().getString("Properties.Fire.FireSound.Sound");
 
 			GeneralMethods.playSound(loc, sound, soundString, volume, pitch);
 		}
@@ -216,36 +216,36 @@ public abstract class FireAbility extends ElementalAbility {
 	}
 
 	public static void playLightningbendingSound(final Location loc) {
-		if (getConfig().getBoolean("Properties.Fire.PlaySound")) {
-			final float volume = (float) getConfig().getDouble("Properties.Fire.LightningSound.Volume");
-			final float pitch = (float) getConfig().getDouble("Properties.Fire.LightningSound.Pitch");
+		if (ConfigManager.getConfig().getBoolean("Properties.Fire.PlaySound")) {
+			final float volume = (float) ConfigManager.getConfig().getDouble("Properties.Fire.LightningSound.Volume");
+			final float pitch = (float) ConfigManager.getConfig().getDouble("Properties.Fire.LightningSound.Pitch");
 
 			Sound sound = Sound.ENTITY_CREEPER_HURT;
-			String soundString = getConfig().getString("Properties.Fire.LightningSound.Sound");
+			String soundString = ConfigManager.getConfig().getString("Properties.Fire.LightningSound.Sound");
 
 			GeneralMethods.playSound(loc, sound, soundString, volume, pitch);
 		}
 	}
 
 	public static void playLightningbendingChargingSound(final Location loc) {
-		if (getConfig().getBoolean("Properties.Fire.PlaySound")) {
-			final float volume = (float) getConfig().getDouble("Properties.Fire.LightningCharge.Volume");
-			final float pitch = (float) getConfig().getDouble("Properties.Fire.LightningCharge.Pitch");
+		if (ConfigManager.getConfig().getBoolean("Properties.Fire.PlaySound")) {
+			final float volume = (float) ConfigManager.getConfig().getDouble("Properties.Fire.LightningCharge.Volume");
+			final float pitch = (float) ConfigManager.getConfig().getDouble("Properties.Fire.LightningCharge.Pitch");
 
 			Sound sound = Sound.BLOCK_BEEHIVE_WORK;
-			String soundString = getConfig().getString("Properties.Fire.LightningCharge.Sound");
+			String soundString = ConfigManager.getConfig().getString("Properties.Fire.LightningCharge.Sound");
 
 			GeneralMethods.playSound(loc, sound, soundString, volume, pitch);
 		}
 	}
 	
 	public static void playLightningbendingHitSound(final Location loc) {
-		if (getConfig().getBoolean("Properties.Fire.PlaySound")) {
-			final float volume = (float) getConfig().getDouble("Properties.Fire.LightningHit.Volume");
-			final float pitch = (float) getConfig().getDouble("Properties.Fire.LightningHit.Pitch");
+		if (ConfigManager.getConfig().getBoolean("Properties.Fire.PlaySound")) {
+			final float volume = (float) ConfigManager.getConfig().getDouble("Properties.Fire.LightningHit.Volume");
+			final float pitch = (float) ConfigManager.getConfig().getDouble("Properties.Fire.LightningHit.Pitch");
 
 			Sound sound = Sound.ENTITY_LIGHTNING_BOLT_THUNDER;
-			String soundString = getConfig().getString("Properties.Fire.LightningHit.Sound");
+			String soundString = ConfigManager.getConfig().getString("Properties.Fire.LightningHit.Sound");
 
 			GeneralMethods.playSound(loc, sound, soundString, volume, pitch);
 		}

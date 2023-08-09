@@ -59,8 +59,8 @@ public class LavaSurgeWall extends LavaAbility {
 		}
 
 		if (this.bPlayer.isAvatarState()) {
-			this.radius = AvatarState.getValue(this.radius);
-			this.range = AvatarState.getValue(this.range);
+			this.radius = AvatarState.getValue(bPlayer, this.radius);
+			this.range = AvatarState.getValue(bPlayer, this.range);
 		}
 
 		if (!this.bPlayer.canBend(this)) {

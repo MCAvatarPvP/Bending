@@ -522,16 +522,16 @@ public class PKListener implements Listener {
 			}
 
 			Element element = GeneralMethods.getParentElement(bPlayer.getBoundAbility().getElement());
-			int minFireTicks = ConfigManager.getConfig().getInt("Properties." + element.getName() + ".MinFireTickDuration");
-			int maxFireTicks = ConfigManager.getConfig().getInt("Properties." + element.getName() + ".MaxFireTickDuration");
-			int maxLavaTicks = ConfigManager.getConfig().getInt("Properties." + element.getName() + ".MaxLavaTickDuration");
+			int minFireTicks = ConfigManager.getConfig(bPlayer).getInt("Properties." + element.getName() + ".MinFireTickDuration");
+			int maxFireTicks = ConfigManager.getConfig(bPlayer).getInt("Properties." + element.getName() + ".MaxFireTickDuration");
+			int maxLavaTicks = ConfigManager.getConfig(bPlayer).getInt("Properties." + element.getName() + ".MaxLavaTickDuration");
 			if (event.getCause() == DamageCause.FIRE) {
 				if (player.getFireTicks() < minFireTicks) player.setFireTicks(minFireTicks);
 				else if (player.getFireTicks() > maxFireTicks) player.setFireTicks(maxFireTicks);
 			} else if (event.getCause() == DamageCause.LAVA) {
 				if (player.getFireTicks() > maxLavaTicks) player.setFireTicks(maxLavaTicks);
 
-				double maxLavaDmg = ConfigManager.getConfig().getDouble("Properties.Earth.MaxLavaDamage");
+				double maxLavaDmg = ConfigManager.getConfig(bPlayer).getDouble("Properties.Earth.MaxLavaDamage");
 				if (event.getDamage() > maxLavaDmg) event.setDamage(maxLavaDmg);
 			}
 
@@ -914,14 +914,14 @@ public class PKListener implements Listener {
 						|| (hs != null && bPlayer.hasElement(Element.WATER) && bPlayer.canBendPassive(hs) && bPlayer.canUsePassive(hs) && hs.isEnabled() && PassiveManager.hasPassive(player, hs) && HydroSink.applyNoFall(player)));
 			}
 
-			boolean fallDamage = ConfigManager.getConfig().getBoolean("Abilities.Water.WaterArms.FallDamage");
+			boolean fallDamage = ConfigManager.getConfig(bPlayer).getBoolean("Abilities.Water.WaterArms.FallDamage");
 			if (wa != null && bPlayer.hasElement(Element.WATER) && event.getCause() == DamageCause.FALL && !fallDamage) {
 				event.setCancelled(true);
 			}
 
 			if (ab != null && bPlayer.hasElement(Element.CHI) && event.getCause() == DamageCause.FALL && bPlayer.canBendPassive(ab) && bPlayer.canUsePassive(ab) && ab.isEnabled() && PassiveManager.hasPassive(player, ab)) {
 				final double initdamage = event.getDamage();
-				final double newdamage = event.getDamage() * Acrobatics.getFallReductionFactor();
+				final double newdamage = event.getDamage() * Acrobatics.getFallReductionFactor(bPlayer);
 				final double finaldamage = initdamage - newdamage;
 				event.setDamage(finaldamage);
 				if (finaldamage <= 0.4) {
@@ -1917,7 +1917,7 @@ public class PKListener implements Listener {
 				return;
 			}
 		}
-		if (ConfigManager.getConfig().getBoolean("Abilities.Fire.FireJet.ShowGliding")) {
+		if (ConfigManager.getConfig(BendingPlayer.getBendingPlayer(player)).getBoolean("Abilities.Fire.FireJet.ShowGliding")) {
 			if (CoreAbility.getAbility(player, FireJet.class) != null) {
 				event.setCancelled(true);
 			}

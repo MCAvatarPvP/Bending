@@ -371,8 +371,8 @@ public class BendingPlayer extends OfflineBendingPlayer {
 		return getBendingPlayer(oPlayer);
 	}
 
-	private static FileConfiguration getConfig() {
-		return ConfigManager.getConfig();
+	private FileConfiguration getConfig() {
+		return ConfigManager.getConfig(this);
 	}
 
 	@Override

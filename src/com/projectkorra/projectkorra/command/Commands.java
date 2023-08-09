@@ -119,6 +119,8 @@ public class Commands {
 		new InvincibleCommand();
 		new PermaremoveCommand();
 		new SourceHolesCommand();
+		new StyleCommand();
+		new StyleEditCommand();
 		new PresetCommand();
 		new ReloadCommand();
 		new RemoveCommand();

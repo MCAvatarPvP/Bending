@@ -64,8 +64,8 @@ public class Combustion extends CombustionAbility {
 		this.explosionCount = 0;
 
 		if (this.bPlayer.isAvatarState()) {
-			this.range = AvatarState.getValue(this.range);
-			this.damage = AvatarState.getValue(this.damage);
+			this.range = AvatarState.getValue(bPlayer, this.range);
+			this.damage = AvatarState.getValue(bPlayer, this.damage);
 		} /*else if (isDay(player.getWorld())) {
 			this.range = this.getDayFactor(this.range);
 			this.damage = this.getDayFactor(this.damage);

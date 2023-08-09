@@ -76,7 +76,7 @@ public class Bloodbending extends BloodAbility {
 		}
 
 		if (this.bPlayer.isAvatarState()) {
-			this.range += AvatarState.getValue(1.5);
+			this.range += AvatarState.getValue(bPlayer, 1.5);
 			for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(player.getLocation(), this.range)) {
 				if (entity instanceof LivingEntity) {
 					if (entity instanceof Player) {

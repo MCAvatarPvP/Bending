@@ -584,8 +584,8 @@ public class Torrent extends WaterAbility {
 		final Vector velocity = entity.getVelocity();
 
 		if (this.bPlayer.isAvatarState()) {
-			velocity.setX(AvatarState.getValue(vec.getX()));
-			velocity.setZ(AvatarState.getValue(vec.getZ()));
+			velocity.setX(AvatarState.getValue(bPlayer, vec.getX()));
+			velocity.setZ(AvatarState.getValue(bPlayer, vec.getZ()));
 		} else {
 			velocity.setX(vec.getX());
 			velocity.setZ(vec.getY());

@@ -18,7 +18,7 @@ import com.projectkorra.projectkorra.util.ActionBar;
 
 public class ChiPassive {
 	public static boolean willChiBlock(final Player attacker, final Player player) {
-		return willChiBlock(attacker, player, getChance());
+		return willChiBlock(attacker, player, getChance(BendingPlayer.getBendingPlayer(player)));
 	}
 
 	public static boolean willChiBlock(final Player attacker, final Player player, double chance) {
@@ -61,7 +61,7 @@ public class ChiPassive {
 			@Override
 			public void run() {
 				ActionBar.sendActionBar(Element.CHI.getColor() + "* Chiblocked *", player);
-				if (System.currentTimeMillis() >= start + getDuration()) {
+				if (System.currentTimeMillis() >= start + getDuration(bPlayer)) {
 					bPlayer.unblockChi();
 					this.cancel();
 				}
@@ -69,15 +69,11 @@ public class ChiPassive {
 		}.runTaskTimer(ProjectKorra.plugin, 0, 1);
 	}
 
-	public static double getChance() {
-		return ConfigManager.getConfig().getDouble("Abilities.Chi.Passive.BlockChi.Chance");
+	public static double getChance(BendingPlayer bPlayer) {
+		return ConfigManager.getConfig(bPlayer).getDouble("Abilities.Chi.Passive.BlockChi.Chance");
 	}
 
-	public static int getDuration() {
-		return ConfigManager.getConfig().getInt("Abilities.Chi.Passive.BlockChi.Duration");
-	}
-
-	public static long getTicks() {
-		return (getDuration() / 1000) * 20;
+	public static int getDuration(BendingPlayer bPlayer) {
+		return ConfigManager.getConfig(bPlayer).getInt("Abilities.Chi.Passive.BlockChi.Duration");
 	}
 }

@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import org.bukkit.Effect;
 import org.bukkit.Location;
@@ -176,12 +177,12 @@ public class AirBlast extends AirAbility {
 		} else if (!bPlayer.canBendIgnoreCooldowns(getAbility("AirBlast"))) {
 			ORIGINS.remove(player);
 			return;
-		} else if (origin.distanceSquared(player.getEyeLocation()) > getSelectRange() * getSelectRange()) {
+		} else if (origin.distanceSquared(player.getEyeLocation()) > getSelectRange(bPlayer) * getSelectRange(bPlayer)) {
 			ORIGINS.remove(player);
 			return;
 		}
 
-		playAirbendingParticles(origin, getSelectParticles());
+		playAirbendingParticles(origin, getSelectParticles(bPlayer));
 	}
 
 	public static void progressOrigins() {
@@ -191,7 +192,7 @@ public class AirBlast extends AirAbility {
 	}
 
 	public static void setOrigin(final Player player) {
-		final Location location = GeneralMethods.getTargetedLocation(player, getSelectRange(), getTransparentMaterials());
+		final Location location = GeneralMethods.getTargetedLocation(player, getSelectRange(BendingPlayer.getBendingPlayer(player)), getTransparentMaterials());
 		if (location.getBlock().isLiquid() || GeneralMethods.isSolid(location.getBlock())) {
 			return;
 		} else if (RegionProtection.isRegionProtected(player, location, "AirBlast")) {
@@ -690,12 +691,12 @@ public class AirBlast extends AirAbility {
 		this.particles = particles;
 	}
 
-	public static int getSelectParticles() {
-		return getConfig().getInt("Abilities.Air.AirBlast.SelectParticles");
+	public static int getSelectParticles(BendingPlayer bPlayer) {
+		return ConfigManager.getConfig(bPlayer).getInt("Abilities.Air.AirBlast.SelectParticles");
 	}
 
-	public static double getSelectRange() {
-		return getConfig().getInt("Abilities.Air.AirBlast.SelectRange");
+	public static double getSelectRange(BendingPlayer bPlayer) {
+		return ConfigManager.getConfig(bPlayer).getInt("Abilities.Air.AirBlast.SelectRange");
 	}
 
 }

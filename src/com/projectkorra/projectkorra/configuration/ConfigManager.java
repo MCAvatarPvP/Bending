@@ -3,13 +3,18 @@ package com.projectkorra.projectkorra.configuration;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 
+import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
+import com.projectkorra.projectkorra.ProjectKorra;
 import org.bukkit.Material;
 import org.bukkit.configuration.file.FileConfiguration;
 
 import net.md_5.bungee.api.ChatColor;
+import org.jetbrains.annotations.NotNull;
 
 public class ConfigManager {
 
@@ -18,11 +23,14 @@ public class ConfigManager {
 	public static Config languageConfig;
 	public static Config collisionConfig;
 
+	public static List<Config> styleConfigs;
+
 	public ConfigManager() {
 		presetConfig = new Config(new File("presets.yml"));
 		defaultConfig = new Config(new File("config.yml"));
 		languageConfig = new Config(new File("language.yml"));
 		collisionConfig = new Config(new File("collision.yml"));
+		styleConfigs = new ArrayList<>();
 		configCheck(ConfigType.DEFAULT);
 		configCheck(ConfigType.LANGUAGE);
 		configCheck(ConfigType.PRESETS);
@@ -212,6 +220,18 @@ public class ConfigManager {
 			config.addDefault("Commands.PermaRemove.RestoredConfirm", "You have restored the bending of {target}.");
 			config.addDefault("Commands.PermaRemove.Removed", "Your bending has been permanently removed.");
 			config.addDefault("Commands.PermaRemove.RemovedConfirm", "You have removed the bending of {target}.");
+
+			config.addDefault("Commands.Style.Description", "This command allows you to change styles.");
+			config.addDefault("Commands.Style.InvalidStyle", "Style {style} could not be found.");
+			config.addDefault("Commands.Style.PlayerNotFound", "Could not find player.");
+			config.addDefault("Commands.Style.ChangedStyle", "Successfully changed style to {style}.");
+
+			config.addDefault("Commands.StyleEdit.Description", "This command allows you to create or remove styles.");
+			config.addDefault("Commands.StyleEdit.CreateSuccess", "Successfully created style named \"{style}\".");
+			config.addDefault("Commands.StyleEdit.RemoveSuccess", "Successfully removed style named \"{style}\".");
+			config.addDefault("Commands.StyleEdit.AlreadyExists", "Style \"{style}\" already exists.");
+			config.addDefault("Commands.StyleEdit.DoesntExists", "Style \"{style}\" does not exist.");
+			config.addDefault("Commands.StyleEdit.InvalidName", "Name \"{style}\" is invalid.");
 
 			config.addDefault("Commands.SourceHoles.Description", "This command toggles SourceHoles on/off.");
 			config.addDefault("Commands.SourceHoles.InvalidPlayer", "That player could not be found.");
@@ -1826,6 +1846,14 @@ public class ConfigManager {
 	}
 
 	public static FileConfiguration getConfig() {
-		return ConfigManager.defaultConfig.get();
+		return ConfigManager.defaultConfig;
+	}
+
+	public static FileConfiguration getConfig(BendingPlayer bPlayer) {
+		return ConfigManager.defaultConfig.get(bPlayer);
+	}
+
+	public static void reloadStyleConfigs() {
+		for (Config config : styleConfigs) config.reload();
 	}
 }

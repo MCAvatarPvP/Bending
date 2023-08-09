@@ -204,7 +204,7 @@ public class OctopusForm extends WaterAbility {
 				continue;
 			}
 
-			final double knock = this.bPlayer.isAvatarState() ? AvatarState.getValue(this.knockback) : this.knockback;
+			final double knock = this.bPlayer.isAvatarState() ? AvatarState.getValue(bPlayer, this.knockback) : this.knockback;
 			GeneralMethods.setVelocity(this, entity, GeneralMethods.getDirection(this.player.getLocation(), location).normalize().multiply(knock));
 
 			if (entity instanceof LivingEntity) {
