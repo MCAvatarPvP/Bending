@@ -55,8 +55,10 @@ public class SurgeWave extends WaterAbility {
 	private double selectRange;
 	@Attribute(Attribute.KNOCKBACK)
 	private double knockback;
+	private double knockbackOthers;
 	@Attribute(Attribute.KNOCKUP)
 	private double knockup;
+	private double knockupOthers;
 	@Attribute("Freeze" + Attribute.RADIUS)
 	private double maxFreezeRadius;
 	private Block sourceBlock;
@@ -84,7 +86,9 @@ public class SurgeWave extends WaterAbility {
 		this.interval = getConfig().getLong("Abilities.Water.Surge.Wave.Interval");
 		this.maxRadius = applyModifiers(getConfig().getDouble("Abilities.Water.Surge.Wave.Radius"));
 		this.knockback = applyModifiers(getConfig().getDouble("Abilities.Water.Surge.Wave.Knockback"));
+		this.knockbackOthers = applyModifiers(getConfig().getDouble("Abilities.Water.Surge.Wave.KnockbackOthers"));
 		this.knockup = applyModifiers(getConfig().getDouble("Abilities.Water.Surge.Wave.Knockup"));
+		this.knockupOthers = applyModifiers(getConfig().getDouble("Abilities.Water.Surge.Wave.KnockupOthers"));
 		this.maxFreezeRadius = applyModifiers(getConfig().getDouble("Abilities.Water.Surge.Wave.MaxFreezeRadius"));
 		this.iceRevertTime = getConfig().getLong("Abilities.Water.Surge.Wave.IceRevertTime");
 		this.range = applyModifiers(getConfig().getDouble("Abilities.Water.Surge.Wave.Range"));
@@ -375,8 +379,13 @@ public class SurgeWave extends WaterAbility {
 							continue;
 						}
 						final Vector dir = direction.clone();
-						dir.setY(dir.getY() * this.knockup);
-						GeneralMethods.setVelocity(this, entity, entity.getVelocity().clone().add(dir.clone().multiply(this.getNightFactor(this.knockback))));
+						if (entity.getEntityId() == this.player.getEntityId()) {
+							dir.setY(dir.getY() * this.knockup);
+							GeneralMethods.setVelocity(this, entity, entity.getVelocity().clone().add(dir.clone().multiply(this.getNightFactor(this.knockback))));
+						} else {
+							dir.setY(dir.getY() * this.knockupOthers);
+							GeneralMethods.setVelocity(this, entity, entity.getVelocity().clone().add(dir.clone().multiply(this.getNightFactor(this.knockbackOthers))));
+						}
 
 						entity.setFallDistance(0);
 						if (entity.getFireTicks() > 0) {
