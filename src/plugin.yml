@@ -39,6 +39,7 @@ permissions:
       bending.command.copy.assign: true
       bending.admin.debug: true
       bending.command.remove: true
+      bending.command.styleedit: true
   bending.player:
     default: true
     description: Grants access to most abilities and basic commands.
@@ -53,6 +54,7 @@ permissions:
       bending.command.help: true
       bending.command.clear: true
       bending.command.who: true
+      bending.command.style: true
       bending.command.preset.list: true
       bending.command.preset.create.5: true
       bending.command.preset.create: true

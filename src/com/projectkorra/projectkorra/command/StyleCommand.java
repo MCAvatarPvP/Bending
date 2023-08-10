@@ -23,7 +23,7 @@ public class StyleCommand extends PKCommand {
 	private final String changedStyle;
 
 	public StyleCommand() {
-		super("style", "/bending style <Player>", ConfigManager.languageConfig.get().getString("Commands.Style.Description"), new String[] { "style" });
+		super("style", "/bending style <Style>", ConfigManager.languageConfig.get().getString("Commands.Style.Description"), new String[] { "style" });
 
 		this.invalidStyle = ConfigManager.languageConfig.get().getString("Commands.Style.InvalidStyle");
 		this.invalidPlayer = ConfigManager.languageConfig.get().getString("Commands.Style.InvalidPlayer");
