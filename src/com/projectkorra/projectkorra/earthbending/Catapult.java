@@ -34,6 +34,7 @@ public class Catapult extends EarthAbility {
 	private boolean cancelWithAngle;
 	private BlockData bentBlockData;
 	private boolean removeFireTick;
+	private double launchPower;
 
 	public Catapult(final Player player, final boolean sneak) {
 		super(player);
@@ -42,6 +43,9 @@ public class Catapult extends EarthAbility {
 		if (!(isEarth(b) || isSand(b) || isMetal(b))) {
 			return;
 		}
+
+		boolean disableSneak = getConfig().getBoolean("Abilities.Earth.Catapult.DisableSneak");
+		if (sneak && disableSneak) return;
 
 		this.bentBlockData = b.getBlockData();
 
@@ -63,6 +67,7 @@ public class Catapult extends EarthAbility {
 		this.angle = Math.toRadians(getConfig().getDouble("Abilities.Earth.Catapult.Angle"));
 		this.cancelWithAngle = getConfig().getBoolean("Abilities.Earth.Catapult.CancelWithAngle");
 		this.removeFireTick = getConfig().getBoolean("Abilities.Earth.Catapult.RemoveFireTick");
+		this.launchPower = getConfig().getDouble("Abilities.Earth.Catapult.LaunchPower");
 		this.activationHandled = false;
 		this.stage = 1;
 		this.stageStart = System.currentTimeMillis();
@@ -134,7 +139,7 @@ public class Catapult extends EarthAbility {
 			direction = this.up;
 		}
 
-		final Location tar = this.origin.clone().add(direction.clone().normalize().multiply(this.stage + 0.5));
+		final Location tar = this.origin.clone().add(direction.clone().normalize().multiply(this.stage + launchPower));
 		this.target = tar;
 		final Vector apply = this.target.clone().toVector().subtract(this.origin.clone().toVector());
 		GeneralMethods.setVelocity(this, this.player, apply);
