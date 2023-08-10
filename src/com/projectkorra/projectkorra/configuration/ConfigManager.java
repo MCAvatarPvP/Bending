@@ -1546,6 +1546,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Earth.RaiseEarth.Wall.SelectRange", 20);
 			config.addDefault("Abilities.Earth.RaiseEarth.Wall.Height", 6);
 			config.addDefault("Abilities.Earth.RaiseEarth.Wall.Width", 6);
+			config.addDefault("Abilities.Earth.RaiseEarth.Wall.Speed", 10);
 			config.addDefault("Abilities.Earth.RaiseEarth.Wall.Cooldown", 500);
 
 			config.addDefault("Abilities.Earth.Shockwave.Enabled", true);

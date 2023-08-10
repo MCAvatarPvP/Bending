@@ -20,6 +20,7 @@ public class RaiseEarthWall extends EarthAbility {
 	private int height;
 	@Attribute(Attribute.WIDTH)
 	private int width;
+	private double speed;
 	@Attribute(Attribute.COOLDOWN)
 	private long cooldown;
 	private Location location;
@@ -29,6 +30,7 @@ public class RaiseEarthWall extends EarthAbility {
 		this.selectRange = getConfig().getInt("Abilities.Earth.RaiseEarth.Wall.SelectRange");
 		this.height = getConfig().getInt("Abilities.Earth.RaiseEarth.Wall.Height");
 		this.width = getConfig().getInt("Abilities.Earth.RaiseEarth.Wall.Width");
+		this.speed = getConfig().getInt("Abilities.Earth.RaiseEarth.Wall.Speed");
 		this.cooldown = getConfig().getLong("Abilities.Earth.RaiseEarth.Wall.Cooldown");
 
 		if (!this.bPlayer.canBend(this) || this.bPlayer.isOnCooldown("RaiseEarthWall")) {
@@ -105,7 +107,7 @@ public class RaiseEarthWall extends EarthAbility {
 					block = block.getRelative(BlockFace.DOWN);
 					if (this.isEarthbendable(block)) {
 						shouldAddCooldown = true;
-						new RaiseEarth(this.player, block.getLocation(), this.height);
+						new RaiseEarth(this.player, block.getLocation(), this.height, this.speed);
 					} else if (!this.isTransparent(block)) {
 						break;
 					}
@@ -115,14 +117,14 @@ public class RaiseEarthWall extends EarthAbility {
 					block = block.getRelative(BlockFace.UP);
 					if (this.isTransparent(block)) {
 						shouldAddCooldown = true;
-						new RaiseEarth(this.player, block.getRelative(BlockFace.DOWN).getLocation(), this.height);
+						new RaiseEarth(this.player, block.getRelative(BlockFace.DOWN).getLocation(), this.height, this.speed);
 					} else if (!this.isEarthbendable(block)) {
 						break;
 					}
 				}
 			} else if (this.isEarthbendable(block)) {
 				shouldAddCooldown = true;
-				new RaiseEarth(this.player, block.getLocation(), this.height);
+				new RaiseEarth(this.player, block.getLocation(), this.height, this.speed);
 			}
 		}
 

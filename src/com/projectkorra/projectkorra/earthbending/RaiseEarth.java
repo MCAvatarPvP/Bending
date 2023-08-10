@@ -91,6 +91,26 @@ public class RaiseEarth extends EarthAbility {
 		}
 	}
 
+	public RaiseEarth(final Player player, final Location origin, final int height, final double speed) {
+		super(player);
+		this.setFields();
+
+		this.height = height;
+		this.speed = speed;
+		this.interval = (long) (1000.0 / this.speed);
+		this.origin = origin;
+		this.location = origin.clone();
+		this.block = this.location.getBlock();
+		this.distance = this.getEarthbendableBlocksLength(this.block, this.direction.clone().multiply(-1), height);
+
+		this.loadAffectedBlocks();
+
+		if (this.distance != 0 && this.canInstantiate()) {
+			this.time = System.currentTimeMillis() - this.interval;
+			this.start();
+		}
+	}
+
 	private void setFields() {
 		this.speed = getConfig().getDouble("Abilities.Earth.RaiseEarth.Speed");
 		this.height = getConfig().getInt("Abilities.Earth.RaiseEarth.Column.Height");
