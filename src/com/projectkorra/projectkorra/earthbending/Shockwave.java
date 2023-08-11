@@ -113,7 +113,7 @@ public class Shockwave extends EarthAbility {
 					final Vector vector = new Vector(Math.cos(rtheta), 0, Math.sin(rtheta));
 					if (vector.angle(player.getEyeLocation().getDirection()) < shockWave.angle) {
 						shockWave.range = ConfigManager.getConfig(shockWave.bPlayer).getDouble("Abilities.Earth.Shockwave.LeftClickRange");
-						new Ripple(player, vector.normalize()).setRange(shockWave.range);
+						new Ripple(player, vector.normalize(), shockWave.range);
 					}
 				}
 				shockWave.bPlayer.addCooldown(shockWave);

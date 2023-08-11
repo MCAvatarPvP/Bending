@@ -46,20 +46,25 @@ public class Ripple extends EarthAbility {
 
 	public Ripple(final Player player, final Vector direction) {
 		super(player);
-		this.initialize(player, this.getInitialLocation(player, direction), direction);
+		this.initialize(player, this.getInitialLocation(player, direction), direction, getConfig().getDouble("Abilities.Earth.Shockwave.Range"));
+	}
+
+	public Ripple(final Player player, final Vector direction, final double range) {
+		super(player);
+		this.initialize(player, this.getInitialLocation(player, direction), direction, range);
 	}
 
 	public Ripple(final Player player, final Location origin, final Vector direction) {
 		super(player);
-		this.initialize(player, origin, direction);
+		this.initialize(player, origin, direction, getConfig().getDouble("Abilities.Earth.Shockwave.Range"));
 	}
 
-	private void initialize(final Player player, final Location origin, final Vector direction) {
+	private void initialize(final Player player, final Location origin, final Vector direction, final double range) {
 		if (origin == null) {
 			return;
 		}
 
-		this.range = getConfig().getDouble("Abilities.Earth.Shockwave.Range");
+		this.range = range;
 		this.damage = getConfig().getDouble("Abilities.Earth.Shockwave.Damage");
 		this.knockback = getConfig().getDouble("Abilities.Earth.Shockwave.Knockback");
 		this.radius = getConfig().getDouble("Abilities.Earth.Shockwave.Radius");
