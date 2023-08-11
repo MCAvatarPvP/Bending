@@ -1215,6 +1215,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Water.Surge.Wave.KnockupOthers", 0.2);
 			config.addDefault("Abilities.Water.Surge.Wave.MaxFreezeRadius", 7);
 			config.addDefault("Abilities.Water.Surge.Wave.Cooldown", 500);
+			config.addDefault("Abilities.Water.Surge.Wave.FreezeCooldown", 500);
 			config.addDefault("Abilities.Water.Surge.Wave.Interval", 30);
 			config.addDefault("Abilities.Water.Surge.Wave.SolidifyLava.Enabled", true);
 			config.addDefault("Abilities.Water.Surge.Wave.SolidifyLava.Duration", 36000);

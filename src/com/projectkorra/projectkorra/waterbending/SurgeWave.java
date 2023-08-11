@@ -42,6 +42,7 @@ public class SurgeWave extends WaterAbility {
 	private long time;
 	@Attribute(Attribute.COOLDOWN)
 	private long cooldown;
+	private long freezeCooldown;
 	private long interval;
 	@Attribute("IceRevertTime")
 	private long iceRevertTime;
@@ -83,6 +84,7 @@ public class SurgeWave extends WaterAbility {
 		this.canHitSelf = true;
 		this.currentRadius = 1;
 		this.cooldown = applyInverseModifiers(getConfig().getLong("Abilities.Water.Surge.Wave.Cooldown"));
+		this.freezeCooldown = getConfig().getLong("Abilities.Water.Surge.Wave.FreezeCooldown");
 		this.interval = getConfig().getLong("Abilities.Water.Surge.Wave.Interval");
 		this.maxRadius = applyModifiers(getConfig().getDouble("Abilities.Water.Surge.Wave.Radius"));
 		this.knockback = applyModifiers(getConfig().getDouble("Abilities.Water.Surge.Wave.Knockback"));
@@ -198,6 +200,7 @@ public class SurgeWave extends WaterAbility {
 				}
 			}
 		}
+		bPlayer.addCooldown(this, freezeCooldown);
 	}
 
 	private Vector getDirection(final Location location, final Location destination) {
