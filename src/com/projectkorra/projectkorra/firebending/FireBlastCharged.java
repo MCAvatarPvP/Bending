@@ -36,7 +36,7 @@ public class FireBlastCharged extends FireAbility {
 	private boolean launched;
 	private boolean canDamageBlocks;
 	private boolean dissipate;
-	private boolean ignoreCooldowns;
+	private boolean canChargeInWater;
 	private long time;
 	@Attribute(Attribute.CHARGE_DURATION)
 	private long chargeTime;
@@ -79,6 +79,7 @@ public class FireBlastCharged extends FireAbility {
 		this.launched = false;
 		this.canDamageBlocks = getConfig().getBoolean("Abilities.Fire.FireBlast.Charged.DamageBlocks");
 		this.dissipate = getConfig().getBoolean("Abilities.Fire.FireBlast.Dissipate");
+		this.canChargeInWater = getConfig().getBoolean("Abilities.Fire.FireBlast.Charged.CanChargeInWater");
 		this.chargeTime = (long) applyInverseModifiers(getConfig().getLong("Abilities.Fire.FireBlast.Charged.ChargeTime"));
 		this.cooldown = applyModifiersCooldown(getConfig().getLong("Abilities.Fire.FireBlast.Charged.Cooldown"));
 		this.time = System.currentTimeMillis();
@@ -104,7 +105,7 @@ public class FireBlastCharged extends FireAbility {
 
 		//this.applyModifiers();
 
-		if (!player.getEyeLocation().getBlock().isLiquid()) {
+		if (canChargeInWater || !player.getEyeLocation().getBlock().isLiquid()) {
 			this.start();
 		}
 	}
