@@ -1751,6 +1751,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.FireSpin.Knockback", 3.0);
 			config.addDefault("Abilities.Fire.FireSpin.Cooldown", 5000);
 			config.addDefault("Abilities.Fire.FireSpin.Speed", 0.3);
+			config.addDefault("Abilities.Fire.FireSpin.Radius", 2);
 			config.addDefault("Abilities.Fire.FireSpin.Combination", Arrays.asList("FireBlast:LEFT_CLICK", "FireBlast:LEFT_CLICK", "FireShield:LEFT_CLICK", "FireShield:SNEAK_DOWN", "FireShield:SNEAK_UP"));
 
 			config.addDefault("Abilities.Fire.FireWheel.Enabled", true);
