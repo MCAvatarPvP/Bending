@@ -31,6 +31,7 @@ public class FireKick extends FireAbility implements ComboAbility {
 	private double speed;
 	@Attribute(Attribute.RANGE)
 	private double range;
+	private double radius;
 	private double collisionRadius;
 	private Location location;
 	private Location destination;
@@ -51,6 +52,7 @@ public class FireKick extends FireAbility implements ComboAbility {
 		this.range = applyModifiersRange(getConfig().getDouble("Abilities.Fire.FireKick.Range"));
 		this.cooldown = applyModifiersCooldown(getConfig().getLong("Abilities.Fire.FireKick.Cooldown"));
 		this.speed = getConfig().getLong("Abilities.Fire.FireKick.Speed");
+		this.radius = getConfig().getLong("Abilities.Fire.FireKick.Radius");
 		this.collisionRadius = getConfig().getDouble("Abilities.Fire.FireKick.CollisionRadius");
 
 		if (this.bPlayer.isAvatarState()) {
@@ -109,6 +111,7 @@ public class FireKick extends FireAbility implements ComboAbility {
 				fs.setSpread(0.2F);
 				fs.setDensity(5);
 				fs.setUseNewParticles(true);
+				fs.setCollisionRadius(radius);
 				fs.setDamage(this.damage);
 				if (this.tasks.size() % 3 != 0) {
 					fs.setCollides(false);

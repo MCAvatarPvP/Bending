@@ -1741,6 +1741,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.FireKick.Damage", 3.0);
 			config.addDefault("Abilities.Fire.FireKick.Cooldown", 6000);
 			config.addDefault("Abilities.Fire.FireKick.Speed", 1);
+			config.addDefault("Abilities.Fire.FireKick.Radius", 2);
 			config.addDefault("Abilities.Fire.FireKick.CollisionRadius", 0.3);
 			config.addDefault("Abilities.Fire.FireKick.CollidesWithSmash", true);
 			config.addDefault("Abilities.Fire.FireKick.Combination", Arrays.asList("FireBlast:LEFT_CLICK", "FireBlast:LEFT_CLICK", "FireBlast:SNEAK_DOWN", "FireBlast:LEFT_CLICK"));
