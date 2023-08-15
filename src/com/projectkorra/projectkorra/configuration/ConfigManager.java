@@ -1588,6 +1588,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.Blaze.Arc", 14);
 			config.addDefault("Abilities.Fire.Blaze.Range", 7);
 			config.addDefault("Abilities.Fire.Blaze.Speed", 15);
+			config.addDefault("Abilities.Fire.Blaze.HeightRadius", 1);
 			config.addDefault("Abilities.Fire.Blaze.Cooldown", 500);
 			config.addDefault("Abilities.Fire.Blaze.Ring.Range", 7);
 			config.addDefault("Abilities.Fire.Blaze.Ring.Angle", 10);

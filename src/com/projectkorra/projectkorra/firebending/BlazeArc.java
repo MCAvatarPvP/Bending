@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.firebending;
 
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Player;
@@ -23,6 +24,7 @@ public class BlazeArc extends FireAbility {
 	private double range;
 	@Attribute(Attribute.SPEED)
 	private double speed;
+	private int heightRadius;
 	private Location origin;
 	private Location location;
 	private Location previousLocation;
@@ -32,6 +34,7 @@ public class BlazeArc extends FireAbility {
 		super(player);
 		this.range = applyModifiersRange(range);
 		this.speed = getConfig().getLong("Abilities.Fire.Blaze.Speed");
+		this.heightRadius = getConfig().getInt("Abilities.Fire.Blaze.HeightRadius");
 		this.interval = (long) (1000.0 / this.speed);
 
 		/*if(bPlayer.canUseSubElement(SubElement.BLUE_FIRE)) {
@@ -40,8 +43,6 @@ public class BlazeArc extends FireAbility {
 
 		this.origin = location.clone();
 		this.location = this.origin.clone();
-
-		if (!location.getBlock().getRelative(BlockFace.DOWN).getType().isSolid()) location.add(0,-1,0);
 
 		this.direction = direction.clone();
 		this.direction.setY(0);
@@ -75,6 +76,28 @@ public class BlazeArc extends FireAbility {
 		} else if (System.currentTimeMillis() - this.time >= this.interval) {
 			this.location = this.location.clone().add(this.direction);
 			this.time = System.currentTimeMillis();
+
+			Block topBlock = GeneralMethods.getTopBlock(this.location, heightRadius - 1, heightRadius + 1);
+			if (isWater(topBlock)) {
+				remove();
+				return;
+			} else if (topBlock.getType() == Material.FIRE) {
+				topBlock = topBlock.getRelative(BlockFace.DOWN);
+			} else if (isSnow(topBlock)) {
+				topBlock.breakNaturally();
+				topBlock = topBlock.getRelative(BlockFace.DOWN);
+			} else if (isPlant(topBlock)) {
+				topBlock.breakNaturally();
+				topBlock = topBlock.getRelative(BlockFace.DOWN);
+			} else if (isAir(topBlock.getType())) {
+				remove();
+				return;
+			} else if (GeneralMethods.isSolid(topBlock.getRelative(BlockFace.UP)) || isWater(topBlock.getRelative(BlockFace.UP))) {
+				remove();
+				return;
+			}
+			topBlock = topBlock.getRelative(BlockFace.UP);
+			location.setY(topBlock.getY());
 
 			if (previousLocation != null && !isFire(previousLocation.getBlock())) {
 				remove();
