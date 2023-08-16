@@ -35,6 +35,7 @@ public class FireSpin extends FireAbility implements ComboAbility {
 	@Attribute(Attribute.KNOCKBACK)
 	private double knockback;
 	private double radius;
+	private double collisionRadius;
 	private Location destination;
 	private ArrayList<LivingEntity> affectedEntities;
 	private ArrayList<BukkitRunnable> tasks;
@@ -58,6 +59,7 @@ public class FireSpin extends FireAbility implements ComboAbility {
 		this.cooldown = applyModifiersCooldown(getConfig().getLong("Abilities.Fire.FireSpin.Cooldown"));
 		this.knockback = applyModifiers(getConfig().getDouble("Abilities.Fire.FireSpin.Knockback"));
 		this.radius = getConfig().getDouble("Abilities.Fire.FireSpin.Radius");
+		this.collisionRadius = getConfig().getDouble("Abilities.Fire.FireSpin.CollisionRadius");
 		this.speed = getConfig().getDouble("Abilities.Fire.FireSpin.Speed");
 
 		if (this.bPlayer.isAvatarState()) {
@@ -193,6 +195,11 @@ public class FireSpin extends FireAbility implements ComboAbility {
 	@Override
 	public Location getLocation() {
 		return this.player.getLocation();
+	}
+
+	@Override
+	public double getCollisionRadius() {
+		return collisionRadius;
 	}
 
 	@Override
