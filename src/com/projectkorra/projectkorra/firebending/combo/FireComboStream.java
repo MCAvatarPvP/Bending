@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.firebending.combo;
 
+import com.projectkorra.projectkorra.ability.FireAbility;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
@@ -87,10 +88,15 @@ public class FireComboStream extends BukkitRunnable {
 			this.remove();
 			return;
 		}
-		for (int i = 0; i < this.density; i++) {
-			if (this.useNewParticles) {
-				this.particleEffect.display(this.location, 1, this.spread, this.spread, this.spread);
+		if (this.useNewParticles) {
+			if (coreAbility instanceof FireAbility && (particleEffect == ParticleEffect.FLAME || particleEffect == ParticleEffect.SOUL_FIRE_FLAME)) {
+				FireAbility fa = (FireAbility) coreAbility;
+				fa.playFirebendingParticles(this.location, this.density, this.spread, this.spread, this.spread);
 			} else {
+				this.particleEffect.display(this.location, this.density, this.spread, this.spread, this.spread);
+			}
+		} else {
+			for (int i = 0; i < this.density; i++) {
 				this.location.getWorld().playEffect(this.location, Effect.MOBSPAWNER_FLAMES, 0, 15);
 			}
 		}

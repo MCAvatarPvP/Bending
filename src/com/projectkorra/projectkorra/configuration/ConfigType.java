@@ -13,7 +13,8 @@ public class ConfigType {
 	public static final ConfigType PRESETS = new ConfigType("Presets");
 	public static final ConfigType LANGUAGE = new ConfigType("Language");
 	public static final ConfigType COLLISION = new ConfigType("Collision");
-	public static final ConfigType[] CORE_TYPES = { DEFAULT, PRESETS, LANGUAGE, COLLISION };
+	public static final ConfigType FIRECOLORS = new ConfigType("FireColors");
+	public static final ConfigType[] CORE_TYPES = { DEFAULT, PRESETS, LANGUAGE, COLLISION, FIRECOLORS };
 
 	private final String string;
 

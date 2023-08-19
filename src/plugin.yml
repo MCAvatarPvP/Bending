@@ -39,6 +39,7 @@ permissions:
       bending.command.copy.assign: true
       bending.admin.debug: true
       bending.command.remove: true
+      bending.admin.style: true
       bending.command.styleedit: true
   bending.player:
     default: true
@@ -55,6 +56,7 @@ permissions:
       bending.command.clear: true
       bending.command.who: true
       bending.command.style: true
+      bending.command.firecolor: true
       bending.command.preset.list: true
       bending.command.preset.create.5: true
       bending.command.preset.create: true
@@ -280,3 +282,6 @@ permissions:
   bending.element.chi:
     default: true
     description: Grants access to all Chi abilities
+  bending.firecolor:
+    default: op
+    description: Grants access to all Fire colors

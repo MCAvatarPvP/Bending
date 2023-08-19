@@ -121,6 +121,7 @@ public class Commands {
 		new SourceHolesCommand();
 		new StyleCommand();
 		new StyleEditCommand();
+		new FireColorCommand();
 		new PresetCommand();
 		new ReloadCommand();
 		new RemoveCommand();

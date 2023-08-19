@@ -22,6 +22,7 @@ public class ConfigManager {
 	public static Config defaultConfig;
 	public static Config languageConfig;
 	public static Config collisionConfig;
+	public static Config fireColorsConfig;
 
 	public static List<Config> styleConfigs;
 
@@ -30,11 +31,13 @@ public class ConfigManager {
 		defaultConfig = new Config(new File("config.yml"));
 		languageConfig = new Config(new File("language.yml"));
 		collisionConfig = new Config(new File("collision.yml"));
+		fireColorsConfig = new Config(new File("fireColors.yml"));
 		styleConfigs = new ArrayList<>();
 		configCheck(ConfigType.DEFAULT);
 		configCheck(ConfigType.LANGUAGE);
 		configCheck(ConfigType.PRESETS);
 		configCheck(ConfigType.COLLISION);
+		configCheck(ConfigType.FIRECOLORS);
 	}
 
 	public static void configCheck(final ConfigType type) {
@@ -61,6 +64,10 @@ public class ConfigManager {
 			config.addDefault("Collisions", Arrays.asList("FirstAbility, SecondAbility"));
 			config.addDefault("FallingBlockCollisions", Arrays.asList("FallingBlockAbility, VelocityAbility"));
 			collisionConfig.save();
+		} else if (type == ConfigType.FIRECOLORS) {
+			config = fireColorsConfig.get();
+			config.addDefault("FireColors", Arrays.asList("name, hexColor, size"));
+			fireColorsConfig.save();
 		} else if (type == ConfigType.LANGUAGE) {
 			config = languageConfig.get();
 
@@ -220,6 +227,11 @@ public class ConfigManager {
 			config.addDefault("Commands.PermaRemove.RestoredConfirm", "You have restored the bending of {target}.");
 			config.addDefault("Commands.PermaRemove.Removed", "Your bending has been permanently removed.");
 			config.addDefault("Commands.PermaRemove.RemovedConfirm", "You have removed the bending of {target}.");
+
+			config.addDefault("Commands.FireColor.Description", "This command allows you to change fire colors.");
+			config.addDefault("Commands.FireColor.InvalidColor", "Color {color} could not be found.");
+			config.addDefault("Commands.FireColor.PlayerNotFound", "Could not find player.");
+			config.addDefault("Commands.FireColor.ChangedColor", "Successfully changed fire color to {color}.");
 
 			config.addDefault("Commands.Style.Description", "This command allows you to change styles.");
 			config.addDefault("Commands.Style.InvalidStyle", "Style {style} could not be found.");

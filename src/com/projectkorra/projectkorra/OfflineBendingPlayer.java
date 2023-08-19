@@ -6,6 +6,7 @@ import com.projectkorra.projectkorra.ability.util.MultiAbilityManager;
 import com.projectkorra.projectkorra.command.CooldownCommand;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.event.PlayerBindChangeEvent;
+import com.projectkorra.projectkorra.object.FireColor;
 import com.projectkorra.projectkorra.object.Style;
 import com.projectkorra.projectkorra.storage.DBConnection;
 import com.projectkorra.projectkorra.util.ChatUtil;
@@ -57,6 +58,7 @@ public class OfflineBendingPlayer {
     protected final UUID uuid;
     protected boolean permaRemoved;
     protected Style style;
+    protected FireColor fireColor;
     protected boolean toggled;
     protected boolean sourceHoles;
     protected boolean allPassivesToggled;
@@ -147,6 +149,7 @@ public class OfflineBendingPlayer {
                     final String subelementField = rs2.getString("subelement");
                     final String elementField = rs2.getString("element");
                     final String styleField = rs2.getString("style");
+                    final String fireColorField = rs2.getString("firecolor");
                     final String permaremovedField = rs2.getString("permaremoved");
                     final String sourceholesField = rs2.getString("sourceholes");
 
@@ -365,6 +368,9 @@ public class OfflineBendingPlayer {
 
                     //Load styles
                     if (styleField != null && Style.hasStyle(styleField)) bPlayer.style = Style.getStyle(styleField);
+
+                    //Load fireColors
+                    if (fireColorField != null && FireColor.hasFireColor(fireColorField)) bPlayer.fireColor = FireColor.getFireColor(fireColorField);
 
                     //Load permaRemove
                     if (permaremovedField != null && permaremovedField.equalsIgnoreCase("true")) bPlayer.permaRemoved = true;
@@ -894,6 +900,10 @@ public class OfflineBendingPlayer {
         return style;
     }
 
+    public FireColor getFireColor() {
+        return fireColor;
+    }
+
     public boolean areSourceHolesOn() {
         return this.sourceHoles;
     }
@@ -956,6 +966,11 @@ public class OfflineBendingPlayer {
     public void setStyle(Style style) {
         this.style = style;
         DBConnection.sql.modifyQuery("UPDATE pk_players SET style = '" + style.getName() + "' WHERE uuid = '" + uuid + "'");
+    }
+
+    public void setFireColor(FireColor fireColor) {
+        this.fireColor = fireColor;
+        DBConnection.sql.modifyQuery("UPDATE pk_players SET firecolor = '" + fireColor.getName() + "' WHERE uuid = '" + uuid + "'");
     }
 
     public void toggleSourceHoles() {
@@ -1100,6 +1115,7 @@ public class OfflineBendingPlayer {
         bendingPlayer.allPassivesToggled = offlineBendingPlayer.allPassivesToggled;
         bendingPlayer.permaRemoved = offlineBendingPlayer.permaRemoved;
         bendingPlayer.style = offlineBendingPlayer.style;
+        bendingPlayer.fireColor = offlineBendingPlayer.fireColor;
         bendingPlayer.sourceHoles = offlineBendingPlayer.sourceHoles;
         bendingPlayer.cooldowns.putAll(offlineBendingPlayer.cooldowns);
         bendingPlayer.loading = false;
@@ -1127,6 +1143,7 @@ public class OfflineBendingPlayer {
         offlineBendingPlayer.allPassivesToggled = bendingPlayer.allPassivesToggled;
         offlineBendingPlayer.permaRemoved = bendingPlayer.permaRemoved;
         offlineBendingPlayer.style = bendingPlayer.style;
+        offlineBendingPlayer.fireColor = bendingPlayer.fireColor;
         offlineBendingPlayer.sourceHoles = bendingPlayer.sourceHoles;
         offlineBendingPlayer.cooldowns.putAll(bendingPlayer.cooldowns);
         offlineBendingPlayer.loading = false;
