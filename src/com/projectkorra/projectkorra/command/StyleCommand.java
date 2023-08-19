@@ -1,18 +1,14 @@
 package com.projectkorra.projectkorra.command;
 
 import com.projectkorra.projectkorra.BendingPlayer;
-import com.projectkorra.projectkorra.configuration.Config;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.object.Style;
 import com.projectkorra.projectkorra.util.ChatUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
-import org.bukkit.OfflinePlayer;
 import org.bukkit.command.CommandSender;
-import org.bukkit.command.ConsoleCommandSender;
 import org.bukkit.entity.Player;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,7 +22,7 @@ public class StyleCommand extends PKCommand {
 		super("style", "/bending style <Style>", ConfigManager.languageConfig.get().getString("Commands.Style.Description"), new String[] { "style" });
 
 		this.invalidStyle = ConfigManager.languageConfig.get().getString("Commands.Style.InvalidStyle");
-		this.invalidPlayer = ConfigManager.languageConfig.get().getString("Commands.Style.InvalidPlayer");
+		this.invalidPlayer = ConfigManager.languageConfig.get().getString("Commands.Style.PlayerNotFound");
 		this.changedStyle = ConfigManager.languageConfig.get().getString("Commands.Style.ChangedStyle");
 	}
 
