@@ -36,6 +36,7 @@ public class FireComboStream extends BukkitRunnable {
 	private boolean cancelled;
 	private boolean collides;
 	private boolean singlePoint;
+	private boolean goThroughWater;
 	private int density;
 	private int checkCollisionDelay;
 	private int checkCollisionCounter;
@@ -59,6 +60,7 @@ public class FireComboStream extends BukkitRunnable {
 		this.cancelled = false;
 		this.collides = true;
 		this.singlePoint = false;
+		this.goThroughWater = true;
 		this.density = 1;
 		this.checkCollisionDelay = 1;
 		this.checkCollisionCounter = 0;
@@ -84,7 +86,7 @@ public class FireComboStream extends BukkitRunnable {
 			return;
 		}
 
-		if (!ElementalAbility.isAir(block.getRelative(BlockFace.UP).getType()) && !ElementalAbility.isPlant(block)) {
+		if ((goThroughWater && ElementalAbility.isWater(block)) && !ElementalAbility.isAir(block.getRelative(BlockFace.UP).getType()) && !ElementalAbility.isPlant(block)) {
 			this.remove();
 			return;
 		}
@@ -211,6 +213,10 @@ public class FireComboStream extends BukkitRunnable {
 
 	public void setCollides(final boolean b) {
 		this.collides = b;
+	}
+
+	public void setGoThroughWater(boolean goThroughWater) {
+		this.goThroughWater = goThroughWater;
 	}
 
 	public void setCollisionRadius(final double radius) {

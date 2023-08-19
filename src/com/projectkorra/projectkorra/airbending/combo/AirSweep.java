@@ -42,6 +42,7 @@ public class AirSweep extends AirAbility implements ComboAbility {
 	private double heightOffset;
 	private boolean oldKnockback;
 	private boolean oldBehavior;
+	private boolean goThroughWater;
 	private Location origin;
 	private Location currentLoc;
 	private Location destination;
@@ -71,6 +72,7 @@ public class AirSweep extends AirAbility implements ComboAbility {
 		this.heightOffset = getConfig().getDouble("Abilities.Air.AirSweep.HeightOffset");
 		this.oldKnockback = getConfig().getBoolean("Abilities.Air.AirSweep.OldKnockback");
 		this.oldBehavior = getConfig().getBoolean("Abilities.Air.AirSweep.OldBehavior");
+		this.goThroughWater = getConfig().getBoolean("Abilities.Air.AirSweep.GoThroughWater");
 		this.cooldown = getConfig().getLong("Abilities.Air.AirSweep.Cooldown");
 		this.radius = getConfig().getDouble("Abilities.Air.AirSweep.Radius");
 		this.activationDelayTicks = getConfig().getInt("Abilities.Air.AirSweep.ActivationDelayTicks");
@@ -169,6 +171,7 @@ public class AirSweep extends AirAbility implements ComboAbility {
 				fs.setDensity(1);
 				fs.setSpread(0F);
 				fs.setUseNewParticles(true);
+				fs.setGoThroughWater(goThroughWater);
 				fs.setParticleEffect(getAirbendingParticles());
 				fs.setCollides(false);
 				fs.runTaskTimer(ProjectKorra.plugin, (long) (i / 2.5), 1L);
