@@ -803,6 +803,7 @@ public class ConfigManager {
 			config.addDefault("Properties.Fire.MaxLavaTickDuration", 60);
 			config.addDefault("Properties.Fire.MinFireTickDuration", 20);
 			config.addDefault("Properties.Fire.MaxFireTickDuration", 40);
+			config.addDefault("Properties.Fire.MaxFireDamage", 0.5);
 			config.addDefault("Properties.Fire.FireSound.Sound", "BLOCK_FIRE_AMBIENT");
 			config.addDefault("Properties.Fire.FireSound.Volume", 1);
 			config.addDefault("Properties.Fire.FireSound.Pitch", 1);

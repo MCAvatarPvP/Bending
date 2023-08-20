@@ -528,6 +528,9 @@ public class PKListener implements Listener {
 			if (event.getCause() == DamageCause.FIRE) {
 				if (player.getFireTicks() < minFireTicks) player.setFireTicks(minFireTicks);
 				else if (player.getFireTicks() > maxFireTicks) player.setFireTicks(maxFireTicks);
+
+				double maxFireDmg = ConfigManager.getConfig(bPlayer).getDouble("Properties.Fire.MaxFireDamage");
+				if (event.getDamage() > maxFireDmg) event.setDamage(maxFireDmg);
 			} else if (event.getCause() == DamageCause.LAVA) {
 				if (player.getFireTicks() > maxLavaTicks) player.setFireTicks(maxLavaTicks);
 
