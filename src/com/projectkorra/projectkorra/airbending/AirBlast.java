@@ -182,7 +182,7 @@ public class AirBlast extends AirAbility {
 			return;
 		}
 
-		playAirbendingParticles(origin, getSelectParticles(bPlayer));
+		playAirbendingParticles(bPlayer, origin, getSelectParticles(bPlayer));
 	}
 
 	public static void progressOrigins() {

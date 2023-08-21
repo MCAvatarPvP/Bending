@@ -445,7 +445,7 @@ public class Suffocate extends AirAbility {
 				this.loc.setZ(tempLoc.getZ() + this.radius * Math.cos(Math.toRadians((double) this.i / (double) this.totalSteps * 360)));
 			}
 
-			getAirbendingParticles().display(this.loc, 0, 0, 0, 0, 1);
+			playAirbendingParticles(this.loc, 1, 0, 0, 0, 1);
 			if (this.i == this.totalSteps + 1) {
 				this.cancel();
 			}

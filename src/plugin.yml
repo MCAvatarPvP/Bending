@@ -285,3 +285,6 @@ permissions:
   bending.firecolor:
     default: op
     description: Grants access to all Fire colors
+  bending.aircolor:
+    default: op
+    description: Grants access to all Air colors

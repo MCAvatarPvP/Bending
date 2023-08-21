@@ -122,6 +122,7 @@ public class Commands {
 		new StyleCommand();
 		new StyleEditCommand();
 		new FireColorCommand();
+		new AirColorCommand();
 		new PresetCommand();
 		new ReloadCommand();
 		new RemoveCommand();

@@ -4,12 +4,10 @@ import java.io.File;
 import java.util.HashMap;
 import java.util.logging.Logger;
 
-import com.bekvon.bukkit.residence.protection.FlagPermissions;
-
 import co.aikar.timings.lib.MCTiming;
 import co.aikar.timings.lib.TimingManager;
 
-import com.projectkorra.projectkorra.object.FireColor;
+import com.projectkorra.projectkorra.object.CosmeticColor;
 import com.projectkorra.projectkorra.object.Style;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import org.bukkit.Bukkit;
@@ -61,7 +59,7 @@ public class ProjectKorra extends JavaPlugin {
 
 		new ConfigManager();
 		Style.loadStyleConfigs(new File(plugin.getDataFolder() + File.separator + "Styles"));
-		FireColor.loadFireColors();
+		CosmeticColor.loadColors();
 		new GeneralMethods(this);
 		final boolean checkUpdateOnStartup = ConfigManager.getConfig().getBoolean("Properties.UpdateChecker");
 		this.updater = new Updater(this, "https://projectkorra.com/forum/resources/projectkorra-core.1/", checkUpdateOnStartup);

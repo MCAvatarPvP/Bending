@@ -6,7 +6,7 @@ import com.projectkorra.projectkorra.ability.util.MultiAbilityManager;
 import com.projectkorra.projectkorra.command.CooldownCommand;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.event.PlayerBindChangeEvent;
-import com.projectkorra.projectkorra.object.FireColor;
+import com.projectkorra.projectkorra.object.CosmeticColor;
 import com.projectkorra.projectkorra.object.Style;
 import com.projectkorra.projectkorra.storage.DBConnection;
 import com.projectkorra.projectkorra.util.ChatUtil;
@@ -58,7 +58,8 @@ public class OfflineBendingPlayer {
     protected final UUID uuid;
     protected boolean permaRemoved;
     protected Style style;
-    protected FireColor fireColor;
+    protected CosmeticColor fireCosmeticColor;
+    protected CosmeticColor airCosmeticColor;
     protected boolean toggled;
     protected boolean sourceHoles;
     protected boolean allPassivesToggled;
@@ -150,6 +151,7 @@ public class OfflineBendingPlayer {
                     final String elementField = rs2.getString("element");
                     final String styleField = rs2.getString("style");
                     final String fireColorField = rs2.getString("firecolor");
+                    final String airColorField = rs2.getString("aircolor");
                     final String permaremovedField = rs2.getString("permaremoved");
                     final String sourceholesField = rs2.getString("sourceholes");
 
@@ -370,7 +372,10 @@ public class OfflineBendingPlayer {
                     if (styleField != null && Style.hasStyle(styleField)) bPlayer.style = Style.getStyle(styleField);
 
                     //Load fireColors
-                    if (fireColorField != null && FireColor.hasFireColor(fireColorField)) bPlayer.fireColor = FireColor.getFireColor(fireColorField);
+                    if (fireColorField != null && CosmeticColor.hasFireColor(fireColorField)) bPlayer.fireCosmeticColor = CosmeticColor.getFireColor(fireColorField);
+
+                    //Load airColors
+                    if (airColorField != null && CosmeticColor.hasAirColor(airColorField)) bPlayer.airCosmeticColor = CosmeticColor.getAirColor(airColorField);
 
                     //Load permaRemove
                     if (permaremovedField != null && permaremovedField.equalsIgnoreCase("true")) bPlayer.permaRemoved = true;
@@ -900,8 +905,12 @@ public class OfflineBendingPlayer {
         return style;
     }
 
-    public FireColor getFireColor() {
-        return fireColor;
+    public CosmeticColor getFireColor() {
+        return fireCosmeticColor;
+    }
+
+    public CosmeticColor getAirColor() {
+        return airCosmeticColor;
     }
 
     public boolean areSourceHolesOn() {
@@ -968,9 +977,14 @@ public class OfflineBendingPlayer {
         DBConnection.sql.modifyQuery("UPDATE pk_players SET style = '" + style.getName() + "' WHERE uuid = '" + uuid + "'");
     }
 
-    public void setFireColor(FireColor fireColor) {
-        this.fireColor = fireColor;
-        DBConnection.sql.modifyQuery("UPDATE pk_players SET firecolor = '" + fireColor.getName() + "' WHERE uuid = '" + uuid + "'");
+    public void setFireColor(CosmeticColor fireCosmeticColor) {
+        this.fireCosmeticColor = fireCosmeticColor;
+        DBConnection.sql.modifyQuery("UPDATE pk_players SET firecolor = '" + fireCosmeticColor.getName() + "' WHERE uuid = '" + uuid + "'");
+    }
+
+    public void setAirColor(CosmeticColor airCosmeticColor) {
+        this.airCosmeticColor = airCosmeticColor;
+        DBConnection.sql.modifyQuery("UPDATE pk_players SET aircolor = '" + airCosmeticColor.getName() + "' WHERE uuid = '" + uuid + "'");
     }
 
     public void toggleSourceHoles() {
@@ -1115,7 +1129,8 @@ public class OfflineBendingPlayer {
         bendingPlayer.allPassivesToggled = offlineBendingPlayer.allPassivesToggled;
         bendingPlayer.permaRemoved = offlineBendingPlayer.permaRemoved;
         bendingPlayer.style = offlineBendingPlayer.style;
-        bendingPlayer.fireColor = offlineBendingPlayer.fireColor;
+        bendingPlayer.fireCosmeticColor = offlineBendingPlayer.fireCosmeticColor;
+        bendingPlayer.airCosmeticColor = offlineBendingPlayer.airCosmeticColor;
         bendingPlayer.sourceHoles = offlineBendingPlayer.sourceHoles;
         bendingPlayer.cooldowns.putAll(offlineBendingPlayer.cooldowns);
         bendingPlayer.loading = false;
@@ -1143,7 +1158,8 @@ public class OfflineBendingPlayer {
         offlineBendingPlayer.allPassivesToggled = bendingPlayer.allPassivesToggled;
         offlineBendingPlayer.permaRemoved = bendingPlayer.permaRemoved;
         offlineBendingPlayer.style = bendingPlayer.style;
-        offlineBendingPlayer.fireColor = bendingPlayer.fireColor;
+        offlineBendingPlayer.fireCosmeticColor = bendingPlayer.fireCosmeticColor;
+        offlineBendingPlayer.airCosmeticColor = bendingPlayer.airCosmeticColor;
         offlineBendingPlayer.sourceHoles = bendingPlayer.sourceHoles;
         offlineBendingPlayer.cooldowns.putAll(bendingPlayer.cooldowns);
         offlineBendingPlayer.loading = false;

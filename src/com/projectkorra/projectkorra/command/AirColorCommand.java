@@ -12,18 +12,18 @@ import org.bukkit.entity.Player;
 import java.util.ArrayList;
 import java.util.List;
 
-public class FireColorCommand extends PKCommand {
+public class AirColorCommand extends PKCommand {
 
 	private final String invalidColor;
 	private final String invalidPlayer;
 	private final String changedColor;
 
-	public FireColorCommand() {
-		super("fireColor", "/bending fireColor <Color>", ConfigManager.languageConfig.get().getString("Commands.FireColor.Description"), new String[] { "firecolor" });
+	public AirColorCommand() {
+		super("airColor", "/bending airColor <Color>", ConfigManager.languageConfig.get().getString("Commands.AirColor.Description"), new String[] { "aircolor" });
 
-		this.invalidColor = ConfigManager.languageConfig.get().getString("Commands.FireColor.InvalidColor");
-		this.invalidPlayer = ConfigManager.languageConfig.get().getString("Commands.FireColor.PlayerNotFound");
-		this.changedColor = ConfigManager.languageConfig.get().getString("Commands.FireColor.ChangedColor");
+		this.invalidColor = ConfigManager.languageConfig.get().getString("Commands.AirColor.InvalidColor");
+		this.invalidPlayer = ConfigManager.languageConfig.get().getString("Commands.AirColor.PlayerNotFound");
+		this.changedColor = ConfigManager.languageConfig.get().getString("Commands.AirColor.ChangedColor");
 	}
 
 	@Override
@@ -32,13 +32,13 @@ public class FireColorCommand extends PKCommand {
 
 		if (args.size() == 1 && hasPermission(sender) && sender instanceof Player) {
 			this.changeColor(sender, args.get(0), "");
-		} else if (args.size() == 2 && sender.hasPermission("bending.admin.firecolor")) {
+		} else if (args.size() == 2 && sender.hasPermission("bending.admin.aircolor")) {
 			this.changeColor(sender, args.get(0), args.get(1));
 		}
 	}
 
 	private void changeColor(final CommandSender sender, String color, String player) {
-		if (!CosmeticColor.hasFireColor(color)) {
+		if (!CosmeticColor.hasAirColor(color)) {
 			ChatUtil.sendBrandingMessage(sender, ChatColor.RED + this.invalidColor.replace("{color}", color));
 			return;
 		}
@@ -56,17 +56,17 @@ public class FireColorCommand extends PKCommand {
 			return;
 		}
 
-		CosmeticColor clr = CosmeticColor.getFireColor(color);
+		CosmeticColor clr = CosmeticColor.getAirColor(color);
 		BendingPlayer.getOrLoadOfflineAsync(p).thenAccept(bPlayer -> {
 			if (color.equalsIgnoreCase("none")) {
-				bPlayer.setFireColor(null);
+				bPlayer.setAirColor(null);
 				ChatUtil.sendBrandingMessage(sender, ChatColor.GREEN + this.changedColor.replace("{color}", clr.getName()));
 			} else {
-				if (!sender.hasPermission("bending.firecolor." + clr.getName())) {
+				if (!sender.hasPermission("bending.aircolor." + clr.getName())) {
 					ChatUtil.sendBrandingMessage(sender, noPermissionMessage);
 					return;
 				}
-				bPlayer.setFireColor(clr);
+				bPlayer.setAirColor(clr);
 				ChatUtil.sendBrandingMessage(sender, ChatColor.GREEN + this.changedColor.replace("{color}", clr.getName()));
 			}
 		});
@@ -74,8 +74,8 @@ public class FireColorCommand extends PKCommand {
 
 	@Override
 	protected List<String> getTabCompletion(final CommandSender sender, final List<String> args) {
-		if (!sender.hasPermission("bending.command.firecolor")) return new ArrayList<>();
-		if (args.isEmpty()) return CosmeticColor.getFireNames();
+		if (!sender.hasPermission("bending.command.aircolor")) return new ArrayList<>();
+		if (args.isEmpty()) return CosmeticColor.getAirNames();
 		else if (args.size() == 1) return getOnlinePlayerNames(sender);
 
 		return new ArrayList<>();

@@ -3,7 +3,9 @@ package com.projectkorra.projectkorra.ability;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
+import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
@@ -111,8 +113,19 @@ public abstract class AirAbility extends ElementalAbility {
 	 * @param loc The location to use
 	 * @param amount The amount of particles
 	 */
-	public static void playAirbendingParticles(final Location loc, final int amount) {
-		playAirbendingParticles(loc, amount, Math.random(), Math.random(), Math.random());
+	public void playAirbendingParticles(final Location loc, final int amount) {
+		playAirbendingParticles(this.bPlayer, loc, amount);
+	}
+
+	/**
+	 * Plays an integer amount of air particles in a location.
+	 *
+	 * @param bPlayer Used for air colors
+	 * @param loc The location to use
+	 * @param amount The amount of particles
+	 */
+	public static void playAirbendingParticles(BendingPlayer bPlayer, final Location loc, final int amount) {
+		playAirbendingParticles(bPlayer, loc, amount, Math.random(), Math.random(), Math.random());
 	}
 
 	/**
@@ -125,8 +138,68 @@ public abstract class AirAbility extends ElementalAbility {
 	 * @param yOffset The yOffset to use
 	 * @param zOffset The zOffset to use
 	 */
-	public static void playAirbendingParticles(final Location loc, final int amount, final double xOffset, final double yOffset, final double zOffset) {
-		getAirbendingParticles().display(loc, amount, xOffset, yOffset, zOffset);
+	public void playAirbendingParticles(final Location loc, final int amount, final double xOffset, final double yOffset, final double zOffset) {
+		playAirbendingParticles(this.bPlayer, loc, amount, xOffset, yOffset, zOffset);
+	}
+
+	/**
+	 * Plays an integer amount of air particles in a location with a given
+	 * xOffset, yOffset, and zOffset.
+	 *
+	 * @param bPlayer Used for air colors
+	 * @param loc The location to use
+	 * @param amount The amount of particles
+	 * @param xOffset The xOffset to use
+	 * @param yOffset The yOffset to use
+	 * @param zOffset The zOffset to use
+	 */
+	public static void playAirbendingParticles(final BendingPlayer bPlayer, final Location loc, final int amount, final double xOffset, final double yOffset, final double zOffset) {
+		playAirbendingParticles(bPlayer, loc, amount, xOffset, yOffset, zOffset, 0);
+	}
+
+	/**
+	 * Plays an integer amount of air particles in a location with a given
+	 * xOffset, yOffset, and zOffset.
+	 *
+	 * @param loc The location to use
+	 * @param amount The amount of particles
+	 * @param xOffset The xOffset to use
+	 * @param yOffset The yOffset to use
+	 * @param zOffset The zOffset to use
+	 * @param speed The speed of particles
+	 */
+	public void playAirbendingParticles(final Location loc, final int amount, final double xOffset, final double yOffset, final double zOffset, final double speed) {
+		playAirbendingParticles(this.bPlayer, loc, amount, xOffset, yOffset, zOffset, speed);
+	}
+
+	/**
+	 * Plays an integer amount of air particles in a location with a given
+	 * xOffset, yOffset, and zOffset.
+	 *
+	 * @param bPlayer Used for air colors
+	 * @param loc The location to use
+	 * @param amount The amount of particles
+	 * @param xOffset The xOffset to use
+	 * @param yOffset The yOffset to use
+	 * @param zOffset The zOffset to use
+	 * @param speed The speed of particles
+	 */
+	public static void playAirbendingParticles(final BendingPlayer bPlayer, final Location loc, final int amount, final double xOffset, final double yOffset, final double zOffset, final double speed) {
+		ParticleEffect effect = getAirbendingParticles();
+		if (effect == ParticleEffect.SPELL && bPlayer.getAirColor() != null) {
+			if (!bPlayer.getAirColor().getName().equalsIgnoreCase("none")) {
+				Color color = bPlayer.getAirColor().getColor().getColor();
+				for (int i = 0; i < amount; i++) {
+					Location l = loc.clone();
+					l.setX(l.getX() + (xOffset * (Math.random() * 2.0 - 1.0) * 1.8));
+					l.setY(l.getY() + (yOffset * (Math.random() * 2.0 - 1.0) * 1.8));
+					l.setZ(l.getZ() + (zOffset * (Math.random() * 2.0 - 1.0) * 1.8));
+					ParticleEffect.SPELL_MOB.display(l, 0, color.getRed(), color.getGreen(), color.getBlue(), 255);
+				}
+				return;
+			}
+		}
+		getAirbendingParticles().display(loc, amount, xOffset, yOffset, zOffset, speed);
 	}
 
 	/**

@@ -27,7 +27,7 @@ import java.util.Map;
 import java.util.function.Predicate;
 import com.google.common.reflect.ClassPath;
 import com.projectkorra.projectkorra.command.PKCommand;
-import com.projectkorra.projectkorra.object.FireColor;
+import com.projectkorra.projectkorra.object.CosmeticColor;
 import com.projectkorra.projectkorra.object.Style;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.ChatUtil;
@@ -35,7 +35,6 @@ import com.projectkorra.projectkorra.util.TempFallingBlock;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Bukkit;
 
-import org.bukkit.Color;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -348,7 +347,7 @@ public class GeneralMethods {
 			b = Integer.valueOf(hexVal.substring(4, 6), 16).intValue();
 		}
 
-		new ColoredParticle(Color.fromRGB(r, g, b), 1F).display(loc, amount, offsetX, offsetY, offsetZ);
+		new ColoredParticle(org.bukkit.Color.fromRGB(r, g, b), 1F).display(loc, amount, offsetX, offsetY, offsetZ);
 	}
 
 	public static void displayColoredParticle(final String hexVal, final Location loc) {
@@ -1372,7 +1371,7 @@ public class GeneralMethods {
 		ConfigManager.collisionConfig.reload();
 		ConfigManager.fireColorsConfig.reload();
 		Style.reloadStyles();
-		FireColor.reloadFireColors();
+		CosmeticColor.reloadColors();
 		Arrays.stream(Element.getElements()).forEach(e -> {e.setColor(null); e.setSubColor(null);}); //Load colors from config again
 		Arrays.stream(Element.getSubElements()).forEach(e -> {e.setColor(null); e.setSubColor(null);}); //Same for subs
 		ElementalAbility.clearBendableMaterials(); // Clear and re-cache the material lists on reload.

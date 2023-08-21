@@ -23,6 +23,7 @@ public class ConfigManager {
 	public static Config languageConfig;
 	public static Config collisionConfig;
 	public static Config fireColorsConfig;
+	public static Config airColorsConfig;
 
 	public static List<Config> styleConfigs;
 
@@ -32,12 +33,14 @@ public class ConfigManager {
 		languageConfig = new Config(new File("language.yml"));
 		collisionConfig = new Config(new File("collision.yml"));
 		fireColorsConfig = new Config(new File("fireColors.yml"));
+		airColorsConfig = new Config(new File("airColors.yml"));
 		styleConfigs = new ArrayList<>();
 		configCheck(ConfigType.DEFAULT);
 		configCheck(ConfigType.LANGUAGE);
 		configCheck(ConfigType.PRESETS);
 		configCheck(ConfigType.COLLISION);
 		configCheck(ConfigType.FIRECOLORS);
+		configCheck(ConfigType.AIRCOLORS);
 	}
 
 	public static void configCheck(final ConfigType type) {
@@ -68,6 +71,10 @@ public class ConfigManager {
 			config = fireColorsConfig.get();
 			config.addDefault("FireColors", Arrays.asList("name, hexColor, size"));
 			fireColorsConfig.save();
+		} else if (type == ConfigType.AIRCOLORS) {
+			config = airColorsConfig.get();
+			config.addDefault("AirColors", Arrays.asList("name, hexColor"));
+			airColorsConfig.save();
 		} else if (type == ConfigType.LANGUAGE) {
 			config = languageConfig.get();
 
@@ -232,6 +239,11 @@ public class ConfigManager {
 			config.addDefault("Commands.FireColor.InvalidColor", "Color {color} could not be found.");
 			config.addDefault("Commands.FireColor.PlayerNotFound", "Could not find player.");
 			config.addDefault("Commands.FireColor.ChangedColor", "Successfully changed fire color to {color}.");
+
+			config.addDefault("Commands.AirColor.Description", "This command allows you to change air colors.");
+			config.addDefault("Commands.AirColor.InvalidColor", "Color {color} could not be found.");
+			config.addDefault("Commands.AirColor.PlayerNotFound", "Could not find player.");
+			config.addDefault("Commands.AirColor.ChangedColor", "Successfully changed air color to {color}.");
 
 			config.addDefault("Commands.Style.Description", "This command allows you to change styles.");
 			config.addDefault("Commands.Style.InvalidStyle", "Style {style} could not be found.");

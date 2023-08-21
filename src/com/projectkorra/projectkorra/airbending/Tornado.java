@@ -24,7 +24,6 @@ public class Tornado extends AirAbility {
 	@Attribute(Attribute.DURATION)
 	private final long duration;
 	private int numberOfStreams;
-	private int particleCount;
 	@Attribute(Attribute.SPEED)
 	private double speed;
 	@Attribute(Attribute.HEIGHT)
@@ -194,7 +193,7 @@ public class Tornado extends AirAbility {
 
 				final Location effect = new Location(this.origin.getWorld(), x, y, z);
 				if (!GeneralMethods.isRegionProtectedFromBuild(this, effect)) {
-					playAirbendingParticles(effect, this.particleCount);
+					playAirbendingParticles(effect, 1);
 					if (this.random.nextInt(20) == 0) {
 						playAirbendingSound(effect);
 					}
@@ -249,14 +248,6 @@ public class Tornado extends AirAbility {
 
 	public void setNumberOfStreams(final int numberOfStreams) {
 		this.numberOfStreams = numberOfStreams;
-	}
-
-	public int getParticleCount() {
-		return this.particleCount;
-	}
-
-	public void setParticleCount(final int particleCount) {
-		this.particleCount = particleCount;
 	}
 
 	public double getSpeed() {
