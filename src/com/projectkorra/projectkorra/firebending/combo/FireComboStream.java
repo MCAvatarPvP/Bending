@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.firebending.combo;
 
+import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.FireAbility;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import org.apache.commons.lang3.builder.ToStringBuilder;
@@ -94,6 +95,9 @@ public class FireComboStream extends BukkitRunnable {
 			if (coreAbility instanceof FireAbility && (particleEffect == ParticleEffect.FLAME || particleEffect == ParticleEffect.SOUL_FIRE_FLAME)) {
 				FireAbility fa = (FireAbility) coreAbility;
 				fa.playFirebendingParticles(this.location, this.density, this.spread, this.spread, this.spread);
+			} else if (coreAbility instanceof AirAbility && (particleEffect == ParticleEffect.SPELL)) {
+				AirAbility aa = (AirAbility) coreAbility;
+				aa.playAirbendingParticles(this.location, this.density, this.spread, this.spread, this.spread);
 			} else {
 				this.particleEffect.display(this.location, this.density, this.spread, this.spread, this.spread);
 			}
