@@ -106,8 +106,8 @@ public class FireBurst extends FireAbility {
 				}
 			}
 			this.bPlayer.addCooldown(this);
+			this.remove();
 		}
-		this.remove();
 	}
 
 	/**
