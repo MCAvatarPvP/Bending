@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
-import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -74,9 +73,6 @@ public class FireBlast extends FireAbility {
 		if (location.getBlock().isLiquid()) {
 			return;
 		}
-
-		CoreAbility abil = CoreAbility.getAbility(FireBlastCharged.class);
-		if (abil != null) abil.remove();
 
 		this.setFields();
 		this.safeBlocks = safeBlocks;
