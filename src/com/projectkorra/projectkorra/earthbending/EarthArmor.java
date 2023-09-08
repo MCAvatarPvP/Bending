@@ -50,6 +50,7 @@ public class EarthArmor extends EarthAbility {
 	private Location headBlockLocation;
 	private Location legsBlockLocation;
 	private boolean active;
+	private boolean isInstant;
 	private PotionEffect oldAbsorbtion = null;
 	private double goldHearts;
 	@Attribute("GoldHearts")
@@ -70,6 +71,7 @@ public class EarthArmor extends EarthAbility {
 		this.maxDuration = getConfig().getLong("Abilities.Earth.EarthArmor.MaxDuration");
 		this.selectRange = getConfig().getDouble("Abilities.Earth.EarthArmor.SelectRange");
 		this.maxGoldHearts = getConfig().getInt("Abilities.Earth.EarthArmor.GoldHearts");
+		this.isInstant = getConfig().getBoolean("Abilities.Earth.EarthArmor.IsInstant");
 
 		if (this.bPlayer.isAvatarState()) {
 			this.cooldown = getConfig().getLong("Abilities.Avatar.AvatarState.Earth.EarthArmor.Cooldown");
@@ -270,6 +272,16 @@ public class EarthArmor extends EarthAbility {
 
 			this.player.setFireTicks(0);
 		} else {
+			while (this.isInstant) {
+				if (!this.moveBlocks()) {
+					return;
+				}
+				if (this.inPosition()) {
+					this.formArmor();
+				}
+				return;
+			}
+
 			if (!this.moveBlocks()) {
 				return;
 			}

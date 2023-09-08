@@ -1431,6 +1431,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Earth.EarthArmor.GoldHearts", 4);
 			config.addDefault("Abilities.Earth.EarthArmor.Cooldown", 7500);
 			config.addDefault("Abilities.Earth.EarthArmor.MaxDuration", 17500);
+			config.addDefault("Abilities.Earth.EarthArmor.IsInstant", false);
 
 			config.addDefault("Abilities.Earth.EarthBlast.Enabled", true);
 			config.addDefault("Abilities.Earth.EarthBlast.CanHitSelf", false);
