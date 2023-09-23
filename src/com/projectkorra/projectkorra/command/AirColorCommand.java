@@ -58,17 +58,12 @@ public class AirColorCommand extends PKCommand {
 
 		CosmeticColor clr = CosmeticColor.getAirColor(color);
 		BendingPlayer.getOrLoadOfflineAsync(p).thenAccept(bPlayer -> {
-			if (color.equalsIgnoreCase("none")) {
-				bPlayer.setAirColor(null);
-				ChatUtil.sendBrandingMessage(sender, ChatColor.GREEN + this.changedColor.replace("{color}", clr.getName()));
-			} else {
-				if (!sender.hasPermission("bending.aircolor." + clr.getName())) {
-					ChatUtil.sendBrandingMessage(sender, noPermissionMessage);
-					return;
-				}
-				bPlayer.setAirColor(clr);
-				ChatUtil.sendBrandingMessage(sender, ChatColor.GREEN + this.changedColor.replace("{color}", clr.getName()));
+			if (!color.equalsIgnoreCase("none") && !sender.hasPermission("bending.aircolor." + clr.getName())) {
+				ChatUtil.sendBrandingMessage(sender, noPermissionMessage);
+				return;
 			}
+			bPlayer.setAirColor(clr);
+			ChatUtil.sendBrandingMessage(sender, ChatColor.GREEN + this.changedColor.replace("{color}", clr.getName()));
 		});
 	}
 

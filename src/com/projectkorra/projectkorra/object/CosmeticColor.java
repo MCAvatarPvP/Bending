@@ -1,6 +1,5 @@
 package com.projectkorra.projectkorra.object;
 
-import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Particle;

@@ -58,17 +58,12 @@ public class FireColorCommand extends PKCommand {
 
 		CosmeticColor clr = CosmeticColor.getFireColor(color);
 		BendingPlayer.getOrLoadOfflineAsync(p).thenAccept(bPlayer -> {
-			if (color.equalsIgnoreCase("none")) {
-				bPlayer.setFireColor(null);
-				ChatUtil.sendBrandingMessage(sender, ChatColor.GREEN + this.changedColor.replace("{color}", clr.getName()));
-			} else {
-				if (!sender.hasPermission("bending.firecolor." + clr.getName())) {
-					ChatUtil.sendBrandingMessage(sender, noPermissionMessage);
-					return;
-				}
-				bPlayer.setFireColor(clr);
-				ChatUtil.sendBrandingMessage(sender, ChatColor.GREEN + this.changedColor.replace("{color}", clr.getName()));
+			if (!color.equalsIgnoreCase("none") && !sender.hasPermission("bending.firecolor." + clr.getName())) {
+				ChatUtil.sendBrandingMessage(sender, noPermissionMessage);
+				return;
 			}
+			bPlayer.setFireColor(clr);
+			ChatUtil.sendBrandingMessage(sender, ChatColor.GREEN + this.changedColor.replace("{color}", clr.getName()));
 		});
 	}
 
