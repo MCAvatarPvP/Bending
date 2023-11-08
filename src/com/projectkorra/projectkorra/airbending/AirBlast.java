@@ -266,7 +266,7 @@ public class AirBlast extends AirAbility {
 		if (knockback == 0) return;
 
 		Vector velocity = entity.getVelocity();
-		final double max = this.speed / this.speedFactor;
+		final double max = 1.0 / knockback;
 
 		final Vector push = this.direction.clone();
 		if (Math.abs(push.getY()) > max && !isUser) {
