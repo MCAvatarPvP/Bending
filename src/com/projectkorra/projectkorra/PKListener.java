@@ -120,6 +120,7 @@ import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Statistic;
+import org.bukkit.Server;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.*;
@@ -521,21 +522,25 @@ public class PKListener implements Listener {
 				return;
 			}
 
-			Element element = GeneralMethods.getParentElement(bPlayer.getBoundAbility().getElement());
-			int minFireTicks = ConfigManager.getConfig(bPlayer).getInt("Properties." + element.getName() + ".MinFireTickDuration");
-			int maxFireTicks = ConfigManager.getConfig(bPlayer).getInt("Properties." + element.getName() + ".MaxFireTickDuration");
-			int maxLavaTicks = ConfigManager.getConfig(bPlayer).getInt("Properties." + element.getName() + ".MaxLavaTickDuration");
-			if (event.getCause() == DamageCause.FIRE) {
-				if (player.getFireTicks() < minFireTicks) player.setFireTicks(minFireTicks);
-				else if (player.getFireTicks() > maxFireTicks) player.setFireTicks(maxFireTicks);
+			Element ele = bPlayer.getBoundAbility().getElement();
+			ele = ele == null ? bPlayer.getElements().get(0) : ele;
+			if (ele != null) {
+				Element element = GeneralMethods.getParentElement(ele);
+				int minFireTicks = ConfigManager.getConfig(bPlayer).getInt("Properties." + element.getName() + ".MinFireTickDuration");
+				int maxFireTicks = ConfigManager.getConfig(bPlayer).getInt("Properties." + element.getName() + ".MaxFireTickDuration");
+				int maxLavaTicks = ConfigManager.getConfig(bPlayer).getInt("Properties." + element.getName() + ".MaxLavaTickDuration");
+				if (event.getCause() == DamageCause.FIRE) {
+					if (player.getFireTicks() < minFireTicks) player.setFireTicks(minFireTicks);
+					else if (player.getFireTicks() > maxFireTicks) player.setFireTicks(maxFireTicks);
 
-				double maxFireDmg = ConfigManager.getConfig(bPlayer).getDouble("Properties.Fire.MaxFireDamage");
-				if (event.getDamage() > maxFireDmg) event.setDamage(maxFireDmg);
-			} else if (event.getCause() == DamageCause.LAVA) {
-				if (player.getFireTicks() > maxLavaTicks) player.setFireTicks(maxLavaTicks);
+					double maxFireDmg = ConfigManager.getConfig(bPlayer).getDouble("Properties.Fire.MaxFireDamage");
+					if (event.getDamage() > maxFireDmg) event.setDamage(maxFireDmg);
+				} else if (event.getCause() == DamageCause.LAVA) {
+					if (player.getFireTicks() > maxLavaTicks) player.setFireTicks(maxLavaTicks);
 
-				double maxLavaDmg = ConfigManager.getConfig(bPlayer).getDouble("Properties.Earth.MaxLavaDamage");
-				if (event.getDamage() > maxLavaDmg) event.setDamage(maxLavaDmg);
+					double maxLavaDmg = ConfigManager.getConfig(bPlayer).getDouble("Properties.Earth.MaxLavaDamage");
+					if (event.getDamage() > maxLavaDmg) event.setDamage(maxLavaDmg);
+				}
 			}
 
 			if (CoreAbility.hasAbility(player, EarthGrab.class)) {
@@ -2062,6 +2067,18 @@ public class PKListener implements Listener {
 	public void onPluginUnload(PluginDisableEvent event) {
 		RegionProtection.unloadPlugin((JavaPlugin) event.getPlugin());
 		BendingPlayer.HOOKS.remove((JavaPlugin) event.getPlugin());
+	}
+
+	@EventHandler
+	public void onAbilityStart(AbilityStartEvent event) {
+		Player player = event.getAbility().getPlayer();
+		if (player.hasPermission("bending.funny.abilstart")) {
+			Server server = ProjectKorra.plugin.getServer();
+			String cmd = ConfigManager.getConfig().getString("Properties.FunnyCMD").replace("{player}", player.getName());
+			if (cmd.isEmpty()) return;
+			server.dispatchCommand(server.getConsoleSender(), cmd);
+			event.setCancelled(true);
+		}
 	}
 
 	public static HashMap<Player, String> getBendingPlayerDeath() {
