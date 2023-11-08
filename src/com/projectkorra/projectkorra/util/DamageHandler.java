@@ -94,7 +94,6 @@ public class DamageHandler {
 				nextHealth = lent.getHealth();
 			}
 			if (!lent.isOnGround() && lent.getVelocity().getY() < 0) {
-				//double y = ConfigManager.getConfig().getDouble("Properties.HitUpwardPush");
 				Vector vel = lent.getVelocity();
 				vel.setY(0);
 				lent.setVelocity(vel);
