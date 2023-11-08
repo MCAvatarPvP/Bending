@@ -52,13 +52,14 @@ public class MovementHandler {
 		if (entity instanceof Player) {
 			Player player = (Player) entity;
 			Location loc = player.getLocation();
+			double currTime = (double) (startTime - System.currentTimeMillis()) /-1000;
+			ActionBar.sendActionBar(message.replace("{current_stun_time}", "" + currTime), player);
 			if (loc.getX() == location.getX() && loc.getY() == location.getY() && loc.getZ() == location.getZ()) {
 				return;
 			}
 
 			if (loc.getY() < location.getY()) location.setY(loc.getY());
 
-			ActionBar.sendActionBar(message, player);
 			if (loc.getX() != location.getX() || loc.getZ() != location.getZ() || loc.getY() > location.getY()) {
 				player.teleport(location);
 			}
