@@ -29,6 +29,7 @@ public class EarthBlast extends EarthAbility {
 	private boolean isAtDestination;
 	private boolean isSettingUp;
 	private boolean canHitSelf;
+	private boolean isFirstMove;
 	private long time;
 	private long interval;
 	@Attribute(Attribute.COOLDOWN)
@@ -60,6 +61,7 @@ public class EarthBlast extends EarthAbility {
 		this.isProgressing = false;
 		this.isAtDestination = false;
 		this.isSettingUp = true;
+		this.isFirstMove = true;
 		this.deflectRange = getConfig().getDouble("Abilities.Earth.EarthBlast.DeflectRange");
 		this.collisionRadius = getConfig().getDouble("Abilities.Earth.EarthBlast.CollisionRadius");
 		this.cooldown = getConfig().getLong("Abilities.Earth.EarthBlast.Cooldown");
@@ -304,8 +306,9 @@ public class EarthBlast extends EarthAbility {
 
 					Information info = getMovedEarth().get(sourceBlock);
 					moveEarthBlock(this.sourceBlock, block);
-					if (!bPlayer.areSourceHolesOn() && source.getBlock().getType() != sourceMat) {
+					if (!bPlayer.areSourceHolesOn() && source.getBlock().getType() != sourceMat && isFirstMove) {
 						source.getBlock().setType(sourceMat);
+						isFirstMove = false;
 						if (info != null) getMovedEarth().put(source.getBlock(), info);
 					}
 
