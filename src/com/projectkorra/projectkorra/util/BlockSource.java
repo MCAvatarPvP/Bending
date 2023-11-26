@@ -111,6 +111,12 @@ public class BlockSource {
 		playerSources.get(player).get(sourceType).put(clickType, info);
 	}
 
+	public static void removeSource(final Player player, final BlockSourceType sourceType, final ClickType clickType) {
+		if (!playerSources.containsKey(player)) return;
+		if (!playerSources.get(player).containsKey(sourceType)) return;
+		playerSources.get(player).get(sourceType).put(clickType, null);
+	}
+
 	/**
 	 * Access a block's source information, depending on a
 	 * {@link BlockSourceType} and {@link ClickType}.
