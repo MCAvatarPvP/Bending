@@ -56,6 +56,8 @@ public class AirScooter extends AirAbility {
 			return;
 		} else if (GeneralMethods.isSolid(player.getLocation().add(0, -.5, 0).getBlock()) && requiresJump) {
 			return;
+		} else if (player.isSneaking()) {
+			return;
 		} else if (this.bPlayer.isOnCooldown(this)) {
 			return;
 		}
