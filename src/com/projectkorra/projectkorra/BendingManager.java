@@ -110,33 +110,33 @@ public class BendingManager implements Runnable {
 		this.time = System.currentTimeMillis();
 		ProjectKorra.time_step = this.interval;
 
-		try (MCTiming timing = this.CORE_ABILITY_TIMING.startTiming()) {
+//		try (MCTiming timing = this.CORE_ABILITY_TIMING.startTiming()) {
 			CoreAbility.progressAll();
-		}
+//		}
 
-		try (MCTiming timing = this.TEMP_POTION_TIMING.startTiming()) {
+//		try (MCTiming timing = this.TEMP_POTION_TIMING.startTiming()) {
 			TempPotionEffect.progressAll();
-		}
+//		}
 
-		try (MCTiming timing = this.DAY_NIGHT_TIMING.startTiming()) {
+//		try (MCTiming timing = this.DAY_NIGHT_TIMING.startTiming()) {
 			this.handleDayNight();
-		}
+//		}
 
 		RevertChecker.revertAirBlocks();
 
-		try (MCTiming timing = this.HORIZONTAL_VELOCITY_TRACKER_TIMING.startTiming()) {
+//		try (MCTiming timing = this.HORIZONTAL_VELOCITY_TRACKER_TIMING.startTiming()) {
 			HorizontalVelocityTracker.updateAll();
-		}
+//		}
 
-		try (MCTiming timing = this.COOLDOWN_TIMING.startTiming()) {
+//		try (MCTiming timing = this.COOLDOWN_TIMING.startTiming()) {
 			this.handleCooldowns();
-		}
+//		}
 
-		try (MCTiming timing = this.TEMP_ARMOR_TIMING.startTiming()) {
+//		try (MCTiming timing = this.TEMP_ARMOR_TIMING.startTiming()) {
 			TempArmor.cleanup();
-		}
+//		}
 
-		try (MCTiming timing = this.ACTIONBAR_STATUS_TIMING.startTiming()) {
+//		try (MCTiming timing = this.ACTIONBAR_STATUS_TIMING.startTiming()) {
 			for (final Player player : Bukkit.getOnlinePlayers()) {
 				if (Bloodbending.isBloodbent(player)) {
 					ActionBar.sendActionBar(Element.BLOOD.getColor() + "* Bloodbent *", player);
@@ -144,11 +144,11 @@ public class BendingManager implements Runnable {
 					ActionBar.sendActionBar(Element.METAL.getColor() + "* MetalClipped *", player);
 				}
 			}
-		}
+//		}
 
-		try (MCTiming timing = this.TEMP_FALLING_BLOCKS.startTiming()) {
+//		try (MCTiming timing = this.TEMP_FALLING_BLOCKS.startTiming()) {
 			TempFallingBlock.manage();
-		}
+//		}
 	}
 
 	public static String getSunriseMessage() {
