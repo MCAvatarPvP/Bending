@@ -2,6 +2,7 @@ package com.projectkorra.projectkorra.util;
 
 import java.util.HashMap;
 
+import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -332,6 +333,8 @@ public class BlockSource {
 		} else {
 			sourceBlock = getSourceBlock(player, range, BlockSourceType.EARTH, clickType);
 		}
+
+		new TempDisplayBlock(sourceBlock.getLocation(), sourceBlock.getType(), 1000, 1, true, Color.GREEN);
 		return sourceBlock;
 	}
 

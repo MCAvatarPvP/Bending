@@ -149,6 +149,18 @@ public class BendingManager implements Runnable {
 //		try (MCTiming timing = this.TEMP_FALLING_BLOCKS.startTiming()) {
 			TempFallingBlock.manage();
 //		}
+
+
+		while (!TempDisplayBlock.getRevertQueue().isEmpty())
+		{
+			final TempDisplayBlock tempDisplayBlock = TempDisplayBlock.getRevertQueue().peek(); //Check if the top TempBlock is ready for reverting
+			if (tempDisplayBlock.getRevertTime() < System.currentTimeMillis()) {
+				tempDisplayBlock.automaticRevert();
+			}
+			else{
+				break;
+			}
+		}
 	}
 
 	public static String getSunriseMessage() {
