@@ -81,7 +81,7 @@
     <dependency>
       <groupId>org.spigotmc</groupId>
       <artifactId>spigot-api</artifactId>
-      <version>1.16.5-R0.1-SNAPSHOT</version>
+      <version>1.20.2-R0.1-SNAPSHOT</version>
       <scope>provided</scope>
     </dependency>
     <!-- lang3 -->
@@ -125,13 +125,7 @@
       <version>3.16.1-SNAPSHOT</version>
       <scope>provided</scope>
     </dependency>
-    <!-- Lands -->
-    <dependency>
-      <groupId>com.github.angeschossen</groupId>
-      <artifactId>LandsAPI</artifactId>
-      <version>6.0.2</version>
-      <scope>provided</scope>
-    </dependency>
+    <!-- Lands deleted this because it can't be resolved -->
     <!-- Residence -->
     <dependency>
       <groupId>com.bekvon.bukkit</groupId>
