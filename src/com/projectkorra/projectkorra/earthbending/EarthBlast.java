@@ -2,8 +2,6 @@ package com.projectkorra.projectkorra.earthbending;
 
 import java.util.ArrayList;
 
-import com.projectkorra.projectkorra.util.*;
-import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
@@ -20,6 +18,11 @@ import com.projectkorra.projectkorra.ability.EarthAbility;
 import com.projectkorra.projectkorra.ability.util.Collision;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.earthbending.passive.DensityShift;
+import com.projectkorra.projectkorra.util.BlockSource;
+import com.projectkorra.projectkorra.util.ClickType;
+import com.projectkorra.projectkorra.util.DamageHandler;
+import com.projectkorra.projectkorra.util.TempBlock;
+import com.projectkorra.projectkorra.util.Information;
 
 public class EarthBlast extends EarthAbility {
 	private boolean isProgressing;
@@ -77,7 +80,6 @@ public class EarthBlast extends EarthAbility {
 		}
 
 		if (this.prepare()) {
-			new TempDisplayBlock(sourceBlock.getLocation(), sourceBlock.getType(), 1000, 1, true, Color.GREEN);
 			this.start();
 			this.time = System.currentTimeMillis();
 		}

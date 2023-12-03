@@ -334,7 +334,7 @@ public class BlockSource {
 			sourceBlock = getSourceBlock(player, range, BlockSourceType.EARTH, clickType);
 		}
 
-
+		new TempDisplayBlock(sourceBlock.getLocation(), sourceBlock.getType(), 1000, 1, true, Color.GREEN);
 		return sourceBlock;
 	}
 
