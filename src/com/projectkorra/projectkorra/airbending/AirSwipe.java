@@ -264,20 +264,17 @@ public class AirSwipe extends AirAbility {
 		this.bPlayer.addCooldown("AirSwipe", this.cooldown);
 		this.origin = this.player.getEyeLocation();
 		for (double i = -this.arc; i <= this.arc; i += this.arcIncrement) {
-			final double angle = Math.toRadians(i);
-			final Vector direction = this.player.getEyeLocation().getDirection().clone();
+			final double angle = Math.toRadians(90 + i);
 
-			double x, z, vx, vz;
-			x = direction.getX();
-			z = direction.getZ();
+			double x, z;
+			x = Math.cos(angle);
+			z = Math.sin(angle);
 
-			vx = x * Math.cos(angle) - z * Math.sin(angle);
-			vz = x * Math.sin(angle) + z * Math.cos(angle);
+			Vector vec = new Vector(x, 0, z);
+			vec.rotateAroundX(Math.toRadians(origin.getPitch()));
+			vec.rotateAroundY(Math.toRadians(origin.getYaw() * -1));
 
-			direction.setX(vx);
-			direction.setZ(vz);
-
-			this.streams.put(direction, this.origin);
+			this.streams.put(vec, this.origin);
 		}
 	}
 
