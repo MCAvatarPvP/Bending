@@ -39,6 +39,7 @@ public class SurgeWave extends WaterAbility {
 	private boolean progressing;
 	private boolean canHitSelf;
 	private boolean solidifyLava;
+	private boolean useVelKnockback;
 	private long time;
 	@Attribute(Attribute.COOLDOWN)
 	private long cooldown;
@@ -89,6 +90,7 @@ public class SurgeWave extends WaterAbility {
 		this.maxRadius = applyModifiers(getConfig().getDouble("Abilities.Water.Surge.Wave.Radius"));
 		this.knockback = applyModifiers(getConfig().getDouble("Abilities.Water.Surge.Wave.Knockback"));
 		this.knockbackOthers = applyModifiers(getConfig().getDouble("Abilities.Water.Surge.Wave.KnockbackOthers"));
+		this.useVelKnockback = getConfig().getBoolean("Abilities.Water.Surge.Wave.UseVelocityKnockback");
 		this.knockup = applyModifiers(getConfig().getDouble("Abilities.Water.Surge.Wave.Knockup"));
 		this.knockupOthers = applyModifiers(getConfig().getDouble("Abilities.Water.Surge.Wave.KnockupOthers"));
 		this.maxFreezeRadius = applyModifiers(getConfig().getDouble("Abilities.Water.Surge.Wave.MaxFreezeRadius"));
@@ -382,12 +384,13 @@ public class SurgeWave extends WaterAbility {
 							continue;
 						}
 						final Vector dir = direction.clone();
+						Vector vel = useVelKnockback ? entity.getVelocity() : new Vector(0, 0, 0);
 						if (entity.getEntityId() == this.player.getEntityId()) {
 							dir.setY(dir.getY() * this.knockup);
-							GeneralMethods.setVelocity(this, entity, entity.getVelocity().clone().add(dir.clone().multiply(this.getNightFactor(this.knockback))));
+							GeneralMethods.setVelocity(this, entity, vel.clone().add(dir.clone().multiply(this.getNightFactor(this.knockback))));
 						} else {
 							dir.setY(dir.getY() * this.knockupOthers);
-							GeneralMethods.setVelocity(this, entity, entity.getVelocity().clone().add(dir.clone().multiply(this.getNightFactor(this.knockbackOthers))));
+							GeneralMethods.setVelocity(this, entity, vel.clone().add(dir.clone().multiply(this.getNightFactor(this.knockbackOthers))));
 						}
 
 						entity.setFallDistance(0);

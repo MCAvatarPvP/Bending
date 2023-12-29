@@ -1238,6 +1238,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Water.Surge.Wave.SelectRange", 12);
 			config.addDefault("Abilities.Water.Surge.Wave.Knockback", 1);
 			config.addDefault("Abilities.Water.Surge.Wave.KnockbackOthers", 1);
+			config.addDefault("Abilities.Water.Surge.Wave.UseVelocityKnockback", true);
 			config.addDefault("Abilities.Water.Surge.Wave.Knockup", 0.2);
 			config.addDefault("Abilities.Water.Surge.Wave.KnockupOthers", 0.2);
 			config.addDefault("Abilities.Water.Surge.Wave.MaxFreezeRadius", 7);
