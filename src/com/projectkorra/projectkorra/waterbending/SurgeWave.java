@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.projectkorra.projectkorra.ability.CoreAbility;
 import org.bukkit.Effect;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -58,9 +59,11 @@ public class SurgeWave extends WaterAbility {
 	@Attribute(Attribute.KNOCKBACK)
 	private double knockback;
 	private double knockbackOthers;
+	private double knockbackSpout;
 	@Attribute(Attribute.KNOCKUP)
 	private double knockup;
 	private double knockupOthers;
+	private double knockupSpout;
 	@Attribute("Freeze" + Attribute.RADIUS)
 	private double maxFreezeRadius;
 	private Block sourceBlock;
@@ -91,7 +94,9 @@ public class SurgeWave extends WaterAbility {
 		this.knockback = applyModifiers(getConfig().getDouble("Abilities.Water.Surge.Wave.Knockback"));
 		this.knockbackOthers = applyModifiers(getConfig().getDouble("Abilities.Water.Surge.Wave.KnockbackOthers"));
 		this.useVelKnockback = getConfig().getBoolean("Abilities.Water.Surge.Wave.UseVelocityKnockback");
+		this.knockbackSpout = applyModifiers(getConfig().getDouble("Abilities.Water.Surge.Wave.KnockbackSpout"));
 		this.knockup = applyModifiers(getConfig().getDouble("Abilities.Water.Surge.Wave.Knockup"));
+		this.knockupSpout = applyModifiers(getConfig().getDouble("Abilities.Water.Surge.Wave.KnockupSpout"));
 		this.knockupOthers = applyModifiers(getConfig().getDouble("Abilities.Water.Surge.Wave.KnockupOthers"));
 		this.maxFreezeRadius = applyModifiers(getConfig().getDouble("Abilities.Water.Surge.Wave.MaxFreezeRadius"));
 		this.iceRevertTime = getConfig().getLong("Abilities.Water.Surge.Wave.IceRevertTime");
@@ -384,11 +389,15 @@ public class SurgeWave extends WaterAbility {
 							continue;
 						}
 						final Vector dir = direction.clone();
-						Vector vel = useVelKnockback ? entity.getVelocity() : new Vector(0, 0, 0);
+						boolean isOnSpout = CoreAbility.hasAbility(player, WaterSpout.class);
+						Vector vel = useVelKnockback || isOnSpout ? entity.getVelocity() : new Vector(0, 0, 0);
 						if (entity.getEntityId() == this.player.getEntityId()) {
-							dir.setY(dir.getY() * this.knockup);
-							GeneralMethods.setVelocity(this, entity, vel.clone().add(dir.clone().multiply(this.getNightFactor(this.knockback))));
+							//self
+							dir.setY(dir.getY() * (!isOnSpout ? knockup : knockupSpout));
+							double kb = !isOnSpout ? this.knockback : knockbackSpout;
+							GeneralMethods.setVelocity(this, entity, vel.clone().add(dir.clone().multiply(this.getNightFactor(kb))));
 						} else {
+							//others
 							dir.setY(dir.getY() * this.knockupOthers);
 							GeneralMethods.setVelocity(this, entity, vel.clone().add(dir.clone().multiply(this.getNightFactor(this.knockbackOthers))));
 						}
