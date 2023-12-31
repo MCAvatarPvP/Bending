@@ -40,6 +40,8 @@ permissions:
       bending.admin.debug: true
       bending.command.remove: true
       bending.admin.style: true
+      bending.admin.firecolor: true
+      bending.admin.aircolor: true
       bending.command.styleedit: true
   bending.player:
     default: true

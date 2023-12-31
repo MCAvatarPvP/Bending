@@ -73,6 +73,7 @@ public class Style {
 	}
 
 	public static void reloadStyles() {
+		ConfigManager.styleConfigs.forEach(Config::reload);
 		styles.clear();
 		loadStyleConfigs(new File(ProjectKorra.plugin.getDataFolder() + File.separator + "Styles"));
 	}

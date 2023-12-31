@@ -1370,6 +1370,7 @@ public class GeneralMethods {
 		ConfigManager.presetConfig.reload();
 		ConfigManager.collisionConfig.reload();
 		ConfigManager.fireColorsConfig.reload();
+		ConfigManager.airColorsConfig.reload();
 		Style.reloadStyles();
 		CosmeticColor.reloadColors();
 		Arrays.stream(Element.getElements()).forEach(e -> {e.setColor(null); e.setSubColor(null);}); //Load colors from config again
