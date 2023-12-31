@@ -7,6 +7,7 @@ import com.projectkorra.projectkorra.command.CooldownCommand;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.event.PlayerBindChangeEvent;
 import com.projectkorra.projectkorra.object.CosmeticColor;
+import com.projectkorra.projectkorra.object.EarthCosmetic;
 import com.projectkorra.projectkorra.object.Style;
 import com.projectkorra.projectkorra.storage.DBConnection;
 import com.projectkorra.projectkorra.util.ChatUtil;
@@ -60,6 +61,7 @@ public class OfflineBendingPlayer {
     protected Style style;
     protected CosmeticColor fireCosmeticColor;
     protected CosmeticColor airCosmeticColor;
+    protected EarthCosmetic earthCosmetic;
     protected boolean toggled;
     protected boolean sourceHoles;
     protected boolean allPassivesToggled;
@@ -152,6 +154,7 @@ public class OfflineBendingPlayer {
                     final String styleField = rs2.getString("style");
                     final String fireColorField = rs2.getString("firecolor");
                     final String airColorField = rs2.getString("aircolor");
+                    final String earthCosmeticField = rs2.getString("earthcosmetic");
                     final String permaremovedField = rs2.getString("permaremoved");
                     final String sourceholesField = rs2.getString("sourceholes");
 
@@ -376,6 +379,9 @@ public class OfflineBendingPlayer {
 
                     //Load airColors
                     if (airColorField != null && CosmeticColor.hasAirColor(airColorField)) bPlayer.airCosmeticColor = CosmeticColor.getAirColor(airColorField);
+
+                    //Load earthCosmetics
+                    if (earthCosmeticField != null && EarthCosmetic.hasCosmetic(earthCosmeticField)) bPlayer.earthCosmetic = EarthCosmetic.getCosmetic(earthCosmeticField);
 
                     //Load permaRemove
                     if (permaremovedField != null && permaremovedField.equalsIgnoreCase("true")) bPlayer.permaRemoved = true;
@@ -913,6 +919,10 @@ public class OfflineBendingPlayer {
         return airCosmeticColor;
     }
 
+    public EarthCosmetic getEarthCosmetic() {
+        return earthCosmetic;
+    }
+
     public boolean areSourceHolesOn() {
         return this.sourceHoles;
     }
@@ -985,6 +995,12 @@ public class OfflineBendingPlayer {
     public void setAirColor(CosmeticColor airCosmeticColor) {
         this.airCosmeticColor = airCosmeticColor;
         DBConnection.sql.modifyQuery("UPDATE pk_players SET aircolor = '" + airCosmeticColor.getName() + "' WHERE uuid = '" + uuid + "'");
+    }
+
+    public void setEarthCosmetic(EarthCosmetic earthCosmetic) {
+        this.earthCosmetic = earthCosmetic;
+        String name = earthCosmetic != null ? earthCosmetic.getName() : null;
+        DBConnection.sql.modifyQuery("UPDATE pk_players SET earthcosmetic = '" + name + "' WHERE uuid = '" + uuid + "'");
     }
 
     public void toggleSourceHoles() {
@@ -1131,6 +1147,7 @@ public class OfflineBendingPlayer {
         bendingPlayer.style = offlineBendingPlayer.style;
         bendingPlayer.fireCosmeticColor = offlineBendingPlayer.fireCosmeticColor;
         bendingPlayer.airCosmeticColor = offlineBendingPlayer.airCosmeticColor;
+        bendingPlayer.earthCosmetic = offlineBendingPlayer.earthCosmetic;
         bendingPlayer.sourceHoles = offlineBendingPlayer.sourceHoles;
         bendingPlayer.cooldowns.putAll(offlineBendingPlayer.cooldowns);
         bendingPlayer.loading = false;
@@ -1160,6 +1177,7 @@ public class OfflineBendingPlayer {
         offlineBendingPlayer.style = bendingPlayer.style;
         offlineBendingPlayer.fireCosmeticColor = bendingPlayer.fireCosmeticColor;
         offlineBendingPlayer.airCosmeticColor = bendingPlayer.airCosmeticColor;
+        offlineBendingPlayer.earthCosmetic = bendingPlayer.earthCosmetic;
         offlineBendingPlayer.sourceHoles = bendingPlayer.sourceHoles;
         offlineBendingPlayer.cooldowns.putAll(bendingPlayer.cooldowns);
         offlineBendingPlayer.loading = false;

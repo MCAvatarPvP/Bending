@@ -2,6 +2,7 @@ package com.projectkorra.projectkorra.earthbending;
 
 import java.util.*;
 
+import com.projectkorra.projectkorra.object.EarthCosmetic;
 import com.projectkorra.projectkorra.util.*;
 import org.bukkit.Effect;
 import org.bukkit.Location;
@@ -540,7 +541,8 @@ public class EarthSmash extends EarthAbility {
 	}
 
 	public Material selectMaterialForRepresenter(final Material mat) {
-		final Material tempMat = selectMaterial(mat);
+		EarthCosmetic cosmetic = bPlayer.getEarthCosmetic();
+		final Material tempMat = selectMaterial(EarthCosmetic.canReplace(cosmetic, mat) ? cosmetic.getMaterial() : mat);
 		final Random rand = new Random();
 		if (!isEarthbendable(tempMat, true, true, true) && !this.isMetalbendable(tempMat)) {
 			if (this.currentBlocks.size() < 1) {

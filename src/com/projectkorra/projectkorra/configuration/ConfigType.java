@@ -15,7 +15,8 @@ public class ConfigType {
 	public static final ConfigType COLLISION = new ConfigType("Collision");
 	public static final ConfigType FIRECOLORS = new ConfigType("FireColors");
 	public static final ConfigType AIRCOLORS = new ConfigType("AirColors");
-	public static final ConfigType[] CORE_TYPES = { DEFAULT, PRESETS, LANGUAGE, COLLISION, FIRECOLORS, AIRCOLORS };
+	public static final ConfigType EARTHCOSMETICS = new ConfigType("EarthCosmetics");
+	public static final ConfigType[] CORE_TYPES = { DEFAULT, PRESETS, LANGUAGE, COLLISION, FIRECOLORS, AIRCOLORS, EARTHCOSMETICS };
 
 	private final String string;
 

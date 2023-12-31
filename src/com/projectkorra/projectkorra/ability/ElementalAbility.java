@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.HashMap;
 
 import com.projectkorra.projectkorra.configuration.ConfigManager;
+import com.projectkorra.projectkorra.object.EarthCosmetic;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -118,7 +119,7 @@ public abstract class ElementalAbility extends CoreAbility {
 	}
 
 	public static boolean isEarth(final Material material) {
-		return EARTH_BLOCKS.contains(material.toString());
+		return EarthCosmetic.getCosmeticMats().contains(material) || EARTH_BLOCKS.contains(material.toString());
 	}
 
 	public static boolean isFire(final Block block) {

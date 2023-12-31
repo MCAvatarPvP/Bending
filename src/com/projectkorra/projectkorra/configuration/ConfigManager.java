@@ -3,18 +3,15 @@ package com.projectkorra.projectkorra.configuration;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
-import com.projectkorra.projectkorra.ProjectKorra;
 import org.bukkit.Material;
 import org.bukkit.configuration.file.FileConfiguration;
 
 import net.md_5.bungee.api.ChatColor;
-import org.jetbrains.annotations.NotNull;
 
 public class ConfigManager {
 
@@ -24,6 +21,7 @@ public class ConfigManager {
 	public static Config collisionConfig;
 	public static Config fireColorsConfig;
 	public static Config airColorsConfig;
+	public static Config earthCosmeticsConfig;
 
 	public static List<Config> styleConfigs;
 
@@ -34,6 +32,7 @@ public class ConfigManager {
 		collisionConfig = new Config(new File("collision.yml"));
 		fireColorsConfig = new Config(new File("fireColors.yml"));
 		airColorsConfig = new Config(new File("airColors.yml"));
+		earthCosmeticsConfig = new Config(new File("earthCosmetics.yml"));
 		styleConfigs = new ArrayList<>();
 		configCheck(ConfigType.DEFAULT);
 		configCheck(ConfigType.LANGUAGE);
@@ -41,6 +40,7 @@ public class ConfigManager {
 		configCheck(ConfigType.COLLISION);
 		configCheck(ConfigType.FIRECOLORS);
 		configCheck(ConfigType.AIRCOLORS);
+		configCheck(ConfigType.EARTHCOSMETICS);
 	}
 
 	public static void configCheck(final ConfigType type) {
@@ -75,6 +75,10 @@ public class ConfigManager {
 			config = airColorsConfig.get();
 			config.addDefault("AirColors", Arrays.asList("name, hexColor"));
 			airColorsConfig.save();
+		} else if (type == ConfigType.EARTHCOSMETICS) {
+			config = earthCosmeticsConfig.get();
+			config.addDefault("EarthCosmetics", Arrays.asList("name, material"));
+			earthCosmeticsConfig.save();
 		} else if (type == ConfigType.LANGUAGE) {
 			config = languageConfig.get();
 
@@ -244,6 +248,11 @@ public class ConfigManager {
 			config.addDefault("Commands.AirColor.InvalidColor", "Color {color} could not be found.");
 			config.addDefault("Commands.AirColor.PlayerNotFound", "Could not find player.");
 			config.addDefault("Commands.AirColor.ChangedColor", "Successfully changed air color to {color}.");
+
+			config.addDefault("Commands.EarthCosmetic.Description", "This command allows you to change earth cosmetics.");
+			config.addDefault("Commands.EarthCosmetic.InvalidCosmetic", "Cosmetic {cosmetic} could not be found.");
+			config.addDefault("Commands.EarthCosmetic.PlayerNotFound", "Could not find player.");
+			config.addDefault("Commands.EarthCosmetic.ChangedCosmetic", "Successfully changed earth cosmetic to {cosmetic}.");
 
 			config.addDefault("Commands.Style.Description", "This command allows you to change styles.");
 			config.addDefault("Commands.Style.InvalidStyle", "Style {style} could not be found.");

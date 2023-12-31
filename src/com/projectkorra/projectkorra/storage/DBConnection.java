@@ -83,7 +83,7 @@ public class DBConnection {
 			isOpen = true;
 			if (!sql.tableExists("pk_players")) {
 				ProjectKorra.log.info("Creating pk_players table.");
-				final String query = "CREATE TABLE `pk_players` (" + "`uuid` TEXT(36) PRIMARY KEY," + "`player` TEXT(16)," + "`element` TEXT(255)," + "`subelement` TEXT(255)," + "`firecolor` TEXT(255)," + "`aircolor` TEXT(255)," + "`style` TEXT(255)," + "`permaremoved` TEXT(5)," + "`sourceholes` TEXT(5)," + "`slot1` TEXT(255)," + "`slot2` TEXT(255)," + "`slot3` TEXT(255)," + "`slot4` TEXT(255)," + "`slot5` TEXT(255)," + "`slot6` TEXT(255)," + "`slot7` TEXT(255)," + "`slot8` TEXT(255)," + "`slot9` TEXT(255));";
+				final String query = "CREATE TABLE `pk_players` (" + "`uuid` TEXT(36) PRIMARY KEY," + "`player` TEXT(16)," + "`element` TEXT(255)," + "`subelement` TEXT(255)," + "`firecolor` TEXT(255)," + "`aircolor` TEXT(255)," + "`earthcosmetic` TEXT(255)," + "`style` TEXT(255)," + "`permaremoved` TEXT(5)," + "`sourceholes` TEXT(5)," + "`slot1` TEXT(255)," + "`slot2` TEXT(255)," + "`slot3` TEXT(255)," + "`slot4` TEXT(255)," + "`slot5` TEXT(255)," + "`slot6` TEXT(255)," + "`slot7` TEXT(255)," + "`slot8` TEXT(255)," + "`slot9` TEXT(255));";
 				sql.modifyQuery(query, false);
 			} else {
 				try {

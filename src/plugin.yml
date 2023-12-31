@@ -42,6 +42,7 @@ permissions:
       bending.admin.style: true
       bending.admin.firecolor: true
       bending.admin.aircolor: true
+      bending.admin.earthcosmetic: true
       bending.command.styleedit: true
   bending.player:
     default: true
@@ -60,6 +61,7 @@ permissions:
       bending.command.style: true
       bending.command.firecolor: true
       bending.command.aircolor: true
+      bending.command.earthcosmetic: true
       bending.command.preset.list: true
       bending.command.preset.create.5: true
       bending.command.preset.create: true
@@ -291,3 +293,6 @@ permissions:
   bending.aircolor:
     default: op
     description: Grants access to all Air colors
+  bending.earthcosmetics:
+    default: op
+    description: Grants access to all Earth cosmetics

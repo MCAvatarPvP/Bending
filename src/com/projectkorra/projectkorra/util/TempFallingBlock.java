@@ -1,7 +1,9 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
+import com.projectkorra.projectkorra.object.EarthCosmetic;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.data.BlockData;
@@ -28,9 +30,15 @@ public class TempFallingBlock {
     }
 
     public TempFallingBlock(Location location, BlockData data, Vector velocity, CoreAbility ability, boolean expire) {
-        this.fallingblock = location.getWorld().spawnFallingBlock(location, data.clone());
+        BlockData blockData = data;
+        EarthCosmetic cosmetic = ability.getBendingPlayer().getEarthCosmetic();
+        if (EarthCosmetic.canReplace(cosmetic, data.getMaterial()) && ability.getElement() == Element.EARTH) {
+            blockData = cosmetic.getMaterial().createBlockData();
+        }
+        this.fallingblock = location.getWorld().spawnFallingBlock(location, blockData.clone());
         this.fallingblock.setVelocity(velocity);
         this.fallingblock.setDropItem(false);
+        this.fallingblock.setHurtEntities(false);
         this.fallingblock.setMetadata(ability.getName().toLowerCase(), new FixedMetadataValue(ProjectKorra.plugin, this));
         this.ability = ability;
         this.creation = System.currentTimeMillis();
@@ -42,6 +50,12 @@ public class TempFallingBlock {
         long time = System.currentTimeMillis();
 
         for (TempFallingBlock tfb : instances.values()) {
+            FallingBlock fb = tfb.getFallingBlock();
+            if (fb == null || fb.isDead()) {
+                tfb.remove();
+                continue;
+            }
+
             if (tfb.canExpire() && time > tfb.getCreationTime() + 5000) {
                 tfb.remove();
             } else if (time > tfb.getCreationTime() + 120000) { // Add a hard timeout for any abilities that misuse this.

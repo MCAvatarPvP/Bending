@@ -123,6 +123,7 @@ public class Commands {
 		new StyleEditCommand();
 		new FireColorCommand();
 		new AirColorCommand();
+		new EarthCosmeticCommand();
 		new PresetCommand();
 		new ReloadCommand();
 		new RemoveCommand();

@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.projectkorra.projectkorra.object.EarthCosmetic;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
@@ -23,7 +24,6 @@ import org.bukkit.util.Vector;
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
-import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.util.Collision;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.earthbending.RaiseEarth;
@@ -451,7 +451,7 @@ public abstract class EarthAbility extends ElementalAbility {
 		return bPlayer == null ? null : isSand(material) && bPlayer.canSandbend();
 	}
 
-	public static void moveEarthBlock(final Block source, final Block target) {
+	public void moveEarthBlock(final Block source, final Block target) {
 		Information info;
 
 		if (MOVED_EARTH.containsKey(source)) {
@@ -466,16 +466,22 @@ public abstract class EarthAbility extends ElementalAbility {
 		info.setTime(System.currentTimeMillis());
 		MOVED_EARTH.put(target, info);
 
-		if (info.getState().getType() == Material.SAND) {
+		Material targetMat = info.getState().getType();
+		EarthCosmetic cos = bPlayer.getEarthCosmetic();
+		if (EarthCosmetic.canReplace(cos, source.getType())) {
+			targetMat = cos.getMaterial();
+		}
+
+		if (targetMat == Material.SAND) {
 			target.setType(Material.SANDSTONE, false);
-		} else if (info.getState().getType() == Material.RED_SAND) {
+		} else if (targetMat == Material.RED_SAND) {
 			target.setType(Material.RED_SANDSTONE, false);
-		} else if (info.getState().getType() == Material.GRAVEL) {
+		} else if (targetMat == Material.GRAVEL) {
 			target.setType(Material.STONE, false);
-		} else if (info.getState().getType().name().endsWith("CONCRETE_POWDER")) {
-			target.setType(Material.getMaterial(info.getState().getType().name().replace("_POWDER", "")), false);
+		} else if (targetMat.name().endsWith("CONCRETE_POWDER")) {
+			target.setType(Material.getMaterial(targetMat.name().replace("_POWDER", "")), false);
 		} else {
-			target.setBlockData(info.getState().getBlockData(), false);
+			target.setBlockData(targetMat.createBlockData(), false);
 		}
 
 		source.setType(Material.AIR, false);
