@@ -62,6 +62,7 @@ public class OfflineBendingPlayer {
     protected CosmeticColor fireCosmeticColor;
     protected CosmeticColor airCosmeticColor;
     protected EarthCosmetic earthCosmetic;
+    protected boolean sprinkle;
     protected boolean toggled;
     protected boolean sourceHoles;
     protected boolean allPassivesToggled;
@@ -155,6 +156,7 @@ public class OfflineBendingPlayer {
                     final String fireColorField = rs2.getString("firecolor");
                     final String airColorField = rs2.getString("aircolor");
                     final String earthCosmeticField = rs2.getString("earthcosmetic");
+                    final String sprinkleField = rs2.getString("sprinkle");
                     final String permaremovedField = rs2.getString("permaremoved");
                     final String sourceholesField = rs2.getString("sourceholes");
 
@@ -382,6 +384,9 @@ public class OfflineBendingPlayer {
 
                     //Load earthCosmetics
                     if (earthCosmeticField != null && EarthCosmetic.hasCosmetic(earthCosmeticField)) bPlayer.earthCosmetic = EarthCosmetic.getCosmetic(earthCosmeticField);
+
+                    //Load sprinkle
+                    if (sprinkleField != null && sprinkleField.equalsIgnoreCase("true")) bPlayer.sprinkle = true;
 
                     //Load permaRemove
                     if (permaremovedField != null && permaremovedField.equalsIgnoreCase("true")) bPlayer.permaRemoved = true;
@@ -923,6 +928,10 @@ public class OfflineBendingPlayer {
         return earthCosmetic;
     }
 
+    public boolean isSprinkleEnabled() {
+        return this.sprinkle;
+    }
+
     public boolean areSourceHolesOn() {
         return this.sourceHoles;
     }
@@ -1001,6 +1010,16 @@ public class OfflineBendingPlayer {
         this.earthCosmetic = earthCosmetic;
         String name = earthCosmetic != null ? earthCosmetic.getName() : null;
         DBConnection.sql.modifyQuery("UPDATE pk_players SET earthcosmetic = '" + name + "' WHERE uuid = '" + uuid + "'");
+    }
+
+    public void setSprinkle(boolean sprinkle) {
+        this.sprinkle = sprinkle;
+        DBConnection.sql.modifyQuery("UPDATE pk_players SET sprinkle = '" + (sprinkle ? "true" : "false") + "' WHERE uuid = '" + uuid + "'");
+    }
+
+    public void toggleSprinkle() {
+        this.sprinkle = !this.sprinkle;
+        DBConnection.sql.modifyQuery("UPDATE pk_players SET sprinkle = '" + (sprinkle ? "true" : "false") + "' WHERE uuid = '" + uuid + "'");
     }
 
     public void toggleSourceHoles() {
@@ -1148,6 +1167,7 @@ public class OfflineBendingPlayer {
         bendingPlayer.fireCosmeticColor = offlineBendingPlayer.fireCosmeticColor;
         bendingPlayer.airCosmeticColor = offlineBendingPlayer.airCosmeticColor;
         bendingPlayer.earthCosmetic = offlineBendingPlayer.earthCosmetic;
+        bendingPlayer.sprinkle = offlineBendingPlayer.sprinkle;
         bendingPlayer.sourceHoles = offlineBendingPlayer.sourceHoles;
         bendingPlayer.cooldowns.putAll(offlineBendingPlayer.cooldowns);
         bendingPlayer.loading = false;
@@ -1178,6 +1198,7 @@ public class OfflineBendingPlayer {
         offlineBendingPlayer.fireCosmeticColor = bendingPlayer.fireCosmeticColor;
         offlineBendingPlayer.airCosmeticColor = bendingPlayer.airCosmeticColor;
         offlineBendingPlayer.earthCosmetic = bendingPlayer.earthCosmetic;
+        offlineBendingPlayer.sprinkle = bendingPlayer.sprinkle;
         offlineBendingPlayer.sourceHoles = bendingPlayer.sourceHoles;
         offlineBendingPlayer.cooldowns.putAll(bendingPlayer.cooldowns);
         offlineBendingPlayer.loading = false;

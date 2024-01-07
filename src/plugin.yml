@@ -43,7 +43,11 @@ permissions:
       bending.admin.firecolor: true
       bending.admin.aircolor: true
       bending.admin.earthcosmetic: true
+      bending.command.sprinkle: true
+      bending.admin.sprinkle: true
       bending.command.styleedit: true
+      bending.command.sourceholes: true
+      bending.admin.sourceholes: true
   bending.player:
     default: true
     description: Grants access to most abilities and basic commands.

@@ -124,6 +124,7 @@ public class Commands {
 		new FireColorCommand();
 		new AirColorCommand();
 		new EarthCosmeticCommand();
+		new SprinkleCommand();
 		new PresetCommand();
 		new ReloadCommand();
 		new RemoveCommand();

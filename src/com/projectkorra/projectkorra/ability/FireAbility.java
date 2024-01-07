@@ -192,6 +192,7 @@ public abstract class FireAbility extends ElementalAbility {
 	}
 
 	public void playFirebendingParticles(final Location loc, final int amount, final double xOffset, final double yOffset, final double zOffset, final double speed) {
+		if (bPlayer.isSprinkleEnabled()) ParticleEffect.END_ROD.display(loc, amount, xOffset, yOffset, zOffset, speed);
 		boolean colored = bPlayer.getFireColor() != null;
 		colored = colored && !bPlayer.getFireColor().getName().equalsIgnoreCase("none");
 		if (colored) {

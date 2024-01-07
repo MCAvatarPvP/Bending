@@ -254,6 +254,11 @@ public class ConfigManager {
 			config.addDefault("Commands.EarthCosmetic.PlayerNotFound", "Could not find player.");
 			config.addDefault("Commands.EarthCosmetic.ChangedCosmetic", "Successfully changed earth cosmetic to {cosmetic}.");
 
+			config.addDefault("Commands.Sprinkle.Description", "This command toggles Sprinkle on/off.");
+			config.addDefault("Commands.Sprinkle.InvalidPlayer", "That player could not be found.");
+			config.addDefault("Commands.Sprinkle.ToggledOn", "Sprinkle is now toggled on.");
+			config.addDefault("Commands.Sprinkle.ToggledOff", "Sprinkle is now toggled off.");
+
 			config.addDefault("Commands.Style.Description", "This command allows you to change styles.");
 			config.addDefault("Commands.Style.InvalidStyle", "Style {style} could not be found.");
 			config.addDefault("Commands.Style.PlayerNotFound", "Could not find player.");
