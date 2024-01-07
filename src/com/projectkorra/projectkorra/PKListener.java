@@ -981,7 +981,7 @@ public class PKListener implements Listener {
 		if (!ElementalAbility.affectedEntitiesByPush.containsKey(player)) return;
 		long time = ElementalAbility.affectedEntitiesByPush.get(player) + 100;
 
-		if (System.currentTimeMillis() > time && player.isOnGround()) {
+		if (System.currentTimeMillis() > time && GeneralMethods.isOnGround(player)) {
 			ProjectKorra.plugin.getServer().getScheduler().runTaskLater(ProjectKorra.plugin, (task) -> {
 				ElementalAbility.affectedEntitiesByPush.remove(player);
 			}, 1);

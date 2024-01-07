@@ -93,7 +93,7 @@ public class FlightMultiAbility extends FlightAbility implements MultiAbility {
 			return;
 		}
 
-		if (player.isOnGround()) {
+		if (GeneralMethods.isOnGround(player)) {
 			return;
 		}
 
@@ -254,7 +254,7 @@ public class FlightMultiAbility extends FlightAbility implements MultiAbility {
 			this.remove();
 		}
 
-		if (this.player.isOnGround()) {
+		if (GeneralMethods.isOnGround(this.player)) {
 			this.remove();
 			return;
 		}

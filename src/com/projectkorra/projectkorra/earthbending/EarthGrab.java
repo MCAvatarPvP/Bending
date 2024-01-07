@@ -272,7 +272,7 @@ public class EarthGrab extends EarthAbility {
 	}
 
 	public void drag() {
-		if (!this.player.isOnGround()) {
+		if (!GeneralMethods.isOnGround(this.player)) {
 			return;
 		}
 

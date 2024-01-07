@@ -59,6 +59,7 @@ import org.bukkit.inventory.MainHand;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 
 import com.projectkorra.projectkorra.ability.Ability;
@@ -573,6 +574,42 @@ public class GeneralMethods {
 		}
 
 		// And last but not least, we return with the list
+		return blocks;
+	}
+
+	/**
+	 * Checks if the entity is on ground
+	 * @param entity the entity to check
+	 * @return true if on ground
+	 */
+	public static boolean isOnGround(Entity entity) {
+		if (!(entity instanceof Player)) return entity.isOnGround();
+
+		Location loc = entity.getLocation().add(0, -0.500001, 0);
+		BoundingBox box = entity.getBoundingBox();
+		Location min = box.getMin().setY(loc.getY()).toLocation(entity.getWorld());
+		Location max = box.getMax().setY(loc.getY()).toLocation(entity.getWorld());
+
+		return !getBlocks(min, max).isEmpty() && entity.getVelocity().getY() == -0.0784000015258789;
+	}
+
+	/**
+	 * Gets all blocks between two locations in a cube
+	 * @param min The minimum Location
+	 * @param max The maximum Location
+	 * @return List of blocks
+	 */
+	public static List<Block> getBlocks(Location min, Location max) {
+		List<Block> blocks = new ArrayList<>();
+		for (int x = min.getBlockX(); x <= max.getBlockX(); x++) {
+			for (int y = min.getBlockY(); y <= max.getBlockY(); y++) {
+				for (int z = min.getBlockZ(); z <= max.getBlockZ(); z++) {
+					Block block = min.getWorld().getBlockAt(x, y, z);
+					if (isSolid(block)) blocks.add(block);
+				}
+			}
+		}
+
 		return blocks;
 	}
 

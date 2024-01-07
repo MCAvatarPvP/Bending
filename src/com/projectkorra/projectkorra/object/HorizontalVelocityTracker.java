@@ -70,7 +70,7 @@ public class HorizontalVelocityTracker {
 			return;
 		}
 
-		if (this.entity.isOnGround()) {
+		if (GeneralMethods.isOnGround(this.entity)) {
 			this.remove();
 			return;
 		}

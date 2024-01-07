@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import org.bukkit.Bukkit;
 import org.bukkit.attribute.Attribute;
@@ -93,7 +94,7 @@ public class DamageHandler {
 				lent.damage(damage);
 				nextHealth = lent.getHealth();
 			}
-			if (!lent.isOnGround() && lent.getVelocity().getY() < 0) {
+			if (!GeneralMethods.isOnGround(lent) && lent.getVelocity().getY() < 0) {
 				Vector vel = lent.getVelocity();
 				vel.setY(0);
 				lent.setVelocity(vel);
