@@ -1049,6 +1049,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.AirScooter.Duration", 0);
 			config.addDefault("Abilities.Air.AirScooter.MaxHeightFromGround", 7);
 			config.addDefault("Abilities.Air.AirScooter.RequiresSprint", false);
+			config.addDefault("Abilities.Air.AirScooter.DisableSprint", true);
 			config.addDefault("Abilities.Air.AirScooter.RequiresJump", false);
 
 			config.addDefault("Abilities.Air.AirShield.Enabled", true);
