@@ -769,6 +769,7 @@ public class ConfigManager {
 			config.addDefault("Properties.Air.MaxLavaTickDuration", 60);
 			config.addDefault("Properties.Air.MinFireTickDuration", 20);
 			config.addDefault("Properties.Air.MaxFireTickDuration", 40);
+			config.addDefault("Properties.Air.SprinkleMultiplier", 0.25);
 			config.addDefault("Properties.Air.Sound.Sound", "ENTITY_CREEPER_HURT");
 			config.addDefault("Properties.Air.Sound.Volume", 1);
 			config.addDefault("Properties.Air.Sound.Pitch", 2);
@@ -830,6 +831,7 @@ public class ConfigManager {
 			config.addDefault("Properties.Fire.MaxLavaTickDuration", 60);
 			config.addDefault("Properties.Fire.MinFireTickDuration", 20);
 			config.addDefault("Properties.Fire.MaxFireTickDuration", 40);
+			config.addDefault("Properties.Fire.SprinkleMultiplier", 0.25);
 			config.addDefault("Properties.Fire.MaxFireDamage", 0.5);
 			config.addDefault("Properties.Fire.FireSound.Sound", "BLOCK_FIRE_AMBIENT");
 			config.addDefault("Properties.Fire.FireSound.Volume", 1);

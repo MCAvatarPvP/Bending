@@ -186,7 +186,9 @@ public abstract class AirAbility extends ElementalAbility {
 	 */
 	public static void playAirbendingParticles(final BendingPlayer bPlayer, final Location loc, final int amount, final double xOffset, final double yOffset, final double zOffset, final double speed) {
 		ParticleEffect effect = getAirbendingParticles();
-		if (bPlayer.isSprinkleEnabled()) ParticleEffect.END_ROD.display(loc, amount, xOffset, yOffset, zOffset, speed);
+		double multiplier = ConfigManager.getConfig().getDouble("Properties.Air.SprinkleMultiplier");
+		int amountMultiplied = Math.max((int) (amount * multiplier), 1);
+		if (bPlayer.isSprinkleEnabled()) ParticleEffect.END_ROD.display(loc, amountMultiplied, xOffset, yOffset, zOffset, speed);
 		if (effect == ParticleEffect.SPELL && bPlayer.getAirColor() != null) {
 			if (!bPlayer.getAirColor().getName().equalsIgnoreCase("none")) {
 				Color color = bPlayer.getAirColor().getColor().getColor();
