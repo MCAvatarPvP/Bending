@@ -89,16 +89,24 @@ public class AirBlast extends AirAbility {
 		this.setFields();
 
 		if (ORIGINS.containsKey(player)) {
-			final Entity entity = GeneralMethods.getTargetedEntity(player, this.range);
+//			final Entity entity = GeneralMethods.getTargetedEntity(player, this.range);
 			this.isFromOtherOrigin = true;
 			this.origin = ORIGINS.get(player);
 			ORIGINS.remove(player);
 
-			if (entity != null) {
-				this.direction = GeneralMethods.getDirection(this.origin, GeneralMethods.getTargetedLocation(player, this.range, false, false)).normalize();
-			} else {
-				this.direction = GeneralMethods.getDirection(this.origin, GeneralMethods.getTargetedLocation(player, this.range)).normalize();
+//			if (entity != null) {
+//				this.direction = GeneralMethods.getDirection(this.origin, targetedLocation).normalize();
+//			} else {
+//				this.direction = GeneralMethods.getDirection(this.origin, targetedLocation).normalize();
+//			}
+
+			Location targetedLocation = GeneralMethods.getTargetedLocation(player, this.range, false, true);
+			Block block = targetedLocation.getBlock();
+			if (!GeneralMethods.isSolid(block) && GeneralMethods.isSolid(block.getRelative(BlockFace.DOWN))) {
+				double y = ConfigManager.getConfig(bPlayer).getDouble("Abilities.Air.AirBlast.SourceYOffset");
+				targetedLocation.add(0, y, 0);
 			}
+
 		} else {
 			this.origin = player.getEyeLocation();
 			this.direction = player.getEyeLocation().getDirection().normalize();
@@ -192,11 +200,17 @@ public class AirBlast extends AirAbility {
 	}
 
 	public static void setOrigin(final Player player) {
-		final Location location = GeneralMethods.getTargetedLocation(player, getSelectRange(BendingPlayer.getBendingPlayer(player)), getTransparentMaterials());
+		BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
+		final Location location = GeneralMethods.getTargetedLocation(player, getSelectRange(bPlayer), getTransparentMaterials());
 		if (location.getBlock().isLiquid() || GeneralMethods.isSolid(location.getBlock())) {
 			return;
 		} else if (RegionProtection.isRegionProtected(player, location, "AirBlast")) {
 			return;
+		}
+
+		if (GeneralMethods.isSolid(location.getBlock().getRelative(BlockFace.DOWN))) {
+			double y = ConfigManager.getConfig(bPlayer).getDouble("Abilities.Air.AirBlast.SourceYOffset");
+			location.add(0, y, 0);
 		}
 
 		ORIGINS.put(player, location);
