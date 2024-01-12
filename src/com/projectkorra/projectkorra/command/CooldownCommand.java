@@ -56,6 +56,8 @@ public class CooldownCommand extends PKCommand {
             return;
         }
 
+        if (!hasPermission(sender)) return;
+
         OfflinePlayer oPlayer = list.size() == 1 ? (Player)sender : Bukkit.getOfflinePlayer(list.get(1));
         if (!oPlayer.isOnline() && !oPlayer.hasPlayedBefore()) {
             ChatUtil.sendBrandingMessage(sender, ChatColor.RED + ConfigManager.languageConfig.get().getString("Commands.Cooldown.InvalidPlayer"));

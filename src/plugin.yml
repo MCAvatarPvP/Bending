@@ -48,6 +48,7 @@ permissions:
       bending.command.styleedit: true
       bending.command.sourceholes: true
       bending.admin.sourceholes: true
+      bending.command.cooldown: true
   bending.player:
     default: true
     description: Grants access to most abilities and basic commands.
