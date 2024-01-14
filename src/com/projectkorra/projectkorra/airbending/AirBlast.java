@@ -107,6 +107,7 @@ public class AirBlast extends AirAbility {
 				targetedLocation.add(0, y, 0);
 			}
 
+			this.direction = GeneralMethods.getDirection(origin, targetedLocation).normalize();
 		} else {
 			this.origin = player.getEyeLocation();
 			this.direction = player.getEyeLocation().getDirection().normalize();
