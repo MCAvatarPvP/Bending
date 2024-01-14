@@ -21,6 +21,7 @@ import com.projectkorra.projectkorra.hooks.CanBendHook;
 import com.projectkorra.projectkorra.object.Preset;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.ChatUtil;
+import me.literka.Tracker;
 import net.md_5.bungee.api.ChatColor;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
@@ -60,6 +61,8 @@ public class BendingPlayer extends OfflineBendingPlayer {
 	protected static Map<JavaPlugin, CanBendHook> HOOKS = new HashMap<>();
 
 	private long slowTime;
+	private long lastTime;
+	private int latency;
 	private final Player player;
 	private ChiAbility stance;
 
@@ -69,6 +72,23 @@ public class BendingPlayer extends OfflineBendingPlayer {
 
 	public BendingPlayer(Player player) {
 		super(player);
+
+		this.latency = 0;
+		if (ProjectKorra.isTrackerEnabled()) {
+			Tracker.addOnWrite(player, (channelHandlerContext, o, channelPromise) -> {
+				String className = o.getClass().getSimpleName();
+				if (!className.toLowerCase().contains("keepalive")) return;
+
+				this.lastTime = System.currentTimeMillis();
+			});
+
+			Tracker.addOnRead(player, (channelHandlerContext, o, o2) -> {
+				String className = o.getClass().getSimpleName();
+				if (!className.toLowerCase().contains("keepalive")) return;
+
+				this.latency = (int) (System.currentTimeMillis() - this.lastTime);
+			});
+		}
 
 		this.player = player;
 		this.tremorSense = true;
@@ -388,6 +408,10 @@ public class BendingPlayer extends OfflineBendingPlayer {
 	@Override
 	public int getCurrentSlot() {
 		return this.player.getInventory().getHeldItemSlot();
+	}
+
+	public int getLatency() {
+		return latency;
 	}
 
 	/**

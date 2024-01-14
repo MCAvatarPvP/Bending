@@ -180,6 +180,10 @@ public class ProjectKorra extends JavaPlugin {
 		ProjectKorra.collisionInitializer = collisionInitializer;
 	}
 
+	public static boolean isTrackerEnabled() {
+		return plugin.getServer().getPluginManager().isPluginEnabled("PacketTracker");
+	}
+
 	public static boolean isStatisticsEnabled() {
 		return ConfigManager.getConfig().getBoolean("Properties.Statistics");
 	}
