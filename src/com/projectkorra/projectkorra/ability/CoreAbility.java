@@ -85,7 +85,6 @@ public abstract class CoreAbility implements Ability {
 	private static final Set<CoreAbility> INSTANCES = Collections.newSetFromMap(new ConcurrentHashMap<CoreAbility, Boolean>());
 	private static final Map<Class<? extends CoreAbility>, Map<UUID, Map<Integer, CoreAbility>>> INSTANCES_BY_PLAYER = new ConcurrentHashMap<>();
 	private static final Map<Class<? extends CoreAbility>, Set<CoreAbility>> INSTANCES_BY_CLASS = new ConcurrentHashMap<>();
-	private static final List<CoreAbility> INSTANCES_PINGED = new ArrayList<>();
 	private static final Map<String, CoreAbility> ABILITIES_BY_NAME = new ConcurrentSkipListMap<>(); // preserves ordering.
 	private static final Map<Class<? extends CoreAbility>, CoreAbility> ABILITIES_BY_CLASS = new ConcurrentHashMap<>();
 	private static final double DEFAULT_COLLISION_RADIUS = 0.3;
@@ -240,7 +239,6 @@ public abstract class CoreAbility implements Ability {
 			INSTANCES_BY_CLASS.get(this.getClass()).remove(this);
 		}
 		INSTANCES.remove(this);
-		INSTANCES_PINGED.remove(this);
 	}
 
 	/**
@@ -276,13 +274,7 @@ public abstract class CoreAbility implements Ability {
 					}
 
 					//try (MCTiming timing = ProjectKorra.timing(abil.getName()).startTiming()) {
-					int latency = abil.getBendingPlayer().getLatency();
-					boolean canSkip = ProjectKorra.isTrackerEnabled() && latency >= 50 && !INSTANCES_PINGED.contains(abil);
-					int ticks = canSkip ? Math.min(latency, 200) / 50 : 1;
-					for (int i = 0; i < ticks; i++) {
-						if (!abil.isRemoved()) abil.progress();
-					}
-					if (canSkip) INSTANCES_PINGED.add(abil);
+						abil.progress();
 					//}
 
 					Bukkit.getServer().getPluginManager().callEvent(new AbilityProgressEvent(abil));
