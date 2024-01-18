@@ -1840,6 +1840,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Chi.Passive.ChiAgility.Enabled", true);
 			config.addDefault("Abilities.Chi.Passive.ChiAgility.JumpPower", 1);
 			config.addDefault("Abilities.Chi.Passive.ChiAgility.SpeedPower", 1);
+			config.addDefault("Abilities.Chi.Passive.ChiAgility.RequiresSprinting", false);
 			config.addDefault("Abilities.Chi.Passive.ChiSaturation.Enabled", true);
 			config.addDefault("Abilities.Chi.Passive.ChiSaturation.ExhaustionFactor", 0.3);
 			config.addDefault("Abilities.Chi.Passive.BlockChi.Chance", 25);

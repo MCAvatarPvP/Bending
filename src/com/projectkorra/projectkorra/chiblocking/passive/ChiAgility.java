@@ -17,6 +17,7 @@ public class ChiAgility extends ChiAbility implements PassiveAbility {
 	private int jumpPower;
 	@Attribute(Attribute.SPEED)
 	private int speedPower;
+	private boolean requiresSprinting;
 
 	public ChiAgility(final Player player) {
 		super(player);
@@ -26,11 +27,12 @@ public class ChiAgility extends ChiAbility implements PassiveAbility {
 	public void setFields() {
 		this.jumpPower = getConfig().getInt("Abilities.Chi.Passive.ChiAgility.JumpPower") - 1;
 		this.speedPower = getConfig().getInt("Abilities.Chi.Passive.ChiAgility.SpeedPower") - 1;
+		this.requiresSprinting = getConfig().getBoolean("Abilities.Chi.Passive.ChiAgility.RequiresSprinting");
 	}
 
 	@Override
 	public void progress() {
-		if (!this.player.isSprinting() || !this.bPlayer.canUsePassive(this) || !this.bPlayer.canBendPassive(this)) {
+		if (this.requiresSprinting && !this.player.isSprinting() || !this.bPlayer.canUsePassive(this) || !this.bPlayer.canBendPassive(this)) {
 			return;
 		}
 
