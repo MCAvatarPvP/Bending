@@ -7,6 +7,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.firebending.FireJet;
+import com.projectkorra.projectkorra.firebending.FireShield;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
@@ -69,6 +70,8 @@ public class Lightning extends LightningAbility {
 	private long cooldown;
 	private long redirectionDuration;
 	private boolean canRedirectOnCD;
+	private boolean canSwapSlots;
+	private boolean allowWhenFireShield;
 	private long startTime;
 	private State state;
 	private Location origin;
@@ -119,6 +122,8 @@ public class Lightning extends LightningAbility {
 		this.cooldown = applyModifiersCooldown(getConfig().getLong("Abilities.Fire.Lightning.Cooldown"));
 		this.redirectionDuration = getConfig().getLong("Abilities.Fire.Lightning.RedirectionDuration");
 		this.canRedirectOnCD = getConfig().getBoolean("Abilities.Fire.Lightning.RedirectionOnCD");
+		this.canSwapSlots = getConfig().getBoolean("Abilities.Fire.Lightning.CanSwapSlots");
+		this.allowWhenFireShield = getConfig().getBoolean("Abilities.Fire.Lightning.AllowWhenFireShield");
 		this.allowOnFireJet = getConfig().getBoolean("Abilities.Fire.Lightning.AllowOnFireJet");
 
 		/*this.range = this.getDayFactor(this.range);
@@ -191,10 +196,16 @@ public class Lightning extends LightningAbility {
 		if (this.player.isDead() || !this.player.isOnline()) {
 			this.removeWithTasks();
 			return;
-		} else if (!this.bPlayer.canBendIgnoreCooldowns(this)) {
+		} else if (!this.bPlayer.canBendIgnoreBindsCooldowns(this)) {
 			this.remove();
 			return;
-		} else if (CoreAbility.hasAbility(player, FireJet.class) && !allowOnFireJet){
+		} else if (!canSwapSlots && bPlayer.getBoundAbilityName().equalsIgnoreCase(getName())) {
+			remove();
+			return;
+		} else if (CoreAbility.hasAbility(player, FireJet.class) && !allowOnFireJet) {
+			this.removeWithTasks();
+			return;
+		} else if (CoreAbility.hasAbility(player, FireShield.class) && !allowWhenFireShield) {
 			this.removeWithTasks();
 			return;
 		}

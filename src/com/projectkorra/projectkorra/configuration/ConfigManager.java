@@ -1775,6 +1775,8 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.Lightning.ArcOnIce", false);
 			config.addDefault("Abilities.Fire.Lightning.RedirectionOnCD", true);
 			config.addDefault("Abilities.Fire.Lightning.AllowOnFireJet", true);
+			config.addDefault("Abilities.Fire.Lightning.CanSwapSlots", true);
+			config.addDefault("Abilities.Fire.Lightning.AllowWhenFireShield", false);
 
 			config.addDefault("Abilities.Fire.WallOfFire.Enabled", true);
 			config.addDefault("Abilities.Fire.WallOfFire.Range", 3);
