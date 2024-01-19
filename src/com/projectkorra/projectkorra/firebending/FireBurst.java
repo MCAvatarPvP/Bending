@@ -3,6 +3,7 @@ package com.projectkorra.projectkorra.firebending;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.projectkorra.projectkorra.ability.CoreAbility;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
@@ -29,6 +30,7 @@ public class FireBurst extends FireAbility {
 	@Attribute(Attribute.COOLDOWN)
 	private long cooldown;
 	private boolean canSwapSlots;
+	private boolean allowWhenFireShield;
 	private double angleTheta;
 	private double anglePhi;
 	private double particlesPercentage;
@@ -46,6 +48,7 @@ public class FireBurst extends FireAbility {
 		this.anglePhi = getConfig().getDouble("Abilities.Fire.FireBurst.AnglePhi");
 		this.particlesPercentage = getConfig().getDouble("Abilities.Fire.FireBurst.ParticlesPercentage");
 		this.canSwapSlots = getConfig().getBoolean("Abilities.Fire.FireBurst.CanSwapSlots");
+		this.allowWhenFireShield = getConfig().getBoolean("Abilities.Fire.FireBurst.AllowWhenFireShield");
 		this.blasts = new ArrayList<>();
 
 		if (!this.bPlayer.canBend(this) || hasAbility(player, FireBurst.class)) {
@@ -138,6 +141,11 @@ public class FireBurst extends FireAbility {
 		}
 
 		if (!canSwapSlots && bPlayer.getBoundAbilityName().equalsIgnoreCase(getName())) {
+			remove();
+			return;
+		}
+
+		if (!allowWhenFireShield && CoreAbility.hasAbility(player, FireShield.class)) {
 			remove();
 			return;
 		}

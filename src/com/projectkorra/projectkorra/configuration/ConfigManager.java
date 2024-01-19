@@ -1694,6 +1694,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.FireBurst.AnglePhi", 10);
 			config.addDefault("Abilities.Fire.FireBurst.AngleTheta", 10);
 			config.addDefault("Abilities.Fire.FireBurst.ParticlesPercentage", 5);
+			config.addDefault("Abilities.Fire.FireBurst.AllowWhenFireShield", false);
 
 			config.addDefault("Abilities.Fire.FireJet.Enabled", true);
 			config.addDefault("Abilities.Fire.FireJet.Speed", 0.8);
