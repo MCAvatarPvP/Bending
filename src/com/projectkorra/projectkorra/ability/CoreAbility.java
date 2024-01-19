@@ -86,6 +86,7 @@ public abstract class CoreAbility implements Ability {
 	private static final Map<Class<? extends CoreAbility>, Map<UUID, Map<Integer, CoreAbility>>> INSTANCES_BY_PLAYER = new ConcurrentHashMap<>();
 	private static final Map<Class<? extends CoreAbility>, Set<CoreAbility>> INSTANCES_BY_CLASS = new ConcurrentHashMap<>();
 	private static final Map<String, CoreAbility> ABILITIES_BY_NAME = new ConcurrentSkipListMap<>(); // preserves ordering.
+	private static final Map<String, CoreAbility> ABILITIES_BY_CLASS_NAME = new ConcurrentSkipListMap<>();
 	private static final Map<Class<? extends CoreAbility>, CoreAbility> ABILITIES_BY_CLASS = new ConcurrentHashMap<>();
 	private static final double DEFAULT_COLLISION_RADIUS = 0.3;
 	private static final List<String> ADDON_PLUGINS = new ArrayList<>();
@@ -355,6 +356,10 @@ public abstract class CoreAbility implements Ability {
 		return abilityName != null ? ABILITIES_BY_NAME.get(abilityName.toLowerCase()) : null;
 	}
 
+	public static CoreAbility getAbility(final String className, String nothing) {
+		return className != null ? ABILITIES_BY_CLASS_NAME.get(className) : null;
+	}
+
 	/**
 	 * Returns a "fake" instance for a CoreAbility with the specific class.
 	 *
@@ -480,6 +485,7 @@ public abstract class CoreAbility implements Ability {
 			}
 		}
 		ABILITIES_BY_CLASS.remove(clazz);
+		ABILITIES_BY_CLASS_NAME.remove(clazz.getSimpleName());
 		ABILITIES_BY_NAME.remove(name);
 		ProjectKorra.log.info("Unloaded ability: " + name);
 	}
@@ -512,6 +518,7 @@ public abstract class CoreAbility implements Ability {
 	 */
 	public static void registerAbilities() {
 		ABILITIES_BY_NAME.clear();
+		ABILITIES_BY_CLASS_NAME.clear();
 		ABILITIES_BY_CLASS.clear();
 		registerPluginAbilities(ProjectKorra.plugin, "com.projectkorra");
 		registerAddonAbilities("/Abilities/");
@@ -549,6 +556,7 @@ public abstract class CoreAbility implements Ability {
 
 			try {
 				ABILITIES_BY_NAME.put(name.toLowerCase(), coreAbil);
+				ABILITIES_BY_CLASS_NAME.put(coreAbil.getClass().getSimpleName(), coreAbil);
 				ABILITIES_BY_CLASS.put(coreAbil.getClass(), coreAbil);
 
 				if (coreAbil instanceof MultiAbility) {
@@ -575,6 +583,7 @@ public abstract class CoreAbility implements Ability {
 				plugin.getLogger().warning("The ability " + coreAbil.getName() + " was not able to load, if this message shows again please remove it!");
 				e.printStackTrace();
 				ABILITIES_BY_NAME.remove(name.toLowerCase());
+				ABILITIES_BY_CLASS_NAME.remove(coreAbil.getClass().getSimpleName());
 				ABILITIES_BY_CLASS.remove(coreAbil.getClass());
 			}
 		}
@@ -615,6 +624,7 @@ public abstract class CoreAbility implements Ability {
 			try {
 				addon.load();
 				ABILITIES_BY_NAME.put(name.toLowerCase(), coreAbil);
+				ABILITIES_BY_CLASS_NAME.put(coreAbil.getClass().getSimpleName(), coreAbil);
 				ABILITIES_BY_CLASS.put(coreAbil.getClass(), coreAbil);
 
 				if (coreAbil instanceof ComboAbility) {
@@ -660,6 +670,7 @@ public abstract class CoreAbility implements Ability {
 				e.printStackTrace();
 				addon.stop();
 				ABILITIES_BY_NAME.remove(name.toLowerCase());
+				ABILITIES_BY_CLASS_NAME.remove(coreAbil.getClass().getSimpleName());
 				ABILITIES_BY_CLASS.remove(coreAbil.getClass());
 			}
 		}

@@ -64,6 +64,16 @@ public class ConfigManager {
 			presetConfig.save();
 		} else if (type == ConfigType.COLLISION) {
 			config = collisionConfig.get();
+			String header =
+					"To add a collision copy this line into 'AddCollisions' and replace values:\n" +
+					"- FirstAbility, SecondAbility, RemoveFirst, RemoveSecond\n\n" +
+					"FirstAbility - first ability\n" +
+					"SecondAbility - second ability\n" +
+					"RemoveFirst - if true it removes the first ability on collision\n" +
+					"RemoveSecond - if true it removes the second ability on collision\n\n" +
+					"if ability is not found it will say in console which ability and what line is wrong";
+			config.options().header(header);
+			config.addDefault("AddCollisions", Arrays.asList("FirstAbility, SecondAbility, RemoveFirst, RemoveSecond"));
 			config.addDefault("Collisions", Arrays.asList("FirstAbility, SecondAbility"));
 			config.addDefault("FallingBlockCollisions", Arrays.asList("FallingBlockAbility, VelocityAbility"));
 			collisionConfig.save();

@@ -1,6 +1,8 @@
 package com.projectkorra.projectkorra.ability.util;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -188,18 +190,41 @@ public class CollisionInitializer {
 
 		ProjectKorra.plugin.getServer().getScheduler().runTaskLater(ProjectKorra.plugin, () -> {
 			FileConfiguration collisionConfig = ConfigManager.collisionConfig.get();
-			for (String s : collisionConfig.getStringList("Collisions")) {
-				String[] abilities = s.split(", ");
-				if (abilities.length == 2) {
-					for (int i = 0; i < this.collisionManager.getCollisions().size(); i++) {
-						Collision collision = this.collisionManager.getCollisions().get(i);
-						if (collision.getAbilityFirst().getClass().getSimpleName().equalsIgnoreCase(abilities[0])
-								&& collision.getAbilitySecond().getClass().getSimpleName().equalsIgnoreCase(abilities[1])
-								|| collision.getAbilityFirst().getClass().getSimpleName().equalsIgnoreCase(abilities[1])
-								&& collision.getAbilitySecond().getClass().getSimpleName().equalsIgnoreCase(abilities[0])) {
-							this.collisionManager.getCollisions().remove(collision);
-						}
+			Map<String, Collision> collisionMap = new HashMap<>();
+			for (Collision collision : this.collisionManager.getCollisions()) {
+				Class<? extends CoreAbility> first = collision.getAbilityFirst().getClass();
+				Class<? extends CoreAbility> second = collision.getAbilitySecond().getClass();
+				collisionMap.put(first.getSimpleName() + ", " + second.getSimpleName(), collision);
+			}
+
+			for (String s : collisionConfig.getStringList("AddCollisions")) {
+				String[] abils = s.split(", ");
+				if (abils.length == 4 && !collisionMap.containsKey(abils[0] + ", " + abils[1])) {
+					CoreAbility first = CoreAbility.getAbility(abils[0], "");
+					CoreAbility second = CoreAbility.getAbility(abils[1], "");
+					boolean removeFirst = abils[2].equalsIgnoreCase("true");
+					boolean removeSecond = abils[3].equalsIgnoreCase("true");
+
+					if (first == null) {
+						ProjectKorra.log.warning("ability named '" + abils[0] + "' wasn't found in line: " + s);
+						continue;
 					}
+
+					if (second == null) {
+						ProjectKorra.log.warning("ability named '" + abils[1] + "' wasn't found in line: " + s);
+						continue;
+					}
+
+					this.collisionManager.addCollision(new Collision(first, second, removeFirst, removeSecond));
+				}
+			}
+
+			for (String s : collisionConfig.getStringList("Collisions")) {
+				String[] abils = s.split(", ");
+				String key = abils[0] + ", " + abils[1];
+				if (abils.length == 2 && collisionMap.containsKey(key)) {
+					Collision collision = collisionMap.get(key);
+					this.collisionManager.getCollisions().remove(collision);
 				}
 			}
 		}, 5);
