@@ -28,6 +28,7 @@ public class FireBurst extends FireAbility {
 	private double range;
 	@Attribute(Attribute.COOLDOWN)
 	private long cooldown;
+	private boolean canSwapSlots;
 	private double angleTheta;
 	private double anglePhi;
 	private double particlesPercentage;
@@ -44,6 +45,7 @@ public class FireBurst extends FireAbility {
 		this.angleTheta = getConfig().getDouble("Abilities.Fire.FireBurst.AngleTheta");
 		this.anglePhi = getConfig().getDouble("Abilities.Fire.FireBurst.AnglePhi");
 		this.particlesPercentage = getConfig().getDouble("Abilities.Fire.FireBurst.ParticlesPercentage");
+		this.canSwapSlots = getConfig().getBoolean("Abilities.Fire.FireBurst.CanSwapSlots");
 		this.blasts = new ArrayList<>();
 
 		if (!this.bPlayer.canBend(this) || hasAbility(player, FireBurst.class)) {
@@ -130,8 +132,13 @@ public class FireBurst extends FireAbility {
 
 	@Override
 	public void progress() {
-		if (!this.bPlayer.canBendIgnoreCooldowns(this)) {
+		if (!this.bPlayer.canBendIgnoreBindsCooldowns(this)) {
 			this.remove();
+			return;
+		}
+
+		if (!canSwapSlots && bPlayer.getBoundAbilityName().equalsIgnoreCase(getName())) {
+			remove();
 			return;
 		}
 
