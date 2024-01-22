@@ -16,14 +16,7 @@ import java.lang.reflect.Field;
 import java.sql.SQLException;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.Predicate;
 import com.google.common.reflect.ClassPath;
 import com.projectkorra.projectkorra.command.PKCommand;
@@ -34,13 +27,8 @@ import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.ChatUtil;
 import com.projectkorra.projectkorra.util.TempFallingBlock;
 import net.md_5.bungee.api.ChatColor;
-import org.bukkit.Bukkit;
+import org.bukkit.*;
 
-import org.bukkit.GameMode;
-import org.bukkit.Location;
-import org.bukkit.Material;
-import org.bukkit.World;
-import org.bukkit.Sound;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.BlockState;
@@ -585,12 +573,22 @@ public class GeneralMethods {
 	public static boolean isOnGround(Entity entity) {
 		if (!(entity instanceof Player)) return entity.isOnGround();
 
-		Location loc = entity.getLocation().add(0, -0.500001, 0);
+		Location loc = entity.getLocation().add(0, -0.000001, 0);
 		BoundingBox box = entity.getBoundingBox();
 		Location min = box.getMin().setY(loc.getY()).toLocation(entity.getWorld());
 		Location max = box.getMax().setY(loc.getY()).toLocation(entity.getWorld());
+		BoundingBox feetBox = BoundingBox.of(min, max);
 
-		return !getBlocks(min, max).isEmpty() && entity.getVelocity().getY() == -0.0784000015258789;
+		List<Block> blocks = getBlocks(min, max);
+		Iterator<Block> iter = blocks.iterator();
+		while (iter.hasNext()) {
+			Block block = iter.next();
+			BoundingBox blockBox = block.getBoundingBox();
+			if (block.getType() == Material.HONEY_BLOCK) blockBox.expand(-0.0625);
+			if (!blockBox.overlaps(feetBox)) iter.remove();
+		}
+
+		return !blocks.isEmpty() || entity.getVelocity().getY() == -0.0784000015258789;
 	}
 
 	/**
