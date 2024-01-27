@@ -1,9 +1,13 @@
 package com.projectkorra.projectkorra.firebending;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.projectkorra.projectkorra.ability.CoreAbility;
+import com.projectkorra.projectkorra.ability.util.Collision;
+import com.projectkorra.projectkorra.util.ParticleEffect;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
@@ -19,6 +23,8 @@ import com.projectkorra.projectkorra.attribute.Attribute;
 
 public class FireBurst extends FireAbility {
 
+	private static Map<FireBurst, ArrayList<FireBlast>> fireBlasts = new HashMap<>();
+
 	@Attribute("Charged")
 	private boolean charged;
 	@Attribute(Attribute.DAMAGE)
@@ -27,6 +33,7 @@ public class FireBurst extends FireAbility {
 	private long chargeTime;
 	@Attribute(Attribute.RANGE)
 	private double range;
+	private double collisionRadius;
 	@Attribute(Attribute.COOLDOWN)
 	private long cooldown;
 	private boolean canSwapSlots;
@@ -34,7 +41,7 @@ public class FireBurst extends FireAbility {
 	private double angleTheta;
 	private double anglePhi;
 	private double particlesPercentage;
-	private ArrayList<FireBlast> blasts;
+	private Map<Location, FireBlast> fireBlastByLocation;
 
 	public FireBurst(final Player player) {
 		super(player);
@@ -43,13 +50,15 @@ public class FireBurst extends FireAbility {
 		this.damage = applyModifiersDamage(getConfig().getDouble("Abilities.Fire.FireBurst.Damage"));
 		this.chargeTime = (long) applyInverseModifiers(getConfig().getLong("Abilities.Fire.FireBurst.ChargeTime"));
 		this.range = applyModifiersRange(getConfig().getDouble("Abilities.Fire.FireBurst.Range"));
+		this.collisionRadius = getConfig().getDouble("Abilities.Fire.FireBurst.CollisionRadius");
 		this.cooldown = getConfig().getLong("Abilities.Fire.FireBurst.Cooldown");
 		this.angleTheta = getConfig().getDouble("Abilities.Fire.FireBurst.AngleTheta");
 		this.anglePhi = getConfig().getDouble("Abilities.Fire.FireBurst.AnglePhi");
 		this.particlesPercentage = getConfig().getDouble("Abilities.Fire.FireBurst.ParticlesPercentage");
 		this.canSwapSlots = getConfig().getBoolean("Abilities.Fire.FireBurst.CanSwapSlots");
 		this.allowWhenFireShield = getConfig().getBoolean("Abilities.Fire.FireBurst.AllowWhenFireShield");
-		this.blasts = new ArrayList<>();
+		fireBlasts.put(this, new ArrayList<>());
+		fireBlastByLocation = new HashMap<>();
 
 		if (!this.bPlayer.canBend(this) || hasAbility(player, FireBurst.class)) {
 			return;
@@ -121,8 +130,9 @@ public class FireBurst extends FireAbility {
 	 * spread out then we can show more at a time.
 	 */
 	public void handleSmoothParticles() {
-		for (int i = 0; i < this.blasts.size(); i++) {
-			final FireBlast fblast = this.blasts.get(i);
+		ArrayList<FireBlast> blasts = getBlasts();
+		for (int i = 0; i < blasts.size(); i++) {
+			final FireBlast fblast = blasts.get(i);
 			final int toggleTime = (int) (i % (100.0 / this.particlesPercentage));
 			new BukkitRunnable() {
 				@Override
@@ -190,13 +200,30 @@ public class FireBurst extends FireAbility {
 					fblast.setRange(this.range);
 					fblast.setShowParticles(false);
 					fblast.setFireBurst(true);
-					this.blasts.add(fblast);
+					getBlasts().add(fblast);
+					fireBlastByLocation.put(fblast.getLocation(), fblast);
 				}
 			}
 			this.bPlayer.addCooldown(this);
 		}
-		this.remove();
 		this.handleSmoothParticles();
+		this.remove();
+	}
+
+	@Override
+	public void handleCollision(Collision collision) {
+		if (collision.isRemovingFirst()) {
+			ParticleEffect.BLOCK_CRACK.display(collision.getLocationFirst(), 10, 1, 1, 1, 0.1, getFireType().createBlockData());
+			FireBlast blast = fireBlastByLocation.get(collision.getLocationFirst());
+			fireBlastByLocation.remove(collision.getLocationFirst());
+			blast.remove();
+		}
+	}
+
+	@Override
+	public void remove() {
+		fireBlasts.remove(this);
+		super.remove();
 	}
 
 	@Override
@@ -207,6 +234,21 @@ public class FireBurst extends FireAbility {
 	@Override
 	public Location getLocation() {
 		return this.player != null ? this.player.getLocation() : null;
+	}
+
+	@Override
+	public List<Location> getLocations() {
+		ArrayList<Location> locations = new ArrayList<>();
+		for (FireBlast blast : getBlasts()) {
+			locations.add(blast.getLocation());
+		}
+
+		return locations;
+	}
+
+	@Override
+	public double getCollisionRadius() {
+		return collisionRadius;
 	}
 
 	@Override
@@ -281,7 +323,11 @@ public class FireBurst extends FireAbility {
 	}
 
 	public ArrayList<FireBlast> getBlasts() {
-		return this.blasts;
+		return fireBlasts.get(this);
+	}
+
+	public static Map<FireBurst, ArrayList<FireBlast>> getFireBlasts() {
+		return fireBlasts;
 	}
 
 	public void setCooldown(final long cooldown) {

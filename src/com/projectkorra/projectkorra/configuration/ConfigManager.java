@@ -1700,6 +1700,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.FireBurst.ChargeTime", 3500);
 			config.addDefault("Abilities.Fire.FireBurst.Cooldown", 0);
 			config.addDefault("Abilities.Fire.FireBurst.Range", 14);
+			config.addDefault("Abilities.Fire.FireBurst.CollisionRadius", 1.0);
 			config.addDefault("Abilities.Fire.FireBurst.LeftClickRange", 14);
 			config.addDefault("Abilities.Fire.FireBurst.AnglePhi", 10);
 			config.addDefault("Abilities.Fire.FireBurst.AngleTheta", 10);

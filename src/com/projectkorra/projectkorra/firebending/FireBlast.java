@@ -247,6 +247,11 @@ public class FireBlast extends FireAbility {
 		}
 	}
 
+	@Override
+	public void handleCollision(Collision collision) {
+		if (!FireBurst.getFireBlasts().containsValue(this)) super.handleCollision(collision);
+	}
+
 	/**
 	 * This method was used for the old collision detection system. Please see
 	 * {@link Collision} for the new system.
