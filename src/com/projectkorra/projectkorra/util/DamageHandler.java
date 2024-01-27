@@ -2,6 +2,7 @@ package com.projectkorra.projectkorra.util;
 
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
+import me.literka.DamageAPI;
 import org.bukkit.Bukkit;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Entity;
@@ -88,7 +89,10 @@ public class DamageHandler {
 
 			final EntityDamageByEntityEvent finalEvent = new EntityDamageByEntityEvent(source, entity, DamageCause.CUSTOM, damage);
 			final double prevHealth = lent.getHealth();
-			lent.damage(damage, source);
+
+			if (Bukkit.getPluginManager().isPluginEnabled("DamageAPI")) DamageAPI.hurt(lent, source, (float) damage);
+			else lent.damage(damage, source);
+
 			double nextHealth = lent.getHealth();
 			if (nextHealth == prevHealth) {
 				lent.damage(damage);
