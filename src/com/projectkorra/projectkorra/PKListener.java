@@ -927,7 +927,8 @@ public class PKListener implements Listener {
 				event.setCancelled(true);
 			}
 
-			if (ab != null && bPlayer.hasElement(Element.CHI) && event.getCause() == DamageCause.FALL && bPlayer.canBendPassive(ab) && bPlayer.canUsePassive(ab) && ab.isEnabled() && PassiveManager.hasPassive(player, ab)) {
+			boolean ignoreChiBlock = ConfigManager.getConfig(bPlayer).getBoolean("Abilities.Chi.Passive.Acrobatics.IgnoreChiBlock");
+			if (ab != null && bPlayer.hasElement(Element.CHI) && event.getCause() == DamageCause.FALL && bPlayer.canBendPassive(ab) && bPlayer.canUsePassive(ab, ignoreChiBlock) && ab.isEnabled() && PassiveManager.hasPassive(player, ab)) {
 				final double initdamage = event.getDamage();
 				final double newdamage = event.getDamage() * Acrobatics.getFallReductionFactor(bPlayer);
 				final double finaldamage = initdamage - newdamage;

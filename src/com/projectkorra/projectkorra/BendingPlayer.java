@@ -216,10 +216,14 @@ public class BendingPlayer extends OfflineBendingPlayer {
 	}
 
 	public boolean canUsePassive(final CoreAbility ability) {
+		return canUsePassive(ability, false);
+	}
+
+	public boolean canUsePassive(final CoreAbility ability, boolean ignoreChiBlock) {
 		final Element element = ability.getElement();
 		if (!this.isToggled() || !this.isElementToggled(element) || !this.isPassiveToggled(element) || !this.isToggledPassives()) {
 			return false;
-		} else if (this.isChiBlocked() || this.isParalyzed() || this.isBloodbent()) {
+		} else if ((!ignoreChiBlock && this.isChiBlocked()) || this.isParalyzed() || this.isBloodbent()) {
 			return false;
 		} else if (GeneralMethods.isRegionProtectedFromBuild(this.player, this.player.getLocation())) {
 			return false;

@@ -1851,6 +1851,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.JetBlaze.Combination", Arrays.asList("FireJet:SNEAK_DOWN", "FireJet:SNEAK_UP", "FireJet:SNEAK_DOWN", "FireJet:SNEAK_UP", "Blaze:SNEAK_DOWN", "Blaze:SNEAK_UP", "FireJet:LEFT_CLICK"));
 
 			config.addDefault("Abilities.Chi.Passive.Acrobatics.Enabled", true);
+			config.addDefault("Abilities.Chi.Passive.Acrobatics.IgnoreChiBlock", false);
 			config.addDefault("Abilities.Chi.Passive.Acrobatics.FallReductionFactor", 0.5);
 			config.addDefault("Abilities.Chi.Passive.FallReductionFactor", 0.5);
 			config.addDefault("Abilities.Chi.Passive.ChiAgility.Enabled", true);
