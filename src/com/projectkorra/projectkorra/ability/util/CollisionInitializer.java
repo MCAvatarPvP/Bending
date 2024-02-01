@@ -195,6 +195,17 @@ public class CollisionInitializer {
 				Class<? extends CoreAbility> first = collision.getAbilityFirst().getClass();
 				Class<? extends CoreAbility> second = collision.getAbilitySecond().getClass();
 				collisionMap.put(first.getSimpleName() + ", " + second.getSimpleName(), collision);
+				collisionMap.put(second.getSimpleName() + ", " + first.getSimpleName(), collision);
+			}
+
+			for (String s : collisionConfig.getStringList("Collisions")) {
+				if (s.split(", ").length == 2 && collisionMap.containsKey(s)) {
+					Collision collision = collisionMap.get(s);
+					this.collisionManager.getCollisions().remove(collision);
+					collisionMap.remove(s);
+				} else {
+					ProjectKorra.log.warning("Couldn't find collision: " + s);
+				}
 			}
 
 			for (String s : collisionConfig.getStringList("AddCollisions")) {
@@ -216,15 +227,6 @@ public class CollisionInitializer {
 					}
 
 					this.collisionManager.addCollision(new Collision(first, second, removeFirst, removeSecond));
-				}
-			}
-
-			for (String s : collisionConfig.getStringList("Collisions")) {
-				String[] abils = s.split(", ");
-				String key = abils[0] + ", " + abils[1];
-				if (abils.length == 2 && collisionMap.containsKey(key)) {
-					Collision collision = collisionMap.get(key);
-					this.collisionManager.getCollisions().remove(collision);
 				}
 			}
 		}, 5);
