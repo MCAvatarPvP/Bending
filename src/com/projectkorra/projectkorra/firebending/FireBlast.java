@@ -138,7 +138,7 @@ public class FireBlast extends FireAbility {
 			playFirebendingParticles(this.location, 3, this.flameRadius, this.flameRadius, this.flameRadius);
 		}
 
-		BlockIterator blocks = new BlockIterator(this.getLocation().getWorld(), this.location.toVector(), this.direction, 0, (int) Math.ceil(this.direction.clone().multiply(speedFactor).length()));
+		BlockIterator blocks = new BlockIterator(this.location.getWorld(), this.location.toVector(), this.direction, 0, (int) Math.ceil(this.direction.clone().multiply(speedFactor).length()));
 
 		while (blocks.hasNext() && checkLocation(blocks.next()));
 
@@ -247,11 +247,6 @@ public class FireBlast extends FireAbility {
 		}
 	}
 
-	@Override
-	public void handleCollision(Collision collision) {
-		if (!FireBurst.getFireBlasts().containsValue(this)) super.handleCollision(collision);
-	}
-
 	/**
 	 * This method was used for the old collision detection system. Please see
 	 * {@link Collision} for the new system.
@@ -306,6 +301,11 @@ public class FireBlast extends FireAbility {
 
 	@Override
 	public Location getLocation() {
+		Location retrn = this.location != null ? this.location : this.origin;
+		return !isFireBurst ? retrn : null;
+	}
+
+	public Location getActualLocation() {
 		return this.location != null ? this.location : this.origin;
 	}
 

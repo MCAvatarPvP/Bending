@@ -1,9 +1,8 @@
 package com.projectkorra.projectkorra.firebending;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.util.Collision;
@@ -23,10 +22,9 @@ import com.projectkorra.projectkorra.attribute.Attribute;
 
 public class FireBurst extends FireAbility {
 
-	private static Map<FireBurst, ArrayList<FireBlast>> fireBlasts = new HashMap<>();
-
 	@Attribute("Charged")
 	private boolean charged;
+	private boolean launched;
 	@Attribute(Attribute.DAMAGE)
 	private double damage;
 	@Attribute(Attribute.CHARGE_DURATION)
@@ -41,7 +39,7 @@ public class FireBurst extends FireAbility {
 	private double angleTheta;
 	private double anglePhi;
 	private double particlesPercentage;
-	private Map<Location, FireBlast> fireBlastByLocation;
+	private ArrayList<FireBlast> blasts;
 
 	public FireBurst(final Player player) {
 		super(player);
@@ -57,8 +55,7 @@ public class FireBurst extends FireAbility {
 		this.particlesPercentage = getConfig().getDouble("Abilities.Fire.FireBurst.ParticlesPercentage");
 		this.canSwapSlots = getConfig().getBoolean("Abilities.Fire.FireBurst.CanSwapSlots");
 		this.allowWhenFireShield = getConfig().getBoolean("Abilities.Fire.FireBurst.AllowWhenFireShield");
-		fireBlasts.put(this, new ArrayList<>());
-		fireBlastByLocation = new HashMap<>();
+		blasts = new ArrayList<>();
 
 		if (!this.bPlayer.canBend(this) || hasAbility(player, FireBurst.class)) {
 			return;
@@ -85,7 +82,7 @@ public class FireBurst extends FireAbility {
 
 	public static void coneBurst(final Player player) {
 		final FireBurst burst = getAbility(player, FireBurst.class);
-		if (burst != null) {
+		if (burst != null && !burst.launched) {
 			burst.coneBurst();
 		}
 	}
@@ -116,11 +113,12 @@ public class FireBurst extends FireAbility {
 						range = getConfig().getDouble("Abilities.Fire.FireBurst.LeftClickRange");
 						fblast.setRange(this.range);
 						fblast.setFireBurst(true);
+						getBlasts().add(fblast);
 					}
 				}
 			}
 			this.bPlayer.addCooldown(this);
-			this.remove();
+			launched = true;
 		}
 	}
 
@@ -130,9 +128,8 @@ public class FireBurst extends FireAbility {
 	 * spread out then we can show more at a time.
 	 */
 	public void handleSmoothParticles() {
-		ArrayList<FireBlast> blasts = getBlasts();
-		for (int i = 0; i < blasts.size(); i++) {
-			final FireBlast fblast = blasts.get(i);
+		for (int i = 0; i < getBlasts().size(); i++) {
+			final FireBlast fblast = getBlasts().get(i);
 			final int toggleTime = (int) (i % (100.0 / this.particlesPercentage));
 			new BukkitRunnable() {
 				@Override
@@ -150,12 +147,23 @@ public class FireBurst extends FireAbility {
 			return;
 		}
 
-		if (!canSwapSlots && bPlayer.getBoundAbilityName().equalsIgnoreCase(getName())) {
+		Iterator<FireBlast> iter = getBlasts().iterator();
+		while (iter.hasNext()) {
+			FireBlast blast = iter.next();
+			if (blast.isRemoved()) iter.remove();
+		}
+
+		if (launched && getBlasts().isEmpty()) {
 			remove();
 			return;
 		}
 
-		if (!allowWhenFireShield && CoreAbility.hasAbility(player, FireShield.class)) {
+		if (!launched && !canSwapSlots && bPlayer.getBoundAbilityName().equalsIgnoreCase(getName())) {
+			remove();
+			return;
+		}
+
+		if (!launched && !allowWhenFireShield && CoreAbility.hasAbility(player, FireShield.class)) {
 			remove();
 			return;
 		}
@@ -164,13 +172,13 @@ public class FireBurst extends FireAbility {
 			this.charged = true;
 		}
 
-		if (!this.player.isSneaking()) {
+		if (!launched && !this.player.isSneaking()) {
 			if (this.charged) {
 				this.sphereBurst();
 			} else {
 				this.remove();
 			}
-		} else if (this.charged) {
+		} else if (!launched && this.charged) {
 			final Location location = this.player.getEyeLocation();
 			location.add(location.getDirection());
 			playFirebendingParticles(location, 1, .01, .01, .01);
@@ -201,29 +209,31 @@ public class FireBurst extends FireAbility {
 					fblast.setShowParticles(false);
 					fblast.setFireBurst(true);
 					getBlasts().add(fblast);
-					fireBlastByLocation.put(fblast.getLocation(), fblast);
 				}
 			}
 			this.bPlayer.addCooldown(this);
 		}
 		this.handleSmoothParticles();
-		this.remove();
+		launched = true;
 	}
 
 	@Override
 	public void handleCollision(Collision collision) {
 		if (collision.isRemovingFirst()) {
 			ParticleEffect.BLOCK_CRACK.display(collision.getLocationFirst(), 10, 1, 1, 1, 0.1, getFireType().createBlockData());
-			FireBlast blast = fireBlastByLocation.get(collision.getLocationFirst());
-			fireBlastByLocation.remove(collision.getLocationFirst());
-			blast.remove();
-		}
-	}
 
-	@Override
-	public void remove() {
-		fireBlasts.remove(this);
-		super.remove();
+			double distance = -1;
+			FireBlast closest = null;
+			for (FireBlast blast : getBlasts()) {
+				double dis = closest == null ? 0 : blast.getActualLocation().distance(closest.getActualLocation());
+				if (distance == -1 || dis < distance) {
+					distance = dis;
+					closest = blast;
+				}
+			}
+
+			closest.remove();
+		}
 	}
 
 	@Override
@@ -240,7 +250,7 @@ public class FireBurst extends FireAbility {
 	public List<Location> getLocations() {
 		ArrayList<Location> locations = new ArrayList<>();
 		for (FireBlast blast : getBlasts()) {
-			locations.add(blast.getLocation());
+			locations.add(blast.getActualLocation());
 		}
 
 		return locations;
@@ -322,12 +332,8 @@ public class FireBurst extends FireAbility {
 		this.particlesPercentage = particlesPercentage;
 	}
 
-	public ArrayList<FireBlast> getBlasts() {
-		return fireBlasts.get(this);
-	}
-
-	public static Map<FireBurst, ArrayList<FireBlast>> getFireBlasts() {
-		return fireBlasts;
+	public List<FireBlast> getBlasts() {
+		return blasts;
 	}
 
 	public void setCooldown(final long cooldown) {
