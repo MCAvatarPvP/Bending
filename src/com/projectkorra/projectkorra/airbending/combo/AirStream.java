@@ -169,7 +169,7 @@ public class AirStream extends AirAbility implements ComboAbility {
 			GeneralMethods.setVelocity(this, entity, force.clone().normalize().multiply(this.speed));
 			entity.setFallDistance(0F);
 			boolean falldamage = getConfig().getBoolean("Abilities.Air.AirStream.FallDamageOthers");
-			if (entity instanceof Player && !affectedEntitiesByPush.containsKey(entity) && !falldamage) {
+			if (entity instanceof Player && !falldamage) {
 				affectedEntitiesByPush.put((Player) entity, System.currentTimeMillis());
 			}
 		}

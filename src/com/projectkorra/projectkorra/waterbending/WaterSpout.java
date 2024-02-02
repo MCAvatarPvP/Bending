@@ -59,7 +59,7 @@ public class WaterSpout extends WaterAbility {
 			return;
 		}
 
-		if (affectedEntitiesByPush.containsKey(player)) affectedEntitiesByPush.remove(player);
+		affectedEntitiesByPush.remove(player);
 
 		this.canBendOnPackedIce = getConfig().getStringList("Properties.Water.IceBlocks").contains(Material.PACKED_ICE.toString());
 		this.useParticles = getConfig().getBoolean("Abilities.Water.WaterSpout.Particles");
@@ -211,7 +211,7 @@ public class WaterSpout extends WaterAbility {
 			tb.revertBlock();
 		}
 		boolean falldamage = getConfig().getBoolean("Abilities.Water.WaterSpout.FallDamage");
-		if (!affectedEntitiesByPush.containsKey(player) && !falldamage) affectedEntitiesByPush.put(player, System.currentTimeMillis());
+		if (!falldamage) affectedEntitiesByPush.put(player, System.currentTimeMillis());
 		this.flightHandler.removeInstance(this.player, this.getName());
 	}
 
