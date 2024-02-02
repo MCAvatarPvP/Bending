@@ -158,7 +158,8 @@ public class FireBurst extends FireAbility {
 			return;
 		}
 
-		if (!launched && !canSwapSlots && bPlayer.getBoundAbilityName().equalsIgnoreCase(getName())) {
+		String name = bPlayer.getBoundAbilityName();
+		if (!launched && !(name.equalsIgnoreCase(getName()) || canSwapSlots && name.equalsIgnoreCase("FireJet"))) {
 			remove();
 			return;
 		}

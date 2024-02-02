@@ -199,7 +199,8 @@ public class Lightning extends LightningAbility {
 		} else if (!this.bPlayer.canBendIgnoreBindsCooldowns(this)) {
 			this.remove();
 			return;
-		} else if (!canSwapSlots && bPlayer.getBoundAbilityName().equalsIgnoreCase(getName())) {
+		} else if (!(bPlayer.getBoundAbilityName().equalsIgnoreCase(getName())
+				|| canSwapSlots && bPlayer.getBoundAbilityName().equalsIgnoreCase("FireJet"))) {
 			remove();
 			return;
 		} else if (CoreAbility.hasAbility(player, FireJet.class) && !allowOnFireJet) {
