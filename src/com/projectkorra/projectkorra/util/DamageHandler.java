@@ -90,7 +90,7 @@ public class DamageHandler {
 			final EntityDamageByEntityEvent finalEvent = new EntityDamageByEntityEvent(source, entity, DamageCause.CUSTOM, damage);
 			final double prevHealth = lent.getHealth();
 
-			if (Bukkit.getPluginManager().isPluginEnabled("DamageAPI")) DamageAPI.hurt(lent, source, (float) damage);
+			if (Bukkit.getPluginManager().isPluginEnabled("DamageAPI")) DamageAPI.damage(lent, source, damage);
 			else lent.damage(damage, source);
 
 			double nextHealth = lent.getHealth();
