@@ -46,6 +46,9 @@ public class AirSpout extends AirAbility {
 		AirScooter scooter = CoreAbility.getAbility(player, AirScooter.class);
 		if (scooter != null) scooter.remove();
 
+		AirSurf surf = CoreAbility.getAbility(player, AirSurf.class);
+		if (surf != null) surf.remove();
+
 		this.angle = 0;
 		this.cooldown = getConfig().getLong("Abilities.Air.AirSpout.Cooldown");
 		this.duration = getConfig().getLong("Abilities.Air.AirSpout.Duration");

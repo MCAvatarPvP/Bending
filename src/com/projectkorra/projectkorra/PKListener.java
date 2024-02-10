@@ -27,6 +27,7 @@ import com.projectkorra.projectkorra.ability.util.PassiveManager;
 import com.projectkorra.projectkorra.airbending.AirBlast;
 import com.projectkorra.projectkorra.airbending.AirBurst;
 import com.projectkorra.projectkorra.airbending.AirScooter;
+import com.projectkorra.projectkorra.airbending.AirSurf;
 import com.projectkorra.projectkorra.airbending.AirShield;
 import com.projectkorra.projectkorra.airbending.AirSpout;
 import com.projectkorra.projectkorra.airbending.AirSuction;
@@ -1463,6 +1464,7 @@ public class PKListener implements Listener {
 		}
 
 		AirScooter.check(player);
+		AirSurf.check(player);
 
 		final CoreAbility coreAbil = bPlayer.getBoundAbility();
 		final String abil = bPlayer.getBoundAbilityName();
@@ -1715,6 +1717,7 @@ public class PKListener implements Listener {
 
 		BlockSource.update(player, ClickType.LEFT_CLICK);
 		boolean canRideScooter = !AirScooter.check(player);
+		boolean canRideSurf = !AirSurf.check(player);
 
 		String abil = bPlayer.getBoundAbilityName();
 		final CoreAbility coreAbil = bPlayer.getBoundAbility();
@@ -1736,6 +1739,8 @@ public class PKListener implements Listener {
 						AirBurst.coneBurst(player);
 					} else if (abil.equalsIgnoreCase("AirScooter") && canRideScooter) {
 						new AirScooter(player);
+					} else if (abil.equalsIgnoreCase("AirSurf") && canRideSurf) {
+						new AirSurf(player);
 					} else if (abil.equalsIgnoreCase("AirSpout")) {
 						new AirSpout(player);
 					} else if (abil.equalsIgnoreCase("AirSwipe")) {

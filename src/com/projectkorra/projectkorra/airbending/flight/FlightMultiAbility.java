@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import com.projectkorra.projectkorra.airbending.AirSurf;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
@@ -106,6 +107,8 @@ public class FlightMultiAbility extends FlightAbility implements MultiAbility {
 			abil = getAbility(player, FireJet.class);
 		} else if (hasAbility(player, AirScooter.class)) {
 			abil = getAbility(player, AirScooter.class);
+		} else if (hasAbility(player, AirSurf.class)) {
+			abil = getAbility(player, AirSurf.class);
 		}
 
 		if (abil != null) {
