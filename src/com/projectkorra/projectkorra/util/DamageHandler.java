@@ -1,5 +1,13 @@
 package com.projectkorra.projectkorra.util;
 
+import com.palmergames.bukkit.towny.TownyAPI;
+import com.palmergames.bukkit.towny.TownySettings;
+import com.palmergames.bukkit.towny.TownyUniverse;
+import com.palmergames.bukkit.towny.hooks.PluginIntegrations;
+import com.palmergames.bukkit.towny.object.Resident;
+import com.palmergames.bukkit.towny.object.TownBlock;
+import com.palmergames.bukkit.towny.object.TownyWorld;
+import com.palmergames.bukkit.towny.utils.CombatUtil;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import me.literka.DamageAPI;
@@ -52,6 +60,27 @@ public class DamageHandler {
 		
 		if (source == null) {
 			source = ability.getPlayer();
+		}
+
+		if (entity instanceof Player && Bukkit.getPluginManager().isPluginEnabled("Towny")) {
+			Player victim = (Player) entity;
+			PluginIntegrations instance = PluginIntegrations.getInstance();
+			boolean isNpcSource = instance.checkCitizens(source);
+			boolean isNpcVictim = instance.checkCitizens(victim);
+			boolean isTownyAdmin = TownyUniverse.getInstance().getPermissionSource().isTownyAdmin(source);
+
+			if (!isNpcSource && !isNpcVictim && !CombatUtil.isArenaPlot(source, victim) && !isTownyAdmin) {
+				TownyWorld world = TownyAPI.getInstance().getTownyWorld(victim.getWorld());
+				TownBlock victimTB = TownyAPI.getInstance().getTownBlock(victim.getLocation());
+				TownBlock sourceTB = TownyAPI.getInstance().getTownBlock(source.getLocation());
+
+				if (CombatUtil.preventFriendlyFire(source, victim, world)
+						|| CombatUtil.preventPvP(world, sourceTB)
+						|| CombatUtil.preventPvP(world, victimTB)
+						|| preventJailedPVP(victim, source)) {
+					return;
+				}
+			}
 		}
 
 		// Adding source so that we don't need to modify FireDamageTimer class, which would cause breaks.
@@ -130,5 +159,20 @@ public class DamageHandler {
 
 	public static void damageEntity(final Entity entity, final double damage, final Ability ability) {
 		damageEntity(entity, ability.getPlayer(), damage, ability);
+	}
+
+	private static boolean preventJailedPVP(Player defendingPlayer, Player attackingPlayer) {
+		if (TownySettings.doJailPlotsPreventPVP()) {
+			Resident defendingResident = TownyAPI.getInstance().getResident(defendingPlayer.getUniqueId());
+			Resident attackingResident = TownyAPI.getInstance().getResident(attackingPlayer.getUniqueId());
+			TownBlock defTB = TownyAPI.getInstance().getTownBlock(defendingPlayer);
+			TownBlock atkTB = TownyAPI.getInstance().getTownBlock(attackingPlayer);
+			if (defendingResident == null || attackingResident == null)
+				return false;
+			if (defendingResident.isJailed() && defTB != null && defTB.isJail() || attackingResident.isJailed() && atkTB != null && atkTB.isJail())
+				return true;
+		}
+		return false;
+
 	}
 }
