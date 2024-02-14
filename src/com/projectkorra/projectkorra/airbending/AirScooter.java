@@ -68,6 +68,10 @@ public class AirScooter extends AirAbility {
 		AirSpout spout = CoreAbility.getAbility(player, AirSpout.class);
 		if (spout != null) spout.remove();
 
+		boolean cancelBlast = getConfig().getBoolean("Abilities.Air.AirScooter.CancelBlast");
+		AirBlast blast = CoreAbility.getAbility(player, AirBlast.class);
+		if (cancelBlast && blast != null && blast.isFromOtherOrigin()) blast.remove();
+
 		if (isInAir(player.getLocation())) {
 			return;
 		}

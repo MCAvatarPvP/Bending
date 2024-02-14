@@ -49,6 +49,10 @@ public class AirSpout extends AirAbility {
 		AirSurf surf = CoreAbility.getAbility(player, AirSurf.class);
 		if (surf != null) surf.remove();
 
+		boolean cancelBlast = getConfig().getBoolean("Abilities.Air.AirSpout.CancelBlast");
+		AirBlast blast = CoreAbility.getAbility(player, AirBlast.class);
+		if (cancelBlast && blast != null && blast.isFromOtherOrigin()) blast.remove();
+
 		this.angle = 0;
 		this.cooldown = getConfig().getLong("Abilities.Air.AirSpout.Cooldown");
 		this.duration = getConfig().getLong("Abilities.Air.AirSpout.Duration");
