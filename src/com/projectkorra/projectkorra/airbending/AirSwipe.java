@@ -142,7 +142,6 @@ public class AirSwipe extends AirAbility {
 	}
 
 	private void advanceSwipe() {
-		this.affectedEntities.clear();
 		for (final Vector direction : this.streams.keySet()) {
 			Location location = this.streams.get(direction);
 			if (direction != null && location != null) {
