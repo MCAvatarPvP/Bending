@@ -279,7 +279,7 @@ public class AirSwipe extends AirAbility {
 
 	@Override
 	public void progress() {
-		if (!this.bPlayer.canBendIgnoreBindsCooldowns(this)) {
+		if (!this.bPlayer.canBendIgnoreCooldowns(this)) {
 			this.remove();
 			return;
 		}
