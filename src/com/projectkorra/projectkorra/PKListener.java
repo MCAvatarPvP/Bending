@@ -524,7 +524,7 @@ public class PKListener implements Listener {
 			}
 
 			CoreAbility boundAbility = bPlayer.getBoundAbility();
-			Element ele = boundAbility == null ? bPlayer.getElements().get(0) : boundAbility.getElement();
+			Element ele = boundAbility == null ? null : boundAbility.getElement();
 			if (ele != null) {
 				Element element = GeneralMethods.getParentElement(ele);
 				int minFireTicks = ConfigManager.getConfig(bPlayer).getInt("Properties." + element.getName() + ".MinFireTickDuration");
