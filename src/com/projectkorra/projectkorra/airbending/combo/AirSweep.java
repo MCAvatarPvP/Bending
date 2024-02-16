@@ -6,6 +6,7 @@ import java.util.List;
 import com.projectkorra.projectkorra.ability.util.ComboUtil;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.object.HorizontalVelocityTracker;
+import com.projectkorra.projectkorra.util.FallHandler;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
@@ -228,7 +229,7 @@ public class AirSweep extends AirAbility implements ComboAbility {
 									DamageHandler.damageEntity(entity, this.damage, this);
 									boolean falldamage = getConfig().getBoolean("Abilities.Air.AirSweep.FallDamageOthers");
 									if (entity instanceof Player && !falldamage) {
-										affectedEntitiesByPush.put((Player) entity, System.currentTimeMillis());
+										FallHandler.stopFall((Player) entity);
 									}
 								}
 							}

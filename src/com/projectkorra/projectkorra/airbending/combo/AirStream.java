@@ -4,6 +4,7 @@ import java.util.ArrayList;
 
 import com.projectkorra.projectkorra.ability.util.ComboUtil;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
+import com.projectkorra.projectkorra.util.FallHandler;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
@@ -170,7 +171,7 @@ public class AirStream extends AirAbility implements ComboAbility {
 			entity.setFallDistance(0F);
 			boolean falldamage = getConfig().getBoolean("Abilities.Air.AirStream.FallDamageOthers");
 			if (entity instanceof Player && !falldamage) {
-				affectedEntitiesByPush.put((Player) entity, System.currentTimeMillis());
+				FallHandler.stopFall((Player) entity);
 			}
 		}
 	}

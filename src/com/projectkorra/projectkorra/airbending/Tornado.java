@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.projectkorra.projectkorra.util.FallHandler;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.Entity;
@@ -160,7 +161,7 @@ public class Tornado extends AirAbility {
 						if (entity instanceof Player) {
 							boolean falldamage = getConfig().getBoolean("Abilities.Air.Tornado.FallDamageOthers");
 							if (entity.getUniqueId() != player.getUniqueId() && !falldamage) {
-								affectedEntitiesByPush.put((Player) entity, System.currentTimeMillis());
+								FallHandler.stopFall((Player) entity);
 							}
 							if (Commands.invincible.contains(((Player) entity).getName())) {
 								continue;

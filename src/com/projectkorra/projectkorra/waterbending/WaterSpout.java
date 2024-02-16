@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.projectkorra.projectkorra.util.FallHandler;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
@@ -59,7 +60,7 @@ public class WaterSpout extends WaterAbility {
 			return;
 		}
 
-		affectedEntitiesByPush.remove(player);
+		FallHandler.removePlayer(player);
 
 		this.canBendOnPackedIce = getConfig().getStringList("Properties.Water.IceBlocks").contains(Material.PACKED_ICE.toString());
 		this.useParticles = getConfig().getBoolean("Abilities.Water.WaterSpout.Particles");
@@ -211,7 +212,7 @@ public class WaterSpout extends WaterAbility {
 			tb.revertBlock();
 		}
 		boolean falldamage = getConfig().getBoolean("Abilities.Water.WaterSpout.FallDamage");
-		if (!falldamage) affectedEntitiesByPush.put(player, System.currentTimeMillis());
+		if (!falldamage) FallHandler.stopFall(player);
 		this.flightHandler.removeInstance(this.player, this.getName());
 	}
 

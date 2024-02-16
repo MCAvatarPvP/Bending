@@ -8,6 +8,7 @@ import java.util.Random;
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.region.RegionProtection;
+import com.projectkorra.projectkorra.util.FallHandler;
 import org.bukkit.Effect;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -214,7 +215,7 @@ public class AirSuction extends AirAbility {
 					knockback = this.pushFactorForOthers;
 					boolean falldamage = getConfig().getBoolean("Abilities.Air.AirSuction.FallDamageOthers");
 					if (entity instanceof Player && !falldamage) {
-						affectedEntitiesByPush.put((Player) entity, System.currentTimeMillis());
+						FallHandler.stopFall((Player) entity);
 					}
 				}
 				

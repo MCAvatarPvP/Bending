@@ -45,8 +45,6 @@ public abstract class ElementalAbility extends CoreAbility {
 	private static final Set<String> SAND_BLOCKS = new HashSet<String>();
 	private static final Set<String> SNOW_BLOCKS = new HashSet<String>();
 
-	public static Map<Player, Long> affectedEntitiesByPush = new HashMap<>();
-
 	static {
 		TRANSPARENT.clear();
 		for (final Material mat : Material.values()) {

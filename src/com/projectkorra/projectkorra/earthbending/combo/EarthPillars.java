@@ -7,6 +7,7 @@ import java.util.Map;
 
 import com.projectkorra.projectkorra.ability.util.ComboUtil;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
+import com.projectkorra.projectkorra.util.FallHandler;
 import org.bukkit.Location;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Entity;
@@ -107,7 +108,7 @@ public class EarthPillars extends EarthAbility implements ComboAbility {
 					GeneralMethods.setVelocity(this, lent, new Vector(0, this.knockup, 0));
 					boolean falldamage = getConfig().getBoolean("Abilities.Earth.EarthPillars.FallDamageOthers");
 					if (lent instanceof Player && !falldamage) {
-						affectedEntitiesByPush.put((Player) lent, System.currentTimeMillis());
+						FallHandler.stopFall((Player) lent);
 					}
 				}
 				if (this.damaging) {

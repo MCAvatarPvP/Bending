@@ -8,6 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.region.RegionProtection;
+import com.projectkorra.projectkorra.util.FallHandler;
 import org.bukkit.Effect;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -259,7 +260,7 @@ public class AirBlast extends AirAbility {
 	private void affect(final Entity entity) {
 		if (entity instanceof Player) {
 			boolean falldamage = getConfig().getBoolean("Abilities.Air.AirBlast.FallDamageOthers");
-			if (entity.getUniqueId() != player.getUniqueId() && !falldamage) affectedEntitiesByPush.put((Player) entity, System.currentTimeMillis());
+			if (entity.getUniqueId() != player.getUniqueId() && !falldamage) FallHandler.stopFall((Player) entity);
 			if (Commands.invincible.contains(((Player) entity).getName())) {
 				return;
 			}

@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.projectkorra.projectkorra.util.FallHandler;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -295,7 +296,7 @@ public class Ripple extends EarthAbility {
 		GeneralMethods.setVelocity(this, entity, vector.clone().normalize().multiply(knock));
 		boolean falldamage = getConfig().getBoolean("Abilities.Earth.Shockwave.FallDamageOthers");
 		if (entity instanceof Player && !falldamage) {
-			affectedEntitiesByPush.put((Player) entity, System.currentTimeMillis());
+			FallHandler.stopFall((Player) entity);
 		}
 		AirAbility.breakBreathbendingHold(entity);
 	}

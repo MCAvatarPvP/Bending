@@ -96,6 +96,7 @@ import com.projectkorra.projectkorra.util.StatisticsMethods;
 import com.projectkorra.projectkorra.util.TempArmor;
 import com.projectkorra.projectkorra.util.TempBlock;
 import com.projectkorra.projectkorra.util.TempFallingBlock;
+import com.projectkorra.projectkorra.util.FallHandler;
 import com.projectkorra.projectkorra.waterbending.OctopusForm;
 import com.projectkorra.projectkorra.waterbending.SurgeWall;
 import com.projectkorra.projectkorra.waterbending.SurgeWave;
@@ -967,15 +968,19 @@ public class PKListener implements Listener {
 	}
 
 	@EventHandler(priority = EventPriority.LOWEST)
+	public void onFall(EntityDamageEvent event) {
+		if (event.getCause() != DamageCause.FALL || !(event.getEntity() instanceof Player)) return;
+		Player player = (Player) event.getEntity();
+		if (!FallHandler.affectedEntitiesByPush.containsKey(player)) return;
+
+		event.setCancelled(true);
+		FallHandler.removePlayer(player);
+	}
+
+	@EventHandler(priority = EventPriority.HIGHEST)
 	public void onLand(PlayerMoveEvent event) {
 		Player player = event.getPlayer();
-		if (!ElementalAbility.affectedEntitiesByPush.containsKey(player)) return;
-		if (event.getTo().getY() - event.getFrom().getY() > 0) return;
-
-		if (GeneralMethods.isOnGround(player)) {
-			player.setFallDistance(0);
-			ElementalAbility.affectedEntitiesByPush.remove(player);
-		}
+		if (FallHandler.affectedEntitiesByPush.containsKey(player)) FallHandler.move(player);
 	}
 
 	@EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
