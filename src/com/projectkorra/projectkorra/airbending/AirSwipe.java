@@ -279,7 +279,7 @@ public class AirSwipe extends AirAbility {
 
 	@Override
 	public void progress() {
-		if (!this.bPlayer.canBendIgnoreCooldowns(this)) {
+		if (!this.bPlayer.canBendIgnoreBindsCooldowns(this)) {
 			this.remove();
 			return;
 		}
@@ -296,6 +296,11 @@ public class AirSwipe extends AirAbility {
 			}
 			this.advanceSwipe();
 		} else {
+			if (!this.bPlayer.getBoundAbilityName().equalsIgnoreCase(getName())) {
+				remove();
+				return;
+			}
+
 			if (!this.player.isSneaking()) {
 				double factor = 1;
 				if (System.currentTimeMillis() >= this.getStartTime() + this.maxChargeTime) {
