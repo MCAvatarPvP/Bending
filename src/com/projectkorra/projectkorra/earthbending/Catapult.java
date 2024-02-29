@@ -35,6 +35,7 @@ public class Catapult extends EarthAbility {
 	private BlockData bentBlockData;
 	private boolean removeFireTick;
 	private double launchPower;
+	private boolean launchOthers;
 
 	public Catapult(final Player player, final boolean sneak) {
 		super(player);
@@ -68,6 +69,7 @@ public class Catapult extends EarthAbility {
 		this.cancelWithAngle = getConfig().getBoolean("Abilities.Earth.Catapult.CancelWithAngle");
 		this.removeFireTick = getConfig().getBoolean("Abilities.Earth.Catapult.RemoveFireTick");
 		this.launchPower = getConfig().getDouble("Abilities.Earth.Catapult.LaunchPower");
+		this.launchOthers = getConfig().getBoolean("Abilities.Earth.Catapult.LaunchOthers");
 		this.activationHandled = false;
 		this.stage = 1;
 		this.stageStart = System.currentTimeMillis();
@@ -75,8 +77,9 @@ public class Catapult extends EarthAbility {
 	}
 
 	private void moveEarth(final Vector apply, final Vector direction) {
-		for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(this.origin, 2)) {
-			if (entity.getEntityId() != this.player.getEntityId()) {
+		if (launchOthers) {
+			for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(this.origin, 2)) {
+				if (entity.getEntityId() == this.player.getEntityId()) continue;
 				if (GeneralMethods.isRegionProtectedFromBuild(this, entity.getLocation()) || ((entity instanceof Player) && Commands.invincible.contains(((Player) entity).getName()))) {
 					continue;
 				}
