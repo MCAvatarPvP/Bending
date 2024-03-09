@@ -9,6 +9,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.projectkorra.projectkorra.BendingPlayer;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -22,7 +23,6 @@ import org.bukkit.entity.Player;
 
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
-import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.Element.SubElement;
 import com.projectkorra.projectkorra.ability.util.Collision;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
@@ -192,6 +192,10 @@ public abstract class FireAbility extends ElementalAbility {
 	}
 
 	public void playFirebendingParticles(final Location loc, final int amount, final double xOffset, final double yOffset, final double zOffset, final double speed) {
+		playFirebendingParticles(bPlayer, loc, amount, xOffset, yOffset, zOffset, speed);
+	}
+
+	public static void playFirebendingParticles(BendingPlayer bPlayer, final Location loc, final int amount, final double xOffset, final double yOffset, final double zOffset, final double speed) {
 		double multiplier = ConfigManager.getConfig().getDouble("Properties.Fire.SprinkleMultiplier");
 		int amountMultiplied = Math.max((int) (amount * multiplier), 1);
 		if (bPlayer.isSprinkleEnabled()) ParticleEffect.END_ROD.display(loc, amountMultiplied, xOffset, yOffset, zOffset, speed);
@@ -200,7 +204,7 @@ public abstract class FireAbility extends ElementalAbility {
 		if (colored) {
 			ParticleEffect.REDSTONE.display(loc, amount, xOffset, yOffset, zOffset, speed, bPlayer.getFireColor().getColor());
 		} else {
-			if (this.getBendingPlayer().canUseSubElement(SubElement.BLUE_FIRE)) {
+			if (bPlayer.canUseSubElement(SubElement.BLUE_FIRE)) {
 				ParticleEffect.SOUL_FIRE_FLAME.display(loc, amount, xOffset, yOffset, zOffset, speed);
 			} else {
 				ParticleEffect.FLAME.display(loc, amount, xOffset, yOffset, zOffset, speed);
