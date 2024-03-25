@@ -1064,6 +1064,8 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.AirScooter.MaxHeightFromGround", 7);
 			config.addDefault("Abilities.Air.AirScooter.Push.Down", -0.25);
 			config.addDefault("Abilities.Air.AirScooter.Push.Up", 0.25);
+			config.addDefault("Abilities.Air.AirScooter.Height.Minimum", 2.0);
+			config.addDefault("Abilities.Air.AirScooter.Height.Maximum", 2.75);
 			config.addDefault("Abilities.Air.AirScooter.RequiresSprint", false);
 			config.addDefault("Abilities.Air.AirScooter.DisableSprint", true);
 			config.addDefault("Abilities.Air.AirScooter.RequiresJump", false);
@@ -1077,6 +1079,10 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.AirSurf.Cooldown", 7000);
 			config.addDefault("Abilities.Air.AirSurf.Duration", 0);
 			config.addDefault("Abilities.Air.AirSurf.MaxHeightFromGround", 7);
+			config.addDefault("Abilities.Air.AirSurf.Push.Down", -0.25);
+			config.addDefault("Abilities.Air.AirSurf.Push.Up", 0.25);
+			config.addDefault("Abilities.Air.AirSurf.Height.Minimum", 2.0);
+			config.addDefault("Abilities.Air.AirSurf.Height.Maximum", 2.75);
 			config.addDefault("Abilities.Air.AirSurf.RequiresSprint", false);
 			config.addDefault("Abilities.Air.AirSurf.DisableSprint", true);
 			config.addDefault("Abilities.Air.AirSurf.RequiresJump", false);

@@ -32,6 +32,10 @@ public class AirSurf extends AirAbility {
 	private long duration;
 	@Attribute(Attribute.HEIGHT)
 	private double maxHeightFromGround;
+	private double downPush;
+	private double upPush;
+	private double minHeight;
+	private double maxHeight;
 	private Block floorblock;
 	private Random random;
 	private ArrayList<Double> angles;
@@ -79,6 +83,10 @@ public class AirSurf extends AirAbility {
 		this.cooldown = getConfig().getLong("Abilities.Air.AirSurf.Cooldown");
 		this.duration = getConfig().getLong("Abilities.Air.AirSurf.Duration");
 		this.maxHeightFromGround = getConfig().getDouble("Abilities.Air.AirSurf.MaxHeightFromGround");
+		this.downPush = getConfig().getDouble("Abilities.Air.AirSurf.Push.Down");
+		this.upPush = getConfig().getDouble("Abilities.Air.AirSurf.Push.Up");
+		this.minHeight = getConfig().getDouble("Abilities.Air.AirSurf.Height.Minimum");
+		this.maxHeight = getConfig().getDouble("Abilities.Air.AirSurf.Height.Maximum");
 		this.useslime = getConfig().getBoolean("Abilities.Air.AirSurf.ShowSitting");
 		this.disableSprint = getConfig().getBoolean("Abilities.Air.AirSurf.DisableSprint");
 		this.random = new Random();
@@ -210,10 +218,10 @@ public class AirSurf extends AirAbility {
 		 */
 		final double distance = this.player.getLocation().getY() - this.floorblock.getY();
 		Math.abs(distance - 2.4);
-		if (distance > 2.75) {
-			velocity.setY(-.25);
-		} else if (distance < 2) {
-			velocity.setY(.25);
+		if (distance > maxHeight) {
+			velocity.setY(downPush);
+		} else if (distance < minHeight) {
+			velocity.setY(upPush);
 		} else {
 			velocity.setY(0);
 		}
