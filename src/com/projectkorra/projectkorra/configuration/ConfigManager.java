@@ -1065,6 +1065,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.AirScooter.Push.Down", -0.25);
 			config.addDefault("Abilities.Air.AirScooter.Push.Up", 0.25);
 			config.addDefault("Abilities.Air.AirScooter.Height.Minimum", 2.0);
+			config.addDefault("Abilities.Air.AirScooter.Height.Middle", 2.4);
 			config.addDefault("Abilities.Air.AirScooter.Height.Maximum", 2.75);
 			config.addDefault("Abilities.Air.AirScooter.RequiresSprint", false);
 			config.addDefault("Abilities.Air.AirScooter.DisableSprint", true);
@@ -1082,6 +1083,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.AirSurf.Push.Down", -0.25);
 			config.addDefault("Abilities.Air.AirSurf.Push.Up", 0.25);
 			config.addDefault("Abilities.Air.AirSurf.Height.Minimum", 2.0);
+			config.addDefault("Abilities.Air.AirSurf.Height.Middle", 2.4);
 			config.addDefault("Abilities.Air.AirSurf.Height.Maximum", 2.75);
 			config.addDefault("Abilities.Air.AirSurf.RequiresSprint", false);
 			config.addDefault("Abilities.Air.AirSurf.DisableSprint", true);

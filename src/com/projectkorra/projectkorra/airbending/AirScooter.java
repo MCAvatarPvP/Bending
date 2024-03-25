@@ -36,6 +36,7 @@ public class AirScooter extends AirAbility {
 	private double downPush;
 	private double upPush;
 	private double minHeight;
+	private double midHeight;
 	private double maxHeight;
 	private Block floorblock;
 	private Random random;
@@ -87,6 +88,7 @@ public class AirScooter extends AirAbility {
 		this.downPush = getConfig().getDouble("Abilities.Air.AirScooter.Push.Down");
 		this.upPush = getConfig().getDouble("Abilities.Air.AirScooter.Push.Up");
 		this.minHeight = getConfig().getDouble("Abilities.Air.AirScooter.Height.Minimum");
+		this.midHeight = getConfig().getDouble("Abilities.Air.AirScooter.Height.Middle");
 		this.maxHeight = getConfig().getDouble("Abilities.Air.AirScooter.Height.Maximum");
 		this.useslime = getConfig().getBoolean("Abilities.Air.AirScooter.ShowSitting");
 		this.disableSprint = getConfig().getBoolean("Abilities.Air.AirScooter.DisableSprint");
@@ -218,7 +220,7 @@ public class AirScooter extends AirAbility {
 		 * lowers the player based on their distance from the ground.
 		 */
 		final double distance = this.player.getLocation().getY() - this.floorblock.getY();
-		double dx = Math.abs(distance - 2.4);
+		double dx = Math.abs(distance - midHeight);
 		if (distance > maxHeight) {
 			velocity.setY(downPush * dx * dx);
 		} else if (distance < minHeight) {

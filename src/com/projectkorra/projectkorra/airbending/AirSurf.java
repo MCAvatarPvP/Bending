@@ -35,6 +35,7 @@ public class AirSurf extends AirAbility {
 	private double downPush;
 	private double upPush;
 	private double minHeight;
+	private double midHeight;
 	private double maxHeight;
 	private Block floorblock;
 	private Random random;
@@ -86,6 +87,7 @@ public class AirSurf extends AirAbility {
 		this.downPush = getConfig().getDouble("Abilities.Air.AirSurf.Push.Down");
 		this.upPush = getConfig().getDouble("Abilities.Air.AirSurf.Push.Up");
 		this.minHeight = getConfig().getDouble("Abilities.Air.AirSurf.Height.Minimum");
+		this.midHeight = getConfig().getDouble("Abilities.Air.AirSurf.Height.Middle");
 		this.maxHeight = getConfig().getDouble("Abilities.Air.AirSurf.Height.Maximum");
 		this.useslime = getConfig().getBoolean("Abilities.Air.AirSurf.ShowSitting");
 		this.disableSprint = getConfig().getBoolean("Abilities.Air.AirSurf.DisableSprint");
@@ -217,7 +219,7 @@ public class AirSurf extends AirAbility {
 		 * lowers the player based on their distance from the ground.
 		 */
 		final double distance = this.player.getLocation().getY() - this.floorblock.getY();
-		Math.abs(distance - 2.4);
+		Math.abs(distance - midHeight);
 		if (distance > maxHeight) {
 			velocity.setY(downPush);
 		} else if (distance < minHeight) {
