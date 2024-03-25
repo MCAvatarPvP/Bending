@@ -272,21 +272,22 @@ public class EarthArmor extends EarthAbility {
 
 			this.player.setFireTicks(0);
 		} else {
-			while (this.isInstant) {
+			if (this.isInstant) {
+				while (true) {
+					if (!this.moveBlocks()) {
+						return;
+					}
+					if (this.inPosition()) {
+						this.formArmor();
+					}
+				}
+			} else {
 				if (!this.moveBlocks()) {
 					return;
 				}
 				if (this.inPosition()) {
 					this.formArmor();
 				}
-				return;
-			}
-
-			if (!this.moveBlocks()) {
-				return;
-			}
-			if (this.inPosition()) {
-				this.formArmor();
 			}
 		}
 	}
