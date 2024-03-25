@@ -1,8 +1,6 @@
 package com.projectkorra.projectkorra.firebending;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 
 import org.bukkit.Location;
 import org.bukkit.block.Block;
@@ -23,7 +21,7 @@ import com.projectkorra.projectkorra.util.TempBlock;
 
 public class WallOfFire extends FireAbility {
 
-	private int damageTick;
+//	private int damageTick;
 	private int intervalTick;
 	@Attribute(Attribute.RANGE)
 	private double range;
@@ -46,6 +44,7 @@ public class WallOfFire extends FireAbility {
 	private Random random;
 	private Location origin;
 	private List<Block> blocks;
+	private Map<Entity, Long> affected;
 
 	public WallOfFire(final Player player) {
 		super(player);
@@ -62,6 +61,7 @@ public class WallOfFire extends FireAbility {
 		this.fireTicks = getConfig().getDouble("Abilities.Fire.WallOfFire.FireTicks");
 		this.random = new Random();
 		this.blocks = new ArrayList<>();
+		this.affected = new HashMap<>();
 
 		if (hasAbility(player, WallOfFire.class) && !this.bPlayer.isAvatarState()) {
 			return;
@@ -119,6 +119,7 @@ public class WallOfFire extends FireAbility {
 	}
 
 	private void affect(final Entity entity) {
+		if (affected.containsKey(entity)) return;
 		GeneralMethods.setVelocity(this, entity, new Vector(0, 0, 0));
 		if (entity instanceof LivingEntity) {
 			final Block block = ((LivingEntity) entity).getEyeLocation().getBlock();
@@ -130,6 +131,7 @@ public class WallOfFire extends FireAbility {
 		}
 		entity.setFireTicks((int) (this.fireTicks * 20));
 		new FireDamageTimer(entity, this.player, this);
+		affected.put(entity, System.currentTimeMillis() + damageInterval);
 	}
 
 	private void damage() {
@@ -208,10 +210,18 @@ public class WallOfFire extends FireAbility {
 			this.intervalTick++;
 			this.display();
 		}
-		if (this.time - this.getStartTime() > this.damageTick * this.damageInterval) {
-			this.damageTick++;
-			this.damage();
+		Iterator<Map.Entry<Entity, Long>> iter = affected.entrySet().iterator();
+		while (iter.hasNext()) {
+			Map.Entry<Entity, Long> entry = iter.next();
+			if (this.time > entry.getValue()) {
+				iter.remove();
+			}
 		}
+		this.damage();
+//		if (this.time - this.getStartTime() > this.damageTick * this.damageInterval) {
+//			this.damageTick++;
+//			this.damage();
+//		}
 	}
 
 	@Override
@@ -254,14 +264,14 @@ public class WallOfFire extends FireAbility {
 		return locations;
 	}
 
-	public int getDamageTick() {
-		return this.damageTick;
-	}
-
-	public void setDamageTick(final int damageTick) {
-		this.damageTick = damageTick;
-	}
-
+//	public int getDamageTick() {
+//		return this.damageTick;
+//	}
+//
+//	public void setDamageTick(final int damageTick) {
+//		this.damageTick = damageTick;
+//	}
+//
 	public int getIntervalTick() {
 		return this.intervalTick;
 	}
