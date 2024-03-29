@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Random;
 
 import com.projectkorra.projectkorra.region.RegionProtection;
+import com.projectkorra.projectkorra.waterbending.WaterSpout;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.BlastFurnace;
@@ -150,7 +151,7 @@ public class FireBlast extends FireAbility {
 	}
 
 	public boolean checkLocation(Block block) {
-		if (block.getType() == Material.WATER || !canGoThroughLava && block.getType() == Material.LAVA) {
+		if ((block.getType() == Material.WATER && WaterSpout.getAffectedBlocks().containsKey(block)) || !canGoThroughLava && block.getType() == Material.LAVA) {
 			this.remove();
 			return false;
 		}
