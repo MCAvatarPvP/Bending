@@ -91,7 +91,7 @@ public class EarthArmor extends EarthAbility {
 			final Block oldHeadBlock = this.headBlock;
 			final Block oldLegsBlock = this.legsBlock;
 
-			if (!this.moveBlocks()) {
+			if (!isInstant && !this.moveBlocks()) {
 				return;
 			}
 			if ((TempBlock.isTempBlock(oldHeadBlock) && !isBendableEarthTempBlock(oldHeadBlock))
@@ -273,14 +273,7 @@ public class EarthArmor extends EarthAbility {
 			this.player.setFireTicks(0);
 		} else {
 			if (this.isInstant) {
-				while (true) {
-					if (!this.moveBlocks()) {
-						return;
-					}
-					if (this.inPosition()) {
-						this.formArmor();
-					}
-				}
+				this.formArmor();
 			} else {
 				if (!this.moveBlocks()) {
 					return;
