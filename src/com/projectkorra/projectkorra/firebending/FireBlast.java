@@ -151,7 +151,7 @@ public class FireBlast extends FireAbility {
 	}
 
 	public boolean checkLocation(Block block) {
-		if ((block.getType() == Material.WATER && WaterSpout.getAffectedBlocks().containsKey(block)) || !canGoThroughLava && block.getType() == Material.LAVA) {
+		if ((block.getType() == Material.WATER && !WaterSpout.getAffectedBlocks().containsKey(block)) || !canGoThroughLava && block.getType() == Material.LAVA) {
 			this.remove();
 			return false;
 		}
