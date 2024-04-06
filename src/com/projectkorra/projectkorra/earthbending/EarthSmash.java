@@ -12,6 +12,7 @@ import org.bukkit.block.data.BlockData;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.util.BlockIterator;
 import org.bukkit.util.Vector;
 
 import com.projectkorra.projectkorra.BendingPlayer;
@@ -243,9 +244,15 @@ public class EarthSmash extends EarthAbility {
 				this.revert();
 				final Location oldLoc = this.location.clone();
 				this.location = this.player.getEyeLocation().add(this.player.getEyeLocation().getDirection().normalize().multiply(this.grabbedDistance));
+				List<Block> blocks = this.getBlocks();
+				Location loc = player.getEyeLocation();
+				BlockIterator iterator = new BlockIterator(loc.getWorld(), loc.toVector(), loc.getDirection(), 0, (int) Math.ceil(this.grabbedDistance));
+				while (iterator.hasNext()) {
+					blocks.add(iterator.next());
+				}
 
 				// Check to make sure the new location is available to move to.
-				for (final Block block : this.getBlocks()) {
+				for (final Block block : blocks) {
 					if (!ElementalAbility.isAir(block.getType()) && !this.isTransparent(block)) {
 						this.location = oldLoc;
 						break;
