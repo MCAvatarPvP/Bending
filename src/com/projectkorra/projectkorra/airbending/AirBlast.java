@@ -1,9 +1,6 @@
 package com.projectkorra.projectkorra.airbending;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Map;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.projectkorra.projectkorra.configuration.ConfigManager;
@@ -101,7 +98,7 @@ public class AirBlast extends AirAbility {
 //				this.direction = GeneralMethods.getDirection(this.origin, targetedLocation).normalize();
 //			}
 
-			Location targetedLocation = GeneralMethods.getTargetedLocation(player, this.range, false, true);
+			Location targetedLocation = getTargetedLocation(player, this.range);
 			Block block = targetedLocation.getBlock();
 			if (!GeneralMethods.isSolid(block) && GeneralMethods.isSolid(block.getRelative(BlockFace.DOWN))) {
 				double y = ConfigManager.getConfig(bPlayer).getDouble("Abilities.Air.AirBlast.SourceYOffset");
@@ -203,7 +200,7 @@ public class AirBlast extends AirAbility {
 
 	public static void setOrigin(final Player player) {
 		BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-		final Location location = GeneralMethods.getTargetedLocation(player, getSelectRange(bPlayer), getTransparentMaterials());
+		final Location location = getTargetedLocation(player, getSelectRange(bPlayer), getTransparentMaterials());
 		if (location.getBlock().isLiquid() || GeneralMethods.isSolid(location.getBlock())) {
 			return;
 		} else if (RegionProtection.isRegionProtected(player, location, "AirBlast")) {
@@ -514,6 +511,24 @@ public class AirBlast extends AirAbility {
 			}
 		}
 		return removed;
+	}
+
+	public static Location getTargetedLocation(final Player player, final double range, final Material... nonOpaque2) {
+		final Location origin = player.getEyeLocation();
+		final Vector direction = origin.getDirection();
+
+		final HashSet<Material> trans = new HashSet<>();
+		trans.add(Material.AIR);
+		trans.add(Material.CAVE_AIR);
+		trans.add(Material.VOID_AIR);
+
+		if (nonOpaque2 != null) {
+			Collections.addAll(trans, nonOpaque2);
+		}
+
+		final Block block = player.getTargetBlock(trans, (int) range + 1);
+		double distance = block.getLocation().distance(origin) - 1.5;
+		return origin.add(direction.multiply(distance));
 	}
 
 	@Override
