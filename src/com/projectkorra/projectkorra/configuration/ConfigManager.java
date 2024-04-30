@@ -1022,6 +1022,8 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.Passive.AirAgility.Enabled", true);
 			config.addDefault("Abilities.Air.Passive.AirAgility.JumpPower", 3);
 			config.addDefault("Abilities.Air.Passive.AirAgility.SpeedPower", 2);
+			config.addDefault("Abilities.Air.Passive.AirAgility.JumpDuration", 10);
+			config.addDefault("Abilities.Air.Passive.AirAgility.SpeedDuration", 10);
 			config.addDefault("Abilities.Air.Passive.AirAgility.RequiresSprinting", true);
 			config.addDefault("Abilities.Air.Passive.AirSaturation.Enabled", true);
 			config.addDefault("Abilities.Air.Passive.GracefulDescent.Enabled", true);

@@ -17,6 +17,8 @@ public class AirAgility extends AirAbility implements PassiveAbility {
 	private int jumpPower;
 	@Attribute(Attribute.SPEED)
 	private int speedPower;
+	private int jumpDuration;
+	private int speedDuration;
 	private boolean requiresSprinting;
 
 	public AirAgility(final Player player) {
@@ -27,6 +29,8 @@ public class AirAgility extends AirAbility implements PassiveAbility {
 	public void setFields() {
 		this.jumpPower = getConfig().getInt("Abilities.Air.Passive.AirAgility.JumpPower") - 1;
 		this.speedPower = getConfig().getInt("Abilities.Air.Passive.AirAgility.SpeedPower") - 1;
+		this.jumpDuration = getConfig().getInt("Abilities.Air.Passive.AirAgility.JumpDuration");
+		this.speedDuration = getConfig().getInt("Abilities.Air.Passive.AirAgility.SpeedDuration");
 		this.requiresSprinting = getConfig().getBoolean("Abilities.Air.Passive.AirAgility.RequiresSprinting");
 	}
 
@@ -38,11 +42,11 @@ public class AirAgility extends AirAbility implements PassiveAbility {
 
 		// Jump Buff.
 		if (!this.player.hasPotionEffect(PotionEffectType.JUMP) || this.player.getPotionEffect(PotionEffectType.JUMP).getAmplifier() < this.jumpPower || (this.player.getPotionEffect(PotionEffectType.JUMP).getAmplifier() == this.jumpPower && this.player.getPotionEffect(PotionEffectType.JUMP).getDuration() == 1)) {
-			this.player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP, 10, this.jumpPower, true, false), true);
+			this.player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP, this.jumpDuration, this.jumpPower, true, false), true);
 		}
 		// Speed Buff.
 		if (!this.player.hasPotionEffect(PotionEffectType.SPEED) || this.player.getPotionEffect(PotionEffectType.SPEED).getAmplifier() < this.speedPower || (this.player.getPotionEffect(PotionEffectType.SPEED).getAmplifier() == this.speedPower && this.player.getPotionEffect(PotionEffectType.SPEED).getDuration() == 1)) {
-			this.player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 10, this.speedPower, true, false), true);
+			this.player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, this.speedDuration, this.speedPower, true, false), true);
 		}
 	}
 
