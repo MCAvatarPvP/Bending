@@ -2082,7 +2082,10 @@ public class PKListener implements Listener {
 
 	@EventHandler
 	public void onAbilityStart(AbilityDamageEntityEvent event) {
-		BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(event.getSource());
+		Player source = event.getSource();
+		if (source == null) return;
+
+		BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(source);
 		if (event.getEntity() instanceof LivingEntity && !(event.getEntity() instanceof Player)) {
 			double multiplier = ConfigManager.getConfig(bPlayer).getDouble("Properties.MobDamageMultiplier");
 			event.setDamage(event.getDamage() * multiplier);
