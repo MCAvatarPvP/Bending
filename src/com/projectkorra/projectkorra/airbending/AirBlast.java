@@ -200,10 +200,13 @@ public class AirBlast extends AirAbility {
 
 	public static void setOrigin(final Player player) {
 		BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
+		double maxSelectGroundDistance = ConfigManager.getConfig(bPlayer).getDouble("Abilities.Air.AirBlast.MaxSelectGroundDistance");
 		final Location location = getTargetedLocation(player, getSelectRange(bPlayer), getTransparentMaterials());
 		if (location.getBlock().isLiquid() || GeneralMethods.isSolid(location.getBlock())) {
 			return;
 		} else if (RegionProtection.isRegionProtected(player, location, "AirBlast")) {
+			return;
+		} else if (maxSelectGroundDistance != 0 && GeneralMethods.getGroundBlock(location, maxSelectGroundDistance) == null) {
 			return;
 		}
 

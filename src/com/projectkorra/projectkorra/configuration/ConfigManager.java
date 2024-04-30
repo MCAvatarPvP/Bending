@@ -1036,6 +1036,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.AirBlast.Particles", 6);
 			config.addDefault("Abilities.Air.AirBlast.Cooldown", 500);
 			config.addDefault("Abilities.Air.AirBlast.SourceYOffset", 0);
+			config.addDefault("Abilities.Air.AirBlast.MaxSelectGroundDistance", 0);
 			config.addDefault("Abilities.Air.AirBlast.Push.Self", 2.5);
 			config.addDefault("Abilities.Air.AirBlast.Push.Entities", 3.5);
 			config.addDefault("Abilities.Air.AirBlast.CanFlickLevers", true);
