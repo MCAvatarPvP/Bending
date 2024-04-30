@@ -60,8 +60,6 @@ public class WaterSpout extends WaterAbility {
 			return;
 		}
 
-		FallHandler.removePlayer(player);
-
 		this.canBendOnPackedIce = getConfig().getStringList("Properties.Water.IceBlocks").contains(Material.PACKED_ICE.toString());
 		this.useParticles = getConfig().getBoolean("Abilities.Water.WaterSpout.Particles");
 		this.useBlockSpiral = getConfig().getBoolean("Abilities.Water.WaterSpout.BlockSpiral");
@@ -98,6 +96,7 @@ public class WaterSpout extends WaterAbility {
 		}
 		this.flightHandler.createInstance(player, this.getName());
 		player.setAllowFlight(true);
+		FallHandler.removePlayer(player);
 		this.spoutableWaterHeight(player.getLocation()); // Sets base.
 		this.start();
 	}
