@@ -210,7 +210,14 @@
       <artifactId>DamageAPI</artifactId>
       <version>1.0-SNAPSHOT</version>
       <scope>system</scope>
-      <systemPath>D:/Dev/Projects/Idea Projects/Plugins/DamageAPI/build/libs/DamageAPI-1.0-SNAPSHOT.jar</systemPath>
+      <systemPath>${basedir}/libs/DamageAPI-1.0-SNAPSHOT.jar</systemPath>
+    </dependency>
+    <dependency>
+      <groupId>ga.strikepractice</groupId>
+      <artifactId>strikepractice-api</artifactId>
+      <version>1.0-SNAPSHOT</version>
+      <scope>system</scope>
+      <systemPath>${basedir}/libs/strikepractice-api.jar</systemPath>
     </dependency>
   </dependencies>
   <build>
