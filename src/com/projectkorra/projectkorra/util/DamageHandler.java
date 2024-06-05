@@ -84,7 +84,7 @@ public class DamageHandler {
 		}
 
 		// Adding source so that we don't need to modify FireDamageTimer class, which would cause breaks.
-		final AbilityDamageEntityEvent damageEvent = new AbilityDamageEntityEvent(entity, ability, damage, ignoreArmor);
+		final AbilityDamageEntityEvent damageEvent = new AbilityDamageEntityEvent(entity, source, ability, damage, ignoreArmor);
 		
 		if (entity instanceof Player && Commands.invincible.contains(entity.getName())) {
 			damageEvent.setCancelled(true);
