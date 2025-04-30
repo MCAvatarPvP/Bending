@@ -108,39 +108,45 @@ public class ChooseCommand extends PKCommand {
 				ChatUtil.sendBrandingMessage(sender, super.noPermissionMessage);
 				return;
 			}
-			final OfflinePlayer target = Bukkit.getOfflinePlayer(args.get(1));
-			if (!target.hasPlayedBefore() && !target.isOnline()) {
-				ChatUtil.sendBrandingMessage(sender, ChatColor.RED + this.playerNotFound);
-				return;
-			}
-			String element = args.get(0).toLowerCase();
-			if (element.equalsIgnoreCase("a")) {
-				element = "air";
-			} else if (element.equalsIgnoreCase("e")) {
-				element = "earth";
-			} else if (element.equalsIgnoreCase("f")) {
-				element = "fire";
-			} else if (element.equalsIgnoreCase("w")) {
-				element = "water";
-			} else if (element.equalsIgnoreCase("c")) {
-				element = "chi";
-			}
-			final Element targetElement = Element.getElement(element);
-			if (Arrays.asList(Element.getAllElements()).contains(targetElement) && targetElement != Element.AVATAR) {
-				this.add(sender, target, targetElement);
 
-				if (target.isOnline()) {
-					if (((Player)target).hasPermission("bending.command.choose.ignorecooldown") || ((Player)target).hasPermission("bending.admin.choose")) {
-						return;
-					}
+			this.getPlayer(args.get(1)).thenAccept((target) -> {
+				if (!target.hasPlayedBefore() && !target.isOnline()) {
+					ChatUtil.sendBrandingMessage(sender, ChatColor.RED + this.playerNotFound);
+					return;
 				}
+				String element = args.get(0).toLowerCase();
+				if (element.equalsIgnoreCase("a")) {
+					element = "air";
+				} else if (element.equalsIgnoreCase("e")) {
+					element = "earth";
+				} else if (element.equalsIgnoreCase("f")) {
+					element = "fire";
+				} else if (element.equalsIgnoreCase("w")) {
+					element = "water";
+				} else if (element.equalsIgnoreCase("c")) {
+					element = "chi";
+				}
+				final Element targetElement = Element.getElement(element);
+				if (Arrays.asList(Element.getAllElements()).contains(targetElement) && targetElement != Element.AVATAR) {
+					this.add(sender, target, targetElement);
 
-				BendingPlayer.getOrLoadOfflineAsync(target).thenAccept(bPlayer -> {
-					bPlayer.addCooldown("ChooseElement", this.cooldown, true);
-				});
-			} else {
-				ChatUtil.sendBrandingMessage(sender, ChatColor.RED + this.invalidElement);
-			}
+					if (target.isOnline()) {
+						if (((Player)target).hasPermission("bending.command.choose.ignorecooldown") || ((Player)target).hasPermission("bending.admin.choose")) {
+							return;
+						}
+					}
+
+					BendingPlayer.getOrLoadOfflineAsync(target).thenAccept(bPlayer -> {
+						bPlayer.addCooldown("ChooseElement", this.cooldown, true);
+					});
+				} else {
+					ChatUtil.sendBrandingMessage(sender, ChatColor.RED + this.invalidElement);
+				}
+			}).exceptionally(e -> {
+				e.printStackTrace();
+				return null;
+			});
+
 		}
 	}
 
@@ -166,30 +172,47 @@ public class ChooseCommand extends PKCommand {
 				}
 				bPlayer.saveSubElements();
 				if (online) {
-					((BendingPlayer)bPlayer).removeUnusableAbilities();
-					Bukkit.getServer().getPluginManager().callEvent(new PlayerChangeSubElementEvent(sender, (Player) target, sub, PlayerChangeSubElementEvent.Result.CHOOSE));
+					((BendingPlayer) bPlayer).removeUnusableAbilities();
 				}
+				Bukkit.getServer().getPluginManager().callEvent(new PlayerChangeSubElementEvent(sender, target, sub, PlayerChangeSubElementEvent.Result.CHOOSE));
 			} else {
 				if (element == Element.AVATAR) {
+
+					PlayerChangeElementEvent event = new PlayerChangeElementEvent(sender, target, element, Result.CHOOSE);
+					Bukkit.getServer().getPluginManager().callEvent(event);
+					if (event.isCancelled()) return; //Do nothing if cancelled
+
 					bPlayer.getElements().clear();
 					for (Element e : new Element[] {Element.AIR, Element.EARTH, Element.FIRE, Element.WATER}) {
 						bPlayer.addElement(e);
 
 						if (online) {
-							for (final SubElement sub : Element.getSubElements(element)) {
+							for (final SubElement sub : Element.getSubElements(e)) {
 								if (((BendingPlayer) bPlayer).hasSubElementPermission(sub)) {
+									PlayerChangeSubElementEvent subEvent = new PlayerChangeSubElementEvent(sender, target, sub, PlayerChangeSubElementEvent.Result.CHOOSE);
+									Bukkit.getServer().getPluginManager().callEvent(subEvent);
+									if (subEvent.isCancelled()) continue; //Do nothing if cancelled
 									bPlayer.addSubElement(sub);
 								}
 							}
 						}
 					}
 				} else {
+					PlayerChangeElementEvent event = new PlayerChangeElementEvent(sender, target, element, Result.CHOOSE);
+					Bukkit.getServer().getPluginManager().callEvent(event);
+					if (event.isCancelled()) return; //Do nothing if cancelled
+
 					bPlayer.setElement(element);
 					bPlayer.getSubElements().clear();
 
 					if (online) {
 						for (final SubElement sub : Element.getSubElements(element)) {
 							if (((BendingPlayer) bPlayer).hasSubElementPermission(sub)) {
+								PlayerChangeSubElementEvent subEvent = new PlayerChangeSubElementEvent(sender, target, sub, PlayerChangeSubElementEvent.Result.CHOOSE);
+
+								Bukkit.getServer().getPluginManager().callEvent(subEvent);
+								if (subEvent.isCancelled()) continue; //Do nothing if cancelled
+
 								bPlayer.addSubElement(sub);
 							}
 						}
@@ -214,10 +237,12 @@ public class ChooseCommand extends PKCommand {
 				bPlayer.saveSubElements();
 				if (online) {
 					((BendingPlayer)bPlayer).removeUnusableAbilities();
-					Bukkit.getServer().getPluginManager().callEvent(new PlayerChangeElementEvent(sender, (Player) target, element, Result.CHOOSE));
 				}
 
 			}
+		}).exceptionally(e -> {
+			e.printStackTrace();
+			return null;
 		});
 	}
 

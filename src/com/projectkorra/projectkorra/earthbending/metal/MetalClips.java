@@ -7,6 +7,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.projectkorra.projectkorra.Element;
+import com.projectkorra.projectkorra.configuration.ConfigManager;
+import com.projectkorra.projectkorra.region.RegionProtection;
+import com.projectkorra.projectkorra.util.ChatUtil;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.Entity;
@@ -52,6 +56,8 @@ public class MetalClips extends MetalAbility {
 	private long cooldown;
 	@Attribute("Shoot" + Attribute.COOLDOWN)
 	private long shootCooldown;
+	@Attribute("Shoot" + Attribute.SPEED)
+	private double shootSpeed;
 	@Attribute("Crush" + Attribute.COOLDOWN)
 	private long crushCooldown;
 	@Attribute("Magnet" + Attribute.COOLDOWN)
@@ -66,6 +72,7 @@ public class MetalClips extends MetalAbility {
 	private double damage;
 	private LivingEntity targetEntity;
 	private List<Item> trackedIngots;
+	private String actionBarMessage;
 
 	public MetalClips(final Player player, final int abilityType) {
 		super(player);
@@ -79,7 +86,8 @@ public class MetalClips extends MetalAbility {
 		this.armorTime = getConfig().getInt("Abilities.Earth.MetalClips.Duration");
 		this.range = getConfig().getDouble("Abilities.Earth.MetalClips.Range");
 		this.cooldown = getConfig().getLong("Abilities.Earth.MetalClips.Cooldown");
-		this.shootCooldown = 600;
+		this.shootCooldown = getConfig().getLong("Abilities.Earth.MetalClips.Shoot.Cooldown");
+		this.shootSpeed = getConfig().getDouble("Abilities.Earth.MetalClips.Shoot.Speed");
 		this.crushCooldown = getConfig().getLong("Abilities.Earth.MetalClips.Crush.Cooldown");
 		this.magnetCooldown = getConfig().getLong("Abilities.Earth.MetalClips.Magnet.Cooldown");
 		this.magnetRange = getConfig().getInt("Abilities.Earth.MetalClips.Magnet.Range");
@@ -87,13 +95,8 @@ public class MetalClips extends MetalAbility {
 		this.crushDamage = getConfig().getDouble("Abilities.Earth.MetalClips.Crush.Damage");
 		this.damage = getConfig().getDouble("Abilities.Earth.MetalClips.Damage");
 		this.canThrow = (getConfig().getBoolean("Abilities.Earth.MetalClips.ThrowEnabled") && player.hasPermission("bending.ability.metalclips.throw"));
+		this.actionBarMessage = ChatUtil.color(ConfigManager.languageConfig.get().getString("Abilities.Earth.MetalClips.ActionBarMessage", "* MetalClipped *"));
 		this.trackedIngots = new ArrayList<>();
-
-		if (this.bPlayer.isAvatarState()) {
-			this.cooldown = getConfig().getLong("Abilities.Avatar.AvatarState.Earth.MetalClips.Cooldown");
-			this.range = getConfig().getDouble("Abilities.Avatar.AvatarState.Earth.MetalClips.Range");
-			this.crushDamage = getConfig().getLong("Abilities.Avatar.AvatarState.Earth.MetalClips.CrushDamage");
-		}
 
 		if (abilityType == 0) {
 			if (!this.bPlayer.canBend(this)) {
@@ -112,28 +115,6 @@ public class MetalClips extends MetalAbility {
 
 		this.start();
 	}
-
-	/*
-	 * public static ItemStack getOriginalHelmet(LivingEntity ent) { MetalClips
-	 * clips = TARGET_TO_ABILITY.get(ent); if (clips != null) { return
-	 * clips.oldArmor[3]; } return null; }
-	 *
-	 * public static ItemStack getOriginalChestplate(LivingEntity ent) {
-	 * MetalClips clips = TARGET_TO_ABILITY.get(ent); if (clips != null) {
-	 * return clips.oldArmor[2]; } return null; }
-	 *
-	 * public static ItemStack getOriginalLeggings(LivingEntity ent) {
-	 * MetalClips clips = TARGET_TO_ABILITY.get(ent); if (clips != null) {
-	 * return clips.oldArmor[1]; } return null; }
-	 *
-	 * public static ItemStack getOriginalBoots(LivingEntity ent) { MetalClips
-	 * clips = TARGET_TO_ABILITY.get(ent); if (clips != null) { return
-	 * clips.oldArmor[0]; } return null; }
-	 *
-	 * public static ItemStack[] getOriginalArmor(LivingEntity ent) { MetalClips
-	 * clips = TARGET_TO_ABILITY.get(ent); if (clips != null) { return
-	 * clips.oldArmor; } return null; }
-	 */
 
 	public void shootMetal() {
 		if (this.bPlayer.isOnCooldown("MetalClips Shoot")) {
@@ -156,7 +137,7 @@ public class MetalClips extends MetalAbility {
 			vector = GeneralMethods.getDirection(this.player.getLocation(), GeneralMethods.getTargetedLocation(this.player, this.range));
 		}
 
-		GeneralMethods.setVelocity(this, item, vector.normalize().add(new Vector(0, 0.1, 0).multiply(1.2)));
+		GeneralMethods.setVelocity(this, item, vector.normalize().multiply(this.shootSpeed));
 		this.trackedIngots.add(item);
 		this.player.getInventory().removeItem(is);
 	}
@@ -166,7 +147,7 @@ public class MetalClips extends MetalAbility {
 			return;
 		} else if (this.metalClipsCount == 3 && !this.canUse4Clips) {
 			return;
-		} else if (this.targetEntity != null && (GeneralMethods.isRegionProtectedFromBuild(this, this.targetEntity.getLocation()) || ((targetEntity instanceof Player) && Commands.invincible.contains(((Player) targetEntity).getName())))) {
+		} else if (this.targetEntity != null && (RegionProtection.isRegionProtected(this, this.targetEntity.getLocation()) || ((targetEntity instanceof Player) && Commands.invincible.contains(((Player) targetEntity).getName())))) {
 			return;
 		}
 
@@ -272,11 +253,12 @@ public class MetalClips extends MetalAbility {
 		}
 
 		if (this.isMagnetized) {
-			if (GeneralMethods.getEntitiesAroundPoint(this.player.getLocation(), this.magnetRange).size() == 0) {
+			List<Entity> entities = GeneralMethods.getEntitiesAroundPoint(this.player.getLocation(), this.magnetRange);
+			if (entities.size() == 0) {
 				this.remove();
 				return;
 			}
-			for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(this.player.getLocation(), this.magnetRange)) {
+			for (final Entity entity : entities) {
 				final Vector vector = GeneralMethods.getDirection(entity.getLocation(), this.player.getLocation());
 				final ItemStack itemInHand = this.player.getInventory().getItemInMainHand();
 
@@ -407,6 +389,10 @@ public class MetalClips extends MetalAbility {
 				}
 
 				this.targetEntity.setFallDistance(0);
+			}
+
+			if (this.targetEntity instanceof Player && !actionBarMessage.isEmpty()) {
+				ChatUtil.sendActionBar(Element.METAL.getColor() + actionBarMessage, (Player) this.targetEntity);
 			}
 		}
 

@@ -4,11 +4,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-import co.aikar.timings.lib.MCTiming;
-
+import com.projectkorra.projectkorra.event.WorldTimeEvent;
 import com.projectkorra.projectkorra.util.*;
+import org.apache.commons.lang3.tuple.Pair;
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 
@@ -26,22 +25,15 @@ public class BendingManager implements Runnable {
 
 	long time;
 	long interval;
-	private final HashMap<World, Boolean> times = new HashMap<World, Boolean>(); // true if day time
-
-	private final MCTiming CORE_ABILITY_TIMING, TEMP_POTION_TIMING, DAY_NIGHT_TIMING, HORIZONTAL_VELOCITY_TRACKER_TIMING, COOLDOWN_TIMING, TEMP_ARMOR_TIMING, ACTIONBAR_STATUS_TIMING, TEMP_FALLING_BLOCKS;
-
+	private final HashMap<World, WorldTimeEvent.Time> times = new HashMap<>(); // true if day time
+	private final TempBlock.TempBlockRevertTask tempBlockRevertTask = new TempBlock.TempBlockRevertTask();
 	public BendingManager() {
 		instance = this;
 		this.time = System.currentTimeMillis();
 
-		this.CORE_ABILITY_TIMING = ProjectKorra.timing("CoreAbility#ProgressAll");
-		this.TEMP_POTION_TIMING = ProjectKorra.timing("TempPotion#ProgressAll");
-		this.DAY_NIGHT_TIMING = ProjectKorra.timing("HandleDayNight");
-		this.HORIZONTAL_VELOCITY_TRACKER_TIMING = ProjectKorra.timing("HorizontalVelocityTracker#UpdateAll");
-		this.COOLDOWN_TIMING = ProjectKorra.timing("HandleCooldowns");
-		this.TEMP_ARMOR_TIMING = ProjectKorra.timing("TempArmor#Cleanup");
-		this.ACTIONBAR_STATUS_TIMING = ProjectKorra.timing("ActionBarCheck");
-		this.TEMP_FALLING_BLOCKS = ProjectKorra.timing("TempFallingBlock#manage");
+		times.clear();
+
+		handleDayNight();
 	}
 
 	public static BendingManager getInstance() {
@@ -58,44 +50,50 @@ public class BendingManager implements Runnable {
 
 	public void handleDayNight() {
 		for (final World world : Bukkit.getServer().getWorlds()) {
-			if (!this.times.containsKey(world)) {
-				if (ElementalAbility.isDay(world)) {
-					this.times.put(world, true);
-				} else {
-					this.times.put(world, false);
-				}
-			} else {
-				if (this.times.get(world) && !ElementalAbility.isDay(world)) {
-					// The hashmap says it is day, but it is not.
-					this.times.put(world, false); // Sets time to night.
+			if (ConfigManager.defaultConfig.get().getStringList("Properties.DisabledWorlds").contains(world.getName())) {
+				continue;
+			}
+
+			WorldTimeEvent.Time from = this.times.get(world);
+
+			WorldTimeEvent.Time to = ElementalAbility.isDay(world) ? WorldTimeEvent.Time.DAY :
+					(ElementalAbility.isNight(world) ? WorldTimeEvent.Time.NIGHT :
+							(ElementalAbility.isDusk(world) ? WorldTimeEvent.Time.DUSK : WorldTimeEvent.Time.DAWN));
+
+			if (from == null) { //If the time is null, the server/plugin probably just started, so set the previous time to the previous one
+				int ord = to.ordinal() - 1;
+				if (ord < 0) ord = WorldTimeEvent.Time.values().length - 1;
+				from = WorldTimeEvent.Time.values()[ord];
+			}
+
+			if (from != to) {
+				WorldTimeEvent event = new WorldTimeEvent(world, from, to);
+				Bukkit.getPluginManager().callEvent(event);
+
+				this.times.put(world, to);
+
+				//RPG will handle its own day/night messages, so don't run PK Core ones if RPG exists
+				if (GeneralMethods.getRPG() == null) {
 					for (final Player player : world.getPlayers()) {
 						final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-						if (bPlayer == null) {
-							continue;
-						}
-						if (bPlayer.hasElement(Element.WATER) && player.hasPermission("bending.message.daymessage")) {
-							player.sendMessage(Element.WATER.getColor() + getMoonriseMessage());
-						}
-						if (bPlayer.hasElement(Element.FIRE) && player.hasPermission("bending.message.nightmessage")) {
-							player.sendMessage(Element.FIRE.getColor() + getSunsetMessage());
-						}
-					}
-				}
+						if (bPlayer == null) continue;
 
-				if (!this.times.get(world) && ElementalAbility.isDay(world)) {
-					// The hashmap says it is night, but it is day.
-					this.times.put(world, true);
-					for (final Player player : world.getPlayers()) {
-						final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-						if (bPlayer == null) {
-							continue;
+						if (bPlayer.hasElement(Element.WATER) && player.hasPermission("bending.message.daymessage") && to != WorldTimeEvent.Time.NIGHT && from == WorldTimeEvent.Time.NIGHT) {
+							String s = getMoonsetMessage();
+							player.sendMessage(Element.WATER.getColor() + s);
+						}
+						else if (bPlayer.hasElement(Element.WATER) && player.hasPermission("bending.message.nightmessage") && to == WorldTimeEvent.Time.NIGHT) {
+							String s = getMoonriseMessage();
+							player.sendMessage(Element.WATER.getColor() + s);
 						}
 
-						if (bPlayer.hasElement(Element.WATER) && player.hasPermission("bending.message.nightmessage")) {
-							player.sendMessage(Element.WATER.getColor() + getMoonsetMessage());
+						if (bPlayer.hasElement(Element.FIRE) && player.hasPermission("bending.message.nightmessage") && to != WorldTimeEvent.Time.DAY && from == WorldTimeEvent.Time.DAY) {
+							String s = getSunsetMessage();
+							player.sendMessage(Element.FIRE.getColor() + s);
 						}
-						if (bPlayer.hasElement(Element.FIRE) && player.hasPermission("bending.message.daymessage")) {
-							player.sendMessage(Element.FIRE.getColor() + getSunriseMessage());
+						else if (bPlayer.hasElement(Element.FIRE) && player.hasPermission("bending.message.daymessage") && to == WorldTimeEvent.Time.DAY) {
+							String s = getSunriseMessage();
+							player.sendMessage(Element.FIRE.getColor() + s);
 						}
 					}
 				}
@@ -110,61 +108,55 @@ public class BendingManager implements Runnable {
 		this.time = System.currentTimeMillis();
 		ProjectKorra.time_step = this.interval;
 
-//		try (MCTiming timing = this.CORE_ABILITY_TIMING.startTiming()) {
-			CoreAbility.progressAll();
-//		}
-
-//		try (MCTiming timing = this.TEMP_POTION_TIMING.startTiming()) {
-			TempPotionEffect.progressAll();
-//		}
-
-//		try (MCTiming timing = this.DAY_NIGHT_TIMING.startTiming()) {
-			this.handleDayNight();
-//		}
-
+		CoreAbility.progressAll();
+		TempPotionEffect.progressAll();
+		this.handleDayNight();
 		RevertChecker.revertAirBlocks();
+		HorizontalVelocityTracker.updateAll();
+		this.handleCooldowns();
+		TempArmor.cleanup();
 
-//		try (MCTiming timing = this.HORIZONTAL_VELOCITY_TRACKER_TIMING.startTiming()) {
-			HorizontalVelocityTracker.updateAll();
-//		}
+		TempFallingBlock.manage();
 
-//		try (MCTiming timing = this.COOLDOWN_TIMING.startTiming()) {
-			this.handleCooldowns();
-//		}
-
-//		try (MCTiming timing = this.TEMP_ARMOR_TIMING.startTiming()) {
-			TempArmor.cleanup();
-//		}
-
-//		try (MCTiming timing = this.ACTIONBAR_STATUS_TIMING.startTiming()) {
-			for (final Player player : Bukkit.getOnlinePlayers()) {
-				if (Bloodbending.isBloodbent(player)) {
-					ActionBar.sendActionBar(Element.BLOOD.getColor() + "* Bloodbent *", player);
-				} else if (MetalClips.isControlled(player)) {
-					ActionBar.sendActionBar(Element.METAL.getColor() + "* MetalClipped *", player);
-				}
-			}
-//		}
-
-//		try (MCTiming timing = this.TEMP_FALLING_BLOCKS.startTiming()) {
-			TempFallingBlock.manage();
-//		}
+		tempBlockRevertTask.run();
 	}
 
 	public static String getSunriseMessage() {
-		return ChatColor.translateAlternateColorCodes('&', ConfigManager.languageConfig.get().getString("Extras.Fire.DayMessage"));
+		return ChatUtil.color(ConfigManager.languageConfig.get().getString("Extras.Fire.DayMessage"));
 	}
 
 	public static String getSunsetMessage() {
-		return ChatColor.translateAlternateColorCodes('&', ConfigManager.languageConfig.get().getString("Extras.Fire.NightMessage"));
+		return ChatUtil.color(ConfigManager.languageConfig.get().getString("Extras.Fire.NightMessage"));
 	}
 
 	public static String getMoonriseMessage() {
-		return ChatColor.translateAlternateColorCodes('&', ConfigManager.languageConfig.get().getString("Extras.Water.NightMessage"));
+		return ChatUtil.color(ConfigManager.languageConfig.get().getString("Extras.Water.NightMessage"));
 	}
 
 	public static String getMoonsetMessage() {
-		return ChatColor.translateAlternateColorCodes('&', ConfigManager.languageConfig.get().getString("Extras.Water.DayMessage"));
+		return ChatUtil.color(ConfigManager.languageConfig.get().getString("Extras.Water.DayMessage"));
+	}
+
+	/**
+	 * A runnable that manages temp elements for players.
+	 * It runs for online players and only polls the next element that is due to expire.
+	 * This runnable runs every 20 ticks (1 second).
+	 */
+	public static class TempElementsRunnable implements Runnable {
+		@Override
+		public void run() {
+			//Manage Temp elements
+			while (!BendingPlayer.TEMP_ELEMENTS.isEmpty()) { //We use a while loop so if multiple expire in the same tick, all are done together
+				Pair<Player, Long> pair = BendingPlayer.TEMP_ELEMENTS.peek();
+
+				if (System.currentTimeMillis() > pair.getRight()) { //Check if the top temp element has expired
+					BendingPlayer.TEMP_ELEMENTS.poll(); //And if it has, remove from the queue, and recalculate temp elements for that player
+					BendingPlayer.getBendingPlayer(pair.getLeft()).recalculateTempElements(false);
+				} else {
+					break; //Break the loop if the top element hasn't expired, as all elements below it won't have either
+				}
+			}
+		}
 	}
 
 }

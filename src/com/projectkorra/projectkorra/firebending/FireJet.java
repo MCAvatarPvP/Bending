@@ -1,11 +1,10 @@
 package com.projectkorra.projectkorra.firebending;
 
-import static com.projectkorra.projectkorra.firebending.Illumination.isIlluminationTorch;
-
 import java.util.Random;
 
+import com.projectkorra.projectkorra.attribute.markers.DayNightFactor;
 import org.bukkit.Location;
-import org.bukkit.Material;
+import org.bukkit.Tag;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
@@ -21,11 +20,11 @@ public class FireJet extends FireAbility {
 	@Attribute("AvatarStateToggle")
 	private boolean avatarStateToggled;
 	private long time;
-	@Attribute(Attribute.DURATION)
+	@Attribute(Attribute.DURATION) @DayNightFactor
 	private long duration;
-	@Attribute(Attribute.COOLDOWN)
+	@Attribute(Attribute.COOLDOWN) @DayNightFactor(invert = true)
 	private long cooldown;
-	@Attribute(Attribute.SPEED)
+	@Attribute(Attribute.SPEED) @DayNightFactor
 	private double speed;
 	private Random random;
 	private Boolean previousGlidingState;
@@ -49,17 +48,18 @@ public class FireJet extends FireAbility {
 		}
 
 		this.avatarStateToggled = getConfig().getBoolean("Abilities.Avatar.AvatarState.Fire.FireJet.IsAvatarStateToggle");
-		this.duration = (long) applyModifiers(getConfig().getLong("Abilities.Fire.FireJet.Duration"));
-		this.speed = applyModifiers(getConfig().getDouble("Abilities.Fire.FireJet.Speed"));
-		this.cooldown = applyModifiersCooldown(getConfig().getLong("Abilities.Fire.FireJet.Cooldown"));
+		this.duration = (long) getConfig().getLong("Abilities.Fire.FireJet.Duration");
+		this.speed = getConfig().getDouble("Abilities.Fire.FireJet.Speed");
+		this.cooldown = getConfig().getLong("Abilities.Fire.FireJet.Cooldown");
 		this.showGliding = getConfig().getBoolean("Abilities.Fire.FireJet.ShowGliding");
 		this.random = new Random();
 		this.particleAmount = 10;
 
-		this.speed = this.getDayFactor(this.speed);
 		final Block block = player.getLocation().getBlock();
 
-		if (isIgnitable(block) || ElementalAbility.isAir(block.getType()) || block.getType() == Material.STONE_SLAB || block.getType() == Material.ACACIA_SLAB || block.getType() == Material.BIRCH_SLAB || block.getType() == Material.DARK_OAK_SLAB || block.getType() == Material.JUNGLE_SLAB || block.getType() == Material.OAK_SLAB || block.getType() == Material.SPRUCE_SLAB || isIlluminationTorch(block) || this.bPlayer.isAvatarState()) {
+		this.recalculateAttributes();
+
+		if (isIgnitable(block) || ElementalAbility.isAir(block.getType()) || Tag.SLABS.isTagged(block.getType()) || this.bPlayer.isAvatarState()) {
 			GeneralMethods.setVelocity(this, player, player.getEyeLocation().getDirection().clone().normalize().multiply(this.speed));
 			if (!canFireGrief()) {
 				if (ElementalAbility.isAir(block.getType())) {
@@ -96,6 +96,7 @@ public class FireJet extends FireAbility {
 			}
 
 			playFirebendingParticles(this.player.getLocation(), particleAmount, 0.3, 0.3, 0.3);
+			emitFirebendingLight(this.player.getLocation());
 			double timefactor;
 
 			if (this.bPlayer.isAvatarState() && this.avatarStateToggled) {

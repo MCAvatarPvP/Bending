@@ -56,13 +56,6 @@ public class LavaSurgeWave extends LavaAbility {
 		this.waveBlocks = new ConcurrentHashMap<Block, Block>();
 		this.frozenBlocks = new ConcurrentHashMap<Block, Block>();
 
-		if (this.bPlayer.isAvatarState()) {
-			this.range = AvatarState.getValue(bPlayer, this.range);
-			this.maxRadius = AvatarState.getValue(bPlayer, this.maxRadius);
-			this.horizontalPush = AvatarState.getValue(bPlayer, this.horizontalPush);
-			this.verticalPush = AvatarState.getValue(bPlayer, this.verticalPush);
-		}
-
 		if (this.prepare()) {
 			final LavaSurgeWave wave = getAbility(player, LavaSurgeWave.class);
 			if (wave != null) {

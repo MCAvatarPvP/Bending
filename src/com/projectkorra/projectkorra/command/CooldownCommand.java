@@ -66,6 +66,10 @@ public class CooldownCommand extends PKCommand {
 
         BendingPlayer.getOrLoadOfflineAsync(oPlayer).thenAccept(bPlayer -> {
             if (Arrays.asList(new String[] {"view", "v"}).contains(list.get(0).toLowerCase())) {
+                if (!this.hasPermission(sender, "view")) {
+                    return;
+                }
+
                 List<String> cooldowns = bPlayer.getCooldowns().entrySet().stream()
                         .sorted(Comparator.comparingLong(entry -> entry.getValue().getCooldown()))
                         .filter(entry -> entry.getValue().getCooldown() > 0)
@@ -109,6 +113,10 @@ public class CooldownCommand extends PKCommand {
                 cooldown = list.get(2);
 
             if (list.size() > 3 && set) {
+                if (!this.hasPermission(sender, "set")) {
+                    return;
+                }
+
                 long time;
                 try {
                     time = TimeUtil.unformatTime(list.get(3));
@@ -118,7 +126,8 @@ public class CooldownCommand extends PKCommand {
                 }
                 if (cooldown.equals("*") || cooldown.equalsIgnoreCase("ALL")) {
                     if (time == 0) {
-                        bPlayer.getCooldowns().keySet().forEach(bPlayer::removeCooldown); //We do this instead of clear() because we need to call the event
+                        Set<String> cooldownKeys = new HashSet<>(bPlayer.getCooldowns().keySet()); //Clone the list to prevent concurrentmodifications
+                        cooldownKeys.forEach(bPlayer::removeCooldown); //We do this instead of clear() because we need to call the event
                         bPlayer.saveCooldowns();
                         ChatUtil.sendBrandingMessage(sender, ChatColor.RED + ConfigManager.languageConfig.get().getString("Commands.Cooldown.ResetAll").replace("{player}", oPlayer.getName()));
                         return;
@@ -136,10 +145,17 @@ public class CooldownCommand extends PKCommand {
                         oPlayer.getName()).replace("{cooldown}", fixedCooldown).replace("{value}", TimeUtil.formatTime(time));
                 ChatUtil.sendBrandingMessage(sender, ChatColor.GREEN + message);
             } else if (set) {
+                if (!this.hasPermission(sender, "set")) {
+                    return;
+                }
                 ChatUtil.sendBrandingMessage(sender, ChatColor.RED + ConfigManager.languageConfig.get().getString("Commands.Cooldown.SetNoValue"));
             } else {
+                if (!this.hasPermission(sender, "reset")) {
+                    return;
+                }
                 if (cooldown.equals("*") || cooldown.equalsIgnoreCase("ALL")) {
-                    bPlayer.getCooldowns().keySet().forEach(bPlayer::removeCooldown); //We do this instead of clear() because we need to call the event
+                    Set<String> cooldownKeys = new HashSet<>(bPlayer.getCooldowns().keySet()); //Clone the list to prevent concurrentmodifications
+                    cooldownKeys.forEach(bPlayer::removeCooldown); //We do this instead of clear() because we need to call the event
                     bPlayer.saveCooldowns();
                     ChatUtil.sendBrandingMessage(sender, ChatColor.GREEN + ConfigManager.languageConfig.get().getString("Commands.Cooldown.ResetAll").replace("{player}", oPlayer.getName()));
                     return;
@@ -154,6 +170,9 @@ public class CooldownCommand extends PKCommand {
                         oPlayer.getName()).replace("{cooldown}", fixedCooldown);
                 ChatUtil.sendBrandingMessage(sender, ChatColor.GREEN + message);
             }
+        }).exceptionally(e -> {
+            e.printStackTrace();
+            return null;
         });
     }
 
@@ -164,12 +183,10 @@ public class CooldownCommand extends PKCommand {
             return null;
         }
 
-        boolean cancelled = false;
-        if (bPlayer.getPlayer().isOnline()) {
-            final PlayerCooldownChangeEvent event = new PlayerCooldownChangeEvent(((BendingPlayer)bPlayer).getPlayer(), cooldown, time, time <= 0 ? PlayerCooldownChangeEvent.Result.REMOVED : PlayerCooldownChangeEvent.Result.SET);
-            Bukkit.getServer().getPluginManager().callEvent(event);
-            cancelled = event.isCancelled();
-        }
+        final PlayerCooldownChangeEvent event = new PlayerCooldownChangeEvent((bPlayer).getPlayer(), cooldown, time, time <= 0 ? PlayerCooldownChangeEvent.Result.REMOVED : PlayerCooldownChangeEvent.Result.SET);
+        Bukkit.getServer().getPluginManager().callEvent(event);
+        boolean cancelled = event.isCancelled();
+
 
         if (!cancelled) {
             if (time <= 0) {

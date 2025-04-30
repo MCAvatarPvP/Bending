@@ -1,15 +1,6 @@
 package com.projectkorra.projectkorra.command;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-
-import com.projectkorra.projectkorra.util.ChatUtil;
-import net.md_5.bungee.api.ChatColor;
-import org.bukkit.command.CommandSender;
-import org.bukkit.entity.Player;
-
+import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.ComboAbility;
@@ -17,6 +8,21 @@ import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.PassiveAbility;
 import com.projectkorra.projectkorra.ability.util.ComboManager;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
+import com.projectkorra.projectkorra.util.ChatUtil;
+import net.md_5.bungee.api.ChatColor;
+import net.md_5.bungee.api.chat.ClickEvent;
+import net.md_5.bungee.api.chat.ComponentBuilder;
+import net.md_5.bungee.api.chat.HoverEvent;
+import net.md_5.bungee.api.chat.hover.content.Text;
+import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Player;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Executor for /bending help. Extends {@link PKCommand}.
@@ -26,15 +32,15 @@ public class HelpCommand extends PKCommand {
 	private final String required;
 	private final String optional;
 	private final String properUsage;
-	private final String learnMore;
-	private final String air;
-	private final String water;
-	private final String earth;
-	private final String fire;
-	private final String chi;
-	private final String avatar;
+	private final Map<Element, String> elementHelp = new HashMap<>();
 	private final String invalidTopic;
 	private final String usage;
+	private final String slotFormat;
+	private final String bindStart;
+	private final String bindSeperator;
+	private final String bindEnd;
+	private final String hoverBind;
+	private final boolean enableQuickBind;
 
 	public HelpCommand() {
 		super("help", "/bending help <Page/Topic>", ConfigManager.languageConfig.get().getString("Commands.Help.Description"), new String[] { "help", "h" });
@@ -42,15 +48,22 @@ public class HelpCommand extends PKCommand {
 		this.required = ConfigManager.languageConfig.get().getString("Commands.Help.Required");
 		this.optional = ConfigManager.languageConfig.get().getString("Commands.Help.Optional");
 		this.properUsage = ConfigManager.languageConfig.get().getString("Commands.Help.ProperUsage");
-		this.learnMore = ConfigManager.languageConfig.get().getString("Commands.Help.Elements.LearnMore");
-		this.air = ConfigManager.languageConfig.get().getString("Commands.Help.Elements.Air");
-		this.water = ConfigManager.languageConfig.get().getString("Commands.Help.Elements.Water");
-		this.earth = ConfigManager.languageConfig.get().getString("Commands.Help.Elements.Earth");
-		this.fire = ConfigManager.languageConfig.get().getString("Commands.Help.Elements.Fire");
-		this.chi = ConfigManager.languageConfig.get().getString("Commands.Help.Elements.Chi");
-		this.avatar = ConfigManager.languageConfig.get().getString("Commands.Help.Elements.Avatar");
 		this.invalidTopic = ConfigManager.languageConfig.get().getString("Commands.Help.InvalidTopic");
 		this.usage = ConfigManager.languageConfig.get().getString("Commands.Help.Usage");
+		this.slotFormat = ConfigManager.languageConfig.get().getString("Commands.Help.SlotFormat");
+		this.bindStart = ConfigManager.languageConfig.get().getString("Commands.Help.BindStart");
+		this.bindSeperator = ConfigManager.languageConfig.get().getString("Commands.Help.BindSeparator");
+		this.bindEnd = ConfigManager.languageConfig.get().getString("Commands.Help.BindEnd");
+		this.hoverBind = ConfigManager.languageConfig.get().getString("Commands.Help.HoverBind");
+		this.enableQuickBind = ConfigManager.languageConfig.get().getBoolean("Commands.Help.EnableQuickBind");
+
+		elementHelp.clear();
+
+		for (Element e : Element.getAllElements()) {
+			if (ConfigManager.languageConfig.get().contains("Commands.Help.Elements." + e.getName())) {
+				elementHelp.put(e, ChatUtil.multiline(ChatUtil.color(ConfigManager.languageConfig.get().getString("Commands.Help.Elements." + e.getName()))));
+			}
+		}
 	}
 
 	@Override
@@ -59,8 +72,8 @@ public class HelpCommand extends PKCommand {
 
 		if (!this.hasPermission(sender) || !this.correctLength(sender, args.size(), 0, 1)) {
 			return;
-		} else if (args.size() == 0) {
-			final List<String> strings = new ArrayList<String>();
+		} else if (args.isEmpty()) {
+			final List<String> strings = new ArrayList<>();
 			for (final PKCommand command : instances.values()) {
 				if (!command.getName().equalsIgnoreCase("help") && sender.hasPermission("bending.command." + command.getName())) {
 					strings.add(command.getProperUse());
@@ -86,7 +99,7 @@ public class HelpCommand extends PKCommand {
 		final String arg = args.get(0).toLowerCase();
 
 		if (this.isNumeric(arg)) {
-			final List<String> strings = new ArrayList<String>();
+			final List<String> strings = new ArrayList<>();
 			for (final PKCommand command : instances.values()) {
 				strings.add(command.getProperUse());
 			}
@@ -108,54 +121,58 @@ public class HelpCommand extends PKCommand {
 		} else if (CoreAbility.getAbility(arg) != null && !(CoreAbility.getAbility(arg) instanceof ComboAbility) && CoreAbility.getAbility(arg).isEnabled() && !CoreAbility.getAbility(arg).isHiddenAbility() || CoreAbility.getAbility(arg) instanceof PassiveAbility) { // bending help ability.
 			final CoreAbility ability = CoreAbility.getAbility(arg);
 			final ChatColor color = ability.getElement().getColor();
+			final boolean isAddonAbility = ability instanceof AddonAbility;
+			final boolean isPassiveAbility = ability instanceof PassiveAbility;
+			
+			
+			sender.sendMessage(color + (ChatColor.BOLD + ability.getName()) + ChatColor.WHITE + (isAddonAbility ? (isPassiveAbility ? " (Addon Passive)" : " (Addon)") : (isPassiveAbility ? " (Passive)" : "")));
+			sender.sendMessage(color + ability.getDescription());
+			
+			if (!ability.getInstructions().isEmpty()) {
+				sender.sendMessage(ChatColor.WHITE + this.usage + ability.getInstructions());
+			}
+			
+			if (!isPassiveAbility && sender instanceof Player && this.enableQuickBind && BendingPlayer.getBendingPlayer((Player)sender).canBind(CoreAbility.getAbility(arg))) {
+				final ComponentBuilder bindShortcut = new ComponentBuilder();
+				bindShortcut.appendLegacy(ChatUtil.color(this.bindStart));
+				bindShortcut.append("", ComponentBuilder.FormatRetention.NONE);
 
-			if (ability instanceof AddonAbility) {
-				if (ability instanceof PassiveAbility) {
-					sender.sendMessage(color + (ChatColor.BOLD + ability.getName()) + ChatColor.WHITE + " (Addon Passive)");
-				} else {
-					sender.sendMessage(color + (ChatColor.BOLD + ability.getName()) + ChatColor.WHITE + " (Addon)");
+				for (int i = 1; i <= 9; i++) {
+					if (i > 1) {
+						bindShortcut.appendLegacy(ChatUtil.color(this.bindSeperator));
+						bindShortcut.append("", ComponentBuilder.FormatRetention.NONE);
+					}
+					
+					bindShortcut.appendLegacy(ChatUtil.color(this.slotFormat.replace("{slot}", String.valueOf(i)).replace("{element_color}", color.toString())));
+					bindShortcut.event(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new Text(new ComponentBuilder().appendLegacy( ChatColor.WHITE + this.hoverBind.replace("{ability}", color + ability.getName() + ChatColor.WHITE).replace("{slot}", color + String.valueOf(i) + ChatColor.WHITE)).create())));
+					bindShortcut.event(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/bending bind " + ability.getName() + " " + i));
+					bindShortcut.append("", ComponentBuilder.FormatRetention.NONE);
 				}
 
-				sender.sendMessage(color + ability.getDescription());
-
-				if (!ability.getInstructions().isEmpty()) {
-					sender.sendMessage(ChatColor.WHITE + this.usage + ability.getInstructions());
-				}
-
-				final AddonAbility abil = (AddonAbility) CoreAbility.getAbility(arg);
-				sender.sendMessage(color + "- By: " + ChatColor.WHITE + abil.getAuthor());
-				sender.sendMessage(color + "- Version: " + ChatColor.WHITE + abil.getVersion());
-			} else {
-				if (ability instanceof PassiveAbility) {
-					sender.sendMessage(color + (ChatColor.BOLD + ability.getName()) + ChatColor.WHITE + " (Passive)");
-				} else {
-					sender.sendMessage(color + (ChatColor.BOLD + ability.getName()));
-				}
-
-				sender.sendMessage(color + ability.getDescription());
-
-				if (!ability.getInstructions().isEmpty()) {
-					sender.sendMessage(ChatColor.WHITE + this.usage + ability.getInstructions());
-				}
+				bindShortcut.appendLegacy(ChatUtil.color(this.bindEnd));
+				sender.spigot().sendMessage(bindShortcut.create());
+			}
+			
+			if (isAddonAbility) {
+				final AddonAbility addonAbility = (AddonAbility) ability;
+				sender.sendMessage(color + "- By: " + ChatColor.WHITE + addonAbility.getAuthor());
+				sender.sendMessage(color + "- Version: " + ChatColor.WHITE + addonAbility.getVersion());
 			}
 		} else if (Arrays.asList(Commands.airaliases).contains(arg)) {
-			sender.sendMessage(Element.AIR.getColor() + this.air.replace("/b display Air", Element.AIR.getSubColor() + "/b display Air" + Element.AIR.getColor()));
-			sender.sendMessage(ChatColor.YELLOW + this.learnMore + ChatColor.DARK_AQUA + "http://projectkorra.com/");
+			sender.sendMessage(Element.AIR.getColor() + this.elementHelp.get(Element.AIR).replaceAll("(?i)/b display air", Element.AIR.getSubColor() + "/b display air" + Element.AIR.getColor()));
 		} else if (Arrays.asList(Commands.wateraliases).contains(arg)) {
-			sender.sendMessage(Element.WATER.getColor() + this.water.replace("/b display Water", Element.WATER.getSubColor() + "/b display Water" + Element.WATER.getColor()));
-			sender.sendMessage(ChatColor.YELLOW + this.learnMore + ChatColor.DARK_AQUA + "http://projectkorra.com/");
+			sender.sendMessage(Element.WATER.getColor() + this.elementHelp.get(Element.WATER).replaceAll("(?i)/b display water", Element.WATER.getSubColor() + "/b display water" + Element.WATER.getColor()));
 		} else if (Arrays.asList(Commands.earthaliases).contains(arg)) {
-			sender.sendMessage(Element.EARTH.getColor() + this.earth.replace("/b display Earth", Element.EARTH.getSubColor() + "/b display Earth" + Element.EARTH.getColor()));
-			sender.sendMessage(ChatColor.YELLOW + this.learnMore + ChatColor.DARK_AQUA + "http://projectkorra.com/");
+			sender.sendMessage(Element.EARTH.getColor() + this.elementHelp.get(Element.EARTH).replaceAll("(?i)/b display earth", Element.EARTH.getSubColor() + "/b display earth" + Element.EARTH.getColor()));
 		} else if (Arrays.asList(Commands.firealiases).contains(arg)) {
-			sender.sendMessage(Element.FIRE.getColor() + this.fire.replace("/b display Fire", Element.FIRE.getSubColor() + "/b display Fire" + Element.FIRE.getColor()));
-			sender.sendMessage(ChatColor.YELLOW + this.learnMore + ChatColor.DARK_AQUA + "http://projectkorra.com/");
+			sender.sendMessage(Element.FIRE.getColor() + this.elementHelp.get(Element.FIRE).replaceAll("(?i)/b display fire", Element.FIRE.getSubColor() + "/b display fire" + Element.FIRE.getColor()));
 		} else if (Arrays.asList(Commands.chialiases).contains(arg)) {
-			sender.sendMessage(Element.CHI.getColor() + this.chi.replace("/b display Chi", Element.CHI.getSubColor() + "/b display Chi" + Element.CHI.getColor()));
-			sender.sendMessage(ChatColor.YELLOW + this.learnMore + ChatColor.DARK_AQUA + "http://projectkorra.com/");
+			sender.sendMessage(Element.CHI.getColor() + this.elementHelp.get(Element.CHI).replaceAll("(?i)/b display chi", Element.CHI.getSubColor() + "/b display chi" + Element.CHI.getColor()));
 		} else if (Arrays.asList(Commands.avataraliases).contains(arg)) {
-			sender.sendMessage(Element.AVATAR.getColor() + this.avatar.replace("/b display Avatar", Element.AVATAR.getSubColor() + "/b display Avatar" + Element.AVATAR.getColor()));
-			sender.sendMessage(ChatColor.YELLOW + this.learnMore + ChatColor.DARK_AQUA + "http://projectkorra.com/");
+			sender.sendMessage(Element.AVATAR.getColor() + this.elementHelp.get(Element.AVATAR).replaceAll("(?i)/b display avatar", Element.AVATAR.getSubColor() + "/b display avatar" + Element.AVATAR.getColor()));
+		} else if (Element.getElement(arg) != null && elementHelp.containsKey(Element.getElement(arg))) {
+			Element element = Element.getElement(arg);
+			sender.sendMessage(element.getColor() + this.elementHelp.get(element).replaceAll("(?i)/b display " + element.getName().toLowerCase(), element.getSubColor() + "/b display " + element.getName().toLowerCase() + element.getColor()));
 		} else {
 			// combos - handled differently because they're stored in CamelCase in ComboManager.
 			for (final String combo : ComboManager.getDescriptions().keySet()) {
@@ -190,16 +207,16 @@ public class HelpCommand extends PKCommand {
 
 	@Override
 	protected List<String> getTabCompletion(final CommandSender sender, final List<String> args) {
-		if (args.size() >= 1 || !sender.hasPermission("bending.command.help")) {
-			return new ArrayList<String>();
+		if (!args.isEmpty() || !sender.hasPermission("bending.command.help")) {
+			return new ArrayList<>();
 		}
 
-		final List<String> list = new ArrayList<String>();
+		final List<String> list = new ArrayList<>();
 		for (final Element e : Element.getAllElements()) {
 			list.add(e.getName());
 		}
 
-		final List<String> abils = new ArrayList<String>();
+		final List<String> abils = new ArrayList<>();
 		for (final CoreAbility coreAbil : CoreAbility.getAbilities()) {
 			if (!(sender instanceof Player) && (!coreAbil.isHiddenAbility()) && coreAbil.isEnabled() && !abils.contains(coreAbil.getName())) {
 				abils.add(coreAbil.getName());

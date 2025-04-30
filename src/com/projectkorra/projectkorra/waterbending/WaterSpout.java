@@ -7,6 +7,7 @@ import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.projectkorra.projectkorra.util.FallHandler;
+import com.projectkorra.projectkorra.attribute.markers.DayNightFactor;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
@@ -34,14 +35,14 @@ public class WaterSpout extends WaterAbility {
 	private int angle;
 	private long time;
 	private long interval;
-	@Attribute(Attribute.COOLDOWN)
+	@Attribute(Attribute.COOLDOWN) @DayNightFactor(invert = true)
 	private long cooldown;
-	@Attribute(Attribute.DURATION)
+	@Attribute(Attribute.DURATION) @DayNightFactor
 	private long duration;
 	private long startTime;
 	private double rotation;
+	@Attribute(Attribute.HEIGHT) @DayNightFactor(factor = 1.3F)
 	private double height;
-	@Attribute(Attribute.HEIGHT)
 	private double maxHeight;
 	private Block base;
 	private TempBlock baseBlock;
@@ -63,8 +64,8 @@ public class WaterSpout extends WaterAbility {
 		this.canBendOnPackedIce = getConfig().getStringList("Properties.Water.IceBlocks").contains(Material.PACKED_ICE.toString());
 		this.useParticles = getConfig().getBoolean("Abilities.Water.WaterSpout.Particles");
 		this.useBlockSpiral = getConfig().getBoolean("Abilities.Water.WaterSpout.BlockSpiral");
-		this.cooldown = applyInverseModifiers(getConfig().getLong("Abilities.Water.WaterSpout.Cooldown"));
-		this.height = applyModifiers(getConfig().getDouble("Abilities.Water.WaterSpout.Height"));
+		this.cooldown = getConfig().getLong("Abilities.Water.WaterSpout.Cooldown");
+		this.height = getConfig().getDouble("Abilities.Water.WaterSpout.Height");
 		this.interval = getConfig().getLong("Abilities.Water.WaterSpout.Interval");
 		this.duration = getConfig().getLong("Abilities.Water.WaterSpout.Duration");
 		this.startTime = System.currentTimeMillis();
@@ -73,13 +74,14 @@ public class WaterSpout extends WaterAbility {
 		this.spoutHopPower = getConfig().getDouble("Abilities.Water.WaterSpout.SpoutHop.Power");
 		this.spoutHopCooldown = getConfig().getLong("Abilities.Water.WaterSpout.SpoutHop.Cooldown");
 
-		this.maxHeight = this.getNightFactor(this.height);
+		this.maxHeight = this.height;
+		this.recalculateAttributes();
 		final WaterSpoutWave spoutWave = new WaterSpoutWave(player, WaterSpoutWave.AbilityType.CLICK);
 		if (spoutWave.isStarted() && !spoutWave.isRemoved()) {
 			return;
 		}
 
-		Block topBlock = GeneralMethods.getTopBlock(player.getLocation(), (int) -this.getNightFactor(this.height), (int) -this.getNightFactor(this.height));
+		Block topBlock = GeneralMethods.getTopBlock(player.getLocation(), (int) -this.height, (int) -this.height);
 		if (topBlock == null) {
 			topBlock = player.getLocation().getBlock();
 		}
@@ -107,6 +109,7 @@ public class WaterSpout extends WaterAbility {
 			GeneralMethods.setVelocity(this, player, push);
 			bPlayer.addCooldown("SpoutHop", spoutHopCooldown);
 		}
+		this.bPlayer.addCooldown(this);
 	}
 
 	private void displayWaterSpiral(final Location location) {
@@ -271,9 +274,6 @@ public class WaterSpout extends WaterAbility {
 
 	private double spoutableWaterHeight(final Location location) {
 		double newHeight = this.height;
-		if (isNight(this.player.getWorld())) {
-			newHeight = this.getNightFactor(newHeight);
-		}
 
 		this.maxHeight = newHeight + 5;
 		Block blocki;
@@ -475,6 +475,10 @@ public class WaterSpout extends WaterAbility {
 
 	public void setBaseBlock(final TempBlock baseBlock) {
 		this.baseBlock = baseBlock;
+	}
+
+	public boolean canSpoutHop() {
+		return canSpoutHop;
 	}
 
 	public static Map<Block, Block> getAffectedBlocks() {

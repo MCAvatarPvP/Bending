@@ -1,19 +1,12 @@
 package com.projectkorra.projectkorra;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
+import com.google.common.io.Files;
+
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.lang.reflect.Field;
-import java.sql.SQLException;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -46,7 +39,6 @@ import org.bukkit.event.HandlerList;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.MainHand;
 import org.bukkit.plugin.Plugin;
-import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
@@ -70,26 +62,52 @@ import com.projectkorra.projectkorra.airbending.AirShield;
 import com.projectkorra.projectkorra.airbending.AirSpout;
 import com.projectkorra.projectkorra.airbending.AirSuction;
 import com.projectkorra.projectkorra.airbending.AirSwipe;
+import com.projectkorra.projectkorra.airbending.util.AirbendingManager;
 import com.projectkorra.projectkorra.board.BendingBoardManager;
+import com.projectkorra.projectkorra.chiblocking.util.ChiblockingManager;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.earthbending.EarthBlast;
 import com.projectkorra.projectkorra.earthbending.EarthTunnel;
 import com.projectkorra.projectkorra.earthbending.passive.EarthPassive;
+import com.projectkorra.projectkorra.earthbending.util.EarthbendingManager;
 import com.projectkorra.projectkorra.event.AbilityVelocityAffectEntityEvent;
 import com.projectkorra.projectkorra.event.BendingReloadEvent;
 import com.projectkorra.projectkorra.firebending.FireBlast;
 import com.projectkorra.projectkorra.firebending.FireShield;
 import com.projectkorra.projectkorra.firebending.combustion.Combustion;
+import com.projectkorra.projectkorra.firebending.util.FirebendingManager;
 import com.projectkorra.projectkorra.object.Preset;
 import com.projectkorra.projectkorra.storage.DBConnection;
 import com.projectkorra.projectkorra.util.ColoredParticle;
-import com.projectkorra.projectkorra.util.MovementHandler;
+import com.projectkorra.projectkorra.util.LightManager;
+import com.projectkorra.projectkorra.util.MovementHandle;
 import com.projectkorra.projectkorra.util.ParticleEffect;
+import com.projectkorra.projectkorra.util.RevertChecker;
 import com.projectkorra.projectkorra.util.TempArmor;
 import com.projectkorra.projectkorra.util.TempArmorStand;
 import com.projectkorra.projectkorra.util.TempBlock;
 import com.projectkorra.projectkorra.waterbending.WaterManipulation;
 import com.projectkorra.projectkorra.waterbending.WaterSpout;
+import com.projectkorra.projectkorra.waterbending.blood.Bloodbending;
+import com.projectkorra.projectkorra.waterbending.util.WaterbendingManager;
+import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.World;
+
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 
 public class GeneralMethods {
 
@@ -238,64 +256,19 @@ public class GeneralMethods {
 		return getArmorTier(first) - getArmorTier(second);
 	}
 
-	/**
-	 * Creates a {@link BendingPlayer} with the data from the database. This
-	 * runs when a player logs in.
-	 *
-	 * @param uuid The UUID of the player
-	 * @param player The player name
-	 * @throws SQLException
-	 */
-	/*public static void createBendingPlayer(final UUID uuid, final String player) {
-		new BukkitRunnable() {
-
-			@Override
-			public void run() {
-				OfflineBendingPlayer.createBendingPlayerAsynchronously(uuid, player);
-			}
-
-		}.runTaskAsynchronously(ProjectKorra.plugin);
-	}*/
-
-	/**
-	 * Deserializes the configuration file "bendingPlayers.yml" of the old
-	 * BendingPlugin and creates a converted.yml ready for conversion.
-	 *
-	 * @throws IOException If the "bendingPlayers.yml" file is not found
-	 */
-	public static void deserializeFile() {
-		final File readFile = new File(".", "bendingPlayers.yml");
-		final File writeFile = new File(".", "converted.yml");
-		if (readFile.exists()) {
-			try (DataInputStream input = new DataInputStream(new FileInputStream(readFile)); BufferedReader reader = new BufferedReader(new InputStreamReader(input));
-
-					DataOutputStream output = new DataOutputStream(new FileOutputStream(writeFile)); BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(output))) {
-
-				String line;
-				while ((line = reader.readLine()) != null) {
-					if (!line.trim().contains("==: BendingPlayer")) {
-						writer.write(line + "\n");
-					}
-				}
-			} catch (final IOException e) {
-				e.printStackTrace();
-			}
-		}
-	}
-
 	@Deprecated
 	public static void displayColoredParticle(final Location loc, ParticleEffect type, final String hexVal, final float xOffset, final float yOffset, final float zOffset) {
 		int r = 0;
 		int g = 0;
 		int b = 0;
 		if (hexVal.length() <= 6) {
-			r = Integer.valueOf(hexVal.substring(0, 2), 16).intValue();
-			g = Integer.valueOf(hexVal.substring(2, 4), 16).intValue();
-			b = Integer.valueOf(hexVal.substring(4, 6), 16).intValue();
-		} else if (hexVal.length() <= 7 && hexVal.substring(0, 1).equals("#")) {
-			r = Integer.valueOf(hexVal.substring(1, 3), 16).intValue();
-			g = Integer.valueOf(hexVal.substring(3, 5), 16).intValue();
-			b = Integer.valueOf(hexVal.substring(5, 7), 16).intValue();
+			r = Integer.valueOf(hexVal.substring(0, 2), 16);
+			g = Integer.valueOf(hexVal.substring(2, 4), 16);
+			b = Integer.valueOf(hexVal.substring(4, 6), 16);
+		} else if (hexVal.length() <= 7 && hexVal.charAt(0) == '#') {
+			r = Integer.valueOf(hexVal.substring(1, 3), 16);
+			g = Integer.valueOf(hexVal.substring(3, 5), 16);
+			b = Integer.valueOf(hexVal.substring(5, 7), 16);
 		}
 		float red = r / 255.0F;
 		final float green = g / 255.0F;
@@ -307,7 +280,7 @@ public class GeneralMethods {
 		loc.setY(loc.getY() + (Math.random() * 2 - 1) * yOffset);
 		loc.setZ(loc.getZ() + (Math.random() * 2 - 1) * zOffset);
 
-		if (type != ParticleEffect.RED_DUST && type != ParticleEffect.REDSTONE && type != ParticleEffect.SPELL_MOB && type != ParticleEffect.MOB_SPELL && type != ParticleEffect.SPELL_MOB_AMBIENT && type != ParticleEffect.MOB_SPELL_AMBIENT) {
+		if (type != ParticleEffect.RED_DUST && type != ParticleEffect.REDSTONE && type != ParticleEffect.SPELL_MOB && type != ParticleEffect.MOB_SPELL && type != ParticleEffect.SPELL_MOB_AMBIENT) {
 			type = ParticleEffect.RED_DUST;
 		}
 		type.display(loc, 0, red, green, blue);
@@ -378,7 +351,7 @@ public class GeneralMethods {
 	/**
 	 * Gets the number of absorption hearts of a specified {@link Player}.
 	 * @param player the {@link Player} to get the absorption hearts of.
-	 * @deprecated Use {@link Player#getAbsorptionAmount()}.
+	 * @deprecated Use Player#getAbsorptionAmount instead.
 	 */
 	@Deprecated
 	public static float getAbsorbationHealth(final Player player) {
@@ -389,7 +362,7 @@ public class GeneralMethods {
 	 * Sets the number of absorption hearts of a specified {@link Player}.
 	 * @param player the {@link Player} to set the absorption hearts of.
 	 * @param hearts a float representing the number of hearts to set.
-	 * @deprecated Use {@link Player#setAbsorptionAmount(double)}
+	 * @deprecated Use Player#setAbsorbationHealth instead.
 	 */
 	@Deprecated
 	public static void setAbsorbationHealth(final Player player, final float hearts) {
@@ -965,13 +938,25 @@ public class GeneralMethods {
 	}
 
 	public static Location getMainHandLocation(final Player player) {
-		Location loc;
+		double y = 1.2 - (player.isSneaking() ? 0.4 : 0);
 		if (player.getMainHand() == MainHand.LEFT) {
-			loc = GeneralMethods.getLeftSide(player.getLocation(), .55).add(0, 1.2, 0);
+			return GeneralMethods.getLeftSide(player.getLocation(), .55).add(0, y, 0)
+					.add(player.getLocation().getDirection().multiply(0.8));
 		} else {
-			loc = GeneralMethods.getRightSide(player.getLocation(), .55).add(0, 1.2, 0);
+			return GeneralMethods.getRightSide(player.getLocation(), .55).add(0, y, 0)
+					.add(player.getLocation().getDirection().multiply(0.8));
 		}
-		return loc;
+	}
+
+	public static Location getOffHandLocation(final Player player) {
+		double y = 1.2 - (player.isSneaking() ? 0.4 : 0);
+		if (player.getMainHand() == MainHand.RIGHT) {
+			return GeneralMethods.getLeftSide(player.getLocation(), .55).add(0, y, 0)
+					.add(player.getLocation().getDirection().multiply(0.8));
+		} else {
+			return GeneralMethods.getRightSide(player.getLocation(), .55).add(0, y, 0)
+					.add(player.getLocation().getDirection().multiply(0.8));
+		}
 	}
 
 	public static Plugin getProbending() {
@@ -1001,6 +986,26 @@ public class GeneralMethods {
 
 	public static BlockData getWaterData(final int level) {
 		return Material.WATER.createBlockData(d -> ((Levelled) d).setLevel((level < 0 || level > ((Levelled) d).getMaximumLevel()) ? 0 : level));
+	}
+
+	public static BlockData getCauldronData(final Material material, final int level) {
+		if (!material.name().contains("CAULDRON")) {
+			return null;
+		}
+		return material.createBlockData(d -> ((Levelled) d).setLevel((level > 3 || level > ((Levelled) d).getMaximumLevel()) ? 3 : level < 1 ? 1 : level));
+	}
+
+	public static void setCauldronData(final Block block, final int level) {
+		if (block.getBlockData() instanceof Levelled) {
+			Levelled levelled = (Levelled) block.getBlockData();
+			if (level >= 1 && level < 3) {
+				levelled.setLevel(level);
+				block.setBlockData(levelled);
+			} else if (level < 1) {
+				block.setType(Material.CAULDRON);
+			}
+		}
+		return;
 	}
 
 	public static Entity getTargetedEntity(final Player player, final double range, final List<Entity> avoid) {
@@ -1249,15 +1254,13 @@ public class GeneralMethods {
 		return sources >= 2;
 	}
 
-	public static boolean isImportEnabled() {
-		return ConfigManager.defaultConfig.get().getBoolean("Properties.ImportEnabled");
-	}
-
 	public static boolean isInteractable(final Block block) {
 		return isInteractable(block.getType());
 	}
 
 	public static boolean isInteractable(final Material material) {
+		if (GeneralMethods.getMCVersion() >= 1170 && material == Material.getMaterial("LIGHT")) return false;
+
 		return material.isInteractable();
 	}
 
@@ -1415,9 +1418,14 @@ public class GeneralMethods {
 			DBConnection.sql.close();
 		}
 		GeneralMethods.stopBending();
+
+		// Reverts all active lights, then restarts the light revert scheduler
+		LightManager.get().restart();
+
 		ConfigManager.defaultConfig.reload();
 		ConfigManager.languageConfig.reload();
 		ConfigManager.presetConfig.reload();
+		ConfigManager.avatarStateConfig.reload();
 		ConfigManager.collisionConfig.reload();
 		ConfigManager.fireColorsConfig.reload();
 		ConfigManager.airColorsConfig.reload();
@@ -1429,8 +1437,21 @@ public class GeneralMethods {
 		Arrays.stream(Element.getSubElements()).forEach(e -> {e.setColor(null); e.setSubColor(null);}); //Same for subs
 		ElementalAbility.clearBendableMaterials(); // Clear and re-cache the material lists on reload.
 		ElementalAbility.setupBendableMaterials();
+		// WaterAbility.setupWaterTransformableBlocks();
 		EarthTunnel.clearBendableMaterials();
+
+		Bukkit.getScheduler().cancelTasks(ProjectKorra.plugin);
+		ProjectKorra.plugin.getServer().getScheduler().scheduleSyncRepeatingTask(ProjectKorra.plugin, new BendingManager(), 0, 1);
+		ProjectKorra.plugin.getServer().getScheduler().scheduleSyncRepeatingTask(ProjectKorra.plugin, new AirbendingManager(ProjectKorra.plugin), 0, 1);
+		ProjectKorra.plugin.getServer().getScheduler().scheduleSyncRepeatingTask(ProjectKorra.plugin, new WaterbendingManager(ProjectKorra.plugin), 0, 1);
+		ProjectKorra.plugin.getServer().getScheduler().scheduleSyncRepeatingTask(ProjectKorra.plugin, new EarthbendingManager(ProjectKorra.plugin), 0, 1);
+		ProjectKorra.plugin.getServer().getScheduler().scheduleSyncRepeatingTask(ProjectKorra.plugin, new FirebendingManager(ProjectKorra.plugin), 0, 1);
+		ProjectKorra.plugin.getServer().getScheduler().scheduleSyncRepeatingTask(ProjectKorra.plugin, new ChiblockingManager(ProjectKorra.plugin), 0, 1);
+		ProjectKorra.plugin.getServer().getScheduler().scheduleSyncRepeatingTask(ProjectKorra.plugin, new BendingManager.TempElementsRunnable(), 20, 20);
+		ProjectKorra.plugin.revertChecker = ProjectKorra.plugin.getServer().getScheduler().runTaskTimerAsynchronously(ProjectKorra.plugin, new RevertChecker(ProjectKorra.plugin), 0, 200);
+
 		EarthTunnel.setupBendableMaterials();
+		Bloodbending.loadBloodlessFromConfig();
 		Preset.loadExternalPresets();
 		new MultiAbilityManager();
 		new ComboManager();
@@ -1454,6 +1475,8 @@ public class GeneralMethods {
 		}
 		BendingPlayer.getOfflinePlayers().clear();
 		BendingPlayer.getPlayers().clear();
+		OfflineBendingPlayer.TEMP_ELEMENTS.clear();
+		BendingPlayer.DISABLED_WORLDS = new HashSet<>(ConfigManager.defaultConfig.get().getStringList("Properties.DisabledWorlds"));
 		BendingBoardManager.reload();
 		for (final Player player : Bukkit.getOnlinePlayers()) {
 			Preset.unloadPreset(player);
@@ -1531,146 +1554,118 @@ public class GeneralMethods {
 		return vec2;
 	}
 
-	public static void runDebug() {
+	public static boolean runDebug() {
 		final File debugFile = new File(plugin.getDataFolder(), "debug.txt");
 		if (debugFile.exists()) {
-			debugFile.delete(); // We're starting brand new.
-		}
-		writeToDebug("ProjectKorra Debug: Paste this on http://pastie.org and put it in your bug report thread.");
-		writeToDebug("====================");
-		writeToDebug("");
-		writeToDebug("");
-		writeToDebug("Date Created: " + getCurrentDate());
-		writeToDebug("Java Version: " + Runtime.class.getPackage().getImplementationVersion());
-		writeToDebug("Bukkit Version: " + Bukkit.getServer().getVersion());
-		writeToDebug("");
-		writeToDebug("ProjectKorra (Core) Information");
-		writeToDebug("====================");
-		writeToDebug("Version: " + plugin.getDescription().getVersion());
-		writeToDebug("Author: " + plugin.getDescription().getAuthors());
-		final List<String> officialSidePlugins = new ArrayList<String>();
-		if (hasRPG()) {
-			officialSidePlugins.add("ProjectKorra RPG v" + getRPG().getDescription().getVersion());
-		}
-		if (hasItems()) {
-			officialSidePlugins.add("ProjectKorra Items v" + getItems().getDescription().getVersion());
-		}
-		if (hasSpirits()) {
-			officialSidePlugins.add("ProjectKorra Spirits v" + getSpirits().getDescription().getVersion());
-		}
-		if (hasProbending()) {
-			officialSidePlugins.add("Probending v" + getProbending().getDescription().getVersion());
-		}
-		if (!officialSidePlugins.isEmpty()) {
-			writeToDebug("");
-			writeToDebug("ProjectKorra (Side Plugin) Information");
-			writeToDebug("====================");
-			for (final String line : officialSidePlugins) {
-				writeToDebug(line);
+			String format = "yyyy-MM-dd-HH-mm-ss";
+			Instant instant = Instant.ofEpochMilli(debugFile.lastModified());
+			LocalDateTime datetime = LocalDateTime.ofInstant(instant, ZoneId.systemDefault());
+			String formatted = datetime.format(DateTimeFormatter.ofPattern(format));
+			try {
+				Files.move(debugFile, new File(debugFile.getParentFile(), "debug_" + formatted + ".txt"));
+			} catch (IOException e) {
+				e.printStackTrace();
+				debugFile.delete();
 			}
 		}
 
-		writeToDebug("");
-		writeToDebug("Supported Plugins");
-		writeToDebug("====================");
+		List<String> f = new ArrayList<>();
 
-		final boolean respectWorldGuard = ConfigManager.defaultConfig.get().getBoolean("Properties.RegionProtection.RespectWorldGuard");
-		final boolean respectPreciousStones = ConfigManager.defaultConfig.get().getBoolean("Properties.RegionProtection.RespectPreciousStones");
-		final boolean respectFactions = ConfigManager.defaultConfig.get().getBoolean("Properties.RegionProtection.RespectFactions");
-		final boolean respectTowny = ConfigManager.defaultConfig.get().getBoolean("Properties.RegionProtection.RespectTowny");
-		final boolean respectGriefPrevention = ConfigManager.defaultConfig.get().getBoolean("Properties.RegionProtection.RespectGriefPrevention");
-		final boolean respectLWC = ConfigManager.defaultConfig.get().getBoolean("Properties.RegionProtection.RespectLWC");
-		final boolean respectResidence = ConfigManager.defaultConfig.get().getBoolean("Properties.RegionProtection.Residence.Respect");
-		final boolean respectKingdoms = ConfigManager.defaultConfig.get().getBoolean("Properties.RegionProtection.Kingdoms.Respect");
-		final boolean respectRedProtect = ConfigManager.defaultConfig.get().getBoolean("Properties.RegionProtection.RedProtect");
-		final boolean respectGriefDefender = ConfigManager.defaultConfig.get().getBoolean("Properties.RegionProtection.GriefDefender");
-		final PluginManager pm = Bukkit.getPluginManager();
-
-		final Plugin wgp = pm.getPlugin("WorldGuard");
-		final Plugin psp = pm.getPlugin("PreciousStones");
-		final Plugin fcp = pm.getPlugin("FactionsFramework");
-		final Plugin twnp = pm.getPlugin("Towny");
-		final Plugin gpp = pm.getPlugin("GriefPrevention");
-		final Plugin lwc = pm.getPlugin("LWC");
-		final Plugin residence = pm.getPlugin("Residence");
-		final Plugin kingdoms = pm.getPlugin("Kingdoms");
-		final Plugin redprotect = pm.getPlugin("RedProtect");
-		final Plugin griefdefender = pm.getPlugin("GriefDefender");
-
-		if (wgp != null && respectWorldGuard) {
-			writeToDebug("WorldGuard v" + wgp.getDescription().getVersion());
+		f.add("ProjectKorra Debug: Paste this on http://pastie.org and put it in your bug report thread.");
+		f.add("====================");
+		f.add("");
+		f.add("Date Created: " + getCurrentDate());
+		f.add("Java Version: " + System.getProperty("java.version"));
+		f.add("Bukkit Version: " + Bukkit.getServer().getVersion());
+		f.add("");
+		f.add("ProjectKorra (Core) Information");
+		f.add("====================");
+		f.add("Version: " + plugin.getDescription().getVersion());
+		f.add("Author: " + plugin.getDescription().getAuthors());
+		final List<String> officialSidePlugins = new ArrayList<>();
+		if (hasRPG()) {
+			officialSidePlugins.add("- ProjectKorra RPG v" + getRPG().getDescription().getVersion());
 		}
-		if (psp != null && respectPreciousStones) {
-			writeToDebug("PreciousStones v" + psp.getDescription().getVersion());
+		if (hasItems()) {
+			officialSidePlugins.add("- ProjectKorra Items v" + getItems().getDescription().getVersion());
 		}
-		if (fcp != null && respectFactions) {
-			writeToDebug("FactionsFramework v" + fcp.getDescription().getVersion());
+		if (hasSpirits()) {
+			officialSidePlugins.add("- ProjectKorra Spirits v" + getSpirits().getDescription().getVersion());
 		}
-		if (twnp != null && respectTowny) {
-			writeToDebug("Towny v" + twnp.getDescription().getVersion());
+		if (hasProbending()) {
+			officialSidePlugins.add("- Probending v" + getProbending().getDescription().getVersion());
 		}
-		if (gpp != null && respectGriefPrevention) {
-			writeToDebug("GriefPrevention v" + gpp.getDescription().getVersion());
-		}
-		if (lwc != null && respectLWC) {
-			writeToDebug("LWC v" + lwc.getDescription().getVersion());
-		}
-		if (residence != null && respectResidence) {
-			writeToDebug("Residence v" + residence.getDescription().getVersion());
-		}
-		if (kingdoms != null && respectKingdoms) {
-			writeToDebug("Kingdoms v" + kingdoms.getDescription().getVersion());
-		}
-		if (redprotect != null && respectRedProtect) {
-			writeToDebug("RedProtect v" + redprotect.getDescription().getVersion());
-		}
-		if (griefdefender != null && respectGriefDefender) {
-			writeToDebug("GriefDefender v" + griefdefender.getDescription().getVersion());
+		if (!officialSidePlugins.isEmpty()) {
+			f.add("");
+			f.add("ProjectKorra (Side Plugin) Information");
+			f.add("====================");
+			f.addAll(officialSidePlugins);
 		}
 
-		writeToDebug("");
-		writeToDebug("Plugins Hooking Into ProjectKorra (Core)");
-		writeToDebug("====================");
+		f.add("");
+		f.add("Supported Plugins");
+		f.add("====================");
+
+		for (JavaPlugin plugin : RegionProtection.getActiveProtections().keySet()) {
+			if (plugin.isEnabled()) {
+				f.add("- " + plugin.getName() + " v" + plugin.getDescription().getVersion());
+			}
+		}
+
+		Plugin papi = Bukkit.getPluginManager().getPlugin("PlaceholderAPI");
+		if (papi != null && papi.isEnabled()) {
+			f.add("- " + papi.getName() + " v" + papi.getDescription().getVersion());
+		}
+
+		f.add("");
+		f.add("Plugins Hooking Into ProjectKorra (Core)");
+		f.add("====================");
 
 		final String[] pkPlugins = new String[] { "projectkorrarpg", "projectkorraitems", "projectkorraspirits", "probending" };
 		for (final Plugin plugin : Bukkit.getPluginManager().getPlugins()) {
-			if (plugin.getDescription().getDepend() != null && plugin.getDescription().getDepend().contains("ProjectKorra") && !Arrays.asList(pkPlugins).contains(plugin.getName().toLowerCase())) {
-				writeToDebug(plugin.getDescription().getName() + " v" + plugin.getDescription().getVersion());
+			if (plugin.getDescription().getDepend().contains("ProjectKorra") && !Arrays.asList(pkPlugins).contains(plugin.getName().toLowerCase())) {
+				f.add("- " + plugin.getDescription().getName() + " v" + plugin.getDescription().getVersion());
 			}
 		}
 
-		writeToDebug("");
-		writeToDebug("Ability Information");
-		writeToDebug("====================");
+		f.add("");
+		f.add("Ability Information");
+		f.add("====================");
 		final ArrayList<String> stockAbils = new ArrayList<String>();
 		final ArrayList<String> unofficialAbils = new ArrayList<String>();
 		for (final CoreAbility ability : CoreAbility.getAbilities()) {
 			if (ability.getClass().getPackage().getName().startsWith("com.projectkorra")) {
 				stockAbils.add(ability.getName());
 			} else {
-				unofficialAbils.add(ability.getName());
+				if (ability instanceof AddonAbility) {
+					unofficialAbils.add(ChatColor.stripColor(ability.getName() + " v" + ((AddonAbility) ability).getVersion() + " (" + ((AddonAbility) ability).getAuthor() + ")"));
+				} else {
+					unofficialAbils.add(ChatColor.stripColor(ability.getName() + " (" + ability.getClass().getName() + ")"));
+				}
 			}
 		}
 		if (!stockAbils.isEmpty()) {
 			Collections.sort(stockAbils);
 			for (final String ability : stockAbils) {
-				writeToDebug(ability + " - STOCK");
+				f.add("- " + ability + " (STOCK)");
 			}
 		}
 		if (!unofficialAbils.isEmpty()) {
 			Collections.sort(unofficialAbils);
 			for (final String ability : unofficialAbils) {
-				writeToDebug(ability + " - UNOFFICAL");
+				f.add("- " + ability);
 			}
 		}
 
-		writeToDebug("");
-		writeToDebug("Collection Sizes");
-		writeToDebug("====================");
+		f.add("");
+		f.add("Collection Sizes");
+		f.add("====================");
 		final ClassLoader loader = ProjectKorra.class.getClassLoader();
 		try {
 			for (final ClassPath.ClassInfo info : ClassPath.from(loader).getTopLevelClasses()) {
-				if (info.getName().startsWith("com.projectkorra.") && !info.getName().contains("hooks")) {
+				if (info.getName().startsWith("com.projectkorra.") && !info.getName().contains("hooks")
+						&& !info.getName().startsWith("com.projectkorra.projectkorra.region")
+						&& !info.getName().startsWith("com.projectkorra.projectkorra.ProjectKorra")) {
 					try {
 						final Class<?> clazz = info.load();
 						for (final Field field : clazz.getDeclaredFields()) {
@@ -1679,28 +1674,52 @@ public class GeneralMethods {
 							try {
 								final Object obj = field.get(null);
 								if (obj instanceof Collection) {
-									writeToDebug(simpleName + ": " + field.getName() + " size=" + ((Collection<?>) obj).size());
+									Collection<?> coll = ((Collection<?>) obj);
+									if (coll.size() > 0)
+										f.add(simpleName + ": " + field.getName() + " size=" + coll.size());
 								} else if (obj instanceof Map) {
-									writeToDebug(simpleName + ": " + field.getName() + " size=" + ((Map<?, ?>) obj).size());
+									Map<?, ?> map = (Map<?, ?>) obj;
+									if (map.size() > 0)
+										f.add(simpleName + ": " + field.getName() + " size=" + map.size());
 								}
-							} catch (final Exception ignored) {
-							}
+							} catch (final Exception ignored) {}
 						}
-					}  catch (Exception e) {
-						continue;
-					}
-
+					}  catch (Exception ignored) {}
 				}
 			}
 		} catch (final IOException e) {
 			e.printStackTrace();
 		}
 
-		writeToDebug("");
-		writeToDebug("CoreAbility Debugger");
-		writeToDebug("====================");
-		for (final String line : CoreAbility.getDebugString().split("\\n")) {
-			writeToDebug(line);
+		f.add("");
+		f.add("CoreAbility Debugger");
+		f.add("====================");
+		f.addAll(Arrays.asList(CoreAbility.getDebugString().split("\\n")));
+
+		try {
+			final File dataFolder = plugin.getDataFolder();
+			if (!dataFolder.exists()) {
+				dataFolder.mkdir();
+			}
+
+			final File saveTo = new File(plugin.getDataFolder(), "debug.txt");
+			if (saveTo.exists()) {
+				saveTo.delete();
+			}
+			saveTo.createNewFile();
+
+			final FileWriter fw = new FileWriter(saveTo, true);
+			final PrintWriter pw = new PrintWriter(fw);
+			for (String line : f) {
+				pw.println(line);
+			}
+			pw.flush();
+			pw.close();
+
+			return true;
+		} catch (final IOException e) {
+			e.printStackTrace();
+			return false;
 		}
 	}
 
@@ -1854,12 +1873,6 @@ public class GeneralMethods {
 	}
 
 	public static void stopBending() {
-		for (final CoreAbility ability : CoreAbility.getAbilities()) {
-			if (ability instanceof AddonAbility) {
-				((AddonAbility) ability).stop();
-			}
-		}
-
 		CoreAbility.removeAll();
 		EarthAbility.stopBending();
 		WaterAbility.stopBending();
@@ -1868,7 +1881,7 @@ public class GeneralMethods {
 		TempBlock.removeAll();
 		TempArmor.revertAll();
 		TempArmorStand.removeAll();
-		MovementHandler.resetAll();
+		MovementHandle.resetAll();
 		MultiAbilityManager.removeAll();
 		TempFallingBlock.removeAllFallingBlocks();
 	}
@@ -1877,59 +1890,43 @@ public class GeneralMethods {
 		plugin.getServer().getPluginManager().disablePlugin(plugin);
 	}
 
-	public static void writeToDebug(final String message) {
-		try {
-			final File dataFolder = plugin.getDataFolder();
-			if (!dataFolder.exists()) {
-				dataFolder.mkdir();
-			}
-
-			final File saveTo = new File(plugin.getDataFolder(), "debug.txt");
-			if (saveTo.exists()) {
-				saveTo.delete();
-			}
-			saveTo.createNewFile();
-
-			final FileWriter fw = new FileWriter(saveTo, true);
-			final PrintWriter pw = new PrintWriter(fw);
-			pw.println(message);
-			pw.flush();
-			pw.close();
-
-		} catch (final IOException e) {
-			e.printStackTrace();
-		}
-	}
-
 	public static boolean locationEqualsIgnoreDirection(final Location loc1, final Location loc2) {
 		return loc1.getWorld().equals(loc2.getWorld()) && loc1.getX() == loc2.getX() && loc1.getY() == loc2.getY() && loc1.getZ() == loc2.getZ();
 	}
 
 	public static boolean isLightEmitting(final Material material) {
-		switch (material) {
-			case GLOWSTONE:
-			case TORCH:
-			case SEA_LANTERN:
-			case BEACON:
-			case REDSTONE_LAMP:
-			case REDSTONE_TORCH:
-			case MAGMA_BLOCK:
-			case LAVA:
-			case JACK_O_LANTERN:
-			case CRYING_OBSIDIAN:
-			case SHROOMLIGHT:
-			case CAMPFIRE:
-			case SOUL_CAMPFIRE:
-			case SOUL_TORCH:
-			case LANTERN:
-			case SOUL_LANTERN:
-			case CONDUIT:
-			case RESPAWN_ANCHOR:
-			case BROWN_MUSHROOM:
-			case BREWING_STAND:
-			case ENDER_CHEST:
-			case END_PORTAL_FRAME:
-			case END_ROD:
+		switch (material.name()) {
+			case "GLOWSTONE":
+			case "TORCH":
+			case "SEA_LANTERN":
+			case "BEACON":
+			case "REDSTONE_LAMP":
+			case "REDSTONE_TORCH":
+			case "MAGMA_BLOCK":
+			case "LAVA":
+			case "JACK_O_LANTERN":
+			case "CRYING_OBSIDIAN":
+			case "SHROOMLIGHT":
+			case "CAMPFIRE":
+			case "SOUL_CAMPFIRE":
+			case "SOUL_TORCH":
+			case "LANTERN":
+			case "SOUL_LANTERN":
+			case "CONDUIT":
+			case "RESPAWN_ANCHOR":
+			case "BROWN_MUSHROOM":
+			case "BREWING_STAND":
+			case "ENDER_CHEST":
+			case "END_PORTAL_FRAME":
+			case "END_ROD":
+			case "LIGHT":
+			case "AMETHYST_CLUSTER":
+			case "CAVE_VINES":
+			case "GLOW_LICHEN":
+			case "OCHRE_FROGLIGHT":
+			case "PEARLESCENT_FROGLIGHT":
+			case "VERDANT_FROGLIGHT":
+			case "SCULK_CATALYST":
 				return true;
 			default:
 				return false;

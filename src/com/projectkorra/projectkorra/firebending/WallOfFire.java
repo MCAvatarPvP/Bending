@@ -1,7 +1,9 @@
 package com.projectkorra.projectkorra.firebending;
 
 import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
 
+import com.projectkorra.projectkorra.attribute.markers.DayNightFactor;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
@@ -23,22 +25,22 @@ public class WallOfFire extends FireAbility {
 
 //	private int damageTick;
 	private int intervalTick;
-	@Attribute(Attribute.RANGE)
+	@Attribute(Attribute.RANGE) @DayNightFactor
 	private double range;
-	@Attribute(Attribute.HEIGHT)
+	@Attribute(Attribute.HEIGHT) @DayNightFactor
 	private double height;
-	@Attribute(Attribute.WIDTH)
+	@Attribute(Attribute.WIDTH) @DayNightFactor
 	private double width;
-	@Attribute(Attribute.DAMAGE)
+	@Attribute(Attribute.DAMAGE) @DayNightFactor
 	private double damage;
-	@Attribute(Attribute.COOLDOWN)
+	@Attribute(Attribute.COOLDOWN) @DayNightFactor(invert = true)
 	private long cooldown;
 	private long damageInterval;
-	@Attribute(Attribute.DURATION)
+	@Attribute(Attribute.DURATION) @DayNightFactor
 	private long duration;
 	private long time;
 	private long interval;
-	@Attribute(Attribute.FIRE_TICK)
+	@Attribute(Attribute.FIRE_TICK) @DayNightFactor
 	private double fireTicks;
 	private double maxAngle;
 	private Random random;
@@ -51,11 +53,11 @@ public class WallOfFire extends FireAbility {
 
 		this.maxAngle = getConfig().getDouble("Abilities.Fire.WallOfFire.MaxAngle");
 		this.interval = getConfig().getLong("Abilities.Fire.WallOfFire.Interval");
-		this.range = applyModifiersRange(getConfig().getDouble("Abilities.Fire.WallOfFire.Range"));
-		this.height = applyModifiers(getConfig().getDouble("Abilities.Fire.WallOfFire.Height"));
-		this.width = applyModifiers(getConfig().getDouble("Abilities.Fire.WallOfFire.Width"));
-		this.damage = applyModifiersDamage(getConfig().getDouble("Abilities.Fire.WallOfFire.Damage"));
-		this.cooldown = applyModifiersCooldown(getConfig().getLong("Abilities.Fire.WallOfFire.Cooldown"));
+		this.range = getConfig().getDouble("Abilities.Fire.WallOfFire.Range");
+		this.height = getConfig().getDouble("Abilities.Fire.WallOfFire.Height");
+		this.width = getConfig().getDouble("Abilities.Fire.WallOfFire.Width");
+		this.damage = getConfig().getDouble("Abilities.Fire.WallOfFire.Damage");
+		this.cooldown = getConfig().getLong("Abilities.Fire.WallOfFire.Cooldown");
 		this.damageInterval = getConfig().getLong("Abilities.Fire.WallOfFire.DamageInterval");
 		this.duration = getConfig().getLong("Abilities.Fire.WallOfFire.Duration");
 		this.fireTicks = getConfig().getDouble("Abilities.Fire.WallOfFire.FireTicks");
@@ -63,43 +65,13 @@ public class WallOfFire extends FireAbility {
 		this.blocks = new ArrayList<>();
 		this.affected = new HashMap<>();
 
-		if (hasAbility(player, WallOfFire.class) && !this.bPlayer.isAvatarState()) {
+		if (hasAbility(player, WallOfFire.class)) {
 			return;
 		} else if (this.bPlayer.isOnCooldown(this)) {
 			return;
 		}
 
 		this.origin = GeneralMethods.getTargetedLocation(player, this.range);
-
-		double widthMod = 0;
-		double heightMod = 0;
-		long durationMod = 0;
-		double damageMod = 0;
-
-		if (isDay(player.getWorld())) {
-			widthMod = this.getDayFactor(this.width) - this.width;
-			heightMod = this.getDayFactor(this.height) - this.height;
-			durationMod = ((long) this.getDayFactor(this.duration) - this.duration);
-			damageMod = this.getDayFactor(this.damage) - this.damage;
-		}
-
-		widthMod = (int) (bPlayer.canUseSubElement(SubElement.BLUE_FIRE) ? (BlueFireAbility.getRangeFactor() * width - width) + widthMod : widthMod);
-		heightMod = (int) (bPlayer.canUseSubElement(SubElement.BLUE_FIRE) ? (BlueFireAbility.getRangeFactor() * height - height) + heightMod : heightMod);
-		durationMod = (int) (bPlayer.canUseSubElement(SubElement.BLUE_FIRE) ? (duration / BlueFireAbility.getCooldownFactor() - duration) + durationMod : durationMod);
-		damageMod = (int) (bPlayer.canUseSubElement(SubElement.BLUE_FIRE) ? (BlueFireAbility.getDamageFactor() * damage - damage) + damageMod : damageMod);
-
-		if (this.bPlayer.isAvatarState()) {
-			this.width = getConfig().getInt("Abilities.Avatar.AvatarState.Fire.WallOfFire.Width");
-			this.height = getConfig().getInt("Abilities.Avatar.AvatarState.Fire.WallOfFire.Height");
-			this.duration = getConfig().getLong("Abilities.Avatar.AvatarState.Fire.WallOfFire.Duration");
-			this.damage = getConfig().getInt("Abilities.Avatar.AvatarState.Fire.WallOfFire.Damage");
-			this.fireTicks = getConfig().getDouble("Abilities.Avatar.AvatarState.Fire.WallOfFire.FireTicks");
-		}
-
-		this.width += widthMod;
-		this.height += heightMod;
-		this.duration += durationMod;
-		this.damage += damageMod;
 
 		this.time = System.currentTimeMillis();
 		final Block block = this.origin.getBlock();
@@ -114,6 +86,7 @@ public class WallOfFire extends FireAbility {
 			return;
 		}
 
+		this.recalculateAttributes();
 		this.initializeBlocks();
 		this.start();
 	}
@@ -161,9 +134,12 @@ public class WallOfFire extends FireAbility {
 	private void display() {
 		for (final Block block : this.blocks) {
 			if (!this.isTransparent(block)) {
+				dryWetBlocks(block, this, ThreadLocalRandom.current().nextInt(5) == 0);
 				continue;
 			}
+
 			playFirebendingParticles(block.getLocation(), 3, 0.6, 0.6, 0.6);
+			emitFirebendingLight(block.getLocation());
 			if (this.random.nextInt(7) == 0) {
 				playFirebendingSound(block.getLocation());
 			}
@@ -171,6 +147,8 @@ public class WallOfFire extends FireAbility {
 	}
 
 	private void initializeBlocks() {
+		this.recalculateAttributes();
+
 		Vector direction = this.player.getEyeLocation().getDirection();
 		direction = direction.normalize();
 

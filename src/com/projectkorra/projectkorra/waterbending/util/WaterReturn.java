@@ -136,10 +136,10 @@ public class WaterReturn extends WaterAbility {
 
 	private static boolean isBending(final Player player) {
 		if (hasAbility(player, WaterManipulation.class) || hasAbility(player, WaterManipulation.class) || hasAbility(player, OctopusForm.class)
-		// || hasAbility(player, SurgeWave.class) NOTE: ONLY DISABLED TO
-		// PREVENT BOTTLEBENDING FROM BEING DISABLED FOREVER. ONCE
-		// BOTTLEBENDING HAS BEEN RECODED IN 1.9, THIS NEEDS TO BE
-		// READDED TO THE NEW SYSTEM.
+				// || hasAbility(player, SurgeWave.class) NOTE: ONLY DISABLED TO
+				// PREVENT BOTTLEBENDING FROM BEING DISABLED FOREVER. ONCE
+				// BOTTLEBENDING HAS BEEN RECODED IN 1.9, THIS NEEDS TO BE
+				// READDED TO THE NEW SYSTEM.
 				|| hasAbility(player, SurgeWall.class) || hasAbility(player, IceSpikeBlast.class)) {
 			return true;
 		}

@@ -8,6 +8,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import com.projectkorra.projectkorra.airbending.AirSurf;
+import com.projectkorra.projectkorra.util.ChatUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
@@ -29,9 +30,8 @@ import com.projectkorra.projectkorra.airbending.AirScooter;
 import com.projectkorra.projectkorra.airbending.AirSpout;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.firebending.FireJet;
-import com.projectkorra.projectkorra.util.ActionBar;
 import com.projectkorra.projectkorra.util.DamageHandler;
-import com.projectkorra.projectkorra.util.MovementHandler;
+import com.projectkorra.projectkorra.util.MovementHandle;
 import com.projectkorra.projectkorra.util.ParticleEffect;
 import com.projectkorra.projectkorra.waterbending.WaterSpout;
 
@@ -182,7 +182,7 @@ public class FlightMultiAbility extends FlightAbility implements MultiAbility {
 					new BukkitRunnable() {
 						@Override
 						public void run() {
-							ActionBar.sendActionBar(ChatColor.WHITE + FlightMultiAbility.this.player.getName() + ChatColor.GREEN + " has requested to carry you, right-click them to accept!", p2);
+							ChatUtil.sendActionBar(ChatColor.WHITE + FlightMultiAbility.this.player.getName() + ChatColor.GREEN + " has requested to carry you, right-click them to accept!", p2);
 							if (System.currentTimeMillis() >= start + 300) {
 								this.cancel();
 							}
@@ -194,6 +194,8 @@ public class FlightMultiAbility extends FlightAbility implements MultiAbility {
 				}
 			}
 		}
+
+		FlightMode oldMode = this.mode;
 
 		switch (this.player.getInventory().getHeldItemSlot()) {
 			case 0:
@@ -209,6 +211,10 @@ public class FlightMultiAbility extends FlightAbility implements MultiAbility {
 			case 3:
 				this.mode = FlightMode.ENDING;
 				break;
+		}
+
+		if (!bPlayer.getPlayer().hasPermission("bending.ability.Flight." + mode.name().toLowerCase())) {
+			this.mode = oldMode;
 		}
 
 		this.speed = this.player.getVelocity().length();
@@ -350,7 +356,7 @@ public class FlightMultiAbility extends FlightAbility implements MultiAbility {
 		new BukkitRunnable() {
 			@Override
 			public void run() {
-				ActionBar.sendActionBar(ChatColor.AQUA + "Flight speed: " + FlightMultiAbility.this.speed(), FlightMultiAbility.this.player);
+				ChatUtil.sendActionBar(ChatColor.AQUA + "Flight speed: " + FlightMultiAbility.this.speed(), FlightMultiAbility.this.player);
 				if (System.currentTimeMillis() >= start + 1000) {
 					this.cancel();
 				}
@@ -359,12 +365,12 @@ public class FlightMultiAbility extends FlightAbility implements MultiAbility {
 	}
 
 	public void cancel(final String reason) {
-		if (!MovementHandler.isStopped(this.player) && !this.bPlayer.isChiBlocked()) {
+		if (!MovementHandle.isStopped(this.player) && !this.bPlayer.isChiBlocked()) {
 			final long start = System.currentTimeMillis();
 			new BukkitRunnable() {
 				@Override
 				public void run() {
-					ActionBar.sendActionBar(ChatColor.RED + "* Flight cancelled due to " + reason + " *", FlightMultiAbility.this.player);
+					ChatUtil.sendActionBar(ChatColor.RED + "* Flight cancelled due to " + reason + " *", FlightMultiAbility.this.player);
 					if (System.currentTimeMillis() >= start + 1000) {
 						this.cancel();
 					}

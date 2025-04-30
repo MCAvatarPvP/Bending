@@ -1,6 +1,5 @@
 package com.projectkorra.projectkorra.ability;
 
-import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import org.bukkit.Location;
 import org.bukkit.Sound;
@@ -31,20 +30,26 @@ public abstract class AvatarAbility extends ElementalAbility {
 	}
 
 	public static void playAvatarSound(final Location loc) {
-		if (ConfigManager.getConfig().getBoolean("Abilities.Avatar.AvatarState.PlaySound")) {
-			final float volume = (float) ConfigManager.getConfig().getDouble("Abilities.Avatar.AvatarState.Sound.Volume");
-			final float pitch = (float) ConfigManager.getConfig().getDouble("Abilities.Avatar.AvatarState.Sound.Pitch");
+		if (ConfigManager.avatarStateConfig.get().getBoolean("AvatarState.PlaySound")) {
+			final float volume = (float) ConfigManager.avatarStateConfig.get().getDouble("AvatarState.Sound.Volume");
+			final float pitch = (float) ConfigManager.avatarStateConfig.get().getDouble("AvatarState.Sound.Pitch");
 
-			Sound sound = Sound.BLOCK_ANVIL_LAND;
+			Sound sound = Sound.BLOCK_BEACON_POWER_SELECT;
 			String soundString = ConfigManager.getConfig().getString("Abilities.Avatar.AvatarState.Sound.Sound");
 
-			GeneralMethods.playSound(loc, sound, soundString, volume, pitch);
+			try {
+				sound = Sound.valueOf(ConfigManager.avatarStateConfig.get().getString("AvatarState.Sound.Sound"));
+			} catch (final IllegalArgumentException exception) {
+				ProjectKorra.log.warning("Your current value for 'AvatarState.Sound.Sound' is not valid.");
+			} finally {
+				loc.getWorld().playSound(loc, sound, volume, pitch);
+			}
 		}
 	}
 
 	/**
 	 * Determines whether the ability requires the user to be an avatar in order
-	 * to be able to use it. Set this to <tt>false</tt> for moves that should be
+	 * to be able to use it. Set this to <code>false</code> for moves that should be
 	 * able to be used without players needing to have the avatar element
 	 */
 	public boolean requireAvatar() {

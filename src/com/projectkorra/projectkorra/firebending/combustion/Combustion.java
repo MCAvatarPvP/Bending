@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.firebending.combustion;
 
+import com.projectkorra.projectkorra.attribute.markers.DayNightFactor;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
@@ -17,6 +18,7 @@ import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.avatar.AvatarState;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
+import com.projectkorra.projectkorra.region.RegionProtection;
 
 public class Combustion extends CombustionAbility {
 
@@ -24,17 +26,17 @@ public class Combustion extends CombustionAbility {
 
 	private boolean breakBlocks;
 	private int ticks;
-	@Attribute(Attribute.COOLDOWN)
+	@Attribute(Attribute.COOLDOWN) @DayNightFactor(invert = true)
 	private long cooldown;
-	@Attribute("ExplosivePower")
+	@Attribute("ExplosivePower") @DayNightFactor
 	private float explosivePower;
-	@Attribute(Attribute.DAMAGE)
+	@Attribute(Attribute.DAMAGE) @DayNightFactor
 	private double damage;
-	@Attribute(Attribute.RADIUS)
+	@Attribute(Attribute.RADIUS) @DayNightFactor
 	private double radius;
-	@Attribute(Attribute.SPEED)
+	@Attribute(Attribute.SPEED) @DayNightFactor
 	private double speed;
-	@Attribute(Attribute.RANGE)
+	@Attribute(Attribute.RANGE) @DayNightFactor
 	private double range;
 	private double speedFactor;
 	private Location location;
@@ -52,26 +54,20 @@ public class Combustion extends CombustionAbility {
 
 		this.ticks = 0;
 		this.breakBlocks = getConfig().getBoolean("Abilities.Fire.Combustion.BreakBlocks");
-		this.explosivePower = (float) applyModifiers(getConfig().getDouble("Abilities.Fire.Combustion.ExplosivePower"));
-		this.cooldown = applyModifiersCooldown(getConfig().getLong("Abilities.Fire.Combustion.Cooldown"));
-		this.damage = applyModifiersDamage(getConfig().getDouble("Abilities.Fire.Combustion.Damage"));
-		this.radius = applyModifiers(getConfig().getDouble("Abilities.Fire.Combustion.Radius"));
+		this.explosivePower = (float) getConfig().getDouble("Abilities.Fire.Combustion.ExplosivePower");
+		this.cooldown = getConfig().getLong("Abilities.Fire.Combustion.Cooldown");
+		this.damage = getConfig().getDouble("Abilities.Fire.Combustion.Damage");
+		this.radius = getConfig().getDouble("Abilities.Fire.Combustion.Radius");
 		this.speed = getConfig().getDouble("Abilities.Fire.Combustion.Speed");
-		this.range = applyModifiersRange(getConfig().getDouble("Abilities.Fire.Combustion.Range"));
+		this.range = getConfig().getDouble("Abilities.Fire.Combustion.Range");
 		this.origin = player.getEyeLocation();
 		this.direction = player.getEyeLocation().getDirection().normalize();
 		this.location = this.origin.clone();
 		this.explosionCount = 0;
 
-		if (this.bPlayer.isAvatarState()) {
-			this.range = AvatarState.getValue(bPlayer, this.range);
-			this.damage = AvatarState.getValue(bPlayer, this.damage);
-		} /*else if (isDay(player.getWorld())) {
-			this.range = this.getDayFactor(this.range);
-			this.damage = this.getDayFactor(this.damage);
-		}*/
+		this.recalculateAttributes();
 
-		if (GeneralMethods.isRegionProtectedFromBuild(this, GeneralMethods.getTargetedLocation(player, this.range))) {
+		if (RegionProtection.isRegionProtected(this, GeneralMethods.getTargetedLocation(player, this.range))) {
 			return;
 		}
 
@@ -110,17 +106,13 @@ public class Combustion extends CombustionAbility {
 		if(explosionCount % 5 == 0) 
 			ParticleEffect.EXPLOSION_LARGE.display(this.location, 1, .001, .001, .001, 0);
 		playCombustionSound(this.location);
+		emitFirebendingLight(this.location);
 		this.location = this.location.add(this.direction.clone().multiply(this.speedFactor));
 		this.explosionCount++;
 	}
 
 	private void createExplosion(final Location block, final float power, final boolean canBreakBlocks) {
-		ParticleEffect.EXPLOSION_LARGE.display(block, 3, 2, 2, 2, 0);
-		
-		if (canFireGrief()) {
-			block.getWorld().createExplosion(block.getX(), block.getY(), block.getZ(), power, true, canBreakBlocks);
-		}
-		for (final Entity entity : block.getWorld().getEntities()) {
+		for (Entity entity : GeneralMethods.getEntitiesAroundPoint(block, power)) {
 			if (entity instanceof LivingEntity) {
 				if (entity.getLocation().distanceSquared(block) < this.radius * this.radius) { // They are close enough to the explosion.
 					DamageHandler.damageEntity(entity, this.damage, this);
@@ -128,7 +120,9 @@ public class Combustion extends CombustionAbility {
 				}
 			}
 		}
-		
+
+		block.getWorld().createExplosion(block.getX(), block.getY(), block.getZ(), power, canFireGrief(), canBreakBlocks);
+
 		this.remove();
 	}
 
@@ -137,7 +131,7 @@ public class Combustion extends CombustionAbility {
 		if (!this.bPlayer.canBendIgnoreCooldowns(this)) {
 			this.remove();
 			return;
-		} else if (GeneralMethods.isRegionProtectedFromBuild(this, this.location)) {
+		} else if (RegionProtection.isRegionProtected(this, this.location)) {
 			this.remove();
 			return;
 		}

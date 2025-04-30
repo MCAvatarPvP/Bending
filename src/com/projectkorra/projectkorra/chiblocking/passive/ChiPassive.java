@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.chiblocking.passive;
 
+import com.projectkorra.projectkorra.ability.StanceAbility;
+import com.projectkorra.projectkorra.util.ChatUtil;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -7,14 +9,12 @@ import org.bukkit.scheduler.BukkitRunnable;
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.ProjectKorra;
-import com.projectkorra.projectkorra.ability.ChiAbility;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.airbending.Suffocate;
 import com.projectkorra.projectkorra.chiblocking.AcrobatStance;
 import com.projectkorra.projectkorra.chiblocking.QuickStrike;
 import com.projectkorra.projectkorra.chiblocking.SwiftKick;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
-import com.projectkorra.projectkorra.util.ActionBar;
 
 public class ChiPassive {
 	public static boolean willChiBlock(final Player attacker, final Player player) {
@@ -27,7 +27,7 @@ public class ChiPassive {
 			return false;
 		}
 
-		final ChiAbility stance = bPlayer.getStance();
+		final StanceAbility stance = bPlayer.getStance();
 		double newChance = chance;
 
 		if (stance instanceof AcrobatStance) {
@@ -60,7 +60,7 @@ public class ChiPassive {
 		new BukkitRunnable() {
 			@Override
 			public void run() {
-				ActionBar.sendActionBar(Element.CHI.getColor() + "* Chiblocked *", player);
+				ChatUtil.sendActionBar(Element.CHI.getColor() + "* Chiblocked *", player);
 				if (System.currentTimeMillis() >= start + getDuration(bPlayer)) {
 					bPlayer.unblockChi();
 					this.cancel();

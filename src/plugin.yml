@@ -3,7 +3,7 @@ author: ProjectKorra
 api-version: 1.16
 version: ${project.version}
 main: com.projectkorra.projectkorra.ProjectKorra
-softdepend: [GriefDefender, WorldGuard, WorldEdit, Factions, GriefPrevention, Towny, NoCheatPlus, LWC, Residence, Kingdoms, RedProtect, PlaceholderAPI, Lands, DamageAPI, StrikePractice]
+softdepend: [GriefDefender, WorldGuard, WorldEdit, Factions, GriefPrevention, Towny, NoCheatPlus, LWC, Residence, RedProtect, PlaceholderAPI, Lands, Plan]
 commands:
   projectkorra:
     aliases: [b,bending,mtla,tla,korra,pk,bend]
@@ -19,13 +19,15 @@ permissions:
       bending.command.add.others: true
       bending.command.add: true
       bending.command.rechoose: true
+      bending.command.temp: true
       bending.admin.choose: true
       bending.command.choose.ignorecooldown: true
       bending.ability.AvatarState: true
       bending.water.bloodbending.anytime: true
       bending.water.bloodbending: true
       bending.fire.bluefire: true
-      bending.ability.Flight: true
+      bending.fire.bluefirefactor: true
+      bending.air.flight: true
       bending.ability.MetalClips.loot: true
       bending.ability.MetalClips.4clips: true
       bending.ability.MetalClips.throw: true
@@ -39,6 +41,8 @@ permissions:
       bending.command.copy.assign: true
       bending.admin.debug: true
       bending.command.remove: true
+      bending.avatar: true
+      bending.command.add.avatar: true
       bending.admin.style: true
       bending.admin.firecolor: true
       bending.admin.aircolor: true
@@ -82,6 +86,8 @@ permissions:
     description: Grants access to all airbending abilities.
     children:
       bending.command.add.air: true
+      bending.command.add.flight: true
+      bending.command.add.spiritual: true
       bending.command.choose.air: true
       bending.ability.AirBlast: true 
       bending.ability.AirBurst: true
@@ -95,12 +101,16 @@ permissions:
       bending.ability.Tornado: true
       bending.ability.AirCombo: true
       bending.air.passive: true
-      bending.air.flight: true
+      bending.ability.Flight: true
   bending.water:
     default: true
     description: Grants access to most waterbending abilities.
     children:
       bending.command.add.water: true
+      bending.command.add.healing: true
+      bending.command.add.ice: true
+      bending.command.add.blood: true
+      bending.command.add.plant: true
       bending.command.choose.water: true
       bending.ability.Bloodbending: true
       bending.ability.HealingWaters: true
@@ -117,6 +127,7 @@ permissions:
       bending.ability.WaterCombo: true
       bending.water.plantbending: true
       bending.message.nightmessage: true
+      bending.message.daymessage: true
       bending.water.passive: true
       bending.water.icebending: true
       bending.water.healing: true
@@ -128,11 +139,15 @@ permissions:
       bending.ability.WaterArms.Freeze: true
       bending.ability.WaterArms.Spear: true
       bending.ability.Bottlebending: true
+      bending.water.nightfactor: true
   bending.earth:
     default: true
     description: Grants access to all Earthbending abilities.
     children:
       bending.command.add.earth: true
+      bending.command.add.metal: true
+      bending.command.add.lava: true
+      bending.command.add.sand: true
       bending.command.choose.earth: true
       bending.ability.Catapult: true
       bending.ability.Collapse: true
@@ -159,6 +174,9 @@ permissions:
     description: Grants access to all firebending abilities.
     children:
       bending.command.add.fire: true
+      bending.command.add.combustion: true
+      bending.command.add.lightning: true
+      bending.command.add.bluefire: true
       bending.command.choose.fire: true
       bending.ability.Blaze: true
       bending.ability.FireBlast: true
@@ -173,9 +191,11 @@ permissions:
       bending.ability.FireManipulation: true
       bending.ability.FireCombo: true
       bending.message.daymessage: true
+      bending.message.nightmessage: true
       bending.fire.passive: true
       bending.fire.lightningbending: true
       bending.fire.combustionbending: true
+      bending.fire.dayfactor: true
   bending.chi:
     default: true
     description: Grants access to all ChiBlocking abilities.
@@ -193,7 +213,7 @@ permissions:
       bending.ability.ChiCombo: true
       bending.chi.passive: true
   bending.avatar:
-    default: false
+    default: op
     description: Grants the Avatar Color.
   bending.ability.MetalClips.loot:
     default: false
@@ -246,31 +266,31 @@ permissions:
     children:
       bending.ability.Immobilize: true
   bending.air.passive:
-    default:  false
+    default: false
     description: Grants access to all air passives.
     children:
       bending.ability.AirAgility: true
       bending.ability.AirSaturation: true
       bending.ability.GracefulDescent: true
   bending.chi.passive:
-    default:  false
+    default: false
     description: Grants access to all chi passives.
     children:
       bending.ability.Acrobatics: true
       bending.ability.ChiAgility: true
       bending.ability.ChiSaturation: true
   bending.earth.passive:
-    default:  false
+    default: false
     description: Grants access to all earth passives.
     children:
       bending.ability.DensityShift: true
       bending.ability.SandAgility: true
   bending.fire.passive:
-    default:  false
+    default: false
     description: Grants access to all fire passives.
     children:
   bending.water.passive:
-    default:  false
+    default: false
     description: Grants access to all water passives.
     children:
       bending.ability.FastSwim: true

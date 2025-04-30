@@ -2,6 +2,7 @@ package com.projectkorra.projectkorra;
 
 import java.io.File;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.logging.Logger;
 
 import co.aikar.timings.lib.MCTiming;
@@ -36,7 +37,6 @@ import com.projectkorra.projectkorra.storage.DBConnection;
 import com.projectkorra.projectkorra.util.Metrics;
 import com.projectkorra.projectkorra.util.RevertChecker;
 import com.projectkorra.projectkorra.util.StatisticsManager;
-import com.projectkorra.projectkorra.util.TempBlock;
 import com.projectkorra.projectkorra.util.Updater;
 import com.projectkorra.projectkorra.waterbending.util.WaterbendingManager;
 
@@ -48,15 +48,13 @@ public class ProjectKorra extends JavaPlugin {
 	public static CollisionInitializer collisionInitializer;
 	public static long time_step = 1;
 	public Updater updater;
-	private BukkitTask revertChecker;
-	private static TimingManager timingManager;
+	BukkitTask revertChecker;
+	private static PlaceholderAPIHook papiHook;
 
 	@Override
 	public void onEnable() {
 		plugin = this;
 		ProjectKorra.log = this.getLogger();
-
-		timingManager = TimingManager.of(this);
 
 		new ConfigManager();
 		Style.loadStyleConfigs(new File(plugin.getDataFolder() + File.separator + "Styles"));
@@ -84,6 +82,7 @@ public class ProjectKorra extends JavaPlugin {
 
 		Manager.startup();
 		BendingBoardManager.setup();
+		BendingPlayer.DISABLED_WORLDS = new HashSet<>(ConfigManager.defaultConfig.get().getStringList("Properties.DisabledWorlds"));
 
 		this.getServer().getPluginManager().registerEvents(new PKListener(this), this);
 		this.getServer().getScheduler().scheduleSyncRepeatingTask(this, new BendingManager(), 0, 1);
@@ -92,9 +91,8 @@ public class ProjectKorra extends JavaPlugin {
 		this.getServer().getScheduler().scheduleSyncRepeatingTask(this, new EarthbendingManager(this), 0, 1);
 		this.getServer().getScheduler().scheduleSyncRepeatingTask(this, new FirebendingManager(this), 0, 1);
 		this.getServer().getScheduler().scheduleSyncRepeatingTask(this, new ChiblockingManager(this), 0, 1);
+		this.getServer().getScheduler().runTaskTimerAsynchronously(this, new BendingManager.TempElementsRunnable(), 20, 20);
 		this.revertChecker = this.getServer().getScheduler().runTaskTimerAsynchronously(this, new RevertChecker(this), 0, 200);
-
-		TempBlock.startReversion();
 
 		for (final Player player : Bukkit.getOnlinePlayers()) {
 			PKListener.getJumpStatistics().put(player, player.getStatistic(Statistic.JUMP));
@@ -103,19 +101,11 @@ public class ProjectKorra extends JavaPlugin {
 			Manager.getManager(StatisticsManager.class).load(player.getUniqueId());
 		}
 
-		final Metrics metrics = new Metrics(this);
-		metrics.addCustomChart(new Metrics.AdvancedPie("Elements") {
+		final Metrics metrics = new Metrics(this, 909);
+		metrics.addCustomChart(new Metrics.AdvancedPie("Elements", () -> {
 
-			@Override
-			public HashMap<String, Integer> getValues(final HashMap<String, Integer> valueMap) {
-				for (final Element element : Element.getMainElements()) {
-					valueMap.put(element.getName(), this.getPlayersWithElement(element));
-				}
-
-				return valueMap;
-			}
-
-			private int getPlayersWithElement(final Element element) {
+			final HashMap<String, Integer> valueMap = new HashMap<>();
+			for (final Element element : Element.getMainElements()) {
 				int counter = 0;
 				for (final Player player : Bukkit.getOnlinePlayers()) {
 					final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
@@ -123,19 +113,24 @@ public class ProjectKorra extends JavaPlugin {
 						counter++;
 					}
 				}
-
-				return counter;
+				valueMap.put(element.getName(), counter);
 			}
-		});
+
+			return valueMap;
+		}));
 
 		final double cacheTime = ConfigManager.getConfig().getDouble("Properties.RegionProtection.CacheBlockTime");
 
-		GeneralMethods.deserializeFile();
 		RegionProtection.startCleanCacheTask(cacheTime);
 
 		if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
-			new PlaceholderAPIHook(this).register();
+			papiHook = new PlaceholderAPIHook(this);
+			papiHook.register();
 		}
+
+		// if (Bukkit.getPluginManager().isPluginEnabled("Plan")) {
+		// 	new PlanExtension();
+		// }
 	}
 
 	@Override
@@ -155,6 +150,11 @@ public class ProjectKorra extends JavaPlugin {
 		if (DBConnection.isOpen()) {
 			DBConnection.sql.close();
 		}
+
+		// Update PAPI?
+		// if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
+		// 	papiHook.unregister();
+		// }
 	}
 
 	@Override
@@ -186,9 +186,5 @@ public class ProjectKorra extends JavaPlugin {
 
 	public static boolean isDatabaseCooldownsEnabled() {
 		return ConfigManager.getConfig().getBoolean("Properties.DatabaseCooldowns");
-	}
-
-	public static MCTiming timing(final String name) {
-		return timingManager.of(name);
 	}
 }

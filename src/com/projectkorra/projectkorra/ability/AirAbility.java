@@ -5,10 +5,7 @@ import java.util.List;
 
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
-import org.bukkit.Color;
-import org.bukkit.Location;
-import org.bukkit.Material;
-import org.bukkit.Sound;
+import org.bukkit.*;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 
@@ -192,13 +189,19 @@ public abstract class AirAbility extends ElementalAbility {
 		if (effect == ParticleEffect.SPELL && bPlayer.getAirColor() != null) {
 			if (!bPlayer.getAirColor().getName().equalsIgnoreCase("none")) {
 				Color color = bPlayer.getAirColor().getColor().getColor();
-				for (int i = 0; i < amount; i++) {
-					Location l = loc.clone();
-					l.setX(l.getX() + (xOffset * (Math.random() * 2.0 - 1.0) * 1.8));
-					l.setY(l.getY() + (yOffset * (Math.random() * 2.0 - 1.0) * 1.8));
-					l.setZ(l.getZ() + (zOffset * (Math.random() * 2.0 - 1.0) * 1.8));
-					ParticleEffect.SPELL_MOB.display(l, 0, color.getRed(), color.getGreen(), color.getBlue(), 255);
-				}
+
+				Location l = loc.clone();
+				l.setX(l.getX() + (xOffset * (Math.random() * 2.0 - 1.0) * 1.8));
+				l.setY(l.getY() + (yOffset * (Math.random() * 2.0 - 1.0) * 1.8));
+				l.setZ(l.getZ() + (zOffset * (Math.random() * 2.0 - 1.0) * 1.8));
+
+				l.getWorld().spawnParticle(
+						Particle.ENTITY_EFFECT,
+						l,
+						1, // count must be 1 or more if using a particle data
+						0, 0, 0, // no offsets anymore
+						color
+				);
 				return;
 			}
 		}

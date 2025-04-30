@@ -61,10 +61,6 @@ public class AirBurst extends AirAbility {
 		this.blasts = new ArrayList<>();
 		this.affectedEntities = new ArrayList<>();
 
-		if (this.bPlayer.isAvatarState()) {
-			this.chargeTime = getConfig().getLong("Abilities.Avatar.AvatarState.Air.AirBurst.ChargeTime");
-			this.damage = getConfig().getDouble("Abilities.Avatar.AvatarState.Air.AirBurst.Damage");
-		}
 		this.start();
 	}
 
@@ -133,8 +129,11 @@ public class AirBurst extends AirAbility {
 	public static void coneBurst(final Player player) {
 		if (hasAbility(player, AirBurst.class)) {
 			final AirBurst airBurst = getAbility(player, AirBurst.class);
-			airBurst.startConeBurst();
-			airBurst.remove();
+			if (airBurst.isCharged) {
+				airBurst.bPlayer.addCooldown(airBurst);
+				airBurst.startConeBurst();
+				airBurst.remove();
+			}
 		}
 	}
 

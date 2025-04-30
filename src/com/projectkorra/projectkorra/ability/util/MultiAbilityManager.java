@@ -6,8 +6,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.projectkorra.projectkorra.OfflineBendingPlayer;
+import com.projectkorra.projectkorra.board.BendingBoardManager;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Bukkit;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 
 import com.projectkorra.projectkorra.BendingPlayer;
@@ -71,6 +74,7 @@ public class MultiAbilityManager {
 				bPlayer.getAbilities().put(i + 1, modes.get(i).getAbilityColor() + modes.get(i).getName());
 			}
 		}
+		BendingBoardManager.updateAllSlots(player);
 		
 		player.getInventory().setHeldItemSlot(0);
 	}
@@ -111,10 +115,7 @@ public class MultiAbilityManager {
 	 * @return true If player has a multiability active
 	 */
 	public static boolean hasMultiAbilityBound(final Player player) {
-		if (playerAbilities.containsKey(player)) {
-			return true;
-		}
-		return false;
+		return playerAbilities.containsKey(player);
 	}
 
 	/**
@@ -141,15 +142,19 @@ public class MultiAbilityManager {
 	 * @param player
 	 */
 	public static void remove(final Player player) {
-		playerAbilities.remove(player);
-		playerBoundAbility.remove(player);
-		playerSlot.remove(player);
+		if (playerAbilities.containsKey(player)) {
+			unbindMultiAbility(player);
+		}
 	}
 
 	/**
 	 * Cleans up all MultiAbilities.
 	 */
 	public static void removeAll() {
+		for (Player player : playerAbilities.keySet()) {
+			unbindMultiAbility(player);
+		}
+
 		playerAbilities.clear();
 		playerSlot.clear();
 		playerBoundAbility.clear();
@@ -178,31 +183,30 @@ public class MultiAbilityManager {
 	 * @param player
 	 */
 	public static void unbindMultiAbility(final Player player) {
-		if (!player.isOnline()) {
-			return;
-		}
-		
 		playerAbilities.compute(player, MultiAbilityManager::resetBinds);
 		playerBoundAbility.remove(player);
 		playerSlot.remove(player);
+		BendingBoardManager.updateAllSlots(player);
 	}
 	
-	private static HashMap<Integer, String> resetBinds(Player player, HashMap<Integer, String> prevBinds) {
+	private static HashMap<Integer, String> resetBinds(OfflinePlayer player, HashMap<Integer, String> prevBinds) {
 		if (prevBinds == null) {
 			return null;
 		}
 		
-		final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
+		final OfflineBendingPlayer bPlayer = BendingPlayer.getOrLoadOffline(player);
 		if (bPlayer == null) {
 			return null;
 		}
-		
-		player.getInventory().setHeldItemSlot(playerSlot.getOrDefault(player, 0));
-		ProjectKorra.plugin.getServer().getPluginManager().callEvent(new PlayerBindChangeEvent(player, playerBoundAbility.get(player), false, true));
 
-		for (int i = 1; i < 10; i++) {
-			bPlayer.getAbilities().put(i, prevBinds.get(i));
+
+		if (player instanceof Player) {
+			((Player)player).getInventory().setHeldItemSlot(playerSlot.getOrDefault(player, 0));
+			ProjectKorra.plugin.getServer().getPluginManager().callEvent(new PlayerBindChangeEvent((Player) player, playerBoundAbility.get(player), false, true));
 		}
+
+		bPlayer.getAbilities().clear();
+		bPlayer.getAbilities().putAll(prevBinds);
 		
 		return null;
 	}
@@ -240,10 +244,17 @@ public class MultiAbilityManager {
 	public static class MultiAbilityInfoSub {
 		private String name;
 		private Element element;
+		private ChatColor color;
 
 		public MultiAbilityInfoSub(final String name, final Element element) {
 			this.name = name;
 			this.element = element;
+		}
+
+		public MultiAbilityInfoSub(final String name, final Element element, final ChatColor color) {
+			this.name = name;
+			this.element = element;
+			this.color = color;
 		}
 
 		public Element getElement() {
@@ -263,7 +274,15 @@ public class MultiAbilityManager {
 		}
 
 		public ChatColor getAbilityColor() {
-			return this.element != null ? this.element.getColor() : null;
+			if (this.element == null){
+				return null;
+			}
+
+			if (this.color == null){
+				return this.element.getColor();
+			}else{
+				return this.color;
+			}
 		}
 	}
 

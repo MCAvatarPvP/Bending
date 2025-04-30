@@ -93,13 +93,6 @@ public class Suffocate extends AirAbility {
 		this.targets = new ArrayList<>();
 		this.tasks = new ArrayList<>();
 
-		if (this.bPlayer.isAvatarState()) {
-			this.cooldown = getConfig().getLong("Abilities.Avatar.AvatarState.Air.Suffocate.Cooldown");
-			this.chargeTime = getConfig().getLong("Abilities.Avatar.AvatarState.Air.Suffocate.ChargeTime");
-			this.damage = getConfig().getDouble("Abilities.Avatar.AvatarState.Air.Suffocate.Damage");
-			this.range = getConfig().getDouble("Abilities.Avatar.AvatarState.Air.Suffocate.Range");
-		}
-
 		if (this.particleCount < 1) {
 			this.particleCount = 1;
 		} else if (this.particleCount > 2) {
@@ -114,21 +107,21 @@ public class Suffocate extends AirAbility {
 			}
 		} else {
 			List<Entity> entities = new ArrayList<Entity>();
-			for (int i = 0; i < 6; i++) {
+			for (int i = 0; i < range; i++) {
 				final Location location = GeneralMethods.getTargetedLocation(player, i, getTransparentMaterials());
 				entities = GeneralMethods.getEntitiesAroundPoint(location, .5);
-				if (entities.contains(player)) {
-					entities.remove(player);
-				}
-				if (entities != null && !entities.isEmpty() && !entities.contains(player)) {
+
+				entities.remove(player);
+
+				if (!entities.isEmpty()) {
 					break;
 				}
 			}
-			if (entities == null || entities.isEmpty()) {
+			if (entities.isEmpty()) {
 				return;
 			}
 			final Entity target = entities.get(0);
-			if (target != null && target instanceof LivingEntity) {
+			if (target instanceof LivingEntity) {
 				this.targets.add((LivingEntity) target);
 			}
 		}
@@ -201,7 +194,7 @@ public class Suffocate extends AirAbility {
 				final BukkitRunnable br2 = new BukkitRunnable() {
 					@Override
 					public void run() {
-						target.addPotionEffect(new PotionEffect(PotionEffectType.SLOW, (int) (Suffocate.this.slowRepeat * 20), (int) Suffocate.this.slow));
+						target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, (int) (Suffocate.this.slowRepeat * 20), (int) Suffocate.this.slow));
 					}
 				};
 				final BukkitRunnable br3 = new BukkitRunnable() {

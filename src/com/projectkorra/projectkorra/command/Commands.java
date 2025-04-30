@@ -133,5 +133,6 @@ public class Commands {
 		new VersionCommand();
 		new WhoCommand();
 		new CooldownCommand();
+		new TempCommand();
 	}
 }

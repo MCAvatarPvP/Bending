@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.projectkorra.projectkorra.attribute.markers.DayNightFactor;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
@@ -34,22 +35,22 @@ public class WaterArmsSpear extends WaterAbility {
 	private boolean spearDamageEnabled;
 	@Attribute("Length")
 	private int spearLength;
-	@Attribute(Attribute.RANGE)
+	@Attribute(Attribute.RANGE) @DayNightFactor
 	private double spearRange;
 	private int spearRangeNight;
 	private int spearRangeFullMoon;
-	@Attribute("SphereRadius")
+	@Attribute("SphereRadius") @DayNightFactor
 	private int spearSphereRadius;
 	private int spearSphereNight;
 	private int spearSphereFullMoon;
 	private int distanceTravelled;
-	@Attribute(Attribute.DURATION)
+	@Attribute(Attribute.DURATION) @DayNightFactor
 	private long spearDuration;
 	private long spearDurationNight;
 	private long spearDurationFullMoon;
-	@Attribute(Attribute.COOLDOWN)
+	@Attribute(Attribute.COOLDOWN) @DayNightFactor(invert = true)
 	private long usageCooldown;
-	@Attribute(Attribute.DAMAGE)
+	@Attribute(Attribute.DAMAGE) @DayNightFactor
 	private double spearDamage;
 	private double spearRadius;
 	private Arm arm;
@@ -57,6 +58,8 @@ public class WaterArmsSpear extends WaterAbility {
 	private Location initLocation;
 	private WaterArms waterArms;
 	private final List<Location> spearLocations;
+	private List<TempBlock> waterBlocks = new ArrayList<>();
+	private List<TempBlock> iceBlocks = new ArrayList<>();
 
 	public WaterArmsSpear(final Player player, final boolean freeze) {
 		super(player);
@@ -64,7 +67,7 @@ public class WaterArmsSpear extends WaterAbility {
 
 		this.usageCooldownEnabled = getConfig().getBoolean("Abilities.Water.WaterArms.Arms.Cooldowns.UsageCooldown.Enabled");
 		this.spearDamageEnabled = getConfig().getBoolean("Abilities.Water.WaterArms.Spear.DamageEnabled");
-		this.spearLength = (int) applyModifiers(getConfig().getInt("Abilities.Water.WaterArms.Spear.Length"));
+		this.spearLength = getConfig().getInt("Abilities.Water.WaterArms.Spear.Length");
 		this.spearRange = getConfig().getDouble("Abilities.Water.WaterArms.Spear.Range");
 		this.spearRangeNight = getConfig().getInt("Abilities.Water.WaterArms.Spear.NightAugments.Range.Normal");
 		this.spearRangeFullMoon = getConfig().getInt("Abilities.Water.WaterArms.Spear.NightAugments.Range.FullMoon");
@@ -74,28 +77,12 @@ public class WaterArmsSpear extends WaterAbility {
 		this.spearDuration = getConfig().getLong("Abilities.Water.WaterArms.Spear.Duration");
 		this.spearDurationNight = getConfig().getLong("Abilities.Water.WaterArms.Spear.NightAugments.Duration.Normal");
 		this.spearDurationFullMoon = getConfig().getLong("Abilities.Water.WaterArms.Spear.NightAugments.Duration.FullMoon");
-		this.usageCooldown = applyInverseModifiers(getConfig().getLong("Abilities.Water.WaterArms.Arms.Cooldowns.UsageCooldown.Spear"));
-		this.spearDamage = applyModifiers(getConfig().getDouble("Abilities.Water.WaterArms.Spear.Damage"));
+		this.usageCooldown = getConfig().getLong("Abilities.Water.WaterArms.Arms.Cooldowns.UsageCooldown.Spear");
+		this.spearDamage = getConfig().getDouble("Abilities.Water.WaterArms.Spear.Damage");
 		this.spearRadius = getConfig().getDouble("Abilities.Water.WaterArms.Spear.Radius");
 		this.spearLocations = new ArrayList<>();
 
-		this.getNightAugments();
 		this.createInstance();
-	}
-
-	private void getNightAugments() {
-		final World world = this.player.getWorld();
-		if (isNight(world)) {
-			if (isFullMoon(world) && !GeneralMethods.hasRPG()) {
-				this.spearRange = this.spearRangeFullMoon;
-				this.spearSphereRadius = this.spearSphereFullMoon;
-				this.spearDuration = this.spearDurationFullMoon;
-			} else {
-				this.spearRange = this.spearRangeNight;
-				this.spearSphereRadius = this.spearSphereNight;
-				this.spearDuration = this.spearDurationNight;
-			}
-		}
 	}
 
 	private void createInstance() {
@@ -180,7 +167,7 @@ public class WaterArmsSpear extends WaterAbility {
 				return;
 			}
 
-			new TempBlock(this.location.getBlock(), Material.WATER);
+			waterBlocks.add(new TempBlock(this.location.getBlock(), Material.WATER));
 			getIceBlocks().put(this.location.getBlock(), System.currentTimeMillis() + 600L);
 			final Vector direction = GeneralMethods.getDirection(this.initLocation, GeneralMethods.getTargetedLocation(this.player, this.spearRange, getTransparentMaterials())).normalize();
 
@@ -192,6 +179,9 @@ public class WaterArmsSpear extends WaterAbility {
 	}
 
 	private void createSpear() {
+		waterBlocks.forEach(TempBlock::revertBlock);
+		waterBlocks.clear();
+
 		for (int i = this.spearLocations.size() - this.spearLength; i < this.spearLocations.size(); i++) {
 			if (i >= 0) {
 				final Block block = this.spearLocations.get(i).getBlock();
@@ -201,8 +191,7 @@ public class WaterArmsSpear extends WaterAbility {
 						getIceBlocks().remove(block);
 					}
 
-					final TempBlock tempBlock = new TempBlock(block, Material.AIR);
-					tempBlock.setType(Material.ICE);
+					iceBlocks.add(new TempBlock(block, Material.ICE.createBlockData(), this).setCanSuffocate(false));
 
 					getIceBlocks().put(block, System.currentTimeMillis() + this.spearDuration + (long) (Math.random() * 500));
 				}
@@ -249,7 +238,7 @@ public class WaterArmsSpear extends WaterAbility {
 					}
 				}
 				playIcebendingSound(block.getLocation());
-				new TempBlock(block, Material.ICE);
+				new TempBlock(block, Material.ICE.createBlockData(), this).setCanSuffocate(false);
 				getIceBlocks().put(block, System.currentTimeMillis() + this.spearDuration + (long) (Math.random() * 500));
 			}
 		}

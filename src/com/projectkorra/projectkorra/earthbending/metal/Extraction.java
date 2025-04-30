@@ -5,12 +5,17 @@ import java.util.Random;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.EntityType;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.MetalAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
+import com.projectkorra.projectkorra.region.RegionProtection;
+import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.TempBlock;
 
 public class Extraction extends MetalAbility {
@@ -23,10 +28,17 @@ public class Extraction extends MetalAbility {
 	private int selectRange;
 	@Attribute(Attribute.COOLDOWN)
 	private long cooldown;
+	private int ironGolemDrops;
+	private double ironGolemDamage;
+	private Material ironGolemDropMaterial;
 	private Block originBlock;
 
 	//Whether the server is on at least 1.17 or not. Used to change between raw iron and iron ingots
 	private final boolean is117;
+	private final Material iron;
+	private final Material gold;
+	private final Material copper;
+	private final Material deepslate;
 
 	public Extraction(final Player player) {
 		super(player);
@@ -35,8 +47,15 @@ public class Extraction extends MetalAbility {
 		this.tripleChance = getConfig().getDouble("Abilities.Earth.Extraction.TripleLootChance");
 		this.cooldown = getConfig().getLong("Abilities.Earth.Extraction.Cooldown");
 		this.selectRange = getConfig().getInt("Abilities.Earth.Extraction.SelectRange");
+		this.ironGolemDrops = getConfig().getInt("Abilities.Earth.Extraction.IronGolem.Drops");
+		this.ironGolemDamage = getConfig().getDouble("Abilities.Earth.Extraction.IronGolem.Damage");
+		this.ironGolemDropMaterial = Material.IRON_NUGGET;
 
 		this.is117 = GeneralMethods.getMCVersion() >= 1170;
+		this.iron = is117 ? Material.getMaterial("RAW_IRON") : Material.IRON_INGOT;
+		this.gold = is117 ? Material.getMaterial("RAW_GOLD") : Material.GOLD_INGOT;
+		this.copper = Material.getMaterial("RAW_COPPER");
+		this.deepslate = Material.getMaterial("DEEPSLATE");
 
 		if (!this.bPlayer.canBend(this)) {
 			return;
@@ -44,7 +63,7 @@ public class Extraction extends MetalAbility {
 
 		this.originBlock = player.getTargetBlock(null, this.selectRange);
 
-		if (!GeneralMethods.isRegionProtectedFromBuild(this, this.originBlock.getLocation()) && !TempBlock.isTempBlock(this.originBlock)) {
+		if (!RegionProtection.isRegionProtected(this, this.originBlock.getLocation()) && !TempBlock.isTempBlock(this.originBlock)) {
 			this.start();
 		}
 	}
@@ -55,8 +74,9 @@ public class Extraction extends MetalAbility {
 
 	private int getAmount(int max) {
 		final Random rand = new Random();
-		int randMax = max * (rand.nextDouble() * 100 <= this.tripleChance ? 3 : rand.nextDouble() * 100 <= this.doubleChance ? 2 : 1);
-		return rand.nextInt(randMax) + 1;
+		int chanceMultiplier = rand.nextDouble() * 100 <= this.tripleChance ? 2 : (rand.nextDouble() * 100 <= this.doubleChance ? 1 : 0);
+		int min = chanceMultiplier * max + 1;
+		return rand.nextInt(max) + min;
 	}
 
 	@Override
@@ -69,16 +89,34 @@ public class Extraction extends MetalAbility {
 		Material type;
 		ItemStack item;
 
+		Entity entity = GeneralMethods.getTargetedEntity(this.player, this.selectRange);
+
+		if (entity != null && entity.getType() == EntityType.IRON_GOLEM) {
+			player.getWorld().dropItem(player.getLocation(), new ItemStack(this.ironGolemDropMaterial, this.ironGolemDrops));
+			DamageHandler.damageEntity(entity, this.ironGolemDamage, this);
+
+			playMetalbendingSound(this.originBlock.getLocation());
+			this.bPlayer.addCooldown(this);
+			this.remove();
+			return;
+		}
+
 		switch (this.originBlock.getType().name()) {
 		case "IRON_ORE":
-		case "DEEPSLATE_IRON_ORE":
 			type = Material.STONE;
-			item = new ItemStack(is117 ? Material.getMaterial("RAW_IRON") : Material.IRON_INGOT, this.getAmount( is117 ? 2 : 1 ));
+			item = new ItemStack(iron, this.getAmount(is117 ? 2 : 1 ));
+			break;
+		case "DEEPSLATE_IRON_ORE":
+			type = deepslate;
+			item = new ItemStack(iron, this.getAmount(2));
 			break;
 		case "GOLD_ORE":
-		case "DEEPSLATE_GOLD_ORE":
 			type = Material.STONE;
-			item = new ItemStack(is117 ? Material.getMaterial("RAW_GOLD") : Material.GOLD_INGOT, this.getAmount( is117 ? 2 : 1 ));
+			item = new ItemStack(gold, this.getAmount( is117 ? 2 : 1 ));
+			break;
+		case "DEEPSLATE_GOLD_ORE":
+			type = deepslate;
+			item = new ItemStack(gold, this.getAmount(2));
 			break;
 		case "NETHER_QUARTZ_ORE":
 			type = Material.NETHERRACK;
@@ -93,9 +131,12 @@ public class Extraction extends MetalAbility {
 			item = new ItemStack(Material.GOLD_NUGGET, this.getAmount(5));
 			break;
 		case "COPPER_ORE":
-		case "DEEPSLATE_COPPER_ORE":
 			type = Material.STONE;
-			item = new ItemStack(Material.getMaterial("RAW_COPPER"), this.getAmount(2));
+			item = new ItemStack(copper, this.getAmount(2));
+			break;
+		case "DEEPSLATE_COPPER_ORE":
+			type = deepslate;
+			item = new ItemStack(copper, this.getAmount(2));
 			break;
 		default:
 			return;

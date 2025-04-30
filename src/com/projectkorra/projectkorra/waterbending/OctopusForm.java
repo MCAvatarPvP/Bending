@@ -3,10 +3,12 @@ package com.projectkorra.projectkorra.waterbending;
 import java.util.ArrayList;
 import java.util.Random;
 
+import com.projectkorra.projectkorra.attribute.markers.DayNightFactor;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
+import org.bukkit.block.data.Levelled;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
@@ -36,30 +38,32 @@ public class OctopusForm extends WaterAbility {
 	private boolean settingUp;
 	private boolean forming;
 	private boolean formed;
-	@Attribute(Attribute.RANGE)
-	private double range;
-	@Attribute(Attribute.DAMAGE)
+	@Attribute(Attribute.SELECT_RANGE) @DayNightFactor
+	private double selectRange;
+	@Attribute(Attribute.DAMAGE) @DayNightFactor
 	private double damage;
 	private int currentAnimationStep;
 	private int stepCounter;
 	private int totalStepCount;
 	private long time;
+	@Attribute("FormInterval") @DayNightFactor(invert = true)
 	private long interval;
-	@Attribute(Attribute.COOLDOWN)
+	@Attribute(Attribute.COOLDOWN) @DayNightFactor(invert = true)
 	private long cooldown;
-	@Attribute(Attribute.DURATION)
+	@Attribute(Attribute.DURATION) @DayNightFactor
 	private long duration;
-	@Attribute("Attack" + Attribute.RANGE)
+	@Attribute(Attribute.RANGE)
 	private double attackRange;
-	@Attribute("Usage" + Attribute.COOLDOWN)
+	@Attribute("Usage" + Attribute.COOLDOWN) @DayNightFactor(invert = true)
 	private long usageCooldown;
-	@Attribute(Attribute.KNOCKBACK)
+	@Attribute(Attribute.KNOCKBACK) @DayNightFactor
 	private double knockback;
-	@Attribute(Attribute.RADIUS)
+	@Attribute(Attribute.RADIUS) @DayNightFactor
 	private double radius;
 	private double startAngle;
 	private double angle;
 	private double currentFormHeight;
+	@Attribute("AngleIncrement")
 	private double angleIncrement;
 	private Block sourceBlock;
 	private TempBlock source;
@@ -95,15 +99,15 @@ public class OctopusForm extends WaterAbility {
 		this.currentAnimationStep = 1;
 		this.stepCounter = 1;
 		this.totalStepCount = 3;
-		this.range = applyModifiers(getConfig().getDouble("Abilities.Water.OctopusForm.Range"));
-		this.damage = applyModifiers(getConfig().getDouble("Abilities.Water.OctopusForm.Damage"));
-		this.interval = applyInverseModifiers(getConfig().getLong("Abilities.Water.OctopusForm.FormDelay"));
-		this.attackRange = applyModifiers(getConfig().getInt("Abilities.Water.OctopusForm.AttackRange")); // ------------->    //Although this benefits from being smaller, it's better
-		this.usageCooldown = applyInverseModifiers(getConfig().getInt("Abilities.Water.OctopusForm.UsageCooldown")); 	//to scale it up with the radius as well
-		this.knockback = applyModifiers(getConfig().getDouble("Abilities.Water.OctopusForm.Knockback"));
-		this.radius = applyModifiers(getConfig().getDouble("Abilities.Water.OctopusForm.Radius"));
-		this.cooldown = applyInverseModifiers(getConfig().getLong("Abilities.Water.OctopusForm.Cooldown"));
-		this.duration = applyModifiers(getConfig().getLong("Abilities.Water.OctopusForm.Duration"));
+		this.selectRange = getConfig().getDouble("Abilities.Water.OctopusForm.Range");
+		this.damage = getConfig().getDouble("Abilities.Water.OctopusForm.Damage");
+		this.interval = getConfig().getLong("Abilities.Water.OctopusForm.FormDelay");
+		this.attackRange = getConfig().getInt("Abilities.Water.OctopusForm.AttackRange"); // ------------->    //Although this benefits from being smaller, it's better
+		this.usageCooldown = getConfig().getInt("Abilities.Water.OctopusForm.UsageCooldown"); 	//to scale it up with the radius as well
+		this.knockback = getConfig().getDouble("Abilities.Water.OctopusForm.Knockback");
+		this.radius = getConfig().getDouble("Abilities.Water.OctopusForm.Radius");
+		this.cooldown = getConfig().getLong("Abilities.Water.OctopusForm.Cooldown");
+		this.duration = getConfig().getLong("Abilities.Water.OctopusForm.Duration");
 		this.angleIncrement = getConfig().getDouble("Abilities.Water.OctopusForm.AngleIncrement");
 		this.currentFormHeight = 0;
 		this.blocks = new ArrayList<TempBlock>();
@@ -114,15 +118,11 @@ public class OctopusForm extends WaterAbility {
 			this.pc = new PhaseChange(player, PhaseChangeType.CUSTOM);
 		}
 
-		if (this.bPlayer.isAvatarState()) {
-			this.damage = getConfig().getInt("Abilities.Avatar.AvatarState.Water.OctopusForm.Damage");
-			this.attackRange = getConfig().getInt("Abilities.Avatar.AvatarState.Water.OctopusForm.AttackRange");
-			this.knockback = getConfig().getDouble("Abilities.Avatar.AvatarState.Water.OctopusForm.Knockback");
-			this.radius = getConfig().getDouble("Abilities.Avatar.AvatarState.Water.OctopusForm.Radius");
-		}
 		this.time = System.currentTimeMillis();
+
 		if (!player.isSneaking()) {
-			this.sourceBlock = BlockSource.getWaterSourceBlock(player, this.range, ClickType.LEFT_CLICK, true, true, this.bPlayer.canPlantbend());
+			recalculateAttributes(); //Apply night and avatarstate factors before checking the select range
+			this.sourceBlock = BlockSource.getWaterSourceBlock(player, this.selectRange, ClickType.LEFT_CLICK, true, true, this.bPlayer.canPlantbend());
 		}
 
 		if (this.sourceBlock != null) {
@@ -175,10 +175,12 @@ public class OctopusForm extends WaterAbility {
 		if (isPlant(this.sourceBlock) || isSnow(this.sourceBlock)) {
 			new PlantRegrowth(this.player, this.sourceBlock);
 			this.sourceBlock.setType(Material.AIR);
+		} else if (isCauldron(this.sourceBlock) || isTransformableBlock(this.sourceBlock)) {
+			updateSourceBlock(this.sourceBlock);
 		} else if (!GeneralMethods.isAdjacentToThreeOrMoreSources(this.sourceBlock) && this.sourceBlock != null) {
 			this.sourceBlock.setType(Material.AIR);
 		}
-		this.source = new TempBlock(this.sourceBlock, GeneralMethods.getWaterData(0));
+		this.source = new TempBlock(this.sourceBlock, isCauldron(this.sourceBlock) ? this.sourceBlock.getBlockData() : GeneralMethods.getWaterData(0), this);
 	}
 
 	private void attack() {
@@ -204,7 +206,7 @@ public class OctopusForm extends WaterAbility {
 				continue;
 			}
 
-			final double knock = this.bPlayer.isAvatarState() ? AvatarState.getValue(bPlayer, this.knockback) : this.knockback;
+			final double knock = this.knockback;
 			GeneralMethods.setVelocity(this, entity, GeneralMethods.getDirection(this.player.getLocation(), location).normalize().multiply(knock));
 
 			if (entity instanceof LivingEntity) {
@@ -227,7 +229,7 @@ public class OctopusForm extends WaterAbility {
 		} else if (!this.player.isSneaking() && !this.sourceSelected) {
 			this.remove();
 			return;
-		} else if (this.sourceBlock.getLocation().distanceSquared(this.player.getLocation()) > this.range * this.range && this.sourceSelected) {
+		} else if (this.sourceBlock.getLocation().distanceSquared(this.player.getLocation()) > this.selectRange * this.selectRange && this.sourceSelected) {
 			this.remove();
 			return;
 		} else if (this.duration != 0 && System.currentTimeMillis() > this.getStartTime() + this.duration) {
@@ -255,7 +257,7 @@ public class OctopusForm extends WaterAbility {
 					this.sourceLocation = newBlock.getLocation();
 
 					if (!GeneralMethods.isSolid(newBlock)) {
-						this.source = new TempBlock(newBlock, GeneralMethods.getWaterData(0));
+						this.source = new TempBlock(newBlock, GeneralMethods.getWaterData(0), this);
 						this.sourceBlock = newBlock;
 					} else {
 						this.remove();
@@ -268,7 +270,7 @@ public class OctopusForm extends WaterAbility {
 					this.sourceLocation = newBlock.getLocation();
 
 					if (!GeneralMethods.isSolid(newBlock)) {
-						this.source = new TempBlock(newBlock, GeneralMethods.getWaterData(0));
+						this.source = new TempBlock(newBlock, GeneralMethods.getWaterData(0), this);
 						this.sourceBlock = newBlock;
 					} else {
 						this.remove();
@@ -284,7 +286,7 @@ public class OctopusForm extends WaterAbility {
 							this.source.revertBlock();
 						}
 						if (!GeneralMethods.isSolid(newBlock)) {
-							this.source = new TempBlock(newBlock, GeneralMethods.getWaterData(0));
+							this.source = new TempBlock(newBlock, GeneralMethods.getWaterData(0), this);
 							this.sourceBlock = newBlock;
 						}
 					}
@@ -437,7 +439,7 @@ public class OctopusForm extends WaterAbility {
 			if (isWater(block) && !TempBlock.isTempBlock(block)) {
 				ParticleEffect.WATER_BUBBLE.display(block.getLocation().clone().add(0.5, 0.5, 0.5), 5, Math.random(), Math.random(), Math.random(), 0);
 			}
-			this.newBlocks.add(new TempBlock(block, GeneralMethods.getWaterData(0)));
+			this.newBlocks.add(new TempBlock(block, GeneralMethods.getWaterData(0), this));
 		}
 	}
 
@@ -566,12 +568,12 @@ public class OctopusForm extends WaterAbility {
 		this.formed = formed;
 	}
 
-	public double getRange() {
-		return this.range;
+	public double getSelectRange() {
+		return this.selectRange;
 	}
 
-	public void setRange(final double range) {
-		this.range = range;
+	public void setSelectRange(final double selectRange) {
+		this.selectRange = selectRange;
 	}
 
 	public double getDamage() {

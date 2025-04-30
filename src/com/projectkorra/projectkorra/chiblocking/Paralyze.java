@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.chiblocking;
 
+import com.projectkorra.projectkorra.BendingPlayer;
+import com.projectkorra.projectkorra.util.MovementHandler;
 import org.bukkit.Location;
 import org.bukkit.Sound;
 import org.bukkit.entity.Creature;
@@ -13,7 +15,7 @@ import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.airbending.Suffocate;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.command.Commands;
-import com.projectkorra.projectkorra.util.MovementHandler;
+import com.projectkorra.projectkorra.util.MovementHandle;
 
 public class Paralyze extends ChiAbility {
 
@@ -41,7 +43,7 @@ public class Paralyze extends ChiAbility {
 	public void progress() {
 		if (this.bPlayer.canBend(this)) {
 			if (this.target instanceof Player) {
-				if (Commands.invincible.contains(((Player) this.target).getName())) {
+				if (Commands.invincible.contains(((Player) this.target).getName()) || !BendingPlayer.getBendingPlayer((Player) this.target).canBeChiblocked()) {
 					this.remove();
 					return;
 				}

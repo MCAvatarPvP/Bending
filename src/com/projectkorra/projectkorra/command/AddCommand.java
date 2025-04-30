@@ -71,12 +71,17 @@ public class AddCommand extends PKCommand {
 			if (!this.hasPermission(sender, "others")) {
 				return;
 			}
-			final OfflinePlayer player = Bukkit.getOfflinePlayer(args.get(1));
-			if (!player.isOnline() && !player.hasPlayedBefore()) {
-				ChatUtil.sendBrandingMessage(sender, ChatColor.RED + this.playerNotFound);
-				return;
-			}
-			this.add(sender, player, args.get(0).toLowerCase());
+
+			this.getPlayer(args.get(1)).thenAccept(player -> {
+				if (player == null || (!player.isOnline() && !player.hasPlayedBefore())) {
+					ChatUtil.sendBrandingMessage(sender, ChatColor.RED + this.playerNotFound);
+					return;
+				}
+				this.add(sender, player, args.get(0).toLowerCase());
+			}).exceptionally(e -> {
+				e.printStackTrace();
+				return null;
+			});
 		}
 	}
 
@@ -103,6 +108,14 @@ public class AddCommand extends PKCommand {
 				boolean elementFound = false;
 				for (final Element e : Element.getAllElements()) {
 					if (!bPlayer.hasElement(e) && e != Element.AVATAR) {
+						if (!this.hasPermission(sender, e.getName().toLowerCase())) {
+							continue;
+						}
+
+						PlayerChangeElementEvent event = new PlayerChangeElementEvent(sender, target, e, Result.ADD);
+						Bukkit.getServer().getPluginManager().callEvent(event);
+						if (event.isCancelled()) continue; // if the event is cancelled, don't add the element.
+
 						elementFound = true;
 						bPlayer.addElement(e);
 
@@ -115,6 +128,10 @@ public class AddCommand extends PKCommand {
 						if (online) {
 							for (final SubElement sub : Element.getAllSubElements()) {
 								if (bPlayer.hasElement(sub.getParentElement()) && ((BendingPlayer)bPlayer).hasSubElementPermission(sub)) {
+									PlayerChangeSubElementEvent subEvent = new PlayerChangeSubElementEvent(sender, target, sub, com.projectkorra.projectkorra.event.PlayerChangeSubElementEvent.Result.ADD);
+									Bukkit.getServer().getPluginManager().callEvent(subEvent);
+									if (subEvent.isCancelled()) continue; // if the event is cancelled, don't add the subelement.
+
 									bPlayer.addSubElement(sub);
 								}
 							}
@@ -122,8 +139,6 @@ public class AddCommand extends PKCommand {
 						}
 
 						bPlayer.saveElements();
-
-						if (online) Bukkit.getServer().getPluginManager().callEvent(new PlayerChangeElementEvent(sender, (Player) target, e, Result.ADD));
 					}
 				}
 				if (elementFound) {
@@ -159,6 +174,12 @@ public class AddCommand extends PKCommand {
 
 				// if it's an element:
 				if (Arrays.asList(Element.getAllElements()).contains(e)) {
+					boolean hasPermission = sender.hasPermission("bending.command.add." + Element.AVATAR.getName().toLowerCase()) || this.hasPermission(sender, e.getName().toLowerCase());
+
+					if (!hasPermission) {
+						return;
+					}
+
 					if (bPlayer.hasElement(e)) { // if already had, determine who to send the error message to.
 						if (!(sender instanceof Player) || !((Player) sender).equals(target)) {
 							ChatUtil.sendBrandingMessage(sender, ChatColor.RED + this.alreadyHasElementOther.replace("{target}", ChatColor.DARK_AQUA + target.getName() + ChatColor.RED));
@@ -168,17 +189,23 @@ public class AddCommand extends PKCommand {
 						return;
 					}
 
-					// add all allowed subelements.
+					PlayerChangeElementEvent event = new PlayerChangeElementEvent(sender, target, e, Result.ADD);
+					Bukkit.getServer().getPluginManager().callEvent(event);
+					if (event.isCancelled()) return; // if the event is cancelled, don't add the element.
+
 					bPlayer.addElement(e);
 					bPlayer.getSubElements().clear();
-					if (online) {
+					if (online) { //Add all subs they have permission for
 						for (final SubElement sub : Element.getAllSubElements()) {
 							if (bPlayer.hasElement(sub.getParentElement()) && ((BendingPlayer)bPlayer).hasSubElementPermission(sub)) {
+								PlayerChangeSubElementEvent subEvent = new PlayerChangeSubElementEvent(sender, target, sub, com.projectkorra.projectkorra.event.PlayerChangeSubElementEvent.Result.ADD);
+								Bukkit.getServer().getPluginManager().callEvent(subEvent);
+								if (subEvent.isCancelled()) continue; // if the event is cancelled, don't add the subelement.
+
 								bPlayer.addSubElement(sub);
 							}
 						}
 					}
-
 
 					// send the message.
 					final ChatColor color = e.getColor();
@@ -200,12 +227,16 @@ public class AddCommand extends PKCommand {
 					}
 					bPlayer.saveElements();
 					bPlayer.saveSubElements();
-					if (online) Bukkit.getServer().getPluginManager().callEvent(new PlayerChangeElementEvent(sender, (Player) target, e, Result.ADD));
 					return;
 
 					// if it's a sub element:
 				} else if (Arrays.asList(Element.getAllSubElements()).contains(e)) {
 					final SubElement sub = (SubElement) e;
+
+					if (!this.hasPermission(sender, sub.getName().toLowerCase())) {
+						return;
+					}
+
 					if (bPlayer.hasSubElement(sub)) { // if already had, determine  who to send the error message to.
 						if (!(sender instanceof Player) || !((Player) sender).equals(target)) {
 							ChatUtil.sendBrandingMessage(sender, ChatColor.RED + this.alreadyHasSubElementOther.replace("{target}", ChatColor.DARK_AQUA + target.getName() + ChatColor.RED));
@@ -214,6 +245,11 @@ public class AddCommand extends PKCommand {
 						}
 						return;
 					}
+
+					PlayerChangeSubElementEvent event = new PlayerChangeSubElementEvent(sender, target, sub, com.projectkorra.projectkorra.event.PlayerChangeSubElementEvent.Result.ADD);
+					Bukkit.getServer().getPluginManager().callEvent(event);
+					if (event.isCancelled()) return; // if the event is cancelled, don't add the subelement.
+
 					bPlayer.addSubElement(sub);
 					final ChatColor color = e.getColor();
 
@@ -232,13 +268,15 @@ public class AddCommand extends PKCommand {
 						}
 					}
 					bPlayer.saveSubElements();
-					if (online) Bukkit.getServer().getPluginManager().callEvent(new PlayerChangeSubElementEvent(sender, (Player) target, sub, com.projectkorra.projectkorra.event.PlayerChangeSubElementEvent.Result.ADD));
 					return;
 
 				} else { // bad element.
 					sender.sendMessage(ChatColor.RED + this.invalidElement);
 				}
 			}
+		}).exceptionally(e -> {
+			e.printStackTrace();
+			return null;
 		});
 
 	}
@@ -254,29 +292,44 @@ public class AddCommand extends PKCommand {
 		}
 		final List<String> l = new ArrayList<String>();
 		if (args.size() == 0) {
+			// add tab completion for avatar
+			if (sender.hasPermission("bending.command.add." + Element.AVATAR.getName().toLowerCase())) {
+				l.add(Element.AVATAR.getName());
+			}
 
-			l.add("Air");
-			l.add("Earth");
-			l.add("Fire");
-			l.add("Water");
-			l.add("Chi");
+			// add tab completion for elements the player has permission to add
+			List<String> elementNames = Arrays.asList("Air", "Earth", "Fire", "Water", "Chi");
+
+			for (final String elementName : elementNames) {
+				final String commandPermission = "bending.command.add." + elementName.toLowerCase();
+				if (!sender.hasPermission(commandPermission)) continue;
+
+				l.add(elementName);
+			}
+
+			// add tab completion for addon elements the player has permission to add
 			for (final Element e : Element.getAddonElements()) {
+				final String commandPermission = "bending.command.add." + e.getName().toLowerCase();
+				if (!sender.hasPermission(commandPermission)) continue;
+
 				l.add(e.getName());
 			}
 
-			l.add("Blood");
-			l.add("Combustion");
-			l.add("Flight");
-			l.add("Healing");
-			l.add("Ice");
-			l.add("Lava");
-			l.add("Lightning");
-			l.add("Metal");
-			l.add("Plant");
-			l.add("Sand");
-			l.add("Spiritual");
-			l.add("BlueFire");
+			// add tab completion for sub-elements the player has permission to add
+			List<String> subelementNames = Arrays.asList("Blood", "Combustion", "Flight", "Healing", "Ice", "Lava", "Lightning", "Metal", "Plant", "Sand", "Spiritual", "BlueFire");
+
+			for (final String subelementName : subelementNames) {
+				final String commandPermission = "bending.command.add." + subelementName.toLowerCase();
+				if (!sender.hasPermission(commandPermission)) continue;
+
+				l.add(subelementName);
+			}
+
+			// add tab completion for addon sub-elements the player has permission to add
 			for (final SubElement e : Element.getAddonSubElements()) {
+				final String commandPermission = "bending.command.add." + e.getName().toLowerCase();
+				if (!sender.hasPermission(commandPermission)) continue;
+
 				l.add(e.getName());
 			}
 		} else {

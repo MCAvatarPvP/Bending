@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.projectkorra.projectkorra.ability.util.ComboUtil;
+import com.projectkorra.projectkorra.attribute.markers.DayNightFactor;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import org.bukkit.Location;
 import org.bukkit.Sound;
@@ -23,13 +24,13 @@ import com.projectkorra.projectkorra.util.ClickType;
 
 public class FireKick extends FireAbility implements ComboAbility {
 
-	@Attribute(Attribute.COOLDOWN)
+	@Attribute(Attribute.COOLDOWN) @DayNightFactor(invert = true)
 	private long cooldown;
-	@Attribute(Attribute.DAMAGE)
+	@Attribute(Attribute.DAMAGE) @DayNightFactor
 	private double damage;
 	@Attribute(Attribute.SPEED)
 	private double speed;
-	@Attribute(Attribute.RANGE)
+	@Attribute(Attribute.RANGE) @DayNightFactor
 	private double range;
 	private double radius;
 	private double collisionRadius;
@@ -48,18 +49,12 @@ public class FireKick extends FireAbility implements ComboAbility {
 		this.affectedEntities = new ArrayList<>();
 		this.tasks = new ArrayList<>();
 
-		this.damage = applyModifiersDamage(getConfig().getDouble("Abilities.Fire.FireKick.Damage"));
-		this.range = applyModifiersRange(getConfig().getDouble("Abilities.Fire.FireKick.Range"));
-		this.cooldown = applyModifiersCooldown(getConfig().getLong("Abilities.Fire.FireKick.Cooldown"));
+		this.damage = getConfig().getDouble("Abilities.Fire.FireKick.Damage");
+		this.range = getConfig().getDouble("Abilities.Fire.FireKick.Range");
+		this.cooldown = getConfig().getLong("Abilities.Fire.FireKick.Cooldown");
 		this.speed = getConfig().getLong("Abilities.Fire.FireKick.Speed");
 		this.radius = getConfig().getLong("Abilities.Fire.FireKick.Radius");
 		this.collisionRadius = getConfig().getDouble("Abilities.Fire.FireKick.CollisionRadius");
-
-		if (this.bPlayer.isAvatarState()) {
-			this.cooldown = 0;
-			this.damage = getConfig().getDouble("Abilities.Avatar.AvatarState.Fire.FireKick.Damage");
-			this.range = getConfig().getDouble("Abilities.Avatar.AvatarState.Fire.FireKick.Range");
-		}
 
 		this.start();
 	}
@@ -104,8 +99,11 @@ public class FireKick extends FireAbility implements ComboAbility {
 			this.player.getWorld().playSound(this.player.getLocation(), Sound.ENTITY_HORSE_JUMP, 0.5f, 0f);
 			this.player.getWorld().playSound(this.player.getLocation(), Sound.ENTITY_CREEPER_PRIMED, 0.5f, 1f);
 			for (int i = -30; i <= 30; i += 5) {
-				Vector vec = GeneralMethods.getDirection(this.player.getLocation(), this.destination.clone());
-				vec = GeneralMethods.rotateXZ(vec, i);
+				double angle = Math.toRadians(i);
+				final Vector direction = this.player.getEyeLocation().getDirection().clone();
+				Vector xz = GeneralMethods.rotateVectorAroundVector(direction, new Vector(-direction.getZ(), 0, direction.getX()).normalize(), 0);
+				Vector vec = direction.clone().multiply(Math.cos(angle))
+						.add(xz.clone().multiply(Math.sin(angle))).normalize();
 
 				final FireComboStream fs = new FireComboStream(this.player, this, vec, this.player.getLocation(), this.range, this.speed);
 				fs.setSpread(0.2F);

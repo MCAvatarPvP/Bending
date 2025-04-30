@@ -21,191 +21,189 @@ import com.projectkorra.projectkorra.ability.CoreAbility;
  */
 public class MovementHandle {
 
-	public static Set<MovementHandle> handlers = new HashSet<>();
+    public static Set<MovementHandle> handlers = new HashSet<>();
 
-	private final LivingEntity entity;
-	private BukkitRunnable runnable, msg;
-	private ResetTask reset = null;
-	private final CoreAbility ability;
+    private final LivingEntity entity;
+    private BukkitRunnable runnable, msg;
+    private ResetTask reset = null;
+    private final CoreAbility ability;
 
-	public MovementHandle(final LivingEntity entity, final CoreAbility ability) {
-		this.entity = entity;
-		this.ability = ability;
-		handlers.add(this);
-	}
+    public MovementHandle(final LivingEntity entity, final CoreAbility ability) {
+        this.entity = entity;
+        this.ability = ability;
+        handlers.add(this);
+    }
 
-	/**
-	 * This stops the movement of the entity once they land on the ground,
-	 * acting as a "paralyze" with a duration for how long they should be
-	 * stopped
-	 *
-	 * @param duration how long the entity should be stopped for <b>(in
-	 *            ticks)</b>.
-	 * @param message the message to send to the stopped entity if they are a
-	 *            player
-	 * @param ability ability which is stopping the player
-	 */
-	public void stopWithDuration(final long duration, final String message) {
-		this.entity.setMetadata("movement:stopold", new FixedMetadataValue(ProjectKorra.plugin, this.ability));
-		if (this.entity instanceof Player) {
-			final long start = System.currentTimeMillis();
-			final Player player = (Player) this.entity;
-			this.runnable = new BukkitRunnable() {
+    /**
+     * This stops the movement of the entity once they land on the ground,
+     * acting as a "paralyze" with a duration for how long they should be
+     * stopped
+     *
+     * @param duration how long the entity should be stopped for <b>(in
+     *            ticks)</b>.
+     * @param message the message to send to the stopped entity if they are a
+     *            player
+     */
+    public void stopWithDuration(final long duration, final String message) {
+        this.entity.setMetadata("movement:stop", new FixedMetadataValue(ProjectKorra.plugin, this.ability));
+        if (this.entity instanceof Player) {
+            final long start = System.currentTimeMillis();
+            final Player player = (Player) this.entity;
+            this.runnable = new BukkitRunnable() {
 
-				@Override
-				public void run() {
-					ActionBar.sendActionBar(message, player);
-					if (System.currentTimeMillis() >= start + duration / 20 * 1000) {
-						MovementHandle.this.reset();
-					}
-				}
+                @Override
+                public void run() {
+                    ChatUtil.sendActionBar(message, player);
+                    if (System.currentTimeMillis() >= start + duration / 20 * 1000) {
+                        MovementHandle.this.reset();
+                    }
+                }
 
-			};
-			this.runnable.runTaskTimer(ProjectKorra.plugin, 0, 1);
-		} else {
-			this.runnable = new BukkitRunnable() {
+            };
+            this.runnable.runTaskTimer(ProjectKorra.plugin, 0, 1);
+        } else {
+            this.runnable = new BukkitRunnable() {
 
-				@Override
-				public void run() {
-					MovementHandle.this.reset();
-				}
+                @Override
+                public void run() {
+                    MovementHandle.this.reset();
+                }
 
-			};
-			new BukkitRunnable() {
+            };
+            new BukkitRunnable() {
 
-				@Override
-				public void run() {
-					if (MovementHandle.this.entity.isOnGround()) {
-						MovementHandle.this.entity.setAI(false);
-						this.cancel();
-						MovementHandle.this.runnable.runTaskLater(ProjectKorra.plugin, duration);
-					}
-				}
+                @Override
+                public void run() {
+                    if (MovementHandle.this.entity.isOnGround()) {
+                        MovementHandle.this.entity.setAI(false);
+                        this.cancel();
+                        MovementHandle.this.runnable.runTaskLater(ProjectKorra.plugin, duration);
+                    }
+                }
 
-			}.runTaskTimer(ProjectKorra.plugin, 0, 1);
-		}
-	}
+            }.runTaskTimer(ProjectKorra.plugin, 0, 1);
+        }
+    }
 
-	/**
-	 * This stops the movement of the entity once they land on the ground,
-	 * acting as a "paralyze"
-	 *
-	 * @param message the message to send to the stopped entity if they are a
-	 *            player
-	 * @param ability ability which is stopping the player
-	 */
-	public void stop(final String message) {
-		this.entity.setMetadata("movement:stopold", new FixedMetadataValue(ProjectKorra.plugin, this.ability));
-		if (this.entity instanceof Player) {
-			final Player player = (Player) this.entity;
-			this.msg = new BukkitRunnable() {
+    /**
+     * This stops the movement of the entity once they land on the ground,
+     * acting as a "paralyze"
+     *
+     * @param message the message to send to the stopped entity if they are a
+     *            player
+     */
+    public void stop(final String message) {
+        this.entity.setMetadata("movement:stop", new FixedMetadataValue(ProjectKorra.plugin, this.ability));
+        if (this.entity instanceof Player) {
+            final Player player = (Player) this.entity;
+            this.msg = new BukkitRunnable() {
 
-				@Override
-				public void run() {
-					ActionBar.sendActionBar(message, player);
-				}
+                @Override
+                public void run() {
+                    ChatUtil.sendActionBar(message, player);
+                }
 
-			};
-			this.msg.runTaskTimer(ProjectKorra.plugin, 0, 1);
-		} else {
-			new BukkitRunnable() {
+            };
+            this.msg.runTaskTimer(ProjectKorra.plugin, 0, 1);
+        } else {
+            new BukkitRunnable() {
 
-				@Override
-				public void run() {
-					if (MovementHandle.this.entity.isOnGround()) {
-						MovementHandle.this.entity.setAI(false);
-						this.cancel();
-					}
-				}
+                @Override
+                public void run() {
+                    if (MovementHandle.this.entity.isOnGround()) {
+                        MovementHandle.this.entity.setAI(false);
+                        this.cancel();
+                    }
+                }
 
-			}.runTaskTimer(ProjectKorra.plugin, 0, 1);
-		}
-		this.runnable = null;
-	}
+            }.runTaskTimer(ProjectKorra.plugin, 0, 1);
+        }
+        this.runnable = null;
+    }
 
-	/**
-	 * Resets any stopped movements and runs the {@link ResetTask} if able.
-	 */
-	public void reset() {
-		if (this.runnable != null) {
-			try {
-				this.runnable.cancel();
-			} catch (final IllegalStateException e) { //if a player hasn't landed on the ground yet this runnable wont be scheduled, and will give an error on server shutdown
-				this.runnable = null;
-			}
-		}
-		if (this.msg != null) {
-			this.msg.cancel();
-		}
-		if (!(this.entity instanceof Player)) {
-			this.entity.setAI(true);
-		}
-		if (this.reset != null) {
-			this.reset.run();
-		}
-		if (this.entity.hasMetadata("movement:stopold")) {
-			this.entity.removeMetadata("movement:stopold", ProjectKorra.plugin);
-		}
-	}
+    /**
+     * Resets any stopped movements and runs the {@link ResetTask} if able.
+     */
+    public void reset() {
+        if (this.runnable != null) {
+            try {
+                this.runnable.cancel();
+            } catch (final IllegalStateException e) { //if a player hasn't landed on the ground yet this runnable wont be scheduled, and will give an error on server shutdown
+                this.runnable = null;
+            }
+        }
+        if (this.msg != null) {
+            this.msg.cancel();
+        }
+        if (!(this.entity instanceof Player)) {
+            this.entity.setAI(true);
+        }
+        if (this.reset != null) {
+            this.reset.run();
+        }
+        if (this.entity.hasMetadata("movement:stop")) {
+            this.entity.removeMetadata("movement:stop", ProjectKorra.plugin);
+        }
+    }
 
-	public CoreAbility getAbility() {
-		return this.ability;
-	}
+    public CoreAbility getAbility() {
+        return this.ability;
+    }
 
-	public LivingEntity getEntity() {
-		return this.entity;
-	}
+    public LivingEntity getEntity() {
+        return this.entity;
+    }
 
-	public void setResetTask(final ResetTask reset) {
-		this.reset = reset;
-	}
+    public void setResetTask(final ResetTask reset) {
+        this.reset = reset;
+    }
 
-	/**
-	 * Functional interface, called when the entity is allowed to move again,
-	 * therefore "reseting" it's AI
-	 *
-	 * @author Simplicitee
-	 *
-	 */
-	public interface ResetTask {
-		public void run();
-	}
+    /**
+     * Functional interface, called when the entity is allowed to move again,
+     * therefore "reseting" it's AI
+     *
+     * @author Simplicitee
+     *
+     */
+    public interface ResetTask {
+        public void run();
+    }
 
-	/**
-	 * Checks if the entity is stopped by an instance of MovementHandler
-	 *
-	 * @param entity the entity in question of being stopped
-	 * @return false if not stopped by an instance of MovementHandler
-	 */
-	public static boolean isStopped(final Entity entity) {
-		return entity.hasMetadata("movement:stopold");
-	}
+    /**
+     * Checks if the entity is stopped by an instance of MovementHandler
+     *
+     * @param entity the entity in question of being stopped
+     * @return false if not stopped by an instance of MovementHandler
+     */
+    public static boolean isStopped(final Entity entity) {
+        return entity.hasMetadata("movement:stop");
+    }
 
-	/**
-	 * Resets all instances of MovementHandler
-	 */
-	public static void resetAll() {
-		for (final MovementHandle handler : handlers) {
-			handler.reset();
-		}
-	}
+    /**
+     * Resets all instances of MovementHandler
+     */
+    public static void resetAll() {
+        for (final MovementHandle handler : handlers) {
+            handler.reset();
+        }
+    }
 
-	/**
-	 * Using an entity and ability, the MovementHandler associated with both
-	 * will be found.
-	 *
-	 * @param entity the entity in question of being stopped
-	 * @param ability the ability in question of doing the stopping
-	 * @return null if no MovementHandler instance with entity and ability
-	 *         found.
-	 */
-	public static MovementHandle getFromEntityAndAbility(final Entity entity, final CoreAbility ability) {
-		for (final MovementHandle handler : handlers) {
-			if (handler.getEntity().getEntityId() == entity.getEntityId() && handler.getAbility().equals(ability)) {
-				return handler;
-			}
-		}
+    /**
+     * Using an entity and ability, the MovementHandler associated with both
+     * will be found.
+     *
+     * @param entity the entity in question of being stopped
+     * @param ability the ability in question of doing the stopping
+     * @return null if no MovementHandler instance with entity and ability
+     *         found.
+     */
+    public static MovementHandle getFromEntityAndAbility(final Entity entity, final CoreAbility ability) {
+        for (final MovementHandle handler : handlers) {
+            if (handler.getEntity().getEntityId() == entity.getEntityId() && handler.getAbility().equals(ability)) {
+                return handler;
+            }
+        }
 
-		return null;
-	}
+        return null;
+    }
 }

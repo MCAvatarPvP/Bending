@@ -41,8 +41,8 @@ public class AirAgility extends AirAbility implements PassiveAbility {
 		}
 
 		// Jump Buff.
-		if (!this.player.hasPotionEffect(PotionEffectType.JUMP) || this.player.getPotionEffect(PotionEffectType.JUMP).getAmplifier() < this.jumpPower || (this.player.getPotionEffect(PotionEffectType.JUMP).getAmplifier() == this.jumpPower && this.player.getPotionEffect(PotionEffectType.JUMP).getDuration() == 1)) {
-			this.player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP, this.jumpDuration, this.jumpPower, true, false), true);
+		if (!this.player.hasPotionEffect(PotionEffectType.JUMP_BOOST) || this.player.getPotionEffect(PotionEffectType.JUMP_BOOST).getAmplifier() < this.jumpPower || (this.player.getPotionEffect(PotionEffectType.JUMP_BOOST).getAmplifier() == this.jumpPower && this.player.getPotionEffect(PotionEffectType.JUMP_BOOST).getDuration() == 1)) {
+			this.player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, this.jumpDuration, this.jumpPower, true, false), true);
 		}
 		// Speed Buff.
 		if (!this.player.hasPotionEffect(PotionEffectType.SPEED) || this.player.getPotionEffect(PotionEffectType.SPEED).getAmplifier() < this.speedPower || (this.player.getPotionEffect(PotionEffectType.SPEED).getAmplifier() == this.speedPower && this.player.getPotionEffect(PotionEffectType.SPEED).getDuration() == 1)) {

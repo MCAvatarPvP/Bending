@@ -231,7 +231,7 @@ public class Lightning extends LightningAbility {
 					if (ThreadLocalRandom.current().nextDouble() < .2) {
 						playLightningbendingChargingSound(loc);
 					}
-					
+
 				} else {
 					this.state = State.MAINBOLT;
 					this.bPlayer.addCooldown(this);

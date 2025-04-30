@@ -3,6 +3,7 @@ package com.projectkorra.projectkorra.waterbending.ice;
 import java.util.ArrayList;
 import java.util.Random;
 
+import com.projectkorra.projectkorra.attribute.markers.DayNightFactor;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
@@ -36,15 +37,17 @@ public class IceBlast extends IceAbility {
 	private boolean progressing;
 	private byte data;
 	private long time;
-	@Attribute(Attribute.COOLDOWN)
+	@Attribute(Attribute.COOLDOWN) @DayNightFactor(invert = true)
 	private long cooldown;
+	@Attribute("Slow" + Attribute.COOLDOWN) @DayNightFactor(invert = true)
+	private long slowCooldown;
 	private long interval;
-	@Attribute(Attribute.RANGE)
+	@Attribute(Attribute.RANGE) @DayNightFactor
 	private double range;
-	@Attribute(Attribute.DAMAGE)
+	@Attribute(Attribute.DAMAGE) @DayNightFactor
 	private double damage;
 	private double collisionRadius;
-	@Attribute("Deflect" + Attribute.RANGE)
+	@Attribute("Deflect" + Attribute.RANGE) @DayNightFactor
 	private double deflectRange;
 	private Block sourceBlock;
 	private Location location;
@@ -59,20 +62,15 @@ public class IceBlast extends IceAbility {
 		this.data = 0;
 		this.interval = getConfig().getLong("Abilities.Water.IceBlast.Interval");
 		this.collisionRadius = getConfig().getDouble("Abilities.Water.IceBlast.CollisionRadius");
-		this.deflectRange = applyModifiers(getConfig().getDouble("Abilities.Water.IceBlast.DeflectRange"));
-		this.range = applyModifiers(getConfig().getDouble("Abilities.Water.IceBlast.Range"));
-		this.damage = applyModifiers(getConfig().getInt("Abilities.Water.IceBlast.Damage"));
-		this.cooldown = applyInverseModifiers(getConfig().getInt("Abilities.Water.IceBlast.Cooldown"));
+		this.deflectRange = getConfig().getDouble("Abilities.Water.IceBlast.DeflectRange");
+		this.range = getConfig().getDouble("Abilities.Water.IceBlast.Range");
+		this.damage = getConfig().getInt("Abilities.Water.IceBlast.Damage");
+		this.cooldown = getConfig().getInt("Abilities.Water.IceBlast.Cooldown");
+		this.slowCooldown = getConfig().getLong("Abilities.Water.IceBlast.SlowCooldown");
 		this.allowSnow = getConfig().getBoolean("Abilities.Water.IceBlast.AllowSnow");
 
 		if (!this.bPlayer.canBend(this) || !this.bPlayer.canIcebend()) {
 			return;
-		}
-
-		if (this.bPlayer.isAvatarState()) {
-			this.cooldown = getConfig().getLong("Abilities.Avatar.AvatarState.Water.IceBlast.Cooldown");
-			this.range = getConfig().getDouble("Abilities.Avatar.AvatarState.Water.IceBlast.Range");
-			this.damage = getConfig().getInt("Abilities.Avatar.AvatarState.Water.IceBlast.Damage");
 		}
 
 		block(player);
@@ -166,17 +164,16 @@ public class IceBlast extends IceAbility {
 	}
 
 	private void affect(final LivingEntity entity) {
+		DamageHandler.damageEntity(entity, this.damage, this);
 		if (entity instanceof Player) {
 			if (this.bPlayer.canBeSlowed()) {
-				final PotionEffect effect = new PotionEffect(PotionEffectType.SLOW, 70, 2);
+				final PotionEffect effect = new PotionEffect(PotionEffectType.SLOWNESS, 70, 2);
 				new TempPotionEffect(entity, effect);
-				this.bPlayer.slow(10);
-				DamageHandler.damageEntity(entity, this.damage, this);
+				this.bPlayer.slow(this.slowCooldown);
 			}
 		} else {
-			final PotionEffect effect = new PotionEffect(PotionEffectType.SLOW, 70, 2);
+			final PotionEffect effect = new PotionEffect(PotionEffectType.SLOWNESS, 70, 2);
 			new TempPotionEffect(entity, effect);
-			DamageHandler.damageEntity(entity, this.damage, this);
 		}
 		AirAbility.breakBreathbendingHold(entity);
 
@@ -243,6 +240,10 @@ public class IceBlast extends IceAbility {
 		}
 
 		if (!this.bPlayer.getBoundAbilityName().equalsIgnoreCase(this.getName()) && this.prepared) {
+			this.remove();
+			return;
+		}
+		if (this.prepared && !isWaterbendable(this.sourceBlock)) {
 			this.remove();
 			return;
 		}
@@ -490,6 +491,14 @@ public class IceBlast extends IceAbility {
 
 	public void setLocation(final Location location) {
 		this.location = location;
+	}
+
+	public long getSlowCooldown() {
+		return this.slowCooldown;
+	}
+
+	public void setSlowCooldown(final long slowCooldown) {
+		this.slowCooldown = slowCooldown;
 	}
 
 }

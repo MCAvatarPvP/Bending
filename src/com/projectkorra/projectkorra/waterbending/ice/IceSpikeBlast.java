@@ -3,10 +3,13 @@ package com.projectkorra.projectkorra.waterbending.ice;
 import java.util.Random;
 
 import com.projectkorra.projectkorra.configuration.ConfigManager;
+import com.projectkorra.projectkorra.attribute.markers.DayNightFactor;
+import com.projectkorra.projectkorra.region.RegionProtection;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockState;
+import org.bukkit.block.data.Levelled;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
@@ -33,20 +36,20 @@ public class IceSpikeBlast extends IceAbility {
 	private byte data;
 	@Attribute("SlowPotency")
 	private int slowPotency;
-	@Attribute("Slow" + Attribute.DURATION)
+	@Attribute("Slow" + Attribute.DURATION) @DayNightFactor
 	private int slowDuration;
 	private long time;
 	private long interval;
-	@Attribute(Attribute.COOLDOWN)
+	@Attribute(Attribute.COOLDOWN) @DayNightFactor(invert = true)
 	private long cooldown;
-	@Attribute("Slow" + Attribute.COOLDOWN)
+	@Attribute("Slow" + Attribute.COOLDOWN) @DayNightFactor(invert = true)
 	private long slowCooldown;
-	@Attribute(Attribute.RANGE)
+	@Attribute(Attribute.RANGE) @DayNightFactor
 	private double range;
-	@Attribute(Attribute.DAMAGE)
+	@Attribute(Attribute.DAMAGE) @DayNightFactor
 	private double damage;
 	private double collisionRadius;
-	@Attribute("Deflect" + Attribute.RANGE)
+	@Attribute("Deflect" + Attribute.RANGE) @DayNightFactor
 	private double deflectRange;
 	private Block sourceBlock;
 	private Location location;
@@ -64,26 +67,17 @@ public class IceSpikeBlast extends IceAbility {
 
 		this.data = 0;
 		this.interval = getConfig().getLong("Abilities.Water.IceSpike.Blast.Interval");
-		this.slowCooldown = applyInverseModifiers(getConfig().getLong("Abilities.Water.IceSpike.Blast.SlowCooldown"));
+		this.slowCooldown = getConfig().getLong("Abilities.Water.IceSpike.Blast.SlowCooldown");
 		this.collisionRadius = getConfig().getDouble("Abilities.Water.IceSpike.Blast.CollisionRadius");
-		this.deflectRange = applyModifiers(getConfig().getDouble("Abilities.Water.IceSpike.Blast.DeflectRange"));
-		this.range = applyModifiers(getConfig().getDouble("Abilities.Water.IceSpike.Blast.Range"));
-		this.damage = applyModifiers(getConfig().getDouble("Abilities.Water.IceSpike.Blast.Damage"));
-		this.cooldown = applyInverseModifiers(getConfig().getLong("Abilities.Water.IceSpike.Blast.Cooldown"));
+		this.deflectRange = getConfig().getDouble("Abilities.Water.IceSpike.Blast.DeflectRange");
+		this.range = getConfig().getDouble("Abilities.Water.IceSpike.Blast.Range");
+		this.damage = getConfig().getDouble("Abilities.Water.IceSpike.Blast.Damage");
+		this.cooldown = getConfig().getLong("Abilities.Water.IceSpike.Blast.Cooldown");
 		this.slowPotency = getConfig().getInt("Abilities.Water.IceSpike.Blast.SlowPotency");
 		this.slowDuration = getConfig().getInt("Abilities.Water.IceSpike.Blast.SlowDuration");
 
 		if (!this.bPlayer.canBend(this) || !this.bPlayer.canIcebend()) {
 			return;
-		}
-
-		if (this.bPlayer.isAvatarState()) {
-			this.cooldown = 0;
-			this.slowCooldown = 0;
-			this.range = getConfig().getDouble("Abilities.Avatar.AvatarState.Water.IceSpike.Blast.Range");
-			this.damage = getConfig().getDouble("Abilities.Avatar.AvatarState.Water.IceSpike.Blast.Damage");
-			this.slowPotency = getConfig().getInt("Abilities.Avatar.AvatarState.Water.IceSpike.Blast.SlowPotency");
-			this.slowDuration = getConfig().getInt("Abilities.Avatar.AvatarState.Water.IceSpike.Blast.SlowDuration");
 		}
 
 		block(player);
@@ -94,7 +88,7 @@ public class IceSpikeBlast extends IceAbility {
 
 		if (this.sourceBlock == null) {
 			new IceSpikePillarField(player);
-		} else if (GeneralMethods.isRegionProtectedFromBuild(this, this.sourceBlock.getLocation())) {
+		} else if (RegionProtection.isRegionProtected(this, this.sourceBlock.getLocation())) {
 			return;
 		} else {
 			this.prepare(this.sourceBlock);
@@ -102,21 +96,16 @@ public class IceSpikeBlast extends IceAbility {
 	}
 
 	private void affect(final LivingEntity entity) {
+		DamageHandler.damageEntity(entity, this.damage, this);
 		if (entity instanceof Player) {
-			final BendingPlayer targetBPlayer = BendingPlayer.getBendingPlayer((Player) entity);
-			if (targetBPlayer == null) {
-				return;
-			}
-			if (targetBPlayer.canBeSlowed()) {
-				final PotionEffect effect = new PotionEffect(PotionEffectType.SLOW, this.slowDuration, this.slowPotency);
+			if (this.bPlayer.canBeSlowed()) {
+				final PotionEffect effect = new PotionEffect(PotionEffectType.SLOWNESS, this.slowDuration, this.slowPotency);
 				new TempPotionEffect(entity, effect);
-				targetBPlayer.slow(this.slowCooldown);
-				DamageHandler.damageEntity(entity, this.damage, this);
+				this.bPlayer.slow(this.slowCooldown);
 			}
 		} else {
-			final PotionEffect effect = new PotionEffect(PotionEffectType.SLOW, this.slowDuration, this.slowPotency);
+			final PotionEffect effect = new PotionEffect(PotionEffectType.SLOWNESS, this.slowDuration, this.slowPotency);
 			new TempPotionEffect(entity, effect);
-			DamageHandler.damageEntity(entity, this.damage, this);
 		}
 		AirAbility.breakBreathbendingHold(entity);
 	}
@@ -153,6 +142,9 @@ public class IceSpikeBlast extends IceAbility {
 			}
 			return;
 		} else if (!this.bPlayer.getBoundAbilityName().equals(this.getName()) && this.prepared) {
+			this.remove();
+			return;
+		} else if (this.prepared && !isWaterbendable(this.sourceBlock)) {
 			this.remove();
 			return;
 		}
@@ -219,7 +211,7 @@ public class IceSpikeBlast extends IceAbility {
 			}
 
 			this.sourceBlock = block;
-			this.source = new TempBlock(this.sourceBlock, this.sourceType);
+			this.source = new TempBlock(this.sourceBlock, this.sourceType.createBlockData(), this);
 			this.source.setRevertTime(130);
 		} else if (this.prepared) {
 			if (this.sourceBlock != null) {
@@ -290,6 +282,8 @@ public class IceSpikeBlast extends IceAbility {
 			if (isBendableWaterTempBlock(tb)) {
 				tb.revertBlock();
 			}
+		} else if (isCauldron(this.sourceBlock) || isTransformableBlock(this.sourceBlock)) {
+			updateSourceBlock(this.sourceBlock);
 		}
 	}
 
@@ -381,7 +375,6 @@ public class IceSpikeBlast extends IceAbility {
 				loc = GeneralMethods.getPointOnLine(iceSpike.location, loc, iceSpike.range * 2);
 				iceSpike.redirect(loc, player);
 			}
-
 		}
 	}
 

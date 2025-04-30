@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.Set;
 
 import com.google.common.collect.Lists;
+import com.projectkorra.projectkorra.util.ChatUtil;
+import com.projectkorra.projectkorra.util.Experimental;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.Plugin;
@@ -17,7 +19,9 @@ import com.projectkorra.projectkorra.configuration.ConfigManager;
 public class Element {
 
 	public enum ElementType {
-		BENDING("bending", "bender", "bend"), BLOCKING("blocking", "blocker", "block"), NO_SUFFIX("", "", "");
+		BENDING("bending", "bender", "bend"),
+		BLOCKING("blocking", "blocker", "block"),
+		NO_SUFFIX("", "", "");
 
 		private String bending;
 		private String bender;
@@ -72,6 +76,7 @@ public class Element {
 	protected final Plugin plugin;
 	protected ChatColor color;
 	protected ChatColor subColor;
+	protected boolean isAvatarElement = false;
 
 	/**
 	 * To be used when creating a new Element. Do not use for comparing
@@ -108,6 +113,7 @@ public class Element {
 		this.name = name;
 		this.type = type;
 		this.plugin = plugin;
+		this.isAvatarElement = name.equals("Air") || name.equals("Water") || name.equals("Earth") || name.equals("Fire");
 		ALL_ELEMENTS.put(name.toLowerCase(), this);
 	}
 
@@ -116,7 +122,7 @@ public class Element {
 		if (this instanceof SubElement) {
 			name_ = ((SubElement) this).parentElement.name;
 		}
-		return this.getColor() + ChatColor.translateAlternateColorCodes('&', ConfigManager.languageConfig.get().getString("Chat.Prefixes." + name_)) + " ";
+		return this.getColor() + ChatUtil.color(ConfigManager.languageConfig.get().getString("Chat.Prefixes." + name_, this.name)) + " ";
 	}
 
 	public ChatColor getColor() {
@@ -128,12 +134,13 @@ public class Element {
 			if (value == null && this instanceof SubElement && !(this instanceof MultiSubElement)) {
 				this.color = ((SubElement) this).parentElement.getSubColor();
 				return this.color;
-			}
+			} else if (value == null) value = "WHITE";
 
 			try {
 				this.color = ChatColor.of(value);
 			} catch (IllegalArgumentException e) {
 				e.printStackTrace();
+				this.color = ChatColor.WHITE;
 			}
 		}
 
@@ -149,7 +156,8 @@ public class Element {
 			if (value == null && this instanceof SubElement && !(this instanceof MultiSubElement)) {
 				this.color = ((SubElement) this).parentElement.getSubColor();
 				return this.color;
-			}
+			} else if (value == null) value = getColor().getName();
+
 			try {
 				this.subColor = ChatColor.of(value);
 			} catch (IllegalArgumentException e) {
@@ -180,6 +188,18 @@ public class Element {
 			return ElementType.NO_SUFFIX;
 		}
 		return this.type;
+	}
+
+	/**
+	 * Does this element count towards avatar? If a player has two or more elements
+	 * that have this as true, they will be considered an avatar.
+	 * @return True if the element should count towards being an avatar. E.g. fire,
+	 * water, earth, air
+	 */
+	@Experimental
+	public boolean isAvatarElement() {
+		if (this instanceof SubElement) return false;
+		return isAvatarElement;
 	}
 
 	@Override
@@ -273,7 +293,7 @@ public class Element {
 	/**
 	 * Return all subelements belonging to a parent element.
 	 *
-	 * @param element
+	 * @param element Parent element.
 	 * @return Array of all subelements belonging to a parent element.
 	 */
 	public static SubElement[] getSubElements(final Element element) {
@@ -304,7 +324,7 @@ public class Element {
 	/**
 	 * Returns array of addon subelements belonging to a parent element.
 	 *
-	 * @param element
+	 * @param element Parent element.
 	 * @return Array of addon subelements belonging to a parent element.
 	 */
 	public static SubElement[] getAddonSubElements(final Element element) {
@@ -385,6 +405,7 @@ public class Element {
 		}
 	}
 
+	@Experimental
 	public static class MultiSubElement extends SubElement {
 
 		private Element[] parentElements;

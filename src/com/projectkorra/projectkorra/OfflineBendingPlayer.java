@@ -5,16 +5,19 @@ import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.util.MultiAbilityManager;
 import com.projectkorra.projectkorra.command.CooldownCommand;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
+import com.projectkorra.projectkorra.event.BendingPlayerLoadEvent;
 import com.projectkorra.projectkorra.event.PlayerBindChangeEvent;
 import com.projectkorra.projectkorra.object.CosmeticColor;
 import com.projectkorra.projectkorra.object.EarthCosmetic;
 import com.projectkorra.projectkorra.object.Style;
+import com.projectkorra.projectkorra.event.PlayerChangeElementEvent;
+import com.projectkorra.projectkorra.event.PlayerChangeSubElementEvent;
 import com.projectkorra.projectkorra.storage.DBConnection;
 import com.projectkorra.projectkorra.util.ChatUtil;
 import com.projectkorra.projectkorra.util.Cooldown;
-import com.projectkorra.projectkorra.util.DBCooldownManager;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
+import org.apache.commons.lang3.tuple.Pair;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.OfflinePlayer;
@@ -23,10 +26,13 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -36,10 +42,14 @@ import java.util.concurrent.ExecutionException;
 import java.util.function.Predicate;
 
 import com.projectkorra.projectkorra.Element.SubElement;
+import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Cancellable;
+import org.bukkit.event.Event;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 public class OfflineBendingPlayer {
 
@@ -54,6 +64,16 @@ public class OfflineBendingPlayer {
      * key.
      */
     protected static final Map<UUID, BendingPlayer> ONLINE_PLAYERS = new ConcurrentHashMap<>();
+
+    /**
+     * Queue of all the temporary elements, sorted by expiry time. Only for online players
+     */
+    protected static final PriorityQueue<Pair<Player, Long>> TEMP_ELEMENTS = new PriorityQueue(Comparator.comparingLong(Pair<Player, Long>::getRight));
+
+    /**
+     * Map of all the players that are currently loading
+     */
+    private static final Map<UUID, CompletableFuture<OfflineBendingPlayer>> LOADING = new ConcurrentHashMap<>();
 
     protected final OfflinePlayer player;
     protected final UUID uuid;
@@ -70,15 +90,18 @@ public class OfflineBendingPlayer {
 
     protected final List<Element> elements = new ArrayList<>();
     protected final List<SubElement> subelements = new ArrayList<>();
+    protected Map<Element, Long> tempElements = new HashMap<>();
+    protected Map<SubElement, Long> tempSubElements = new HashMap<>();
     protected HashMap<Integer, String> abilities = new HashMap<>();
     protected final Map<String, Cooldown> cooldowns = new HashMap<>();
     protected final Set<Element> toggledElements = new HashSet<>();
     protected final Set<Element> toggledPassives = new HashSet<>();
-    protected final DBCooldownManager cooldownManager;
+
+
 
     private int currentSlot;
     private long lastAccessed;
-    private long uncacheTime = 30_000;
+    private long uncacheTime = 30_000; //This is the default time to unload after when the data is accessed by code, NOT when logging out
     private BukkitTask uncache;
 
     public OfflineBendingPlayer(@NotNull OfflinePlayer player) {
@@ -88,7 +111,6 @@ public class OfflineBendingPlayer {
         this.allPassivesToggled = true;
         this.loading = true;
 
-        this.cooldownManager = Manager.getManager(DBCooldownManager.class);
         this.lastAccessed = System.currentTimeMillis();
     }
 
@@ -99,6 +121,10 @@ public class OfflineBendingPlayer {
     protected static CompletableFuture<OfflineBendingPlayer> loadAsync(@NotNull final UUID uuid, boolean onStartup) {
         CompletableFuture<OfflineBendingPlayer> future = new CompletableFuture<>();
         OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(uuid);
+
+        if (LOADING.containsKey(uuid)) { //If it is already loading, return the loading one
+            return LOADING.get(uuid);
+        }
 
         //If we already have the players data cached from an OfflineBendingPlayer instance
         if (PLAYERS.get(uuid) != null) {
@@ -113,6 +139,8 @@ public class OfflineBendingPlayer {
             future.complete(oBendingPlayer);
             return future;
         }
+
+        LOADING.put(uuid, future); //Put the future in the loading map
 
         Runnable runnable = () -> {
             OfflineBendingPlayer bPlayer = new OfflineBendingPlayer(offlinePlayer);
@@ -141,7 +169,13 @@ public class OfflineBendingPlayer {
                         newPlayer = new OfflineBendingPlayer(offlinePlayer);
                     }
                     PLAYERS.put(uuid, newPlayer);
+                    Bukkit.getScheduler().callSyncMethod(ProjectKorra.plugin, ()
+                            -> {
+                        Bukkit.getPluginManager().callEvent(new BendingPlayerLoadEvent(newPlayer));
+                        return true;
+                    });
                     future.complete(newPlayer);
+                    LOADING.remove(uuid);
                 } else {
                     // The player has at least played before.
                     final String player2 = rs2.getString("player");
@@ -226,6 +260,7 @@ public class OfflineBendingPlayer {
                                 }.runTaskTimer(ProjectKorra.plugin, 0, 5);
                             } else func.test(addonClone); //Addon elements should be loaded so
                         }
+
                     }
 
                     //Load subelements
@@ -398,15 +433,34 @@ public class OfflineBendingPlayer {
                     if (ProjectKorra.isDatabaseCooldownsEnabled()) {
                         try (ResultSet rs = DBConnection.sql.readQuery("SELECT * FROM pk_cooldowns WHERE uuid = '" + uuid.toString() + "'")) {
                             while (rs.next()) {
-                                final int cooldownId = rs.getInt("cooldown_id");
+                                final String name = rs.getString("cooldown");
                                 final long value = rs.getLong("value");
-                                final String name = bPlayer.cooldownManager.getCooldownName(cooldownId);
                                 bPlayer.cooldowns.put(name, new Cooldown(value, true));
                             }
                         } catch (final SQLException e) {
                             e.printStackTrace();
                         }
                     }
+
+                    //Load tempelements from the database
+                   try (ResultSet rs3 = DBConnection.sql.readQuery("SELECT * FROM pk_temp_elements WHERE uuid = '" + uuid.toString() + "'")) {
+                       Map<Element, Long> elements = new HashMap<>();
+                       Map<SubElement, Long> subElements = new HashMap<>();
+
+                       while (rs3.next()) {
+                            Element element = Element.getElement(rs3.getString("element"));
+                            long time = rs3.getLong("expiry");
+
+                            if (element instanceof SubElement) subElements.put((SubElement) element, time);
+                            else elements.put(element, time);
+                       }
+
+                       bPlayer.tempElements = elements;
+                       bPlayer.tempSubElements = subElements;
+                   } catch (SQLException e) {
+                       e.printStackTrace();
+                   }
+
 
                     bPlayer.loading = false;
                     //Call postLoad() on the main thread and wait for it to complete
@@ -420,16 +474,21 @@ public class OfflineBendingPlayer {
                         bPlayer.uncacheAfter(30_000);
                     }
 
-                    future.complete(bPlayer);
+                    OfflineBendingPlayer finalBPlayer4 = bPlayer;
+                    Bukkit.getScheduler().runTask(ProjectKorra.plugin, () -> {
+                        Bukkit.getPluginManager().callEvent(new BendingPlayerLoadEvent(finalBPlayer4));
+                        LOADING.remove(uuid);
+                        future.complete(finalBPlayer4);
+                    });
                 }
             } catch (final SQLException | ExecutionException | InterruptedException ex) {
                 ex.printStackTrace();
+                LOADING.remove(uuid);
                 future.cancel(true);
             }
         };
 
-        if (!Bukkit.isPrimaryThread()) runnable.run();
-        else Bukkit.getScheduler().runTaskAsynchronously(ProjectKorra.plugin, runnable);
+        Bukkit.getScheduler().runTaskAsynchronously(ProjectKorra.plugin, runnable);
 
         return future;
     }
@@ -438,99 +497,129 @@ public class OfflineBendingPlayer {
      * Saves the subelements of a BendingPlayer to the database.
      */
     public void saveSubElements() {
-        final StringBuilder subs = new StringBuilder();
-        if (this.hasSubElement(Element.METAL)) {
-            subs.append("m");
-        }
-        if (this.hasSubElement(Element.LAVA)) {
-            subs.append("v");
-        }
-        if (this.hasSubElement(Element.SAND)) {
-            subs.append("s");
-        }
-        if (this.hasSubElement(Element.COMBUSTION)) {
-            subs.append("c");
-        }
-        if (this.hasSubElement(Element.LIGHTNING)) {
-            subs.append("l");
-        }
-        if (this.hasSubElement(Element.SPIRITUAL)) {
-            subs.append("t");
-        }
-        if (this.hasSubElement(Element.FLIGHT)) {
-            subs.append("f");
-        }
-        if (this.hasSubElement(Element.ICE)) {
-            subs.append("i");
-        }
-        if (this.hasSubElement(Element.HEALING)) {
-            subs.append("h");
-        }
-        if (this.hasSubElement(Element.BLOOD)) {
-            subs.append("b");
-        }
-        if (this.hasSubElement(Element.PLANT)) {
-            subs.append("p");
-        }
-        if (this.hasSubElement(Element.BLUE_FIRE)) {
-            subs.append("r");
-        }
-        boolean hasAddon = false;
-        List<SubElement> addonSubs = Arrays.asList(Element.getAddonSubElements());
-        for (final Element element : this.getSubElements()) {
-            if (addonSubs.contains(element)) {
-                if (!hasAddon) {
-                    hasAddon = true;
-                    subs.append(";");
-                }
-                subs.append(element.getName() + ",");
+        Bukkit.getScheduler().runTaskLater(ProjectKorra.plugin, () -> {
+            final StringBuilder subs = new StringBuilder();
+            if (this.hasSubElement(Element.METAL)) {
+                subs.append("m");
             }
-        }
+            if (this.hasSubElement(Element.LAVA)) {
+                subs.append("v");
+            }
+            if (this.hasSubElement(Element.SAND)) {
+                subs.append("s");
+            }
+            if (this.hasSubElement(Element.COMBUSTION)) {
+                subs.append("c");
+            }
+            if (this.hasSubElement(Element.LIGHTNING)) {
+                subs.append("l");
+            }
+            if (this.hasSubElement(Element.SPIRITUAL)) {
+                subs.append("t");
+            }
+            if (this.hasSubElement(Element.FLIGHT)) {
+                subs.append("f");
+            }
+            if (this.hasSubElement(Element.ICE)) {
+                subs.append("i");
+            }
+            if (this.hasSubElement(Element.HEALING)) {
+                subs.append("h");
+            }
+            if (this.hasSubElement(Element.BLOOD)) {
+                subs.append("b");
+            }
+            if (this.hasSubElement(Element.PLANT)) {
+                subs.append("p");
+            }
+            if (this.hasSubElement(Element.BLUE_FIRE)) {
+                subs.append("r");
+            }
+            boolean hasAddon = false;
+            List<SubElement> addonSubs = Arrays.asList(Element.getAddonSubElements());
+            for (final Element element : this.getSubElements()) {
+                if (addonSubs.contains(element)) {
+                    if (!hasAddon) {
+                        hasAddon = true;
+                        subs.append(";");
+                    }
+                    subs.append(element.getName() + ",");
+                }
+            }
 
-        if (subs.length() == 0) {
-            subs.append("NULL");
-        }
+            if (subs.length() == 0) {
+                subs.append("NULL");
+            }
 
-        DBConnection.sql.modifyQuery("UPDATE pk_players SET subelement = '" + subs.toString() + "' WHERE uuid = '" + uuid + "'");
+            DBConnection.sql.modifyQuery("UPDATE pk_players SET subelement = '" + subs.toString() + "' WHERE uuid = '" + uuid + "'");
+        }, 1L);
     }
 
     /**
      * Saves the elements of a BendingPlayer to the database.
      */
     public void saveElements() {
-        final StringBuilder elements = new StringBuilder();
-        if (this.hasElement(Element.AIR)) {
-            elements.append("a");
-        }
-        if (this.hasElement(Element.WATER)) {
-            elements.append("w");
-        }
-        if (this.hasElement(Element.EARTH)) {
-            elements.append("e");
-        }
-        if (this.hasElement(Element.FIRE)) {
-            elements.append("f");
-        }
-        if (this.hasElement(Element.CHI)) {
-            elements.append("c");
-        }
-        boolean hasAddon = false;
-        List<Element> addonElements = Arrays.asList(Element.getAddonElements());
-        for (final Element element : this.getElements()) {
-            if (addonElements.contains(element)) {
-                if (!hasAddon) {
-                    hasAddon = true;
-                    elements.append(";");
-                }
-                elements.append(element.getName() + ",");
+        Bukkit.getScheduler().runTaskLater(ProjectKorra.plugin, () -> {
+            final StringBuilder elements = new StringBuilder();
+            if (this.hasElement(Element.AIR)) {
+                elements.append("a");
             }
-        }
+            if (this.hasElement(Element.WATER)) {
+                elements.append("w");
+            }
+            if (this.hasElement(Element.EARTH)) {
+                elements.append("e");
+            }
+            if (this.hasElement(Element.FIRE)) {
+                elements.append("f");
+            }
+            if (this.hasElement(Element.CHI)) {
+                elements.append("c");
+            }
+            boolean hasAddon = false;
+            List<Element> addonElements = Arrays.asList(Element.getAddonElements());
+            for (final Element element : this.getElements()) {
+                if (addonElements.contains(element)) {
+                    if (!hasAddon) {
+                        hasAddon = true;
+                        elements.append(";");
+                    }
+                    elements.append(element.getName() + ",");
+                }
+            }
 
-        if (elements.length() == 0) {
-            elements.append("NULL");
-        }
+            if (elements.length() == 0) {
+                elements.append("NULL");
+            }
 
-        DBConnection.sql.modifyQuery("UPDATE pk_players SET element = '" + elements.toString() + "' WHERE uuid = '" + uuid + "'");
+            DBConnection.sql.modifyQuery("UPDATE pk_players SET element = '" + elements.toString() + "' WHERE uuid = '" + uuid + "'");
+        }, 1L);
+    }
+
+    /**
+     * Saves all temporary elements to the database
+     */
+    public void saveTempElements() {
+        Bukkit.getScheduler().runTaskLater(ProjectKorra.plugin, () -> {
+
+            try {
+                DBConnection.sql.getConnection().setAutoCommit(false);
+                DBConnection.sql.modifyQuery("DELETE FROM pk_temp_elements WHERE uuid = '" + uuid + "'");
+                DBConnection.sql.getConnection().commit(); //Force the delete statement to go through before the next SQL statement
+                for (Element e : this.tempElements.keySet()) {
+                    DBConnection.sql.modifyQuery("INSERT INTO pk_temp_elements (uuid, element, expiry) VALUES ('" + uuid + "', '" + e.getName() + "', " + this.tempElements.get(e) + ")");
+                }
+                for (Element e : this.tempSubElements.keySet()) {
+                    DBConnection.sql.modifyQuery("INSERT INTO pk_temp_elements (uuid, element, expiry) VALUES ('" + uuid + "', '" + e.getName() + "', " + this.tempSubElements.get(e) + ")");
+                }
+                DBConnection.sql.getConnection().commit(); //Force the delete statement to go through before the next SQL statement
+                DBConnection.sql.getConnection().setAutoCommit(true);
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+
+
+        }, 1L);
     }
 
     /**
@@ -544,7 +633,7 @@ public class OfflineBendingPlayer {
     }
 
     /**
-     * Binds a Ability to a specific hotbar slot.
+     * Binds an Ability to a specific hotbar slot.
      *
      * @param ability The ability name to bind
      * @param slot The slot to bind on
@@ -561,14 +650,11 @@ public class OfflineBendingPlayer {
         if (coreAbil == null) return;
         final String fixedName = coreAbil.getName();
 
-        if (realPlayer) {
-            PlayerBindChangeEvent event = new PlayerBindChangeEvent((Player)this.getPlayer(), fixedName, slot, ability != null, false);
-            ProjectKorra.plugin.getServer().getPluginManager().callEvent(event);
-            if (event.isCancelled()) {
-                return;
-            }
+        PlayerBindChangeEvent event = new PlayerBindChangeEvent(this.getPlayer(), fixedName, slot, ability != null, false);
+        ProjectKorra.plugin.getServer().getPluginManager().callEvent(event);
+        if (event.isCancelled()) {
+            return;
         }
-
 
         this.getAbilities().put(slot, fixedName);
 
@@ -609,6 +695,28 @@ public class OfflineBendingPlayer {
      */
     public List<SubElement> getSubElements() {
         return this.subelements;
+    }
+
+    /**
+     * Get the list of temporary elements and subelements the {@link BendingPlayer} has.
+     *
+     * @return a map of temporary elements and subelements
+     */
+    public Map<Element, Long> getTempElements() {
+        return this.tempElements;
+    }
+
+    /**
+     * Get the list of temporary subelements the {@link BendingPlayer} has.
+     *
+     * Temporary subelements are a bit more confusing than elements. If a subelement's expirary
+     * is set to -1, it means it is linked with the temporary parent element. When that parent
+     * element is removed, the sub should be removed as well.
+     *
+     * @return a map of temporary subelements
+     */
+    public Map<SubElement, Long> getTempSubElements() {
+        return this.tempSubElements;
     }
 
     /**
@@ -810,19 +918,20 @@ public class OfflineBendingPlayer {
         CooldownCommand.addCooldownType(ability);
     }
 
-    //TODO Rewrite cooldowns with the ID system
+    /**
+     * Commits cooldowns to the database
+     */
     private void saveCooldownsForce() {
         DBConnection.sql.modifyQuery("DELETE FROM pk_cooldowns WHERE uuid = '" + this.uuid.toString() + "'", false);
         for (final Map.Entry<String, Cooldown> entry : this.cooldowns.entrySet()) {
             final String name = entry.getKey();
             final Cooldown cooldown = entry.getValue();
             if (!cooldown.isDatabase()) continue;
-            final int cooldownId = this.cooldownManager.getCooldownId(name, false);
-            try (ResultSet rs = DBConnection.sql.readQuery("SELECT value FROM pk_cooldowns WHERE uuid = '" + this.uuid.toString() + "' AND cooldown_id = " + cooldownId)) {
+            try (ResultSet rs = DBConnection.sql.readQuery("SELECT value FROM pk_cooldowns WHERE uuid = '" + this.uuid.toString() + "' AND cooldown = '" + name + "'")) {
                 if (rs.next()) {
-                    DBConnection.sql.modifyQuery("UPDATE pk_cooldowns SET value = " + cooldown.getCooldown() + " WHERE uuid = '" + this.uuid.toString() + "' AND cooldown_id = " + cooldownId, false);
+                    DBConnection.sql.modifyQuery("UPDATE pk_cooldowns SET value = " + cooldown.getCooldown() + " WHERE uuid = '" + this.uuid.toString() + "' AND cooldown = '" + name + "'", false);
                 } else {
-                    DBConnection.sql.modifyQuery("INSERT INTO  pk_cooldowns (uuid, cooldown_id, value) VALUES ('" + this.uuid.toString() + "', " + cooldownId + ", " + cooldown.getCooldown() + ")", false);
+                    DBConnection.sql.modifyQuery("INSERT INTO  pk_cooldowns (uuid, cooldown, value) VALUES ('" + this.uuid.toString() + "', '" + name + "', " + cooldown.getCooldown() + ")", false);
                 }
             } catch (final SQLException e) {
                 e.printStackTrace();
@@ -840,7 +949,8 @@ public class OfflineBendingPlayer {
     }
 
     /**
-     * @return Returns true if this BendingPlayer is fully loaded
+     * Returns true if this BendingPlayer is fully loaded
+     * @return True if the player is fully loaded
      */
     public boolean isLoaded() {
         return !this.loading;
@@ -857,6 +967,8 @@ public class OfflineBendingPlayer {
             // At the moment we'll allow for both permissions to return true.
             // Later on we can consider deleting the bending.ability.avatarstate option.
             return this.player instanceof Player && ((Player)this.player).hasPermission("bending.avatar");
+        } else if (hasTempElement(element)) {
+            return true;
         } else if (!(element instanceof SubElement)) {
             return this.elements.contains(element);
         } else {
@@ -871,7 +983,93 @@ public class OfflineBendingPlayer {
      * @return true If the player knows the element
      */
     public boolean hasSubElement(@NotNull final SubElement sub) {
-        return this.subelements.contains(sub);
+        return this.subelements.contains(sub) || hasTempSubElement(sub);
+    }
+
+    /**
+     * Checks to see if the {@link BendingPlayer} has a temporary element.
+     * @param element The element to check
+     * @return true If the player has the element
+     */
+    public boolean hasTempElement(@NotNull final Element element) {
+        if (element.isAvatarElement() && hasTempElement(Element.AVATAR)) return true;
+
+        if (element instanceof SubElement) return this.hasTempSubElement((SubElement) element);
+        return this.tempElements.containsKey(element) && this.tempElements.get(element) > System.currentTimeMillis();
+    }
+
+    /**
+     * Checks to see if the {@link BendingPlayer} has a temporary subelement. Includes subelements tied to temp parent elements
+     * @param sub The subelement to check
+     * @return true If the player has the subelement
+     */
+    public boolean hasTempSubElement(@NotNull final SubElement sub) {
+        return this.tempSubElements.containsKey(sub) && (this.tempSubElements.get(sub) == -1 || //-1 means that the time is linked to the parent element
+                this.tempSubElements.get(sub) > System.currentTimeMillis());
+    }
+
+    /**
+     * Checks to see if the {@link BendingPlayer} has a temporary subelement that is not linked to a parent element
+     * @param sub The subelement to check
+     * @return true If the player has the subelement
+     */
+    public boolean hasTempSubElementExcludeParents(@NotNull final SubElement sub) {
+        return this.tempSubElements.containsKey(sub) && this.tempSubElements.get(sub) > System.currentTimeMillis();
+    }
+
+    /**
+     * Checks to see if the {@link BendingPlayer} has any temporary elements that have not expired.
+     * @return true If the player has any temporary elements
+     */
+    public boolean hasTempElements() {
+        Map<Element, Long> tempMap = new HashMap<>(this.tempElements);
+        tempMap.putAll(this.tempSubElements);
+        return tempMap.entrySet().stream().anyMatch(entry -> entry.getValue() > System.currentTimeMillis());
+    }
+
+    /**
+     * Gets the time that a temporary element expires. If the element is not temporary, it will return -1.
+     * If the element has already expired but the user isn't online, it will return 0.
+     * @param element The element to check
+     * @return The time the element expires, or -1 if it is not temporary
+     */
+    public long getTempElementTime(@NotNull final Element element) {
+        if (element instanceof SubElement) return this.getTempSubElementTime((SubElement) element);
+        return this.tempElements.getOrDefault(element, -1L);
+    }
+
+    /**
+     * Gets the time that a temporary subelement expires. If the subelement is not temporary, it will return -1.
+     * If the subelement has already expired but the user isn't online, it will return 0.
+     * @param sub The subelement to check
+     * @return The time the subelement expires, or -1 if it is not temporary
+     */
+    public long getTempSubElementTime(@NotNull final SubElement sub) {
+        return this.tempSubElements.getOrDefault(sub, -1L);
+    }
+
+    /**
+     * Gets the time that a temporary element expires, relative to now. If the element is not temporary, it will return 0.
+     * @param element The element to check
+     * @return The relative time the element expires, or 0 if it is not temporary
+     */
+    public long getTempElementRelativeTime(@NotNull final Element element) {
+        if (element instanceof SubElement) return this.getTempSubElementTime((SubElement) element);
+
+        long time = this.tempElements.getOrDefault(element, 0L);
+        if (time == 0) return time;
+        return time - System.currentTimeMillis();
+    }
+
+    /**
+     * Gets the time that a temporary subelement expires, relative to now. If the subelement is not temporary, it will return 0.
+     * @param sub The subelement to check
+     * @return The relative time the subelement expires, or 0 if it is not temporary
+     */
+    public long getTempSubElementRelativeTime(@NotNull final SubElement sub) {
+        long time = this.tempSubElements.getOrDefault(sub, 0L);
+        if (time == 0) return time;
+        return time - System.currentTimeMillis();
     }
 
     /**
@@ -881,6 +1079,14 @@ public class OfflineBendingPlayer {
      */
     public boolean isBender() {
         return !this.elements.isEmpty();
+    }
+
+    /**
+     * Checks to see if this {@link OfflineBendingPlayer} is an instanceof {@link BendingPlayer}.
+     * @return Is the player online
+     */
+    public boolean isOnline() {
+        return this instanceof BendingPlayer;
     }
 
     /**
@@ -1057,19 +1263,19 @@ public class OfflineBendingPlayer {
      * @return true If player has permission node "bending.earth.bloodbending"
      */
     public boolean canBloodbend() {
-        return this.subelements.contains(Element.BLOOD);
+        return this.subelements.contains(Element.BLOOD) || this.hasTempSubElement(Element.BLOOD); //If they have bloodbending OR temporary bloodbending that hasn't expired
     }
 
     public boolean canBloodbendAtAnytime() {
-        return false;
+        return false; //Offline players can't do it at anytime because OfflinePlayers have no permissions
     }
 
     public boolean canCombustionbend() {
-        return this.subelements.contains(Element.COMBUSTION);
+        return this.subelements.contains(Element.COMBUSTION) || this.hasTempSubElement(Element.COMBUSTION); //If they have combustionbending OR temporary combustionbending that hasn't expired
     }
 
     public boolean canIcebend() {
-        return this.subelements.contains(Element.ICE);
+        return this.subelements.contains(Element.ICE) || this.hasTempSubElement(Element.ICE); //If they have icebending OR temporary icebending that hasn't expired
     }
 
     /**
@@ -1078,11 +1284,11 @@ public class OfflineBendingPlayer {
      * @return true If player has permission node "bending.earth.lavabending"
      */
     public boolean canLavabend() {
-        return this.subelements.contains(Element.LAVA);
+        return this.subelements.contains(Element.LAVA) || this.hasTempSubElement(Element.LAVA); //If they have lavabending OR temporary lavabending that hasn't expired
     }
 
     public boolean canLightningbend() {
-        return this.subelements.contains(Element.LIGHTNING);
+        return this.subelements.contains(Element.LIGHTNING) || this.hasTempSubElement(Element.LIGHTNING); //If they have lightningbending OR temporary lightningbending that hasn't expired
     }
 
     /**
@@ -1091,7 +1297,7 @@ public class OfflineBendingPlayer {
      * @return true If player has permission node "bending.earth.metalbending"
      */
     public boolean canMetalbend() {
-        return this.subelements.contains(Element.METAL);
+        return this.subelements.contains(Element.METAL) || this.hasTempSubElement(Element.METAL); //If they have metalbending OR temporary metalbending that hasn't expired
     }
 
     /**
@@ -1100,7 +1306,7 @@ public class OfflineBendingPlayer {
      * @return true If player has permission node "bending.ability.plantbending"
      */
     public boolean canPlantbend() {
-        return this.subelements.contains(Element.PLANT);
+        return this.subelements.contains(Element.PLANT) || this.hasTempSubElement(Element.PLANT); //If they have plantbending OR temporary plantbending that hasn't expired
     }
 
     /**
@@ -1109,7 +1315,7 @@ public class OfflineBendingPlayer {
      * @return true If player has permission node "bending.earth.sandbending"
      */
     public boolean canSandbend() {
-        return this.subelements.contains(Element.SAND);
+        return this.subelements.contains(Element.SAND) || this.hasTempSubElement(Element.SAND); //If they have sandbending OR temporary sandbending that hasn't expired
     }
 
     /**
@@ -1118,7 +1324,7 @@ public class OfflineBendingPlayer {
      * @return true If player has permission node "bending.air.flight"
      */
     public boolean canUseFlight() {
-        return this.subelements.contains(Element.FLIGHT);
+        return this.subelements.contains(Element.FLIGHT) || this.hasTempSubElement(Element.FLIGHT); //If they have flight OR temporary flight that hasn't expired
     }
 
     /**
@@ -1128,7 +1334,7 @@ public class OfflineBendingPlayer {
      *         "bending.air.spiritualprojection"
      */
     public boolean canUseSpiritualProjection() {
-        return this.subelements.contains(Element.SPIRITUAL);
+        return this.subelements.contains(Element.SPIRITUAL) || this.hasTempSubElement(Element.SPIRITUAL); //If they have spiritual projection OR temporary spiritual projection that hasn't expired
     }
 
     /**
@@ -1137,7 +1343,7 @@ public class OfflineBendingPlayer {
      * @return true If player has permission node "bending.water.healing"
      */
     public boolean canWaterHeal() {
-        return this.subelements.contains(Element.HEALING);
+        return this.subelements.contains(Element.HEALING) || this.hasTempSubElement(Element.HEALING); //If they have water healing OR temporary water healing that hasn't expired
     }
 
     public OfflinePlayer getPlayer() {
@@ -1158,6 +1364,8 @@ public class OfflineBendingPlayer {
         bendingPlayer.abilities = offlineBendingPlayer.abilities;
         bendingPlayer.elements.addAll(offlineBendingPlayer.elements);
         bendingPlayer.subelements.addAll(offlineBendingPlayer.subelements);
+        bendingPlayer.tempElements.putAll(offlineBendingPlayer.tempElements);
+        bendingPlayer.tempSubElements.putAll(offlineBendingPlayer.tempSubElements);
         bendingPlayer.toggledElements.addAll(offlineBendingPlayer.toggledElements);
         bendingPlayer.toggledPassives.addAll(offlineBendingPlayer.toggledPassives);
         bendingPlayer.toggled = offlineBendingPlayer.toggled;
@@ -1179,6 +1387,11 @@ public class OfflineBendingPlayer {
         PLAYERS.put(player.getUniqueId(), bendingPlayer);
         ONLINE_PLAYERS.put(player.getUniqueId(), bendingPlayer);
 
+        Bukkit.getScheduler().callSyncMethod(ProjectKorra.plugin, () -> {
+            Bukkit.getPluginManager().callEvent(new BendingPlayerLoadEvent(bendingPlayer));
+            return true;
+        });
+
         return bendingPlayer;
     }
 
@@ -1189,6 +1402,8 @@ public class OfflineBendingPlayer {
         offlineBendingPlayer.abilities = bendingPlayer.abilities;
         offlineBendingPlayer.elements.addAll(bendingPlayer.elements);
         offlineBendingPlayer.subelements.addAll(bendingPlayer.subelements);
+        offlineBendingPlayer.tempElements.putAll(bendingPlayer.tempElements);
+        offlineBendingPlayer.tempSubElements.putAll(bendingPlayer.tempSubElements);
         offlineBendingPlayer.toggledElements.addAll(bendingPlayer.toggledElements);
         offlineBendingPlayer.toggledPassives.addAll(bendingPlayer.toggledPassives);
         offlineBendingPlayer.toggled = bendingPlayer.toggled;
@@ -1206,6 +1421,8 @@ public class OfflineBendingPlayer {
 
         if (bendingPlayer.getPlayer() == null || !bendingPlayer.getPlayer().isOnline()) ONLINE_PLAYERS.remove(bendingPlayer.getUUID());
         PLAYERS.put(bendingPlayer.getUUID(), offlineBendingPlayer);
+
+        TEMP_ELEMENTS.removeIf(pair -> pair.getLeft().getUniqueId().equals(bendingPlayer.getUUID()));
 
         return offlineBendingPlayer;
     }
@@ -1226,6 +1443,7 @@ public class OfflineBendingPlayer {
 
         PLAYERS.remove(this.player.getUniqueId());
         ONLINE_PLAYERS.remove(this.player.getUniqueId());
+        LOADING.remove(this.player.getUniqueId());
     }
 
     /**
@@ -1237,4 +1455,198 @@ public class OfflineBendingPlayer {
         this.lastAccessed = System.currentTimeMillis();
         uncache();
     }
+
+    /**
+     * Adds a temporary element to the player. Does not check for existing temporary elements. Does not send messages.
+     * @param element The element to add. Null for all elements.
+     * @param sender The sender of the command. Can be null.
+     * @param time The time in milliseconds to add the element for. Not the expiry time.
+     * @return true If the element was added successfully
+     */
+    public boolean addTempElement(@Nullable Element element, @Nullable CommandSender sender, long time) {
+        if (element == null) { //All elements
+            boolean added = false;
+            for (Element e1 : Element.getAllElements()) {
+                if (e1.equals(Element.AVATAR)) continue;
+                if (addTempElement(e1, sender, time)) added = true;
+            }
+            return added;
+        }
+
+        boolean sub = element instanceof SubElement;
+
+        long expiry = time + System.currentTimeMillis();
+
+        //Check the event isn't cancelled
+        Cancellable event = sub ? new PlayerChangeSubElementEvent(sender, this.player, (SubElement) element, PlayerChangeSubElementEvent.Result.TEMP_ADD) :
+                new PlayerChangeElementEvent(sender, this.player, element, PlayerChangeElementEvent.Result.TEMP_ADD);
+        Bukkit.getPluginManager().callEvent((Event) event);
+        if (event.isCancelled()) return false;
+
+        if (element instanceof SubElement) {
+            this.getTempSubElements().put((SubElement) element, expiry);
+        } else {
+            this.getTempElements().put(element, expiry);
+
+            if (this.isOnline()) {
+                if (element == Element.AVATAR) { //Give all subs for all parent elements marked as avatar elements
+                    for (final Element e : Element.getAllElements()) {
+                        if (e.equals(Element.AVATAR)) continue;
+                        if (!e.isAvatarElement()) continue;
+
+                        for (final SubElement subElement : Element.getSubElements(e)) {
+                            if (((BendingPlayer)this).hasSubElementPermission(subElement) && !this.getSubElements().contains(subElement)) {
+                                PlayerChangeSubElementEvent subEvent = new PlayerChangeSubElementEvent(sender, this.player, subElement, PlayerChangeSubElementEvent.Result.TEMP_PARENT_ADD);
+                                Bukkit.getPluginManager().callEvent(subEvent);
+                                if (subEvent.isCancelled()) continue; //Continue for subs which shouldn't be added due to the event cancelling
+
+                                this.getTempSubElements().put(subElement, -1L); //Set the expiry to -1 to indicate that the time is linked to the parent element
+                            }
+                        }
+                    }
+                } else { //Not the avatar element
+                    for (final SubElement subElement : Element.getSubElements(element)) {
+                        if (((BendingPlayer) this).hasSubElementPermission(subElement) && !this.getSubElements().contains(subElement)) {
+                            PlayerChangeSubElementEvent subEvent = new PlayerChangeSubElementEvent(sender, this.player, subElement, PlayerChangeSubElementEvent.Result.TEMP_PARENT_ADD);
+                            Bukkit.getPluginManager().callEvent(subEvent);
+                            if (subEvent.isCancelled()) continue; //Continue for subs which shouldn't be added due to the event cancelling
+
+                            this.getTempSubElements().put(subElement, -1L); //Set the expiry to -1 to indicate that the time is linked to the parent element
+                        }
+                    }
+                }
+            }
+        }
+
+        if (isOnline()) ((BendingPlayer) this).recalculateTempElements(false);
+        else saveTempElements();
+
+        return true;
+    }
+
+    /**
+     * Sets the expiry time of a temporary element. Will add/remove temp elements as needed. Does not send messages.
+     * @param element The element to set. Null for all elements.
+     * @param sender The sender of the command. Can be null.
+     * @param time The time in milliseconds from now that the element should expiry should be set to. Negative time
+     *             will reduce the expiry time. 0 will remove the element.
+     * @return true If the element expiry was successfully set
+     */
+    public boolean setTempElement(@Nullable Element element, @Nullable CommandSender sender, long time) {
+        if (element == null) { //All elements
+            boolean added = false;
+            for (Element e1 : Element.getAllElements()) {
+                if (e1.equals(Element.AVATAR)) continue;
+                if (setTempElement(e1, sender, time)) added = true;
+            }
+            return added;
+        }
+
+        boolean sub = element instanceof SubElement;
+
+        boolean remove = time == 0 || (this.hasTempElement(element) && this.getTempElementRelativeTime(element) <= time);
+        boolean add = time > 0 && !this.hasTempElement(element);
+
+        long expiry = time + System.currentTimeMillis();
+
+        if (add || remove) {
+            //Check the event isn't cancelled
+            Cancellable event = sub ? new PlayerChangeSubElementEvent(sender, this.player, (SubElement) element, add ? PlayerChangeSubElementEvent.Result.TEMP_ADD : PlayerChangeSubElementEvent.Result.TEMP_REMOVE) :
+                    new PlayerChangeElementEvent(sender, this.player, element, add ? PlayerChangeElementEvent.Result.TEMP_ADD : PlayerChangeElementEvent.Result.TEMP_REMOVE);
+            Bukkit.getPluginManager().callEvent((Event) event);
+            if (event.isCancelled()) return false;
+
+            if (add) return this.addTempElement(element, sender, time);
+            else return this.removeTempElement(element, sender);
+        }
+
+        if (element instanceof SubElement) {
+            this.getTempSubElements().put((SubElement) element, expiry);
+        } else {
+            this.getTempElements().put(element, expiry);
+        }
+
+        if (isOnline()) ((BendingPlayer) this).recalculateTempElements(false);
+        else saveTempElements();
+
+        return true;
+    }
+
+    /**
+     * Removes a temporary element from the player. Does not send messages.
+     * @param element The element to remove. Null for all elements.
+     * @param sender The sender of the command. Can be null.
+     * @return true If the element was removed successfully
+     */
+    public boolean removeTempElement(@Nullable Element element, @Nullable CommandSender sender) {
+        if (element == null) { //All elements
+            boolean removed = false;
+            for (Element e1 : Element.getAllElements()) {
+                if (e1.equals(Element.AVATAR)) continue;
+                if (removeTempElement(e1, sender)) removed = true;
+            }
+            for (Element e1 : Element.getAllSubElements()) {
+                if (removeTempElement(e1, sender)) removed = true;
+            }
+            return removed;
+        }
+
+        if (!this.hasTempElement(element)) return false;
+
+        //Check the event isn't cancelled
+        Cancellable event = element instanceof SubElement ? new PlayerChangeSubElementEvent(sender, this.getPlayer(), (SubElement) element, PlayerChangeSubElementEvent.Result.TEMP_REMOVE) :
+                new PlayerChangeElementEvent(sender, this.getPlayer(), element, PlayerChangeElementEvent.Result.TEMP_REMOVE);
+        Bukkit.getPluginManager().callEvent((Event) event);
+        if (event.isCancelled()) return false;
+
+        if (element instanceof SubElement) {
+            if (this.isOnline()) {
+                this.getTempSubElements().remove(element);
+            } else {										    	        	//Mark it to be removed when the player logs in next. Allows
+                this.getTempSubElements().put((SubElement) element, 0L); 	//the player to see that it was removed when they were offline
+            }
+        } else { //For parent elements
+            if (this.isOnline()) {
+                this.getTempElements().remove(element);
+            } else {										    	//Mark it to be removed when the player logs in next. Allows
+                this.getTempElements().put(element, 0L); 		//the player to see that it was removed when they were offline
+            }
+
+            if (element == Element.AVATAR) {
+                Iterator<SubElement> subIterator1 = this.getTempSubElements().keySet().iterator();
+                SubElement s1;
+                while (subIterator1.hasNext() && (s1 = subIterator1.next()) != null) {
+                    //Only remove if the subelement is connected to the parent element's time and is an avatar element
+                    if (this.getTempSubElements().get(s1) != -1L || !s1.getParentElement().isAvatarElement()) continue;
+
+                    if (!this.hasTempElement(s1.getParentElement())) {
+                        PlayerChangeSubElementEvent subEvent = new PlayerChangeSubElementEvent(sender, this.getPlayer(), s1, PlayerChangeSubElementEvent.Result.TEMP_PARENT_REMOVE);
+                        Bukkit.getPluginManager().callEvent(subEvent);
+                        if (subEvent.isCancelled()) continue; //Continue for subs which shouldn't be added due to the event cancelling
+
+                        subIterator1.remove(); //Remove the subelement
+                    }
+                }
+            } else {
+                //Remove all subs that are tied to the parent element
+                for (SubElement tempSub : this.getTempSubElements().keySet()) {
+                    long expiry = this.getTempSubElements().get(tempSub);
+
+                    if (tempSub.getParentElement().equals(element) && expiry == -1L) { //If the sub expiry is linked to the parent element
+                        PlayerChangeSubElementEvent subEvent = new PlayerChangeSubElementEvent(sender, this.getPlayer(), tempSub, PlayerChangeSubElementEvent.Result.TEMP_PARENT_REMOVE);
+                        Bukkit.getPluginManager().callEvent(subEvent);
+                        if (subEvent.isCancelled()) continue; //Continue for subs which shouldn't be added due to the event cancelling
+
+                        this.getTempSubElements().remove(tempSub);
+                    }
+                }
+            }
+        }
+
+        if (isOnline()) ((BendingPlayer) this).recalculateTempElements(false);
+        else saveTempElements();
+
+        return true;
+    }
+
 }

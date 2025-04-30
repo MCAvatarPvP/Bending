@@ -7,6 +7,7 @@ import java.util.List;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.util.Collision;
 import com.projectkorra.projectkorra.util.ParticleEffect;
+import com.projectkorra.projectkorra.attribute.markers.DayNightFactor;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
@@ -25,14 +26,14 @@ public class FireBurst extends FireAbility {
 	@Attribute("Charged")
 	private boolean charged;
 	private boolean launched;
-	@Attribute(Attribute.DAMAGE)
+	@Attribute(Attribute.DAMAGE) @DayNightFactor
 	private double damage;
-	@Attribute(Attribute.CHARGE_DURATION)
+	@Attribute(Attribute.CHARGE_DURATION) @DayNightFactor(invert = true)
 	private long chargeTime;
-	@Attribute(Attribute.RANGE)
+	@Attribute(Attribute.RANGE) @DayNightFactor
 	private double range;
 	private double collisionRadius;
-	@Attribute(Attribute.COOLDOWN)
+	@Attribute(Attribute.COOLDOWN) @DayNightFactor(invert = true)
 	private long cooldown;
 	private boolean canSwapSlots;
 	private boolean allowWhenFireShield;
@@ -45,9 +46,9 @@ public class FireBurst extends FireAbility {
 		super(player);
 
 		this.charged = false;
-		this.damage = applyModifiersDamage(getConfig().getDouble("Abilities.Fire.FireBurst.Damage"));
-		this.chargeTime = (long) applyInverseModifiers(getConfig().getLong("Abilities.Fire.FireBurst.ChargeTime"));
-		this.range = applyModifiersRange(getConfig().getDouble("Abilities.Fire.FireBurst.Range"));
+		this.damage = getConfig().getDouble("Abilities.Fire.FireBurst.Damage");
+		this.chargeTime = (long) getConfig().getLong("Abilities.Fire.FireBurst.ChargeTime");
+		this.range = getConfig().getDouble("Abilities.Fire.FireBurst.Range");
 		this.collisionRadius = getConfig().getDouble("Abilities.Fire.FireBurst.CollisionRadius");
 		this.cooldown = getConfig().getLong("Abilities.Fire.FireBurst.Cooldown");
 		this.angleTheta = getConfig().getDouble("Abilities.Fire.FireBurst.AngleTheta");
@@ -60,22 +61,6 @@ public class FireBurst extends FireAbility {
 		if (!this.bPlayer.canBend(this) || hasAbility(player, FireBurst.class)) {
 			return;
 		}
-
-		long chargeTimeMod = 0;
-
-		if (isDay(player.getWorld())) {
-			chargeTimeMod = (long) (this.getDayFactor(chargeTime) - chargeTime);
-		}
-
-		chargeTimeMod = (long) (bPlayer.canUseSubElement(SubElement.BLUE_FIRE) ? (chargeTime / BlueFireAbility.getCooldownFactor() - chargeTime) + chargeTimeMod : chargeTimeMod);
-
-		if (this.bPlayer.isAvatarState()) {
-			this.chargeTime = getConfig().getLong("Abilities.Avatar.AvatarState.Fire.FireBurst.Damage");
-			this.damage = getConfig().getInt("Abilities.Avatar.AvatarState.Fire.FireBurst.Damage");
-			this.cooldown = getConfig().getLong("Abilities.Avatar.AvatarState.Fire.FireBurst.Cooldown");
-		}
-
-		this.chargeTime += chargeTimeMod;
 
 		this.start();
 	}
@@ -183,6 +168,7 @@ public class FireBurst extends FireAbility {
 			final Location location = this.player.getEyeLocation();
 			location.add(location.getDirection());
 			playFirebendingParticles(location, 1, .01, .01, .01);
+			emitFirebendingLight(location);
 		}
 	}
 

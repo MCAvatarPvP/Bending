@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.object.EarthCosmetic;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import org.bukkit.ChatColor;
@@ -40,6 +41,8 @@ public abstract class EarthAbility extends ElementalAbility {
 	private static final Map<Block, Information> MOVED_EARTH = new ConcurrentHashMap<Block, Information>();
 	private static final Map<Integer, Information> TEMP_AIR_LOCATIONS = new ConcurrentHashMap<Integer, Information>();
 	private static final ArrayList<Block> PREVENT_PHYSICS = new ArrayList<Block>();
+
+	protected int noiseReduction = 0;
 
 	public EarthAbility(final Player player) {
 		super(player);
@@ -100,8 +103,12 @@ public abstract class EarthAbility extends ElementalAbility {
 		return DensityShift.getSandBlocks().contains(tempBlock);
 	}
 
+	public static boolean isEarthbendable(final Material material, final boolean metal, final boolean sand, final boolean lava, final boolean mud) {
+		return isEarth(material) || (metal && isMetal(material)) || (sand && isSand(material)) || (lava && isLava(material)) || (mud && isMud(material));
+	}
+
 	public static boolean isEarthbendable(final Material material, final boolean metal, final boolean sand, final boolean lava) {
-		return isEarth(material) || (metal && isMetal(material)) || (sand && isSand(material)) || (lava && isLava(material));
+		return isEarthbendable(material, metal, sand, lava, true);
 	}
 
 	public boolean isEarthbendable(final Block block) {
@@ -204,7 +211,10 @@ public abstract class EarthAbility extends ElementalAbility {
 				}
 
 				moveEarthBlock(block, affectedblock);
-				playEarthbendingSound(block.getLocation());
+
+				// Play sound every other tick, but also alternate on the tick that it should occur on for each different ability
+				if ((CoreAbility.getCurrentTick() + this.getId()) % (2 + this.noiseReduction) == 0)
+					playEarthbendingSound(block.getLocation());
 
 				for (double i = 1; i < chainlength; i++) {
 					affectedblock = location.clone().add(negnorm.getX() * i, negnorm.getY() * i, negnorm.getZ() * i).getBlock();
@@ -511,6 +521,26 @@ public abstract class EarthAbility extends ElementalAbility {
 		}
 	}
 
+	public static void playMudbendingSound(final Location loc) {
+		if (ConfigManager.getConfig().getBoolean("Properties.Earth.PlaySound")) {
+			final float volume = (float) ConfigManager.getConfig().getDouble("Properties.Earth.MudSound.Volume");
+			final float pitch = (float) ConfigManager.getConfig().getDouble("Properties.Earth.MudSound.Pitch");
+
+			Sound sound = Sound.BLOCK_GRAVEL_BREAK;
+			if (GeneralMethods.getMCVersion() >= 1190) {
+				sound = Sound.valueOf("BLOCK_MUD_PLACE");
+			}
+
+			try {
+				sound = Sound.valueOf(ConfigManager.getConfig().getString("Properties.Earth.MudSound.Sound"));
+			} catch (final IllegalArgumentException exception) {
+				ProjectKorra.log.warning("Your current value for 'Properties.Earth.MudSound.Sound' is not valid.");
+			} finally {
+				loc.getWorld().playSound(loc, sound, volume, pitch);
+			}
+		}
+	}
+
 	public static void playSandbendingSound(final Location loc) {
 		if (ConfigManager.getConfig().getBoolean("Properties.Earth.PlaySound")) {
 			final float volume = (float) ConfigManager.getConfig().getDouble("Properties.Earth.SandSound.Volume");
@@ -651,6 +681,24 @@ public abstract class EarthAbility extends ElementalAbility {
 			MOVED_EARTH.remove(block);
 		}
 		return true;
+	}
+
+	/**
+	 * Gets the noise reduction amount for this ability. This is used to reduce the noise
+	 * produced by {@link #moveEarth}. Higher values mean less noise
+	 * @return the amount of noise reduction
+	 */
+	public int getNoiseReduction() {
+		return noiseReduction;
+	}
+
+	/**
+	 * Sets the noise reduction amount for this ability. This is used to reduce the noise
+	 * produced by {@link #moveEarth}. Higher values mean less noise
+	 * @param reduceEarthNoise the amount of noise reduction
+	 */
+	public void setNoiseReduction(int reduceEarthNoise) {
+		this.noiseReduction = Math.max(0, reduceEarthNoise); //Don't let it be less than 0
 	}
 
 	public double applyMetalPowerFactor(double value, Block source) {

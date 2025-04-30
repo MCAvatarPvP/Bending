@@ -2,6 +2,7 @@ package com.projectkorra.projectkorra.ability;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -20,19 +21,14 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.jar.JarFile;
 
+import com.projectkorra.projectkorra.attribute.*;
 import com.projectkorra.projectkorra.command.CooldownCommand;
+import com.projectkorra.projectkorra.event.AbilityRecalculateAttributeEvent;
 import org.bukkit.permissions.Permission;
-import sun.reflect.ReflectionFactory;
 
 import org.apache.commons.lang3.Validate;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
-import org.apache.commons.lang3.tuple.Pair;
-
-import com.google.common.reflect.ClassPath;
-import com.google.common.reflect.ClassPath.ClassInfo;
-
-import co.aikar.timings.lib.MCTiming;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -54,9 +50,6 @@ import com.projectkorra.projectkorra.ability.util.ComboManager;
 import com.projectkorra.projectkorra.ability.util.MultiAbilityManager;
 import com.projectkorra.projectkorra.ability.util.MultiAbilityManager.MultiAbilityInfo;
 import com.projectkorra.projectkorra.ability.util.PassiveManager;
-import com.projectkorra.projectkorra.attribute.Attribute;
-import com.projectkorra.projectkorra.attribute.AttributeModifier;
-import com.projectkorra.projectkorra.attribute.AttributePriority;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.event.AbilityEndEvent;
 import com.projectkorra.projectkorra.event.AbilityProgressEvent;
@@ -90,7 +83,7 @@ public abstract class CoreAbility implements Ability {
 	private static final Map<Class<? extends CoreAbility>, CoreAbility> ABILITIES_BY_CLASS = new ConcurrentHashMap<>();
 	private static final double DEFAULT_COLLISION_RADIUS = 0.3;
 	private static final List<String> ADDON_PLUGINS = new ArrayList<>();
-	private static final Map<Class<? extends CoreAbility>, Map<String, Field>> ATTRIBUTE_FIELDS = new HashMap<>();
+	private static final Map<Class<? extends CoreAbility>, Map<String, AttributeCache>> ATTRIBUTE_FIELDS = new HashMap<>();
 
 	private static int idCounter;
 	private static long currentTick;
@@ -99,19 +92,16 @@ public abstract class CoreAbility implements Ability {
 	protected BendingPlayer bPlayer;
 	protected FlightHandler flightHandler;
 
-	private final Map<String, Map<AttributePriority, Set<Pair<Number, AttributeModifier>>>> attributeModifiers = new HashMap<>();
-	private final Map<String, Object> attributeValues = new HashMap<>();
 	private boolean started;
 	private boolean removed;
 	private boolean hidden;
 	private int id;
 	private long startTime;
 	private long startTick;
+	@Deprecated
 	private boolean attributesModified;
-
-	static {
-		idCounter = Integer.MIN_VALUE;
-	}
+	private boolean recalculatingAttributes;
+	private boolean attributeValuesCached;
 
 	/**
 	 * The default constructor is needed to create a fake instance of each
@@ -125,13 +115,23 @@ public abstract class CoreAbility implements Ability {
 	 * @see #getAbility(String)
 	 */
 	public CoreAbility() {
-		for (final Field field : this.getClass().getDeclaredFields()) {
-			if (field.isAnnotationPresent(Attribute.class)) {
+		if (!ATTRIBUTE_FIELDS.containsKey(this.getClass())) {
+			ATTRIBUTE_FIELDS.put(this.getClass(), new HashMap<>());
+		}
+		for (final Field field : this.getClass().getDeclaredFields()) { //Iterate over all fields in the class
+			if (field.isAnnotationPresent(Attribute.class)) { //Check if they are marked with an attribute annotation
 				final Attribute attribute = field.getAnnotation(Attribute.class);
-				if (!ATTRIBUTE_FIELDS.containsKey(this.getClass())) {
-					ATTRIBUTE_FIELDS.put(this.getClass(), new HashMap<>());
+				AttributeCache cache = new AttributeCache(field, attribute.value());
+				field.setAccessible(true);
+
+				for (Annotation annotation : field.getDeclaredAnnotations()) { //Get all annotations on the field, and check if they are attribute markers
+					if (annotation.annotationType().isAnnotationPresent(AttributeMarker.class)) {
+						cache.addMaker(annotation);
+					}
 				}
-				ATTRIBUTE_FIELDS.get(this.getClass()).put(attribute.value(), field);
+
+				cache.calculateAvatarStateModifier(this); //Pull values from the AvatarState config
+				ATTRIBUTE_FIELDS.get(this.getClass()).put(attribute.value(), cache); //Store a cache value for the field and the attribute
 			}
 		}
 	}
@@ -152,13 +152,7 @@ public abstract class CoreAbility implements Ability {
 		this.flightHandler = Manager.getManager(FlightHandler.class);
 		this.startTime = System.currentTimeMillis();
 		this.started = false;
-		this.id = CoreAbility.idCounter;
-
-		if (idCounter == Integer.MAX_VALUE) {
-			idCounter = Integer.MIN_VALUE;
-		} else {
-			idCounter++;
-		}
+		this.id = idCounter++;
 	}
 
 	/**
@@ -198,6 +192,8 @@ public abstract class CoreAbility implements Ability {
 			INSTANCES_BY_CLASS.put(clazz, Collections.newSetFromMap(new ConcurrentHashMap<CoreAbility, Boolean>()));
 		}
 
+		this.recalculateAttributes();
+
 		INSTANCES_BY_PLAYER.get(clazz).get(uuid).put(this.id, this);
 		INSTANCES_BY_CLASS.get(clazz).add(this);
 		INSTANCES.add(this);
@@ -236,9 +232,16 @@ public abstract class CoreAbility implements Ability {
 			}
 		}
 
+		for (AttributeCache cache : ATTRIBUTE_FIELDS.get(this.getClass()).values()) {
+			cache.getInitialValues().remove(this);
+			cache.getCurrentModifications().remove(this);
+		}
+
 		if (INSTANCES_BY_CLASS.containsKey(this.getClass())) {
 			INSTANCES_BY_CLASS.get(this.getClass()).remove(this);
 		}
+
+
 		INSTANCES.remove(this);
 	}
 
@@ -269,10 +272,10 @@ public abstract class CoreAbility implements Ability {
 				}
 
 				try {
-					if (!abil.attributesModified) {
+					/*if (!abil.attributesModified) {
 						abil.modifyAttributes();
 						abil.attributesModified = true;
-					}
+					}*/
 
 					//try (MCTiming timing = ProjectKorra.timing(abil.getName()).startTiming()) {
 						abil.progress();
@@ -305,14 +308,23 @@ public abstract class CoreAbility implements Ability {
 	public static void removeAll() {
 		for (final Set<CoreAbility> setAbils : INSTANCES_BY_CLASS.values()) {
 			for (final CoreAbility abil : setAbils) {
-				abil.remove();
+				try {
+					abil.remove();
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
 			}
 		}
 
 		for (final CoreAbility coreAbility : ABILITIES_BY_NAME.values()) {
 			if (coreAbility instanceof AddonAbility) {
 				final AddonAbility addon = (AddonAbility) coreAbility;
-				addon.stop();
+				try {
+					addon.stop();
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+
 			}
 		}
 	}
@@ -323,6 +335,7 @@ public abstract class CoreAbility implements Ability {
 	 *
 	 * @param player the player that created the CoreAbility instance
 	 * @param clazz the class of the type of CoreAbility
+	 * @param <T> the ability type
 	 * @return a CoreAbility instance or null
 	 */
 	public static <T extends CoreAbility> T getAbility(final Player player, final Class<T> clazz) {
@@ -347,7 +360,7 @@ public abstract class CoreAbility implements Ability {
 	 *
 	 * <p>
 	 * CoreAbility coreAbil = getAbility(someString); <br>
-	 * if (coreAbil instanceof FireAbility && coreAbil.isSneakAbility())
+	 * if (coreAbil instanceof FireAbility &amp;&amp; coreAbil.isSneakAbility())
 	 *
 	 * @param abilityName the name of a loaded CoreAbility
 	 * @return a "fake" CoreAbility instance, or null if no such ability exists
@@ -371,6 +384,8 @@ public abstract class CoreAbility implements Ability {
 	}
 
 	/**
+	 * Gets a list of all "fake" instances of CoreAbilities that have been loaded. May return double ups if abilities
+	 * have the same name.
 	 * @return a list of "fake" instances for each ability that was loaded by
 	 *         {@link #registerAbilities()}
 	 */
@@ -379,6 +394,7 @@ public abstract class CoreAbility implements Ability {
 	}
 
 	/**
+	 * Gets a list of all "fake" instances of CoreAbilities that have been loaded.
 	 * @return a list of "fake" instances for each ability that was loaded by
 	 *         {@link #registerAbilities()}
 	 */
@@ -391,6 +407,7 @@ public abstract class CoreAbility implements Ability {
 	 * specific type of CoreAbility.
 	 *
 	 * @param clazz the class for the type of CoreAbilities
+	 * @param <T> the ability type
 	 * @return a Collection of real instances
 	 */
 	public static <T extends CoreAbility> Collection<T> getAbilities(final Class<T> clazz) {
@@ -406,6 +423,7 @@ public abstract class CoreAbility implements Ability {
 	 *
 	 * @param player the player that created the instances
 	 * @param clazz the class for the type of CoreAbilities
+	 * @param <T> the ability type
 	 * @return a Collection of real instances
 	 */
 	public static <T extends CoreAbility> Collection<T> getAbilities(final Player player, final Class<T> clazz) {
@@ -416,6 +434,7 @@ public abstract class CoreAbility implements Ability {
 	}
 
 	/**
+	 * Returns a Collection of all of the CoreAbilities that are currently active.
 	 * @return a Collection of all of the CoreAbilities that are currently
 	 *         alive. Do not modify this Collection.
 	 */
@@ -464,6 +483,8 @@ public abstract class CoreAbility implements Ability {
 	 *
 	 * @param player the player that created the T instance
 	 * @param clazz the class for the type of CoreAbility
+	 * @param <T> the ability type
+	 * @return true if the player has an active instance of T
 	 */
 	public static <T extends CoreAbility> boolean hasAbility(final Player player, final Class<T> clazz) {
 		return getAbility(player, clazz) != null;
@@ -495,6 +516,7 @@ public abstract class CoreAbility implements Ability {
 	 * instance of clazz.
 	 *
 	 * @param clazz the clazz for the type of CoreAbility
+	 * @return a Set of players that have an active instance of clazz
 	 */
 	public static Set<Player> getPlayers(final Class<? extends CoreAbility> clazz) {
 		final HashSet<Player> players = new HashSet<>();
@@ -543,13 +565,14 @@ public abstract class CoreAbility implements Ability {
 
 		for (final CoreAbility coreAbil : loadedAbilities) {
 			if (!coreAbil.isEnabled()) {
-				plugin.getLogger().info(coreAbil.getName() + " is disabled");
+				//plugin.getLogger().info(coreAbil.getName() + " is disabled");
+				ABILITIES_BY_CLASS.put(coreAbil.getClass(), coreAbil);
 				continue;
 			}
 
 			final String name = coreAbil.getName();
 
-			if (name == null) {
+			if (name == null || name.equals("")) {
 				plugin.getLogger().warning("Ability " + coreAbil.getClass().getName() + " has no name?");
 				continue;
 			}
@@ -614,12 +637,18 @@ public abstract class CoreAbility implements Ability {
 				plugin.getLogger().warning(coreAbil.getName() + " is an addon ability and must implement the AddonAbility interface");
 				continue;
 			} else if (!coreAbil.isEnabled()) {
-				plugin.getLogger().info(coreAbil.getName() + " is disabled");
+				ABILITIES_BY_CLASS.put(coreAbil.getClass(), coreAbil);
+				//plugin.getLogger().info(coreAbil.getName() + " is disabled");
 				continue;
 			}
 
 			final AddonAbility addon = (AddonAbility) coreAbil;
 			final String name = coreAbil.getName();
+
+			if (name == null || name.equals("")) {
+				plugin.getLogger().warning("AddonAbility " + coreAbil.getClass().getName() + " has no name?");
+				continue;
+			}
 
 			try {
 				addon.load();
@@ -668,7 +697,11 @@ public abstract class CoreAbility implements Ability {
 			} catch (Exception | Error e) {
 				plugin.getLogger().warning("The ability " + coreAbil.getName() + " was not able to load, if this message shows again please remove it!");
 				e.printStackTrace();
-				addon.stop();
+				try {
+					addon.stop();
+				} catch (Exception e1) {
+					e1.printStackTrace();
+				}
 				ABILITIES_BY_NAME.remove(name.toLowerCase());
 				ABILITIES_BY_CLASS_NAME.remove(coreAbil.getClass().getSimpleName());
 				ABILITIES_BY_CLASS.remove(coreAbil.getClass());
@@ -786,7 +819,7 @@ public abstract class CoreAbility implements Ability {
 		if (forceCooldown || bPlayer.isOnCooldown(this)) {
 			displayedMessage = this.getElement().getColor() + "" + ChatColor.STRIKETHROUGH + this.getName();
 		} else {
-			boolean isActiveStance = bPlayer.getStance() != null && bPlayer.getStance().getName().equals(this.getName());
+			boolean isActiveStance = bPlayer.getStance() != null && bPlayer.getStance().getStanceName().equals(this.getName());
 			boolean isActiveAvatarState = bPlayer.isAvatarState() && this.getName().equals("AvatarState");
 			boolean isActiveIllumination = bPlayer.isIlluminating() && this.getName().equals("Illumination");
 			boolean isActiveTremorSense = bPlayer.isTremorSensing() && this.getName().equals("Tremorsense");
@@ -926,69 +959,91 @@ public abstract class CoreAbility implements Ability {
 		return locations;
 	}
 
+	/**
+	 * This method no longer works as of 1.12.0. Instead, listen to the {@link AbilityRecalculateAttributeEvent} to modify
+	 * attributes and call {@link #recalculateAttributes()} to call the event.
+	 */
+	@Deprecated
 	public CoreAbility addAttributeModifier(final String attribute, final Number value, final AttributeModifier modification) {
-		return this.addAttributeModifier(attribute, value, modification, AttributePriority.MEDIUM);
+		return this;//.addAttributeModifier(attribute, value, modification, AttributePriority.MEDIUM);
 	}
 
+	@Deprecated
 	public CoreAbility addAttributeModifier(final String attribute, final Number value, final AttributeModifier modificationType, final AttributePriority priority) {
-		Validate.notNull(attribute, "attribute cannot be null");
-		Validate.notNull(value, "value cannot be null");
-		Validate.notNull(modificationType, "modifierMethod cannot be null");
-		Validate.notNull(priority, "priority cannot be null");
-		Validate.isTrue(ATTRIBUTE_FIELDS.containsKey(this.getClass()) && ATTRIBUTE_FIELDS.get(this.getClass()).containsKey(attribute), "Attribute " + attribute + " is not a defined Attribute for " + this.getName());
-		if (!this.attributeModifiers.containsKey(attribute)) {
-			this.attributeModifiers.put(attribute, new HashMap<>());
-		}
-		if (!this.attributeModifiers.get(attribute).containsKey(priority)) {
-			this.attributeModifiers.get(attribute).put(priority, new HashSet<>());
-		}
-		this.attributeModifiers.get(attribute).get(priority).add(Pair.of(value, modificationType));
+	    return this;//.addAttributeModifier(attribute, value, modificationType, priority, UUID.randomUUID());
+	}
+
+	@Deprecated
+	public CoreAbility addAttributeModifier(final String attribute, final Number value, final AttributeModifier modificationType, final AttributePriority priority, final UUID uuid) {
 		return this;
 	}
 
+	@Deprecated
 	public CoreAbility setAttribute(final String attribute, final Object value) {
-		Validate.notNull(attribute, "attribute cannot be null");
-		Validate.notNull(value, "value cannot be null");
-		Validate.isTrue(ATTRIBUTE_FIELDS.containsKey(this.getClass()) && ATTRIBUTE_FIELDS.get(this.getClass()).containsKey(attribute), "Attribute " + attribute + " is not a defined Attribute for " + this.getName());
-		this.attributeValues.put(attribute, value);
 		return this;
 	}
 
-	private void modifyAttributes() {
-		for (final String attribute : this.attributeModifiers.keySet()) {
-			final Field field = ATTRIBUTE_FIELDS.get(this.getClass()).get(attribute);
-			final boolean accessibility = field.isAccessible();
-			field.setAccessible(true);
+	/**
+	 * Recalculate what the ability's attributes should be. This is called
+	 * whenever an ability is created, but should be called whenever you want an
+	 * ability to recalculate some of it's values. E.g. day turns to night, AvatarState
+	 * gets toggled, etc.
+	 */
+	public void recalculateAttributes() {
+		if (recalculatingAttributes) return; //Stop recursion if an addon does something wrong, e.g. calls recalculateAttributes inside the event
+
+		recalculatingAttributes = true;
+
+		if (!attributeValuesCached) { //Cache initial values
 			try {
-				for (final AttributePriority priority : AttributePriority.values()) {
-					if (this.attributeModifiers.get(attribute).containsKey(priority)) {
-						for (final Pair<Number, AttributeModifier> pair : this.attributeModifiers.get(attribute).get(priority)) {
-							final Object get = field.get(this);
-							Validate.isTrue(get instanceof Number, "The field " + field.getName() + " cannot algebraically be modified.");
-							final Number oldValue = (Number) field.get(this);
-							final Number newValue = pair.getRight().performModification(oldValue, pair.getLeft());
-							field.set(this, newValue);
+				for (AttributeCache cache : ATTRIBUTE_FIELDS.get(this.getClass()).values()) { //Get all attributes for this ability and cache initial values
+					cache.getInitialValues().put(this, cache.getField().get(this));
+				}
+			} catch (IllegalAccessException e) {
+				e.printStackTrace();
+			}
+			attributeValuesCached = true;
+		}
+
+		attribute_loop:
+		for (AttributeCache cache : ATTRIBUTE_FIELDS.get(this.getClass()).values()) {
+			String attribute = cache.getAttribute();
+			Object initialValue = cache.getInitialValues().get(this);
+
+			if (initialValue == null) {
+				ProjectKorra.log.severe("Initial value for " + attribute + " is null for " + this.getName() + "! Please report this to PK!");
+				continue;
+			}
+
+			AbilityRecalculateAttributeEvent event = new AbilityRecalculateAttributeEvent(this, attribute, initialValue);
+			Bukkit.getServer().getPluginManager().callEvent(event);
+
+			cache.getCurrentModifications().put(this, event.getModifications());
+
+			try {
+				for (AttributeModification mod : event.getModifications()) {
+					if (mod.getModifier() == AttributeModifier.SET) {
+						if (initialValue instanceof Number) { //For numbers, we continue to loop through the remainder modifiers like normal
+							initialValue = mod.getModification();
+						} else { //For booleans, set it and then continue to the next attribute
+							cache.getField().set(this, mod.getModification());
+							continue attribute_loop;
 						}
+					} else {
+						Number number = (Number) initialValue;
+						Number newValue = mod.getModifier().performModification(number, (Number) mod.getModification());
+						initialValue = newValue;
 					}
 				}
+
+				cache.getField().set(this, initialValue);
 			} catch (IllegalArgumentException | IllegalAccessException e) {
+				ProjectKorra.log.severe("Failed to recalculate attribute " + attribute + " for " + this.getName() + "!");
 				e.printStackTrace();
-			} finally {
-				field.setAccessible(accessibility);
 			}
 		}
-		this.attributeValues.forEach((attribute, value) -> {
-			final Field field = ATTRIBUTE_FIELDS.get(this.getClass()).get(attribute);
-			final boolean accessibility = field.isAccessible();
-			field.setAccessible(true);
-			try {
-				field.set(this, value);
-			} catch (IllegalArgumentException | IllegalAccessException e) {
-				e.printStackTrace();
-			} finally {
-				field.setAccessible(accessibility);
-			}
-		});
+
+		recalculatingAttributes = false;
 	}
 
 	/**
@@ -1052,9 +1107,39 @@ public abstract class CoreAbility implements Ability {
 		return DEFAULT_COLLISION_RADIUS;
 	}
 
+	public static Map<String, AttributeCache> getAttributeCache(CoreAbility ability) {
+		return ATTRIBUTE_FIELDS.get(ability.getClass());
+	}
+
 	@Override
 	public String toString() {
 		return ToStringBuilder.reflectionToString(this, ToStringStyle.MULTI_LINE_STYLE);
 	}
 
+	public static class StoredModifier {
+	    
+	    private final UUID uuid;
+	    private final AttributeModifier type;
+	    private final Number value;
+	    
+	    private StoredModifier(UUID uuid, AttributeModifier type, Number value) {
+	        this.uuid = uuid;
+	        this.type = type;
+	        this.value = value;
+	    }
+	    
+	    @Override
+	    public boolean equals(Object object) {
+	        if (!(object instanceof StoredModifier)) {
+	            return false;
+	        }
+	        
+	        return uuid.equals(((StoredModifier) object).uuid);
+	    }
+	    
+	    @Override
+	    public int hashCode() {
+	        return uuid.hashCode();
+	    }
+	}
 }

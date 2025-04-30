@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.chiblocking;
 
+import com.projectkorra.projectkorra.ability.CoreAbility;
+import com.projectkorra.projectkorra.ability.StanceAbility;
 import org.bukkit.Location;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
@@ -10,7 +12,7 @@ import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.ability.ChiAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
 
-public class WarriorStance extends ChiAbility {
+public class WarriorStance extends ChiAbility implements StanceAbility {
 
 	@Attribute(Attribute.COOLDOWN)
 	private long cooldown;
@@ -31,9 +33,9 @@ public class WarriorStance extends ChiAbility {
 		this.strength = getConfig().getInt("Abilities.Chi.WarriorStance.Strength") - 1;
 		this.resistance = getConfig().getInt("Abilities.Chi.WarriorStance.Resistance"); //intended to be negative
 
-		final ChiAbility stance = this.bPlayer.getStance();
-		if (stance != null) {
-			stance.remove();
+		final StanceAbility stance = this.bPlayer.getStance();
+		if (stance instanceof CoreAbility) {
+			((CoreAbility)stance).remove();
 			if (stance instanceof WarriorStance) {
 				this.bPlayer.setStance(null);
 				return;
@@ -54,11 +56,11 @@ public class WarriorStance extends ChiAbility {
 			return;
 		}
 
-		if (!this.player.hasPotionEffect(PotionEffectType.DAMAGE_RESISTANCE) || this.player.getPotionEffect(PotionEffectType.DAMAGE_RESISTANCE).getAmplifier() > this.resistance || (this.player.getPotionEffect(PotionEffectType.DAMAGE_RESISTANCE).getAmplifier() == this.resistance && this.player.getPotionEffect(PotionEffectType.DAMAGE_RESISTANCE).getDuration() == 1)) { //special case for negative resistance
-			this.player.addPotionEffect(new PotionEffect(PotionEffectType.DAMAGE_RESISTANCE, 10, this.resistance, true, false), true);
+		if (!this.player.hasPotionEffect(PotionEffectType.RESISTANCE) || this.player.getPotionEffect(PotionEffectType.RESISTANCE).getAmplifier() > this.resistance || (this.player.getPotionEffect(PotionEffectType.RESISTANCE).getAmplifier() == this.resistance && this.player.getPotionEffect(PotionEffectType.RESISTANCE).getDuration() == 1)) { //special case for negative resistance
+			this.player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 10, this.resistance, true, false), true);
 		}
-		if (!this.player.hasPotionEffect(PotionEffectType.INCREASE_DAMAGE) || this.player.getPotionEffect(PotionEffectType.INCREASE_DAMAGE).getAmplifier() < this.strength || (this.player.getPotionEffect(PotionEffectType.INCREASE_DAMAGE).getAmplifier() == this.strength && this.player.getPotionEffect(PotionEffectType.INCREASE_DAMAGE).getDuration() == 1)) {
-			this.player.addPotionEffect(new PotionEffect(PotionEffectType.INCREASE_DAMAGE, 10, this.strength, true, false), true);
+		if (!this.player.hasPotionEffect(PotionEffectType.STRENGTH) || this.player.getPotionEffect(PotionEffectType.STRENGTH).getAmplifier() < this.strength || (this.player.getPotionEffect(PotionEffectType.STRENGTH).getAmplifier() == this.strength && this.player.getPotionEffect(PotionEffectType.STRENGTH).getDuration() == 1)) {
+			this.player.addPotionEffect(new PotionEffect(PotionEffectType.STRENGTH, 10, this.strength, true, false), true);
 		}
 	}
 
@@ -69,8 +71,8 @@ public class WarriorStance extends ChiAbility {
 		this.bPlayer.setStance(null);
 		if (this.player != null) {
 			this.player.playSound(this.player.getLocation(), Sound.ENTITY_ENDER_DRAGON_SHOOT, 0.5F, 2F);
-			this.player.removePotionEffect(PotionEffectType.DAMAGE_RESISTANCE);
-			this.player.removePotionEffect(PotionEffectType.INCREASE_DAMAGE);
+			this.player.removePotionEffect(PotionEffectType.RESISTANCE);
+			this.player.removePotionEffect(PotionEffectType.STRENGTH);
 		}
 	}
 
@@ -97,6 +99,11 @@ public class WarriorStance extends ChiAbility {
 	@Override
 	public boolean isHarmlessAbility() {
 		return true;
+	}
+
+	@Override
+	public String getStanceName() {
+		return this.getName();
 	}
 
 	public int getStrength() {
