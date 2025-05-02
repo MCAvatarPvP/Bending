@@ -29,6 +29,7 @@ public class AirSpout extends AirAbility {
 	private long cooldown;
 	@Attribute(Attribute.HEIGHT)
 	private double height;
+	private boolean disableSprint;
 
 	public AirSpout(final Player player) {
 		super(player);
@@ -59,6 +60,7 @@ public class AirSpout extends AirAbility {
 		this.animTime = System.currentTimeMillis();
 		this.interval = getConfig().getLong("Abilities.Air.AirSpout.Interval");
 		this.height = getConfig().getDouble("Abilities.Air.AirSpout.Height");
+		this.disableSprint = getConfig().getBoolean("Abilities.Air.AirSpout.DisableSprint");
 
 		final double heightRemoveThreshold = 2;
 		if (!this.isWithinMaxSpoutHeight(heightRemoveThreshold)) {
@@ -154,7 +156,7 @@ public class AirSpout extends AirAbility {
 		}
 
 		this.player.setFallDistance(0);
-		if (!this.bPlayer.isAvatarState()) //Enforce this only when they aren't in the avatarstate
+		if (disableSprint) //Enforce this only when they aren't in the avatarstate
 			this.player.setSprinting(false);
 		if ((new Random()).nextInt(4) == 0) {
 			playAirbendingSound(this.player.getLocation());

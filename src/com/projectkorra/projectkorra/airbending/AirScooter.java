@@ -47,6 +47,7 @@ public class AirScooter extends AirAbility {
 	private boolean requiresJump;
 	private boolean disableSprint;
 	private boolean canFly, wasFlying;
+	private boolean disableSpout;
 
 	private double phi = 0;
 
@@ -55,6 +56,7 @@ public class AirScooter extends AirAbility {
 
 		this.requiresSprint = getConfig().getBoolean("Abilities.Air.AirScooter.RequiresSprint");
 		this.requiresJump = getConfig().getBoolean("Abilities.Air.AirScooter.RequiresJump");
+		this.disableSpout = getConfig().getBoolean("Abilities.Air.AirScooter.DisableSpout");
 
 		if (check(player)) {
 			return;
@@ -69,7 +71,7 @@ public class AirScooter extends AirAbility {
 		}
 
 		AirSpout spout = CoreAbility.getAbility(player, AirSpout.class);
-		if (spout != null) spout.remove();
+		if (spout != null && disableSpout) spout.remove();
 
 		boolean cancelBlast = getConfig().getBoolean("Abilities.Air.AirScooter.CancelBlast");
 		AirBlast blast = CoreAbility.getAbility(player, AirBlast.class);

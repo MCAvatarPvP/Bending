@@ -1033,6 +1033,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.AirScooter.DisableSprint", true);
 			config.addDefault("Abilities.Air.AirScooter.RequiresJump", false);
 			config.addDefault("Abilities.Air.AirScooter.CancelBlast", false);
+			config.addDefault("Abilities.Air.AirScooter.DisableSpout", false);
 
 			config.addDefault("Abilities.Air.AirSurf.Enabled", true);
 			config.addDefault("Abilities.Air.AirSurf.ShowSitting", false);
@@ -1069,6 +1070,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.AirSpout.Height", 16);
 			config.addDefault("Abilities.Air.AirSpout.Interval", 100);
 			config.addDefault("Abilities.Air.AirSpout.CancelBlast", false);
+			config.addDefault("Abilities.Air.AirSpout.DisableSprint", false);
 
 			config.addDefault("Abilities.Air.AirSuction.Enabled", true);
 			config.addDefault("Abilities.Air.AirSuction.FallDamageOthers", false);
