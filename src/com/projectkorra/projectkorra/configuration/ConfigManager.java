@@ -978,6 +978,7 @@ public class ConfigManager {
 			}
 
 			config.addDefault("Abilities.Air.Passive.Factor", 0.3);
+			config.addDefault("Abilities.Air.Passive.RegenFactor", 0.3);
 			config.addDefault("Abilities.Air.Passive.AirAgility.Enabled", true);
 			config.addDefault("Abilities.Air.Passive.AirAgility.JumpPower", 3);
 			config.addDefault("Abilities.Air.Passive.AirAgility.SpeedPower", 2);

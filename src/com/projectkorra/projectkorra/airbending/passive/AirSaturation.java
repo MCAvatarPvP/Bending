@@ -17,6 +17,10 @@ public class AirSaturation extends AirAbility implements PassiveAbility {
 		return ConfigManager.getConfig(bPlayer).getDouble("Abilities.Air.Passive.Factor");
 	}
 
+	public static double getRegenFactor(BendingPlayer bPlayer) {
+		return ConfigManager.getConfig(bPlayer).getDouble("Abilities.Air.Passive.RegenFactor");
+	}
+
 	@Override
 	public void progress() {}
 
