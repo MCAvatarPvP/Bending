@@ -67,6 +67,12 @@ public class WaterManipulation extends WaterAbility {
 	@Attribute("Deflect" + Attribute.RANGE) @DayNightFactor
 	private double deflectRange;
 	private double collisionRadius;
+	private boolean clickRedirection;
+	private boolean shiftRedirection;
+	private double stepSize;
+	private double redirectionRadius;
+	private double redirectionDistance;
+
 	private Block sourceBlock;
 	private Location location;
 	private TempBlock trail, trail2, source;
@@ -119,6 +125,12 @@ public class WaterManipulation extends WaterAbility {
 		this.damage = getConfig().getDouble("Abilities.Water.WaterManipulation.Damage");
 		this.speed = getConfig().getDouble("Abilities.Water.WaterManipulation.Speed");
 		this.deflectRange = getConfig().getDouble("Abilities.Water.WaterManipulation.DeflectRange");
+		this.clickRedirection = getConfig().getBoolean("Abilities.Water.WaterManipulation.OldRedirection");
+		this.shiftRedirection = getConfig().getBoolean("Abilities.Water.WaterManipulation.ShiftEvaporation");
+		this.shiftRedirection = getConfig().getBoolean("Abilities.Water.WaterManipulation.ShiftEvaporation");
+		this.redirectionDistance = getConfig().getDouble("Abilities.Water.WaterManipulation.RedirectionDistance");
+		this.redirectionRadius = getConfig().getDouble("Abilities.Water.WaterManipulation.RedirectionRadius");
+		this.stepSize = getConfig().getDouble("Abilities.Water.WaterManipulation.StepSize");
 
 		this.interval = (long) (1000. / this.speed);
 	}
@@ -204,10 +216,31 @@ public class WaterManipulation extends WaterAbility {
 		}
 	}
 
-	private static Block prepare(final Player player, final double selectRange) {
+	private Block prepare(final Player player, final double selectRange) {
 		final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
 
 		final Block block = BlockSource.getWaterSourceBlock(player, selectRange, ClickType.SHIFT_DOWN, true, true, bPlayer.canPlantbend());
+
+		Location eyeLocation = player.getEyeLocation();
+		Vector direction = eyeLocation.getDirection().normalize();
+		double maxDistance = redirectionDistance;
+		double thresholdDistance = redirectionRadius;
+
+		for (double i = 0; i <= maxDistance; i += stepSize) {
+			Location rayPoint = eyeLocation.clone().add(direction.clone().multiply(i));
+
+			for (WaterManipulation manip : getAbilities(WaterManipulation.class)) {
+				if (manip.location == null) continue;
+
+				double distance = manip.location.distanceSquared(rayPoint);
+				if (!manip.player.equals(player) && distance < thresholdDistance) {
+					ParticleEffect.WHITE_ASH.display(manip.location, 20, 0.5, 0.5, 0.5);
+					manip.remove();
+					return null;
+				}
+			}
+		}
+
 		cancelPrevious(player);
 
 		return block;
@@ -560,7 +593,7 @@ public class WaterManipulation extends WaterAbility {
 			final Location location = player.getEyeLocation();
 			final Vector vector = location.getDirection();
 			final Location mloc = manip.location;
-			if (mloc.distanceSquared(location) <= manip.selectRange * manip.selectRange && GeneralMethods.getDistanceFromLine(vector, location, manip.location) < manip.deflectRange && mloc.distanceSquared(location.clone().add(vector)) < mloc.distanceSquared(location.clone().add(vector.clone().multiply(-1)))) {
+			if (manip.clickRedirection && mloc.distanceSquared(location) <= manip.selectRange * manip.selectRange && GeneralMethods.getDistanceFromLine(vector, location, manip.location) < manip.deflectRange && mloc.distanceSquared(location.clone().add(vector)) < mloc.distanceSquared(location.clone().add(vector.clone().multiply(-1)))) {
 				manip.redirect(player, getTargetLocation(player, manip.range));
 				redirected = true;
 			}

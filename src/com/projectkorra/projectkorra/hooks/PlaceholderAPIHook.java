@@ -86,6 +86,8 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
 					return TimeUtil.formatTime(bPlayer.getCooldown(string) == -1 ? 0 : bPlayer.getCooldown(string) - System.currentTimeMillis());
 				}
 			}
+		} else if (params.equals("airblast_decay")) {
+			return String.valueOf(bPlayer.getAirBlastDecay());
 		}
 
 		return null;

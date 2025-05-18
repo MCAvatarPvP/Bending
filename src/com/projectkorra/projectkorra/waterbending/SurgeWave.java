@@ -155,6 +155,11 @@ public class SurgeWave extends WaterAbility {
 	}
 
 	private void freeze() {
+		if (bPlayer.isOnCooldown("SurgeFreeze")) {
+			remove();
+			return;
+		}
+
 		this.clearWave();
 		if (!this.bPlayer.canIcebend()) {
 			return;
@@ -207,7 +212,7 @@ public class SurgeWave extends WaterAbility {
 				}
 			}
 		}
-		bPlayer.addCooldown(this, freezeCooldown);
+		bPlayer.addCooldown("SurgeFreeze", freezeCooldown);
 	}
 
 	private Vector getDirection(final Location location, final Location destination) {

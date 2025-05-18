@@ -108,6 +108,7 @@ public enum ParticleEffect {
 	WATER_DROP (Particle.RAIN),
 	WATER_SPLASH (Particle.SPLASH), @Deprecated SPLASH (Particle.SPLASH),
 	WATER_WAKE (Particle.FISHING), @Deprecated WAKE (Particle.FISHING),
+	WHITE_SMOKE(Particle.WHITE_SMOKE),
 	WHITE_ASH (Particle.WHITE_ASH);
 
 	Particle particle;

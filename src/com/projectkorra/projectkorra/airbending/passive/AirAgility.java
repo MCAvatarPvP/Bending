@@ -20,6 +20,8 @@ public class AirAgility extends AirAbility implements PassiveAbility {
 	private int jumpDuration;
 	private int speedDuration;
 	private boolean requiresSprinting;
+	private double decayMinimum;
+	private long minimumAirBlastTime;
 
 	public AirAgility(final Player player) {
 		super(player);
@@ -32,10 +34,20 @@ public class AirAgility extends AirAbility implements PassiveAbility {
 		this.jumpDuration = getConfig().getInt("Abilities.Air.Passive.AirAgility.JumpDuration");
 		this.speedDuration = getConfig().getInt("Abilities.Air.Passive.AirAgility.SpeedDuration");
 		this.requiresSprinting = getConfig().getBoolean("Abilities.Air.Passive.AirAgility.RequiresSprinting");
+		this.decayMinimum = getConfig().getDouble("Abilities.Air.AirBlast.DecayMinimum");
+		this.minimumAirBlastTime = getConfig().getLong("Abilities.Air.AirBlast.MinimumAirBlastTime");
 	}
 
 	@Override
 	public void progress() {
+		if (System.currentTimeMillis() - bPlayer.getLastAirBlastTime() > minimumAirBlastTime) {
+			bPlayer.resetAirBlastDecay();
+		}
+
+		float decay = (float) bPlayer.getAirBlastDecay();  // between 0.4 and 1.0
+		float normalized = (decay - 0.4f) / (1.0f - (float) decayMinimum);  // Normalized to 0.0–1.0
+		player.setExp(Math.max(0f, Math.min(1f, normalized)));  // Clamp between 0 and 1
+
 		if (this.requiresSprinting && !this.player.isSprinting() || !this.bPlayer.canUsePassive(this) || !this.bPlayer.canBendPassive(this)) {
 			return;
 		}

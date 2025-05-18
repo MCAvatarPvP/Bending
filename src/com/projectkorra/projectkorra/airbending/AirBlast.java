@@ -68,6 +68,11 @@ public class AirBlast extends AirAbility {
 	private double speed;
 	@Attribute(Attribute.RADIUS)
 	private double radius;
+
+	private double decayAmount;
+	private double decayMinimum;
+	private long minimumAirBlastTime;
+
 	private Location location;
 	private Location origin;
 	private Vector direction;
@@ -106,6 +111,13 @@ public class AirBlast extends AirAbility {
 			}
 
 			this.direction = GeneralMethods.getDirection(origin, targetedLocation).normalize();
+
+			if (System.currentTimeMillis() - bPlayer.getLastAirBlastTime() < minimumAirBlastTime) {
+				bPlayer.increaseAirBlastDecay(decayAmount, decayMinimum);
+			}
+
+			bPlayer.resetAirBlast();
+			this.pushFactor *= bPlayer.getAirBlastDecay();
 		} else {
 			this.origin = player.getEyeLocation();
 			this.direction = player.getEyeLocation().getDirection().normalize();
@@ -161,6 +173,9 @@ public class AirBlast extends AirAbility {
 		this.canOpenDoors = getConfig().getBoolean("Abilities.Air.AirBlast.CanOpenDoors");
 		this.canPressButtons = getConfig().getBoolean("Abilities.Air.AirBlast.CanPressButtons");
 		this.canCoolLava = getConfig().getBoolean("Abilities.Air.AirBlast.CanCoolLava");
+		this.decayAmount = getConfig().getDouble("Abilities.Air.AirBlast.DecayAmount");
+		this.decayMinimum = getConfig().getDouble("Abilities.Air.AirBlast.DecayMinimum");
+		this.minimumAirBlastTime = getConfig().getLong("Abilities.Air.AirBlast.MinimumAirBlastTime");
 
 		this.isFromOtherOrigin = false;
 		this.showParticles = true;

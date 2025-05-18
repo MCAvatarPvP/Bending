@@ -155,7 +155,7 @@ public class ConfigManager {
 			config.addDefault("Board.Prefix.NonSelectedColor", ChatColor.DARK_GRAY.getName());
 			config.addDefault("Board.EmptySlot", "&8-- Slot {slot_number} --");
 			config.addDefault("Board.MiscSeparator", "  ----------");
-			
+
 			if (!config.contains("Board.Extras")) {
 				config.addDefault("Board.Extras.RaiseEarthWall", Element.EARTH.getColor());
 				config.addDefault("Board.Extras.SurgeWave", Element.WATER.getColor());
@@ -1004,6 +1004,9 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.AirBlast.CanOpenDoors", true);
 			config.addDefault("Abilities.Air.AirBlast.CanPressButtons", true);
 			config.addDefault("Abilities.Air.AirBlast.CanCoolLava", true);
+			config.addDefault("Abilities.Air.AirBlast.DecayAmount", 0.20);
+			config.addDefault("Abilities.Air.AirBlast.DecayMinimum", 0.20);
+			config.addDefault("Abilities.Air.AirBlast.MinimumAirBlastTime", 700);
 
 			config.addDefault("Abilities.Air.AirBurst.Enabled", true);
 			config.addDefault("Abilities.Air.AirBurst.FallThreshold", 10);
@@ -1397,6 +1400,11 @@ public class ConfigManager {
 			config.addDefault("Abilities.Water.WaterManipulation.Speed", 35);
 			config.addDefault("Abilities.Water.WaterManipulation.Knockback", 0.3);
 			config.addDefault("Abilities.Water.WaterManipulation.Cooldown", 1000);
+			config.addDefault("Abilities.Water.WaterManipulation.OldRedirection", false);
+			config.addDefault("Abilities.Water.WaterManipulation.ShiftEvaporation", true);
+			config.addDefault("Abilities.Water.WaterManipulation.RedirectionDistance", 8);
+			config.addDefault("Abilities.Water.WaterManipulation.RedirectionRadius", 2);
+			config.addDefault("Abilities.Water.WaterManipulation.StepSize", 0.5);
 
 			config.addDefault("Abilities.Water.WaterSpout.Enabled", true);
 			config.addDefault("Abilities.Water.WaterSpout.Cooldown", 0);

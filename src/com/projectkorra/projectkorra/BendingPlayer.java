@@ -78,6 +78,8 @@ public class BendingPlayer extends OfflineBendingPlayer {
 	protected boolean tremorSense;
 	protected boolean illumination;
 	protected boolean chiBlocked;
+	private double airBlastDecay;
+	private long lastAirBlastTime;
 
 	public BendingPlayer(Player player) {
 		super(player);
@@ -86,6 +88,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
 		this.tremorSense = true;
 		this.illumination = true;
 		this.chiBlocked = false;
+		this.airBlastDecay = 1;
 	}
 
 	/**
@@ -993,5 +996,25 @@ public class BendingPlayer extends OfflineBendingPlayer {
 			this.tempElements.putAll(newSubs); //Adds the new temp subs that should be assigned
 			this.saveSubElements();
 		}
+	}
+
+	public void increaseAirBlastDecay(final double amount, final double minimum) {
+		airBlastDecay = Math.max(minimum, airBlastDecay - amount);
+	}
+
+	public void resetAirBlastDecay() {
+		airBlastDecay = 1;
+	}
+
+	public double getAirBlastDecay() {
+		return airBlastDecay;
+	}
+
+	public void resetAirBlast() {
+		lastAirBlastTime = System.currentTimeMillis();
+	}
+
+	public long getLastAirBlastTime() {
+		return lastAirBlastTime;
 	}
 }
