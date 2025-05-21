@@ -48,6 +48,7 @@ public class AirScooter extends AirAbility {
 	private boolean disableSprint;
 	private boolean canFly, wasFlying;
 	private boolean disableSpout;
+	private boolean disableSpeed;
 
 	private double phi = 0;
 
@@ -57,6 +58,7 @@ public class AirScooter extends AirAbility {
 		this.requiresSprint = getConfig().getBoolean("Abilities.Air.AirScooter.RequiresSprint");
 		this.requiresJump = getConfig().getBoolean("Abilities.Air.AirScooter.RequiresJump");
 		this.disableSpout = getConfig().getBoolean("Abilities.Air.AirScooter.DisableSpout");
+		this.disableSpeed = getConfig().getBoolean("Abilities.Air.AirScooter.DisableSpeed");
 
 		if (check(player)) {
 			return;
@@ -247,7 +249,7 @@ public class AirScooter extends AirAbility {
 		}
 
 		if (disableSprint) this.player.setSprinting(false);
-		this.player.removePotionEffect(PotionEffectType.SPEED);
+		if(disableSpeed) this.player.removePotionEffect(PotionEffectType.SPEED);
 		if (this.useslime) {
 			GeneralMethods.setVelocity(this, this.slime, velocity);
 		} else {

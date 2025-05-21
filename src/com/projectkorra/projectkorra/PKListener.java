@@ -453,31 +453,8 @@ public class PKListener implements Listener {
 			return;
 		}
 
-		Player player = (Player) event.getEntity();
-		BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-		if (bPlayer == null) return;
-
-		CoreAbility airsat = CoreAbility.getAbility(AirSaturation.class);
-		if ((airsat == null || !airsat.isEnabled())) {
-			return;
-		}
-
-		if (ConfigManager.defaultConfig.get().getStringList("Properties.DisabledWorlds").contains(player.getWorld().getName())) {
-			return;
-		}
-
-		if (Commands.isToggledForAll && ConfigManager.defaultConfig.get().getBoolean("Properties.TogglePassivesWithAllBending")) {
-			return;
-		}
-
-		if (!PassiveManager.hasPassive(player, airsat)) {
-			return;
-		}
-
-		double air = AirSaturation.getRegenFactor(bPlayer);
-
-		if (event.getRegainReason() == EntityRegainHealthEvent.RegainReason.REGEN || event.getRegainReason() == EntityRegainHealthEvent.RegainReason.SATIATED) {
-			event.setAmount(event.getAmount() * air);
+		if (event.getRegainReason() != EntityRegainHealthEvent.RegainReason.CUSTOM) {
+			event.setCancelled(true);
 		}
 	}
 

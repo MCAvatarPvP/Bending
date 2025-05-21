@@ -843,6 +843,9 @@ public class ConfigManager {
 			config.addDefault("Properties.MobDamageMultiplier", 0.0);
 			config.addDefault("Properties.IgnoreArmorPercentage.Default", 0.5);
 
+			config.addDefault("Properties.Regen.HealthPerTick", 1);
+			config.addDefault("Properties.Regen.Interval", 8);
+
 			config.addDefault("Properties.HorizontalCollisionPhysics.Enabled", true);
 			config.addDefault("Properties.HorizontalCollisionPhysics.DamageOnBarrierBlock", false);
 			config.addDefault("Properties.HorizontalCollisionPhysics.WallDamageMinimumDistance", 5.0);
@@ -1038,6 +1041,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.AirScooter.RequiresJump", false);
 			config.addDefault("Abilities.Air.AirScooter.CancelBlast", false);
 			config.addDefault("Abilities.Air.AirScooter.DisableSpout", false);
+			config.addDefault("Abilities.Air.AirScooter.DisableSpeed", false);
 
 			config.addDefault("Abilities.Air.AirSurf.Enabled", true);
 			config.addDefault("Abilities.Air.AirSurf.ShowSitting", false);
@@ -1721,6 +1725,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Fire.FireBlast.Charged.Range", 20);
 			config.addDefault("Abilities.Fire.FireBlast.Charged.FireTicks", 0);
 			config.addDefault("Abilities.Fire.FireBlast.Charged.FireRadius", 1);
+			config.addDefault("Abilities.Fire.FireBlast.Charged.UseFireBlastCD", true);
 
 			config.addDefault("Abilities.Fire.FireBurst.Enabled", true);
 			config.addDefault("Abilities.Fire.FireBurst.Damage", 2);

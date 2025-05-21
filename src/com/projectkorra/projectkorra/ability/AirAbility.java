@@ -214,9 +214,13 @@ public abstract class AirAbility extends ElementalAbility {
 	 * @param loc The location to play the sound at
 	 */
 	public static void playAirbendingSound(final Location loc) {
+		final float pitch = (float) ConfigManager.getConfig().getDouble("Properties.Air.Sound.Pitch");
+		playAirbendingSound(loc, pitch);
+	}
+
+	public static void playAirbendingSound(final Location loc, float pitch) {
 		if (ConfigManager.getConfig().getBoolean("Properties.Air.PlaySound")) {
 			final float volume = (float) ConfigManager.getConfig().getDouble("Properties.Air.Sound.Volume");
-			final float pitch = (float) ConfigManager.getConfig().getDouble("Properties.Air.Sound.Pitch");
 
 			Sound sound = Sound.ENTITY_CREEPER_HURT;
 			String soundString = ConfigManager.getConfig().getString("Properties.Air.Sound.Sound");

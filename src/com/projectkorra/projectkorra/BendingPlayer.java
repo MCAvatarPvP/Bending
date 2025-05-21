@@ -1,23 +1,13 @@
 package com.projectkorra.projectkorra;
 
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
-import com.projectkorra.projectkorra.ability.PassiveAbility;
-import com.projectkorra.projectkorra.ability.StanceAbility;
+import com.projectkorra.projectkorra.ability.*;
 import com.projectkorra.projectkorra.board.BendingBoard;
 import com.projectkorra.projectkorra.command.CooldownCommand;
 import com.projectkorra.projectkorra.event.PlayerChangeElementEvent;
@@ -29,7 +19,9 @@ import com.projectkorra.projectkorra.hooks.CanBindHook;
 import com.projectkorra.projectkorra.object.Preset;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.ChatUtil;
+import com.projectkorra.projectkorra.util.IndexedMap;
 import net.md_5.bungee.api.ChatColor;
+import org.apache.commons.collections4.map.ListOrderedMap;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
 
@@ -44,9 +36,6 @@ import org.bukkit.entity.Player;
 
 import com.projectkorra.projectkorra.Element.SubElement;
 import com.projectkorra.projectkorra.Element.MultiSubElement;
-import com.projectkorra.projectkorra.ability.AvatarAbility;
-import com.projectkorra.projectkorra.ability.ChiAbility;
-import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.util.PassiveManager;
 import com.projectkorra.projectkorra.avatar.AvatarState;
 import com.projectkorra.projectkorra.board.BendingBoardManager;
@@ -80,6 +69,8 @@ public class BendingPlayer extends OfflineBendingPlayer {
 	protected boolean chiBlocked;
 	private double airBlastDecay;
 	private long lastAirBlastTime;
+	private long lastHealthRegen;
+	private final IndexedMap<String, Cooldown> comboCoolDowns = new IndexedMap<>();
 
 	public BendingPlayer(Player player) {
 		super(player);
@@ -108,12 +99,21 @@ public class BendingPlayer extends OfflineBendingPlayer {
 		Bukkit.getServer().getPluginManager().callEvent(event);
 
 		if (!event.isCancelled()) {
-			this.cooldowns.put(ability, new Cooldown(event.getCooldown() + System.currentTimeMillis(), database));
+			Cooldown refCooldown = new Cooldown(event.getCooldown() + System.currentTimeMillis(), database);
+
+			this.cooldowns.put(ability, refCooldown);
 
 			if (this.getBoundAbilityName() != null && this.getBoundAbilityName().equalsIgnoreCase(ability)) {
 				ChatUtil.displayMovePreview(this.player);
 			}
-			
+
+			CoreAbility coreAbility = CoreAbility.getAbility(ability);
+
+			// Combo ability
+			if (coreAbility instanceof ComboAbility || coreAbility == null) {
+				comboCoolDowns.put(ability, refCooldown);
+			}
+
 			BendingBoardManager.updateBoard(this.player, event.getAbility(), true, 0);
 			CooldownCommand.addCooldownType(ability);
 		}
@@ -608,7 +608,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
 		Bukkit.getServer().getPluginManager().callEvent(event);
 		if (!event.isCancelled()) {
 			this.cooldowns.remove(ability);
-
+			this.comboCoolDowns.remove(ability);
 			
 			final String abilityName = event.getAbility();
 
@@ -645,6 +645,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
 						ChatUtil.displayMovePreview(this.player);
 					}
 
+					comboCoolDowns.remove(event.getAbility());
 					BendingBoardManager.updateBoard(this.player, event.getAbility(), false, 0);
 				}
 			}
@@ -1016,5 +1017,17 @@ public class BendingPlayer extends OfflineBendingPlayer {
 
 	public long getLastAirBlastTime() {
 		return lastAirBlastTime;
+	}
+
+	public void setLastHealthRegen(long lastHealthRegen) {
+		this.lastHealthRegen = lastHealthRegen;
+	}
+
+	public long getLastHealthRegen() {
+		return lastHealthRegen;
+	}
+
+	public IndexedMap<String, Cooldown> getComboCoolDowns() {
+		return comboCoolDowns;
 	}
 }

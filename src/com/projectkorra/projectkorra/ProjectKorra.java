@@ -12,6 +12,7 @@ import com.projectkorra.projectkorra.object.CosmeticColor;
 import com.projectkorra.projectkorra.object.EarthCosmetic;
 import com.projectkorra.projectkorra.object.Style;
 import com.projectkorra.projectkorra.region.RegionProtection;
+import com.projectkorra.projectkorra.util.*;
 import org.bukkit.Bukkit;
 import org.bukkit.Statistic;
 import org.bukkit.entity.Player;
@@ -34,10 +35,6 @@ import com.projectkorra.projectkorra.hooks.PlaceholderAPIHook;
 import com.projectkorra.projectkorra.hooks.WorldGuardFlag;
 import com.projectkorra.projectkorra.object.Preset;
 import com.projectkorra.projectkorra.storage.DBConnection;
-import com.projectkorra.projectkorra.util.Metrics;
-import com.projectkorra.projectkorra.util.RevertChecker;
-import com.projectkorra.projectkorra.util.StatisticsManager;
-import com.projectkorra.projectkorra.util.Updater;
 import com.projectkorra.projectkorra.waterbending.util.WaterbendingManager;
 
 public class ProjectKorra extends JavaPlugin {
@@ -50,6 +47,7 @@ public class ProjectKorra extends JavaPlugin {
 	public Updater updater;
 	BukkitTask revertChecker;
 	private static PlaceholderAPIHook papiHook;
+	BukkitTask regenHandler;
 
 	@Override
 	public void onEnable() {
@@ -91,8 +89,10 @@ public class ProjectKorra extends JavaPlugin {
 		this.getServer().getScheduler().scheduleSyncRepeatingTask(this, new EarthbendingManager(this), 0, 1);
 		this.getServer().getScheduler().scheduleSyncRepeatingTask(this, new FirebendingManager(this), 0, 1);
 		this.getServer().getScheduler().scheduleSyncRepeatingTask(this, new ChiblockingManager(this), 0, 1);
+		this.getServer().getScheduler().scheduleSyncRepeatingTask(this, new RegenHandler(this), 0,  20);
 		this.getServer().getScheduler().runTaskTimerAsynchronously(this, new BendingManager.TempElementsRunnable(), 20, 20);
 		this.revertChecker = this.getServer().getScheduler().runTaskTimerAsynchronously(this, new RevertChecker(this), 0, 200);
+
 
 		for (final Player player : Bukkit.getOnlinePlayers()) {
 			PKListener.getJumpStatistics().put(player, player.getStatistic(Statistic.JUMP));
@@ -135,6 +135,7 @@ public class ProjectKorra extends JavaPlugin {
 
 	@Override
 	public void onDisable() {
+		regenHandler.cancel();
 		this.revertChecker.cancel();
 		GeneralMethods.stopBending();
 		for (final Player player : this.getServer().getOnlinePlayers()) {

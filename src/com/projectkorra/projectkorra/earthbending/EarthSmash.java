@@ -2,6 +2,7 @@ package com.projectkorra.projectkorra.earthbending;
 
 import java.util.*;
 
+import com.projectkorra.projectkorra.ability.util.Collision;
 import com.projectkorra.projectkorra.object.EarthCosmetic;
 import com.projectkorra.projectkorra.util.*;
 import org.bukkit.Effect;
@@ -571,6 +572,11 @@ public class EarthSmash extends EarthAbility {
 			}
 		}
 		return null;
+	}
+
+	@Override
+	public void handleCollision(Collision collision) {
+		remove();
 	}
 
 	/**

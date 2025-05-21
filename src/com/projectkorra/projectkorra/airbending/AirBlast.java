@@ -239,7 +239,9 @@ public class AirBlast extends AirAbility {
 			playAirbendingParticles(this.location, this.particles, 0.275F, 0.275F, 0.275F);
 		}
 		if (this.random.nextInt(4) == 0) {
-			playAirbendingSound(this.location);
+			final double percentage = bPlayer.getAirBlastDecay();
+			final float pitch = (float) (0.9 * percentage);
+			playAirbendingSound(this.location, pitch);
 		}
 
 		BlockIterator blocks = new BlockIterator(this.getLocation().getWorld(), this.location.toVector(), this.direction, 0, (int) Math.ceil(this.direction.clone().multiply(speedFactor).length()));

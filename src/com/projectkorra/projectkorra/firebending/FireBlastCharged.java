@@ -3,6 +3,7 @@ package com.projectkorra.projectkorra.firebending;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.projectkorra.projectkorra.ability.*;
 import com.projectkorra.projectkorra.ability.util.Collision;
 import com.projectkorra.projectkorra.util.TempBlock;
 import org.bukkit.Location;
@@ -18,10 +19,6 @@ import org.bukkit.util.Vector;
 
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.Element.SubElement;
-import com.projectkorra.projectkorra.ability.AirAbility;
-import com.projectkorra.projectkorra.ability.BlueFireAbility;
-import com.projectkorra.projectkorra.ability.CoreAbility;
-import com.projectkorra.projectkorra.ability.FireAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.avatar.AvatarState;
 import com.projectkorra.projectkorra.util.DamageHandler;
@@ -67,6 +64,7 @@ public class FireBlastCharged extends FireAbility {
 	private Location origin;
 	private Location location;
 	private Vector direction;
+	private boolean useFireBlastCooldown;
 
 	public FireBlastCharged(final Player player) {
 		super(player);
@@ -97,10 +95,19 @@ public class FireBlastCharged extends FireAbility {
 		this.fireTicks = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.Charged.FireTicks"));
 		this.fireRadius = getConfig().getDouble("Abilities.Fire.FireBlast.Charged.FireRadius");
 		this.funThingPower = getConfig().getDouble("Abilities.Fire.FireBlast.Charged.FunThing");
+		this.useFireBlastCooldown = getConfig().getBoolean("Abilities.Fire.FireBlast.Charged.UseFireBlastCD");
 		this.innerRadius = this.damageRadius / 2;
 
-		if (bPlayer.isOnCooldown("FireBlastCharged")) {
-			return;
+		if (useFireBlastCooldown) {
+			Ability ability = getAbility(FireBlast.class);
+
+			if (bPlayer.isOnCooldown(ability)) {
+				return;
+			}
+		} else {
+			if (bPlayer.isOnCooldown("FireBlastCharged")) {
+				return;
+			}
 		}
 
 		//this.applyModifiers();
@@ -367,7 +374,12 @@ public class FireBlastCharged extends FireAbility {
 	public void remove() {
 		super.remove();
 		if (this.charged) {
-			this.bPlayer.addCooldown("FireBlastCharged", this.cooldown);
+			if (useFireBlastCooldown) {
+				Ability ability = getAbility(FireBlast.class);
+				this.bPlayer.addCooldown(ability, this.cooldown);
+			} else {
+				this.bPlayer.addCooldown("FireBlastCharged", this.cooldown);
+			}
 		}
 	}
 

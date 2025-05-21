@@ -290,6 +290,7 @@ public class Torrent extends WaterAbility {
 					final double dx = Math.cos(phi) * this.radius;
 					final double dy = 0;
 					final double dz = Math.sin(phi) * this.radius;
+					// TODO: Fix that one torrent bug
 					loc.add(dx, dy, dz);
 					if (isWater(loc.getBlock()) && GeneralMethods.isAdjacentToThreeOrMoreSources(loc.getBlock())) {
 						ParticleEffect.WATER_BUBBLE.display(loc.getBlock().getLocation().clone().add(.5, .5, .5), 5, Math.random(), Math.random(), Math.random(), 0);
