@@ -42,6 +42,10 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
 			}
 			final String ability = bPlayer.getAbilities().get(index);
 			final CoreAbility coreAbil = CoreAbility.getAbility(ability);
+			if (ability.isEmpty()) {
+				return "";
+			}
+
 			if (coreAbil == null) { // Multiability
 				return ability;
 			}
@@ -97,7 +101,7 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
 					}
 
 					String cooldown = TimeUtil.formatTime(objectCD.getCooldown() == -1 ? 0 : objectCD.getCooldown() - System.currentTimeMillis());
-					return coreAbil + ability + " " + cooldown;
+					return color + coreAbil + ability + " " + cooldown;
 				}
 
 				return "";
