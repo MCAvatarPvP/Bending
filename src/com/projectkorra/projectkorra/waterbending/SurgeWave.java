@@ -77,6 +77,10 @@ public class SurgeWave extends WaterAbility {
 	private Map<Block, Block> waveBlocks;
 	private Map<Block, Material> frozenBlocks;
 
+	private double decayAmount;
+	private double decayMinimum;
+	private long minimumAirBlastTime;
+
 	public SurgeWave(final Player player) {
 		super(player);
 
@@ -107,6 +111,9 @@ public class SurgeWave extends WaterAbility {
 		this.selectRange = getConfig().getDouble("Abilities.Water.Surge.Wave.SelectRange");
 		this.solidifyLava = getConfig().getBoolean("Abilities.Water.Surge.Wave.SolidifyLava.Enabled");
 		this.obsidianDuration = getConfig().getLong("Abilities.Water.Surge.Wave.SolidifyLava.Duration");
+		this.decayAmount = getConfig().getDouble("Abilities.Water.Surge.DecayAmount");
+		this.decayMinimum = getConfig().getDouble("Abilities.Water.Surge.DecayMinimum");
+		this.minimumAirBlastTime = getConfig().getLong("Abilities.Water.Surge.MinimumSurgeWaveTime");
 		this.waveBlocks = new ConcurrentHashMap<>();
 		this.frozenBlocks = new ConcurrentHashMap<>();
 
@@ -115,6 +122,11 @@ public class SurgeWave extends WaterAbility {
 			if (wave != null) {
 				wave.remove();
 			}
+
+			this.knockback *= bPlayer.getAirBlastDecay();
+			this.knockbackOthers *= bPlayer.getAirBlastDecay();
+			this.knockup *= bPlayer.getAirBlastDecay();
+
 			this.start();
 			this.time = System.currentTimeMillis();
 		}
@@ -234,6 +246,13 @@ public class SurgeWave extends WaterAbility {
 		if (this.bPlayer.isOnCooldown("SurgeWave")) {
 			return;
 		}
+
+		if (System.currentTimeMillis() - bPlayer.getLastAirBlastTime() < minimumAirBlastTime) {
+			bPlayer.increaseAirBlastDecay(decayAmount, decayMinimum);
+		}
+
+		bPlayer.resetAirBlast();
+
 		this.bPlayer.addCooldown("SurgeWave", this.cooldown);
 
 		if (this.sourceBlock != null) {

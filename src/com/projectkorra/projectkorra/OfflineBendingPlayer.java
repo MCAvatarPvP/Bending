@@ -1189,10 +1189,10 @@ public class OfflineBendingPlayer {
      */
     public void setElement(@NotNull final Element element) {
         this.elements.clear();
+        this.elements.add(element);
         if (getPlayer() instanceof Player) {
             PassiveManager.registerPassives(getPlayer().getPlayer());
         }
-        this.elements.add(element);
     }
 
     /**

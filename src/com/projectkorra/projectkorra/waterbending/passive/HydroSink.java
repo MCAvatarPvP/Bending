@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.waterbending.passive;
 
+import com.projectkorra.projectkorra.BendingPlayer;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
@@ -14,8 +15,19 @@ import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.util.TempBlock;
 
 public class HydroSink extends WaterAbility implements PassiveAbility {
+
+	private double decayMinimum;
+	private long minimumSurgeWaveTime;
+	
 	public HydroSink(final Player player) {
 		super(player);
+
+		this.decayMinimum = getConfig().getDouble("Abilities.Water.Surge.DecayMinimum");
+		this.minimumSurgeWaveTime = getConfig().getLong("Abilities.Water.Surge.MinimumSurgeWaveTime");
+	}
+
+	public static double getRegenFactor(BendingPlayer bPlayer) {
+		return ConfigManager.getConfig(bPlayer).getDouble("Abilities.Water.Passive.RegenFactor");
 	}
 
 	public static boolean applyNoFall(final Player player) {
@@ -41,7 +53,15 @@ public class HydroSink extends WaterAbility implements PassiveAbility {
 	}
 
 	@Override
-	public void progress() {}
+	public void progress() {
+		if (System.currentTimeMillis() - bPlayer.getLastAirBlastTime() > minimumSurgeWaveTime) {
+			bPlayer.resetAirBlastDecay();
+		}
+
+		float decay = (float) bPlayer.getAirBlastDecay();
+		float normalized = (decay - 0.4f) / (1.0f - (float) decayMinimum); 
+		player.setExp(Math.max(0f, Math.min(1f, normalized)));  
+	}
 
 	@Override
 	public boolean isSneakAbility() {
@@ -70,11 +90,11 @@ public class HydroSink extends WaterAbility implements PassiveAbility {
 
 	@Override
 	public boolean isInstantiable() {
-		return false;
+		return true;
 	}
 
 	@Override
 	public boolean isProgressable() {
-		return false;
+		return true;
 	}
 }

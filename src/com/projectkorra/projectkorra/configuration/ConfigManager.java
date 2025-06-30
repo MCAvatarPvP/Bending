@@ -1176,6 +1176,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.AirSweep.ActivationDelayTicks", 8);
 			config.addDefault("Abilities.Air.AirSweep.Combination", Arrays.asList("AirSwipe:LEFT_CLICK", "AirSwipe:LEFT_CLICK", "AirBurst:SNEAK_DOWN", "AirBurst:LEFT_CLICK"));
 
+			config.addDefault("Abilities.Water.Passive.RegenFactor", 1.3);
 			config.addDefault("Abilities.Water.Passive.FastSwim.Enabled", true);
 			config.addDefault("Abilities.Water.Passive.FastSwim.Cooldown", 0);
 			config.addDefault("Abilities.Water.Passive.FastSwim.Duration", 0);
@@ -1301,6 +1302,9 @@ public class ConfigManager {
 			config.addDefault("Abilities.Water.Surge.Wall.SolidifyLava.Enabled", true);
 			config.addDefault("Abilities.Water.Surge.Wall.SolidifyLava.Duration", 36000);
 			config.addDefault("Abilities.Water.Surge.Wave.IceRevertTime", 60000);
+			config.addDefault("Abilities.Water.Surge.DecayAmount", 0.20);
+			config.addDefault("Abilities.Water.Surge.DecayMinimum", 0.20);
+			config.addDefault("Abilities.Water.Surge.MinimumSurgeWaveTime", 700);
 
 			config.addDefault("Abilities.Water.Torrent.Enabled", true);
 			config.addDefault("Abilities.Water.Torrent.Range", 25);
