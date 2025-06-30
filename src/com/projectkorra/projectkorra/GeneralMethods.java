@@ -556,19 +556,6 @@ public class GeneralMethods {
 		return !blocks.isEmpty() || entity.getVelocity().getY() == -0.0784000015258789;
 	}
 
-	public static Block getGroundBlock(Location location, double maxDistance) {
-		Block block = null;
-		for (int i = 0; maxDistance > 1 && i <= (int) maxDistance; i++) {
-			block = location.clone().subtract(0, i, 0).getBlock();
-			if (GeneralMethods.isSolid(block)) return block;
-		}
-
-		block = location.clone().subtract(0, maxDistance, 0).getBlock();
-		if (GeneralMethods.isSolid(block)) return block;
-
-		return null;
-	}
-
 	/**
 	 * Gets all blocks between two locations in a cube
 	 * @param min The minimum Location
@@ -1992,5 +1979,18 @@ public class GeneralMethods {
 			}
 		}
 		return major * 1000 + minor * 10 + fix; //1.16.4 -> 1164; 1.18 -> 1180
+	}
+
+	public static Block getGroundBlock(Location location, double maxDistance) {
+		Block block = null;
+		for (int i = 0; maxDistance > 1 && i <= (int) maxDistance; i++) {
+			block = location.clone().subtract(0, i, 0).getBlock();
+			if (GeneralMethods.isSolid(block)) return block;
+		}
+
+		block = location.clone().subtract(0, maxDistance, 0).getBlock();
+		if (GeneralMethods.isSolid(block)) return block;
+
+		return null;
 	}
 }

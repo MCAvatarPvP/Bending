@@ -3,6 +3,7 @@ package com.projectkorra.projectkorra;
 import com.projectkorra.projectkorra.ability.Ability;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.util.MultiAbilityManager;
+import com.projectkorra.projectkorra.ability.util.PassiveManager;
 import com.projectkorra.projectkorra.command.CooldownCommand;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.event.BendingPlayerLoadEvent;
@@ -788,6 +789,10 @@ public class OfflineBendingPlayer {
      */
     public void addElement(final Element element) {
         this.elements.add(element);
+        if (getPlayer() instanceof Player) {
+            PassiveManager.registerPassives(getPlayer().getPlayer());
+        }
+
     }
 
     /**
@@ -1184,6 +1189,9 @@ public class OfflineBendingPlayer {
      */
     public void setElement(@NotNull final Element element) {
         this.elements.clear();
+        if (getPlayer() instanceof Player) {
+            PassiveManager.registerPassives(getPlayer().getPlayer());
+        }
         this.elements.add(element);
     }
 

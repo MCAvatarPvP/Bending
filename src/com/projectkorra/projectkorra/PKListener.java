@@ -84,20 +84,8 @@ import com.projectkorra.projectkorra.firebending.util.FireDamageTimer;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.object.HorizontalVelocityTracker;
 import com.projectkorra.projectkorra.object.Preset;
-import com.projectkorra.projectkorra.util.BlockSource;
-import com.projectkorra.projectkorra.util.ChatUtil;
-import com.projectkorra.projectkorra.util.ClickType;
-import com.projectkorra.projectkorra.util.DamageHandler;
-import com.projectkorra.projectkorra.util.FlightHandler;
+import com.projectkorra.projectkorra.util.*;
 import com.projectkorra.projectkorra.util.FlightHandler.Flight;
-import com.projectkorra.projectkorra.util.MovementHandle;
-import com.projectkorra.projectkorra.util.PassiveHandler;
-import com.projectkorra.projectkorra.util.StatisticsManager;
-import com.projectkorra.projectkorra.util.StatisticsMethods;
-import com.projectkorra.projectkorra.util.TempArmor;
-import com.projectkorra.projectkorra.util.TempBlock;
-import com.projectkorra.projectkorra.util.TempFallingBlock;
-import com.projectkorra.projectkorra.util.FallHandler;
 import com.projectkorra.projectkorra.waterbending.OctopusForm;
 import com.projectkorra.projectkorra.waterbending.SurgeWall;
 import com.projectkorra.projectkorra.waterbending.SurgeWave;
@@ -119,6 +107,7 @@ import com.projectkorra.projectkorra.waterbending.passive.HydroSink;
 
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.*;
+import org.bukkit.Statistic;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.*;
@@ -963,7 +952,7 @@ public class PKListener implements Listener {
 			return;
 		}
 
-		if (MovementHandle.isStopped(e.getDamager())) {
+		if (MovementHandler.isStopped(e.getDamager())) {
 			final CoreAbility ability = (CoreAbility) e.getDamager().getMetadata("movement:stop").get(0).value();
 			if (!(ability instanceof EarthGrab)) {
 				e.setCancelled(true);

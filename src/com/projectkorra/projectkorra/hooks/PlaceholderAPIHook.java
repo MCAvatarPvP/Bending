@@ -41,6 +41,10 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
 				index = Math.max(1, Math.min(9, Integer.parseInt(params.substring(params.length() - 1))));
 			}
 			final String ability = bPlayer.getAbilities().get(index);
+			if (ability == null) {
+				return "";
+			}
+
 			final CoreAbility coreAbil = CoreAbility.getAbility(ability);
 			if (ability.isEmpty()) {
 				return "";
@@ -90,18 +94,13 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
 				String parse = string.substring("combo_".length());
 				int number = Integer.parseInt(parse) + 1;
 
-				if (number <= bPlayer.getComboCoolDowns().size() && number > 0) {
+				if (number <= bPlayer.getComboCoolDowns().size() && number > 0 && !bPlayer.getElements().isEmpty()) {
 					String ability = bPlayer.getComboCoolDowns().get(number - 1);
 					Cooldown objectCD = bPlayer.getComboCoolDowns().get(ability);
-					CoreAbility coreAbil = CoreAbility.getAbility(ability);
-					String color = "&f";
-
-					if (coreAbil != null) {
-						color = coreAbil.getElement().getColor() + "";
-					}
+					String color = bPlayer.getElements().get(0).getColor() + "";
 
 					String cooldown = TimeUtil.formatTime(objectCD.getCooldown() == -1 ? 0 : objectCD.getCooldown() - System.currentTimeMillis());
-					return color + coreAbil + ability + " " + cooldown;
+					return color + ability + " " + cooldown;
 				}
 
 				return "";
