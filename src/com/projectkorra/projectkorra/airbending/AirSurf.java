@@ -5,6 +5,7 @@ import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
+import fr.neatmonster.nocheatplus.utilities.collision.CollisionUtil;
 import org.bukkit.Difficulty;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
@@ -219,14 +220,11 @@ public class AirSurf extends AirAbility {
          * lowers the player based on their distance from the ground.
          */
         final double distance = this.player.getLocation().getY() - this.floorblock.getY();
-        Math.abs(distance - midHeight);
-        if (distance > maxHeight) {
-            velocity.setY(downPush);
-        } else if (distance < minHeight) {
-            velocity.setY(upPush);
-        } else {
-            velocity.setY(0);
-        }
+        final double prediction = 1.5;
+        final double delta = prediction - distance;
+        double force = GeneralMethods.clamp(0.3 * delta, -1, 0.5);
+
+        velocity.setY(force);
 
         final Vector v = velocity.clone().setY(0);
         final Block b = this.floorblock.getLocation().clone().add(v.multiply(1.2)).getBlock();
