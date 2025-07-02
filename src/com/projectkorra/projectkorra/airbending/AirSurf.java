@@ -220,7 +220,7 @@ public class AirSurf extends AirAbility {
          * lowers the player based on their distance from the ground.
          */
         final double distance = this.player.getLocation().getY() - this.floorblock.getY();
-        final double prediction = 1.5;
+        final double prediction = 2.5;
         final double delta = prediction - distance;
         double force = GeneralMethods.clamp(0.3 * delta, -1, 0.5);
 
