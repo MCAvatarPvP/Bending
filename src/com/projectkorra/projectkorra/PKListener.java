@@ -1629,6 +1629,8 @@ public class PKListener implements Listener {
 			return;
 		}
 
+		bPlayer.registerClick();
+
 		final Entity target = GeneralMethods.getTargetedEntity(player, 3);
 
 		if (bPlayer.canCurrentlyBendWithWeapons()) {

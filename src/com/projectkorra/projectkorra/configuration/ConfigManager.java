@@ -1414,6 +1414,8 @@ public class ConfigManager {
 			config.addDefault("Abilities.Water.WaterManipulation.RedirectionDistance", 8);
 			config.addDefault("Abilities.Water.WaterManipulation.RedirectionRadius", 2);
 			config.addDefault("Abilities.Water.WaterManipulation.StepSize", 0.5);
+			config.addDefault("Abilities.Water.WaterManipulation.RedirectionDelay", 100);
+			config.addDefault("Abilities.Water.WaterManipulation.CpsBuffer", 10);
 
 			config.addDefault("Abilities.Water.WaterSpout.Enabled", true);
 			config.addDefault("Abilities.Water.WaterSpout.Cooldown", 0);

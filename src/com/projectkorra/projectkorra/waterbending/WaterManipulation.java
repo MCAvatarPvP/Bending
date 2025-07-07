@@ -72,6 +72,8 @@ public class WaterManipulation extends WaterAbility {
 	private double stepSize;
 	private double redirectionRadius;
 	private double redirectionDistance;
+	private long waterManipRedirectionDelay;
+	private int cpsBuffer = 6;
 
 	private Block sourceBlock;
 	private Location location;
@@ -127,10 +129,11 @@ public class WaterManipulation extends WaterAbility {
 		this.deflectRange = getConfig().getDouble("Abilities.Water.WaterManipulation.DeflectRange");
 		this.clickRedirection = getConfig().getBoolean("Abilities.Water.WaterManipulation.OldRedirection");
 		this.shiftRedirection = getConfig().getBoolean("Abilities.Water.WaterManipulation.ShiftEvaporation");
-		this.shiftRedirection = getConfig().getBoolean("Abilities.Water.WaterManipulation.ShiftEvaporation");
 		this.redirectionDistance = getConfig().getDouble("Abilities.Water.WaterManipulation.RedirectionDistance");
 		this.redirectionRadius = getConfig().getDouble("Abilities.Water.WaterManipulation.RedirectionRadius");
 		this.stepSize = getConfig().getDouble("Abilities.Water.WaterManipulation.StepSize");
+		this.waterManipRedirectionDelay = getConfig().getLong("Abilities.Water.WaterManipulation.RedirectionDelay");
+		this.cpsBuffer = getConfig().getInt("Abilities.Water.WaterManipulation.CpsBuffer");
 
 		this.interval = (long) (1000. / this.speed);
 	}
@@ -593,8 +596,14 @@ public class WaterManipulation extends WaterAbility {
 			final Location location = player.getEyeLocation();
 			final Vector vector = location.getDirection();
 			final Location mloc = manip.location;
-			if (manip.clickRedirection && mloc.distanceSquared(location) <= manip.selectRange * manip.selectRange && GeneralMethods.getDistanceFromLine(vector, location, manip.location) < manip.deflectRange && mloc.distanceSquared(location.clone().add(vector)) < mloc.distanceSquared(location.clone().add(vector.clone().multiply(-1)))) {
+			if ((System.currentTimeMillis() - manip.getBendingPlayer().getLastWaterManipRedirect() > manip.waterManipRedirectionDelay || manip.getBendingPlayer().getCps() <= manip.cpsBuffer)
+					&& manip.clickRedirection
+					&& mloc.distanceSquared(location) <= manip.selectRange * manip.selectRange
+					&& GeneralMethods.getDistanceFromLine(vector, location, manip.location) < manip.deflectRange
+					&& mloc.distanceSquared(location.clone().add(vector))
+					< mloc.distanceSquared(location.clone().add(vector.clone().multiply(-1)))) {
 				manip.redirect(player, getTargetLocation(player, manip.range));
+				manip.getBendingPlayer().setLastWaterManipRedirect(System.currentTimeMillis());
 				redirected = true;
 			}
 		}

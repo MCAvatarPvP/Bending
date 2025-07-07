@@ -220,11 +220,18 @@ public class AirSurf extends AirAbility {
          * lowers the player based on their distance from the ground.
          */
         final double distance = this.player.getLocation().getY() - this.floorblock.getY();
-        final double prediction = 2.5;
-        final double delta = prediction - distance;
-        double force = GeneralMethods.clamp(0.3 * delta, -1, 0.5);
 
-        velocity.setY(force);
+        if (distance > maxHeight) {
+            final double delta = midHeight - distance;
+            double force = GeneralMethods.clamp(0.3 * delta, -1, 0.5);
+            velocity.setY(force);
+        } else if (distance < minHeight) {
+            final double delta = midHeight - distance;
+            double force = GeneralMethods.clamp(0.3 * delta, -1, 0.5);
+            velocity.setY(force);
+        } else {
+            velocity.setY(0);
+        }
 
         final Vector v = velocity.clone().setY(0);
         final Block b = this.floorblock.getLocation().clone().add(v.multiply(1.2)).getBlock();
@@ -278,7 +285,7 @@ public class AirSurf extends AirAbility {
         final Location origin2 = this.player.getLocation();
         this.phi += Math.PI / 10 * 4;
         for (double theta = 0; theta <= 2 * Math.PI; theta += Math.PI / 10) {
-            final double r = 0.6;
+            final double r = 0.8;
             final double x = r * Math.cos(theta) * Math.sin(this.phi);
             final double y = r * Math.cos(this.phi);
             final double z = r * Math.sin(theta) * Math.sin(this.phi);
@@ -287,7 +294,7 @@ public class AirSurf extends AirAbility {
             origin.subtract(x, y, z);
         }
         for (double theta = 0; theta <= 2 * Math.PI; theta += Math.PI / 10) {
-            final double r = 0.6;
+            final double r = 0.8;
             final double x = r * Math.cos(theta) * Math.sin(this.phi);
             final double y = r * Math.cos(this.phi);
             final double z = r * Math.sin(theta) * Math.sin(this.phi);

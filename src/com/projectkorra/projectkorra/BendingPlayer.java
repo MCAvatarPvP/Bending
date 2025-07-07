@@ -70,7 +70,11 @@ public class BendingPlayer extends OfflineBendingPlayer {
 	private double airBlastDecay;
 	private long lastAirBlastTime;
 	private long lastHealthRegen;
+	private final int[] clicksPerTick = new int[20];
 	private final IndexedMap<String, Cooldown> comboCoolDowns = new IndexedMap<>();
+	private int tickIndex;
+	private int cps;
+	private long lastWaterManipRedirect;
 
 	public BendingPlayer(Player player) {
 		super(player);
@@ -1029,5 +1033,30 @@ public class BendingPlayer extends OfflineBendingPlayer {
 
 	public IndexedMap<String, Cooldown> getComboCoolDowns() {
 		return comboCoolDowns;
+	}
+
+	public void registerClick() {
+		clicksPerTick[tickIndex]++;
+		cps++;
+	}
+
+	public void tickCps() {
+		tickIndex = (tickIndex + 1) % 20;
+		cps -= clicksPerTick[tickIndex];
+
+		clicksPerTick[tickIndex] = 0;
+		player.sendMessage("cps=" + cps);
+	}
+
+	public int getCps() {
+		return cps;
+	}
+
+	public long getLastWaterManipRedirect() {
+		return lastWaterManipRedirect;
+	}
+
+	public void setLastWaterManipRedirect(long lastWaterManipRedirect) {
+		this.lastWaterManipRedirect = lastWaterManipRedirect;
 	}
 }
