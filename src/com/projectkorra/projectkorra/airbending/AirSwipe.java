@@ -141,7 +141,7 @@ public class AirSwipe extends AirAbility {
 				BlockIterator blocks = new BlockIterator(this.getLocation().getWorld(), location.toVector(), direction, 0, (int) Math.ceil(direction.clone().multiply(speed).length()));
 
 				while (blocks.hasNext()) {
-					if(!checkLocation(blocks.next(), direction)) {
+					if(!checkLocation(blocks.next(), direction, location)) {
 						this.streams.remove(direction);
 						break;
 					}
@@ -164,11 +164,11 @@ public class AirSwipe extends AirAbility {
 			this.remove();
 		}
 	}
-	public boolean checkLocation(Block block, Vector direction) {
+	public boolean checkLocation(Block block, Vector direction, Location location) {
 		if (GeneralMethods.checkDiagonalWall(block.getLocation(), direction) || !block.isPassable()) {
 			return false;
 		}  else {
-			if (block.getLocation().distanceSquared(this.origin) > this.range * this.range || GeneralMethods.isRegionProtectedFromBuild(this, block.getLocation())) {
+			if (location.distanceSquared(this.origin) > this.range * this.range || GeneralMethods.isRegionProtectedFromBuild(this, block.getLocation())) {
 				this.streams.clear();
 			} else {
 				if (!ElementalAbility.isTransparent(this.player, block) || !block.isPassable()) {
