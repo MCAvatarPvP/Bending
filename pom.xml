@@ -206,13 +206,6 @@
       <scope>provided</scope>
     </dependency>
     <dependency>
-      <groupId>me.literka</groupId>
-      <artifactId>DamageAPI</artifactId>
-      <version>1.0-SNAPSHOT</version>
-      <scope>system</scope>
-      <systemPath>${basedir}/libs/DamageAPI-1.0-SNAPSHOT.jar</systemPath>
-    </dependency>
-    <dependency>
       <groupId>ga.strikepractice</groupId>
       <artifactId>strikepractice-api</artifactId>
       <version>1.0-SNAPSHOT</version>

@@ -1045,7 +1045,6 @@ public class BendingPlayer extends OfflineBendingPlayer {
 		cps -= clicksPerTick[tickIndex];
 
 		clicksPerTick[tickIndex] = 0;
-		player.sendMessage("cps=" + cps);
 	}
 
 	public int getCps() {
