@@ -220,19 +220,18 @@ public class AirSurf extends AirAbility {
          * Checks for how far the ground is away from the player it elevates or
          * lowers the player based on their distance from the ground.
          */
-        final double distance = this.player.getLocation().getY() - this.floorblock.getY();
+        double distance = this.player.getLocation().getY() - (double)this.floorblock.getY();
+        double displacement = distance - midHeight;
+        double force = -0.35 * displacement;
 
-        if (distance > maxHeight) {
-            final double delta = midHeight - distance;
-            double force = GeneralMethods.clamp(0.3 * delta, -1, 0.5);
-            velocity.setY(force);
-        } else if (distance < minHeight) {
-            final double delta = midHeight - distance;
-            double force = GeneralMethods.clamp(0.3 * delta, -1, 0.5);
-            velocity.setY(force);
-        } else {
-            velocity.setY(0);
+        double maxForce = 0.5;
+
+        if (Math.abs(force) > maxForce) {
+            force = force / Math.abs(force) * maxForce;
         }
+
+        velocity.setY(force);
+
 
         final Vector v = velocity.clone().setY(0);
         final Block b = this.floorblock.getLocation().clone().add(v.multiply(1.2)).getBlock();
