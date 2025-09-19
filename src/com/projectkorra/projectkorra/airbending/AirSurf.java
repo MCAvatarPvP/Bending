@@ -276,7 +276,7 @@ public class AirSurf extends AirAbility {
         final Location origin2 = this.player.getLocation();
         this.phi += Math.PI / 10 * 4;
         for (double theta = 0; theta <= 2 * Math.PI; theta += Math.PI / 10) {
-            final double r = 0.8;
+            final double r = 0.6;
             final double x = r * Math.cos(theta) * Math.sin(this.phi);
             final double y = r * Math.cos(this.phi);
             final double z = r * Math.sin(theta) * Math.sin(this.phi);
@@ -285,7 +285,7 @@ public class AirSurf extends AirAbility {
             origin.subtract(x, y, z);
         }
         for (double theta = 0; theta <= 2 * Math.PI; theta += Math.PI / 10) {
-            final double r = 0.8;
+            final double r = 0.6;
             final double x = r * Math.cos(theta) * Math.sin(this.phi);
             final double y = r * Math.cos(this.phi);
             final double z = r * Math.sin(theta) * Math.sin(this.phi);
