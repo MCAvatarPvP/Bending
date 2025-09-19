@@ -98,8 +98,8 @@ public class AirSurf extends AirAbility {
         this.flightHandler.createInstance(player, this.getName());
         wasFlying = player.isFlying();
         canFly = player.getAllowFlight();
-        player.setAllowFlight(false);
-        player.setFlying(false);
+        player.setAllowFlight(true);
+        player.setFlying(true);
 
         if (disableSprint) player.setSprinting(false);
         player.setSneaking(false);
@@ -198,7 +198,6 @@ public class AirSurf extends AirAbility {
         Vector velocity = this.player.getEyeLocation().getDirection().clone().normalize();
         velocity = velocity.setY(0);
         velocity = velocity.clone().normalize().multiply(this.speed);
-
         /*
          * checks the players speed and ends the move if they are going too slow
          */
@@ -220,18 +219,10 @@ public class AirSurf extends AirAbility {
          * Checks for how far the ground is away from the player it elevates or
          * lowers the player based on their distance from the ground.
          */
-        double distance = this.player.getLocation().getY() - (double)this.floorblock.getY();
-        double displacement = distance - midHeight;
-        double force = -0.35 * displacement;
-
-        double maxForce = 0.5;
-
-        if (Math.abs(force) > maxForce) {
-            force = force / Math.abs(force) * maxForce;
-        }
-
+        final double distance = this.player.getLocation().getY() - this.floorblock.getY();
+        final double delta = midHeight - distance;
+        double force = GeneralMethods.clamp(0.3 * delta, -1, 0.5);
         velocity.setY(force);
-
 
         final Vector v = velocity.clone().setY(0);
         final Block b = this.floorblock.getLocation().clone().add(v.multiply(1.2)).getBlock();
@@ -282,29 +273,27 @@ public class AirSurf extends AirAbility {
      */
     private void spinScooter() {
         final Location origin = this.player.getLocation();
-        double r = 0.5; // sphere radius
-
-        double stepPhi = Math.PI / 10;
-        double stepTheta = Math.PI / 10;
-
-        for (double phi = 0; phi <= Math.PI; phi += stepPhi) {
-            double y = r * Math.cos(phi);      // height from center
-            double ringRadius = r * Math.sin(phi); // radius of current latitude circle
-
-            for (double theta = 0; theta < 2 * Math.PI; theta += stepTheta) {
-                double x = ringRadius * Math.cos(theta);
-                double z = ringRadius * Math.sin(theta);
-
-                origin.add(x, y, z);
-                if (random.nextInt(0, 20) < 4) {
-                    playAirbendingParticles(origin, 1, 0F, 0F, 0F);
-                }
-
-                origin.subtract(x, y, z);
-            }
+        final Location origin2 = this.player.getLocation();
+        this.phi += Math.PI / 10 * 4;
+        for (double theta = 0; theta <= 2 * Math.PI; theta += Math.PI / 10) {
+            final double r = 0.8;
+            final double x = r * Math.cos(theta) * Math.sin(this.phi);
+            final double y = r * Math.cos(this.phi);
+            final double z = r * Math.sin(theta) * Math.sin(this.phi);
+            origin.add(x, y, z);
+            playAirbendingParticles(origin, 1, 0F, 0F, 0F);
+            origin.subtract(x, y, z);
+        }
+        for (double theta = 0; theta <= 2 * Math.PI; theta += Math.PI / 10) {
+            final double r = 0.8;
+            final double x = r * Math.cos(theta) * Math.sin(this.phi);
+            final double y = r * Math.cos(this.phi);
+            final double z = r * Math.sin(theta) * Math.sin(this.phi);
+            origin2.subtract(x, y, z);
+            playAirbendingParticles(origin2, 1, 0F, 0F, 0F);
+            origin2.add(x, y, z);
         }
     }
-
 
     @Override
     public String getName() {

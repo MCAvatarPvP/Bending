@@ -102,8 +102,8 @@ public class AirScooter extends AirAbility {
 		this.flightHandler.createInstance(player, this.getName());
 		wasFlying = player.isFlying();
 		canFly = player.getAllowFlight();
-		player.setAllowFlight(false);
-		player.setFlying(false);
+		player.setAllowFlight(true);
+		player.setFlying(true);
 
 		if (disableSprint) player.setSprinting(false);
 		player.setSneaking(false);
