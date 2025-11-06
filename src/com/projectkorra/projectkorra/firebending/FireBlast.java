@@ -71,6 +71,10 @@ public class FireBlast extends FireAbility {
 	private Location origin;
 	private Vector direction;
 	private List<Block> safeBlocks;
+    private boolean coolAfSpiral;
+
+    private double spiralAngle = 0.0;
+    private double angularSpeed = 0.45;
 
 	public FireBlast(final Location location, final Vector direction, final Player player, final double damage, final List<Block> safeBlocks) {
 		super(player);
@@ -136,6 +140,7 @@ public class FireBlast extends FireAbility {
 		this.knockback = getConfig().getDouble("Abilities.Fire.FireBlast.Knockback");
 		this.flameRadius = getConfig().getDouble("Abilities.Fire.FireBlast.FlameParticleRadius");
 		this.damage = getConfig().getDouble("Abilities.Fire.FireBlast.Damage");
+        this.coolAfSpiral = getConfig().getBoolean("Abilities.Fire.FireBlast.CoolAfSpiral", true);
 		this.random = new Random();
 	}
 
@@ -145,8 +150,38 @@ public class FireBlast extends FireAbility {
 		}
 
 		if (this.showParticles) {
-			playFirebendingParticles(this.location, 3, this.flameRadius, this.flameRadius, this.flameRadius);
-		}
+            if (coolAfSpiral) {
+                Vector axis = this.direction.clone().normalize();
+                if (axis.lengthSquared() < 1e-12) {
+                    axis.setX(0).setY(1).setZ(0);
+                }
+
+                Vector arbitrary = Math.abs(axis.getX()) < 0.9 ? new Vector(1, 0, 0) : new Vector(0, 1, 0);
+                Vector u = axis.clone().crossProduct(arbitrary).normalize();
+                if (u.lengthSquared() < 1e-12) u = new Vector(0, 0, 1);
+                Vector v = axis.clone().crossProduct(u).normalize();
+                this.spiralAngle += this.angularSpeed;
+
+                int beamCount = 3;
+                double r = this.flameRadius;
+                double base = this.spiralAngle;
+
+                for (int k = 0; k < beamCount; k++) {
+                    double theta = base + (2.0 * Math.PI * k) / beamCount;
+                    double c = Math.cos(theta);
+                    double s = Math.sin(theta);
+
+                    Vector offset = u.clone().multiply(c * r).add(v.clone().multiply(s * r));
+                    Location beamLoc = this.location.clone().add(offset);
+
+                    playFirebendingParticles(beamLoc, 1, 0, 0.0, 0);
+                }
+
+                playFirebendingParticles(location, 2, 0.05, 0.05, 0.05);
+            } else {
+                playFirebendingParticles(this.location, 3, this.flameRadius, this.flameRadius, this.flameRadius);
+            }
+        }
 
 		emitFirebendingLight(this.location);
 

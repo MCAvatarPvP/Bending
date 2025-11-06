@@ -28,8 +28,9 @@ public class FireBlastCharged extends FireAbility {
 
 	private static final Map<Entity, FireBlastCharged> EXPLOSIONS = new ConcurrentHashMap<>();
 	public static List<UUID> funPlayers = new ArrayList<>();
+    private boolean coolSpiral;
 
-	private boolean charged;
+    private boolean charged;
 	private boolean launched;
 	private boolean canDamageBlocks;
 	private boolean dissipate;
@@ -65,6 +66,8 @@ public class FireBlastCharged extends FireAbility {
 	private Location location;
 	private Vector direction;
 	private boolean useFireBlastCooldown;
+    private double spiralAngle = 0.0;
+    private double angularSpeed = 0.45;
 
 	public FireBlastCharged(final Player player) {
 		super(player);
@@ -96,6 +99,7 @@ public class FireBlastCharged extends FireAbility {
 		this.fireRadius = getConfig().getDouble("Abilities.Fire.FireBlast.Charged.FireRadius");
 		this.funThingPower = getConfig().getDouble("Abilities.Fire.FireBlast.Charged.FunThing");
 		this.useFireBlastCooldown = getConfig().getBoolean("Abilities.Fire.FireBlast.Charged.UseFireBlastCD");
+        this.coolSpiral = getConfig().getBoolean("Abilities.Fire.FireBlast.Charged.CoolSpiral", true);
 		this.innerRadius = this.damageRadius / 2;
 
 		if (useFireBlastCooldown) {
@@ -275,13 +279,42 @@ public class FireBlastCharged extends FireAbility {
 	}
 
 	private void executeFireball() {
-		for (final Block block : GeneralMethods.getBlocksAroundPoint(this.location, this.collisionRadius)) {
-			playFirebendingParticles(block.getLocation(), 5, 0.5, 0.5, 0.5);
-			if ((new Random()).nextInt(4) == 0) {
-				playFirebendingSound(this.location);
-			}
+        if (coolSpiral) {
+            Vector axis = this.direction.clone().normalize();
+            if (axis.lengthSquared() < 1e-12) {
+                axis.setX(0).setY(1).setZ(0);
+            }
 
-		}
+            Vector arbitrary = Math.abs(axis.getX()) < 0.9 ? new Vector(1, 0, 0) : new Vector(0, 1, 0);
+            Vector u = axis.clone().crossProduct(arbitrary).normalize();
+            if (u.lengthSquared() < 1e-12) u = new Vector(0, 0, 1);
+            Vector v = axis.clone().crossProduct(u).normalize();
+            this.spiralAngle += this.angularSpeed;
+
+            int beamCount = 3;
+            double r = this.collisionRadius;
+            double base = this.spiralAngle;
+
+            for (int k = 0; k < beamCount; k++) {
+                double theta = base + (2.0 * Math.PI * k) / beamCount;
+                double c = Math.cos(theta);
+                double s = Math.sin(theta);
+
+                Vector offset = u.clone().multiply(c * r).add(v.clone().multiply(s * r));
+                Location beamLoc = this.location.clone().add(offset);
+
+                playFirebendingParticles(beamLoc, 3, 0.1, 0.1, 0.1);
+            }
+
+            playFirebendingParticles(location, 3, 0.275, 0.275, 0.275);
+        } else {
+            for (final Block block : GeneralMethods.getBlocksAroundPoint(this.location, this.collisionRadius)) {
+                playFirebendingParticles(block.getLocation(), 5, 0.5, 0.5, 0.5);
+                if ((new Random()).nextInt(4) == 0) {
+                    playFirebendingSound(this.location);
+                }
+            }
+        }
 
 		boolean exploded = false;
 		for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(this.location, this.collisionRadius)) {

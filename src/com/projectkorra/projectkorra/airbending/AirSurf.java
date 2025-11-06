@@ -19,6 +19,7 @@ import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
 import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class AirSurf extends AirAbility {
 
@@ -272,26 +273,26 @@ public class AirSurf extends AirAbility {
      * sphere has. theta = how dense the rings are. r = Radius of the sphere
      */
     private void spinScooter() {
-        final Location origin = this.player.getLocation();
-        final Location origin2 = this.player.getLocation();
-        this.phi += Math.PI / 10 * 4;
-        for (double theta = 0; theta <= 2 * Math.PI; theta += Math.PI / 10) {
-            final double r = 0.6;
-            final double x = r * Math.cos(theta) * Math.sin(this.phi);
-            final double y = r * Math.cos(this.phi);
-            final double z = r * Math.sin(theta) * Math.sin(this.phi);
-            origin.add(x, y, z);
-            playAirbendingParticles(origin, 1, 0F, 0F, 0F);
-            origin.subtract(x, y, z);
-        }
-        for (double theta = 0; theta <= 2 * Math.PI; theta += Math.PI / 10) {
-            final double r = 0.6;
-            final double x = r * Math.cos(theta) * Math.sin(this.phi);
-            final double y = r * Math.cos(this.phi);
-            final double z = r * Math.sin(theta) * Math.sin(this.phi);
-            origin2.subtract(x, y, z);
-            playAirbendingParticles(origin2, 1, 0F, 0F, 0F);
-            origin2.add(x, y, z);
+        final Location base = this.player.getLocation();
+        final double R = 1;
+        final ThreadLocalRandom rng = ThreadLocalRandom.current();
+
+        for (int i = 0; i < 10; i++) {
+            double u = rng.nextDouble();
+            double v = rng.nextDouble();
+            double w = rng.nextDouble();
+
+            double theta  = 2.0 * Math.PI * u;
+            double cosPhi = 2.0 * v - 1.0;
+            double sinPhi = Math.sqrt(1.0 - cosPhi * cosPhi);
+            double r      = R * Math.cbrt(w);
+
+            double x = r * Math.cos(theta) * sinPhi;
+            double y = r * cosPhi;
+            double z = r * Math.sin(theta) * sinPhi;
+
+            Location loc = base.clone().add(x, y, z);
+            playAirbendingParticles(loc, 1, 0F, 0F, 0F);
         }
     }
 
