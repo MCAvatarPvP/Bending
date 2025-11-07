@@ -70,6 +70,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
 	private double airBlastDecay;
 	private long lastAirBlastTime;
 	private long lastHealthRegen;
+
 	private final int[] clicksPerTick = new int[20];
 	private final IndexedMap<String, Cooldown> comboCoolDowns = new IndexedMap<>();
 	private int tickIndex;
@@ -1007,8 +1008,8 @@ public class BendingPlayer extends OfflineBendingPlayer {
 		airBlastDecay = Math.max(minimum, airBlastDecay - amount);
 	}
 
-	public void resetAirBlastDecay() {
-		airBlastDecay = 1;
+	public void resetAirBlastDecay(final double maximum) {
+		airBlastDecay = maximum;
 	}
 
 	public double getAirBlastDecay() {

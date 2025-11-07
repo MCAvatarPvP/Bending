@@ -106,13 +106,18 @@ public class WallOfFire extends FireAbility {
 
     private void affect(final Entity entity) {
         if (affected.containsKey(entity)) return;
-        GeneralMethods.setVelocity(this, entity, new Vector(0, 0, 0));
+        final boolean noStop = entity.getVelocity().lengthSquared() > 0.3;
+
+        if (!noStop) {
+            GeneralMethods.setVelocity(this, entity, new Vector(0, 0, 0));
+        }
+
         if (entity instanceof LivingEntity) {
             final Block block = ((LivingEntity) entity).getEyeLocation().getBlock();
             if (TempBlock.isTempBlock(block) && isIce(block)) {
                 return;
             }
-            DamageHandler.damageEntity(entity, this.damage, this);
+            DamageHandler.damageEntity(entity, this.player, this.damage, this, false, noStop);
             AirAbility.breakBreathbendingHold(entity);
         }
         entity.setFireTicks((int) (this.fireTicks * 20));

@@ -596,7 +596,12 @@ public class WaterManipulation extends WaterAbility {
                 continue;
             }
 
-            if (manip.player.equals(player)) {
+            BendingPlayer limitedPlayer = manip.player.equals(player) ? manip.bPlayer : BendingPlayer.getBendingPlayer(player);
+
+            final boolean redirection = System.currentTimeMillis() - limitedPlayer.getLastWaterManipRedirect() > manip.waterManipRedirectionDelay
+                    || limitedPlayer.getCps() <= manip.cpsBuffer;
+
+            if (manip.player.equals(player) && redirection) {
                 manip.redirect(player, getTargetLocation(player, manip.range));
                 redirected = true;
             }
@@ -604,8 +609,7 @@ public class WaterManipulation extends WaterAbility {
             final Location location = player.getEyeLocation();
             final Vector vector = location.getDirection();
             final Location mloc = manip.location;
-            if ((System.currentTimeMillis() - manip.getBendingPlayer().getLastWaterManipRedirect() > manip.waterManipRedirectionDelay || manip.getBendingPlayer().getCps() <= manip.cpsBuffer)
-                    && manip.clickRedirection
+            if (redirection && manip.clickRedirection
                     && mloc.distanceSquared(location) <= manip.selectRange * manip.selectRange
                     && GeneralMethods.getDistanceFromLine(vector, location, manip.location) < manip.deflectRange
                     && mloc.distanceSquared(location.clone().add(vector))

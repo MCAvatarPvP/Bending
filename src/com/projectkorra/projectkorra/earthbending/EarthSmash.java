@@ -128,7 +128,7 @@ public class EarthSmash extends EarthAbility {
 				if (smash.state == State.GRABBED && smash.player == player) {
 					smash.state = State.SHOT;
 					smash.destination = player.getEyeLocation().clone().add(player.getEyeLocation().getDirection().normalize().multiply(smash.shootRange));
-					smash.location.getWorld().playEffect(smash.location, Effect.GHAST_SHOOT, 0, 10);
+					playEarthbendingSound(smash.location);
 				}
 			}
 			return;
@@ -415,7 +415,7 @@ public class EarthSmash extends EarthAbility {
 				}
 			}
 
-			this.location.getWorld().playEffect(this.location, Effect.GHAST_SHOOT, 0, 7);
+            playEarthbendingSound(this.location);
 			this.draw();
 		} else {
 			this.state = State.LIFTED;

@@ -3,10 +3,11 @@ package com.projectkorra.projectkorra.chiblocking;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.bukkit.Location;
+import org.bukkit.*;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Snowball;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 
@@ -15,6 +16,7 @@ import com.projectkorra.projectkorra.ability.ChiAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.command.Commands;
 import com.projectkorra.projectkorra.util.ParticleEffect;
+import org.bukkit.util.Vector;
 
 public class Smokescreen extends ChiAbility {
 
@@ -28,6 +30,7 @@ public class Smokescreen extends ChiAbility {
 	private long cooldown;
 	@Attribute(Attribute.RADIUS)
 	private double radius;
+    private double speed;
 
 	public Smokescreen(final Player player) {
 		super(player);
@@ -37,12 +40,14 @@ public class Smokescreen extends ChiAbility {
 		this.cooldown = getConfig().getLong("Abilities.Chi.Smokescreen.Cooldown");
 		this.duration = getConfig().getInt("Abilities.Chi.Smokescreen.Duration");
 		this.radius = getConfig().getDouble("Abilities.Chi.Smokescreen.Radius");
+        this.speed = getConfig().getDouble("Abilities.Chi.Smokescreen.Speed", 1.2);
 		this.start();
+        this.player.getLocation().getWorld().playSound(this.player.getLocation(), Sound.BLOCK_LILY_PAD_PLACE, 1, 1.5f);
 	}
 
 	@Override
 	public void progress() {
-		SNOWBALLS.put(this.player.launchProjectile(Snowball.class).getEntityId(), this);
+        SNOWBALLS.put(fireCleanSnowball(player, speed).getEntityId(), this);
 		this.bPlayer.addCooldown(this);
 		this.remove();
 	}
@@ -55,7 +60,7 @@ public class Smokescreen extends ChiAbility {
 		for (int i = 0; i < 125; i++) {
 			final Location newLoc = new Location(loc.getWorld(), loc.getX() + x, loc.getY() + y, loc.getZ() + z);
 			for (int direction = 0; direction < 8; direction++) {
-				ParticleEffect.SMOKE_NORMAL.display(newLoc, 4, 0.5, 0.5, 0.5);
+                newLoc.getWorld().spawnParticle(Particle.SMALL_GUST, newLoc, 4, 0.5, 0.5, 0.5);
 			}
 			if (z == 2) {
 				z = -2;
@@ -95,7 +100,23 @@ public class Smokescreen extends ChiAbility {
 		}
 	}
 
-	@Override
+    public Snowball fireCleanSnowball(Player p, double speed) {
+        Vector dir = p.getEyeLocation().getDirection().normalize();
+
+        Location spawn = p.getEyeLocation().add(dir.clone().multiply(0.16));
+
+        Snowball sb = p.getWorld().spawn(spawn, Snowball.class, s -> {
+            s.setShooter(p);
+        });
+
+        Vector desired = dir.multiply(speed);
+
+        sb.setVelocity(desired);
+
+        return sb;
+    }
+
+    @Override
 	public String getName() {
 		return "Smokescreen";
 	}

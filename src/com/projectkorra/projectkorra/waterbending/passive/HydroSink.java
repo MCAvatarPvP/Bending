@@ -18,12 +18,15 @@ public class HydroSink extends WaterAbility implements PassiveAbility {
 
 	private double decayMinimum;
 	private long minimumSurgeWaveTime;
+    private double maxSurgeStamina;
 	
 	public HydroSink(final Player player) {
 		super(player);
 
 		this.decayMinimum = getConfig().getDouble("Abilities.Water.Surge.DecayMinimum");
 		this.minimumSurgeWaveTime = getConfig().getLong("Abilities.Water.Surge.MinimumSurgeWaveTime");
+        this.minimumSurgeWaveTime = getConfig().getLong("Abilities.Water.Surge.MinimumSurgeWaveTime");
+        this.maxSurgeStamina = getConfig().getDouble("Abilities.Water.Surge.MaxSurgeStamina", 1.2);
 	}
 
 	public static double getRegenFactor(BendingPlayer bPlayer) {
@@ -55,7 +58,7 @@ public class HydroSink extends WaterAbility implements PassiveAbility {
 	@Override
 	public void progress() {
 		if (System.currentTimeMillis() - bPlayer.getLastAirBlastTime() > minimumSurgeWaveTime) {
-			bPlayer.resetAirBlastDecay();
+			bPlayer.resetAirBlastDecay(maxSurgeStamina);
 		}
 
 		float decay = (float) bPlayer.getAirBlastDecay();

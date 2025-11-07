@@ -22,6 +22,7 @@ public class Catapult extends EarthAbility {
 	private double stageTimeMult;
 	@Attribute(Attribute.COOLDOWN)
 	private long cooldown;
+    private long clickCd;
 	private Location origin;
 	private Location target;
 
@@ -36,6 +37,8 @@ public class Catapult extends EarthAbility {
 	private boolean removeFireTick;
 	private double launchPower;
 	private boolean launchOthers;
+    private boolean playRegularSound;
+    private boolean sneaked;
 
 	public Catapult(final Player player, final boolean sneak) {
 		super(player);
@@ -55,17 +58,20 @@ public class Catapult extends EarthAbility {
 		}
 
 		this.charging = sneak;
+        this.sneaked = sneak;
 		this.start();
 	}
 
 	private void setFields() {
 		this.stageTimeMult = getConfig().getDouble("Abilities.Earth.Catapult.StageTimeMult");
 		this.cooldown = getConfig().getLong("Abilities.Earth.Catapult.Cooldown");
+        this.clickCd = getConfig().getLong("Abilities.Earth.Catapult.ClickCooldown");
 		this.angle = Math.toRadians(getConfig().getDouble("Abilities.Earth.Catapult.Angle"));
 		this.cancelWithAngle = getConfig().getBoolean("Abilities.Earth.Catapult.CancelWithAngle");
 		this.removeFireTick = getConfig().getBoolean("Abilities.Earth.Catapult.RemoveFireTick");
 		this.launchPower = getConfig().getDouble("Abilities.Earth.Catapult.LaunchPower");
 		this.launchOthers = getConfig().getBoolean("Abilities.Earth.Catapult.LaunchOthers");
+        this.playRegularSound = getConfig().getBoolean("Abilities.Earth.Catapult.RegularSound", false);
 		this.activationHandled = false;
 		this.stage = 1;
 		this.stageStart = System.currentTimeMillis();
@@ -110,7 +116,11 @@ public class Catapult extends EarthAbility {
 					final Random random = new Random();
 					ParticleEffect.BLOCK_DUST.display(this.player.getLocation(), 15, random.nextFloat(), random.nextFloat(), random.nextFloat(), this.bentBlockData);
 					ParticleEffect.BLOCK_DUST.display(this.player.getLocation().add(0, 0.5, 0), 10, random.nextFloat(), random.nextFloat(), random.nextFloat(), this.bentBlockData);
-					this.player.getWorld().playEffect(this.player.getLocation(), Effect.GHAST_SHOOT, 0, 10);
+					if (playRegularSound) {
+                        this.player.getWorld().playEffect(this.player.getLocation(), Effect.GHAST_SHOOT, 0, 10);
+                    } else {
+                        playEarthbendingSound(this.player.getLocation());
+                    }
 				}
 			}
 			return;
@@ -127,7 +137,11 @@ public class Catapult extends EarthAbility {
 				return;
 			}
 			this.activationHandled = true;
-			this.bPlayer.addCooldown(this);
+            if (sneaked) {
+                this.bPlayer.addCooldown(this);
+            } else {
+                this.bPlayer.addCooldown(this, clickCd);
+            }
 		}
 
 		if (this.up.angle(this.player.getEyeLocation().getDirection()) > this.angle) {
