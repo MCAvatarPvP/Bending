@@ -80,6 +80,7 @@ public class AirBlast extends AirAbility {
 	private Random random;
 	private ArrayList<Block> affectedLevers;
 	private ArrayList<Entity> affectedEntities;
+    private static final double DISTANCE_OFFSET = 0.3;
 
 	public AirBlast(final Player player) {
 		super(player);
@@ -199,7 +200,7 @@ public class AirBlast extends AirAbility {
 		} else if (!bPlayer.canBendIgnoreCooldowns(getAbility("AirBlast"))) {
 			ORIGINS.remove(player);
 			return;
-		} else if (origin.distanceSquared(player.getEyeLocation()) > getSelectRange(bPlayer) * getSelectRange(bPlayer)) {
+		} else if (origin.distanceSquared(player.getEyeLocation()) > (getSelectRange(bPlayer) * getSelectRange(bPlayer)) + DISTANCE_OFFSET) {
 			ORIGINS.remove(player);
 			return;
 		}
