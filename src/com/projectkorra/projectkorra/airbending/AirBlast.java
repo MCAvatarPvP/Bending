@@ -81,7 +81,6 @@ public class AirBlast extends AirAbility {
 	private Random random;
 	private ArrayList<Block> affectedLevers;
 	private ArrayList<Entity> affectedEntities;
-    private static final double DISTANCE_OFFSET = 0.3;
 
 	private AbilityLagCompensator lagCompensator;
 
@@ -205,7 +204,7 @@ public class AirBlast extends AirAbility {
 		} else if (!bPlayer.canBendIgnoreCooldowns(getAbility("AirBlast"))) {
 			ORIGINS.remove(player);
 			return;
-		} else if (origin.distanceSquared(player.getEyeLocation()) > (getSelectRange(bPlayer) * getSelectRange(bPlayer)) + DISTANCE_OFFSET) {
+		} else if (origin.distanceSquared(player.getEyeLocation()) > getSelectRange(bPlayer) * getSelectRange(bPlayer)) {
 			ORIGINS.remove(player);
 			return;
 		}
@@ -568,7 +567,7 @@ public class AirBlast extends AirAbility {
 
 		final Block block = player.getTargetBlock(trans, (int) range + 1);
 		double distance = block.getLocation().distance(origin) - 1.5;
-		return origin.add(direction.multiply(distance));
+		return origin.add(direction.multiply(distance > range ? range - 0.1 : distance));
 	}
 
 	@Override
