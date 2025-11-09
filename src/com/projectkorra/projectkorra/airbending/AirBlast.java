@@ -5,6 +5,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.region.RegionProtection;
+import com.projectkorra.projectkorra.util.AbilityLagCompensator;
 import com.projectkorra.projectkorra.util.FallHandler;
 import org.bukkit.Effect;
 import org.bukkit.Location;
@@ -82,6 +83,8 @@ public class AirBlast extends AirAbility {
 	private ArrayList<Entity> affectedEntities;
     private static final double DISTANCE_OFFSET = 0.3;
 
+	private AbilityLagCompensator lagCompensator;
+
 	public AirBlast(final Player player) {
 		super(player);
 		if (this.bPlayer.isOnCooldown(this)) {
@@ -128,6 +131,7 @@ public class AirBlast extends AirAbility {
 		}
 		this.location = this.origin.clone();
 		this.bPlayer.addCooldown(this);
+		this.lagCompensator = new AbilityLagCompensator((p, snapshot) -> affect(p, snapshot.getLocation()));
 		this.start();
 	}
 
@@ -158,6 +162,7 @@ public class AirBlast extends AirAbility {
 
 		this.pushFactor = modifiedPushFactor;
 
+		this.lagCompensator = new AbilityLagCompensator((p, snapshot) -> affect(p, snapshot.getLocation()));
 		this.start();
 	}
 
@@ -276,6 +281,10 @@ public class AirBlast extends AirAbility {
 	}
 
 	private void affect(final Entity entity) {
+		affect(entity, this.location);
+	}
+
+	private void affect(final Entity entity, final Location location) {
 		if (entity instanceof Player) {
 			boolean falldamage = getConfig().getBoolean("Abilities.Air.AirBlast.FallDamageOthers");
 			if (entity.getUniqueId() != player.getUniqueId() && !falldamage) FallHandler.stopFall((Player) entity);
@@ -311,8 +320,8 @@ public class AirBlast extends AirAbility {
 			}
 		}
 
-		if (this.location.getWorld().equals(this.origin.getWorld())) {
-			knockback *= 1 - this.location.distance(this.origin) / (2 * this.range);
+		if (location.getWorld().equals(this.origin.getWorld())) {
+			knockback *= 1 - location.distance(this.origin) / (2 * this.range);
 		}
 		
 		if (GeneralMethods.isSolid(entity.getLocation().add(0, -0.5, 0).getBlock()) && source == null) {
@@ -503,13 +512,23 @@ public class AirBlast extends AirAbility {
 			return;
 		}
 
+		this.lagCompensator.addSnapshot(this.location, this.radius);
+
 		for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(this.location, this.radius)) {
 			if (GeneralMethods.isRegionProtectedFromBuild(this, entity.getLocation()) || ((entity instanceof Player) && Commands.invincible.contains(((Player) entity).getName()))) {
 				continue;
 			}
+
+			if (entity instanceof Player) {
+				this.lagCompensator.addPlayer((Player) entity);
+				continue;
+			}
+
 			this.affect(entity);
 
 		}
+
+		this.lagCompensator.update();
 
 		this.advanceLocation();
 		return;
