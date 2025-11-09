@@ -18,6 +18,7 @@ import com.projectkorra.projectkorra.object.EarthCosmetic;
 import com.projectkorra.projectkorra.object.Style;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.*;
+import com.projectkorra.projectkorra.util.colliders.AABB;
 import ga.strikepractice.StrikePractice;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.*;
@@ -765,7 +766,7 @@ public class GeneralMethods {
 	 * @return A list of entities around a point
 	 */
 	public static List<Entity> getEntitiesAroundPoint(final Location location, final double radius, Predicate<Entity> acceptable) {
-		return new ArrayList<>(location.getWorld().getNearbyEntities(location, radius, radius, radius, acceptable));
+		return new ArrayList<>(new AABB(location, radius).getEntities(acceptable));
 	}
 
 	/**
