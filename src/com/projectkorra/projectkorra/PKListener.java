@@ -35,7 +35,6 @@ import com.projectkorra.projectkorra.airbending.AirSwipe;
 import com.projectkorra.projectkorra.airbending.Suffocate;
 import com.projectkorra.projectkorra.airbending.Tornado;
 import com.projectkorra.projectkorra.airbending.flight.FlightMultiAbility;
-import com.projectkorra.projectkorra.airbending.passive.AirSaturation;
 import com.projectkorra.projectkorra.airbending.passive.GracefulDescent;
 import com.projectkorra.projectkorra.avatar.AvatarState;
 import com.projectkorra.projectkorra.board.BendingBoardManager;
@@ -49,7 +48,6 @@ import com.projectkorra.projectkorra.chiblocking.SwiftKick;
 import com.projectkorra.projectkorra.chiblocking.WarriorStance;
 import com.projectkorra.projectkorra.chiblocking.passive.Acrobatics;
 import com.projectkorra.projectkorra.chiblocking.passive.ChiPassive;
-import com.projectkorra.projectkorra.chiblocking.passive.ChiSaturation;
 import com.projectkorra.projectkorra.command.Commands;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.earthbending.*;
@@ -1100,9 +1098,9 @@ public class PKListener implements Listener {
 			if (event.getHand() == EquipmentSlot.HAND) {
 				if (bPlayer.canCurrentlyBendWithWeapons()) {
 					if (event.getClickedBlock() != null) {
-						ComboManager.addComboAbility(player, ClickType.RIGHT_CLICK_BLOCK);
+						ComboManager.scheduleComboAbility(player, ClickType.RIGHT_CLICK_BLOCK);
 					} else {
-						ComboManager.addComboAbility(player, ClickType.RIGHT_CLICK);
+						ComboManager.scheduleComboAbility(player, ClickType.RIGHT_CLICK);
 					}
 				}
 			}
@@ -1129,7 +1127,7 @@ public class PKListener implements Listener {
 		final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
 
 		if (bPlayer.canCurrentlyBendWithWeapons()) {
-			ComboManager.addComboAbility(player, ClickType.RIGHT_CLICK_ENTITY);
+			ComboManager.scheduleComboAbility(player, ClickType.RIGHT_CLICK_ENTITY);
 		}
 
 		if (event.getRightClicked().hasMetadata("earthgrab:trap")) {
@@ -1381,9 +1379,9 @@ public class PKListener implements Listener {
 
 		if (bPlayer.canCurrentlyBendWithWeapons()) {
 			if (player.isSneaking()) {
-				ComboManager.addComboAbility(player, ClickType.SHIFT_UP);
+				ComboManager.scheduleComboAbility(player, ClickType.SHIFT_UP);
 			} else {
-				ComboManager.addComboAbility(player, ClickType.SHIFT_DOWN);
+				ComboManager.scheduleComboAbility(player, ClickType.SHIFT_DOWN);
 			}
 		}
 
@@ -1601,7 +1599,7 @@ public class PKListener implements Listener {
 		final ItemStack main = event.getMainHandItem();
 		final ItemStack off = event.getOffHandItem();
 		if (main.getType() == Material.AIR && (off == null || off.getType() == Material.AIR)) {
-			ComboManager.addComboAbility(player, ClickType.OFFHAND_TRIGGER);
+			ComboManager.scheduleComboAbility(player, ClickType.OFFHAND_TRIGGER);
 		}
 	}
 
@@ -1635,9 +1633,9 @@ public class PKListener implements Listener {
 
 		if (bPlayer.canCurrentlyBendWithWeapons()) {
 			if (target != null && !(target.equals(player)) && target instanceof LivingEntity) {
-				ComboManager.addComboAbility(player, ClickType.LEFT_CLICK_ENTITY);
+				ComboManager.scheduleComboAbility(player, ClickType.LEFT_CLICK_ENTITY);
 			} else {
-				ComboManager.addComboAbility(player, ClickType.LEFT_CLICK);
+				ComboManager.scheduleComboAbility(player, ClickType.LEFT_CLICK);
 			}
 		}
 

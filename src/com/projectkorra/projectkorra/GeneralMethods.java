@@ -57,6 +57,7 @@ import com.projectkorra.projectkorra.ability.util.ComboManager;
 import com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation;
 import com.projectkorra.projectkorra.ability.util.MultiAbilityManager;
 import com.projectkorra.projectkorra.ability.util.PassiveManager;
+import com.projectkorra.projectkorra.ability.util.ComboListener;
 import com.projectkorra.projectkorra.airbending.AirBlast;
 import com.projectkorra.projectkorra.airbending.AirShield;
 import com.projectkorra.projectkorra.airbending.AirSpout;
@@ -1442,6 +1443,7 @@ public class GeneralMethods {
 		ProjectKorra.collisionInitializer = new CollisionInitializer(ProjectKorra.collisionManager);
 		HandlerList.unregisterAll(ProjectKorra.plugin); //Unregister all listeners registered by addons AND ProjectKorra
 		Bukkit.getPluginManager().registerEvents(new PKListener(ProjectKorra.plugin), ProjectKorra.plugin); //Re-register our listener
+		Bukkit.getPluginManager().registerEvents(new ComboListener(), ProjectKorra.plugin);
 		CoreAbility.registerAbilities(); //Register all abilities again
 		reloadAddonPlugins();  //Register all addons and addon listeners again
 		ProjectKorra.collisionInitializer.initializeDefaultCollisions(); // must be called after abilities have been registered.

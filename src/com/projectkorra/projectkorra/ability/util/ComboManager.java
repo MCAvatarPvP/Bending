@@ -1,12 +1,8 @@
 package com.projectkorra.projectkorra.ability.util;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-import com.projectkorra.projectkorra.GeneralMethods;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -17,8 +13,6 @@ import com.projectkorra.projectkorra.Element.SubElement;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.ComboAbility;
 import com.projectkorra.projectkorra.ability.CoreAbility;
-import com.projectkorra.projectkorra.configuration.ConfigManager;
-import com.projectkorra.projectkorra.earthbending.combo.EarthDomeOthers;
 import com.projectkorra.projectkorra.util.ClickType;
 import com.projectkorra.projectkorra.util.ReflectionHandler;
 
@@ -29,6 +23,7 @@ public class ComboManager {
 	private static final HashMap<String, String> AUTHORS = new HashMap<>();
 	private static final HashMap<String, String> DESCRIPTIONS = new HashMap<>();
 	private static final HashMap<String, String> INSTRUCTIONS = new HashMap<>();
+	private static final HashMap<UUID, Set<ClickType>> SCHEDULED_COMBO_ABILITY = new HashMap<>();
 
 	public ComboManager() {
 		COMBO_ABILITIES.clear();
@@ -44,6 +39,20 @@ public class ComboManager {
 
 		Bukkit.getScheduler().runTaskLater(ProjectKorra.plugin, ComboManager::registerCombos, 1L);
 		startCleanupTask();
+	}
+
+	public static void scheduleComboAbility(final Player player, final ClickType type) {
+		SCHEDULED_COMBO_ABILITY.computeIfAbsent(player.getUniqueId(), uuid -> new HashSet<>()).add(type);
+	}
+
+	public static void addComboAbilityIfValid(final Player player, final ClickType type) {
+		Set<ClickType> types = SCHEDULED_COMBO_ABILITY.get(player.getUniqueId());
+		if (types == null || !types.contains(type)) {
+			return;
+		}
+
+		addComboAbility(player, type);
+		types.remove(type);
 	}
 
 	public static void addComboAbility(final Player player, final ClickType type) {
@@ -67,25 +76,18 @@ public class ComboManager {
 			return;
 		}
 
-		new BukkitRunnable() {
-			@Override
-			public void run() {
-				if (comboAbil.getComboType() instanceof Class) {
-					final Class<?> clazz = (Class<?>) comboAbil.getComboType();
-					try {
-						ReflectionHandler.instantiateObject(clazz, player);
-					} catch (final Exception e) {
-						e.printStackTrace();
-					}
-				} else {
-					if (comboAbil.getComboType() instanceof ComboAbility) {
-						((ComboAbility) comboAbil.getComboType()).createNewComboInstance(player);
-						return;
-					}
-				}
+		if (comboAbil.getComboType() instanceof Class) {
+			final Class<?> clazz = (Class<?>) comboAbil.getComboType();
+			try {
+				ReflectionHandler.instantiateObject(clazz, player);
+			} catch (final Exception e) {
+				e.printStackTrace();
 			}
-
-		}.runTaskLater(ProjectKorra.plugin, 1L);
+		} else {
+			if (comboAbil.getComboType() instanceof ComboAbility) {
+				((ComboAbility) comboAbil.getComboType()).createNewComboInstance(player);
+			}
+		}
 	}
 
 	/**
