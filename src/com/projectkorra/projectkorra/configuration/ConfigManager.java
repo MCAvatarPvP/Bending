@@ -157,9 +157,7 @@ public class ConfigManager {
 			config.addDefault("Board.MiscSeparator", "  ----------");
 
 			if (!config.contains("Board.Extras")) {
-				config.addDefault("Board.Extras.RaiseEarthWall", Element.EARTH.getColor());
-				config.addDefault("Board.Extras.SurgeWave", Element.WATER.getColor());
-				config.addDefault("Board.Extras.FireBlastCharged", Element.FIRE.getColor());
+				config.addDefault("Board.Extras.FireBlastCharged", Element.FIRE.getColor().getName());
 			    config.addDefault("Board.Extras.RaiseEarthWall", Element.EARTH.getColor().getName());
 			    config.addDefault("Board.Extras.SurgeWave", Element.WATER.getColor().getName());
 			    config.addDefault("Board.Extras.SpoutHop", Element.WATER.getColor().getName());
