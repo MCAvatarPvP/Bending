@@ -14,6 +14,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.util.BlockIterator;
+import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 
 import com.projectkorra.projectkorra.BendingPlayer;
@@ -327,7 +328,7 @@ public class EarthSmash extends EarthAbility {
 		}
 	}
 
-	/**
+    /**
 	 * Begins animating the EarthSmash from the ground. The lift animation
 	 * consists of 3 steps, and each one has to design the shape in the ground
 	 * that removes the Earthbendable material. We also need to make sure that
@@ -572,11 +573,6 @@ public class EarthSmash extends EarthAbility {
 			}
 		}
 		return null;
-	}
-
-	@Override
-	public void handleCollision(Collision collision) {
-		remove();
 	}
 
 	/**
