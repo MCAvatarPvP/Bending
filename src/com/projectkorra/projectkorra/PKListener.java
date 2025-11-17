@@ -1606,6 +1606,7 @@ public class PKListener implements Listener {
 	@EventHandler(priority = EventPriority.NORMAL)
 	public void onPlayerSwing(final PlayerAnimationEvent event) {
 		final Player player = event.getPlayer();
+        ProjectKorra.log.info("Player swing!");
 
 		if (PLAYER_DROPPED_ITEM.contains(player)) {
 			PLAYER_DROPPED_ITEM.remove(player);

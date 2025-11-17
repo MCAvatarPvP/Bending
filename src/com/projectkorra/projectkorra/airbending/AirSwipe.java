@@ -87,7 +87,7 @@ public class AirSwipe extends AirAbility {
 		this.cooldown = getConfig().getLong("Abilities.Air.AirSwipe.Cooldown");
 		this.damage = getConfig().getDouble("Abilities.Air.AirSwipe.Damage");
 		this.pushFactor = getConfig().getDouble("Abilities.Air.AirSwipe.Push");
-		this.speed = getConfig().getDouble("Abilities.Air.AirSwipe.Speed") * (ProjectKorra.time_step / 1000.0);
+		this.speed = getConfig().getDouble("Abilities.Air.AirSwipe.Speed") * 0.05;
 		this.range = getConfig().getDouble("Abilities.Air.AirSwipe.Range");
 		this.radius = getConfig().getDouble("Abilities.Air.AirSwipe.Radius");
 		this.maxChargeFactor = getConfig().getDouble("Abilities.Air.AirSwipe.ChargeFactor");

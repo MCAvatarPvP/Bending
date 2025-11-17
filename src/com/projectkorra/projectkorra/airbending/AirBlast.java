@@ -380,7 +380,7 @@ public class AirBlast extends AirAbility {
 			return;
 		}
 
-		this.speedFactor = this.speed * (ProjectKorra.time_step / 1000.0);
+		this.speedFactor = this.speed * 0.05;
 		this.ticks++;
 
 		if (this.ticks > MAX_TICKS) {

@@ -103,7 +103,7 @@ public class AirSuction extends AirAbility {
 		if (this.random.nextInt(4) == 0) {
 			playAirbendingSound(this.location);
 		}
-		final double speedFactor = this.speed * (ProjectKorra.time_step / 1000.);
+		final double speedFactor = this.speed * 0.05;
 		this.location = this.location.add(this.direction.clone().multiply(speedFactor));
 
 		if ((Arrays.asList(AirBlast.DOORS).contains(this.location.getBlock().getType()) || Arrays.asList(AirBlast.TDOORS).contains(this.location.getBlock().getType())) && !this.affectedDoors.contains(this.location.getBlock())) {
