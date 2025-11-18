@@ -5,6 +5,7 @@ import java.util.*;
 import com.projectkorra.projectkorra.ability.util.Collision;
 import com.projectkorra.projectkorra.object.EarthCosmetic;
 import com.projectkorra.projectkorra.util.*;
+import com.projectkorra.projectkorra.util.colliders.AABB;
 import org.bukkit.Effect;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -75,6 +76,7 @@ public class EarthSmash extends EarthAbility {
 	private double grabDetectionRadius;
 	private double hitRadius;
 	private double flightDetectionRadius;
+	private double flightDetectionHeight;
 	private State state;
 	private Block origin;
 	private Location location;
@@ -153,6 +155,7 @@ public class EarthSmash extends EarthAbility {
 		this.liftAnimationInterval = getConfig().getLong("Abilities.Earth.EarthSmash.LiftAnimationInterval");
 		this.grabDetectionRadius = getConfig().getDouble("Abilities.Earth.EarthSmash.Grab.DetectionRadius");
 		this.flightDetectionRadius = getConfig().getDouble("Abilities.Earth.EarthSmash.Flight.DetectionRadius");
+		this.flightDetectionHeight = getConfig().getDouble("Abilities.Earth.EarthSmash.Flight.DetectionHeight");
 		this.hitRadius = getConfig().getDouble("Abilities.Earth.EarthSmash.Shoot.CollisionRadius");
 		this.allowGrab = getConfig().getBoolean("Abilities.Earth.EarthSmash.Grab.Enabled");
 		this.allowFlight = getConfig().getBoolean("Abilities.Earth.EarthSmash.Flight.Enabled");
@@ -627,8 +630,10 @@ public class EarthSmash extends EarthAbility {
 				continue;
 			}
 			// Check to see if the player is standing on top of the smash.
-			if (smash.state == State.LIFTED) {
-				if (smash.location.getWorld().equals(player.getWorld()) && smash.location.clone().add(0, 2, 0).distanceSquared(player.getLocation()) <= Math.pow(smash.flightDetectionRadius, 2)) {
+			if (smash.state == State.LIFTED && smash.location.getWorld().equals(player.getWorld())) {
+				double detectionHeight = smash.flightDetectionHeight * 0.5;
+				AABB flyingSmashReq = new AABB(smash.location.clone().add(0, detectionHeight + 1.0, 0), smash.flightDetectionRadius, detectionHeight);
+				if (flyingSmashReq.intersects(new AABB(player.getWorld(), player.getBoundingBox()))) {
 					return smash;
 				}
 			}

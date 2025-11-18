@@ -1613,7 +1613,8 @@ public class ConfigManager {
 			config.addDefault("Abilities.Earth.EarthSmash.Flight.Speed", 0.72);
 			config.addDefault("Abilities.Earth.EarthSmash.Flight.Duration", 3000);
 			config.addDefault("Abilities.Earth.EarthSmash.Flight.AnimationInterval", 0);
-			config.addDefault("Abilities.Earth.EarthSmash.Flight.DetectionRadius", 3.5);
+			config.addDefault("Abilities.Earth.EarthSmash.Flight.DetectionRadius", 2.0);
+			config.addDefault("Abilities.Earth.EarthSmash.Flight.DetectionHeight", 2.0);
 			config.addDefault("Abilities.Earth.EarthSmash.Grab.Enabled", true);
 			config.addDefault("Abilities.Earth.EarthSmash.Grab.Range", 16);
 			config.addDefault("Abilities.Earth.EarthSmash.Grab.DetectionRadius", 2.5);

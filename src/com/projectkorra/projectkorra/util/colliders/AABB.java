@@ -21,6 +21,10 @@ public class AABB implements Collider {
 		this(center, radius, radius, radius);
 	}
 
+	public AABB(Location center, double xz, double y) {
+		this(center, xz, y, xz);
+	}
+
 	public AABB(Location center, double x, double y, double z) {
 		this(center.clone().subtract(x, y, z), center.clone().add(x, y, z));
 	}
