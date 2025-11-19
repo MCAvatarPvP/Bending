@@ -1330,7 +1330,7 @@ public class PKListener implements Listener {
 		final Player player = event.getPlayer();
 		final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
 
-		BendingBoardManager.clean(player);
+		Bukkit.getScheduler().runTaskLater(ProjectKorra.plugin, () -> BendingBoardManager.clean(player), 1);
 
 		if (ProjectKorra.isStatisticsEnabled()) {
 			Manager.getManager(StatisticsManager.class).store(player.getUniqueId());
