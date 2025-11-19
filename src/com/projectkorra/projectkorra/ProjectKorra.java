@@ -44,7 +44,6 @@ public class ProjectKorra extends JavaPlugin {
 	public Updater updater;
 	BukkitTask revertChecker;
 	private static PlaceholderAPIHook papiHook;
-	BukkitTask regenHandler;
 
 	@Override
 	public void onEnable() {
@@ -133,7 +132,6 @@ public class ProjectKorra extends JavaPlugin {
 
 	@Override
 	public void onDisable() {
-		regenHandler.cancel();
 		this.revertChecker.cancel();
 		GeneralMethods.stopBending();
 		for (final Player player : this.getServer().getOnlinePlayers()) {
