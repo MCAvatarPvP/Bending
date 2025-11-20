@@ -63,6 +63,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
 	private long slowTime;
 	private final Player player;
 	private StanceAbility stance;
+	private boolean showPreviewOnCooldown;
 
 	protected boolean tremorSense;
 	protected boolean illumination;
@@ -490,6 +491,14 @@ public class BendingPlayer extends OfflineBendingPlayer {
 	 */
 	public StanceAbility getStance() {
 		return this.stance;
+	}
+
+	public void setShowPreviewOnCooldown(boolean showPreviewOnCooldown) {
+		this.showPreviewOnCooldown = showPreviewOnCooldown;
+	}
+
+	public boolean showPreviewOnCooldown() {
+		return showPreviewOnCooldown;
 	}
 
 	/**

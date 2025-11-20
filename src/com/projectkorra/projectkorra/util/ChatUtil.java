@@ -145,6 +145,7 @@ public class ChatUtil {
         String displayedMessage = bPlayer.getAbilities().get(slot);
         final CoreAbility ability = CoreAbility.getAbility(displayedMessage);
 
+        bPlayer.setShowPreviewOnCooldown(ability != null && bPlayer.isOnCooldown(ability));
         if (ability != null && bPlayer != null) {
             displayedMessage = ability.getMovePreview(player);
         } else if (displayedMessage == null || displayedMessage.isEmpty() || displayedMessage.equals("")) {
