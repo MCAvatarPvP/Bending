@@ -23,6 +23,7 @@ public class AbilityLagCompensator {
 	}
 
 	public void update() {
+		Snapshot currentSnapshot = snapshots.get(currentTick);
 		final Iterator<Player> iterator = players.iterator();
 		while (iterator.hasNext()) {
 			final Player player = iterator.next();
@@ -35,12 +36,16 @@ public class AbilityLagCompensator {
 			}
 
 			AABB playerAABB = new AABB(player.getWorld(), player.getBoundingBox());
-			if (!playerAABB.intersects(snapshot.getCollider())) {
+			boolean intersectsCurr = playerAABB.intersects(currentSnapshot.getCollider());
+			boolean intersectsPrev = playerAABB.intersects(snapshot.getCollider());
+			if (!intersectsCurr && !intersectsPrev) {
 				iterator.remove();
 				continue;
 			}
 
-			onUpdate.update(player, snapshot);
+			Snapshot correct = intersectsPrev ? snapshot : currentSnapshot;
+
+			onUpdate.update(player, correct);
 		}
 
 		currentTick++;
