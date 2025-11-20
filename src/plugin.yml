@@ -53,6 +53,7 @@ permissions:
       bending.command.sourceholes: true
       bending.admin.sourceholes: true
       bending.command.cooldown: true
+      bending.command.collider: true
   bending.player:
     default: true
     description: Grants access to most abilities and basic commands.
