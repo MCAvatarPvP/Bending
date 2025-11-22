@@ -5,7 +5,6 @@ import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
-import fr.neatmonster.nocheatplus.utilities.collision.CollisionUtil;
 import org.bukkit.Difficulty;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
@@ -18,8 +17,8 @@ import org.bukkit.potion.PotionEffectType;
 import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
-import java.util.concurrent.ThreadLocalRandom;
 
 public class AirSurf extends AirAbility {
 
@@ -50,6 +49,7 @@ public class AirSurf extends AirAbility {
     private boolean canFly, wasFlying;
 
     private double phi = 0;
+    private List<Vector> ballOffsets;
 
     public AirSurf(final Player player) {
         super(player);
@@ -121,6 +121,26 @@ public class AirSurf extends AirAbility {
                 this.slime.addPassenger(player);
             } else {
                 this.useslime = false;
+            }
+        }
+
+        ballOffsets = new ArrayList<>();
+        double radius = 0.6;
+        int ySteps = 6;
+        int circlePoints = 6;
+        for (int yStep = 0; yStep < ySteps; yStep++) {
+            double phi = Math.PI * (yStep / (double) (ySteps - 1));
+            boolean isZeroRadiusCircle = yStep == 0 || yStep >= ySteps - 1;
+            for (int j = 0; j < circlePoints; j++) {
+                double theta = 2 * Math.PI * (j / (double) circlePoints);
+
+                double x = radius * Math.cos(phi);
+                double y = radius * Math.sin(phi) * Math.cos(theta);
+                double z = radius * Math.sin(phi) * Math.sin(theta);
+
+                ballOffsets.add(new Vector(x, y, z));
+                if (isZeroRadiusCircle)
+                    break;
             }
         }
 
@@ -273,25 +293,12 @@ public class AirSurf extends AirAbility {
      * sphere has. theta = how dense the rings are. r = Radius of the sphere
      */
     private void spinScooter() {
-        final Location base = this.player.getLocation();
-        final double R = 1;
-        final ThreadLocalRandom rng = ThreadLocalRandom.current();
+        final Location base = this.player.getLocation().add(0, -0.25, 0);
 
-        for (int i = 0; i < 10; i++) {
-            double u = rng.nextDouble();
-            double v = rng.nextDouble();
-            double w = rng.nextDouble();
-
-            double theta  = 2.0 * Math.PI * u;
-            double cosPhi = 2.0 * v - 1.0;
-            double sinPhi = Math.sqrt(1.0 - cosPhi * cosPhi);
-            double r      = R * Math.cbrt(w);
-
-            double x = r * Math.cos(theta) * sinPhi;
-            double y = r * cosPhi;
-            double z = r * Math.sin(theta) * sinPhi;
-
-            Location loc = base.clone().add(x, y, z);
+        double yRotation = Math.toRadians(-base.getYaw());
+        for (Vector ballOffset : ballOffsets) {
+            Vector offset = ballOffset.clone().rotateAroundY(yRotation);
+            Location loc = base.clone().add(offset);
             playAirbendingParticles(loc, 1, 0F, 0F, 0F);
         }
     }
