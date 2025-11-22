@@ -190,17 +190,14 @@ public abstract class AirAbility extends ElementalAbility {
 			if (!bPlayer.getAirColor().getName().equalsIgnoreCase("none")) {
 				Color color = bPlayer.getAirColor().getColor().getColor();
 
-				Location l = loc.clone();
-				l.setX(l.getX() + (xOffset * (Math.random() * 2.0 - 1.0) * 1.8));
-				l.setY(l.getY() + (yOffset * (Math.random() * 2.0 - 1.0) * 1.8));
-				l.setZ(l.getZ() + (zOffset * (Math.random() * 2.0 - 1.0) * 1.8));
-
-				l.getWorld().spawnParticle(
+				loc.getWorld().spawnParticle(
 						Particle.ENTITY_EFFECT,
-						l,
-						1, // count must be 1 or more if using a particle data
-						0, 0, 0, // no offsets anymore
-						color
+						loc,
+						amount,
+						xOffset, yOffset, zOffset,
+						speed,
+						color,
+						true
 				);
 				return;
 			}
