@@ -369,10 +369,6 @@ public abstract class CoreAbility implements Ability {
 		return abilityName != null ? ABILITIES_BY_NAME.get(abilityName.toLowerCase()) : null;
 	}
 
-	public static CoreAbility getAbility(final String className, String nothing) {
-		return className != null ? ABILITIES_BY_CLASS_NAME.get(className) : null;
-	}
-
 	/**
 	 * Returns a "fake" instance for a CoreAbility with the specific class.
 	 *
@@ -381,6 +377,10 @@ public abstract class CoreAbility implements Ability {
 	 */
 	public static CoreAbility getAbility(final Class<? extends CoreAbility> clazz) {
 		return clazz != null ? ABILITIES_BY_CLASS.get(clazz) : null;
+	}
+
+	public static CoreAbility getAbilityByClassName(final String className) {
+		return className != null ? ABILITIES_BY_CLASS_NAME.get(className) : null;
 	}
 
 	/**

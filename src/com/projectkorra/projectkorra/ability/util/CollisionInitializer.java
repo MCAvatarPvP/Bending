@@ -211,8 +211,8 @@ public class CollisionInitializer {
 			for (String s : collisionConfig.getStringList("AddCollisions")) {
 				String[] abils = s.split(", ");
 				if (abils.length == 4 && !collisionMap.containsKey(abils[0] + ", " + abils[1])) {
-					CoreAbility first = CoreAbility.getAbility(abils[0], "");
-					CoreAbility second = CoreAbility.getAbility(abils[1], "");
+					CoreAbility first = CoreAbility.getAbilityByClassName(abils[0]);
+					CoreAbility second = CoreAbility.getAbilityByClassName(abils[1]);
 					boolean removeFirst = abils[2].equalsIgnoreCase("true");
 					boolean removeSecond = abils[3].equalsIgnoreCase("true");
 

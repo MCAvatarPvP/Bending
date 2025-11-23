@@ -1410,9 +1410,11 @@ public class GeneralMethods {
 		ConfigManager.fireColorsConfig.reload();
 		ConfigManager.airColorsConfig.reload();
 		ConfigManager.earthCosmeticsConfig.reload();
+		ConfigManager.fallDamageConfig.reload();
 		Style.reloadStyles();
 		CosmeticColor.reloadColors();
 		EarthCosmetic.reloadCosmetics();
+		FallHandler.loadNoFallDamageAbilities();
 		Arrays.stream(Element.getElements()).forEach(e -> {e.setColor(null); e.setSubColor(null);}); //Load colors from config again
 		Arrays.stream(Element.getSubElements()).forEach(e -> {e.setColor(null); e.setSubColor(null);}); //Same for subs
 		ElementalAbility.clearBendableMaterials(); // Clear and re-cache the material lists on reload.

@@ -33,6 +33,7 @@ public class ConfigManager {
 	public static Config fireColorsConfig;
 	public static Config airColorsConfig;
 	public static Config earthCosmeticsConfig;
+	public static Config fallDamageConfig;
 
 	public static List<Config> styleConfigs;
 
@@ -44,6 +45,7 @@ public class ConfigManager {
 		fireColorsConfig = new Config(new File("fireColors.yml"));
 		airColorsConfig = new Config(new File("airColors.yml"));
 		earthCosmeticsConfig = new Config(new File("earthCosmetics.yml"));
+		fallDamageConfig = new Config(new File("fallDamageConfig.yml"));
 		styleConfigs = new ArrayList<>();
 		avatarStateConfig = new Config(new File("avatarstate.yml"));
 
@@ -54,6 +56,7 @@ public class ConfigManager {
 		configCheck(ConfigType.FIRECOLORS);
 		configCheck(ConfigType.AIRCOLORS);
 		configCheck(ConfigType.EARTHCOSMETICS);
+		configCheck(ConfigType.FALLDAMAGE);
 		configCheck(ConfigType.AVATAR_STATE);
 	}
 
@@ -103,6 +106,17 @@ public class ConfigManager {
 			config = earthCosmeticsConfig.get();
 			config.addDefault("EarthCosmetics", Arrays.asList("name, material"));
 			earthCosmeticsConfig.save();
+		} else if (type == ConfigType.FALLDAMAGE) {
+			config = fallDamageConfig.get();
+			config.options().setHeader(List.of(
+					"Template:",
+					"- ability, mode",
+					"",
+					"ability - The name of the ability",
+					"mode - 3 options [user, others, both]"
+			));
+			config.addDefault("OnVelocity", List.of("ability, mode"));
+			fallDamageConfig.save();
 		} else if (type == ConfigType.LANGUAGE) {
 			config = languageConfig.get();
 
@@ -990,7 +1004,6 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.Passive.GracefulDescent.Enabled", true);
 
 			config.addDefault("Abilities.Air.AirBlast.Enabled", true);
-			config.addDefault("Abilities.Air.AirBlast.FallDamageOthers", false);
 			config.addDefault("Abilities.Air.AirBlast.Speed", 25);
 			config.addDefault("Abilities.Air.AirBlast.Range", 20);
 			config.addDefault("Abilities.Air.AirBlast.Radius", 2);
@@ -1079,7 +1092,6 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.AirSpout.DisableSprint", false);
 
 			config.addDefault("Abilities.Air.AirSuction.Enabled", true);
-			config.addDefault("Abilities.Air.AirSuction.FallDamageOthers", false);
 			config.addDefault("Abilities.Air.AirSuction.Speed", 25);
 			config.addDefault("Abilities.Air.AirSuction.Range", 20);
 			config.addDefault("Abilities.Air.AirSuction.SelectRange", 10);
@@ -1129,7 +1141,6 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.Suffocate.AnimationSpeed", 1.0);
 
 			config.addDefault("Abilities.Air.Tornado.Enabled", true);
-			config.addDefault("Abilities.Air.Tornado.FallDamageOthers", false);
 			config.addDefault("Abilities.Air.Tornado.Cooldown", 0);
 			config.addDefault("Abilities.Air.Tornado.Duration", 0);
 			config.addDefault("Abilities.Air.Tornado.Radius", 10);
@@ -1153,14 +1164,12 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.AirStream.Enabled", true);
 			config.addDefault("Abilities.Air.AirStream.Speed", 0.5);
 			config.addDefault("Abilities.Air.AirStream.Range", 40);
-			config.addDefault("Abilities.Air.AirStream.FallDamageOthers", false);
 			config.addDefault("Abilities.Air.AirStream.EntityCarry.Duration", 4000);
 			config.addDefault("Abilities.Air.AirStream.EntityCarry.Height", 14);
 			config.addDefault("Abilities.Air.AirStream.Cooldown", 7000);
 			config.addDefault("Abilities.Air.AirStream.Combination", Arrays.asList("AirShield:SNEAK_DOWN", "AirSuction:LEFT_CLICK", "AirBlast:LEFT_CLICK"));
 
 			config.addDefault("Abilities.Air.AirSweep.Enabled", true);
-			config.addDefault("Abilities.Air.AirSweep.FallDamageOthers", false);
 			config.addDefault("Abilities.Air.AirSweep.Speed", 1.4);
 			config.addDefault("Abilities.Air.AirSweep.Range", 14);
 			config.addDefault("Abilities.Air.AirSweep.Damage", 3);
@@ -1651,7 +1660,6 @@ public class ConfigManager {
 			config.addDefault("Abilities.Earth.RaiseEarth.Wall.Cooldown", 500);
 
 			config.addDefault("Abilities.Earth.Shockwave.Enabled", true);
-			config.addDefault("Abilities.Earth.Shockwave.FallDamageOthers", false);
 			config.addDefault("Abilities.Earth.Shockwave.FallThreshold", 12);
 			config.addDefault("Abilities.Earth.Shockwave.ChargeTime", 2500);
 			config.addDefault("Abilities.Earth.Shockwave.Cooldown", 6000);
@@ -1677,7 +1685,6 @@ public class ConfigManager {
 			config.addDefault("Abilities.Earth.EarthPillars.Damage.Enabled", true);
 			config.addDefault("Abilities.Earth.EarthPillars.Damage.Value", 2);
 			config.addDefault("Abilities.Earth.EarthPillars.FallThreshold", 12);
-			config.addDefault("Abilities.Earth.EarthPillars.FallDamageOthers", false);
 			config.addDefault("Abilities.Earth.EarthPillars.Combination", Arrays.asList("Shockwave:SNEAK_DOWN", "Shockwave:SNEAK_UP", "Shockwave:SNEAK_DOWN", "Catapult:SNEAK_UP"));
 
 			config.addDefault("Abilities.Fire.Blaze.Enabled", true);

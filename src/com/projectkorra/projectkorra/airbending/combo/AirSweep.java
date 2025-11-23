@@ -220,10 +220,6 @@ public class AirSweep extends AirAbility implements ComboAbility {
 							if (this.damage != 0) {
 								if (entity instanceof LivingEntity) {
 									DamageHandler.damageEntity(entity, this.damage, this);
-									boolean falldamage = getConfig().getBoolean("Abilities.Air.AirSweep.FallDamageOthers");
-									if (entity instanceof Player && !falldamage) {
-										FallHandler.stopFall((Player) entity);
-									}
 								}
 							}
 						}

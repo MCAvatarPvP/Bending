@@ -290,10 +290,6 @@ public class Ripple extends EarthAbility {
 		vector.setY(.5);
 		final double knock = this.knockback;
 		GeneralMethods.setVelocity(this, entity, vector.clone().normalize().multiply(knock));
-		boolean falldamage = getConfig().getBoolean("Abilities.Earth.Shockwave.FallDamageOthers");
-		if (entity instanceof Player && !falldamage) {
-			FallHandler.stopFall((Player) entity);
-		}
 		AirAbility.breakBreathbendingHold(entity);
 	}
 

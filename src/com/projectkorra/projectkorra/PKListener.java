@@ -711,24 +711,27 @@ public class PKListener implements Listener {
 
 	@EventHandler
 	private void onAbilityVelocity(AbilityVelocityAffectEntityEvent event) {
-		for (String s : ConfigManager.collisionConfig.get().getStringList("FallingBlockCollisions")) {
-			String[] abilities = s.split(", ");
-			if (abilities.length != 2) continue;
+		Entity entity = event.getAffected();
+		if (entity instanceof Player player) {
+			BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
 
-			if (event.getAffected().hasMetadata(abilities[0].toLowerCase())
-					&& event.getAbility().getName().equalsIgnoreCase(abilities[1])) {
-				event.setCancelled(true);
+			if (bPlayer == null || event.getVelocity().getY() < 0) return;
+
+			if (bPlayer.hasElement(Element.AIR) || bPlayer.hasElement(Element.EARTH)) player.setFallDistance(0);
+			if (event.getAbility() instanceof CoreAbility ability && FallHandler.shouldStopFallFromVelocity(player, ability)) {
+				FallHandler.stopFall(player);
+			}
+		} else if (entity instanceof FallingBlock fb) {
+			for (String s : ConfigManager.collisionConfig.get().getStringList("FallingBlockCollisions")) {
+				String[] abilities = s.split(", ");
+				if (abilities.length != 2) continue;
+
+				if (fb.hasMetadata(abilities[0].toLowerCase())
+						&& event.getAbility().getName().equalsIgnoreCase(abilities[1])) {
+					event.setCancelled(true);
+				}
 			}
 		}
-
-		if (!(event.getAffected() instanceof Player)) return;
-
-		Player player = (Player) event.getAffected();
-		BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-
-		if (bPlayer == null || event.getVelocity().getY() < 0) return;
-
-		if (bPlayer.hasElement(Element.AIR) || bPlayer.hasElement(Element.EARTH)) player.setFallDistance(0);
 	}
 
 	@EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
@@ -924,9 +927,8 @@ public class PKListener implements Listener {
 
 	@EventHandler(priority = EventPriority.LOWEST)
 	public void onFall(EntityDamageEvent event) {
-		if (event.getCause() != DamageCause.FALL || !(event.getEntity() instanceof Player)) return;
-		Player player = (Player) event.getEntity();
-		if (!FallHandler.affectedEntitiesByPush.containsKey(player)) return;
+		if (event.getCause() != DamageCause.FALL || !(event.getEntity() instanceof Player player)) return;
+		if (!FallHandler.contains(player)) return;
 
 		event.setCancelled(true);
 		FallHandler.removePlayer(player);
@@ -935,7 +937,7 @@ public class PKListener implements Listener {
 	@EventHandler(priority = EventPriority.HIGHEST)
 	public void onLand(PlayerMoveEvent event) {
 		Player player = event.getPlayer();
-		if (FallHandler.affectedEntitiesByPush.containsKey(player)) FallHandler.move(player);
+		if (FallHandler.contains(player)) FallHandler.move(player);
 	}
 
 	@EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)

@@ -285,8 +285,6 @@ public class AirBlast extends AirAbility {
 
 	private void affect(final Entity entity, final Location location) {
 		if (entity instanceof Player) {
-			boolean falldamage = getConfig().getBoolean("Abilities.Air.AirBlast.FallDamageOthers");
-			if (entity.getUniqueId() != player.getUniqueId() && !falldamage) FallHandler.stopFall((Player) entity);
 			if (Commands.invincible.contains(((Player) entity).getName())) {
 				return;
 			}

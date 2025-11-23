@@ -209,10 +209,6 @@ public class AirSuction extends AirAbility {
 				
 				if (entity.getEntityId() != player.getEntityId()) {
 					knockback = this.pushFactorForOthers;
-					boolean falldamage = getConfig().getBoolean("Abilities.Air.AirSuction.FallDamageOthers");
-					if (entity instanceof Player && !falldamage) {
-						FallHandler.stopFall((Player) entity);
-					}
 				}
 				
 				final double max = this.speed;
