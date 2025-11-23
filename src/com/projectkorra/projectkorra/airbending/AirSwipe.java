@@ -153,7 +153,7 @@ public class AirSwipe extends AirAbility {
 
 				location = location.clone().add(direction.clone().multiply(this.speed));
 				this.streams.put(direction, location);
-				playAirbendingParticles(location, this.particles, 0.2F, 0.2F, 0);
+				playAirbendingParticles(location, this.particles, 0.2F, 0.2F, 0.2);
 				if (this.random.nextInt(4) == 0) {
 					playAirbendingSound(location);
 				}
