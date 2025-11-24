@@ -1455,6 +1455,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Water.IceWave.Enabled", true);
 			config.addDefault("Abilities.Water.IceWave.Damage", 3);
 			config.addDefault("Abilities.Water.IceWave.Cooldown", 6000);
+			config.addDefault("Abilities.Water.IceWave.WaveHitRadius", 2.25);
 			config.addDefault("Abilities.Water.IceWave.ThawRadius", 10);
 			config.addDefault("Abilities.Water.IceWave.RevertSphere", true);
 			config.addDefault("Abilities.Water.IceWave.IceSphereRadius", 2.5);

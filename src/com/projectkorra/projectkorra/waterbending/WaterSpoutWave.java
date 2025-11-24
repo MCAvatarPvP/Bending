@@ -68,6 +68,7 @@ public class WaterSpoutWave extends WaterAbility {
 	private double flightDuration;
 	@Attribute("Wave" + Attribute.RADIUS)
 	private double waveRadius;
+	private double iceWaveHitRadius;
 	@Attribute("IceSphere" + Attribute.RADIUS) @DayNightFactor
 	private double iceSphereRadius;
 	@Attribute("Thaw" + Attribute.RADIUS)
@@ -96,6 +97,7 @@ public class WaterSpoutWave extends WaterAbility {
 		this.plant = getConfig().getBoolean("Abilities.Water.WaterSpout.Wave.AllowPlantSource");
 		this.radius = getConfig().getDouble("Abilities.Water.WaterSpout.Wave.Radius");
 		this.waveRadius = getConfig().getDouble("Abilities.Water.WaterSpout.Wave.WaveRadius");
+		this.iceWaveHitRadius = getConfig().getDouble("Abilities.Water.IceWave.HitRadius");
 		this.thawRadius = getConfig().getDouble("Abilities.Water.IceWave.ThawRadius");
 		this.animationSpeed = getConfig().getDouble("Abilities.Water.WaterSpout.Wave.AnimationSpeed");
 		this.selectRange = getConfig().getDouble("Abilities.Water.WaterSpout.Wave.SelectRange");
@@ -307,7 +309,7 @@ public class WaterSpoutWave extends WaterAbility {
 				}
 
 				if (this.iceWave && this.progressCounter % 3 == 0) {
-					for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(this.player.getLocation().add(0, -1, 0), this.waveRadius * 1.5)) {
+					for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(this.player.getLocation().add(0, -1, 0), this.iceWaveHitRadius)) {
 						if (entity != this.player && entity instanceof LivingEntity && !this.affectedEntities.contains(entity)) {
 							this.affectedEntities.add(entity);
 							DamageHandler.damageEntity(entity, this.damage, CoreAbility.getAbility(this.player, IceWave.class));
