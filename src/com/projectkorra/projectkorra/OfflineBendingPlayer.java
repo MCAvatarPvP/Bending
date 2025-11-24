@@ -133,8 +133,15 @@ public class OfflineBendingPlayer {
         }
 
         //If we already have the players data cached from an OfflineBendingPlayer instance
-        if (PLAYERS.get(uuid) != null) {
-            OfflineBendingPlayer oBendingPlayer = PLAYERS.get(uuid); //Get cached instance
+        OfflineBendingPlayer oBendingPlayer = PLAYERS.get(uuid);
+        if (oBendingPlayer != null && offlinePlayer.isOnline() && !(oBendingPlayer instanceof BendingPlayer)) {
+            if (oBendingPlayer.uncache != null) {
+                oBendingPlayer.uncache.cancel();
+            }
+            PLAYERS.remove(uuid);
+            oBendingPlayer = null; // force reloading from the database for fresh data on new logins
+        }
+        if (oBendingPlayer != null) {
             if (offlinePlayer.isOnline() && !(oBendingPlayer instanceof BendingPlayer)) {
                 oBendingPlayer = convertToOnline(oBendingPlayer); //Convert to online instance
                 ((BendingPlayer)oBendingPlayer).postLoad();
@@ -375,7 +382,9 @@ public class OfflineBendingPlayer {
 					final Map<Integer, String> storedSlots = record.getSlots();
 					for (int i = 1; i <= 9; i++) {
 						final String ability = storedSlots.get(i);
-						abilitiesClone.put(i, ability);
+						if (ability != null) {
+							abilitiesClone.put(i, ability);
+						}
 					}
                     final long startTime = System.currentTimeMillis();
                     final long timeoutLength = 5_000; // How long until it should time out attempting to load addons in.
