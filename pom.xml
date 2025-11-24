@@ -71,6 +71,7 @@
       <artifactId>paperlib</artifactId>
       <version>1.0.1</version>
     </dependency>
+    <!-- Redis -->
     <!-- Minecraft Timings -->
     <dependency>
       <groupId>co.aikar</groupId>
@@ -205,11 +206,13 @@
       <version>2.1.0-SNAPSHOT</version>
       <scope>provided</scope>
     </dependency>
-    <dependency>
-      <groupId>ga.strikepractice</groupId>
-      <artifactId>strikepractice-api</artifactId>
-      <version>1.0-SNAPSHOT</version>
-    </dependency>
+      <dependency>
+          <groupId>ga.strikepractice</groupId>
+          <artifactId>strikepractice-api</artifactId>
+          <version>1.0-SNAPSHOT</version>
+          <scope>system</scope>
+          <systemPath>${basedir}/libs/strikepractice-api.jar</systemPath>
+      </dependency>
   </dependencies>
   <build>
     <defaultGoal>clean package install</defaultGoal>
@@ -231,8 +234,8 @@
         <artifactId>maven-compiler-plugin</artifactId>
         <version>3.8.0</version>
         <configuration>
-          <source>1.8</source>
-          <target>1.8</target>
+          <source>16</source>
+          <target>16</target>
         </configuration>
       </plugin>
       <plugin>
@@ -264,6 +267,10 @@
             <relocation>
               <pattern>org.apache.commons</pattern>
               <shadedPattern>commonslang3.projectkorra</shadedPattern>
+            </relocation>
+            <relocation>
+              <pattern>org.apache.commons.pool2</pattern>
+              <shadedPattern>projectkorra.libs.commons.pool2</shadedPattern>
             </relocation>
           </relocations>
         </configuration>

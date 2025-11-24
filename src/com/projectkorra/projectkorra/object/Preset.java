@@ -1,8 +1,5 @@
 package com.projectkorra.projectkorra.object;
 
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -22,6 +19,8 @@ import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.board.BendingBoardManager;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.storage.DBConnection;
+import com.projectkorra.projectkorra.storage.PresetRecord;
+import com.projectkorra.projectkorra.storage.StorageException;
 
 /**
  * A savable association of abilities and hotbar slots, stored per player.
@@ -38,10 +37,6 @@ public class Preset {
 	public static Map<UUID, List<Preset>> presets = new ConcurrentHashMap<>();
 	public static FileConfiguration config = ConfigManager.presetConfig.get();
 	public static HashMap<String, ArrayList<String>> externalPresets = new HashMap<>();
-	static String loadQuery = "SELECT * FROM pk_presets WHERE uuid = ?";
-	static String deleteQuery = "DELETE FROM pk_presets WHERE uuid = ? AND name = ?";
-	static String insertQuery = "INSERT INTO pk_presets (uuid, name, slot1, slot2, slot3, slot4, slot5, slot6, slot7, " +
-			"slot8, slot9) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
 	private final UUID uuid;
 	private final HashMap<Integer, String> abilities;
@@ -89,25 +84,16 @@ public class Preset {
 					return;
 				}
 				try {
-					final PreparedStatement ps = DBConnection.sql.getConnection().prepareStatement(loadQuery);
-					ps.setString(1, uuid.toString());
-					final ResultSet rs = ps.executeQuery();
-					if (rs.next()) { // Presets exist.
+					final List<PresetRecord> records = DBConnection.getAdapter().presets().load(uuid);
+					if (!records.isEmpty()) {
 						int i = 0;
-						do {
-							final HashMap<Integer, String> moves = new HashMap<Integer, String>();
-							for (int total = 1; total <= 9; total++) {
-								final String slot = rs.getString("slot" + total);
-								if (slot != null) {
-									moves.put(total, slot);
-								}
-							}
-							new Preset(uuid, rs.getString("name"), moves);
+						for (final PresetRecord record : records) {
+							new Preset(uuid, record.getName(), new HashMap<>(record.getSlots()));
 							i++;
-						} while (rs.next());
+						}
 						ProjectKorra.log.info("Loaded " + i + " presets for " + player.getName());
 					}
-				} catch (final SQLException ex) {
+				} catch (final StorageException ex) {
 					ex.printStackTrace();
 				}
 			}
@@ -274,13 +260,10 @@ public class Preset {
 			@Override
 			public void run() {
 				try {
-					final PreparedStatement ps = DBConnection.sql.getConnection().prepareStatement(deleteQuery);
-					ps.setString(1, uuid.toString());
-					ps.setString(2, name);
-					ps.execute();
+					DBConnection.getAdapter().presets().delete(uuid, name);
 					presets.get(uuid).remove(instance);
 					future.complete(true);
-				} catch (final SQLException e) {
+				} catch (final StorageException e) {
 					e.printStackTrace();
 					future.complete(false);
 				}
@@ -307,15 +290,13 @@ public class Preset {
 			@Override
 			public void run() {
 				try {
-					PreparedStatement ps = DBConnection.sql.getConnection().prepareStatement(insertQuery);
-					ps.setString(1, uuid.toString());
-					ps.setString(2, name);
+					final Map<Integer, String> slots = new HashMap<>();
 					for (int i = 1; i <= 9; i++) {
-						ps.setString(2 + i, abilities.get(i));
+						slots.put(i, abilities.get(i));
 					}
-					ps.execute();
+					DBConnection.getAdapter().presets().save(new PresetRecord(uuid, name, slots));
 					future.complete(true);
-				} catch (final SQLException e) {
+				} catch (final StorageException e) {
 					e.printStackTrace();
 					future.complete(false);
 				}

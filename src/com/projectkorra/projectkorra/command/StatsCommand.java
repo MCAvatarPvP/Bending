@@ -1,7 +1,5 @@
 package com.projectkorra.projectkorra.command;
 
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -183,23 +181,7 @@ public class StatsCommand extends PKCommand {
 	}
 
 	public List<UUID> pullUUIDs(final Statistic statistic, final Object object) {
-		final Set<UUID> uuids = new HashSet<>();
-		try (ResultSet rs = DBConnection.sql.readQuery("SELECT uuid FROM pk_stats")) {
-			while (rs.next()) {
-				final UUID uuid = UUID.fromString(rs.getString("uuid"));
-				if (object == null) {
-					if (StatisticsMethods.getStatisticTotal(uuid, statistic) > 0) {
-						uuids.add(uuid);
-					}
-				} else {
-					if (StatisticsMethods.getStatistic(uuid, object, statistic) > 0) {
-						uuids.add(uuid);
-					}
-				}
-			}
-		} catch (final SQLException e) {
-			e.printStackTrace();
-		}
+		final Set<UUID> uuids = new HashSet<>(DBConnection.getAdapter().statistics().getTrackedPlayers());
 		for (final Player player : ProjectKorra.plugin.getServer().getOnlinePlayers()) {
 			final UUID uuid = player.getUniqueId();
 			if (object == null) {

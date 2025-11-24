@@ -146,7 +146,7 @@ public class ProjectKorra extends JavaPlugin {
 		}
 		Manager.shutdown();
 		if (DBConnection.isOpen()) {
-			DBConnection.sql.close();
+			DBConnection.shutdown();
 		}
 
 		// Update PAPI?

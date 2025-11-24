@@ -1395,7 +1395,7 @@ public class GeneralMethods {
 			return;
 		}
 		if (DBConnection.isOpen()) {
-			DBConnection.sql.close();
+			DBConnection.shutdown();
 		}
 		GeneralMethods.stopBending();
 

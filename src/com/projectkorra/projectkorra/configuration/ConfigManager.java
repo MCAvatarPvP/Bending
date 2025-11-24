@@ -1964,6 +1964,11 @@ public class ConfigManager {
 			config.addDefault("Storage.MySQL.db", "minecraft");
 			config.addDefault("Storage.MySQL.user", "root");
 			config.addDefault("Storage.MySQL.properties", "autoReconnect=true");
+			config.addDefault("Storage.Redis.host", "localhost");
+			config.addDefault("Storage.Redis.port", 6379);
+			config.addDefault("Storage.Redis.password", "");
+			config.addDefault("Storage.Redis.database", 0);
+			config.addDefault("Storage.Redis.ssl", false);
 
 			config.addDefault("debug", false);
 

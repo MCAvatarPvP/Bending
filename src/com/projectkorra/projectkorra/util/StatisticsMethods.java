@@ -1,7 +1,5 @@
 package com.projectkorra.projectkorra.util;
 
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.UUID;
 
 import org.bukkit.entity.Player;
@@ -171,15 +169,9 @@ public class StatisticsMethods {
 			return 0;
 		}
 		if (!Manager.getManager(StatisticsManager.class).getKeysByName().containsKey(statName)) {
-			DBConnection.sql.modifyQuery("INSERT INTO pk_statKeys (statName) VALUES ('" + statName + "')", false);
-			try (ResultSet rs = DBConnection.sql.readQuery("SELECT * FROM pk_statKeys WHERE statName = '" + statName + "'")) {
-				if (rs.next()) {
-					Manager.getManager(StatisticsManager.class).getKeysByName().put(rs.getString("statName"), rs.getInt("id"));
-					Manager.getManager(StatisticsManager.class).getKeysById().put(rs.getInt("id"), rs.getString("statName"));
-				}
-			} catch (final SQLException e) {
-				e.printStackTrace();
-			}
+			final int id = DBConnection.getAdapter().statistics().getOrCreateKey(statName);
+			Manager.getManager(StatisticsManager.class).getKeysByName().put(statName, id);
+			Manager.getManager(StatisticsManager.class).getKeysById().put(id, statName);
 		}
 		return Manager.getManager(StatisticsManager.class).getKeysByName().containsKey(statName) ? Manager.getManager(StatisticsManager.class).getKeysByName().get(statName) : -1;
 	}
