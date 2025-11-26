@@ -214,7 +214,7 @@ public class WaterSpout extends WaterAbility {
 			tb.revertBlock();
 		}
 		boolean falldamage = getConfig().getBoolean("Abilities.Water.WaterSpout.FallDamage");
-		if (!falldamage) FallHandler.stopFall(player);
+		if (!falldamage) FallHandler.stopFall(player, false);
 		this.flightHandler.removeInstance(this.player, this.getName());
 	}
 

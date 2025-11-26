@@ -6,7 +6,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.AbilityLagCompensator;
-import com.projectkorra.projectkorra.util.FallHandler;
 import org.bukkit.Effect;
 import org.bukkit.Location;
 import org.bukkit.Material;
