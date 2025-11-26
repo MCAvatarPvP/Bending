@@ -8,6 +8,7 @@ import java.util.Random;
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.region.RegionProtection;
+import com.projectkorra.projectkorra.util.AbilityLagCompensator;
 import org.bukkit.Effect;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -52,6 +53,8 @@ public class AirSuction extends AirAbility {
 	private Location origin;
 	private Vector direction;
 	private boolean canAffectSelf;
+
+	private AbilityLagCompensator lagCompensator;
 
 	public AirSuction(final Player player) {
 		super(player);
@@ -196,51 +199,22 @@ public class AirSuction extends AirAbility {
 				return;
 			}
 
+			this.lagCompensator.addSnapshot(this.location, this.radius);
+
 			for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(this.location, this.radius)) {
 				if (GeneralMethods.isRegionProtectedFromBuild(this, entity.getLocation()) || ((entity instanceof Player) && Commands.invincible.contains(((Player) entity).getName()))) {
 					continue;
 				}
-				if ((entity.getEntityId() == this.player.getEntityId()) && !this.canAffectSelf) {
+
+				if (entity instanceof Player p) {
+					this.lagCompensator.addPlayer(p);
 					continue;
 				}
-				
-				double knockback = this.pushFactor;
-				
-				if (entity.getEntityId() != player.getEntityId()) {
-					knockback = this.pushFactorForOthers;
-				}
-				
-				final double max = this.speed;
-				final Vector push = this.direction.clone();
 
-				if (Math.abs(push.getY()) > max) {
-					if (push.getY() < 0) {
-						push.setY(-max);
-					} else {
-						push.setY(max);
-					}
-				}
-
-				if (this.location.getWorld().equals(this.origin.getWorld())) {
-					knockback *= 1 - this.location.distance(this.origin) / (2 * this.range);
-				}
-				
-				push.normalize().multiply(knockback);
-				
-				if (Math.abs(entity.getVelocity().dot(push)) > knockback) {
-					push.normalize().add(entity.getVelocity()).multiply(knockback);
-				}
-				GeneralMethods.setVelocity(this, entity, push.normalize().multiply(knockback));
-				
-				new HorizontalVelocityTracker(entity, this.player, 200l, this);
-				entity.setFallDistance(0);
-
-				if (entity.getFireTicks() > 0) {
-					entity.getWorld().playEffect(entity.getLocation(), Effect.EXTINGUISH, 0);
-				}
-				entity.setFireTicks(0);
-				breakBreathbendingHold(entity);
+				this.affect(entity, this.location);
 			}
+
+			this.lagCompensator.update();
 
 			this.advanceLocation();
 		} else {
@@ -261,6 +235,54 @@ public class AirSuction extends AirAbility {
 		}
 	}
 
+	public void affect(final Entity entity, final Location location) {
+		if ((entity.getEntityId() == this.player.getEntityId()) && !this.canAffectSelf) {
+			return;
+		}
+
+		double knockback = this.pushFactor;
+
+		if (entity.getEntityId() != player.getEntityId()) {
+			knockback = this.pushFactorForOthers;
+		}
+
+		final Vector velocity = entity.getVelocity();
+		final double max = this.speed;
+		final Vector push = this.direction.clone();
+
+		if (Math.abs(push.getY()) > max) {
+			if (push.getY() < 0) {
+				push.setY(-max);
+			} else {
+				push.setY(max);
+			}
+		}
+
+		if (location.getWorld().equals(this.origin.getWorld())) {
+			knockback *= 1 - location.distance(this.origin) / (2 * this.range);
+		}
+
+		final double comp = velocity.dot(push.clone().normalize());
+		if (comp > knockback) {
+			velocity.multiply(.5);
+			velocity.add(push.clone().normalize().multiply(velocity.clone().dot(push.clone().normalize())));
+		} else if (comp + knockback * .5 > knockback) {
+			velocity.add(push.clone().multiply(knockback - comp));
+		} else {
+			velocity.add(push.clone().multiply(knockback * .5));
+		}
+		GeneralMethods.setVelocity(this, entity, velocity);
+
+		new HorizontalVelocityTracker(entity, this.player, 200l, this);
+		entity.setFallDistance(0);
+
+		if (entity.getFireTicks() > 0) {
+			entity.getWorld().playEffect(entity.getLocation(), Effect.EXTINGUISH, 0);
+		}
+		entity.setFireTicks(0);
+		breakBreathbendingHold(entity);
+	}
+
 	public void shoot() {
 		Location target;
 		final Entity entity = GeneralMethods.getTargetedEntity(this.player, this.range);
@@ -275,6 +297,7 @@ public class AirSuction extends AirAbility {
 		this.direction = GeneralMethods.getDirection(this.location, this.origin).normalize();
 		this.progressing = true;
 		this.bPlayer.addCooldown(this);
+		this.lagCompensator = new AbilityLagCompensator((p, snapshot) -> this.affect(p, snapshot.getLocation()));
 	}
 
 	public static void shoot(final Player player) {
