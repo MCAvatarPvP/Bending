@@ -895,6 +895,11 @@ public class PKListener implements Listener {
 			}
 
 			if (event.getCause() == DamageCause.FALL) {
+				double maxFallDamage = ConfigManager.getConfig(bPlayer).getDouble("Properties.MaxFallDamage");
+				if (maxFallDamage >= 0 && event.getDamage() > maxFallDamage) {
+					event.setDamage(maxFallDamage);
+				}
+
 				final Flight flight = Manager.getManager(FlightHandler.class).getInstance(player);
 				if (flight != null) {
 					if (flight.getPlayer() == flight.getSource()) {

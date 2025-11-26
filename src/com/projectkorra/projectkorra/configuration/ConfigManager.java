@@ -853,6 +853,7 @@ public class ConfigManager {
 			config.addDefault("Properties.MaxPresets", 10);
 			config.addDefault("Properties.FunnyCMD", "");
 			config.addDefault("Properties.MobDamageMultiplier", 0.0);
+			config.addDefault("Properties.MaxFallDamage", 4.0);
 			config.addDefault("Properties.IgnoreArmorPercentage.Default", 0.5);
 
 			config.addDefault("Properties.Regen.HealthPerTick", 1);
