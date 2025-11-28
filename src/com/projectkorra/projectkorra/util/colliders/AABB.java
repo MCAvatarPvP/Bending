@@ -119,7 +119,7 @@ public class AABB implements Collider {
 			for (int y = min.getBlockY(); y <= max.getBlockY(); y++) {
 				for (int z = min.getBlockZ(); z <= max.getBlockZ(); z++) {
 					Block block = world.getBlockAt(x, y, z);
-					if (!intersects(new AABB(world, block.getBoundingBox())) || (filter != null && !filter.test(block))) {
+					if (!intersects(new AABB(block.getLocation(), block.getLocation().add(1, 1, 1))) || (filter != null && !filter.test(block))) {
 						continue;
 					}
 
