@@ -82,7 +82,8 @@ public class ProjectKorra extends JavaPlugin {
 		this.getServer().getPluginManager().registerEvents(new PKListener(this), this);
 		this.getServer().getPluginManager().registerEvents(new ComboListener(), this);
 		this.getServer().getScheduler().scheduleSyncRepeatingTask(this, new BendingManager(), 0, 1);
-		this.getServer().getScheduler().scheduleSyncRepeatingTask(this, new AirbendingManager(this), 0, 1);
+		//Not used after removing the static ORIGINS map from AirBlast
+		// this.getServer().getScheduler().scheduleSyncRepeatingTask(this, new AirbendingManager(this), 0, 1);
 		this.getServer().getScheduler().scheduleSyncRepeatingTask(this, new WaterbendingManager(this), 0, 1);
 		this.getServer().getScheduler().scheduleSyncRepeatingTask(this, new EarthbendingManager(this), 0, 1);
 		this.getServer().getScheduler().scheduleSyncRepeatingTask(this, new FirebendingManager(this), 0, 1);

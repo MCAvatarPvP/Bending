@@ -1,8 +1,8 @@
 package com.projectkorra.projectkorra.airbending;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
+import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.AbilityLagCompensator;
@@ -40,7 +40,6 @@ import com.projectkorra.projectkorra.util.TempBlock;
 public class AirBlast extends AirAbility {
 
 	private static final int MAX_TICKS = 10000;
-	private static final Map<Player, Location> ORIGINS = new ConcurrentHashMap<>();
 	public static final Material[] DOORS = { Material.ACACIA_DOOR, Material.BIRCH_DOOR, Material.DARK_OAK_DOOR, Material.JUNGLE_DOOR, Material.OAK_DOOR, Material.SPRUCE_DOOR };
 	public static final Material[] TDOORS = { Material.ACACIA_TRAPDOOR, Material.BIRCH_TRAPDOOR, Material.DARK_OAK_TRAPDOOR, Material.JUNGLE_TRAPDOOR, Material.OAK_TRAPDOOR, Material.SPRUCE_TRAPDOOR };
 	public static final Material[] BUTTONS = { Material.ACACIA_BUTTON, Material.BIRCH_BUTTON, Material.DARK_OAK_BUTTON, Material.JUNGLE_BUTTON, Material.OAK_BUTTON, Material.SPRUCE_BUTTON, Material.STONE_BUTTON };
@@ -73,6 +72,7 @@ public class AirBlast extends AirAbility {
 	private double decayMinimum;
 	private long minimumAirBlastTime;
 
+	private boolean progressing;
 	private Location location;
 	private Location origin;
 	private Vector direction;
@@ -85,51 +85,20 @@ public class AirBlast extends AirAbility {
 
 	public AirBlast(final Player player) {
 		super(player);
-		if (this.bPlayer.isOnCooldown(this)) {
-			return;
-		} else if (player.getEyeLocation().getBlock().isLiquid()) {
+
+		Collection<AirBlast> blasts = getAbilities(player, AirBlast.class);
+		for (AirBlast blast : blasts) {
+			if (blast.getSource() != null || blast.isProgressing()) {
+				continue;
+			}
+
+			blast.selectOrigin();
 			return;
 		}
 
 		this.setFields();
 
-		if (ORIGINS.containsKey(player)) {
-//			final Entity entity = GeneralMethods.getTargetedEntity(player, this.range);
-			this.isFromOtherOrigin = true;
-			this.origin = ORIGINS.get(player);
-			ORIGINS.remove(player);
-
-//			if (entity != null) {
-//				this.direction = GeneralMethods.getDirection(this.origin, targetedLocation).normalize();
-//			} else {
-//				this.direction = GeneralMethods.getDirection(this.origin, targetedLocation).normalize();
-//			}
-
-			Location targetedLocation = getTargetedLocation(player, this.range);
-			Block block = targetedLocation.getBlock();
-			if (!GeneralMethods.isSolid(block) && GeneralMethods.isSolid(block.getRelative(BlockFace.DOWN))) {
-				double y = ConfigManager.getConfig(bPlayer).getDouble("Abilities.Air.AirBlast.SourceYOffset");
-				targetedLocation.add(0, y, 0);
-			}
-
-			this.direction = GeneralMethods.getDirection(origin, targetedLocation).normalize();
-
-			if (System.currentTimeMillis() - bPlayer.getLastAirBlastTime() < minimumAirBlastTime) {
-				bPlayer.increaseAirBlastDecay(decayAmount, decayMinimum);
-			}
-
-			bPlayer.resetAirBlast();
-			this.pushFactor *= bPlayer.getAirBlastDecay();
-		} else {
-			this.origin = player.getEyeLocation();
-			this.direction = player.getEyeLocation().getDirection().normalize();
-		}
-		if(!Double.isFinite(this.direction.getX()) || !Double.isFinite(this.direction.getY()) || !Double.isFinite(this.direction.getZ())) {
-			return;
-		}
-		this.location = this.origin.clone();
-		this.bPlayer.addCooldown(this);
-		this.lagCompensator = new AbilityLagCompensator((p, snapshot) -> affect(p, snapshot.getLocation()));
+		selectOrigin();
 		this.start();
 	}
 
@@ -145,6 +114,7 @@ public class AirBlast extends AirAbility {
 
 		this.setFields();
 
+		this.progressing = true;
 		this.affectedLevers = new ArrayList<>();
 		this.affectedEntities = new ArrayList<>();
 
@@ -188,54 +158,21 @@ public class AirBlast extends AirAbility {
 		this.affectedEntities = new ArrayList<>();
 	}
 
-	private static void playOriginEffect(final Player player) {
-		if (!ORIGINS.containsKey(player)) {
-			return;
-		}
-
-		final Location origin = ORIGINS.get(player);
-		final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-		if (bPlayer == null || player.isDead() || !player.isOnline()) {
-			return;
-		} else if (!origin.getWorld().equals(player.getWorld())) {
-			ORIGINS.remove(player);
-			return;
-		} else if (!bPlayer.canBendIgnoreCooldowns(getAbility("AirBlast"))) {
-			ORIGINS.remove(player);
-			return;
-		} else if (origin.distanceSquared(player.getEyeLocation()) > getSelectRange(bPlayer) * getSelectRange(bPlayer)) {
-			ORIGINS.remove(player);
-			return;
-		}
-
-		playAirbendingParticles(bPlayer, origin, getSelectParticles(bPlayer));
-	}
-
-	public static void progressOrigins() {
-		for (final Player player : ORIGINS.keySet()) {
-			playOriginEffect(player);
-		}
-	}
-
-	public static void setOrigin(final Player player) {
-		BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
+	public void selectOrigin() {
 		double maxSelectGroundDistance = ConfigManager.getConfig(bPlayer).getDouble("Abilities.Air.AirBlast.MaxSelectGroundDistance");
-		final Location location = getTargetedLocation(player, getSelectRange(bPlayer), getTransparentMaterials());
-		if (location.getBlock().isLiquid() || GeneralMethods.isSolid(location.getBlock())) {
+		origin = getTargetedLocation(player, getSelectRange(bPlayer), getTransparentMaterials());
+		if (origin.getBlock().isLiquid() || GeneralMethods.isSolid(origin.getBlock())) {
 			return;
-		} else if (RegionProtection.isRegionProtected(player, location, "AirBlast")) {
+		} else if (RegionProtection.isRegionProtected(player, origin, "AirBlast")) {
 			return;
-		} else if (maxSelectGroundDistance != 0 && GeneralMethods.getGroundBlock(location, maxSelectGroundDistance) == null) {
+		} else if (maxSelectGroundDistance != 0 && GeneralMethods.getGroundBlock(origin, maxSelectGroundDistance) == null) {
 			return;
 		}
 
-		if (GeneralMethods.isSolid(location.getBlock().getRelative(BlockFace.DOWN))) {
+		if (GeneralMethods.isSolid(origin.getBlock().getRelative(BlockFace.DOWN))) {
 			double y = ConfigManager.getConfig(bPlayer).getDouble("Abilities.Air.AirBlast.SourceYOffset");
-			location.add(0, y, 0);
+			origin.add(0, y, 0);
 		}
-
-		ORIGINS.put(player, location);
-
 	}
 
 	private void advanceLocation() {
@@ -372,8 +309,24 @@ public class AirBlast extends AirAbility {
 		if (this.player.isDead() || !this.player.isOnline()) {
 			this.remove();
 			return;
-		} else if (GeneralMethods.isRegionProtectedFromBuild(this, this.location)) {
+		} else if (RegionProtection.isRegionProtected(this, this.location)) {
 			this.remove();
+			return;
+		}
+
+		if (!progressing) {
+			if (!origin.getWorld().equals(player.getWorld())) {
+				this.remove();
+				return;
+			} else if (!bPlayer.canBendIgnoreCooldowns(getAbility("AirBlast"))) {
+				this.remove();
+				return;
+			} else if (origin.distanceSquared(player.getEyeLocation()) > getSelectRange(bPlayer) * getSelectRange(bPlayer)) {
+				this.remove();
+				return;
+			}
+
+			playAirbendingParticles(bPlayer, origin, getSelectParticles(bPlayer));
 			return;
 		}
 
@@ -511,7 +464,7 @@ public class AirBlast extends AirAbility {
 		this.lagCompensator.addSnapshot(this.location, this.radius);
 
 		for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(this.location, this.radius)) {
-			if (GeneralMethods.isRegionProtectedFromBuild(this, entity.getLocation()) || ((entity instanceof Player) && Commands.invincible.contains(((Player) entity).getName()))) {
+			if (RegionProtection.isRegionProtected(this, entity.getLocation()) || ((entity instanceof Player) && Commands.invincible.contains(((Player) entity).getName()))) {
 				continue;
 			}
 
@@ -528,6 +481,60 @@ public class AirBlast extends AirAbility {
 
 		this.advanceLocation();
 		return;
+	}
+
+	public void shoot() {
+		if (this.bPlayer.isOnCooldown(this)) {
+			if (!isFromOtherOrigin) remove();
+			return;
+		} else if (player.getEyeLocation().getBlock().isLiquid()) {
+			if (!isFromOtherOrigin) remove();
+			return;
+		}
+
+		Location targetedLocation = getTargetedLocation(player, this.range);
+		Block block = targetedLocation.getBlock();
+		if (!GeneralMethods.isSolid(block) && GeneralMethods.isSolid(block.getRelative(BlockFace.DOWN))) {
+			double y = ConfigManager.getConfig(bPlayer).getDouble("Abilities.Air.AirBlast.SourceYOffset");
+			targetedLocation.add(0, y, 0);
+		}
+
+		this.direction = GeneralMethods.getDirection(origin, targetedLocation).normalize();
+
+		if (isFromOtherOrigin) {
+			if (System.currentTimeMillis() - bPlayer.getLastAirBlastTime() < minimumAirBlastTime) {
+				bPlayer.increaseAirBlastDecay(decayAmount, decayMinimum);
+			}
+
+			bPlayer.resetAirBlast();
+			this.pushFactor *= bPlayer.getAirBlastDecay();
+		}
+
+		if(!Double.isFinite(this.direction.getX()) || !Double.isFinite(this.direction.getY()) || !Double.isFinite(this.direction.getZ())) {
+			if (!isFromOtherOrigin) remove();
+			return;
+		}
+
+		this.location = this.origin.clone();
+		this.progressing = true;
+		this.bPlayer.addCooldown(this);
+		this.lagCompensator = new AbilityLagCompensator((p, snapshot) -> affect(p, snapshot.getLocation()));
+	}
+
+	public static void shoot(final Player player) {
+		for (AirBlast airBlast : CoreAbility.getAbilities(player, AirBlast.class)) {
+			if (airBlast.getSource() != null || airBlast.isProgressing()) {
+				continue;
+			}
+
+			airBlast.setFromOtherOrigin(true);
+			airBlast.shoot();
+			return;
+		}
+
+		AirBlast blast = new AirBlast(player);
+		blast.setOrigin(player.getEyeLocation());
+		blast.shoot();
 	}
 
 	/**
@@ -595,6 +602,14 @@ public class AirBlast extends AirAbility {
 	@Override
 	public double getCollisionRadius() {
 		return this.getRadius();
+	}
+
+	public boolean isProgressing() {
+		return progressing;
+	}
+
+	public void setProgressing(final boolean progressing) {
+		this.progressing = progressing;
 	}
 
 	public Location getOrigin() {

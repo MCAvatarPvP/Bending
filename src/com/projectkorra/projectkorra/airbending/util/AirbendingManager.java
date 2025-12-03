@@ -1,8 +1,8 @@
 package com.projectkorra.projectkorra.airbending.util;
 
 import com.projectkorra.projectkorra.ProjectKorra;
-import com.projectkorra.projectkorra.airbending.AirBlast;
 
+//Not used after removing the static ORIGINS map from AirBlast
 public class AirbendingManager implements Runnable {
 
 	public ProjectKorra plugin;
@@ -12,8 +12,6 @@ public class AirbendingManager implements Runnable {
 	}
 
 	@Override
-	public void run() {
-		AirBlast.progressOrigins();
-	}
+	public void run() {}
 
 }

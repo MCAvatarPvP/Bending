@@ -1444,7 +1444,7 @@ public class PKListener implements Listener {
 					if (abil.equalsIgnoreCase("Tornado")) {
 						new Tornado(player);
 					} else if (abil.equalsIgnoreCase("AirBlast")) {
-						AirBlast.setOrigin(player);
+						new AirBlast(player);
 					} else if (abil.equalsIgnoreCase("AirBurst")) {
 						new AirBurst(player, false);
 					} else if (abil.equalsIgnoreCase("AirSuction")) {
@@ -1685,7 +1685,7 @@ public class PKListener implements Listener {
 			if (coreAbil instanceof AirAbility && bPlayer.isElementToggled(Element.AIR)) {
 				if (bPlayer.canCurrentlyBendWithWeapons()) {
 					if (abil.equalsIgnoreCase("AirBlast")) {
-						new AirBlast(player);
+						AirBlast.shoot(player);
 					} else if (abil.equalsIgnoreCase("AirSuction")) {
 						AirSuction.shoot(player);
 					} else if (abil.equalsIgnoreCase("AirBurst")) {
