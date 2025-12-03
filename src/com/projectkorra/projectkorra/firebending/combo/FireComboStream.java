@@ -1,11 +1,9 @@
 package com.projectkorra.projectkorra.firebending.combo;
 
+import com.projectkorra.projectkorra.*;
 import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.FireAbility;
-import com.projectkorra.projectkorra.BendingPlayer;
-import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.Element.SubElement;
-import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.ability.FireAbility;
@@ -58,6 +56,8 @@ public class FireComboStream extends BukkitRunnable {
 	private int checkCollisionCounter;
 	private float spread;
 	private double collisionRadius;
+	private boolean wasUpdated;
+	private int subLocations;
 	private final double speed;
 	private final double distance;
 	private double damage;
@@ -82,6 +82,7 @@ public class FireComboStream extends BukkitRunnable {
 		this.checkCollisionCounter = 0;
 		this.spread = 0;
 		this.collisionRadius = 2;
+		this.subLocations = 0;
 		this.player = player;
 		this.bPlayer = BendingPlayer.getBendingPlayer(player);
 		this.particleEffect = bPlayer.canUseSubElement(SubElement.BLUE_FIRE) ? ParticleEffect.SOUL_FIRE_FLAME : ParticleEffect.FLAME;
@@ -107,20 +108,26 @@ public class FireComboStream extends BukkitRunnable {
 			return;
 		}
 
-		if (this.useNewParticles) {
-			if (coreAbility instanceof FireAbility && (particleEffect == ParticleEffect.FLAME || particleEffect == ParticleEffect.SOUL_FIRE_FLAME)) {
-				FireAbility fa = (FireAbility) coreAbility;
-				fa.playFirebendingParticles(this.location, this.density, this.spread, this.spread, this.spread);
-			} else if (coreAbility instanceof AirAbility && (particleEffect == ParticleEffect.SPELL)) {
-				AirAbility aa = (AirAbility) coreAbility;
-				aa.playAirbendingParticles(this.location, this.density, this.spread, this.spread, this.spread);
+		Location loc = location.clone();
+		int subLocations = wasUpdated ? this.subLocations : 0;
+		Vector subLocationDir = direction.clone().normalize().multiply(speed / subLocations);
+		for (int step = 0; step < subLocations + 1; step++) {
+			if (this.useNewParticles) {
+				if (coreAbility instanceof FireAbility && (particleEffect == ParticleEffect.FLAME || particleEffect == ParticleEffect.SOUL_FIRE_FLAME)) {
+					FireAbility fa = (FireAbility) coreAbility;
+					fa.playFirebendingParticles(loc, this.density, this.spread, this.spread, this.spread);
+				} else if (coreAbility instanceof AirAbility && (particleEffect == ParticleEffect.SPELL)) {
+					AirAbility aa = (AirAbility) coreAbility;
+					aa.playAirbendingParticles(loc, this.density, this.spread, this.spread, this.spread);
+				} else {
+					this.particleEffect.display(loc, this.density, this.spread, this.spread, this.spread);
+				}
 			} else {
-				this.particleEffect.display(this.location, this.density, this.spread, this.spread, this.spread);
+				for (int i = 0; i < this.density; i++) {
+					loc.getWorld().playEffect(loc, Effect.MOBSPAWNER_FLAMES, 0, 15);
+				}
 			}
-		} else {
-			for (int i = 0; i < this.density; i++) {
-				this.location.getWorld().playEffect(this.location, Effect.MOBSPAWNER_FLAMES, 0, 15);
-			}
+			loc.subtract(subLocationDir);
 		}
 
 		if (this.coreAbility.getElement() == Element.FIRE) {
@@ -133,6 +140,7 @@ public class FireComboStream extends BukkitRunnable {
 		}
 
 		this.location.add(this.direction.normalize().multiply(this.speed));
+		this.wasUpdated = true;
 		
 		try {
 			this.location.checkFinite();
@@ -248,6 +256,10 @@ public class FireComboStream extends BukkitRunnable {
 
 	public void setCollisionRadius(final double radius) {
 		this.collisionRadius = radius;
+	}
+
+	public void setSubLocations(int subLocations) {
+		this.subLocations = subLocations;
 	}
 
 	public void setDensity(final int density) {

@@ -163,6 +163,7 @@ public class AirSweep extends AirAbility implements ComboAbility {
 				final FireComboStream fs = new FireComboStream(this.player, this, vec, hand, this.range, this.speed);
 				fs.setDensity(1);
 				fs.setSpread(0F);
+				fs.setSubLocations(2);
 				fs.setUseNewParticles(true);
 				fs.setGoThroughWater(goThroughWater);
 				fs.setParticleEffect(getAirbendingParticles());
