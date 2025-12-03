@@ -11,16 +11,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import com.projectkorra.projectkorra.Element.SubElement;
-import com.projectkorra.projectkorra.ability.Ability;
-import com.projectkorra.projectkorra.ability.AddonAbility;
-import com.projectkorra.projectkorra.ability.AirAbility;
-import com.projectkorra.projectkorra.ability.AvatarAbility;
-import com.projectkorra.projectkorra.ability.ChiAbility;
-import com.projectkorra.projectkorra.ability.CoreAbility;
-import com.projectkorra.projectkorra.ability.EarthAbility;
-import com.projectkorra.projectkorra.ability.ElementalAbility;
-import com.projectkorra.projectkorra.ability.FireAbility;
-import com.projectkorra.projectkorra.ability.WaterAbility;
+import com.projectkorra.projectkorra.ability.*;
 import com.projectkorra.projectkorra.ability.util.ComboManager;
 import com.projectkorra.projectkorra.ability.util.MultiAbilityManager;
 import com.projectkorra.projectkorra.ability.util.PassiveManager;
@@ -36,6 +27,11 @@ import com.projectkorra.projectkorra.airbending.Suffocate;
 import com.projectkorra.projectkorra.airbending.Tornado;
 import com.projectkorra.projectkorra.airbending.flight.FlightMultiAbility;
 import com.projectkorra.projectkorra.airbending.passive.GracefulDescent;
+import com.projectkorra.projectkorra.attribute.Attribute;
+import com.projectkorra.projectkorra.attribute.AttributeCache;
+import com.projectkorra.projectkorra.attribute.AttributeModification;
+import com.projectkorra.projectkorra.attribute.AttributeModifier;
+import com.projectkorra.projectkorra.attribute.markers.DayNightFactor;
 import com.projectkorra.projectkorra.avatar.AvatarState;
 import com.projectkorra.projectkorra.board.BendingBoardManager;
 import com.projectkorra.projectkorra.chiblocking.AcrobatStance;
@@ -1869,6 +1865,66 @@ public class PKListener implements Listener {
 			}
 		}
 	}
+
+    @EventHandler(priority = EventPriority.LOW)
+    public void onAttributeRecalc(AbilityRecalculateAttributeEvent event) {
+        CoreAbility ability = event.getAbility();
+        Player player = ability.getPlayer();
+        Location location = ability.getLocation();
+        if (event.hasMarker(DayNightFactor.class) && player != null && location != null) {
+            boolean day = FireAbility.isDay(location.getWorld());
+            boolean night = WaterAbility.isNight(location.getWorld());
+            if (ability instanceof WaterAbility && night && player.hasPermission("bending.water.nightfactor")) {
+                DayNightFactor dayNightFactor = event.getMarker(DayNightFactor.class);
+                double factor = dayNightFactor.factor() != -1 ? dayNightFactor.factor() : WaterAbility.getNightFactor();
+                //If the factor isn't the default, use the one in the annotation
+
+                AttributeModifier modifier = dayNightFactor.invert() ? AttributeModifier.DIVISION : AttributeModifier.MULTIPLICATION;
+                AttributeModification mod = AttributeModification.of(modifier, factor, AttributeModification.NIGHT_FACTOR);
+                event.addModification(mod);
+            } else if (ability instanceof FireAbility && day && player.hasPermission("bending.fire.dayfactor")) {
+                DayNightFactor dayNightFactor = event.getMarker(DayNightFactor.class);
+                double factor = dayNightFactor.factor() == -1 ? FireAbility.getDayFactor() : dayNightFactor.factor();
+                //If the factor isn't the default, use the one in the annotation
+
+                AttributeModifier modifier = dayNightFactor.invert() ? AttributeModifier.DIVISION : AttributeModifier.MULTIPLICATION;
+                AttributeModification mod = AttributeModification.of(modifier, factor, AttributeModification.DAY_FACTOR);
+                event.addModification(mod);
+            }
+        }
+
+        //Blue fire has factors for a few attributes. But only do it for pure fire abilities and not combustion/lightning
+        Element element = ability.getElement();
+        BendingPlayer bPlayer = ability.getBendingPlayer();
+        if ((element == Element.FIRE || element == Element.BLUE_FIRE) && bPlayer.hasElement(Element.BLUE_FIRE) && player.hasPermission("bending.fire.bluefirefactor")) {
+            switch (event.getAttribute()) {
+                case Attribute.DAMAGE: {
+                    double factor = BlueFireAbility.getDamageFactor();
+                    event.addModification(AttributeModification.of(AttributeModifier.MULTIPLICATION, factor, AttributeModification.PRIORITY_NORMAL - 50, AttributeModification.BLUE_FIRE_DAMAGE));
+                    break;
+                }
+                case Attribute.COOLDOWN: {
+                    double factor = BlueFireAbility.getCooldownFactor();
+                    event.addModification(AttributeModification.of(AttributeModifier.MULTIPLICATION, factor, AttributeModification.PRIORITY_NORMAL - 50, AttributeModification.BLUE_FIRE_COOLDOWN));
+                    break;
+                }
+                case Attribute.RANGE: {
+                    double factor = BlueFireAbility.getRangeFactor();
+                    event.addModification(AttributeModification.of(AttributeModifier.MULTIPLICATION, factor, AttributeModification.PRIORITY_NORMAL - 50, AttributeModification.BLUE_FIRE_RANGE));
+                    break;
+                }
+                default:
+            }
+        }
+
+        //AvatarState factors if the avatarstate is active
+        if (bPlayer.isAvatarState()) {
+            AttributeCache cache = CoreAbility.getAttributeCache(ability).get(event.getAttribute());
+            if (cache != null && cache.getAvatarStateModifier().isPresent()) { //Check if there is a cached avatarstate modifier for this attribute
+                event.addModification(cache.getAvatarStateModifier().get());
+            }
+        }
+    }
 
 	@EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
 	public void onPlayerToggleGlide(final EntityToggleGlideEvent event) {
