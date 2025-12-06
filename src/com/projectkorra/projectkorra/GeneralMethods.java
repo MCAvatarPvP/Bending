@@ -9,7 +9,6 @@ import java.io.PrintWriter;
 import java.lang.reflect.Field;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
-import java.util.*;
 import java.util.function.Predicate;
 import com.google.common.reflect.ClassPath;
 import com.projectkorra.projectkorra.command.PKCommand;
@@ -64,7 +63,6 @@ import com.projectkorra.projectkorra.airbending.AirShield;
 import com.projectkorra.projectkorra.airbending.AirSpout;
 import com.projectkorra.projectkorra.airbending.AirSuction;
 import com.projectkorra.projectkorra.airbending.AirSwipe;
-import com.projectkorra.projectkorra.airbending.util.AirbendingManager;
 import com.projectkorra.projectkorra.board.BendingBoardManager;
 import com.projectkorra.projectkorra.chiblocking.util.ChiblockingManager;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
@@ -541,42 +539,14 @@ public class GeneralMethods {
 	public static boolean isOnGround(Entity entity) {
 		if (!(entity instanceof Player)) return entity.isOnGround();
 
-		Location loc = entity.getLocation().add(0, -0.000001, 0);
-		BoundingBox box = entity.getBoundingBox();
-		Location min = box.getMin().setY(loc.getY()).toLocation(entity.getWorld());
-		Location max = box.getMax().setY(loc.getY()).toLocation(entity.getWorld());
-		BoundingBox feetBox = BoundingBox.of(min, max);
+		double underFeetY = entity.getLocation().getY() - 0.000001;
+		World world = entity.getWorld();
+		BoundingBox boundingBox = entity.getBoundingBox();
+		Location min = boundingBox.getMin().setY(underFeetY).toLocation(world);
+		Location max = boundingBox.getMax().setY(underFeetY).toLocation(world);
+		AABB underFeetAABB = new AABB(min, max);
 
-		List<Block> blocks = getBlocks(min, max);
-		Iterator<Block> iter = blocks.iterator();
-		while (iter.hasNext()) {
-			Block block = iter.next();
-			BoundingBox blockBox = block.getBoundingBox();
-			if (block.getType() == Material.HONEY_BLOCK) blockBox.expand(-0.0625);
-			if (!blockBox.overlaps(feetBox)) iter.remove();
-		}
-
-		return !blocks.isEmpty() || entity.getVelocity().getY() == -0.0784000015258789;
-	}
-
-	/**
-	 * Gets all blocks between two locations in a cube
-	 * @param min The minimum Location
-	 * @param max The maximum Location
-	 * @return List of blocks
-	 */
-	public static List<Block> getBlocks(Location min, Location max) {
-		List<Block> blocks = new ArrayList<>();
-		for (int x = min.getBlockX(); x <= max.getBlockX(); x++) {
-			for (int y = min.getBlockY(); y <= max.getBlockY(); y++) {
-				for (int z = min.getBlockZ(); z <= max.getBlockZ(); z++) {
-					Block block = min.getWorld().getBlockAt(x, y, z);
-					if (isSolid(block)) blocks.add(block);
-				}
-			}
-		}
-
-		return blocks;
+		return !underFeetAABB.getBlocks(block -> !block.isPassable()).isEmpty();
 	}
 
 	/**
