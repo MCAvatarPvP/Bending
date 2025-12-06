@@ -6,13 +6,15 @@ import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
+import org.bukkit.metadata.FixedMetadataValue;
+import org.bukkit.metadata.MetadataValue;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class FallHandler {
 
-	private static final Map<Player, Step> affectedPlayersByPush = new HashMap<>();
 	private static final Map<Class<? extends CoreAbility>, VelocityMode> abilityFallDamageBlockers = new HashMap<>();
 
 	public static void stopFall(Player player) {
@@ -20,27 +22,37 @@ public class FallHandler {
 	}
 
 	public static void stopFall(Player player, boolean waitForMovement) {
-		affectedPlayersByPush.put(player, waitForMovement ? Step.WAITING_FOR_MOVEMENT : Step.MOVED);
+		player.setMetadata(
+				"fallhandler:step",
+				new FixedMetadataValue(ProjectKorra.plugin, waitForMovement ? Step.WAITING_FOR_MOVEMENT : Step.MOVED)
+		);
+	}
+
+	public static int getStep(Player player) {
+		List<MetadataValue> values = player.getMetadata("fallhandler:step");
+		if (values.isEmpty()) return -1;
+		return values.getFirst().value() instanceof Integer i ? i : -1;
 	}
 
 	public static void removePlayer(Player player) {
-		affectedPlayersByPush.remove(player);
+		player.removeMetadata("fallhandler:step", ProjectKorra.plugin);
 	}
 
 	public static boolean contains(Player player) {
-		return affectedPlayersByPush.containsKey(player);
+		return player.hasMetadata("fallhandler:step");
 	}
 
 	public static void move(Player player) {
-		Step step = affectedPlayersByPush.get(player);
+		int step = getStep(player);
+		if (step < 0) return;
 		boolean isOnGround = GeneralMethods.isOnGround(player);
 
 		if (step == Step.WAITING_FOR_MOVEMENT && !isOnGround) {
-			affectedPlayersByPush.put(player, Step.MOVED);
+			player.setMetadata("fallhandler:step", new FixedMetadataValue(ProjectKorra.plugin, Step.MOVED));
 		} else if (step == Step.MOVED && isOnGround) {
-			affectedPlayersByPush.put(player, Step.REMOVE);
-		} else if (step == Step.REMOVE) {
-			affectedPlayersByPush.remove(player);
+			player.setMetadata("fallhandler:step", new FixedMetadataValue(ProjectKorra.plugin, Step.REMOVE));
+		} else if (step >= Step.REMOVE) {
+			removePlayer(player);
 		}
 	}
 
@@ -87,8 +99,10 @@ public class FallHandler {
 		}
 	}
 
-	public enum Step {
-		WAITING_FOR_MOVEMENT, MOVED, REMOVE
+	public static class Step {
+		public static final int WAITING_FOR_MOVEMENT = 0;
+		public static final int MOVED = 1;
+		public static final int REMOVE = 2;
 	}
 
 	public enum VelocityMode {
