@@ -63,14 +63,14 @@ public class Sphere implements Collider {
 
 	@Override
 	public Collection<Entity> getEntities(Predicate<Entity> filter) {
-		Predicate<Entity> sphereIntersection = entity -> intersects(new AABB(entity.getWorld(), entity.getBoundingBox()));
-		return toAABB().getEntities(filter == null ? sphereIntersection : sphereIntersection.and(filter));
+		Predicate<Entity> sphereIntersetion = entity -> intersects(new AABB(entity.getWorld(), entity.getBoundingBox()));
+		return toAABB().getEntities(sphereIntersetion.and(filter));
 	}
 
 	@Override
 	public Collection<Block> getBlocks(Predicate<Block> filter) {
-		Predicate<Block> sphereIntersection = block -> intersects(new AABB(block.getLocation(), block.getLocation().add(1, 1, 1)));
-		return toAABB().getBlocks(filter == null ? sphereIntersection : sphereIntersection.and(filter));
+		Predicate<Block> sphereIntersetion = block -> intersects(new AABB(block.getWorld(), block.getBoundingBox()));
+		return toAABB().getBlocks(sphereIntersetion.and(filter));
 	}
 
 	@Override

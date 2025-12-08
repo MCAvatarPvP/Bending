@@ -18,7 +18,6 @@ import com.projectkorra.projectkorra.object.Style;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.*;
 import com.projectkorra.projectkorra.util.colliders.AABB;
-import com.projectkorra.projectkorra.util.colliders.Sphere;
 import ga.strikepractice.StrikePractice;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.*;
@@ -559,8 +558,25 @@ public class GeneralMethods {
 	 * @return The list of Blocks
 	 */
 	public static List<Block> getBlocksAroundPoint(final Location location, final double radius) {
-		final Sphere sphere = new Sphere(location, radius);
-		return new ArrayList<>(sphere.getBlocks(null));
+		final List<Block> blocks = new ArrayList<Block>();
+
+		final int xorg = location.getBlockX();
+		final int yorg = location.getBlockY();
+		final int zorg = location.getBlockZ();
+
+		final int r = (int) radius * 4;
+
+		for (int x = xorg - r; x <= xorg + r; x++) {
+			for (int y = yorg - r; y <= yorg + r; y++) {
+				for (int z = zorg - r; z <= zorg + r; z++) {
+					final Block block = location.getWorld().getBlockAt(x, y, z);
+					if (block.getLocation().distanceSquared(location) <= radius * radius) {
+						blocks.add(block);
+					}
+				}
+			}
+		}
+		return blocks;
 	}
 
 	public static BlockFace getCardinalDirection(final Vector vector) {

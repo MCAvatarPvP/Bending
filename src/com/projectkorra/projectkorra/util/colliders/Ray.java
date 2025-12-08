@@ -134,14 +134,14 @@ public class Ray implements Collider {
 
 	@Override
 	public Collection<Entity> getEntities(Predicate<Entity> filter) {
-		Predicate<Entity> rayIntersection = entity -> intersects(new AABB(entity.getWorld(), entity.getBoundingBox()));
-		return toAABB().getEntities(filter == null ? rayIntersection : rayIntersection.and(filter));
+		Predicate<Entity> rayIntersetion = entity -> intersects(new AABB(entity.getWorld(), entity.getBoundingBox()));
+		return toAABB().getEntities(rayIntersetion.and(filter));
 	}
 
 	@Override
 	public Collection<Block> getBlocks(Predicate<Block> filter) {
-		Predicate<Block> rayIntersection = block -> intersects(new AABB(block.getLocation(), block.getLocation().add(1, 1, 1)));
-		return toAABB().getBlocks(filter == null ? rayIntersection : rayIntersection.and(filter));
+		Predicate<Block> rayIntersetion = block -> intersects(new AABB(block.getWorld(), block.getBoundingBox()));
+		return toAABB().getBlocks(rayIntersetion.and(filter));
 	}
 
 	@Override
