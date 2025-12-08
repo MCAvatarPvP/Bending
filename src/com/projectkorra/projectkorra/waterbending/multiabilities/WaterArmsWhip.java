@@ -394,14 +394,15 @@ public class WaterArmsWhip extends WaterAbility {
 			} else {
 				this.waterArms.setRightArmCooldown(false);
 			}
+
+            this.waterArms.setMaxUses(this.waterArms.getMaxUses() - 1);
+
 			if (this.hasDamaged) {
 				this.waterArms.setMaxPunches(this.waterArms.getMaxPunches() - 1);
 				ActionBar.sendActionBar(Element.WATER.getSubColor() + "Punches Left: " + this.waterArms.getMaxPunches(), this.player);
 			} else {
 				ActionBar.sendActionBar(Element.WATER.getSubColor() + "Uses Left: " + this.waterArms.getMaxUses(), this.player);
 			}
-
-			this.waterArms.setMaxUses(this.waterArms.getMaxUses() - 1);
 		}
 	}
 

@@ -647,9 +647,11 @@ public class PKListener implements Listener {
 	@EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
 	public void onEntitySuffocatedByTempBlocks(final EntityDamageEvent event) {
 		if (event.getCause() == DamageCause.SUFFOCATION) {
-			if (TempBlock.isTempBlock(event.getEntity().getLocation().add(0, 1, 0).getBlock())) {
-				event.setCancelled(true);
-			}
+            event.setCancelled(true); // TODO: Make this an option
+
+			//if (TempBlock.isTempBlock(event.getEntity().getLocation().add(0, 1, 0).getBlock())) {
+			//	event.setCancelled(true);
+			//}
 		}
 	}
 
