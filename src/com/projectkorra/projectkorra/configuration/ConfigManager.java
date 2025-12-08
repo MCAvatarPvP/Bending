@@ -1367,6 +1367,7 @@ public class ConfigManager {
 
 			config.addDefault("Abilities.Water.WaterArms.Whip.MaxLength", 12);
 			config.addDefault("Abilities.Water.WaterArms.Whip.MaxLengthWeak", 8);
+			config.addDefault("Abilities.Water.WaterArms.Whip.Speed", 1);
 
 			config.addDefault("Abilities.Water.WaterArms.Whip.NightAugments.MaxLength.Normal", 16);
 			config.addDefault("Abilities.Water.WaterArms.Whip.NightAugments.MaxLength.FullMoon", 20);

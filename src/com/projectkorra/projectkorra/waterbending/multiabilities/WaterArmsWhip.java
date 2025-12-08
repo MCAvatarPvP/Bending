@@ -87,7 +87,10 @@ public class WaterArmsWhip extends WaterAbility {
 		this.punchLengthNight = getConfig().getInt("Abilities.Water.WaterArms.Whip.Punch.NightAugments.MaxLength.Normal");
 		this.punchLengthFullMoon = getConfig().getInt("Abilities.Water.WaterArms.Whip.Punch.NightAugments.MaxLength.FullMoon");
 		this.activeLength = this.initLength;
-		this.whipSpeed = 1;
+		this.whipSpeed = getConfig().getInt("Abilities.Water.WaterArms.Whip.Speed");
+		if (this.whipSpeed <= 0) {
+			this.whipSpeed = 1;
+		}
 		this.grabDuration = getConfig().getLong("Abilities.Water.WaterArms.Whip.Grab.Duration");
 		this.pullMultiplier = getConfig().getDouble("Abilities.Water.WaterArms.Whip.Pull.Multiplier");
 		this.punchDamage = getConfig().getDouble("Abilities.Water.WaterArms.Whip.Punch.Damage");
