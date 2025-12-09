@@ -436,7 +436,7 @@ public class PKListener implements Listener {
 			return;
 		}
 
-		if (event.getRegainReason() != EntityRegainHealthEvent.RegainReason.CUSTOM) {
+		if (event.getRegainReason() != EntityRegainHealthEvent.RegainReason.CUSTOM && event.getRegainReason() != EntityRegainHealthEvent.RegainReason.MAGIC_REGEN) {
 			event.setCancelled(true);
 		}
 	}
