@@ -314,10 +314,6 @@ public class BendingPlayer extends OfflineBendingPlayer {
 			}
 		}
 
-		if (!hasRequiredElement && !(ability instanceof AvatarAbility && !((AvatarAbility) ability).requireAvatar())) {
-			return false;
-		}
-
 		if (ability.getElement() instanceof SubElement) {
 			final SubElement subElement = (SubElement) ability.getElement();
 			if (subElement instanceof MultiSubElement) {
@@ -330,8 +326,8 @@ public class BendingPlayer extends OfflineBendingPlayer {
 			return this.hasSubElement(subElement);
 		}
 
-		return true;
-	}
+        return hasRequiredElement || ability instanceof AvatarAbility && !((AvatarAbility) ability).requireAvatar();
+    }
 
 	@Override
 	public boolean canBloodbendAtAnytime() {
