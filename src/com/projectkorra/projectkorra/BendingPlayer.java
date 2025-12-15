@@ -21,7 +21,6 @@ import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.ChatUtil;
 import com.projectkorra.projectkorra.util.IndexedMap;
 import net.md_5.bungee.api.ChatColor;
-import org.apache.commons.collections4.map.ListOrderedMap;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
 
