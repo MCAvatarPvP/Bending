@@ -93,6 +93,7 @@ public class AirSurf extends AirAbility {
         this.maxHeight = getConfig().getDouble("Abilities.Air.AirSurf.Height.Maximum");
         this.useslime = getConfig().getBoolean("Abilities.Air.AirSurf.ShowSitting");
         this.disableSprint = getConfig().getBoolean("Abilities.Air.AirSurf.DisableSprint");
+        this.disableSprint = getConfig().getBoolean("Abilities.Air.AirSurf.ScooterBlastCD");
         this.random = new Random();
         this.angles = new ArrayList<>();
 
@@ -286,6 +287,7 @@ public class AirSurf extends AirAbility {
         this.player.setAllowFlight(canFly);
         this.player.setFlying(wasFlying);
         this.bPlayer.addCooldown(this);
+        this.bPlayer.setLastScooterUse(System.currentTimeMillis());
     }
 
     /*

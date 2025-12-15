@@ -7,7 +7,6 @@ import org.bukkit.entity.Player;
 
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.ability.CoreAbility;
-import com.projectkorra.projectkorra.ability.util.PassiveManager;
 import com.projectkorra.projectkorra.airbending.passive.AirSaturation;
 import com.projectkorra.projectkorra.chiblocking.passive.ChiSaturation;
 import com.projectkorra.projectkorra.command.Commands;

@@ -225,6 +225,9 @@ public class OfflineBendingPlayer {
                             if (split[0].contains("c")) {
                                 bPlayer.elements.add(Element.CHI);
                             }
+                            if (split[0].contains("m")) {
+                                bPlayer.elements.add(Element.getElement("ModernChi"));
+                            }
                         }
                         if (hasAddon) {
                             /*
@@ -578,8 +581,11 @@ public class OfflineBendingPlayer {
             if (this.hasElement(Element.FIRE)) {
                 elements.append("f");
             }
-            if (this.hasElement(Element.CHI)) {
+            if (this.directElement(Element.CHI)) {
                 elements.append("c");
+            }
+            if (this.directElement(Element.getElement("ModernChi"))) {
+                elements.append("m");
             }
             boolean hasAddon = false;
             List<Element> addonElements = Arrays.asList(Element.getAddonElements());
@@ -967,10 +973,17 @@ public class OfflineBendingPlayer {
         } else if (hasTempElement(element)) {
             return true;
         } else if (!(element instanceof SubElement)) {
+            if (element == Element.CHI && elements.contains(Element.getElement("ModernChi")))
+                return true;
+
             return this.elements.contains(element);
         } else {
             return this.hasSubElement((SubElement) element);
         }
+    }
+
+    public boolean directElement(final Element element) {
+        return elements.contains(element);
     }
 
     /**
@@ -1093,6 +1106,10 @@ public class OfflineBendingPlayer {
      * @return true if the element is toggled on
      */
     public boolean isElementToggled(final Element element) {
+        if (element == Element.CHI && toggledElements.contains(Element.getElement("ModernChi"))) {
+            return true;
+        }
+
         return !this.toggledElements.contains(element);
     }
 
@@ -1103,6 +1120,10 @@ public class OfflineBendingPlayer {
      * @return true if the element's passives are toggled on
      */
     public boolean isPassiveToggled(final Element element) {
+        if (element == Element.CHI && !toggledPassives.contains(Element.getElement("ModernChi"))) {
+            return true;
+        }
+
         return !this.toggledPassives.contains(element);
     }
 

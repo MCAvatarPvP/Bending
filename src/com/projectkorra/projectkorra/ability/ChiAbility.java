@@ -25,4 +25,7 @@ public abstract class ChiAbility extends ElementalAbility {
 		return Element.CHI;
 	}
 
+	public boolean isModern() {
+		return false;
+	}
 }

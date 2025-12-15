@@ -71,6 +71,10 @@ public class AirBlast extends AirAbility {
 	private double decayAmount;
 	private double decayMinimum;
 	private long minimumAirBlastTime;
+	private double slideSpeed;
+	private boolean staminaSliding;
+	private long scooterBlastCD;
+	private long scooterThreshold;
 
 	private boolean progressing;
 	private Location location;
@@ -150,6 +154,10 @@ public class AirBlast extends AirAbility {
 		this.decayAmount = getConfig().getDouble("Abilities.Air.AirBlast.DecayAmount");
 		this.decayMinimum = getConfig().getDouble("Abilities.Air.AirBlast.DecayMinimum");
 		this.minimumAirBlastTime = getConfig().getLong("Abilities.Air.AirBlast.MinimumAirBlastTime");
+		this.slideSpeed = getConfig().getDouble("Abilities.Air.AirBlast.SlidingFactor", 0.6);
+		this.staminaSliding = getConfig().getBoolean("Abilities.Air.AirBlast.StaminaSliding", true);
+		this.scooterBlastCD = getConfig().getLong("Abilities.Air.AirBlast.ScooterBlastCD", 1000L);
+		this.scooterThreshold = getConfig().getLong("Abilities.Air.AirBlast.ScooterThreshold", 500L);
 
 		this.isFromOtherOrigin = false;
 		this.showParticles = true;
@@ -259,7 +267,11 @@ public class AirBlast extends AirAbility {
 		
 		if (GeneralMethods.isSolid(entity.getLocation().add(0, -0.5, 0).getBlock()) && source == null) {
 			//change to .5 from .85
-			knockback *= 0.5;
+
+			double speed = 1 - bPlayer.getAirBlastDecay();
+			if (staminaSliding)
+				speed = 0;
+			knockback *= slideSpeed + speed;
 		}
 
 		//add double comp and calculations & change factor to knockback
@@ -502,6 +514,11 @@ public class AirBlast extends AirAbility {
 		this.direction = GeneralMethods.getDirection(origin, targetedLocation).normalize();
 
 		if (isFromOtherOrigin) {
+			if (System.currentTimeMillis() - bPlayer.getLastScooterUse() < scooterThreshold) {
+				bPlayer.addCooldown("AirScooter", scooterBlastCD);
+				bPlayer.addCooldown("AirSurf", scooterBlastCD);
+			}
+
 			if (System.currentTimeMillis() - bPlayer.getLastAirBlastTime() < minimumAirBlastTime) {
 				bPlayer.increaseAirBlastDecay(decayAmount, decayMinimum);
 			}

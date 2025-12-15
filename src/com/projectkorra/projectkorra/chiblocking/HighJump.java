@@ -91,4 +91,8 @@ public class HighJump extends ChiAbility {
 		this.cooldown = cooldown;
 	}
 
+	@Override
+	public boolean isModern() {
+		return true;
+	}
 }

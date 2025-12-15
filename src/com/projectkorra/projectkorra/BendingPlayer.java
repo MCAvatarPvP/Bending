@@ -76,7 +76,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
 	private final IndexedMap<String, Cooldown> comboCoolDowns = new IndexedMap<>();
 	private int tickIndex;
 	private int cps;
-	private long lastWaterManipRedirect;
+	private long lastWaterManipRedirect, lastScooterUse;
 
 	public BendingPlayer(Player player) {
 		super(player);
@@ -286,12 +286,13 @@ public class BendingPlayer extends OfflineBendingPlayer {
 	 * @return True if they can bind it
 	 */
 	public boolean canBind(final CoreAbility ability) {
+
 		//Loop through all hooks and test them
 		for (JavaPlugin plugin : BIND_HOOKS.keySet()) {
 			CanBindHook hook = BIND_HOOKS.get(plugin);
 			try {
 				Optional<Boolean> bool = hook.canBind(this, ability);
-				if (bool.isPresent()) return bool.get(); //If the hook didn't return
+				if (bool.isPresent()) return bool.get();
 			} catch (Exception e) {
 				ProjectKorra.log.severe("An error occurred while running CanBindHook registered by " + plugin.getName() + ".");
 				e.printStackTrace();
@@ -302,19 +303,34 @@ public class BendingPlayer extends OfflineBendingPlayer {
 			return false;
 		} else if (!this.player.hasPermission("bending.ability." + ability.getName())) {
 			return false;
-		} else if (!this.hasElement(ability.getElement()) && !(ability instanceof AvatarAbility && !((AvatarAbility) ability).requireAvatar())) {
+		}
+
+		// ModernChi can bind Chi abilities if the ability allows it
+		boolean hasRequiredElement = this.directElement(ability.getElement());
+
+		if (!hasRequiredElement && ability instanceof ChiAbility chiAbility && chiAbility.isModern()) {
+			Element modernChi = Element.getElement("ModernChi");
+			if (modernChi != null && this.directElement(modernChi)) {
+				hasRequiredElement = true;
+			}
+		}
+
+		if (!hasRequiredElement && !(ability instanceof AvatarAbility && !((AvatarAbility) ability).requireAvatar())) {
 			return false;
-		} else if (ability.getElement() instanceof SubElement) {
+		}
+
+		if (ability.getElement() instanceof SubElement) {
 			final SubElement subElement = (SubElement) ability.getElement();
 			if (subElement instanceof MultiSubElement) {
 				for (Element parent : ((MultiSubElement) subElement).getParentElements()) {
-					if (!this.hasElement(parent)) return false;
+					if (!this.directElement(parent)) return false;
 				}
-			} else if (!this.hasElement(subElement.getParentElement())) {
+			} else if (!this.directElement(subElement.getParentElement())) {
 				return false;
 			}
 			return this.hasSubElement(subElement);
 		}
+
 		return true;
 	}
 
@@ -1067,5 +1083,13 @@ public class BendingPlayer extends OfflineBendingPlayer {
 
 	public void setLastWaterManipRedirect(long lastWaterManipRedirect) {
 		this.lastWaterManipRedirect = lastWaterManipRedirect;
+	}
+
+	public void setLastScooterUse(long lastScooterUse) {
+		this.lastScooterUse = lastScooterUse;
+	}
+
+	public long getLastScooterUse() {
+		return lastScooterUse;
 	}
 }

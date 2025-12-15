@@ -274,6 +274,7 @@ public class AirScooter extends AirAbility {
 		this.player.setAllowFlight(canFly);
 		this.player.setFlying(wasFlying);
 		this.bPlayer.addCooldown(this);
+		this.bPlayer.setLastScooterUse(System.currentTimeMillis());
 	}
 
 	/*
