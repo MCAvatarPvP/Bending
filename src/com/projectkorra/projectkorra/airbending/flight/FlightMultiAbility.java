@@ -31,7 +31,7 @@ import com.projectkorra.projectkorra.airbending.AirSpout;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.firebending.FireJet;
 import com.projectkorra.projectkorra.util.DamageHandler;
-import com.projectkorra.projectkorra.util.MovementHandle;
+import com.projectkorra.projectkorra.util.MovementHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
 import com.projectkorra.projectkorra.waterbending.WaterSpout;
 
@@ -365,7 +365,7 @@ public class FlightMultiAbility extends FlightAbility implements MultiAbility {
 	}
 
 	public void cancel(final String reason) {
-		if (!MovementHandle.isStopped(this.player) && !this.bPlayer.isChiBlocked()) {
+		if (!MovementHandler.isStopped(this.player) && !this.bPlayer.isChiBlocked()) {
 			final long start = System.currentTimeMillis();
 			new BukkitRunnable() {
 				@Override

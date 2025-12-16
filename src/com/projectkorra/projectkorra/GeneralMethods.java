@@ -1831,7 +1831,7 @@ public class GeneralMethods {
 		TempBlock.removeAll();
 		TempArmor.revertAll();
 		TempArmorStand.removeAll();
-		MovementHandle.resetAll();
+		MovementHandler.resetAll();
 		MultiAbilityManager.removeAll();
 		TempFallingBlock.removeAllFallingBlocks();
 	}

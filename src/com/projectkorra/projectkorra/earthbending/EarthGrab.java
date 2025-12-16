@@ -32,7 +32,7 @@ import com.projectkorra.projectkorra.ability.EarthAbility;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.avatar.AvatarState;
-import com.projectkorra.projectkorra.util.MovementHandle;
+import com.projectkorra.projectkorra.util.MovementHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
 import com.projectkorra.projectkorra.util.TempArmor;
 import com.projectkorra.projectkorra.util.TempArmorStand;
@@ -55,7 +55,7 @@ public class EarthGrab extends EarthAbility {
 	private double damageThreshold;
 	private GrabMode mode;
 	private boolean initiated = false;
-	private MovementHandle mHandler;
+	private MovementHandler mHandler;
 	private ArmorStand trap;
 	private Location origin;
 	private Vector direction;
@@ -200,7 +200,7 @@ public class EarthGrab extends EarthAbility {
 
 			new TempBlock(this.target.getLocation().clone().subtract(0, 1, 0).getBlock(), this.target.getLocation().clone().subtract(0, 1, 0).getBlock().getType());
 
-			this.mHandler = new MovementHandle(this.target, this);
+			this.mHandler = new MovementHandler(this.target, this);
 			this.mHandler.stop(Element.EARTH.getColor() + "* Trapped *");
 
 			if (this.target instanceof Player || this.target instanceof Zombie || this.target instanceof Skeleton) {

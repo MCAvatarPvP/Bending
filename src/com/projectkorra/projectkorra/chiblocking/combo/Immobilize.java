@@ -18,7 +18,7 @@ import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.command.Commands;
-import com.projectkorra.projectkorra.util.MovementHandle;
+import com.projectkorra.projectkorra.util.MovementHandler;
 
 public class Immobilize extends ChiAbility implements ComboAbility {
 
@@ -59,7 +59,7 @@ public class Immobilize extends ChiAbility implements ComboAbility {
 	 * @param duration The time in milliseconds the target will be paralyzed
 	 */
 	private static void paralyze(final Entity target, final Long duration) {
-		final MovementHandle mh = new MovementHandle((LivingEntity) target, CoreAbility.getAbility(Immobilize.class));
+		final MovementHandler mh = new MovementHandler((LivingEntity) target, CoreAbility.getAbility(Immobilize.class));
 		mh.stopWithDuration(duration, Element.CHI.getColor() + "* Immobilized *");
 	}
 

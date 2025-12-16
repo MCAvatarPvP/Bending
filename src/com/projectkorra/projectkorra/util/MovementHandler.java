@@ -53,7 +53,7 @@ public class MovementHandler {
 			Player player = (Player) entity;
 			Location loc = player.getLocation();
 			double currTime = (double) (duration - (System.currentTimeMillis() - startTime)) / 1000;
-			ActionBar.sendActionBar(message.replace("{current_stun_time}", "" + currTime), player);
+			ChatUtil.sendActionBar(message.replace("{current_stun_time}", "" + currTime), player);
 			if (loc.getX() == location.getX() && loc.getY() == location.getY() && loc.getZ() == location.getZ()) {
 				return;
 			}
