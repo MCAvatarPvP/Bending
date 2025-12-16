@@ -77,6 +77,7 @@ public class CollisionInitializer {
 	}
 
 	public void initializeDefaultCollisions() {
+		final CoreAbility airWheel = CoreAbility.getAbility("AirWheel");
 		final CoreAbility airBlast = CoreAbility.getAbility(AirBlast.class);
 		CoreAbility.getAbility(AirBurst.class);
 		CoreAbility.getAbility(AirScooter.class);
@@ -132,7 +133,7 @@ public class CollisionInitializer {
 		CoreAbility.getAbility(WaterSpoutWave.class);
 
 		final CoreAbility[] smallAbils = { airSwipe, earthBlast, waterManipulation, iceBlast, iceSpikeBlast, fireBlast };
-		final CoreAbility[] largeAbils = { earthSmash, airShield, fireBlastCharged, fireKick, fireSpin, fireWheel, airSweep, iceBullet };
+		final CoreAbility[] largeAbils = { earthSmash, airShield, fireBlastCharged, fireKick, fireSpin, fireWheel, airSweep, iceBullet, airWheel };
 		final CoreAbility[] comboAbils = { fireKick, fireSpin, fireWheel, airSweep, iceBullet };
 		final CoreAbility[] removeSpoutAbils = { airSwipe, earthBlast, waterManipulation, iceBlast, iceSpikeBlast, fireBlast, fireBlastCharged, earthSmash, fireKick, fireSpin, fireWheel, airSweep, iceBullet };
 		final CoreAbility[] ignoreAbils = { airBlast, airSuction, blazeArc, combustion };

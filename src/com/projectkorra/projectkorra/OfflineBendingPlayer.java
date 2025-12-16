@@ -226,7 +226,7 @@ public class OfflineBendingPlayer {
                                 bPlayer.elements.add(Element.CHI);
                             }
                             if (split[0].contains("m")) {
-                                bPlayer.elements.add(Element.getElement("ModernChi"));
+                                bPlayer.elements.add(Element.getElement("MartialArts"));
                             }
                         }
                         if (hasAddon) {
@@ -584,7 +584,7 @@ public class OfflineBendingPlayer {
             if (this.directElement(Element.CHI)) {
                 elements.append("c");
             }
-            if (this.directElement(Element.getElement("ModernChi"))) {
+            if (this.directElement(Element.getElement("MartialArts"))) {
                 elements.append("m");
             }
             boolean hasAddon = false;
@@ -973,7 +973,7 @@ public class OfflineBendingPlayer {
         } else if (hasTempElement(element)) {
             return true;
         } else if (!(element instanceof SubElement)) {
-            if (element == Element.CHI && elements.contains(Element.getElement("ModernChi")))
+            if (element == Element.CHI && elements.contains(Element.getElement("MartialArts")))
                 return true;
 
             return this.elements.contains(element);
@@ -1106,7 +1106,7 @@ public class OfflineBendingPlayer {
      * @return true if the element is toggled on
      */
     public boolean isElementToggled(final Element element) {
-        if (element == Element.CHI && toggledElements.contains(Element.getElement("ModernChi"))) {
+        if (element == Element.CHI && toggledElements.contains(Element.getElement("MartialArts"))) {
             return true;
         }
 
@@ -1120,7 +1120,7 @@ public class OfflineBendingPlayer {
      * @return true if the element's passives are toggled on
      */
     public boolean isPassiveToggled(final Element element) {
-        if (element == Element.CHI && !toggledPassives.contains(Element.getElement("ModernChi"))) {
+        if (element == Element.CHI && !toggledPassives.contains(Element.getElement("MartialArts"))) {
             return true;
         }
 

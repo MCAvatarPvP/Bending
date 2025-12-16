@@ -308,7 +308,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
 		boolean hasRequiredElement = this.directElement(ability.getElement());
 
 		if (!hasRequiredElement && ability instanceof ChiAbility chiAbility && chiAbility.isModern()) {
-			Element modernChi = Element.getElement("ModernChi");
+			Element modernChi = Element.getElement("MartialArts");
 			if (modernChi != null && this.directElement(modernChi)) {
 				hasRequiredElement = true;
 			}
