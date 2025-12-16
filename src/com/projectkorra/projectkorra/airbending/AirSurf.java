@@ -22,6 +22,8 @@ import java.util.Random;
 
 public class AirSurf extends AirAbility {
 
+    private boolean disableSpeed;
+    private double strength;
     @Attribute(Attribute.SPEED)
     private double speed;
     private double interval;
@@ -93,7 +95,8 @@ public class AirSurf extends AirAbility {
         this.maxHeight = getConfig().getDouble("Abilities.Air.AirSurf.Height.Maximum");
         this.useslime = getConfig().getBoolean("Abilities.Air.AirSurf.ShowSitting");
         this.disableSprint = getConfig().getBoolean("Abilities.Air.AirSurf.DisableSprint");
-        this.disableSprint = getConfig().getBoolean("Abilities.Air.AirSurf.ScooterBlastCD");
+        this.strength = getConfig().getDouble("Abilities.Air.AirSurf.Strength", 0.15);
+        this.disableSpeed = getConfig().getBoolean("Abilities.Air.AirSurf.DisableSpeed", false);
         this.random = new Random();
         this.angles = new ArrayList<>();
 
@@ -243,7 +246,7 @@ public class AirSurf extends AirAbility {
          */
         final double distance = this.player.getLocation().getY() - this.floorblock.getY();
         final double delta = midHeight - distance;
-        double force = GeneralMethods.clamp(0.3 * delta, -1, 0.5);
+        double force = GeneralMethods.clamp(strength * delta, -1, 0.5);
         velocity.setY(force);
 
         final Vector v = velocity.clone().setY(0);
@@ -262,7 +265,7 @@ public class AirSurf extends AirAbility {
         }
 
         if (disableSprint) this.player.setSprinting(false);
-        this.player.removePotionEffect(PotionEffectType.SPEED);
+        if (disableSpeed) this.player.removePotionEffect(PotionEffectType.SPEED);
         if (this.useslime) {
             GeneralMethods.setVelocity(this, this.slime, velocity);
         } else {
