@@ -38,6 +38,7 @@ public class AvatarState extends AvatarAbility {
 	private boolean glow;
 	@Attribute("DarkAvatar")
 	private boolean darkAvatar = false;
+	public boolean ignorePermission;
 
 	public AvatarState(final Player player) {
 		super(player);
@@ -87,7 +88,7 @@ public class AvatarState extends AvatarAbility {
 
 	@Override
 	public void progress() {
-		if (!this.bPlayer.canBendIgnoreBindsCooldowns(this)) {
+		if (!this.bPlayer.canBendIgnoreBindsCooldowns(this) && !ignorePermission) {
 			this.remove();
 			return;
 		}
