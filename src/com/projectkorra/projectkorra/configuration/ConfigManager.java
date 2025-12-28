@@ -17,6 +17,7 @@ import java.util.List;
 
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
+import com.projectkorra.projectkorra.ProjectKorra;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -47,7 +48,10 @@ public class ConfigManager {
 		earthCosmeticsConfig = new Config(new File("earthCosmetics.yml"));
 		fallDamageConfig = new Config(new File("fallDamageConfig.yml"));
 		styleConfigs = new ArrayList<>();
-		avatarStateConfig = new Config(new File("avatarstate.yml"));
+
+		File styleAvatarStateDir = new File(ProjectKorra.plugin.getDataFolder(), "Styles");
+		File avatarStateFile = new File(styleAvatarStateDir, "avatarstate.yml");
+		avatarStateConfig = avatarStateFile.exists() ? new Config(avatarStateFile) : defaultConfig; // fall back to default if missing
 
 		configCheck(ConfigType.DEFAULT);
 		configCheck(ConfigType.LANGUAGE);

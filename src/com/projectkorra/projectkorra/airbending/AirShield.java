@@ -50,7 +50,7 @@ public class AirShield extends AirAbility {
 
 		this.maxRadius = getConfig().getDouble("Abilities.Air.AirShield.MaxRadius");
 		this.initialRadius = getConfig().getDouble("Abilities.Air.AirShield.InitialRadius");
-		this.isToggledByAvatarState = ConfigManager.avatarStateConfig.get().getBoolean("Abilities.Air.AirShield.IsToggle");
+		this.isToggledByAvatarState = getConfig().getBoolean("Abilities.Air.AirShield.IsToggle", false);
 		this.radius = this.initialRadius;
 		this.cooldown = getConfig().getLong("Abilities.Air.AirShield.Cooldown");
 		this.duration = getConfig().getLong("Abilities.Air.AirShield.Duration");

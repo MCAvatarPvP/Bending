@@ -30,15 +30,15 @@ public abstract class AvatarAbility extends ElementalAbility {
 	}
 
 	public static void playAvatarSound(final Location loc) {
-		if (ConfigManager.avatarStateConfig.get().getBoolean("AvatarState.PlaySound")) {
-			final float volume = (float) ConfigManager.avatarStateConfig.get().getDouble("AvatarState.Sound.Volume");
-			final float pitch = (float) ConfigManager.avatarStateConfig.get().getDouble("AvatarState.Sound.Pitch");
+		if (ConfigManager.defaultConfig.get().getBoolean("Abilities.Avatar.AvatarState.PlaySound")) {
+			final float volume = (float) ConfigManager.defaultConfig.get().getDouble("Abilities.Avatar.AvatarState.Sound.Volume");
+			final float pitch = (float) ConfigManager.defaultConfig.get().getDouble("Abilities.Avatar.AvatarState.Sound.Pitch");
 
 			Sound sound = Sound.BLOCK_BEACON_POWER_SELECT;
 			String soundString = ConfigManager.getConfig().getString("Abilities.Avatar.AvatarState.Sound.Sound");
 
 			try {
-				sound = Sound.valueOf(ConfigManager.avatarStateConfig.get().getString("AvatarState.Sound.Sound"));
+				sound = Sound.valueOf(ConfigManager.defaultConfig.get().getString("Abilities.Avatar.AvatarState.Sound.Sound"));
 			} catch (final IllegalArgumentException exception) {
 				ProjectKorra.log.warning("Your current value for 'AvatarState.Sound.Sound' is not valid.");
 			} finally {

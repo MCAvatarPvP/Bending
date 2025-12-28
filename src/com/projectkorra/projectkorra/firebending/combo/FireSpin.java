@@ -84,7 +84,7 @@ public class FireSpin extends FireAbility implements ComboAbility {
 		}
 
 		if (this.destination == null) {
-			if (this.bPlayer.isOnCooldown("FireSpin") && !this.bPlayer.isAvatarState()) {
+			if (this.bPlayer.isOnCooldown("FireSpin")) {
 				this.remove();
 				return;
 			}

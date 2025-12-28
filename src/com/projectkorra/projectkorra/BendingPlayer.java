@@ -100,6 +100,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
 		if (cooldown <= 0) {
 			return;
 		}
+
 		final PlayerCooldownChangeEvent event = new PlayerCooldownChangeEvent(this.player, ability, cooldown, Result.ADDED);
 		Bukkit.getServer().getPluginManager().callEvent(event);
 
@@ -306,6 +307,9 @@ public class BendingPlayer extends OfflineBendingPlayer {
 
 		// ModernChi can bind Chi abilities if the ability allows it
 		boolean hasRequiredElement = this.directElement(ability.getElement());
+		if (ability.getElement() == Element.AVATAR) {
+			return ((Player)this.player).hasPermission("bending.avatar");
+		}
 
 		if (!hasRequiredElement && ability instanceof ChiAbility chiAbility && chiAbility.isModern()) {
 			Element modernChi = Element.getElement("MartialArts");
@@ -583,7 +587,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
 	 * Sets chiBlocked to true.
 	 */
 	public void blockChi() {
-		if (this.isAvatarState() && !ConfigManager.avatarStateConfig.get().getBoolean("AvatarState.CanBeChiblocked")) return;
+		if (this.isAvatarState() && !ConfigManager.getConfig(this).getBoolean("Abilities.Avatar.AvatarState.CanBeChibblocked")) return;
 
 		this.chiBlocked = true;
 	}
@@ -592,7 +596,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
 	 * Checks if the {@link BendingPlayer} can be chiblocked. Will return false if they are already chiblocked
 	 */
 	public boolean canBeChiblocked() {
-		return (!this.isAvatarState() || ConfigManager.avatarStateConfig.get().getBoolean("AvatarState.CanBeChiblocked")) && !this.isChiBlocked();
+		return (!this.isAvatarState() || ConfigManager.getConfig(this).getBoolean("Abilities.Avatar.AvatarState.CanBeChibblocked")) && !this.isChiBlocked();
 	}
 
 	/**

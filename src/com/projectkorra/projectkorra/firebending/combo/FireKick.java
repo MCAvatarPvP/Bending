@@ -87,7 +87,7 @@ public class FireKick extends FireAbility implements ComboAbility {
 		}
 
 		if (this.destination == null) {
-			if (this.bPlayer.isOnCooldown("FireKick") && !this.bPlayer.isAvatarState()) {
+			if (this.bPlayer.isOnCooldown("FireKick")) {
 				this.remove();
 				return;
 			}

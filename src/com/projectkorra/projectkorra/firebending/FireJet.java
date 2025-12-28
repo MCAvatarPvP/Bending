@@ -87,7 +87,7 @@ public class FireJet extends FireAbility {
 		if (this.player.isDead() || !this.player.isOnline()) {
 			this.remove();
 			return;
-		} else if ((isWater(this.player.getLocation().getBlock()) || System.currentTimeMillis() > this.time + this.duration) && (!this.bPlayer.isAvatarState() || !this.avatarStateToggled)) {
+		} else if (isWater(this.player.getLocation().getBlock()) || System.currentTimeMillis() > this.time + this.duration) {
 			this.remove();
 			return;
 		} else {

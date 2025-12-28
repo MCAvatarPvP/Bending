@@ -10,6 +10,7 @@ import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.attribute.AttributeCache;
 import com.projectkorra.projectkorra.attribute.AttributeModification;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
+import com.projectkorra.projectkorra.object.Style;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Particle;
@@ -20,6 +21,7 @@ import org.bukkit.potion.PotionEffectType;
 
 import com.projectkorra.projectkorra.ability.AvatarAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
+import com.projectkorra.projectkorra.object.Style;
 import org.bukkit.potion.PotionEffectTypeWrapper;
 import org.jetbrains.annotations.NotNull;
 
@@ -38,6 +40,8 @@ public class AvatarState extends AvatarAbility {
 	private boolean glow;
 	@Attribute("DarkAvatar")
 	private boolean darkAvatar = false;
+	private Style previousStyle;
+	private boolean switchedStyle;
 
 	public AvatarState(final Player player) {
 		super(player);
@@ -50,21 +54,34 @@ public class AvatarState extends AvatarAbility {
 			return;
 		}
 
-		for (String key : ConfigManager.avatarStateConfig.get().getConfigurationSection("PotionEffects").getKeys(false)) {
-			final PotionEffectType type = PotionEffectTypeWrapper.getByName(key);
-			if (type == null) {
-				ProjectKorra.log.warning("Invalid PotionEffectType: " + key + " in AvatarState config.");
-				continue;
+		org.bukkit.configuration.ConfigurationSection potionSection = getConfig().getConfigurationSection("Abilities.Avatar.AvatarState.PotionEffects");
+		if (potionSection != null) {
+			for (String key : potionSection.getKeys(false)) {
+				final PotionEffectType type = PotionEffectTypeWrapper.getByName(key);
+				if (type == null) {
+					ProjectKorra.log.warning("Invalid PotionEffectType: " + key + " in AvatarState config.");
+					continue;
+				}
+				final int power = potionSection.getInt(key) - 1;
+				this.potionEffects.put(type, power);
 			}
-			final int power = ConfigManager.avatarStateConfig.get().getInt("PotionEffects." + key) - 1;
-			this.potionEffects.put(type, power);
 		}
 
-		this.duration = ConfigManager.avatarStateConfig.get().getLong("AvatarState.Duration");
-		this.cooldown = ConfigManager.avatarStateConfig.get().getLong("AvatarState.Cooldown");
-		this.showParticles = ConfigManager.avatarStateConfig.get().getBoolean("AvatarState.ShowParticles");
-		this.playSound = ConfigManager.avatarStateConfig.get().getBoolean("AvatarState.PlaySound");
-		this.glow = ConfigManager.avatarStateConfig.get().getBoolean("AvatarState.GlowEnabled");
+		this.previousStyle = this.bPlayer.getStyle();
+		Style avatarStyle = Style.getStyle("avatarstate");
+		if (avatarStyle != null) {
+			this.bPlayer.setStyle(avatarStyle);
+			this.switchedStyle = true;
+		} else {
+			ProjectKorra.log.warning("AvatarState style not found (Styles/avatarstate.yml). Using current style.");
+		}
+
+		// Use the configured style (if set) to read all AvatarState values
+		this.duration = getConfig().getLong("Abilities.Avatar.AvatarState.Duration");
+		this.cooldown = getConfig().getLong("Abilities.Avatar.AvatarState.Cooldown");
+		this.showParticles = getConfig().getBoolean("Abilities.Avatar.AvatarState.ShowParticles");
+		this.playSound = getConfig().getBoolean("Abilities.Avatar.AvatarState.PlaySound");
+		this.glow = getConfig().getBoolean("Abilities.Avatar.AvatarState.GlowEnabled");
 
 		if (playSound) playAvatarSound(player.getLocation());
 
@@ -119,48 +136,11 @@ public class AvatarState extends AvatarAbility {
 		}
 	}
 
-	public static boolean activateLowHealth(@NotNull BendingPlayer player, double damage, boolean willDie) {
-		if (!player.getAbilities().containsValue("AvatarState")) return false;
-		if (player.isOnCooldown("AvatarState")) return false;
-
-		if (ConfigManager.avatarStateConfig.get().getBoolean("LowHealth.Enabled")) {
-			boolean preventDeath = ConfigManager.avatarStateConfig.get().getBoolean("LowHealth.PreventDeath", false);
-			final double healthThreshold = ConfigManager.avatarStateConfig.get().getDouble("LowHealth.Threshold", 4);
-			final boolean boostHealth = ConfigManager.avatarStateConfig.get().getBoolean("LowHealth.BoostHealth.Enabled");
-			final int amount = ConfigManager.avatarStateConfig.get().getInt("LowHealth.BoostHealth.Amount", 2);
-			boolean yellowHearts = ConfigManager.avatarStateConfig.get().getBoolean("LowHealth.BoostHealth.YellowHearts");
-			final double currentHealth = player.getPlayer().getHealth() - damage;
-
-			if (currentHealth <= healthThreshold) {
-
-				if (willDie && !preventDeath) {
-					return false;
-				}
-
-				if (boostHealth) {
-					//Delay by 1 tick so the event doesn't override our changes
-					Bukkit.getScheduler().runTaskLater(ProjectKorra.plugin, () -> {
-						if (yellowHearts) {
-							if (willDie) player.getPlayer().setHealth(0.5);
-							player.getPlayer().setAbsorptionAmount(amount);
-						} else {
-							if (willDie) player.getPlayer().setHealth(amount);
-							else player.getPlayer().setHealth(Math.min(currentHealth + amount, player.getPlayer().getMaxHealth()));
-						}
-					}, 1L);
-				}
-
-				new AvatarState(player.getPlayer());
-				return preventDeath && willDie;
-			}
-		}
-		return false;
-	}
-
 	@Override
 	public void remove() {
 		this.bPlayer.addCooldown(this, true);
 		this.player.setGlowing(false);
+		this.bPlayer.setStyle(null);
 		super.remove();
 	}
 
@@ -247,9 +227,7 @@ public class AvatarState extends AvatarAbility {
 
 	@Override
 	public long getCooldown() {
-		//Scale the cooldown based on the duration of the ability
-		return this.isStarted() && this.duration > 0 ? (long) (((double)(System.currentTimeMillis() - this.getStartTime())
-				/ (double) this.duration) * this.cooldown) : this.cooldown;
+		return this.cooldown;
 	}
 
 	@Override
@@ -264,7 +242,7 @@ public class AvatarState extends AvatarAbility {
 
 	@Override
 	public boolean isEnabled() {
-		return ConfigManager.avatarStateConfig.get().getBoolean("AvatarState.Enabled");
+		return getConfig().getBoolean("Abilities.Avatar.AvatarState.Enabled");
 	}
 
 	public Map<PotionEffectType, Integer> getPotionEffects() {

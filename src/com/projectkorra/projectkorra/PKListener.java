@@ -949,6 +949,8 @@ public class PKListener implements Listener {
 		final Entity entity = e.getEntity();
 		final FireBlastCharged fireball = FireBlastCharged.getFireball(source);
 
+		DamageHandler.entityDamageCallback(e);
+
 		if (fireball != null) {
 			e.setCancelled(true);
 			fireball.dealDamage(entity);
@@ -1915,13 +1917,6 @@ public class PKListener implements Listener {
             }
         }
 
-        //AvatarState factors if the avatarstate is active
-        if (bPlayer.isAvatarState()) {
-            AttributeCache cache = CoreAbility.getAttributeCache(ability).get(event.getAttribute());
-            if (cache != null && cache.getAvatarStateModifier().isPresent()) { //Check if there is a cached avatarstate modifier for this attribute
-                event.addModification(cache.getAvatarStateModifier().get());
-            }
-        }
     }
 
 	@EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)

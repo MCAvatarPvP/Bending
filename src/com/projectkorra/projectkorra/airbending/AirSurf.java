@@ -97,6 +97,8 @@ public class AirSurf extends AirAbility {
         this.random = new Random();
         this.angles = new ArrayList<>();
 
+        this.recalculateAttributes();
+
         this.flightHandler.createInstance(player, this.getName());
         wasFlying = player.isFlying();
         canFly = player.getAllowFlight();

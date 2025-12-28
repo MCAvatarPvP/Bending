@@ -105,6 +105,9 @@ public class WaterSpoutWave extends WaterAbility {
 		this.damage = getConfig().getDouble("Abilities.Water.IceWave.Damage");
 		this.chargeTime = getConfig().getLong("Abilities.Water.WaterSpout.Wave.ChargeTime");
 		this.flightDuration = getConfig().getLong("Abilities.Water.WaterSpout.Wave.FlightDuration");
+		if (this.flightDuration <= 0) {
+			this.flightDuration = 2500; // sane default to avoid infinite/spam
+		}
 		this.cooldown = getConfig().getLong("Abilities.Water.WaterSpout.Wave.Cooldown");
 		this.revertSphereTime = getConfig().getLong("Abilities.Water.IceWave.RevertSphereTime");
 		this.revertIceSphere = getConfig().getBoolean("Abilities.Water.IceWave.RevertSphere");

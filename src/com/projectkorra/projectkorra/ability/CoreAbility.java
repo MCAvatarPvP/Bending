@@ -1026,7 +1026,8 @@ public abstract class CoreAbility implements Ability {
 					}
 				}
 
-				cache.getField().set(this, initialValue);
+				final Object coercedValue = coerceAttributeValue(cache.getField(), initialValue);
+				cache.getField().set(this, coercedValue);
 			} catch (IllegalArgumentException | IllegalAccessException e) {
 				ProjectKorra.log.severe("Failed to recalculate attribute " + attribute + " for " + this.getName() + "!");
 				e.printStackTrace();
@@ -1048,6 +1049,31 @@ public abstract class CoreAbility implements Ability {
 	 */
 	public static FileConfiguration getLanguageConfig() {
 		return ConfigManager.languageConfig.get();
+	}
+
+	private Object coerceAttributeValue(final Field field, final Object value) {
+		if (!(value instanceof Number)) {
+			return value;
+		}
+
+		final Number number = (Number) value;
+		final Class<?> type = field.getType();
+
+		if (type == Double.TYPE || type == Double.class) {
+			return number.doubleValue();
+		} else if (type == Float.TYPE || type == Float.class) {
+			return number.floatValue();
+		} else if (type == Long.TYPE || type == Long.class) {
+			return number.longValue();
+		} else if (type == Integer.TYPE || type == Integer.class) {
+			return number.intValue();
+		} else if (type == Short.TYPE || type == Short.class) {
+			return number.shortValue();
+		} else if (type == Byte.TYPE || type == Byte.class) {
+			return number.byteValue();
+		}
+
+		return value;
 	}
 
 	/**

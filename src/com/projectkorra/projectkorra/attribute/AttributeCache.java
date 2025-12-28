@@ -7,6 +7,7 @@ import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import org.apache.commons.lang3.tuple.Pair;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.MemorySection;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -73,7 +74,6 @@ public class AttributeCache {
      * @param ability The ability to calculate the AvatarState modifier for
      */
     public void calculateAvatarStateModifier(CoreAbility ability) {
-        // If the ability is an AvatarAbility and requires the Avatar element, we don't want to apply the AvatarState modifier
         if (ability instanceof AvatarAbility && ((AvatarAbility) ability).requireAvatar()) return;
 
         String configName = attribute;
@@ -83,23 +83,9 @@ public class AttributeCache {
         if (ability.getElement() instanceof Element.SubElement) {
             elementName = ((Element.SubElement) ability.getElement()).getParentElement().getName();
         }
-        String configPath = "Abilities." + elementName + "." + ability.getName() + "." + configName;
-        Object configObject = ConfigManager.avatarStateConfig.get().get(configPath);
+        Object configObject = findAvatarStateValue(ability, elementName, configName);
 
-        if (configObject == null) { //If the attribute doesn't exist for the ability in the config, check the _All section (for the element)
-            configPath = "Abilities." + ability.getElement().getName() + "._All." + attribute;
-
-            configObject = ConfigManager.avatarStateConfig.get().get(configPath);
-
-            if (configObject == null) { //If that is also null, check the global _All section
-
-                configPath = "Abilities._All." + attribute;
-                configObject = ConfigManager.avatarStateConfig.get().get(configPath);
-
-                //And if it still isn't a thing, ignore it
-                if (configObject == null || configObject instanceof ConfigurationSection) return;
-            }
-        }
+        if (configObject == null || configObject instanceof ConfigurationSection) return;
 
 
         String stringObject = configObject.toString();
@@ -111,7 +97,6 @@ public class AttributeCache {
         } else if (stringObject != null) {
             stringObject = stringObject.replaceAll(" ", "");
 
-            //Parse the value from the config. E.g. x0.8 turns into a multiplication of 0.8, and +10% turns into a multiplication of 1.1
             Pair<AttributeModifier, Number> parsed = AttributeUtil.getModification(stringObject);
 
             if (parsed == null) {
@@ -126,6 +111,88 @@ public class AttributeCache {
 
     public Optional<AttributeModification> getAvatarStateModifier() {
         return avatarStateModifier;
+    }
+
+    private Object findAvatarStateValue(CoreAbility ability, String elementName, String configName) {
+        return fetchAbilityValue(ConfigManager.avatarStateConfig.get(), elementName, ability.getName(), configName);
+    }
+
+    private Object scanSection(ConfigurationSection section, String configName) {
+        if (section == null) {
+            return null;
+        }
+
+        Map<String, Object> values = section.getValues(true);
+        for (Map.Entry<String, Object> entry : values.entrySet()) {
+            if (entry.getValue() instanceof ConfigurationSection) continue;
+
+            String key = entry.getKey();
+            if (key.equalsIgnoreCase(configName) || key.endsWith("." + configName)) {
+                return entry.getValue();
+            }
+        }
+
+        return null;
+    }
+
+    private Object fetchAbilityValue(FileConfiguration config, String elementName, String abilityName, String configName) {
+        //Exact element/ability path
+        String path = "Abilities." + elementName + "." + abilityName + "." + configName;
+        Object value = config.get(path);
+        if (value != null && !(value instanceof ConfigurationSection)) {
+            return value;
+        }
+
+        //Scan element/ability section for nested keys
+        value = scanSection(config.getConfigurationSection("Abilities." + elementName + "." + abilityName), configName);
+        if (value != null) {
+            return value;
+        }
+
+        //Global ability section without element
+        path = "Abilities." + abilityName + "." + configName;
+        value = config.get(path);
+        if (value != null && !(value instanceof ConfigurationSection)) {
+            return value;
+        }
+
+        value = scanSection(config.getConfigurationSection("Abilities." + abilityName), configName);
+        if (value != null) {
+            return value;
+        }
+
+        value = scanOtherElements(config, abilityName, configName);
+        if (value != null) {
+            return value;
+        }
+
+        return null;
+    }
+
+    private Object scanOtherElements(FileConfiguration config, String abilityName, String configName) {
+        ConfigurationSection abilitiesRoot = config.getConfigurationSection("Abilities");
+        if (abilitiesRoot == null) return null;
+
+        for (String elementKey : abilitiesRoot.getKeys(false)) {
+            ConfigurationSection elementSection = abilitiesRoot.getConfigurationSection(elementKey);
+            if (elementSection == null) continue;
+
+            Object value = elementSection.get("AvatarState." + configName);
+            if (value != null && !(value instanceof ConfigurationSection) && abilityName.equalsIgnoreCase("AvatarState")) {
+                return value;
+            }
+
+            ConfigurationSection abilitySection = elementSection.getConfigurationSection(abilityName);
+            if (abilitySection != null) {
+                Object direct = abilitySection.get(configName);
+                if (direct != null && !(direct instanceof ConfigurationSection)) return direct;
+
+                Object nested = scanSection(abilitySection, configName);
+                if (nested != null) return nested;
+            }
+        }
+
+        return null;
     }
 
 }
