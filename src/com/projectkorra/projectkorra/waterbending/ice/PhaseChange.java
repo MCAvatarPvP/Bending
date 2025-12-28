@@ -164,6 +164,7 @@ public class PhaseChange extends IceAbility {
 	}
 
 	public void setFields(final PhaseChangeType type) {
+		this.sourceRange = getConfig().getDouble("Abilities.Water.PhaseChange.SourceRange");
 		switch (type) {
 			case FREEZE:
 				this.depth = (int) getConfig().getInt("Abilities.Water.PhaseChange.Freeze.Depth");
