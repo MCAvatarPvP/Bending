@@ -1225,7 +1225,8 @@ public class OfflineBendingPlayer {
 
 	public void setStyle(Style style) {
 		this.style = style;
-		this.updatePlayerColumn(PlayerColumn.STYLE, style != null ? style.getName() : null);
+		// Don't update this idc.
+        // this.updatePlayerColumn(PlayerColumn.STYLE, style != null ? style.getName() : null);
 	}
 
 	public void setFireColor(CosmeticColor fireCosmeticColor) {
