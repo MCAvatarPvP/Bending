@@ -73,8 +73,10 @@ public class AirBlast extends AirAbility {
 	private long minimumAirBlastTime;
 	private double slideSpeed;
 	private boolean staminaSliding;
+	private boolean slidingConsumesStamina;
 	private long scooterBlastCD;
 	private long scooterThreshold;
+	private boolean refundedThisSlide;
 
 	private boolean progressing;
 	private Location location;
@@ -84,6 +86,9 @@ public class AirBlast extends AirAbility {
 	private Random random;
 	private ArrayList<Block> affectedLevers;
 	private ArrayList<Entity> affectedEntities;
+	private double preShootStamina;
+	private boolean usedStaminaThisShot;
+	private boolean pushed;
 
 	private AbilityLagCompensator lagCompensator;
 
@@ -156,6 +161,7 @@ public class AirBlast extends AirAbility {
 		this.minimumAirBlastTime = getConfig().getLong("Abilities.Air.AirBlast.MinimumAirBlastTime");
 		this.slideSpeed = getConfig().getDouble("Abilities.Air.AirBlast.SlidingFactor", 0.6);
 		this.staminaSliding = getConfig().getBoolean("Abilities.Air.AirBlast.StaminaSliding", true);
+		this.slidingConsumesStamina = getConfig().getBoolean("Abilities.Air.AirBlast.SlidingConsumesStamina", false);
 		this.scooterBlastCD = getConfig().getLong("Abilities.Air.AirBlast.ScooterBlastCD", 1000L);
 		this.scooterThreshold = getConfig().getLong("Abilities.Air.AirBlast.ScooterThreshold", 500L);
 
@@ -164,6 +170,8 @@ public class AirBlast extends AirAbility {
 		this.random = new Random();
 		this.affectedLevers = new ArrayList<>();
 		this.affectedEntities = new ArrayList<>();
+		this.preShootStamina = bPlayer.getAirBlastDecay();
+		this.usedStaminaThisShot = false;
 	}
 
 	public void selectOrigin() {
@@ -245,6 +253,22 @@ public class AirBlast extends AirAbility {
 			}
 		}
 
+		boolean sliding = GeneralMethods.isSolid(entity.getLocation().add(0, -0.5, 0).getBlock()) && source == null;
+		final boolean triggerStamina = !sliding || slidingConsumesStamina;
+
+		if (this.usedStaminaThisShot && isUser) {
+			usedStaminaThisShot = false;
+			if (triggerStamina) {
+				bPlayer.increaseAirBlastDecay(decayAmount, decayMinimum);
+				this.pushFactor *= bPlayer.getAirBlastDecay();
+			}
+		}
+
+		if (!pushed && triggerStamina) {
+			bPlayer.resetAirBlast();
+			pushed = true;
+		}
+
 		if (source != null) knockback = this.pushFactor;
 
 		if (knockback == 0) return;
@@ -264,10 +288,8 @@ public class AirBlast extends AirAbility {
 		if (location.getWorld().equals(this.origin.getWorld())) {
 			knockback *= 1 - location.distance(this.origin) / (2 * this.range);
 		}
-		
-		if (GeneralMethods.isSolid(entity.getLocation().add(0, -0.5, 0).getBlock()) && source == null) {
-			//change to .5 from .85
 
+		if (sliding) {
 			double speed = 1 - bPlayer.getAirBlastDecay();
 			if (staminaSliding)
 				speed = 0;
@@ -504,6 +526,10 @@ public class AirBlast extends AirAbility {
 			return;
 		}
 
+		this.preShootStamina = bPlayer.getAirBlastDecay();
+		this.usedStaminaThisShot = false;
+		this.refundedThisSlide = false;
+
 		Location targetedLocation = getTargetedLocation(player, this.range);
 		Block block = targetedLocation.getBlock();
 		if (!GeneralMethods.isSolid(block) && GeneralMethods.isSolid(block.getRelative(BlockFace.DOWN))) {
@@ -520,11 +546,8 @@ public class AirBlast extends AirAbility {
 			}
 
 			if (System.currentTimeMillis() - bPlayer.getLastAirBlastTime() < minimumAirBlastTime) {
-				bPlayer.increaseAirBlastDecay(decayAmount, decayMinimum);
+				this.usedStaminaThisShot = true;
 			}
-
-			bPlayer.resetAirBlast();
-			this.pushFactor *= bPlayer.getAirBlastDecay();
 		}
 
 		if(!Double.isFinite(this.direction.getX()) || !Double.isFinite(this.direction.getY()) || !Double.isFinite(this.direction.getZ())) {

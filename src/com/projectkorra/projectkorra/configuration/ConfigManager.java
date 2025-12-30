@@ -11,6 +11,7 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.EntityType;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -51,7 +52,15 @@ public class ConfigManager {
 
 		File styleAvatarStateDir = new File(ProjectKorra.plugin.getDataFolder(), "Styles");
 		File avatarStateFile = new File(styleAvatarStateDir, "avatarstate.yml");
-		avatarStateConfig = avatarStateFile.exists() ? new Config(avatarStateFile) : defaultConfig; // fall back to default if missing
+		if (!avatarStateFile.exists()) {
+            try {
+                avatarStateFile.createNewFile();
+            } catch (IOException e) {
+                // Ignored
+            }
+        }
+
+		avatarStateConfig = avatarStateFile.exists() ? new Config(avatarStateFile) : defaultConfig;
 
 		configCheck(ConfigType.DEFAULT);
 		configCheck(ConfigType.LANGUAGE);
@@ -1027,6 +1036,8 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.AirBlast.DecayAmount", 0.20);
 			config.addDefault("Abilities.Air.AirBlast.DecayMinimum", 0.20);
 			config.addDefault("Abilities.Air.AirBlast.MinimumAirBlastTime", 700);
+			config.addDefault("Abilities.Air.AirBlast.SlidingConsumesStamina", true);
+			config.addDefault("Abilities.Air.AirBlast.SlidingActivationDelay", 200);
 
 			config.addDefault("Abilities.Air.AirBurst.Enabled", true);
 			config.addDefault("Abilities.Air.AirBurst.FallThreshold", 10);
@@ -1076,6 +1087,11 @@ public class ConfigManager {
 			config.addDefault("Abilities.Air.AirSurf.DisableSprint", true);
 			config.addDefault("Abilities.Air.AirSurf.RequiresJump", false);
 			config.addDefault("Abilities.Air.AirSurf.CancelBlast", false);
+			config.addDefault("Abilities.Air.AirSurf.WindCharge.Enabled", false);
+			config.addDefault("Abilities.Air.AirSurf.WindCharge.Count", 4);
+			config.addDefault("Abilities.Air.AirSurf.WindCharge.Radius", 1.2);
+			config.addDefault("Abilities.Air.AirSurf.WindCharge.YOffset", 0.4);
+			config.addDefault("Abilities.Air.AirSurf.WindCharge.AngularSpeed", 14.0);
 
 			config.addDefault("Abilities.Air.AirShield.Enabled", true);
 			config.addDefault("Abilities.Air.AirShield.Cooldown", 0);
