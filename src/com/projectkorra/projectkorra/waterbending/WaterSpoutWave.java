@@ -97,7 +97,7 @@ public class WaterSpoutWave extends WaterAbility {
 		this.plant = getConfig().getBoolean("Abilities.Water.WaterSpout.Wave.AllowPlantSource");
 		this.radius = getConfig().getDouble("Abilities.Water.WaterSpout.Wave.Radius");
 		this.waveRadius = getConfig().getDouble("Abilities.Water.WaterSpout.Wave.WaveRadius");
-		this.iceWaveHitRadius = getConfig().getDouble("Abilities.Water.IceWave.HitRadius");
+		this.iceWaveHitRadius = getConfig().getDouble("Abilities.Water.IceWave.WaveHitRadius");
 		this.thawRadius = getConfig().getDouble("Abilities.Water.IceWave.ThawRadius");
 		this.animationSpeed = getConfig().getDouble("Abilities.Water.WaterSpout.Wave.AnimationSpeed");
 		this.selectRange = getConfig().getDouble("Abilities.Water.WaterSpout.Wave.SelectRange");
