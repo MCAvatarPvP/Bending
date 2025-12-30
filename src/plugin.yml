@@ -72,6 +72,7 @@ permissions:
       bending.command.firecolor: true
       bending.command.aircolor: true
       bending.command.earthcosmetic: true
+      bending.command.viewdistance: true
       bending.command.preset.list: true
       bending.command.preset.create.5: true
       bending.command.preset.create: true

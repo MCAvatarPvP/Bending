@@ -5,6 +5,7 @@ import java.util.List;
 
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
+import com.projectkorra.projectkorra.util.ParticleUtil;
 import org.bukkit.*;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
@@ -190,14 +191,13 @@ public abstract class AirAbility extends ElementalAbility {
 			if (!bPlayer.getAirColor().getName().equalsIgnoreCase("none")) {
 				Color color = bPlayer.getAirColor().getColor().getColor();
 
-				loc.getWorld().spawnParticle(
+				ParticleUtil.spawn(
 						Particle.ENTITY_EFFECT,
 						loc,
 						amount,
 						xOffset, yOffset, zOffset,
 						speed,
-						color,
-						true
+						color
 				);
 				return;
 			}

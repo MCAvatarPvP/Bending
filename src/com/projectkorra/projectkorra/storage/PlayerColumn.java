@@ -14,6 +14,7 @@ public enum PlayerColumn {
 	SPRINKLE("sprinkle"),
 	PERMA_REMOVED("permaremoved"),
 	SOURCE_HOLES("sourceholes"),
+	VIEW_DISTANCE("viewdistance"),
 	SLOT_1("slot1"),
 	SLOT_2("slot2"),
 	SLOT_3("slot3"),

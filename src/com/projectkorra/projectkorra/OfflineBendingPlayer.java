@@ -91,6 +91,7 @@ public class OfflineBendingPlayer {
     protected boolean sprinkle;
     protected boolean toggled;
     protected boolean sourceHoles;
+    protected int viewDistance;
     protected boolean allPassivesToggled;
     protected boolean loading;
 
@@ -204,6 +205,7 @@ public class OfflineBendingPlayer {
 				final boolean sprinkleFlag = record.isSprinkle();
 				final boolean permaremovedFlag = record.isPermaRemoved();
 				final boolean sourceholesFlag = record.hasSourceHoles();
+                final String viewDistanceField = record.getViewDistance();
 
                     //Load the elements
                     if (elementField != null && !elementField.equalsIgnoreCase("NULL")) {
@@ -445,6 +447,9 @@ public class OfflineBendingPlayer {
 
 					//Load sourceholes
 					bPlayer.sourceHoles = sourceholesFlag;
+
+					//Load viewDistance
+					bPlayer.viewDistance = viewDistanceField != null ? Integer.parseInt(viewDistanceField) : 256;
 
                     //Load cooldowns
                     if (ProjectKorra.isDatabaseCooldownsEnabled()) {
@@ -1160,6 +1165,14 @@ public class OfflineBendingPlayer {
         return this.sourceHoles;
     }
 
+    public int getViewDistance() {
+        return viewDistance;
+    }
+
+    public int getViewDistanceSqrt() {
+        return viewDistance * viewDistance;
+    }
+
     /**
      * Checks if the {@link BendingPlayer} has bending toggled on.
      *
@@ -1259,6 +1272,11 @@ public class OfflineBendingPlayer {
 		this.sourceHoles = !this.sourceHoles;
 		this.updatePlayerColumn(PlayerColumn.SOURCE_HOLES, Boolean.toString(this.sourceHoles));
 	}
+
+    public void setViewDistance(final int viewDistance) {
+        this.viewDistance = viewDistance;
+        this.updatePlayerColumn(PlayerColumn.VIEW_DISTANCE, Integer.toString(this.viewDistance));
+    }
 
     public void toggleBending() {
         this.toggled = !this.toggled;
@@ -1404,6 +1422,7 @@ public class OfflineBendingPlayer {
         bendingPlayer.earthCosmetic = offlineBendingPlayer.earthCosmetic;
         bendingPlayer.sprinkle = offlineBendingPlayer.sprinkle;
         bendingPlayer.sourceHoles = offlineBendingPlayer.sourceHoles;
+        bendingPlayer.viewDistance = offlineBendingPlayer.viewDistance;
         bendingPlayer.cooldowns.putAll(offlineBendingPlayer.cooldowns);
         bendingPlayer.loading = false;
 
@@ -1442,6 +1461,7 @@ public class OfflineBendingPlayer {
         offlineBendingPlayer.earthCosmetic = bendingPlayer.earthCosmetic;
         offlineBendingPlayer.sprinkle = bendingPlayer.sprinkle;
         offlineBendingPlayer.sourceHoles = bendingPlayer.sourceHoles;
+        offlineBendingPlayer.viewDistance = bendingPlayer.viewDistance;
         offlineBendingPlayer.cooldowns.putAll(bendingPlayer.cooldowns);
         offlineBendingPlayer.loading = false;
         offlineBendingPlayer.lastAccessed = System.currentTimeMillis();

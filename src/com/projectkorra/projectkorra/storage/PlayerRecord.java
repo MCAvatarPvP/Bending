@@ -18,11 +18,12 @@ public class PlayerRecord {
 	private final boolean sprinkle;
 	private final boolean permaRemoved;
 	private final boolean sourceHoles;
+	private final String viewDistance;
 	private final Map<Integer, String> slots;
 
 	public PlayerRecord(final UUID uuid, final String playerName, final String elements, final String subelements, final String style,
 						final String fireColor, final String airColor, final String earthCosmetic, final boolean sprinkle,
-						final boolean permaRemoved, final boolean sourceHoles, final Map<Integer, String> slots) {
+						final boolean permaRemoved, final boolean sourceHoles, final String viewDistance, final Map<Integer, String> slots) {
 		this.uuid = uuid;
 		this.playerName = playerName;
 		this.elements = elements;
@@ -34,6 +35,7 @@ public class PlayerRecord {
 		this.sprinkle = sprinkle;
 		this.permaRemoved = permaRemoved;
 		this.sourceHoles = sourceHoles;
+		this.viewDistance = viewDistance;
 		this.slots = Collections.unmodifiableMap(new HashMap<>(slots));
 	}
 
@@ -79,6 +81,10 @@ public class PlayerRecord {
 
 	public boolean hasSourceHoles() {
 		return this.sourceHoles;
+	}
+
+	public String getViewDistance() {
+		return this.viewDistance;
 	}
 
 	public Map<Integer, String> getSlots() {

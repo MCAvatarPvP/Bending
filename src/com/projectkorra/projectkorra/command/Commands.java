@@ -135,5 +135,6 @@ public class Commands {
 		new CooldownCommand();
 		new TempCommand();
 		new ColliderCommand();
+		new ViewDistanceCommand();
 	}
 }

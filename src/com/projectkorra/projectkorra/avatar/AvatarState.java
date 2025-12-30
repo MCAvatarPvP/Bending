@@ -11,6 +11,7 @@ import com.projectkorra.projectkorra.attribute.AttributeCache;
 import com.projectkorra.projectkorra.attribute.AttributeModification;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.object.Style;
+import com.projectkorra.projectkorra.util.ParticleUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Particle;
@@ -89,14 +90,14 @@ public class AvatarState extends AvatarAbility {
 		this.recalculateAttributes();
 
 		if (showParticles) {
-			player.getWorld().spawnParticle(Particle.FLASH, player.getLocation().add(0, 0.8, 0), 1, 0, 0, 0);
+			ParticleUtil.spawn(Particle.FLASH, player.getLocation().add(0, 0.8, 0), 1, 0, 0, 0);
 
 
 			Random rand = new Random();
 			for (int i = 0; i < 60; i++) {
 				Particle particle = i % 2 == 0 ? Particle.END_ROD : (darkAvatar ? Particle.WITCH : Particle.FIREWORK);
 
-				player.getWorld().spawnParticle(particle, player.getLocation().add(0, 1, 0), 0, rand.nextDouble() - 0.5, rand.nextDouble() - 0.5, rand.nextDouble() - 0.5, 0.3);
+				ParticleUtil.spawn(particle, player.getLocation().add(0, 1, 0), 0, rand.nextDouble() - 0.5, rand.nextDouble() - 0.5, rand.nextDouble() - 0.5, 0.3);
 			}
 		}
 
@@ -127,11 +128,11 @@ public class AvatarState extends AvatarAbility {
 		if (this.showParticles) {
 			if (this.getRunningTicks() % 4 == 0) {
 				final Location loc = this.player.getLocation().add(0, 0.8, 0);
-				loc.getWorld().spawnParticle(Particle.END_ROD, loc, 1, 0.3, 0.3, 0.3, 0.01);
+				ParticleUtil.spawn(Particle.END_ROD, loc, 1, 0.3, 0.3, 0.3, 0.01);
 			}
 			if (this.getRunningTicks() % 6 == 0) {
 				final Location loc = this.player.getEyeLocation();
-				loc.getWorld().spawnParticle((darkAvatar ? Particle.WITCH : Particle.FIREWORK), loc, 1, 0.3, 0.3, 0.3, 0);
+				ParticleUtil.spawn((darkAvatar ? Particle.WITCH : Particle.FIREWORK), loc, 1, 0.3, 0.3, 0.3, 0);
 			}
 
 		}
