@@ -332,6 +332,11 @@ public class ConfigManager {
 			config.addDefault("Commands.SourceHoles.ToggledOn", "SourceHoles are now toggled on.");
 			config.addDefault("Commands.SourceHoles.ToggledOff", "SourceHoles are now toggled off.");
 
+			config.addDefault("Commands.ViewDistance.Description", "This command allows you to change particle view distance.");
+			config.addDefault("Commands.ViewDistance.CheckDistance", "Your particle view distance is set to: {distance} blocks.");
+			config.addDefault("Commands.ViewDistance.InvalidDistance", "Distance '{distance}' is not a valid number");
+			config.addDefault("Commands.ViewDistance.ChangedDistance", "Successfully changed particle view distance to {distance} blocks.");
+
 			config.addDefault("Commands.Invincible.Description", "This command will make you immune to all bending damage. Once you use this command, you will stay invincible until you log off or use this command again.");
 			config.addDefault("Commands.Invincible.ToggledOn", "You are now invincible to all bending damage and effects. Use this command again to disable this.");
 			config.addDefault("Commands.Invincible.ToggledOff", "You are no longer invincible to all bending damage and effects.");

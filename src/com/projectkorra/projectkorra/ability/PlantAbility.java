@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.ability;
 
+import com.projectkorra.projectkorra.util.ParticleUtil;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
@@ -25,7 +26,7 @@ public abstract class PlantAbility extends WaterAbility implements SubAbility {
 
 	// Because Plantbending deserves particles too!
 	public void playPlantbendingParticles(final Location loc, final int amount, final double xOffset, final double yOffset, final double zOffset) {
-		loc.getWorld().spawnParticle(Particle.BLOCK, loc.clone().add(0.5, 0, 0.5), amount, xOffset, yOffset, zOffset, Material.OAK_LEAVES.createBlockData());
+		ParticleUtil.spawn(Particle.BLOCK, loc.clone().add(0.5, 0, 0.5), amount, xOffset, yOffset, zOffset, 1.0, Material.OAK_LEAVES.createBlockData());
 	}
 
 }

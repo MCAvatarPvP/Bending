@@ -5,6 +5,7 @@ import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
+import com.projectkorra.projectkorra.util.ParticleUtil;
 import org.bukkit.Difficulty;
 import org.bukkit.Location;
 import org.bukkit.Particle;
@@ -331,7 +332,7 @@ public class AirSurf extends AirAbility {
 
     private void spawnShortLivedParticle(final Location location) {
         // Matches the collider visual particles so the orbit fades immediately.
-        location.getWorld().spawnParticle(this.windOrbitParticle, location, 0, 0, 99999999, 0, 99999999, null, true);
+        ParticleUtil.spawn(this.windOrbitParticle, location, 0, 0, 99999999, 0, 99999999, null);
     }
 
     /*

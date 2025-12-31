@@ -124,6 +124,7 @@ public class SqlStorageAdapter implements StorageAdapter {
 						"`sprinkle` varchar(5)," +
 						"`permaremoved` varchar(5)," +
 						"`sourceholes` varchar(5)," +
+						"`viewdistance` varchar(3)," +
 						"`slot1` varchar(255)," +
 						"`slot2` varchar(255)," +
 						"`slot3` varchar(255)," +
@@ -147,6 +148,7 @@ public class SqlStorageAdapter implements StorageAdapter {
 						"`sprinkle` TEXT(5)," +
 						"`permaremoved` TEXT(5)," +
 						"`sourceholes` TEXT(5)," +
+						"`viewdistance` TEXT(3)," +
 						"`slot1` TEXT(255)," +
 						"`slot2` TEXT(255)," +
 						"`slot3` TEXT(255)," +
@@ -175,6 +177,14 @@ public class SqlStorageAdapter implements StorageAdapter {
 				}
 			} catch (final SQLException e) {
 				throw new StorageException("Failed checking pk_players schema", e);
+			}
+
+			if (!this.database.columnExists("pk_players", "viewdistance")) {
+				String query = this.type == StorageType.MYSQL
+						? "ALTER TABLE `pk_players` ADD COLUMN viewdistance varchar(3);"
+						: "ALTER TABLE `pk_players` ADD COLUMN viewdistance TEXT(3);";
+				this.database.modifyQuery(query, false);
+				ProjectKorra.log.info("Updated Database with viewdistance.");
 			}
 		}
 	}
@@ -347,6 +357,7 @@ public class SqlStorageAdapter implements StorageAdapter {
 							sprinkle,
 							permaRemoved,
 							sourceHoles,
+							rs.getString("viewdistance"),
 							slots));
 				}
 			} catch (final SQLException e) {

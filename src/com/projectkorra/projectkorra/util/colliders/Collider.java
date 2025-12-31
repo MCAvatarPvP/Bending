@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.util.colliders;
 
+import com.projectkorra.projectkorra.util.ParticleUtil;
 import org.bukkit.Location;
 import org.bukkit.Particle;
 import org.bukkit.block.Block;
@@ -35,15 +36,11 @@ public interface Collider {
 
 	default void spawnParticle(Collection<Player> players, Location location) {
 		if (players == null || players.isEmpty()) {
-			location.getWorld().spawnParticle(getDisplayParticle(), location, 0, 0, 99999999, 0, 99999999, null, true);
+			ParticleUtil.spawn(getDisplayParticle(), location, 0, 0, 99999999, 0, 99999999);
 			return;
 		}
 
-		for (Player player : players) {
-			if (player.getWorld() != location.getWorld()) continue;
-
-			player.spawnParticle(getDisplayParticle(), location, 0, 0, 99999999, 0, 99999999, null);
-		}
+		ParticleUtil.spawn(players, getDisplayParticle(), location, 0, 0, 99999999, 0, 99999999);
 	}
 
 	AABB toAABB();

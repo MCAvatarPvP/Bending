@@ -156,11 +156,11 @@ public enum ParticleEffect {
 	public void display(Location loc, int amount, double offsetX, double offsetY, double offsetZ, double extra) {
 		if (this == ParticleEffect.SNOW_SHOVEL) {
 			BlockData snowBlockData = Bukkit.createBlockData(Material.SNOW_BLOCK);
-			loc.getWorld().spawnParticle(Particle.BLOCK, loc, amount, offsetX, offsetY, offsetZ, extra, snowBlockData, true);
+			ParticleUtil.spawn(Particle.BLOCK, loc, amount, offsetX, offsetY, offsetZ, extra, snowBlockData);
 			return;
 		}
 
-		loc.getWorld().spawnParticle(particle, loc, amount, offsetX, offsetY, offsetZ, extra, null, true);
+		ParticleUtil.spawn(particle, loc, amount, offsetX, offsetY, offsetZ, extra, null);
 	}
 
 	/**
@@ -189,14 +189,14 @@ public enum ParticleEffect {
 	public void display(Location loc, int amount, double offsetX, double offsetY, double offsetZ, double extra, Object data) {
 		if (this == ParticleEffect.SNOW_SHOVEL) {
 			BlockData snowBlockData = Bukkit.createBlockData(Material.SNOW_BLOCK);
-			loc.getWorld().spawnParticle(Particle.BLOCK, loc, amount, offsetX, offsetY, offsetZ, extra, snowBlockData, true);
+			ParticleUtil.spawn(Particle.BLOCK, loc, amount, offsetX, offsetY, offsetZ, extra, snowBlockData);
 			return;
 		}
 
 		if (dataClass.isAssignableFrom(Void.class) || data == null || !dataClass.isAssignableFrom(data.getClass())) {
 			display(loc, amount, offsetX, offsetY, offsetZ, extra);
 		} else {
-			loc.getWorld().spawnParticle(particle, loc, amount, offsetX, offsetY, offsetZ, extra, data, true);
+			ParticleUtil.spawn(particle, loc, amount, offsetX, offsetY, offsetZ, extra, data);
 		}
 	}
 }
