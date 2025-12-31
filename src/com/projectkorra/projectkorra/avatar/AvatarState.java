@@ -41,8 +41,6 @@ public class AvatarState extends AvatarAbility {
 	@Attribute("DarkAvatar")
 	private boolean darkAvatar = false;
 	public boolean ignorePermission;
-	private Style previousStyle;
-	private boolean switchedStyle;
 
 	public AvatarState(final Player player) {
 		super(player);
@@ -68,11 +66,9 @@ public class AvatarState extends AvatarAbility {
 			}
 		}
 
-		this.previousStyle = this.bPlayer.getStyle();
 		Style avatarStyle = Style.getStyle("avatarstate");
 		if (avatarStyle != null) {
 			this.bPlayer.setStyle(avatarStyle);
-			this.switchedStyle = true;
 		} else {
 			ProjectKorra.log.warning("AvatarState style not found (Styles/avatarstate.yml). Using current style.");
 		}
