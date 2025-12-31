@@ -38,6 +38,7 @@ public class FireKick extends FireAbility implements ComboAbility {
 	private Location destination;
 	private ArrayList<LivingEntity> affectedEntities;
 	private ArrayList<BukkitRunnable> tasks;
+	private double pitchOffset;
 
 	public FireKick(final Player player) {
 		super(player);
@@ -55,6 +56,7 @@ public class FireKick extends FireAbility implements ComboAbility {
 		this.speed = getConfig().getLong("Abilities.Fire.FireKick.Speed");
 		this.radius = getConfig().getLong("Abilities.Fire.FireKick.Radius");
 		this.collisionRadius = getConfig().getDouble("Abilities.Fire.FireKick.CollisionRadius");
+		this.pitchOffset = getConfig().getDouble("Abilities.Fire.FireKick.PitchOffset", 1);
 
 		this.start();
 	}
@@ -93,8 +95,11 @@ public class FireKick extends FireAbility implements ComboAbility {
 			}
 
 			this.bPlayer.addCooldown("FireKick", this.cooldown);
-			final Vector eyeDir = this.player.getEyeLocation().getDirection().normalize().multiply(this.range);
-			this.destination = this.player.getEyeLocation().add(eyeDir);
+			Location eye = player.getEyeLocation().clone();
+			eye.setPitch((float) (eye.getPitch() + pitchOffset));
+
+			final Vector eyeDir = eye.getDirection().normalize().multiply(this.range);
+			this.destination = eye.add(eyeDir);
 
 			this.player.getWorld().playSound(this.player.getLocation(), Sound.ENTITY_HORSE_JUMP, 0.5f, 0f);
 			this.player.getWorld().playSound(this.player.getLocation(), Sound.ENTITY_CREEPER_PRIMED, 0.5f, 1f);
