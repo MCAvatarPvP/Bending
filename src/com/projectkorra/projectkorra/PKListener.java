@@ -2105,6 +2105,15 @@ public class PKListener implements Listener {
 			double multiplier = ConfigManager.getConfig(bPlayer).getDouble("Properties.MobDamageMultiplier");
 			event.setDamage(event.getDamage() * multiplier);
 		}
+
+		if (event.getEntity() instanceof LivingEntity le && event.getAbility().getName().equalsIgnoreCase("FlyingKick")) {
+			final boolean canFusion = ConfigManager.getConfig(bPlayer).getBoolean("Abilities.Chi.Paralyze.AllowFlyingKickFusion");
+			final CoreAbility ability = bPlayer.getBoundAbility();
+			if (canFusion && bPlayer.canCurrentlyBendWithWeapons() && bPlayer.isElementToggled(Element.CHI) &&
+					ability instanceof Paralyze && !bPlayer.isOnCooldown(ability) && bPlayer.canBendPassive(ability)) {
+				new Paralyze(source, le);
+			}
+		}
 	}
 
 	public static HashMap<Player, String> getBendingPlayerDeath() {
