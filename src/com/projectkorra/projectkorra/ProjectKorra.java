@@ -54,7 +54,7 @@ public class ProjectKorra extends JavaPlugin {
 		Style.loadStyleConfigs(new File(plugin.getDataFolder() + File.separator + "Styles"));
 		CosmeticColor.loadColors();
 		EarthCosmetic.loadCosmetics();
-		FallHandler.loadNoFallDamageAbilities();
+		Bukkit.getScheduler().runTaskLater(this, FallHandler::loadNoFallDamageAbilities, 1);
 		new GeneralMethods(this);
 		final boolean checkUpdateOnStartup = ConfigManager.getConfig().getBoolean("Properties.UpdateChecker");
 		this.updater = new Updater(this, "https://projectkorra.com/forum/resources/projectkorra-core.1/", checkUpdateOnStartup);

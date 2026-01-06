@@ -1964,6 +1964,7 @@ public class ConfigManager {
 			config.addDefault("Abilities.Chi.Paralyze.Enabled", true);
 			config.addDefault("Abilities.Chi.Paralyze.Cooldown", 10000);
 			config.addDefault("Abilities.Chi.Paralyze.Duration", 1500);
+			config.addDefault("Abilities.Chi.Paralyze.AllowFlyingKickFusion", true);
 
 			config.addDefault("Abilities.Chi.RapidPunch.Enabled", true);
 			config.addDefault("Abilities.Chi.RapidPunch.Damage", 1);

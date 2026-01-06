@@ -95,17 +95,17 @@ public class FireKick extends FireAbility implements ComboAbility {
 			}
 
 			this.bPlayer.addCooldown("FireKick", this.cooldown);
-			Location eye = player.getEyeLocation().clone();
+			Location eye = player.getEyeLocation();
 			eye.setPitch((float) (eye.getPitch() + pitchOffset));
 
 			final Vector eyeDir = eye.getDirection().normalize().multiply(this.range);
-			this.destination = eye.add(eyeDir);
+			this.destination = eye.clone().add(eyeDir);
 
 			this.player.getWorld().playSound(this.player.getLocation(), Sound.ENTITY_HORSE_JUMP, 0.5f, 0f);
 			this.player.getWorld().playSound(this.player.getLocation(), Sound.ENTITY_CREEPER_PRIMED, 0.5f, 1f);
 			for (int i = -30; i <= 30; i += 5) {
 				double angle = Math.toRadians(i);
-				final Vector direction = this.player.getEyeLocation().getDirection().clone();
+				final Vector direction = eye.getDirection();
 				Vector xz = GeneralMethods.rotateVectorAroundVector(direction, new Vector(-direction.getZ(), 0, direction.getX()).normalize(), 0);
 				Vector vec = direction.clone().multiply(Math.cos(angle))
 						.add(xz.clone().multiply(Math.sin(angle))).normalize();

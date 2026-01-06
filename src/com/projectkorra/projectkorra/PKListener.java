@@ -969,6 +969,10 @@ public class PKListener implements Listener {
 			Suffocate.remove((Player) entity);
 		}
 
+		if (entity instanceof LivingEntity livingEntity && DamageHandler.isReceivingDamage(livingEntity)) {
+			return;
+		}
+
 		if (source instanceof Player) { // This is the player hitting someone.
 			final Player sourcePlayer = (Player) source;
 			final BendingPlayer sourceBPlayer = BendingPlayer.getBendingPlayer(sourcePlayer);
@@ -2100,6 +2104,15 @@ public class PKListener implements Listener {
 		if (event.getEntity() instanceof LivingEntity && !(event.getEntity() instanceof Player)) {
 			double multiplier = ConfigManager.getConfig(bPlayer).getDouble("Properties.MobDamageMultiplier");
 			event.setDamage(event.getDamage() * multiplier);
+		}
+
+		if (event.getEntity() instanceof LivingEntity le && event.getAbility().getName().equalsIgnoreCase("FlyingKick")) {
+			final boolean canFusion = ConfigManager.getConfig(bPlayer).getBoolean("Abilities.Chi.Paralyze.AllowFlyingKickFusion");
+			final CoreAbility ability = bPlayer.getBoundAbility();
+			if (canFusion && bPlayer.canCurrentlyBendWithWeapons() && bPlayer.isElementToggled(Element.CHI) &&
+					ability instanceof Paralyze && !bPlayer.isOnCooldown(ability) && bPlayer.canBendPassive(ability)) {
+				new Paralyze(source, le);
+			}
 		}
 	}
 
