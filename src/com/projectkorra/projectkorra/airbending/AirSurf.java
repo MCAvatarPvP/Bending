@@ -21,6 +21,7 @@ import org.bukkit.util.Vector;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class AirSurf extends AirAbility {
 
@@ -37,11 +38,7 @@ public class AirSurf extends AirAbility {
     private long duration;
     @Attribute(Attribute.HEIGHT)
     private double maxHeightFromGround;
-    private double downPush;
-    private double upPush;
-    private double minHeight;
     private double midHeight;
-    private double maxHeight;
     private Block floorblock;
     private Random random;
     private ArrayList<Double> angles;
@@ -54,13 +51,6 @@ public class AirSurf extends AirAbility {
 
     private double phi = 0;
     private List<Vector> ballOffsets;
-    private boolean windOrbitEnabled;
-    private int windOrbitCount;
-    private double windOrbitRadius;
-    private double windOrbitYOffset;
-    private double windOrbitAngularSpeed;
-    private double windOrbitAngle;
-    private Particle windOrbitParticle;
 
     public AirSurf(final Player player) {
         super(player);
@@ -97,25 +87,13 @@ public class AirSurf extends AirAbility {
         this.cooldown = getConfig().getLong("Abilities.Air.AirSurf.Cooldown");
         this.duration = getConfig().getLong("Abilities.Air.AirSurf.Duration");
         this.maxHeightFromGround = getConfig().getDouble("Abilities.Air.AirSurf.MaxHeightFromGround");
-        this.downPush = getConfig().getDouble("Abilities.Air.AirSurf.Push.Down");
-        this.upPush = getConfig().getDouble("Abilities.Air.AirSurf.Push.Up");
-        this.minHeight = getConfig().getDouble("Abilities.Air.AirSurf.Height.Minimum");
         this.midHeight = getConfig().getDouble("Abilities.Air.AirSurf.Height.Middle");
-        this.maxHeight = getConfig().getDouble("Abilities.Air.AirSurf.Height.Maximum");
         this.useslime = getConfig().getBoolean("Abilities.Air.AirSurf.ShowSitting");
         this.disableSprint = getConfig().getBoolean("Abilities.Air.AirSurf.DisableSprint");
         this.strength = getConfig().getDouble("Abilities.Air.AirSurf.Strength", 0.15);
         this.disableSpeed = getConfig().getBoolean("Abilities.Air.AirSurf.DisableSpeed", false);
-        this.windOrbitEnabled = getConfig().getBoolean("Abilities.Air.AirSurf.WindCharge.Enabled", false);
-        this.windOrbitCount = Math.max(0, getConfig().getInt("Abilities.Air.AirSurf.WindCharge.Count", 4));
-        this.windOrbitRadius = getConfig().getDouble("Abilities.Air.AirSurf.WindCharge.Radius", 1.2);
-        this.windOrbitYOffset = getConfig().getDouble("Abilities.Air.AirSurf.WindCharge.YOffset", 0.4);
-        this.windOrbitAngularSpeed = getConfig().getDouble("Abilities.Air.AirSurf.WindCharge.AngularSpeed", 14.0);
         this.random = new Random();
         this.angles = new ArrayList<>();
-        this.windOrbitAngle = 0;
-        this.windOrbitEnabled = this.windOrbitEnabled && this.windOrbitCount > 0;
-        this.windOrbitParticle = Particle.CLOUD;
 
         this.recalculateAttributes();
 
@@ -291,10 +269,6 @@ public class AirSurf extends AirAbility {
             GeneralMethods.setVelocity(this, this.player, velocity);
         }
 
-        if (this.windOrbitEnabled) {
-            this.displayWindOrbitParticles();
-        }
-
         if (this.random.nextInt(4) == 0) {
             playAirbendingSound(this.player.getLocation());
         }
@@ -315,26 +289,6 @@ public class AirSurf extends AirAbility {
         this.bPlayer.addCooldown(this);
         this.bPlayer.setLastScooterUse(System.currentTimeMillis());
     }
-
-    private void displayWindOrbitParticles() {
-        this.windOrbitAngle = (this.windOrbitAngle + this.windOrbitAngularSpeed) % 360;
-        final Location base = this.player.getLocation().add(0, this.windOrbitYOffset, 0);
-        final double yaw = Math.toRadians(-base.getYaw());
-
-        for (int i = 0; i < this.windOrbitCount; i++) {
-            final double angle = Math.toRadians(this.windOrbitAngle + (360.0 / this.windOrbitCount) * i);
-            Vector offset = new Vector(Math.cos(angle) * this.windOrbitRadius, 0, Math.sin(angle) * this.windOrbitRadius);
-            offset = offset.clone().rotateAroundY(yaw);
-            final Location target = base.clone().add(offset);
-            spawnShortLivedParticle(target);
-        }
-    }
-
-    private void spawnShortLivedParticle(final Location location) {
-        // Matches the collider visual particles so the orbit fades immediately.
-        ParticleUtil.spawn(this.windOrbitParticle, location, 0, 0, 99999999, 0, 99999999, null);
-    }
-
     /*
      * The particles used for AirSurf phi = how many rings of particles the
      * sphere has. theta = how dense the rings are. r = Radius of the sphere
@@ -344,9 +298,12 @@ public class AirSurf extends AirAbility {
 
         double yRotation = Math.toRadians(-base.getYaw());
         for (Vector ballOffset : ballOffsets) {
+            if (random.nextDouble() > 0.4) continue;
+
             Vector offset = ballOffset.clone().rotateAroundY(yRotation);
             Location loc = base.clone().add(offset);
-            playAirbendingParticles(loc, 1, 0F, 0F, 0F);
+
+            playAirbendingParticles(loc, 1, 0f, 0f, 0f);
         }
     }
 
