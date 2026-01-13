@@ -3,12 +3,14 @@ package com.projectkorra.projectkorra.util.colliders;
 import com.projectkorra.projectkorra.command.ColliderCommand;
 import org.bukkit.Location;
 import org.bukkit.Particle;
+import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
 
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
@@ -140,8 +142,67 @@ public class Ray implements Collider {
 
 	@Override
 	public Collection<Block> getBlocks(Predicate<Block> filter) {
-		Predicate<Block> rayIntersetion = block -> intersects(new AABB(block.getWorld(), block.getBoundingBox()));
-		return toAABB().getBlocks(rayIntersetion.and(filter));
+		Set<Block> blocks = new HashSet<>();
+		World world = location.getWorld();
+
+		double dirX = direction.getX();
+		double dirY = direction.getY();
+		double dirZ = direction.getZ();
+
+		double x = location.getX();
+		double y = location.getY();
+		double z = location.getZ();
+
+		int blockX = location.getBlockX();
+		int blockY = location.getBlockY();
+		int blockZ = location.getBlockZ();
+
+		int stepX = dirX > 0 ? 1 : -1;
+		int stepY = dirY > 0 ? 1 : -1;
+		int stepZ = dirZ > 0 ? 1 : -1;
+
+		double tDeltaX = dirX == 0 ? Double.MAX_VALUE : Math.abs(1.0 / dirX);
+		double tDeltaY = dirY == 0 ? Double.MAX_VALUE : Math.abs(1.0 / dirY);
+		double tDeltaZ = dirZ == 0 ? Double.MAX_VALUE : Math.abs(1.0 / dirZ);
+
+		double nextX = stepX > 0 ? (blockX + 1 - x) : (x - blockX);
+		double nextY = stepY > 0 ? (blockY + 1 - y) : (y - blockY);
+		double nextZ = stepZ > 0 ? (blockZ + 1 - z) : (z - blockZ);
+
+		double tMaxX = dirX == 0 ? Double.MAX_VALUE : nextX / Math.abs(dirX);
+		double tMaxY = dirY == 0 ? Double.MAX_VALUE : nextY / Math.abs(dirY);
+		double tMaxZ = dirZ == 0 ? Double.MAX_VALUE : nextZ / Math.abs(dirZ);
+
+		double traveled = 0.0;
+
+		while (traveled <= length) {
+			Block block = world.getBlockAt(blockX, blockY, blockZ);
+			if (filter == null || filter.test(block))
+				blocks.add(block);
+
+			if (tMaxX < tMaxY) {
+				if (tMaxX < tMaxZ) {
+					blockX += stepX;
+					traveled = tMaxX;
+					tMaxX += tDeltaX;
+				} else {
+					blockZ += stepZ;
+					traveled = tMaxZ;
+					tMaxZ += tDeltaZ;
+				}
+			} else {
+				if (tMaxY < tMaxZ) {
+					blockY += stepY;
+					traveled = tMaxY;
+					tMaxY += tDeltaY;
+				} else {
+					blockZ += stepZ;
+					traveled = tMaxZ;
+					tMaxZ += tDeltaZ;
+				}
+			}
+		}
+		return blocks;
 	}
 
 	@Override
