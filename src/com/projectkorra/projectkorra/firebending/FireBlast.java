@@ -1,43 +1,42 @@
 package com.projectkorra.projectkorra.firebending;
 
+import com.projectkorra.projectkorra.Element.SubElement;
+import com.projectkorra.projectkorra.GeneralMethods;
+import com.projectkorra.projectkorra.ProjectKorra;
+import com.projectkorra.projectkorra.ability.AirAbility;
+import com.projectkorra.projectkorra.ability.FireAbility;
+import com.projectkorra.projectkorra.ability.util.Collision;
+import com.projectkorra.projectkorra.attribute.Attribute;
+import com.projectkorra.projectkorra.attribute.markers.DayNightFactor;
+import com.projectkorra.projectkorra.command.Commands;
+import com.projectkorra.projectkorra.firebending.util.FireDamageTimer;
+import com.projectkorra.projectkorra.region.RegionProtection;
+import com.projectkorra.projectkorra.util.DamageHandler;
+import com.projectkorra.projectkorra.waterbending.WaterSpout;
+import com.projectkorra.projectkorra.waterbending.plant.PlantRegrowth;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.block.BlastFurnace;
+import org.bukkit.block.Block;
+import org.bukkit.block.Furnace;
+import org.bukkit.block.Smoker;
+import org.bukkit.block.data.type.Campfire;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Player;
+import org.bukkit.metadata.FixedMetadataValue;
+import org.bukkit.util.BlockIterator;
+import org.bukkit.util.Vector;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 
-import com.projectkorra.projectkorra.attribute.markers.DayNightFactor;
-import com.projectkorra.projectkorra.region.RegionProtection;
-import com.projectkorra.projectkorra.waterbending.WaterSpout;
-import org.bukkit.Location;
-import org.bukkit.Material;
-import org.bukkit.Sound;
-import org.bukkit.block.BlastFurnace;
-import org.bukkit.block.Block;
-import org.bukkit.block.data.type.Campfire;
-import org.bukkit.block.Furnace;
-import org.bukkit.block.Smoker;
-import org.bukkit.entity.Entity;
-import org.bukkit.entity.LivingEntity;
-import org.bukkit.entity.Player;
-import org.bukkit.util.BlockIterator;
-import org.bukkit.util.Vector;
-
-import com.projectkorra.projectkorra.GeneralMethods;
-import com.projectkorra.projectkorra.ProjectKorra;
-import com.projectkorra.projectkorra.Element.SubElement;
-import com.projectkorra.projectkorra.ability.AirAbility;
-import com.projectkorra.projectkorra.ability.FireAbility;
-import com.projectkorra.projectkorra.ability.util.Collision;
-import com.projectkorra.projectkorra.attribute.Attribute;
-import com.projectkorra.projectkorra.avatar.AvatarState;
-import com.projectkorra.projectkorra.command.Commands;
-import com.projectkorra.projectkorra.firebending.util.FireDamageTimer;
-import com.projectkorra.projectkorra.util.DamageHandler;
-import com.projectkorra.projectkorra.waterbending.plant.PlantRegrowth;
-
 public class FireBlast extends FireAbility {
 
 	private static final int MAX_TICKS = 10000;
+	public static final String NO_KNOCKBACK_METADATA = "PK-FireBlast-NoKB";
 
 	@Attribute("PowerFurnace")
 	private boolean powerFurnace;
@@ -64,6 +63,7 @@ public class FireBlast extends FireAbility {
 	private double fireTicks;
 	@Attribute(Attribute.KNOCKBACK)
 	private double knockback;
+	private double verticalKnockback;
 	private boolean canGoThroughLava;
 	private double flameRadius;
 	private Random random;
@@ -138,6 +138,7 @@ public class FireBlast extends FireAbility {
 		this.collisionRadius = getConfig().getDouble("Abilities.Fire.FireBlast.CollisionRadius");
 		this.fireTicks = getConfig().getDouble("Abilities.Fire.FireBlast.FireTicks");
 		this.knockback = getConfig().getDouble("Abilities.Fire.FireBlast.Knockback");
+		this.verticalKnockback = getConfig().getDouble("Abilities.Fire.FireBlast.VerticalKnockback");
 		this.flameRadius = getConfig().getDouble("Abilities.Fire.FireBlast.FlameParticleRadius");
 		this.damage = getConfig().getDouble("Abilities.Fire.FireBlast.Damage");
         this.coolAfSpiral = getConfig().getBoolean("Abilities.Fire.FireBlast.CoolAfSpiral", true);
@@ -240,7 +241,12 @@ public class FireBlast extends FireAbility {
 	}
 	private void affect(final Entity entity) {
 		if (entity.getUniqueId() != this.player.getUniqueId() && !RegionProtection.isRegionProtected(this, entity.getLocation()) && !((entity instanceof Player) && Commands.invincible.contains(((Player) entity).getName()))) {
-			GeneralMethods.setVelocity(this, entity, this.direction.clone().multiply(this.knockback));
+			Vector knockbackVelocity = this.direction.clone().multiply(this.knockback);
+			if (this.verticalKnockback != 0) {
+				knockbackVelocity.setY(knockbackVelocity.getY() + this.verticalKnockback);
+			}
+			GeneralMethods.setVelocity(this, entity, knockbackVelocity);
+			entity.setMetadata(NO_KNOCKBACK_METADATA, new FixedMetadataValue(ProjectKorra.plugin, System.currentTimeMillis()));
 			if (entity instanceof LivingEntity) {
 				entity.setFireTicks((int) (this.fireTicks * 20));
 				DamageHandler.damageEntity(entity, this.damage, this);

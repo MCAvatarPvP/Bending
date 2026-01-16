@@ -1,7 +1,10 @@
 package com.projectkorra.projectkorra.earthbending;
 
-import java.util.Random;
-
+import com.projectkorra.projectkorra.GeneralMethods;
+import com.projectkorra.projectkorra.ability.EarthAbility;
+import com.projectkorra.projectkorra.attribute.Attribute;
+import com.projectkorra.projectkorra.command.Commands;
+import com.projectkorra.projectkorra.util.ParticleEffect;
 import org.bukkit.Effect;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
@@ -11,11 +14,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
 
-import com.projectkorra.projectkorra.command.Commands;
-import com.projectkorra.projectkorra.GeneralMethods;
-import com.projectkorra.projectkorra.ability.EarthAbility;
-import com.projectkorra.projectkorra.attribute.Attribute;
-import com.projectkorra.projectkorra.util.ParticleEffect;
+import java.util.Random;
 
 public class Catapult extends EarthAbility {
 
@@ -43,8 +42,8 @@ public class Catapult extends EarthAbility {
 	public Catapult(final Player player, final boolean sneak) {
 		super(player);
 		this.setFields();
-		final Block b = player.getLocation().getBlock().getRelative(BlockFace.DOWN, 1);
-		if (!(isEarth(b) || isSand(b) || isMetal(b))) {
+		final Block b = this.getGroundBlock(player.getLocation());
+		if (b == null) {
 			return;
 		}
 
@@ -98,8 +97,8 @@ public class Catapult extends EarthAbility {
 			return;
 		}
 
-		final Block b = this.player.getLocation().getBlock().getRelative(BlockFace.DOWN, 1);
-		if (!(isEarth(b) || isSand(b) || isMetal(b))) {
+		final Block b = this.getGroundBlock(this.player.getLocation());
+		if (b == null) {
 			this.remove();
 			return;
 		}
@@ -159,6 +158,19 @@ public class Catapult extends EarthAbility {
 		this.moveEarth(apply, direction);
 		if (removeFireTick) player.setFireTicks(0);
 		this.remove();
+	}
+
+	private Block getGroundBlock(final Location location) {
+		double[] offsets = {0.0, 0.3, -0.3};
+		for (double xOffset : offsets) {
+			for (double zOffset : offsets) {
+				Block block = location.clone().add(xOffset, -0.1, zOffset).getBlock().getRelative(BlockFace.DOWN);
+				if (isEarth(block) || isSand(block) || isMetal(block)) {
+					return block;
+				}
+			}
+		}
+		return null;
 	}
 
 	@Override

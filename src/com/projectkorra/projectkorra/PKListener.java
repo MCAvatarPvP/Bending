@@ -73,6 +73,7 @@ import org.bukkit.event.player.*;
 import org.bukkit.event.server.PluginDisableEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.metadata.MetadataValue;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
@@ -1979,6 +1980,25 @@ public class PKListener implements Listener {
                 event.setCancelled(true);
             }
         }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onEntityVelocity(final PlayerVelocityEvent event) {
+        final Entity entity = event.getPlayer();
+        if (!entity.hasMetadata(FireBlast.NO_KNOCKBACK_METADATA)) {
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        for (MetadataValue value : entity.getMetadata(FireBlast.NO_KNOCKBACK_METADATA)) {
+            if (value.getOwningPlugin() == ProjectKorra.plugin) {
+                if (now - value.asLong() <= 150L) {
+                    event.setCancelled(true);
+                }
+                break;
+            }
+        }
+        entity.removeMetadata(FireBlast.NO_KNOCKBACK_METADATA, ProjectKorra.plugin);
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)

@@ -1732,6 +1732,7 @@ public class ConfigManager {
             config.addDefault("Abilities.Fire.FireBlast.GroundFireRadius", 1.0);
             config.addDefault("Abilities.Fire.FireBlast.HitRadius", 1.0);
             config.addDefault("Abilities.Fire.FireBlast.Knockback", 0.3);
+            config.addDefault("Abilities.Fire.FireBlast.VerticalKnockback", 0.0);
             config.addDefault("Abilities.Fire.FireBlast.Damage", 3);
             config.addDefault("Abilities.Fire.FireBlast.Cooldown", 1500);
             config.addDefault("Abilities.Fire.FireBlast.Dissipate", false);
