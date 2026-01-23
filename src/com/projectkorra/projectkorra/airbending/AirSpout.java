@@ -132,6 +132,14 @@ public class AirSpout extends AirAbility {
 	}
 
 	@Override
+	public void handleCollision(Collision collision) {
+		if (collision.isRemovingFirst()) {
+			this.bPlayer.addCooldown(this, cooldown);
+		}
+		super.handleCollision(collision);
+	}
+
+	@Override
 	public void progress() {
 		if (this.player.isDead() || !this.player.isOnline() || !this.bPlayer.canBendIgnoreBinds(this) || !this.bPlayer.canBind(this)) {
 			this.remove();
@@ -239,7 +247,7 @@ public class AirSpout extends AirAbility {
 	public List<Location> getLocations() {
 		final ArrayList<Location> locations = new ArrayList<>();
 		final Location topLoc = this.player.getLocation().getBlock().getLocation();
-		final double ySpacing = 3;
+		final double ySpacing = 1;
 		for (double i = 0; i <= this.height; i += ySpacing) {
 			locations.add(topLoc.clone().add(0, -i, 0));
 		}

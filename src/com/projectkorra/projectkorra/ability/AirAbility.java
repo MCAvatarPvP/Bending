@@ -79,7 +79,7 @@ public abstract class AirAbility extends ElementalAbility {
 		} else if (particle.equalsIgnoreCase("spell")) {
 			return ParticleEffect.SPELL;
 		} else if (particle.equalsIgnoreCase("blacksmoke")) {
-			return ParticleEffect.SMOKE_NORMAL;
+			return ParticleEffect.COOL_AIR_PARTICLE;
 		} else if (particle.equalsIgnoreCase("smoke")) {
 			return ParticleEffect.CLOUD;
 		} else if (particle.equalsIgnoreCase("smallsmoke")) {

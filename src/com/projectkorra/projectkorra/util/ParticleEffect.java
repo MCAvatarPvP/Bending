@@ -2,13 +2,12 @@ package com.projectkorra.projectkorra.util;
 
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
-import org.bukkit.Bukkit;
-import org.bukkit.Location;
-import org.bukkit.Material;
-import org.bukkit.Particle;
+import org.bukkit.*;
 import org.bukkit.Particle.DustOptions;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.inventory.ItemStack;
+
+import java.util.Random;
 
 /**
  * @deprecated Marked for removal. Use {@link org.bukkit.World#spawnParticle} instead
@@ -59,6 +58,7 @@ public enum ParticleEffect {
 	FALLING_NECTAR (Particle.FALLING_NECTAR),
 	FALLING_OBSIDIAN_TEAR (Particle.FALLING_OBSIDIAN_TEAR),
 	FALLING_WATER (Particle.FALLING_WATER),
+	COOL_AIR_PARTICLE (Particle.DUST),
 	FIREWORKS_SPARK (Particle.FIREWORK),
 	FLAME (Particle.FLAME),
 	FLASH (Particle.FLASH),
@@ -154,13 +154,21 @@ public enum ParticleEffect {
 	 * @param extra extra data to affect the particle, usually affects speed or does nothing
 	 */
 	public void display(Location loc, int amount, double offsetX, double offsetY, double offsetZ, double extra) {
+		Object data = null;
+
 		if (this == ParticleEffect.SNOW_SHOVEL) {
 			BlockData snowBlockData = Bukkit.createBlockData(Material.SNOW_BLOCK);
 			ParticleUtil.spawn(Particle.BLOCK, loc, amount, offsetX, offsetY, offsetZ, extra, snowBlockData);
 			return;
 		}
 
-		ParticleUtil.spawn(particle, loc, amount, offsetX, offsetY, offsetZ, extra, null);
+		if (this == ParticleEffect.COOL_AIR_PARTICLE) {
+			Color color = new Random().nextBoolean() ? Color.WHITE : Color.fromRGB(180, 190, 210);  // Airy bluish gray
+			data = new Particle.DustOptions(color, 1f);
+			extra += 0.05f;
+		}
+
+		ParticleUtil.spawn(particle, loc, amount, offsetX, offsetY, offsetZ, extra, data);
 	}
 
 	/**
