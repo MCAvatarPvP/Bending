@@ -9,12 +9,10 @@ import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.util.BoundingBox;
+import org.bukkit.util.NumberConversions;
 import org.bukkit.util.Vector;
 
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Predicate;
 
 public class AABB implements Collider {
@@ -108,7 +106,9 @@ public class AABB implements Collider {
 
 	@Override
 	public Collection<Entity> getEntities(Predicate<Entity> filter) {
-		return min.getWorld().getNearbyEntities(toBoundingBox(), filter);
+		BoundingBox box = toBoundingBox();
+		if (box == null) return Collections.emptyList();
+		return min.getWorld().getNearbyEntities(box, filter);
 	}
 
 	@Override
@@ -178,6 +178,9 @@ public class AABB implements Collider {
 	}
 
 	public BoundingBox toBoundingBox() {
+		if (NumberConversions.isFinite(min.getX()) || NumberConversions.isFinite(max.getX()) ||
+			NumberConversions.isFinite(min.getY()) || NumberConversions.isFinite(max.getY()) ||
+			NumberConversions.isFinite(min.getZ()) || NumberConversions.isFinite(max.getZ())) return null;
 		return BoundingBox.of(min, max);
 	}
 }
