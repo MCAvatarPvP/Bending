@@ -1,6 +1,5 @@
 package com.projectkorra.projectkorra.util.colliders;
 
-import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.command.ColliderCommand;
 import org.bukkit.Location;
 import org.bukkit.Particle;
@@ -178,9 +177,9 @@ public class AABB implements Collider {
 	}
 
 	public BoundingBox toBoundingBox() {
-		if (NumberConversions.isFinite(min.getX()) || NumberConversions.isFinite(max.getX()) ||
-			NumberConversions.isFinite(min.getY()) || NumberConversions.isFinite(max.getY()) ||
-			NumberConversions.isFinite(min.getZ()) || NumberConversions.isFinite(max.getZ())) return null;
+		if (!NumberConversions.isFinite(min.getX()) || !NumberConversions.isFinite(max.getX()) ||
+			!NumberConversions.isFinite(min.getY()) || !NumberConversions.isFinite(max.getY()) ||
+			!NumberConversions.isFinite(min.getZ()) || !NumberConversions.isFinite(max.getZ())) return null;
 		return BoundingBox.of(min, max);
 	}
 }
