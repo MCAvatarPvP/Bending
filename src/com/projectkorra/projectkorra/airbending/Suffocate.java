@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.bukkit.Location;
+import org.bukkit.Sound;
+import org.bukkit.SoundCategory;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
@@ -35,6 +37,7 @@ public class Suffocate extends AirAbility {
 	};
 
 	private boolean started;
+	private long startedAt;
 	private boolean requireConstantAim;
 	private boolean canSuffocateUndead;
 	private int particleCount;
@@ -61,6 +64,7 @@ public class Suffocate extends AirAbility {
 	private Suffocate ability;
 	private ArrayList<BukkitRunnable> tasks;
 	private ArrayList<LivingEntity> targets;
+	private long duration;
 
 	public Suffocate(final Player player) {
 		super(player);
@@ -90,6 +94,7 @@ public class Suffocate extends AirAbility {
 		this.blind = getConfig().getInt("Abilities.Air.Suffocate.BlindPotentcy");
 		this.blindDelay = getConfig().getDouble("Abilities.Air.Suffocate.BlindDelay");
 		this.blindRepeat = getConfig().getDouble("Abilities.Air.Suffocate.BlindInterval");
+		this.duration = getConfig().getLong("Abilities.Air.Suffocate.Duration", 4000);
 		this.targets = new ArrayList<>();
 		this.tasks = new ArrayList<>();
 
@@ -136,6 +141,10 @@ public class Suffocate extends AirAbility {
 			}
 		}
 
+		for (Entity entity : targets) {
+			player.getWorld().playSound(entity, Sound.ENTITY_CREAKING_FREEZE, SoundCategory.MASTER, 2, 0.01f);
+		}
+
 		this.start();
 	}
 
@@ -156,6 +165,14 @@ public class Suffocate extends AirAbility {
 		}
 		if (this.targets.size() == 0 || !this.bPlayer.canBendIgnoreCooldowns(this)) {
 			this.remove();
+			return;
+		}
+
+		if (System.currentTimeMillis() - startedAt > duration && started) {
+			for (int i = 0; i < this.targets.size(); i++) {
+				final LivingEntity target = this.targets.get(i);
+				breakSuffocateLocal(target);
+			}
 			return;
 		}
 
@@ -184,6 +201,9 @@ public class Suffocate extends AirAbility {
 			return;
 		} else if (!this.started) {
 			this.started = true;
+			this.startedAt = System.currentTimeMillis();
+
+			player.getWorld().playSound(player.getLocation(), Sound.ENTITY_BREEZE_HURT, SoundCategory.MASTER, 2, 0.1f);
 			for (final LivingEntity target : this.targets) {
 				final BukkitRunnable br1 = new BukkitRunnable() {
 					@Override
@@ -321,6 +341,8 @@ public class Suffocate extends AirAbility {
 	public void breakSuffocateLocal(final Entity entity) {
 		if (this.targets.contains(entity)) {
 			this.targets.remove(entity);
+			player.getWorld().playSound(entity, Sound.ENTITY_BREEZE_INHALE, 1.0f, 2f);
+			player.getWorld().playSound(player, Sound.ENTITY_BREEZE_INHALE, 1.0f, 2f);
 		}
 	}
 

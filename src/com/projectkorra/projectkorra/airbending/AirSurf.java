@@ -70,8 +70,8 @@ public class AirSurf extends AirAbility {
             return;
         }
 
-        //AirSpout spout = CoreAbility.getAbility(player, AirSpout.class);
-        //if (spout != null) spout.remove();
+        AirSpout spout = CoreAbility.getAbility(player, AirSpout.class);
+        if (spout != null) spout.remove();
 
         boolean cancelBlast = getConfig().getBoolean("Abilities.Air.AirSurf.CancelBlast");
         AirBlast blast = CoreAbility.getAbility(player, AirBlast.class);

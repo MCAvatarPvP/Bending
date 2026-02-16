@@ -164,7 +164,7 @@ public class Catapult extends EarthAbility {
 		double[] offsets = {0.0, 0.3, -0.3};
 		for (double xOffset : offsets) {
 			for (double zOffset : offsets) {
-				Block block = location.clone().add(xOffset, -0.1, zOffset).getBlock().getRelative(BlockFace.DOWN);
+				Block block = location.clone().add(xOffset, 0, zOffset).getBlock().getRelative(BlockFace.DOWN, 1);
 				if (isEarth(block) || isSand(block) || isMetal(block)) {
 					return block;
 				}
