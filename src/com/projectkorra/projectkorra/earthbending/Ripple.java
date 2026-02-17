@@ -34,6 +34,7 @@ public class Ripple extends EarthAbility {
 	@Attribute(Attribute.KNOCKBACK)
 	private double knockback;
 	private double radius;
+	private boolean blockByActiveRaiseEarth;
 	private Vector direction;
 	private Location origin;
 	private Location location;
@@ -69,6 +70,7 @@ public class Ripple extends EarthAbility {
 		this.damage = getConfig().getDouble("Abilities.Earth.Shockwave.Damage");
 		this.knockback = getConfig().getDouble("Abilities.Earth.Shockwave.Knockback");
 		this.radius = getConfig().getDouble("Abilities.Earth.Shockwave.Radius");
+		this.blockByActiveRaiseEarth = getConfig().getBoolean("Abilities.Earth.Shockwave.BlockByActiveRaiseEarth", true);
 		this.direction = direction.clone().normalize();
 		this.origin = origin.clone();
 		this.location = origin.clone();
@@ -233,7 +235,7 @@ public class Ripple extends EarthAbility {
 	}
 
 	private boolean canRipplePass(final Block block) {
-		return this.isTransparent(block) && !RaiseEarth.blockInAllAffectedBlocks(block);
+		return this.isTransparent(block) && (!this.blockByActiveRaiseEarth || !RaiseEarth.blockInAllAffectedBlocks(block));
 	}
 
 	private boolean decrease(Block block) {

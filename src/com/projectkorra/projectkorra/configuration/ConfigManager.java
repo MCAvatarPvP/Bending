@@ -1688,6 +1688,7 @@ public class ConfigManager {
             config.addDefault("Abilities.Earth.Shockwave.Radius", 2);
             config.addDefault("Abilities.Earth.Shockwave.LeftClickRange", 15);
             config.addDefault("Abilities.Earth.Shockwave.Angle", 40);
+            config.addDefault("Abilities.Earth.Shockwave.BlockByActiveRaiseEarth", true);
 
             config.addDefault("Abilities.Earth.Tremorsense.Enabled", true);
             config.addDefault("Abilities.Earth.Tremorsense.MaxDepth", 10);
