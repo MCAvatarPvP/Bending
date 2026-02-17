@@ -98,7 +98,7 @@ public class Ripple extends EarthAbility {
 			final Block topBlock = loc.getBlock();
 			final Block botBlock = loc.clone().add(0, -1, 0).getBlock();
 
-			if (this.isTransparent(topBlock) && this.isEarthbendable(botBlock)) {
+			if (this.canRipplePass(topBlock) && this.isEarthbendable(botBlock)) {
 				location = loc.clone().add(0, -1, 0);
 				return location;
 			}
@@ -221,7 +221,7 @@ public class Ripple extends EarthAbility {
 				final Block topblock = loc.getBlock();
 				final Block botblock = loc.clone().add(0, -1, 0).getBlock();
 
-				if (this.isTransparent(topblock) && !topblock.isLiquid() && this.isEarthbendable(botblock)) {
+				if (this.canRipplePass(topblock) && !topblock.isLiquid() && this.isEarthbendable(botblock)) {
 					location = loc.clone().add(0, -1, 0);
 					this.locations.add(location);
 					break;
@@ -230,6 +230,10 @@ public class Ripple extends EarthAbility {
 				}
 			}
 		}
+	}
+
+	private boolean canRipplePass(final Block block) {
+		return this.isTransparent(block) && !RaiseEarth.blockInAllAffectedBlocks(block);
 	}
 
 	private boolean decrease(Block block) {
