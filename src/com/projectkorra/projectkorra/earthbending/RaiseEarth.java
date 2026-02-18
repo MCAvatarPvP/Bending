@@ -162,7 +162,7 @@ public class RaiseEarth extends EarthAbility {
 
 	public static boolean blockInAllAffectedBlocks(final Block block) {
 		for (RaiseEarth raiseEarth : getAbilities(RaiseEarth.class)) {
-			if (raiseEarth.affectedBlocks.contains(block)) {
+			if (containsAffectedBlock(raiseEarth, block)) {
 				return true;
 			}
 		}
@@ -171,8 +171,33 @@ public class RaiseEarth extends EarthAbility {
 
 	public static void revertAffectedBlock(final Block block) {
 		for (final RaiseEarth raiseEarth : getAbilities(RaiseEarth.class)) {
-			raiseEarth.affectedBlocks.remove(block);
+			Block matched = null;
+			for (final Block affected : raiseEarth.affectedBlocks.keySet()) {
+				if (isSameBlock(affected, block)) {
+					matched = affected;
+					break;
+				}
+			}
+			if (matched != null) {
+				raiseEarth.affectedBlocks.remove(matched);
+			}
 		}
+	}
+
+	private static boolean containsAffectedBlock(final RaiseEarth raiseEarth, final Block block) {
+		for (final Block affected : raiseEarth.affectedBlocks.keySet()) {
+			if (isSameBlock(affected, block)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static boolean isSameBlock(final Block first, final Block second) {
+		return first.getX() == second.getX()
+				&& first.getY() == second.getY()
+				&& first.getZ() == second.getZ()
+				&& first.getWorld().equals(second.getWorld());
 	}
 
 	@Override

@@ -1131,6 +1131,7 @@ public class ConfigManager {
             config.addDefault("Abilities.Air.AirSwipe.MaxChargeTime", 2500);
             config.addDefault("Abilities.Air.AirSwipe.Particles", 3);
             config.addDefault("Abilities.Air.AirSwipe.StepSize", 4);
+            config.addDefault("Abilities.Air.AirSwipe.CanGoThroughWater", true);
 
             config.addDefault("Abilities.Air.Flight.Enabled", true);
             config.addDefault("Abilities.Air.Flight.Cooldown", 0);

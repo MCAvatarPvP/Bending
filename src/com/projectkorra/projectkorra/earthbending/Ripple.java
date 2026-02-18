@@ -1,9 +1,11 @@
 package com.projectkorra.projectkorra.earthbending;
 
-import java.util.ArrayList;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-
+import com.projectkorra.projectkorra.GeneralMethods;
+import com.projectkorra.projectkorra.ability.AirAbility;
+import com.projectkorra.projectkorra.ability.EarthAbility;
+import com.projectkorra.projectkorra.attribute.Attribute;
+import com.projectkorra.projectkorra.command.Commands;
+import com.projectkorra.projectkorra.util.DamageHandler;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -13,13 +15,9 @@ import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
 
-import com.projectkorra.projectkorra.GeneralMethods;
-import com.projectkorra.projectkorra.ability.AirAbility;
-import com.projectkorra.projectkorra.ability.EarthAbility;
-import com.projectkorra.projectkorra.attribute.Attribute;
-import com.projectkorra.projectkorra.avatar.AvatarState;
-import com.projectkorra.projectkorra.command.Commands;
-import com.projectkorra.projectkorra.util.DamageHandler;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class Ripple extends EarthAbility {
 
@@ -100,7 +98,7 @@ public class Ripple extends EarthAbility {
 			final Block topBlock = loc.getBlock();
 			final Block botBlock = loc.clone().add(0, -1, 0).getBlock();
 
-			if (this.canRipplePass(topBlock) && this.isEarthbendable(botBlock)) {
+			if (this.canRipplePass(topBlock) && this.canRippleTravelOn(botBlock) && !this.isBlockedByActiveRaiseEarth(topBlock, botBlock)) {
 				location = loc.clone().add(0, -1, 0);
 				return location;
 			}
@@ -223,7 +221,7 @@ public class Ripple extends EarthAbility {
 				final Block topblock = loc.getBlock();
 				final Block botblock = loc.clone().add(0, -1, 0).getBlock();
 
-				if (this.canRipplePass(topblock) && !topblock.isLiquid() && this.isEarthbendable(botblock)) {
+				if (this.canRipplePass(topblock) && !topblock.isLiquid() && this.canRippleTravelOn(botblock) && !this.isBlockedByActiveRaiseEarth(topblock, botblock)) {
 					location = loc.clone().add(0, -1, 0);
 					this.locations.add(location);
 					break;
@@ -236,6 +234,28 @@ public class Ripple extends EarthAbility {
 
 	private boolean canRipplePass(final Block block) {
 		return this.isTransparent(block) && (!this.blockByActiveRaiseEarth || !RaiseEarth.blockInAllAffectedBlocks(block));
+	}
+
+	private boolean canRippleTravelOn(final Block block) {
+		return this.isEarthbendable(block) && (!this.blockByActiveRaiseEarth || !RaiseEarth.blockInAllAffectedBlocks(block));
+	}
+
+	private boolean isBlockedByActiveRaiseEarth(final Block topBlock, final Block botBlock) {
+		if (!this.blockByActiveRaiseEarth) {
+			return false;
+		}
+		return this.isActiveRaiseEarthOrAdjacent(topBlock) || this.isActiveRaiseEarthOrAdjacent(botBlock);
+	}
+
+	private boolean isActiveRaiseEarthOrAdjacent(final Block block) {
+		for (int x = -1; x <= 1; x++) {
+			for (int z = -1; z <= 1; z++) {
+				if (RaiseEarth.blockInAllAffectedBlocks(block.getRelative(x, 0, z))) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	private boolean decrease(Block block) {

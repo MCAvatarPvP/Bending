@@ -56,6 +56,7 @@ public class AirSwipe extends AirAbility {
 	@Attribute(Attribute.RADIUS)
 	private double radius;
 	private double maxChargeFactor;
+	private boolean canGoThroughWater;
 	private Location origin;
 	private Random random;
 	private Map<Vector, Location> streams;
@@ -91,6 +92,7 @@ public class AirSwipe extends AirAbility {
 		this.range = getConfig().getDouble("Abilities.Air.AirSwipe.Range");
 		this.radius = getConfig().getDouble("Abilities.Air.AirSwipe.Radius");
 		this.maxChargeFactor = getConfig().getDouble("Abilities.Air.AirSwipe.ChargeFactor");
+		this.canGoThroughWater = getConfig().getBoolean("Abilities.Air.AirSwipe.CanGoThroughWater", true);
 		this.random = new Random();
 		this.streams = new ConcurrentHashMap<>();
 		this.affectedEntities = new ArrayList<>();
@@ -165,7 +167,7 @@ public class AirSwipe extends AirAbility {
 		}
 	}
 	public boolean checkLocation(Block block, Vector direction, Location location) {
-		if (GeneralMethods.checkDiagonalWall(block.getLocation(), direction) || !block.isPassable()) {
+		if (!block.isPassable()) {
 			return false;
 		}  else {
 			if (location.distanceSquared(this.origin) > this.range * this.range || GeneralMethods.isRegionProtectedFromBuild(this, block.getLocation())) {
@@ -183,6 +185,8 @@ public class AirSwipe extends AirAbility {
 
 				if (!isAir(block.getType())) {
 					if (block.getType().equals(Material.SNOW)) {
+						return true;
+					} else if (this.canGoThroughWater && isWater(block)) {
 						return true;
 					} else if (isPlant(block.getType())) {
 						block.breakNaturally();
@@ -211,9 +215,7 @@ public class AirSwipe extends AirAbility {
 		final Vector fDirection = direction.clone();
 
 		for (int i = 0; i < entities.size(); i++) {
-			Location entityLocation = entities.get(i).getLocation();
-			Vector dir = new Vector(entityLocation.getX() - location.getX(), entityLocation.getY() - location.getY(), entityLocation.getZ() - location.getZ());
-			if (GeneralMethods.checkDiagonalWall(location, dir)) {
+			if (this.isBlockedByWall(location, entities.get(i))) {
 				entities.remove(entities.get(i--));
 			}
 		}
@@ -249,6 +251,25 @@ public class AirSwipe extends AirAbility {
 				}
 			}.runTaskLater(ProjectKorra.plugin, i / MAX_AFFECTABLE_ENTITIES);
 		}
+	}
+
+	private boolean isBlockedByWall(final Location source, final Entity entity) {
+		final Location feet = entity.getLocation().clone().add(0, 0.1, 0);
+		if (!GeneralMethods.isObstructed(source, feet)) {
+			return false;
+		}
+
+		if (entity instanceof LivingEntity) {
+			final Location center = entity.getLocation().clone().add(0, ((LivingEntity) entity).getHeight() * 0.5, 0);
+			if (!GeneralMethods.isObstructed(source, center)) {
+				return false;
+			}
+			if (!GeneralMethods.isObstructed(source, ((LivingEntity) entity).getEyeLocation())) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	private void launch() {

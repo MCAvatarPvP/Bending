@@ -92,7 +92,6 @@ public abstract class CoreAbility implements Ability {
 	private boolean attributesModified;
 	private boolean recalculatingAttributes;
 	private boolean attributeValuesCached;
-	private long lastProgressTick = Long.MIN_VALUE;
 
 	/**
 	 * The default constructor is needed to create a fake instance of each
@@ -188,11 +187,6 @@ public abstract class CoreAbility implements Ability {
 		INSTANCES_BY_PLAYER.get(clazz).get(uuid).put(this.id, this);
 		INSTANCES_BY_CLASS.get(clazz).add(this);
 		INSTANCES.add(this);
-
-		// Progress once immediately so activation is not delayed until the next scheduler tick.
-		if (!(this instanceof PassiveAbility)) {
-			this.progressForCurrentTick();
-		}
 	}
 
 	/**
@@ -267,43 +261,34 @@ public abstract class CoreAbility implements Ability {
 					continue;
 				}
 
-				abil.progressForCurrentTick();
+				try {
+					/*if (!abil.attributesModified) {
+						abil.modifyAttributes();
+						abil.attributesModified = true;
+					}*/
+
+					//try (MCTiming timing = ProjectKorra.timing(abil.getName()).startTiming()) {
+						abil.progress();
+					//}
+
+					Bukkit.getServer().getPluginManager().callEvent(new AbilityProgressEvent(abil));
+				} catch (final Exception e) {
+					e.printStackTrace();
+					Bukkit.getLogger().severe(abil.toString());
+					try {
+						abil.getPlayer().sendMessage(ChatColor.YELLOW + "[" + new SimpleDateFormat("dd-MM-yyyy HH:mm:ss").format(new Date()) + "] " + ChatColor.RED + "There was an error running " + abil.getName() + ". please notify the server owner describing exactly what you were doing at this moment");
+					} catch (final Exception me) {
+						Bukkit.getLogger().severe("unable to notify ability user of error");
+					}
+					try {
+						abil.remove();
+					} catch (final Exception re) {
+						Bukkit.getLogger().severe("unable to fully remove ability of above error");
+					}
+				}
 			}
 		}
 		currentTick++;
-	}
-
-	private void progressForCurrentTick() {
-		if (this.lastProgressTick == currentTick) {
-			return;
-		}
-
-		this.lastProgressTick = currentTick;
-		try {
-			/*if (!this.attributesModified) {
-				this.modifyAttributes();
-				this.attributesModified = true;
-			}*/
-
-			//try (MCTiming timing = ProjectKorra.timing(this.getName()).startTiming()) {
-				this.progress();
-			//}
-
-			Bukkit.getServer().getPluginManager().callEvent(new AbilityProgressEvent(this));
-		} catch (final Exception e) {
-			e.printStackTrace();
-			Bukkit.getLogger().severe(this.toString());
-			try {
-				this.getPlayer().sendMessage(ChatColor.YELLOW + "[" + new SimpleDateFormat("dd-MM-yyyy HH:mm:ss").format(new Date()) + "] " + ChatColor.RED + "There was an error running " + this.getName() + ". please notify the server owner describing exactly what you were doing at this moment");
-			} catch (final Exception me) {
-				Bukkit.getLogger().severe("unable to notify ability user of error");
-			}
-			try {
-				this.remove();
-			} catch (final Exception re) {
-				Bukkit.getLogger().severe("unable to fully remove ability of above error");
-			}
-		}
 	}
 
 	/**
