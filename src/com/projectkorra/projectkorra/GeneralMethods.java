@@ -552,19 +552,20 @@ public class GeneralMethods {
 	 * @return The list of Blocks
 	 */
 	public static List<Block> getBlocksAroundPoint(final Location location, final double radius) {
-		final List<Block> blocks = new ArrayList<Block>();
+		final List<Block> blocks = new ArrayList<>();
 
 		final int xorg = location.getBlockX();
 		final int yorg = location.getBlockY();
 		final int zorg = location.getBlockZ();
 
-		final int r = (int) radius * 4;
+		final int r = (int) radius + 1;
+		final double radiusSquared = radius * radius;
 
 		for (int x = xorg - r; x <= xorg + r; x++) {
 			for (int y = yorg - r; y <= yorg + r; y++) {
 				for (int z = zorg - r; z <= zorg + r; z++) {
 					final Block block = location.getWorld().getBlockAt(x, y, z);
-					if (block.getLocation().distanceSquared(location) <= radius * radius) {
+					if (block.getLocation().distanceSquared(location) <= radiusSquared) {
 						blocks.add(block);
 					}
 				}
