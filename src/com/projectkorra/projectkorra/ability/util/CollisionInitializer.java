@@ -16,6 +16,7 @@ import com.projectkorra.projectkorra.airbending.AirSwipe;
 import com.projectkorra.projectkorra.airbending.Suffocate;
 import com.projectkorra.projectkorra.airbending.Tornado;
 import com.projectkorra.projectkorra.airbending.combo.AirStream;
+import com.projectkorra.projectkorra.airbending.combo.AirSlash;
 import com.projectkorra.projectkorra.airbending.combo.AirSweep;
 import com.projectkorra.projectkorra.airbending.flight.FlightMultiAbility;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
@@ -84,6 +85,7 @@ public class CollisionInitializer {
 		final CoreAbility airShield = CoreAbility.getAbility(AirShield.class);
 		CoreAbility.getAbility(AirSpout.class);
 		final CoreAbility airStream = CoreAbility.getAbility(AirStream.class);
+		final CoreAbility airSlash = CoreAbility.getAbility(AirSlash.class);
 		final CoreAbility airSuction = CoreAbility.getAbility(AirSuction.class);
 		final CoreAbility airSweep = CoreAbility.getAbility(AirSweep.class);
 		final CoreAbility airSwipe = CoreAbility.getAbility(AirSwipe.class);
@@ -132,10 +134,10 @@ public class CollisionInitializer {
 		CoreAbility.getAbility(WaterSpout.class);
 		CoreAbility.getAbility(WaterSpoutWave.class);
 
-		final CoreAbility[] smallAbils = { airSwipe, earthBlast, waterManipulation, iceBlast, iceSpikeBlast, fireBlast };
+		final CoreAbility[] smallAbils = { airSwipe, earthBlast, waterManipulation, iceBlast, iceSpikeBlast, fireBlast, airSlash };
 		final CoreAbility[] largeAbils = { earthSmash, airShield, fireBlastCharged, fireKick, fireSpin, fireWheel, airSweep, iceBullet, airWheel };
 		final CoreAbility[] comboAbils = { fireKick, fireSpin, fireWheel, airSweep, iceBullet };
-		final CoreAbility[] removeSpoutAbils = { airSwipe, earthBlast, waterManipulation, iceBlast, iceSpikeBlast, fireBlast, fireBlastCharged, earthSmash, fireKick, fireSpin, fireWheel, airSweep, iceBullet };
+		final CoreAbility[] removeSpoutAbils = { airSwipe, earthBlast, waterManipulation, iceBlast, iceSpikeBlast, fireBlast, fireBlastCharged, earthSmash, fireKick, fireSpin, fireWheel, airSweep, airSlash, iceBullet };
 		final CoreAbility[] ignoreAbils = { airBlast, airSuction, blazeArc, combustion };
 
 		for (final CoreAbility smallAbil : smallAbils) {
@@ -160,16 +162,19 @@ public class CollisionInitializer {
 		this.collisionManager.addCollision(new Collision(airSwipe, airSwipe, false, false));
 
 		this.collisionManager.addCollision(new Collision(airShield, airSwipe, false, false));
+		this.collisionManager.addCollision(new Collision(airShield, airSlash, false, false));
 		this.collisionManager.addCollision(new Collision(airShield, airSweep, false, false));
 		this.collisionManager.addCollision(new Collision(airShield, fireBlastCharged, false, false));
 		this.collisionManager.addCollision(new Collision(airShield, airStream, false, true));
 
+		this.collisionManager.addCollision(new Collision(airSlash, airSlash, false, false));
 		this.collisionManager.addCollision(new Collision(airSweep, airSweep, false, false));
 
 		this.collisionManager.addCollision(new Collision(fireShield, fireBlastCharged, false, false));
 		this.collisionManager.addCollision(new Collision(fireShield, fireBlast, false, true));
 		this.collisionManager.addCollision(new Collision(fireShield, waterManipulation, false, true));
 		this.collisionManager.addCollision(new Collision(fireShield, earthBlast, false, true));
+		this.collisionManager.addCollision(new Collision(fireShield, airSlash, false, true));
 		this.collisionManager.addCollision(new Collision(fireShield, airSweep, false, true));
 		this.collisionManager.addCollision(new Collision(fireShield, fireSpin, false, true));
 
@@ -179,6 +184,7 @@ public class CollisionInitializer {
 		this.collisionManager.addCollision(new Collision(fireManipulation, fireBlastCharged, false, true));
 		this.collisionManager.addCollision(new Collision(fireManipulation, waterManipulation, false, true));
 		this.collisionManager.addCollision(new Collision(fireManipulation, earthBlast, false, true));
+		this.collisionManager.addCollision(new Collision(fireManipulation, airSlash, false, true));
 		this.collisionManager.addCollision(new Collision(fireManipulation, airSweep, false, true));
 
 		this.collisionManager.addCollision(new Collision(fireManipulationStream, airBlast, false, true));
@@ -187,6 +193,7 @@ public class CollisionInitializer {
 		this.collisionManager.addCollision(new Collision(fireManipulationStream, fireBlastCharged, false, true));
 		this.collisionManager.addCollision(new Collision(fireManipulationStream, waterManipulation, false, true));
 		this.collisionManager.addCollision(new Collision(fireManipulationStream, earthBlast, false, true));
+		this.collisionManager.addCollision(new Collision(fireManipulationStream, airSlash, false, true));
 		this.collisionManager.addCollision(new Collision(fireManipulationStream, airSweep, false, true));
 
 		ProjectKorra.plugin.getServer().getScheduler().runTaskLater(ProjectKorra.plugin, () -> {

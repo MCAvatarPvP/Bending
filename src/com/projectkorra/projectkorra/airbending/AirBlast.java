@@ -77,6 +77,7 @@ public class AirBlast extends AirAbility {
 	private long scooterBlastCD;
 	private long scooterThreshold;
 	private boolean refundedThisSlide;
+	private long lastWhirlSoundTime;
 
 	private boolean progressing;
 	private Location location;
@@ -172,6 +173,7 @@ public class AirBlast extends AirAbility {
 		this.affectedEntities = new ArrayList<>();
 		this.preShootStamina = bPlayer.getAirBlastDecay();
 		this.usedStaminaThisShot = false;
+		this.lastWhirlSoundTime = 0L;
 	}
 
 	public void selectOrigin() {

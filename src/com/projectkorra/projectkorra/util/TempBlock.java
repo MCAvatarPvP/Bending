@@ -305,10 +305,12 @@ public class TempBlock {
 			return;
 		}
 		this.revertTime = revertTime + System.currentTimeMillis();
-		if (!this.inRevertQueue) {
+		if (this.inRevertQueue) {
+			REVERT_QUEUE.remove(this);
+		} else {
 			this.inRevertQueue = true;
-			REVERT_QUEUE.add(this);
 		}
+		REVERT_QUEUE.add(this);
 	}
 
 	/**

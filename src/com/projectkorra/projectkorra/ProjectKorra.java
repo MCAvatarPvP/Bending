@@ -49,6 +49,7 @@ public class ProjectKorra extends JavaPlugin {
 	public void onEnable() {
 		plugin = this;
 		ProjectKorra.log = this.getLogger();
+		//AbilityTimingDebugger.logEnableHint();
 
 		new ConfigManager();
 		Style.loadStyleConfigs(new File(plugin.getDataFolder() + File.separator + "Styles"));

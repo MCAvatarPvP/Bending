@@ -22,6 +22,7 @@ public class AirSpout extends AirAbility {
 
 	private int angle;
 	private long animTime;
+	private long lastWhirlSoundTime;
 	private long interval;
 	@Attribute(Attribute.DURATION)
 	private long duration;
@@ -61,6 +62,7 @@ public class AirSpout extends AirAbility {
 		this.interval = getConfig().getLong("Abilities.Air.AirSpout.Interval");
 		this.height = getConfig().getDouble("Abilities.Air.AirSpout.Height");
 		this.disableSprint = getConfig().getBoolean("Abilities.Air.AirSpout.DisableSprint");
+		this.lastWhirlSoundTime = 0L;
 
 		final double heightRemoveThreshold = 2;
 		if (!this.isWithinMaxSpoutHeight(heightRemoveThreshold)) {
@@ -166,9 +168,6 @@ public class AirSpout extends AirAbility {
 		this.player.setFallDistance(0);
 		if (disableSprint) //Enforce this only when they aren't in the avatarstate
 			this.player.setSprinting(false);
-		if ((new Random()).nextInt(4) == 0) {
-			playAirbendingSound(this.player.getLocation());
-		}
 
 		final Block block = this.getGround();
 		if (block != null) {

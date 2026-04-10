@@ -1,53 +1,29 @@
 package com.projectkorra.projectkorra;
 
+import com.projectkorra.projectkorra.Element.SubElement;
 import com.projectkorra.projectkorra.ability.Ability;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.util.MultiAbilityManager;
+import com.projectkorra.projectkorra.ability.util.PassiveManager;
 import com.projectkorra.projectkorra.command.CooldownCommand;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.event.BendingPlayerLoadEvent;
 import com.projectkorra.projectkorra.event.PlayerBindChangeEvent;
+import com.projectkorra.projectkorra.event.PlayerChangeElementEvent;
+import com.projectkorra.projectkorra.event.PlayerChangeSubElementEvent;
 import com.projectkorra.projectkorra.object.CosmeticColor;
 import com.projectkorra.projectkorra.object.EarthCosmetic;
 import com.projectkorra.projectkorra.object.Style;
-import com.projectkorra.projectkorra.event.PlayerChangeElementEvent;
-import com.projectkorra.projectkorra.event.PlayerChangeSubElementEvent;
-import com.projectkorra.projectkorra.storage.CooldownRepository;
-import com.projectkorra.projectkorra.storage.DBConnection;
-import com.projectkorra.projectkorra.storage.PlayerColumn;
-import com.projectkorra.projectkorra.storage.PlayerRecord;
-import com.projectkorra.projectkorra.storage.PlayerRepository;
+import com.projectkorra.projectkorra.storage.*;
 import com.projectkorra.projectkorra.util.ChatUtil;
 import com.projectkorra.projectkorra.util.Cooldown;
-import com.projectkorra.projectkorra.ability.util.PassiveManager;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
 import org.apache.commons.lang3.tuple.Pair;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.OfflinePlayer;
-
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.EnumMap;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.PriorityQueue;
-import java.util.Set;
-import java.util.UUID;
-import java.util.Collections;
-import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ExecutionException;
-import java.util.function.Predicate;
-
-import com.projectkorra.projectkorra.Element.SubElement;
+import org.bukkit.Particle;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Cancellable;
@@ -56,6 +32,13 @@ import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
+import java.util.function.Predicate;
 
 public class OfflineBendingPlayer {
 
@@ -129,8 +112,13 @@ public class OfflineBendingPlayer {
         CompletableFuture<OfflineBendingPlayer> future = new CompletableFuture<>();
         OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(uuid);
 
-        if (LOADING.containsKey(uuid)) { //If it is already loading, return the loading one
-            return LOADING.get(uuid);
+        CompletableFuture<OfflineBendingPlayer> existing = LOADING.get(uuid);
+        if (existing != null) {
+            if (existing.isCancelled() || existing.isCompletedExceptionally()) {
+                LOADING.remove(uuid, existing);
+            } else {
+                return existing;
+            }
         }
 
         //If we already have the players data cached from an OfflineBendingPlayer instance

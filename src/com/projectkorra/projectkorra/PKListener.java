@@ -6,6 +6,7 @@ import com.projectkorra.projectkorra.ability.util.ComboManager;
 import com.projectkorra.projectkorra.ability.util.MultiAbilityManager;
 import com.projectkorra.projectkorra.ability.util.PassiveManager;
 import com.projectkorra.projectkorra.airbending.*;
+import com.projectkorra.projectkorra.airbending.combo.AirSlash;
 import com.projectkorra.projectkorra.airbending.flight.FlightMultiAbility;
 import com.projectkorra.projectkorra.airbending.passive.GracefulDescent;
 import com.projectkorra.projectkorra.attribute.Attribute;
@@ -77,6 +78,7 @@ import org.bukkit.metadata.MetadataValue;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
+import org.bukkit.configuration.file.FileConfiguration;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -1071,6 +1073,7 @@ public class PKListener implements Listener {
     public void onPlayerInteraction(final PlayerInteractEvent event) {
         final Player player = event.getPlayer();
         final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
+        AbilityTimingDebugger.recordInput(player, "INTERACT_" + event.getAction().name(), bPlayer != null ? bPlayer.getBoundAbilityName() : null);
 
         if (event.getAction() == Action.RIGHT_CLICK_BLOCK) {
             final UUID uuid = player.getUniqueId();
@@ -1219,13 +1222,22 @@ public class PKListener implements Listener {
         final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
 
         // try (MCTiming timing = TimingPlayerMoveSpoutCheck.startTiming()) {
-        if (CoreAbility.hasAbility(player, WaterSpout.class) || CoreAbility.hasAbility(player, AirSpout.class)) {
+        final boolean hasWaterSpout = CoreAbility.hasAbility(player, WaterSpout.class);
+        final boolean hasAirSpout = CoreAbility.hasAbility(player, AirSpout.class);
+        if (hasWaterSpout || hasAirSpout) {
             Vector vel = new Vector();
             vel.setX(event.getTo().getX() - event.getFrom().getX());
             vel.setZ(event.getTo().getZ() - event.getFrom().getZ());
 
             final double currspeed = vel.length();
-            final double maxspeed = .2;
+            final FileConfiguration config = bPlayer != null ? ConfigManager.getConfig(bPlayer) : ConfigManager.defaultConfig.get();
+            double maxspeed = Double.MAX_VALUE;
+            if (hasWaterSpout) {
+                maxspeed = Math.min(maxspeed, Math.max(0, config.getDouble("Abilities.Water.WaterSpout.FlightSpeed", 0.2)));
+            }
+            if (hasAirSpout) {
+                maxspeed = Math.min(maxspeed, Math.max(0, config.getDouble("Abilities.Air.AirSpout.FlightSpeed", 0.2)));
+            }
             if (currspeed > maxspeed) {
                 // apply only if moving set a factor
                 vel = vel.normalize().multiply(maxspeed);
@@ -1399,6 +1411,7 @@ public class PKListener implements Listener {
     public void onPlayerSneak(final PlayerToggleSneakEvent event) {
         final Player player = event.getPlayer();
         final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
+        AbilityTimingDebugger.recordInput(player, event.isSneaking() ? "SNEAK_DOWN" : "SNEAK_UP", bPlayer != null ? bPlayer.getBoundAbilityName() : null);
 
         if (bPlayer == null) {
             return;
@@ -1632,6 +1645,8 @@ public class PKListener implements Listener {
     @EventHandler(priority = EventPriority.NORMAL)
     public void onPlayerSwing(final PlayerAnimationEvent event) {
         final Player player = event.getPlayer();
+        final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
+        AbilityTimingDebugger.recordInput(player, "SWING_" + event.getAnimationType().name(), bPlayer != null ? bPlayer.getBoundAbilityName() : null);
 
         if (PLAYER_DROPPED_ITEM.contains(player)) {
             PLAYER_DROPPED_ITEM.remove(player);
@@ -1646,7 +1661,6 @@ public class PKListener implements Listener {
 //		if (event.getAction() == Action.LEFT_CLICK_BLOCK && event.isCancelled()) {
 //			return;
 //		}
-        final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
         if (bPlayer == null) {
             return;
         } else if (RIGHT_CLICK_INTERACT.contains(player.getUniqueId())) {
@@ -1719,6 +1733,8 @@ public class PKListener implements Listener {
                         new AirSurf(player);
                     } else if (abil.equalsIgnoreCase("AirSpout")) {
                         new AirSpout(player);
+                    } else if (abil.equalsIgnoreCase("AirSlash")) {
+                        new AirSlash(player);
                     } else if (abil.equalsIgnoreCase("AirSwipe")) {
                         new AirSwipe(player);
                     } else if (abil.equalsIgnoreCase("Flight")) {

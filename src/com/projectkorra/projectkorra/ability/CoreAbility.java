@@ -44,6 +44,7 @@ import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.event.AbilityEndEvent;
 import com.projectkorra.projectkorra.event.AbilityProgressEvent;
 import com.projectkorra.projectkorra.event.AbilityStartEvent;
+import com.projectkorra.projectkorra.util.AbilityTimingDebugger;
 import com.projectkorra.projectkorra.util.FlightHandler;
 import com.projectkorra.projectkorra.util.TimeUtil;
 
@@ -187,6 +188,7 @@ public abstract class CoreAbility implements Ability {
 		INSTANCES_BY_PLAYER.get(clazz).get(uuid).put(this.id, this);
 		INSTANCES_BY_CLASS.get(clazz).add(this);
 		INSTANCES.add(this);
+		AbilityTimingDebugger.recordStart(this);
 	}
 
 	/**
@@ -233,6 +235,7 @@ public abstract class CoreAbility implements Ability {
 
 
 		INSTANCES.remove(this);
+		AbilityTimingDebugger.clear(this);
 	}
 
 	/**
@@ -270,6 +273,7 @@ public abstract class CoreAbility implements Ability {
 					//try (MCTiming timing = ProjectKorra.timing(abil.getName()).startTiming()) {
 						abil.progress();
 					//}
+					AbilityTimingDebugger.recordFirstProgress(abil);
 
 					Bukkit.getServer().getPluginManager().callEvent(new AbilityProgressEvent(abil));
 				} catch (final Exception e) {

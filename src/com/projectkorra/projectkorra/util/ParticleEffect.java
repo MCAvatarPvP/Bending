@@ -163,8 +163,8 @@ public enum ParticleEffect {
 		}
 
 		if (this == ParticleEffect.COOL_AIR_PARTICLE) {
-			Color color = new Random().nextBoolean() ? Color.WHITE : Color.fromRGB(180, 190, 210);  // Airy bluish gray
-			data = new Particle.DustOptions(color, 1f);
+			Color color = new Random().nextBoolean() ? Color.WHITE : Color.fromRGB(150, 200, 225);  // Airy bluish gray
+			data = new Particle.DustOptions(color, 1.1f);
 			extra += 0.05f;
 		}
 

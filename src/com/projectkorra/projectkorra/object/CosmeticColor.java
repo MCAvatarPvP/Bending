@@ -169,6 +169,15 @@ public class CosmeticColor {
 				Bukkit.getPluginManager().addPermission(perm);
 			}
 		}
+		if (!hasAirColor("dust")) {
+			new CosmeticColor("dust", new Particle.DustOptions(org.bukkit.Color.fromRGB(180, 190, 210), 1)).addAirColor();
+		}
+		Permission dustPerm = Bukkit.getPluginManager().getPermission("bending.aircolor.dust");
+		if (dustPerm == null) {
+			dustPerm = new Permission("bending.aircolor.dust");
+			dustPerm.addParent(Bukkit.getPluginManager().getPermission("bending.aircolor"), true);
+			Bukkit.getPluginManager().addPermission(dustPerm);
+		}
 		new CosmeticColor("none", new Particle.DustOptions(org.bukkit.Color.fromRGB(0, 0, 0), 0)).addAirColor();
 	}
 }

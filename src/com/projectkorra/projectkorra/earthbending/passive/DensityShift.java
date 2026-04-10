@@ -46,18 +46,23 @@ public class DensityShift extends EarthAbility implements PassiveAbility {
 			for (final Block affectedBlock : GeneralMethods.getBlocksAroundPoint(block.getLocation(), 2)) {
 				if (ElementalAbility.isEarth(affectedBlock)) {
 					if (GeneralMethods.isSolid(affectedBlock.getRelative(BlockFace.DOWN))) {
+						if (isPassiveSand(affectedBlock)) {
+							final TempBlock existing = TempBlock.get(affectedBlock);
+							existing.setRevertTime(getDuration(bPlayer));
+							continue;
+						} else if (TempBlock.isTempBlock(affectedBlock)) {
+							continue;
+						}
+
 						Material sand = Material.SAND;
 						if (affectedBlock.getType() == Material.RED_SANDSTONE) {
 							sand = Material.RED_SAND;
 						}
 
 						final TempBlock tb = new TempBlock(affectedBlock, sand);
-
-						if (!SAND_BLOCKS.contains(tb)) {
-							SAND_BLOCKS.add(tb);
-							tb.setRevertTime(getDuration(bPlayer));
-							tb.setRevertTask(() -> SAND_BLOCKS.remove(tb));
-						}
+						SAND_BLOCKS.add(tb);
+						tb.setRevertTime(getDuration(bPlayer));
+						tb.setRevertTask(() -> SAND_BLOCKS.remove(tb));
 					}
 				}
 			}

@@ -187,6 +187,10 @@ public abstract class AirAbility extends ElementalAbility {
 		double multiplier = ConfigManager.getConfig().getDouble("Properties.Air.SprinkleMultiplier");
 		int amountMultiplied = Math.max((int) (amount * multiplier), 1);
 		if (bPlayer.isSprinkleEnabled()) ParticleEffect.END_ROD.display(loc, amountMultiplied, xOffset, yOffset, zOffset, speed);
+		if (bPlayer.getAirColor() != null && bPlayer.getAirColor().getName().equalsIgnoreCase("dust")) {
+			ParticleEffect.COOL_AIR_PARTICLE.display(loc, amount, xOffset, yOffset, zOffset, speed);
+			return;
+		}
 		if (effect == ParticleEffect.SPELL && bPlayer.getAirColor() != null) {
 			if (!bPlayer.getAirColor().getName().equalsIgnoreCase("none")) {
 				Color color = bPlayer.getAirColor().getColor().getColor();

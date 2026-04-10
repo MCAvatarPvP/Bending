@@ -31,6 +31,9 @@ public class Lightning extends LightningAbility {
 	}
 
 	private static final int POINT_GENERATION = 5;
+	private static final double STRIKE_PARTICLE_SPACING = 0.15;
+	private static final double DEFAULT_STRIKE_BLOCKS_PER_TICK = 1.25;
+	private static final double MIN_STRIKE_BLOCKS_PER_TICK = 0.01;
 
 	@Attribute("Charged")
 	private boolean charged;
@@ -44,6 +47,8 @@ public class Lightning extends LightningAbility {
 	private int waterArcs;
 	@Attribute(Attribute.RANGE)
 	private double range;
+	@Attribute(Attribute.SPEED)
+	private double speed;
 	@Attribute(Attribute.CHARGE_DURATION)
 	private double chargeTime;
 	@Attribute("SubArcChance")
@@ -107,6 +112,7 @@ public class Lightning extends LightningAbility {
 		this.selfHitClose = getConfig().getBoolean("Abilities.Fire.Lightning.SelfHitClose");
 		this.arcOnIce = getConfig().getBoolean("Abilities.Fire.Lightning.ArcOnIce");
 		this.range = applyModifiersRange(getConfig().getDouble("Abilities.Fire.Lightning.Range"));
+		this.speed = Math.max(MIN_STRIKE_BLOCKS_PER_TICK, applyModifiers(getConfig().getDouble("Abilities.Fire.Lightning.Speed", DEFAULT_STRIKE_BLOCKS_PER_TICK)));
 		this.damage = applyModifiersDamage(getConfig().getDouble("Abilities.Fire.Lightning.Damage"));
 		this.damageMultiplierRedirection = getConfig().getDouble("Abilities.Fire.Lightning.RedirectionDamageMultiplier");
 		this.maxArcAngle = getConfig().getDouble("Abilities.Fire.Lightning.MaxArcAngle");
@@ -286,12 +292,14 @@ public class Lightning extends LightningAbility {
 						this.electrocute(this.player);
 					}
 
-					while (iterLoc.distanceSquared(dest) > 0.15 * 0.15) {
+					double distanceTravelled = arc.getAnimationLocations().get(j).getAnimCounter() * Lightning.this.speed;
+					while (iterLoc.distanceSquared(dest) > STRIKE_PARTICLE_SPACING * STRIKE_PARTICLE_SPACING) {
 						final BukkitRunnable task = new LightningParticle(arc, iterLoc.clone(), this.selfHitWater, this.waterArcs);
-						final double timer = arc.getAnimationLocations().get(j).getAnimCounter() / 2;
-						task.runTaskTimer(ProjectKorra.plugin, (long) timer, 1);
+						final long timer = Math.max(0L, Math.round(distanceTravelled / Lightning.this.speed));
+						task.runTaskTimer(ProjectKorra.plugin, timer, 1);
 						this.tasks.add(task);
-						iterLoc.add(GeneralMethods.getDirection(iterLoc, dest).normalize().multiply(0.15));
+						iterLoc.add(GeneralMethods.getDirection(iterLoc, dest).normalize().multiply(STRIKE_PARTICLE_SPACING));
+						distanceTravelled += STRIKE_PARTICLE_SPACING;
 					}
 				}
 				this.arcs.remove(i);
@@ -449,9 +457,12 @@ public class Lightning extends LightningAbility {
 					this.points.add(j + 1, newLoc);
 				}
 			}
+			double distanceTravelled = this.animationCounter * Lightning.this.speed;
 			for (int i = 0; i < this.points.size(); i++) {
-				this.animationLocations.add(new AnimationLocation(this.points.get(i), this.animationCounter));
-				this.animationCounter++;
+				if (i > 0 && this.points.get(i - 1).getWorld().equals(this.points.get(i).getWorld())) {
+					distanceTravelled += this.points.get(i - 1).distance(this.points.get(i));
+				}
+				this.animationLocations.add(new AnimationLocation(this.points.get(i), (int) Math.round(distanceTravelled / Lightning.this.speed)));
 			}
 		}
 
@@ -744,6 +755,14 @@ public class Lightning extends LightningAbility {
 
 	public void setRange(final double range) {
 		this.range = range;
+	}
+
+	public double getSpeed() {
+		return this.speed;
+	}
+
+	public void setSpeed(final double speed) {
+		this.speed = Math.max(MIN_STRIKE_BLOCKS_PER_TICK, speed);
 	}
 
 	public double getChargeTime() {

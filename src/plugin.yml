@@ -96,6 +96,7 @@ permissions:
       bending.ability.AirScooter: true
       bending.ability.AirSurf: true
       bending.ability.AirShield: true
+      bending.ability.AirSlash: true
       bending.ability.AirSpout: true
       bending.ability.AirSuction: true
       bending.ability.AirSwipe: true

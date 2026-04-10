@@ -496,6 +496,8 @@ public class ConfigManager {
             config.addDefault("Abilities.Air.Combo.Twister.Instructions", "AirShield (Tap Shift) > Tornado (Hold Shift) > AirBlast (Left Click)");
             config.addDefault("Abilities.Air.Combo.AirStream.Description", "Control a large stream of air that grabs onto enemies allowing you to direct them temporarily.");
             config.addDefault("Abilities.Air.Combo.AirStream.Instructions", "AirShield (Hold Shift) > AirSuction (Left Click) > AirBlast (Left Click)");
+            config.addDefault("Abilities.Air.AirSlash.Description", "Condense the air into a cutting blade. Left click to launch it. Aim level to create a horizontal slash, or sharply up or down to create a vertical slash.");
+            config.addDefault("Abilities.Air.AirSlash.Instructions", "Left Click");
             config.addDefault("Abilities.Air.Combo.AirSweep.Description", "Sweep the air in front of you hitting multiple enemies, causing moderate damage and a large knockback. The radius and direction of AirSweep is controlled by moving your mouse in a sweeping motion. For example, if you want to AirSweep upward, then move your mouse upward right after you left click AirBurst");
             config.addDefault("Abilities.Air.Combo.AirSweep.DeathMessage", "{victim} was swept away by {attacker}'s {ability}");
             config.addDefault("Abilities.Air.Combo.AirSweep.Instructions", "AirSwipe (Left Click) > AirSwipe (Left Click) > AirBurst (Hold Shift) > AirBurst (Left Click)");
@@ -1105,6 +1107,7 @@ public class ConfigManager {
             config.addDefault("Abilities.Air.AirSpout.Duration", 0);
             config.addDefault("Abilities.Air.AirSpout.Height", 16);
             config.addDefault("Abilities.Air.AirSpout.Interval", 100);
+            config.addDefault("Abilities.Air.AirSpout.FlightSpeed", 0.2);
             config.addDefault("Abilities.Air.AirSpout.CancelBlast", false);
             config.addDefault("Abilities.Air.AirSpout.DisableSprint", false);
 
@@ -1173,6 +1176,14 @@ public class ConfigManager {
             config.addDefault("Abilities.Air.Twister.Range", 16);
             config.addDefault("Abilities.Air.Twister.Height", 8);
             config.addDefault("Abilities.Air.Twister.Radius", 3.5);
+            config.addDefault("Abilities.Air.Twister.ChargeTime", 750);
+            config.addDefault("Abilities.Air.Twister.Damage", 0);
+            config.addDefault("Abilities.Air.Twister.DamageInterval", 500);
+            config.addDefault("Abilities.Air.Twister.MaxPullDuration", 0);
+            config.addDefault("Abilities.Air.Twister.PullZoneRadius", 5.25);
+            config.addDefault("Abilities.Air.Twister.PullVelocity", 0.315);
+            config.addDefault("Abilities.Air.Twister.SpinPlayers", false);
+            config.addDefault("Abilities.Air.Twister.TrappedAbilityCooldown", 1500);
             config.addDefault("Abilities.Air.Twister.RemoveDelay", 1500);
             config.addDefault("Abilities.Air.Twister.Cooldown", 10000);
             config.addDefault("Abilities.Air.Twister.DegreesPerParticle", 7);
@@ -1187,6 +1198,19 @@ public class ConfigManager {
             config.addDefault("Abilities.Air.AirStream.Cooldown", 7000);
             config.addDefault("Abilities.Air.AirStream.Combination", Arrays.asList("AirShield:SNEAK_DOWN", "AirSuction:LEFT_CLICK", "AirBlast:LEFT_CLICK"));
 
+            config.addDefault("Abilities.Air.AirSlash.Enabled", true);
+            config.addDefault("Abilities.Air.AirSlash.Speed", 1.2);
+            config.addDefault("Abilities.Air.AirSlash.Range", 18);
+            config.addDefault("Abilities.Air.AirSlash.Damage", 3);
+            config.addDefault("Abilities.Air.AirSlash.Knockback", 2.2);
+            config.addDefault("Abilities.Air.AirSlash.HeightOffset", 0);
+            config.addDefault("Abilities.Air.AirSlash.Width", 3.6);
+            config.addDefault("Abilities.Air.AirSlash.MaxWidth", 3.6);
+            config.addDefault("Abilities.Air.AirSlash.HitRadius", 1.1);
+            config.addDefault("Abilities.Air.AirSlash.StreamCount", 7);
+            config.addDefault("Abilities.Air.AirSlash.GoThroughWater", false);
+            config.addDefault("Abilities.Air.AirSlash.Cooldown", 5000);
+            config.addDefault("Abilities.Air.AirSlash.ActivationDelayTicks", 3);
             config.addDefault("Abilities.Air.AirSweep.Enabled", true);
             config.addDefault("Abilities.Air.AirSweep.Speed", 1.4);
             config.addDefault("Abilities.Air.AirSweep.Range", 14);
@@ -1448,6 +1472,7 @@ public class ConfigManager {
             config.addDefault("Abilities.Water.WaterSpout.Duration", 0);
             config.addDefault("Abilities.Water.WaterSpout.Height", 16);
             config.addDefault("Abilities.Water.WaterSpout.Interval", 50);
+            config.addDefault("Abilities.Water.WaterSpout.FlightSpeed", 0.2);
             config.addDefault("Abilities.Water.WaterSpout.BlockSpiral", true);
             config.addDefault("Abilities.Water.WaterSpout.Particles", false);
             config.addDefault("Abilities.Water.WaterSpout.FallDamage", false);
@@ -1838,6 +1863,7 @@ public class ConfigManager {
             config.addDefault("Abilities.Fire.Lightning.Enabled", true);
             config.addDefault("Abilities.Fire.Lightning.Damage", 4.0);
             config.addDefault("Abilities.Fire.Lightning.Range", 20.0);
+            config.addDefault("Abilities.Fire.Lightning.Speed", 1.25);
             config.addDefault("Abilities.Fire.Lightning.ChargeTime", 2500);
             config.addDefault("Abilities.Fire.Lightning.Cooldown", 500);
             config.addDefault("Abilities.Fire.Lightning.RedirectionDamageMultiplier", 1.1);
@@ -2068,6 +2094,10 @@ public class ConfigManager {
             config.addDefault("Abilities.Air.AirStream.EntityCarryHeight", "x1.5");
             config.addDefault("Abilities.Air.AirStream.EntityCarryDuration", 20000);
             config.addDefault("Abilities.Air.AirStream.Cooldown", 0);
+            config.addDefault("Abilities.Air.AirSlash.Damage", "x2.0");
+            config.addDefault("Abilities.Air.AirSlash.Cooldown", 0);
+            config.addDefault("Abilities.Air.AirSlash.Range", 24);
+            config.addDefault("Abilities.Air.AirSlash.Knockback", 3);
             config.addDefault("Abilities.Air.AirSweep.Damage", "x2.0");
             config.addDefault("Abilities.Air.AirSweep.Cooldown", 0);
             config.addDefault("Abilities.Air.AirSweep.Range", 21);
