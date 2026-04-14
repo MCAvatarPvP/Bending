@@ -95,26 +95,19 @@ public class FireKick extends FireAbility implements ComboAbility {
 			}
 
 			this.bPlayer.addCooldown("FireKick", this.cooldown);
-			Location eye = player.getEyeLocation();
-			eye.setPitch((float) (eye.getPitch() + pitchOffset));
-
-			final Vector eyeDir = eye.getDirection().normalize().multiply(this.range);
-			this.destination = eye.clone().add(eyeDir);
+			final Vector eyeDir = this.player.getEyeLocation().getDirection().normalize().multiply(this.range);
+			this.destination = this.player.getEyeLocation().add(eyeDir);
 
 			this.player.getWorld().playSound(this.player.getLocation(), Sound.ENTITY_HORSE_JUMP, 0.5f, 0f);
 			this.player.getWorld().playSound(this.player.getLocation(), Sound.ENTITY_CREEPER_PRIMED, 0.5f, 1f);
 			for (int i = -30; i <= 30; i += 5) {
-				double angle = Math.toRadians(i);
-				final Vector direction = eye.getDirection();
-				Vector xz = GeneralMethods.rotateVectorAroundVector(direction, new Vector(-direction.getZ(), 0, direction.getX()).normalize(), 0);
-				Vector vec = direction.clone().multiply(Math.cos(angle))
-						.add(xz.clone().multiply(Math.sin(angle))).normalize();
+				Vector vec = GeneralMethods.getDirection(this.player.getLocation(), this.destination.clone());
+				vec = GeneralMethods.rotateXZ(vec, i);
 
 				final FireComboStream fs = new FireComboStream(this.player, this, vec, this.player.getLocation(), this.range, this.speed);
 				fs.setSpread(0.2F);
 				fs.setDensity(5);
 				fs.setUseNewParticles(true);
-				fs.setCollisionRadius(radius);
 				fs.setDamage(this.damage);
 				if (this.tasks.size() % 3 != 0) {
 					fs.setCollides(false);

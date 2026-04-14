@@ -5,10 +5,14 @@ import java.util.List;
 
 import com.projectkorra.projectkorra.ability.util.ComboUtil;
 import com.projectkorra.projectkorra.attribute.markers.DayNightFactor;
+import com.projectkorra.projectkorra.command.Commands;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
+import com.projectkorra.projectkorra.region.RegionProtection;
+import com.projectkorra.projectkorra.util.DamageHandler;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -24,6 +28,8 @@ import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.util.ClickType;
 
 public class FireSpin extends FireAbility implements ComboAbility {
+	private static final int STREAM_ANGLE_STEP = 5;
+	private static final double HALF_STREAM_ANGLE_RADIANS = Math.toRadians(STREAM_ANGLE_STEP) / 2.0;
 
 	@Attribute(Attribute.COOLDOWN) @DayNightFactor(invert = true)
 	private long cooldown;
@@ -37,6 +43,7 @@ public class FireSpin extends FireAbility implements ComboAbility {
 	private double knockback;
 	private double radius;
 	private double collisionRadius;
+	private Location origin;
 	private Location destination;
 	private ArrayList<LivingEntity> affectedEntities;
 	private ArrayList<BukkitRunnable> tasks;
@@ -74,6 +81,7 @@ public class FireSpin extends FireAbility implements ComboAbility {
 				final FireComboStream fs = (FireComboStream) br;
 				if (fs.isCancelled()) {
 					this.tasks.remove(fs);
+					i--;
 				}
 			}
 		}
@@ -89,28 +97,29 @@ public class FireSpin extends FireAbility implements ComboAbility {
 				return;
 			}
 			this.bPlayer.addCooldown("FireSpin", this.cooldown);
+			this.origin = this.player.getLocation().clone().add(0, 1, 0);
 			this.destination = this.player.getEyeLocation().add(this.range, 0, this.range);
 			this.player.getWorld().playSound(this.player.getLocation(), Sound.ENTITY_CREEPER_PRIMED, 0.5f, 0.5f);
 
-			for (int i = 0; i <= 360; i += 5) {
+			for (int i = 0; i <= 360; i += STREAM_ANGLE_STEP) {
 				Vector vec = GeneralMethods.getDirection(this.player.getLocation(), this.destination.clone());
 				vec = GeneralMethods.rotateXZ(vec, i - 180);
 				vec.setY(0);
 
-				final FireComboStream fs = new FireComboStream(this.player, this, vec, this.player.getLocation().clone().add(0, 1, 0), this.range, this.speed);
+				final FireComboStream fs = new FireComboStream(this.player, this, vec, this.origin.clone(), this.range, this.speed);
 				fs.setSpread(0.1F);
 				fs.setDensity(1);
 				fs.setUseNewParticles(true);
-				fs.setCollisionRadius(this.radius);
+				fs.setCollisionRadius(this.collisionRadius);
 				fs.setDamage(this.damage);
 				fs.setKnockback(this.knockback);
-				if (this.tasks.size() % 10 != 0) {
-					fs.setCollides(false);
-				}
+				fs.setCollides(false);
 				fs.runTaskTimer(ProjectKorra.plugin, 0, 1L);
 				this.tasks.add(fs);
 			}
 		}
+
+		this.applyDynamicCollisions();
 
 		if (this.tasks.size() == 0) {
 			this.remove();
@@ -188,7 +197,7 @@ public class FireSpin extends FireAbility implements ComboAbility {
 
 	@Override
 	public Location getLocation() {
-		return this.player.getLocation();
+		return this.origin != null ? this.origin.clone() : this.player.getLocation();
 	}
 
 	@Override
@@ -209,7 +218,79 @@ public class FireSpin extends FireAbility implements ComboAbility {
 		return this.tasks;
 	}
 
+	public void affectEntity(final LivingEntity entity, final Vector direction) {
+		if (entity.equals(this.player) || entity.isDead() || this.affectedEntities.contains(entity) || RegionProtection.isRegionProtected(this, entity.getLocation())) {
+			return;
+		}
+
+		if (entity instanceof Player && Commands.invincible.contains(((Player) entity).getName())) {
+			return;
+		}
+
+		this.affectedEntities.add(entity);
+		DamageHandler.damageEntity(entity, this.damage, this);
+
+		final Vector knockbackDirection = direction.clone().setY(0);
+		if (knockbackDirection.lengthSquared() > 0) {
+			final double newKnockback = this.bPlayer.isAvatarState() ? this.knockback + 0.5 : this.knockback;
+			GeneralMethods.setVelocity(this, entity, knockbackDirection.normalize().multiply(newKnockback));
+		}
+	}
+
 	public void setTasks(final ArrayList<BukkitRunnable> tasks) {
 		this.tasks = tasks;
+	}
+
+	private void applyDynamicCollisions() {
+		if (this.origin == null) {
+			return;
+		}
+
+		FireComboStream referenceStream = null;
+		for (final BukkitRunnable task : this.tasks) {
+			if (task instanceof FireComboStream) {
+				referenceStream = (FireComboStream) task;
+				break;
+			}
+		}
+
+		if (referenceStream == null) {
+			return;
+		}
+
+		final double ringRadius = this.origin.distance(referenceStream.getLocation());
+		final double shellRadius = this.getDynamicCollisionRadius(ringRadius);
+		final double searchRadius = ringRadius + shellRadius;
+
+		for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(this.origin, searchRadius)) {
+			if (!(entity instanceof LivingEntity)) {
+				continue;
+			}
+
+			final LivingEntity livingEntity = (LivingEntity) entity;
+			final Location entityCenter = livingEntity.getLocation().clone().add(0, livingEntity.getHeight() / 2.0, 0);
+			final double horizontalDistance = GeneralMethods.getHorizontalDistance(this.origin, entityCenter);
+			final double verticalDistance = Math.abs(entityCenter.getY() - this.origin.getY());
+			final double shellDistance = Math.hypot(horizontalDistance - ringRadius, verticalDistance);
+			if (shellDistance > shellRadius) {
+				continue;
+			}
+
+			Vector knockbackDirection = entityCenter.toVector().subtract(this.origin.toVector());
+			knockbackDirection.setY(0);
+			if (knockbackDirection.lengthSquared() == 0) {
+				knockbackDirection = referenceStream.getDirection();
+			}
+			this.affectEntity(livingEntity, knockbackDirection);
+		}
+	}
+
+	private double getDynamicCollisionRadius(final double distanceFromOrigin) {
+		if (this.origin == null) {
+			return this.collisionRadius;
+		}
+
+		final double spacingBuffer = distanceFromOrigin * Math.sin(HALF_STREAM_ANGLE_RADIANS);
+		return this.collisionRadius + spacingBuffer + this.speed / 2.0;
 	}
 }
