@@ -39,7 +39,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.jar.JarFile;
 
-/** Opt-in, checksum-verified updater for the Fabric prediction client. */
+/** Checksum-verified updater for the Fabric prediction client. */
 public final class FabricAutoUpdater {
     private static final String MOD_ID = "projectkorra";
     private static final String DEFAULT_REPOSITORY = "MCAvatarPvP/Bending";
@@ -57,8 +57,9 @@ public final class FabricAutoUpdater {
     private FabricAutoUpdater() { }
 
     public static void initialize() {
-        if (!INITIALIZED.compareAndSet(false, true)
-                || !Boolean.parseBoolean(System.getProperty("projectkorra.updater.enabled", "false"))) return;
+        if (!Boolean.parseBoolean(System.getProperty("projectkorra.updater.enabled", "true"))
+                || !INITIALIZED.compareAndSet(false, true)) return;
+        System.out.println("[ProjectKorraUpdater] Checking " + DEFAULT_REPOSITORY + " releases for updates");
         CompletableFuture.supplyAsync(FabricAutoUpdater::checkLatest)
                 .thenAccept(release -> available = release)
                 .exceptionally(failure -> {

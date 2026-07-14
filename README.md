@@ -50,6 +50,8 @@ GitHub authentication without creating or changing a release.
 The Fabric auto-updater reads the latest release from
 `https://github.com/MCAvatarPvP/Bending/releases`, downloads its Fabric asset,
 and verifies GitHub's SHA-256 digest before installation.
+Update checks are enabled by default; use the JVM argument
+`-Dprojectkorra.updater.enabled=false` to opt out.
 
 ## Credits and upstream projects
 
