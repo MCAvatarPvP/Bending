@@ -47,8 +47,9 @@ tasks.register('publishGithubJars') {
     outputs.upToDateWhen { false }
 
     doLast {
+        boolean dryRun = releaseBoolean('githubReleaseDryRun', false)
         String status = gitOutput('status', '--porcelain', '--untracked-files=all')
-        if (!status.isBlank()) {
+        if (!dryRun && !status.isBlank()) {
             throw new GradleException('Refusing to publish with uncommitted files. Commit the source changes first.')
         }
 
@@ -82,15 +83,19 @@ tasks.register('publishGithubJars') {
         }
 
         String credentialInput = "protocol=https\nhost=github.com\npath=${repository}.git\n\n"
-        def credentialExec = providers.exec {
-            commandLine 'git', 'credential', 'fill'
-            workingDir rootProject.projectDir
-            standardInput = new ByteArrayInputStream(credentialInput.getBytes(StandardCharsets.UTF_8))
-            ignoreExitValue = true
+        Process credentialProcess = new ProcessBuilder('git', 'credential', 'fill')
+                .directory(rootProject.projectDir)
+                .start()
+        StringBuilder credentialStandardOutput = new StringBuilder()
+        StringBuilder credentialStandardError = new StringBuilder()
+        credentialProcess.consumeProcessOutput(credentialStandardOutput, credentialStandardError)
+        credentialProcess.outputStream.withCloseable { output ->
+            output.write(credentialInput.getBytes(StandardCharsets.UTF_8))
+            output.flush()
         }
-        String credentialOutput = credentialExec.standardOutput.asText.get()
-        String credentialError = credentialExec.standardError.asText.get().trim()
-        int credentialExit = credentialExec.result.get().exitValue
+        int credentialExit = credentialProcess.waitFor()
+        String credentialOutput = credentialStandardOutput.toString()
+        String credentialError = credentialStandardError.toString().trim()
         if (credentialExit != 0) {
             throw new GradleException("Git Credential Manager could not provide GitHub authentication${credentialError.isBlank() ? '' : ": ${credentialError}"}")
         }
@@ -140,6 +145,15 @@ tasks.register('publishGithubJars') {
                 default -> throw new GradleException("Unsupported HTTP method ${method}")
             }
             client.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
+        }
+
+        if (dryRun) {
+            HttpResponse<String> repositoryResponse = request('GET', api)
+            if (repositoryResponse.statusCode() != 200) {
+                throw new GradleException("GitHub authentication check failed: HTTP ${repositoryResponse.statusCode()} ${repositoryResponse.body()}")
+            }
+            logger.lifecycle("Dry run successful: authenticated for ${repository}; no release or assets were changed.")
+            return
         }
 
         HttpResponse<String> releaseResponse = request('GET', "${api}/releases/tags/${encode(tag)}")

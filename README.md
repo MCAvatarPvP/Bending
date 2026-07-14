@@ -44,6 +44,9 @@ Other options are `-PgithubRemote=<remote>`, `-PgithubBranch=<branch>`,
 Change the root project version before publishing a new version. Re-running the
 same tag replaces assets with matching filenames.
 
+Use `-PgithubReleaseDryRun=true` to verify the build, pushed commit, and stored
+GitHub authentication without creating or changing a release.
+
 The Fabric auto-updater reads the latest release from
 `https://github.com/MCAvatarPvP/Bending/releases`, downloads its Fabric asset,
 and verifies GitHub's SHA-256 digest before installation.
