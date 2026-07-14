@@ -23,7 +23,6 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
@@ -44,6 +43,11 @@ public final class FabricAutoUpdater {
     private static final String MOD_ID = "projectkorra";
     private static final String DEFAULT_REPOSITORY = "MCAvatarPvP/Bending";
     private static final String API_VERSION = "2022-11-28";
+    private static final int TEXT_WHITE = 0xFFFFFFFF;
+    private static final int TEXT_LIGHT = 0xFFD0D0D0;
+    private static final int TEXT_DIM = 0xFFA0A0A0;
+    private static final int TEXT_SUCCESS = 0xFF55FF55;
+    private static final int TEXT_ERROR = 0xFFFF5555;
     private static final AtomicBoolean INITIALIZED = new AtomicBoolean();
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(15))
@@ -188,26 +192,108 @@ public final class FabricAutoUpdater {
         return jar.orElseThrow(() -> new IllegalStateException("Automatic installation is disabled in a development environment"));
     }
 
-    private static void installAfterExit(Path staged) {
+    private static void installAfterExit(Path staged, String assetName) {
         try {
             Path current = currentJar();
+            Path target = current.resolveSibling(safeName(assetName));
             long pid = ProcessHandle.current().pid();
             Path script;
             ProcessBuilder process;
             if (System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")) {
-                script = Files.createTempFile("projectkorra-update-", ".cmd");
-                String body = "@echo off\r\n"
-                        + ":wait\r\n"
-                        + "tasklist /FI \"PID eq " + pid + "\" 2>NUL | find \"" + pid + "\" >NUL\r\n"
-                        + "if not errorlevel 1 (ping 127.0.0.1 -n 2 >NUL & goto wait)\r\n"
-                        + "move /Y \"" + cmd(staged) + "\" \"" + cmd(current) + "\" >NUL\r\n"
-                        + "del \"%~f0\"\r\n";
+                script = Files.createTempFile("projectkorra-update-", ".ps1");
+                Path failureLog = current.resolveSibling(current.getFileName() + ".update-error.log");
+                String body = """
+                        param(
+                            [long]$MinecraftProcessId,
+                            [string]$StagedJar,
+                            [string]$CurrentJar,
+                            [string]$TargetJar,
+                            [string]$FailureLog
+                        )
+                        $ErrorActionPreference = 'Stop'
+                        try {
+                            if (Get-Process -Id $MinecraftProcessId -ErrorAction SilentlyContinue) {
+                                Wait-Process -Id $MinecraftProcessId -ErrorAction SilentlyContinue
+                            }
+                            $backup = "$TargetJar.previous"
+                            $installed = $false
+                            for ($attempt = 0; $attempt -lt 80; $attempt++) {
+                                try {
+                                    if (Test-Path -LiteralPath $backup) {
+                                        Remove-Item -LiteralPath $backup -Force
+                                    }
+                                    if (Test-Path -LiteralPath $TargetJar) {
+                                        [System.IO.File]::Replace($StagedJar, $TargetJar, $backup, $true)
+                                    } else {
+                                        Move-Item -LiteralPath $StagedJar -Destination $TargetJar -Force
+                                    }
+                                    $installed = $true
+                                    break
+                                } catch {
+                                    Start-Sleep -Milliseconds 250
+                                }
+                            }
+                            if (-not $installed) {
+                                throw "Could not install the new ProjectKorra jar after 20 seconds."
+                            }
+                            if ($CurrentJar -ne $TargetJar) {
+                                try {
+                                    Remove-Item -LiteralPath $CurrentJar -Force
+                                } catch {
+                                    Remove-Item -LiteralPath $TargetJar -Force -ErrorAction SilentlyContinue
+                                    if (Test-Path -LiteralPath $backup) {
+                                        Move-Item -LiteralPath $backup -Destination $TargetJar -Force
+                                    }
+                                    throw "Installed the new jar, but could not remove the old ProjectKorra jar: $($_.Exception.Message)"
+                                }
+                            }
+                            if (Test-Path -LiteralPath $backup) {
+                                Remove-Item -LiteralPath $backup -Force
+                            }
+                            Remove-Item -LiteralPath $FailureLog -Force -ErrorAction SilentlyContinue
+                        } catch {
+                            ($_ | Out-String) | Set-Content -LiteralPath $FailureLog -Encoding UTF8
+                            exit 1
+                        } finally {
+                            Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
+                        }
+                        """;
                 Files.writeString(script, body, StandardCharsets.UTF_8);
-                process = new ProcessBuilder("cmd.exe", "/c", "start", "", "/b", script.toString());
+                process = new ProcessBuilder("powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive",
+                        "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", script.toString(),
+                        Long.toString(pid), staged.toAbsolutePath().toString(), current.toAbsolutePath().toString(),
+                        target.toAbsolutePath().toString(),
+                        failureLog.toAbsolutePath().toString());
             } else {
                 script = Files.createTempFile("projectkorra-update-", ".sh");
-                String body = "#!/bin/sh\nwhile kill -0 " + pid + " 2>/dev/null; do sleep 1; done\n"
-                        + "mv -f -- " + sh(staged) + " " + sh(current) + "\nrm -f -- \"$0\"\n";
+                Path failureLog = current.resolveSibling(current.getFileName() + ".update-error.log");
+                String body = "#!/bin/sh\n"
+                        + "pid=" + pid + "\n"
+                        + "staged=" + sh(staged) + "\n"
+                        + "current=" + sh(current) + "\n"
+                        + "target=" + sh(target) + "\n"
+                        + "failure=" + sh(failureLog) + "\n"
+                        + "backup=\"${target}.previous\"\n"
+                        + "fail() { printf '%s\\n' \"$1\" > \"$failure\"; rm -f \"$0\"; exit 1; }\n"
+                        + "while kill -0 \"$pid\" 2>/dev/null; do sleep 1; done\n"
+                        + "installed=0\n"
+                        + "attempt=0\n"
+                        + "while [ \"$attempt\" -lt 20 ]; do\n"
+                        + "  rm -f \"$backup\"\n"
+                        + "  if [ -e \"$target\" ]; then\n"
+                        + "    if mv -f \"$target\" \"$backup\" && mv -f \"$staged\" \"$target\"; then installed=1; break; fi\n"
+                        + "    if [ -e \"$backup\" ]; then mv -f \"$backup\" \"$target\"; fi\n"
+                        + "  elif mv -f \"$staged\" \"$target\"; then installed=1; break; fi\n"
+                        + "  attempt=$((attempt + 1))\n"
+                        + "  sleep 1\n"
+                        + "done\n"
+                        + "[ \"$installed\" -eq 1 ] || fail 'Could not install the new ProjectKorra jar after 20 seconds.'\n"
+                        + "if [ \"$current\" != \"$target\" ] && ! rm -f \"$current\"; then\n"
+                        + "  rm -f \"$target\"\n"
+                        + "  if [ -e \"$backup\" ]; then mv -f \"$backup\" \"$target\"; fi\n"
+                        + "  fail 'Installed the new jar, but could not remove the old ProjectKorra jar.'\n"
+                        + "fi\n"
+                        + "rm -f \"$backup\" \"$failure\" \"$0\"\n";
                 Files.writeString(script, body, StandardCharsets.UTF_8);
                 process = new ProcessBuilder("sh", script.toString());
             }
@@ -217,7 +303,6 @@ public final class FabricAutoUpdater {
         }
     }
 
-    private static String cmd(Path path) { return path.toAbsolutePath().toString().replace("%", "%%").replace("\"", "\"\""); }
     private static String sh(Path path) { return "'" + path.toAbsolutePath().toString().replace("'", "'\\''") + "'"; }
     private static String safeName(String value) { return value.replaceAll("[^A-Za-z0-9._-]", "_"); }
     private static String string(JsonObject object, String key) { return object.has(key) && !object.get(key).isJsonNull() ? object.get(key).getAsString() : ""; }
@@ -276,12 +361,12 @@ public final class FabricAutoUpdater {
         }
         @Override public void render(DrawContext context, int mouseX, int mouseY, float delta) {
             super.render(context, mouseX, mouseY, delta);
-            context.drawCenteredTextWithShadow(textRenderer, title, width / 2, height / 2 - 42, 0xFFFFFF);
+            context.drawCenteredTextWithShadow(textRenderer, title, width / 2, height / 2 - 42, TEXT_WHITE);
             context.drawCenteredTextWithShadow(textRenderer,
                     Text.literal("Installed: " + release.currentVersion + "  •  Available: " + release.latestVersion),
-                    width / 2, height / 2 - 18, 0xD0D0D0);
+                    width / 2, height / 2 - 18, TEXT_LIGHT);
             context.drawCenteredTextWithShadow(textRenderer, Text.literal("The update will only install after you approve closing the game."),
-                    width / 2, height / 2 + 2, 0xA0A0A0);
+                    width / 2, height / 2 + 2, TEXT_DIM);
         }
         @Override public void close() { client.setScreen(parent); }
     }
@@ -316,10 +401,10 @@ public final class FabricAutoUpdater {
         }
         @Override public void render(DrawContext context, int mouseX, int mouseY, float delta) {
             super.render(context, mouseX, mouseY, delta);
-            context.drawCenteredTextWithShadow(textRenderer, title, width / 2, height / 2 - 54, 0xFFFFFF);
+            context.drawCenteredTextWithShadow(textRenderer, title, width / 2, height / 2 - 54, TEXT_WHITE);
             if (failure != null) {
-                context.drawCenteredTextWithShadow(textRenderer, Text.literal("Download failed"), width / 2, height / 2 - 18, 0xFF5555);
-                context.drawCenteredTextWithShadow(textRenderer, Text.literal(failure), width / 2, height / 2 + 2, 0xD0D0D0);
+                context.drawCenteredTextWithShadow(textRenderer, Text.literal("Download failed"), width / 2, height / 2 - 18, TEXT_ERROR);
+                context.drawCenteredTextWithShadow(textRenderer, Text.literal(failure), width / 2, height / 2 + 2, TEXT_LIGHT);
                 return;
             }
             long downloaded = state.downloaded.get(), total = state.total.get();
@@ -328,7 +413,7 @@ public final class FabricAutoUpdater {
             context.fill(left, top, right, top + 14, 0xFF303030);
             context.fill(left + 2, top + 2, left + 2 + (int) (296 * progress), top + 12, 0xFF55AAFF);
             String amount = formatBytes(downloaded) + (total > 0 ? " / " + formatBytes(total) : "");
-            context.drawCenteredTextWithShadow(textRenderer, Text.literal(amount), width / 2, top + 20, 0xD0D0D0);
+            context.drawCenteredTextWithShadow(textRenderer, Text.literal(amount), width / 2, top + 20, TEXT_LIGHT);
         }
         @Override public void close() { state.cancelled.set(true); client.setScreen(parent); }
     }
@@ -342,7 +427,7 @@ public final class FabricAutoUpdater {
             int y = height / 2 + 30;
             addDrawableChild(ButtonWidget.builder(Text.literal("Close game and install"), button -> {
                 try {
-                    installAfterExit(staged);
+                    installAfterExit(staged, release.assetName);
                     client.scheduleStop();
                 } catch (RuntimeException exception) {
                     failure = rootMessage(exception); clearAndInit();
@@ -353,12 +438,12 @@ public final class FabricAutoUpdater {
         }
         @Override public void render(DrawContext context, int mouseX, int mouseY, float delta) {
             super.render(context, mouseX, mouseY, delta);
-            context.drawCenteredTextWithShadow(textRenderer, title, width / 2, height / 2 - 48, 0xFFFFFF);
+            context.drawCenteredTextWithShadow(textRenderer, title, width / 2, height / 2 - 48, TEXT_WHITE);
             context.drawCenteredTextWithShadow(textRenderer, Text.literal("Version " + release.latestVersion + " passed SHA-256 verification."),
-                    width / 2, height / 2 - 22, 0x55FF55);
+                    width / 2, height / 2 - 22, TEXT_SUCCESS);
             context.drawCenteredTextWithShadow(textRenderer, Text.literal("Confirming will close Minecraft, replace the mod, and finish the update."),
-                    width / 2, height / 2, 0xD0D0D0);
-            if (failure != null) context.drawCenteredTextWithShadow(textRenderer, Text.literal(failure), width / 2, height / 2 + 14, 0xFF5555);
+                    width / 2, height / 2, TEXT_LIGHT);
+            if (failure != null) context.drawCenteredTextWithShadow(textRenderer, Text.literal(failure), width / 2, height / 2 + 14, TEXT_ERROR);
         }
         @Override public void close() { client.setScreen(parent); }
     }
