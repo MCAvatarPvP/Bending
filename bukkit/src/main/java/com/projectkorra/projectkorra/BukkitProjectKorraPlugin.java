@@ -48,24 +48,22 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
         registerCommands();
         Platform.events().registerListener(new PKListener(this));
         BetonQuestHook.register(this);
-        if (getServer().getPluginManager().isPluginEnabled("packetevents")) {
-            try {
+        try {
+            this.prediction = PaperPredictionServer.start(this);
+            if (getServer().getPluginManager().isPluginEnabled("packetevents")) {
                 this.tempBlockPacketFilter = TempBlockPacketFilter.register();
-                this.prediction = PaperPredictionServer.start(this);
-                getLogger().info("Enabled prediction-owned TempBlock packet filtering.");
-            } catch (Throwable failure) {
-                if (this.tempBlockPacketFilter != null) this.tempBlockPacketFilter.stop();
-                this.tempBlockPacketFilter = null;
-                if (this.prediction != null) this.prediction.stop();
-                this.prediction = null;
-                getLogger().warning("Could not enable exact client prediction safely; using server authority: "
-                        + failure.getMessage());
+                this.prediction.setTempBlockPacketFilter(this.tempBlockPacketFilter);
+                getLogger().info("Enabled exact-state owned TempBlock packet suppression.");
+            } else {
+                getLogger().info("PacketEvents is unavailable; using Fabric-side owned TempBlock suppression.");
             }
-        } else {
-            // Fail closed: normal server-authoritative bending remains active,
-            // but exact client prediction is not offered without the packet
-            // ownership filter required to keep TempBlocks synchronized.
-            getLogger().warning("PacketEvents is unavailable; exact client prediction is disabled to prevent TempBlock desyncs.");
+        } catch (Throwable failure) {
+            if (this.tempBlockPacketFilter != null) this.tempBlockPacketFilter.stop();
+            this.tempBlockPacketFilter = null;
+            if (this.prediction != null) this.prediction.stop();
+            this.prediction = null;
+            getLogger().warning("Could not enable exact client prediction; using server authority: "
+                    + failure.getMessage());
         }
     }
 
@@ -79,6 +77,10 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
             this.prediction.stop();
             this.prediction = null;
         }
+        // Restore every temporary world mutation before Paper saves chunks.
+        // Prediction/filtering is already stopped, so the authoritative
+        // reverts are not hidden from clients that remain during a reload.
+        GeneralMethods.stopBending();
         Platform.scheduler().cancelAll();
     }
 

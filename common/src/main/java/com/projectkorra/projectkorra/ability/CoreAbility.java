@@ -824,6 +824,18 @@ public abstract class CoreAbility implements Ability {
         return this.startTime;
     }
 
+    /**
+     * Backdates a newly-created authoritative ability to the bounded age of
+     * its already-running client prediction. Prediction endpoints call this
+     * once immediately after input dispatch; normal abilities are unaffected.
+     */
+    public void alignPredictedStart(final long elapsedMillis) {
+        if (!this.started || elapsedMillis <= 0L) return;
+        final long bounded = Math.min(elapsedMillis, 60_000L);
+        this.startTime = Math.max(0L, this.startTime - bounded);
+        this.startTick -= Math.max(0L, (bounded + 49L) / 50L);
+    }
+
     public long getStartTick() {
         return this.startTick;
     }

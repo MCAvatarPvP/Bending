@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.fabric;
 
 import com.projectkorra.projectkorra.BendingPlayer;
+import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.fabric.FabricMC;
@@ -50,6 +51,7 @@ public final class ProjectKorraFabricMod implements ModInitializer {
                     this.prediction.stop();
                     this.prediction = null;
                 }
+                GeneralMethods.stopBending();
                 this.gameplay.stop();
                 this.platform.disable();
                 this.platform = null;

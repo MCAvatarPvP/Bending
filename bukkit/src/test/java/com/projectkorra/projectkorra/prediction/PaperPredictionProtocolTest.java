@@ -57,11 +57,14 @@ class PaperPredictionProtocolTest {
     }
 
     @Test
-    void blockEchoPolicySuppressesIntermediateButAllowsDivergedFinalRestore() {
-        assertTrue(PredictionEchoPolicy.shouldSuppress(false, true, false));
+    void blockEchoPolicyNeverHidesAuthorityBehindNewerPrediction() {
+        assertFalse(PredictionEchoPolicy.shouldSuppress(false, true, false));
         assertTrue(PredictionEchoPolicy.shouldSuppress(false, false, true));
         assertFalse(PredictionEchoPolicy.shouldSuppress(false, false, false));
-        assertTrue(PredictionEchoPolicy.shouldSuppress(true, true, false));
+        assertFalse(PredictionEchoPolicy.shouldSuppress(true, true, false));
+        assertFalse(PredictionEchoPolicy.confirmedByLatestAuthority(true, false),
+                "an older match must not keep a diverged block confirmed");
+        assertTrue(PredictionEchoPolicy.confirmedByLatestAuthority(false, true));
     }
 
     @Test
@@ -69,6 +72,20 @@ class PaperPredictionProtocolTest {
         assertFalse(PredictionEchoPolicy.mayApplyLocalMutationOverServerTemp(true, false));
         assertTrue(PredictionEchoPolicy.mayApplyLocalMutationOverServerTemp(true, true));
         assertTrue(PredictionEchoPolicy.mayApplyLocalMutationOverServerTemp(false, false));
+    }
+
+    @Test
+    void tempBlockStateIdentityIncludesFluidLevelAndWaterlogging() {
+        com.projectkorra.projectkorra.platform.mc.block.data.Levelled source =
+                new com.projectkorra.projectkorra.platform.mc.block.data.Levelled(
+                        com.projectkorra.projectkorra.platform.mc.Material.WATER);
+        com.projectkorra.projectkorra.platform.mc.block.data.Levelled flowing = source.clone();
+        flowing.setLevel(7);
+        assertNotEquals(TempBlockSync.encode(source), TempBlockSync.encode(flowing));
+
+        com.projectkorra.projectkorra.platform.mc.block.data.Levelled waterlogged = source.clone();
+        waterlogged.setWaterlogged(true);
+        assertNotEquals(TempBlockSync.encode(source), TempBlockSync.encode(waterlogged));
     }
 
     @Test
@@ -181,7 +198,7 @@ class PaperPredictionProtocolTest {
         UUID owner = UUID.randomUUID();
         PaperPredictionProtocol.TempBlockOp operation = new PaperPredictionProtocol.TempBlockOp(
                 PaperPredictionProtocol.TempOperation.CREATE, "world", 1, 64, 2,
-                "minecraft:stone", 12_000, 45, 7, 99, owner, "minecraft:air");
+                "minecraft:stone", 12_000, 45, 7, 99, owner, "minecraft:air", true);
         byte[] payload = PaperPredictionProtocol.tempBlocks(91, 10_000, List.of(operation));
         PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(payload);
         assertEquals(91L, reader.i64());
@@ -201,7 +218,24 @@ class PaperPredictionProtocolTest {
         assertTrue(reader.bool());
         assertEquals(owner, reader.uuid());
         assertEquals("minecraft:air", reader.string(128));
+        assertTrue(reader.bool());
         reader.finished();
+    }
+
+    @Test
+    void boundedTempBlockPageAlwaysFitsPluginMessageLimit() {
+        String maximumWorld = "界".repeat(256);
+        String maximumState = "界".repeat(128);
+        UUID owner = UUID.randomUUID();
+        List<PaperPredictionProtocol.TempBlockOp> page = java.util.stream.LongStream.range(0, 8)
+                .mapToObj(layer -> new PaperPredictionProtocol.TempBlockOp(
+                        PaperPredictionProtocol.TempOperation.CREATE, maximumWorld,
+                        Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, maximumState,
+                        Long.MAX_VALUE, Long.MAX_VALUE, layer, Long.MAX_VALUE, owner, maximumState, true))
+                .toList();
+
+        assertTrue(PaperPredictionProtocol.tempBlocks(Long.MAX_VALUE, Long.MAX_VALUE, page).length
+                <= 32_766); // Bukkit Messenger.MAX_MESSAGE_SIZE
     }
 
     @Test

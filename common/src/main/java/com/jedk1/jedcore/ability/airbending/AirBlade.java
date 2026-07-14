@@ -424,6 +424,10 @@ public class AirBlade extends AirAbility implements AddonAbility {
 
     @Override
     public void stop() {
+        if (bladeHeadDisplays != null) {
+            return;
+        }
+
         clearBladeHeadDisplays();
     }
 

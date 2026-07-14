@@ -18,6 +18,7 @@ import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.util.ClickType;
 import com.projectkorra.projectkorra.util.Cooldown;
+import com.projectkorra.projectkorra.util.TempBlock;
 import com.projectkorra.projectkorra.waterbending.passive.FastSwim;
 import org.bukkit.Bukkit;
 import org.bukkit.FluidCollisionMode;
@@ -49,6 +50,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     private static final int CAPABILITY_EXACT = 8;
     private static final int INPUTS_PER_SECOND = 80;
     private static final int CLAIMS_PER_SECOND = 48;
+    private static final int TEMP_BLOCK_OPS_PER_PACKET = 8;
     private static final double MAX_ORIGIN_ERROR = 8.0;
     private static final double CLAIM_QUERY_TOLERANCE = 1.0;
     private static final ThreadLocal<UUID> EFFECT_OWNER = new ThreadLocal<>();
@@ -62,6 +64,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     private final Map<CoreAbility, Action> abilityActions = Collections.synchronizedMap(new IdentityHashMap<>());
     private final Map<UUID, EnumMap<PaperPredictionProtocol.InputKind, Long>> pendingVanilla = new HashMap<>();
     private final List<PendingTempBlock> pendingTempBlocks = new ArrayList<>();
+    private TempBlockPacketFilter tempBlockPacketFilter;
     private final List<Claim> pendingReactions = new ArrayList<>();
     private final AtomicBoolean snapshotBuildRunning = new AtomicBoolean();
     private volatile List<PaperPredictionProtocol.ConfigEntry> publicConfig = List.of();
@@ -90,6 +93,10 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         server.requestSnapshotRebuild(false);
         plugin.getLogger().info("Fabric client prediction endpoint enabled on Paper (protocol " + PaperPredictionProtocol.VERSION + ")");
         return server;
+    }
+
+    public void setTempBlockPacketFilter(final TempBlockPacketFilter filter) {
+        this.tempBlockPacketFilter = filter;
     }
 
     public static boolean consumeVanilla(Player player, PaperPredictionProtocol.InputKind kind) {
@@ -550,7 +557,17 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         pendingVanilla.entrySet().removeIf(entry -> entry.getValue().isEmpty() || Bukkit.getPlayer(entry.getKey()) == null);
         sessions.entrySet().removeIf(entry -> Bukkit.getPlayer(entry.getKey()) == null);
         abilityActions.entrySet().removeIf(entry -> entry.getKey().isRemoved() || !sessions.containsKey(entry.getValue().owner));
-        if (tick % 20 == 0) syncState();
+        if (tick % 20 == 0) {
+            syncState();
+            // CREATE/REVERT packets are ordered, but a player can enter view
+            // after a layer was created or re-handshake mid-ability. Re-send
+            // the active in-range ledger so authority self-heals without
+            // waiting for an ability-specific update.
+            for (Session session : sessions.values()) {
+                final Player player = Bukkit.getPlayer(session.player);
+                if (player != null) sendTempBlockSnapshot(player, session);
+            }
+        }
         if (tick % 100 == 0) {
             requestSnapshotRebuild(true);
         }
@@ -582,6 +599,11 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     }
 
     @Override
+    public void beforeWorldChange(final TempBlockSync.Change change) {
+        if (this.tempBlockPacketFilter != null) this.tempBlockPacketFilter.record(change);
+    }
+
+    @Override
     public void onChange(TempBlockSync.Change change) {
         PaperPredictionProtocol.TempOperation wireOperation = switch (change.operation()) {
             case CREATE -> PaperPredictionProtocol.TempOperation.CREATE;
@@ -603,7 +625,8 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                 change.operation() == TempBlockSync.Operation.REVERT ? 0L : change.revertAtMillis(),
                 action == null ? (inputSequence == null ? 0L : inputSequence) : action.sequence,
                 change.layerId(), change.revision(), change.ownerId(),
-                TempBlockSync.encode(change.data())), Map.copyOf(ownerViews)));
+                TempBlockSync.encode(change.data()),
+                change.packetExpected() && this.tempBlockPacketFilter == null), Map.copyOf(ownerViews)));
     }
 
     @Override
@@ -757,8 +780,9 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         }
         AbilityActivationManager.beginTracking();
         try {
-            runWithOwner(player.getUniqueId(), input.locallyPredicted(),
-                    () -> dispatch(player, input.kind(), input.x(), input.y(), input.z(), input.yaw(), input.pitch()));
+            PredictionDeterminism.run(input.sequence(), () ->
+                    runWithOwner(player.getUniqueId(), input.locallyPredicted(),
+                            () -> dispatch(player, input.kind(), input.x(), input.y(), input.z(), input.yaw(), input.pitch())));
         } finally {
             handled = AbilityActivationManager.finishTracking();
             if (guardedCooldown) {
@@ -767,6 +791,14 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             }
             if (previousSequence == null) INPUT_SEQUENCE.remove();
             else INPUT_SEQUENCE.set(previousSequence);
+        }
+        if (input.locallyPredicted()) {
+            for (CoreAbility candidate : CoreAbility.getAbilitiesByInstances()) {
+                if (!before.contains(candidate) && candidate.getPlayer() != null
+                        && candidate.getPlayer().getUniqueId().equals(player.getUniqueId())) {
+                    PredictionTiming.alignStart(candidate);
+                }
+            }
         }
         long cooldownAfter = bending.getCooldown(abilityName);
         boolean createdAny = createdAnyAbility(before, player.getUniqueId());
@@ -925,16 +957,29 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             if (player == null) continue;
             Location location = player.getLocation();
             String viewerWorld = player.getWorld().getUID().toString();
-            List<PaperPredictionProtocol.TempBlockOp> visible = operations.stream()
-                    .filter(pending -> PredictionVisibility.tracksBlock(viewerWorld, pending.worldId.toString(),
-                            location.getBlockX(), location.getBlockZ(), pending.operation.x(), pending.operation.z(),
-                            player.getClientViewDistance()))
-                    .map(pending -> pending.forViewer(session.player))
-                    .toList();
-            if (!visible.isEmpty()) {
-                send(player, PaperPredictionProtocol.TEMP_BLOCKS,
-                        PaperPredictionProtocol.tempBlocks(tick, System.currentTimeMillis(), visible));
+            List<PaperPredictionProtocol.TempBlockOp> visible = new ArrayList<>();
+            for (PendingTempBlock pending : operations) {
+                final long layerId = pending.operation.layerId();
+                final boolean inView = PredictionVisibility.tracksBlock(viewerWorld, pending.worldId.toString(),
+                        location.getBlockX(), location.getBlockZ(), pending.operation.x(), pending.operation.z(),
+                        player.getClientViewDistance());
+                if (!session.tempLayers.route(layerId,
+                        pending.operation.operation() == PaperPredictionProtocol.TempOperation.REVERT, inView)) continue;
+                visible.add(pending.forViewer(session.player));
             }
+            if (!visible.isEmpty()) {
+                sendTempBlockOperations(player, visible);
+            }
+        }
+    }
+
+    private void sendTempBlockOperations(final Player player,
+                                         final List<PaperPredictionProtocol.TempBlockOp> operations) {
+        final long now = System.currentTimeMillis();
+        for (int start = 0; start < operations.size(); start += TEMP_BLOCK_OPS_PER_PACKET) {
+            send(player, PaperPredictionProtocol.TEMP_BLOCKS,
+                    PaperPredictionProtocol.tempBlocks(tick, now,
+                            operations.subList(start, Math.min(start + TEMP_BLOCK_OPS_PER_PACKET, operations.size()))));
         }
     }
 
@@ -1030,8 +1075,38 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                 Player current = Bukkit.getPlayer(session.player);
                 if (current == null || sessions.get(session.player) != session) return;
                 for (OutboundPayload message : outbound) send(current, message.channel(), message.payload());
+                sendTempBlockSnapshot(current, session);
             });
         });
+    }
+
+    /**
+     * A client can join or re-handshake while long-lived TempBlocks already
+     * exist. Rebuild its complete in-range layer ledger after the normal
+     * prediction snapshot so chunk packets can never leave invisible blocks.
+     */
+    private void sendTempBlockSnapshot(final Player player, final Session session) {
+        final Location location = player.getLocation();
+        final String viewerWorld = player.getWorld().getUID().toString();
+        final List<PaperPredictionProtocol.TempBlockOp> operations = new ArrayList<>();
+        for (TempBlock layer : TempBlock.getActiveLayers()) {
+            final Block block = layer.getBlock();
+            if (block.getWorld() == null || !(block.getWorld().handle() instanceof World world)
+                    || !PredictionVisibility.tracksBlock(viewerWorld, world.getUID().toString(),
+                    location.getBlockX(), location.getBlockZ(), block.getX(), block.getZ(),
+                    player.getClientViewDistance())) continue;
+            final CoreAbility ability = layer.getAbility().orElse(null);
+            final Action action = ability == null ? null : actionForEffect(ability);
+            final BlockData viewerData = TempBlock.getVisibleData(block, session.player);
+            operations.add(new PaperPredictionProtocol.TempBlockOp(
+                    PaperPredictionProtocol.TempOperation.CREATE, worldKey(block.getWorld()),
+                    block.getX(), block.getY(), block.getZ(), TempBlockSync.encode(layer.getBlockData()),
+                    layer.getRevertTime(), action == null ? 0L : action.sequence,
+                    layer.getLayerId(), layer.getRevision(), layer.getOwnerId().orElse(null),
+                    TempBlockSync.encode(viewerData == null ? layer.getBlockData() : viewerData), false));
+            session.tempLayers.markActive(layer.getLayerId());
+        }
+        sendTempBlockOperations(player, operations);
     }
 
     private List<List<PaperPredictionProtocol.ConfigEntry>> configChunks(
@@ -1116,7 +1191,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             return new PaperPredictionProtocol.TempBlockOp(operation.operation(), operation.world(),
                     operation.x(), operation.y(), operation.z(), operation.material(), operation.revertAtMillis(),
                     operation.actionSequence(), operation.layerId(), operation.revision(), operation.ownerId(),
-                    ownerViews.getOrDefault(viewer, operation.material()));
+                    ownerViews.getOrDefault(viewer, operation.material()), operation.packetExpected());
         }
     }
 
@@ -1126,6 +1201,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         final int capabilities;
         final RateLimiter inputLimiter = new RateLimiter(), claimLimiter = new RateLimiter();
         final LinkedHashMap<Long, Action> actions = new LinkedHashMap<>();
+        final TempBlockDeliveryTracker tempLayers = new TempBlockDeliveryTracker();
         long lastSequence;
         int stateDigest;
 

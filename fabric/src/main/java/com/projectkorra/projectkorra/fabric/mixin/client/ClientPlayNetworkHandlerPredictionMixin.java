@@ -51,7 +51,7 @@ public abstract class ClientPlayNetworkHandlerPredictionMixin {
     }
 
     @Inject(method = "onChunkDeltaUpdate", at = @At("TAIL"))
-    private void projectkorra$restorePredictedBlockBatch(ChunkDeltaUpdateS2CPacket packet, CallbackInfo ci) {
+    private void projectkorra$acceptAuthoritativeBlockBatch(ChunkDeltaUpdateS2CPacket packet, CallbackInfo ci) {
         if (!MinecraftClient.getInstance().isOnThread()) return;
         List<BlockPos> positions = new ArrayList<>();
         List<BlockState> states = new ArrayList<>();
@@ -59,13 +59,13 @@ public abstract class ClientPlayNetworkHandlerPredictionMixin {
             positions.add(pos.toImmutable());
             states.add(state);
         });
-        ExactPredictionRuntime.restoreAuthoritativeBlockBatch(world, positions, states);
+        ExactPredictionRuntime.acceptAuthoritativeBlockBatch(world, positions, states);
     }
 
     @Inject(method = "onChunkData", at = @At("TAIL"))
-    private void projectkorra$restorePredictedChunk(ChunkDataS2CPacket packet, CallbackInfo ci) {
+    private void projectkorra$acceptAuthoritativeChunk(ChunkDataS2CPacket packet, CallbackInfo ci) {
         if (!MinecraftClient.getInstance().isOnThread()) return;
-        ExactPredictionRuntime.restorePredictedChunk(world, packet.getChunkX(), packet.getChunkZ());
+        ExactPredictionRuntime.acceptAuthoritativeChunk(world, packet.getChunkX(), packet.getChunkZ());
     }
 
     @Inject(method = "onEntityVelocityUpdate", at = @At("HEAD"), cancellable = true)

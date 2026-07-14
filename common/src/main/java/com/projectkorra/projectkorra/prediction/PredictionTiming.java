@@ -23,12 +23,21 @@ public final class PredictionTiming {
 
     public static long alignDuration(CoreAbility ability, long durationMillis) {
         if (durationMillis <= 1L || ability == null) return durationMillis;
-        long compensation;
-        try {
-            compensation = Math.max(0L, provider.applyAsLong(ability));
-        } catch (Throwable ignored) {
-            compensation = 0L;
-        }
+        long compensation = compensation(ability);
         return Math.max(1L, durationMillis - Math.min(durationMillis - 1L, compensation));
+    }
+
+    /** Aligns charge/duration clocks on a newly-created server ability. */
+    public static void alignStart(CoreAbility ability) {
+        if (ability != null) ability.alignPredictedStart(compensation(ability));
+    }
+
+    private static long compensation(CoreAbility ability) {
+        if (ability == null) return 0L;
+        try {
+            return Math.max(0L, provider.applyAsLong(ability));
+        } catch (Throwable ignored) {
+            return 0L;
+        }
     }
 }

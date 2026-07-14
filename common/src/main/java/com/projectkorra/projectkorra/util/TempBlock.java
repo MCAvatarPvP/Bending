@@ -1,10 +1,10 @@
 package com.projectkorra.projectkorra.util;
 
 import com.projectkorra.projectkorra.GeneralMethods;
+import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.FireAbility;
 import com.projectkorra.projectkorra.ability.WaterAbility;
-import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.World;
@@ -14,7 +14,6 @@ import com.projectkorra.projectkorra.platform.mc.block.BlockState;
 import com.projectkorra.projectkorra.platform.mc.block.Container;
 import com.projectkorra.projectkorra.platform.mc.block.data.Bisected;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
-import com.projectkorra.projectkorra.platform.mc.block.data.Levelled;
 import com.projectkorra.projectkorra.platform.mc.block.data.Snowable;
 import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
 import com.projectkorra.projectkorra.prediction.PredictionTiming;
@@ -28,6 +27,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public class TempBlock {
 
+    private static final Object MUTATION_LOCK = new Object();
     private static final Map<Block, LinkedList<TempBlock>> instances_ = new HashMap<>();
     private static final PriorityQueue<TempBlock> REVERT_QUEUE = new PriorityQueue<>(128,
             (t1, t2) -> Long.compare(t1.revertTime, t2.revertTime));
@@ -39,7 +39,6 @@ public class TempBlock {
      */
     @Deprecated
     public static Map<Block, TempBlock> instances = new ConcurrentHashMap<>();
-    private static boolean REVERT_TASK_RUNNING;
 
     private final Block block;
     private final long layerId = NEXT_LAYER_ID.incrementAndGet();
@@ -50,7 +49,7 @@ public class TempBlock {
     private Set<TempBlock> attachedTempBlocks; //Temp Block states that should be reverted as well when the temp block expires (e.g. double blocks)
     private long revertTime;
     private boolean inRevertQueue;
-    private boolean reverted;
+    private volatile boolean reverted;
     private Runnable revertTask = null;
     private Optional<CoreAbility> ability = Optional.empty(); // If we want this TempBlock to have an assigned ability created from it
     private boolean isBendableSource = false;
@@ -104,33 +103,34 @@ public class TempBlock {
             }
         }
 
-        if (instances_.containsKey(block)) {
-            final TempBlock temp = instances_.get(block).getFirst();
-            this.state = temp.state; //Set the original blockstate of the tempblock
-            put(block, this);
-            block.setBlockData(newData, applyPhysics(newData.getMaterial()));
-        } else {
-            this.state = block.getState();
-
-            if (this.state instanceof Container || this.state.getType() == Material.JUKEBOX) {
-                return;
+        synchronized (MUTATION_LOCK) {
+            discardStaleStack(block);
+            if (instances_.containsKey(block)) {
+                final TempBlock temp = instances_.get(block).getFirst();
+                this.state = temp.state; //Set the original blockstate of the tempblock
+            } else {
+                this.state = block.getState();
+                if (this.state instanceof Container || this.state.getType() == Material.JUKEBOX) {
+                    this.reverted = true;
+                    return;
+                }
             }
-
             put(block, this);
-
-            block.setBlockData(newData, applyPhysics(newData.getMaterial()));
+            if (revertTime > 0 && !(this.state instanceof Container)) {
+                this.revertTime = PredictionTiming.alignDuration(this.ability.orElse(null), revertTime)
+                        + System.currentTimeMillis();
+                this.inRevertQueue = true;
+                REVERT_QUEUE.add(this);
+            }
+            // Packet filters must be armed before setBlockData can synchronously
+            // emit the vanilla update. Lifecycle metadata is published only
+            // after the physical mutation succeeds.
+            TempBlockSync.beforeWorldChange(TempBlockSync.Operation.CREATE, this, newData);
+            applyWorldData(this, newData);
+            // Registration, world mutation, expiry and publication form one
+            // transaction. No observer can see a half-created layer.
+            publish(TempBlockSync.Operation.CREATE, this.newData, true);
         }
-
-        if (revertTime > 0 && !(this.state instanceof Container)) {
-            this.revertTime = PredictionTiming.alignDuration(this.ability.orElse(null), revertTime)
-                    + System.currentTimeMillis();
-            this.inRevertQueue = true;
-            REVERT_QUEUE.add(this);
-        }
-        // Creation is one ordered operation. Previously timed blocks published a
-        // CREATE with expiry 0 followed immediately by UPDATE_EXPIRY, doubling
-        // the reconciliation work for every trail/wall block.
-        publish(TempBlockSync.Operation.CREATE, this.newData);
     }
 
     /**
@@ -140,10 +140,12 @@ public class TempBlock {
      * @return The topmost TempBlock
      */
     public static TempBlock get(final Block block) {
-        if (isTempBlock(block)) {
-            return instances_.get(block).getLast();
+        synchronized (MUTATION_LOCK) {
+            if (isTempBlockLocked(block)) {
+                return instances_.get(block).getLast();
+            }
+            return null;
         }
-        return null;
     }
 
     /**
@@ -153,7 +155,19 @@ public class TempBlock {
      * @return The list of TempBlocks
      */
     public static LinkedList<TempBlock> getAll(Block block) {
-        return instances_.get(block);
+        synchronized (MUTATION_LOCK) {
+            final LinkedList<TempBlock> layers = instances_.get(block);
+            return layers == null ? null : new LinkedList<>(layers);
+        }
+    }
+
+    /** Stable copy used to rebuild a prediction client's TempBlock ledger. */
+    public static List<TempBlock> getActiveLayers() {
+        synchronized (MUTATION_LOCK) {
+            final List<TempBlock> result = new ArrayList<>();
+            for (LinkedList<TempBlock> layers : instances_.values()) result.addAll(layers);
+            return List.copyOf(result);
+        }
     }
 
     /**
@@ -171,7 +185,13 @@ public class TempBlock {
     }
 
     public static boolean isTempBlock(final Block block) {
-        return block != null && instances_.containsKey(block);
+        synchronized (MUTATION_LOCK) {
+            return isTempBlockLocked(block);
+        }
+    }
+
+    private static boolean isTempBlockLocked(final Block block) {
+        return block != null && instances_.containsKey(block) && !instances_.get(block).isEmpty();
     }
 
     /**
@@ -182,33 +202,39 @@ public class TempBlock {
      * @return True if there is a TempBlock beside it
      */
     public static boolean isTouchingTempBlock(final Block block) {
-        final BlockFace[] faces = {BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST, BlockFace.UP, BlockFace.DOWN};
-        for (final BlockFace face : faces) {
-            if (instances_.containsKey(block.getRelative(face))) {
-                return true;
+        synchronized (MUTATION_LOCK) {
+            final BlockFace[] faces = {BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST, BlockFace.UP, BlockFace.DOWN};
+            for (final BlockFace face : faces) {
+                if (isTempBlockLocked(block.getRelative(face))) {
+                    return true;
+                }
             }
+            return false;
         }
-        return false;
     }
 
     /**
      * Remove and revert all TempBlocks on the server. Done at server shutdown or PK reload.
      */
     public static void removeAll() {
-        for (final Block block : new HashSet<>(instances_.keySet())) {
+        final Set<Block> blocks;
+        synchronized (MUTATION_LOCK) {
+            blocks = new HashSet<>(instances_.keySet());
+        }
+        for (final Block block : blocks) {
             revertBlock(block, Material.AIR);
         }
-        for (final TempBlock tempblock : REVERT_QUEUE) {
-            tempblock.state.update(true, applyPhysics(tempblock.state.getType()));
-            if (tempblock.revertTask != null) {
-                tempblock.revertTask.run();
-            }
+        synchronized (MUTATION_LOCK) {
+            REVERT_QUEUE.clear();
         }
-        REVERT_QUEUE.clear();
     }
 
     public static void removeAllInWorld(World world) {
-        for (final Block block : new HashSet<>(instances_.keySet())) {
+        final Set<Block> blocks;
+        synchronized (MUTATION_LOCK) {
+            blocks = new HashSet<>(instances_.keySet());
+        }
+        for (final Block block : blocks) {
             if (block.getWorld() == world) {
                 revertBlock(block, Material.AIR);
             }
@@ -221,10 +247,22 @@ public class TempBlock {
      * @param block The block location
      */
     public static void removeBlock(final Block block) {
-        instances_.get(block).forEach(t -> {
-            REVERT_QUEUE.remove(t);
-            remove(t);
-        });
+        final List<TempBlock> invalidated;
+        synchronized (MUTATION_LOCK) {
+            invalidated = invalidateStack(block, block == null ? null : block.getBlockData(), true);
+        }
+        finishInvalidated(invalidated);
+    }
+
+    /**
+     * Drops local bookkeeping after external authority has already won. Unlike
+     * {@link #removeBlock(Block)}, this never publishes, writes the world, or
+     * runs revert/attachment callbacks that could create a second stale change.
+     */
+    public static void discardBlock(final Block block) {
+        synchronized (MUTATION_LOCK) {
+            invalidateStack(block, block == null ? null : block.getBlockData(), false);
+        }
     }
 
     /**
@@ -240,6 +278,73 @@ public class TempBlock {
             }
             refreshVisibility(tempBlock.block);
         }
+    }
+
+    private static boolean sameData(final BlockData first, final BlockData second) {
+        // BlockData#getAsString only contains the material in the loader-neutral
+        // model. Treating every WATER state as equal concealed fluid-level and
+        // waterlogged changes from the stack audit, which then let stale water
+        // layers survive their real server block. The wire encoding includes
+        // every property represented by the common model.
+        return first != null && second != null
+                && TempBlockSync.encode(first).equals(TempBlockSync.encode(second));
+    }
+
+    /** Drop an unannounced stack when some external code has replaced its top. */
+    private static void discardStaleStack(final Block block) {
+        final LinkedList<TempBlock> layers = instances_.get(block);
+        if (layers == null || layers.isEmpty()) return;
+        final TempBlock top = layers.getLast();
+        if (sameData(block.getBlockData(), top.newData)) return;
+        final List<TempBlock> invalidated = invalidateStack(block, block.getBlockData(), true);
+        finishInvalidated(invalidated);
+    }
+
+    private static List<TempBlock> invalidateStack(final Block block, final BlockData effectiveData,
+                                                    final boolean publishChanges) {
+        if (block == null) return List.of();
+        final LinkedList<TempBlock> layers = instances_.remove(block);
+        if (layers == null || layers.isEmpty()) return List.of();
+        refreshVisibility(block);
+        final List<TempBlock> invalidated = new ArrayList<>(layers.size());
+        for (TempBlock layer : layers) {
+            REVERT_QUEUE.remove(layer);
+            layer.inRevertQueue = false;
+            if (layer.reverted) continue;
+            layer.reverted = true;
+            if (publishChanges && effectiveData != null) {
+                layer.publish(TempBlockSync.Operation.REVERT, effectiveData);
+            }
+            invalidated.add(layer);
+        }
+        return invalidated;
+    }
+
+    private static void finishInvalidated(final List<TempBlock> invalidated) {
+        for (TempBlock layer : invalidated) finishLayer(layer);
+    }
+
+    private static void finishLayer(final TempBlock layer) {
+        if (layer.revertTask != null) {
+            try {
+                layer.revertTask.run();
+            } catch (RuntimeException failure) {
+                ProjectKorra.log.warning("TempBlock revert callback failed at " + layer.getLocation()
+                        + ": " + failure.getMessage());
+            }
+        }
+        for (TempBlock attached : new HashSet<>(layer.attachedTempBlocks)) {
+            try {
+                attached.revertBlock();
+            } catch (RuntimeException failure) {
+                ProjectKorra.log.warning("Attached TempBlock revert failed at " + attached.getLocation()
+                        + ": " + failure.getMessage());
+            }
+        }
+    }
+
+    private static void applyWorldData(final TempBlock layer, final BlockData data) {
+        layer.block.setBlockData(data, applyPhysics(data.getMaterial()));
     }
 
     private static void refreshVisibility(final Block block) {
@@ -319,34 +424,18 @@ public class TempBlock {
      * @param defaulttype The default material to revert to if it can't
      */
     public static void revertBlock(final Block block, final Material defaulttype) {
-        if (instances_.containsKey(block)) {
-            //We clone the list first, then remove before reverting. The tempblock list is cloned so we get no concurrent modification exceptions
-            List<TempBlock> tempBlocks = new ArrayList<>(instances_.get(block));
-            tempBlocks.forEach((b) -> {
-                TempBlock.remove(b);
-                b.trueRevertBlock();
-            });
-        } else {
-            if ((defaulttype == Material.LAVA) && GeneralMethods.isAdjacentToThreeOrMoreSources(block, true)) {
-                final BlockData data = Material.LAVA.createBlockData();
-
-                if (data instanceof Levelled) {
-                    ((Levelled) data).setLevel(0);
-                }
-
-                block.setBlockData(data, applyPhysics(data.getMaterial()));
-            } else if ((defaulttype == Material.WATER) && GeneralMethods.isAdjacentToThreeOrMoreSources(block)) {
-                final BlockData data = Material.WATER.createBlockData();
-
-                if (data instanceof Levelled) {
-                    ((Levelled) data).setLevel(0);
-                }
-
-                block.setBlockData(data, applyPhysics(data.getMaterial()));
-            } else {
-                block.setType(defaulttype, applyPhysics(defaulttype));
-            }
+        final List<TempBlock> layers;
+        synchronized (MUTATION_LOCK) {
+            final LinkedList<TempBlock> current = instances_.get(block);
+            layers = current == null ? List.of() : new ArrayList<>(current);
         }
+        if (!layers.isEmpty()) {
+            //We clone the list first, then remove before reverting. The tempblock list is cloned so we get no concurrent modification exceptions
+            layers.forEach(TempBlock::revertBlock);
+        }
+        // No registered layer means the current block is real authority. The
+        // old fallback forced AIR here, allowing stale ability maps to erase a
+        // player placement long after removeBlock() invalidated the TempBlock.
     }
 
     /**
@@ -377,7 +466,11 @@ public class TempBlock {
     }
 
     public void setState(final BlockState newstate) {
-        this.state = newstate;
+        synchronized (MUTATION_LOCK) {
+            if (this.reverted || newstate == null) return;
+            this.state = newstate;
+            refreshVisibility(this.block);
+        }
     }
 
     public Optional<CoreAbility> getAbility() {
@@ -397,10 +490,13 @@ public class TempBlock {
     }
 
     public TempBlock setAbility(CoreAbility ability) {
-        this.ability = Optional.ofNullable(ability);
-        this.ownerId = ability == null || ability.getPlayer() == null ? null : ability.getPlayer().getUniqueId();
-        refreshVisibility(this.block);
-        publish(TempBlockSync.Operation.CREATE, this.newData);
+        synchronized (MUTATION_LOCK) {
+            if (this.reverted) return this;
+            this.ability = Optional.ofNullable(ability);
+            this.ownerId = ability == null || ability.getPlayer() == null ? null : ability.getPlayer().getUniqueId();
+            refreshVisibility(this.block);
+            publish(TempBlockSync.Operation.CREATE, this.newData);
+        }
         return this;
     }
 
@@ -409,7 +505,9 @@ public class TempBlock {
     }
 
     public void setRevertTask(final Runnable task) {
-        this.revertTask = task;
+        synchronized (MUTATION_LOCK) {
+            this.revertTask = task;
+        }
     }
 
     /**
@@ -417,7 +515,7 @@ public class TempBlock {
      */
     @Deprecated
     public void setRevertTask(final RevertTask task) {
-        this.revertTask = task;
+        this.setRevertTask((Runnable) task);
     }
 
     public long getRevertTime() {
@@ -430,28 +528,22 @@ public class TempBlock {
      * @param revertTime The time it takes to revert. In milliseconds.
      */
     public void setRevertTime(final long revertTime) {
-        if (revertTime <= 0 || state instanceof Container) {
-            return;
+        synchronized (MUTATION_LOCK) {
+            if (this.reverted || revertTime <= 0 || state instanceof Container) return;
+            this.revertTime = PredictionTiming.alignDuration(this.ability.orElse(null), revertTime)
+                    + System.currentTimeMillis();
+            if (this.inRevertQueue) REVERT_QUEUE.remove(this);
+            else this.inRevertQueue = true;
+            REVERT_QUEUE.add(this);
+            publish(TempBlockSync.Operation.UPDATE_EXPIRY, this.newData);
         }
-        this.revertTime = PredictionTiming.alignDuration(this.ability.orElse(null), revertTime)
-                + System.currentTimeMillis();
-        if (this.inRevertQueue) {
-            REVERT_QUEUE.remove(this);
-        } else {
-            this.inRevertQueue = true;
-        }
-        REVERT_QUEUE.add(this);
-        publish(TempBlockSync.Operation.UPDATE_EXPIRY, this.newData);
     }
 
     /**
      * Revert this TempBlock
      */
     public void revertBlock() {
-        if (!this.reverted) {
-            remove(this);
-            trueRevertBlock();
-        }
+        this.trueRevertBlock(true);
     }
 
     /**
@@ -467,38 +559,46 @@ public class TempBlock {
      * @param removeFromQueue If the TempBlock should be removed from the queue. Should be false when it has already been removed from the revert queue
      */
     private void trueRevertBlock(boolean removeFromQueue) {
-        this.reverted = true;
-        // A location may contain a stack of overlapping TempBlocks. Reverting
-        // one layer exposes the next temporary state, not necessarily the
-        // original state captured by this instance. Publishing the captured
-        // state here made prediction clients turn nested water/earth streams
-        // into air (or leave a solid block behind) until a later chunk resend.
-        final BlockData effectiveData = instances_.containsKey(this.block)
-                ? instances_.get(this.block).getLast().newData
-                : this.state.getBlockData();
-        publish(TempBlockSync.Operation.REVERT, effectiveData);
-        Platform.chunks().getChunkAtAsync(this.block.getLocation()).thenAccept(result -> {
-            // Other overlapping TempBlocks may revert while the chunk future is
-            // pending. Resolve the live top layer here instead of relying on the
-            // state observed before scheduling the callback.
-            final LinkedList<TempBlock> current = instances_.get(this.block);
-            if (current != null && !current.isEmpty()) {
-                this.block.setBlockData(current.getLast().newData);
-            } else {
-                revertState();
+        List<TempBlock> invalidated = List.of();
+        boolean packetExpected = false;
+        synchronized (MUTATION_LOCK) {
+            if (this.reverted) return;
+            final LinkedList<TempBlock> layers = instances_.get(this.block);
+            if (layers == null || !layers.contains(this)) {
+                this.reverted = true;
+                if (removeFromQueue) REVERT_QUEUE.remove(this);
+                this.inRevertQueue = false;
+                return;
             }
-        });
+            final boolean wasTop = layers.getLast() == this;
+            final BlockData actualBefore = this.block.getBlockData();
+            remove(this);
+            this.reverted = true;
+            if (removeFromQueue) REVERT_QUEUE.remove(this);
+            this.inRevertQueue = false;
 
-        if (removeFromQueue) { //Remove from the queue if it's in there. We only do this when required because it is an intensive action due to the collection type
-            REVERT_QUEUE.remove(this);
-        }
-        if (this.revertTask != null) {
-            this.revertTask.run();
+            BlockData effectiveData = instances_.containsKey(this.block)
+                    ? instances_.get(this.block).getLast().newData
+                    : this.state.getBlockData();
+            if (wasTop && !sameData(actualBefore, this.newData)
+                    && actualBefore.getMaterial() != Material.FIRE
+                    && actualBefore.getMaterial() != Material.SOUL_FIRE) {
+                // Real authority changed without going through removeBlock().
+                // Never let a stale TempBlock overwrite it, and invalidate all
+                // lower layers so the registry cannot conceal future packets.
+                invalidated = invalidateStack(this.block, actualBefore, true);
+                effectiveData = actualBefore;
+            } else if (wasTop) {
+                TempBlockSync.beforeWorldChange(TempBlockSync.Operation.REVERT, this, effectiveData);
+                packetExpected = true;
+                if (instances_.containsKey(this.block)) applyWorldData(this, effectiveData);
+                else revertState();
+            }
+            publish(TempBlockSync.Operation.REVERT, effectiveData, packetExpected);
         }
 
-        for (TempBlock attached : attachedTempBlocks) {
-            attached.revertBlock();
-        }
+        finishLayer(this);
+        finishInvalidated(invalidated);
     }
 
     /**
@@ -528,15 +628,20 @@ public class TempBlock {
      * @param tempBlock The tempblock to attach to the current tempblock
      */
     public void addAttachedBlock(TempBlock tempBlock) {
-        this.attachedTempBlocks.add(tempBlock);
-        tempBlock.attachedTempBlocks.add(this);
+        if (tempBlock == null || tempBlock == this) return;
+        synchronized (MUTATION_LOCK) {
+            this.attachedTempBlocks.add(tempBlock);
+            tempBlock.attachedTempBlocks.add(this);
+        }
     }
 
     /**
      * @return The list of attached tempblocks
      */
     public Set<TempBlock> getAttachedTempBlocks() {
-        return attachedTempBlocks;
+        synchronized (MUTATION_LOCK) {
+            return Set.copyOf(attachedTempBlocks);
+        }
     }
 
     /**
@@ -588,17 +693,38 @@ public class TempBlock {
     }
 
     public void setType(final BlockData data) {
-        if (isReverted())
-            return;
-        this.newData = data;
-        refreshVisibility(this.block);
-        this.block.setBlockData(data, applyPhysics(data.getMaterial()));
-        publish(TempBlockSync.Operation.CREATE, this.newData);
+        List<TempBlock> invalidated = List.of();
+        synchronized (MUTATION_LOCK) {
+            if (isReverted()) return;
+            final LinkedList<TempBlock> layers = instances_.get(this.block);
+            if (layers == null || !layers.contains(this)) {
+                this.reverted = true;
+                return;
+            }
+            final boolean isTop = layers.getLast() == this;
+            if (isTop && !sameData(this.block.getBlockData(), this.newData)) {
+                invalidated = invalidateStack(this.block, this.block.getBlockData(), true);
+            } else {
+                this.newData = data;
+                refreshVisibility(this.block);
+                if (isTop) {
+                    TempBlockSync.beforeWorldChange(TempBlockSync.Operation.CREATE, this, data);
+                    applyWorldData(this, data);
+                }
+                publish(TempBlockSync.Operation.CREATE, this.newData, isTop);
+            }
+        }
+        finishInvalidated(invalidated);
     }
 
     private void publish(final TempBlockSync.Operation operation, final BlockData effectiveData) {
+        publish(operation, effectiveData, false);
+    }
+
+    private void publish(final TempBlockSync.Operation operation, final BlockData effectiveData,
+                         final boolean packetExpected) {
         this.revision = NEXT_REVISION.incrementAndGet();
-        TempBlockSync.publish(operation, this, effectiveData);
+        TempBlockSync.publish(operation, this, effectiveData, packetExpected);
     }
 
     /**
@@ -663,17 +789,26 @@ public class TempBlock {
         @Override
         public void run() {
             final long currentTime = System.currentTimeMillis();
-            while (!REVERT_QUEUE.isEmpty()) {
-                final TempBlock tempBlock = REVERT_QUEUE.peek(); //Check if the top TempBlock is ready for reverting
-                if (currentTime >= tempBlock.getRevertTime()) {
-                    REVERT_QUEUE.poll();
-                    if (!tempBlock.reverted) {
-                        remove(tempBlock);
-                        tempBlock.trueRevertBlock(false); //It's already been removed from the poll(), so don't try remove it again
+            final List<TempBlock> invalidated = new ArrayList<>();
+            synchronized (MUTATION_LOCK) {
+                for (Block block : new ArrayList<>(instances_.keySet())) {
+                    final LinkedList<TempBlock> layers = instances_.get(block);
+                    if (layers == null || layers.isEmpty()) continue;
+                    if (!sameData(block.getBlockData(), layers.getLast().newData)) {
+                        invalidated.addAll(invalidateStack(block, block.getBlockData(), true));
                     }
-                } else {
-                    break;
                 }
+            }
+            finishInvalidated(invalidated);
+            while (true) {
+                final TempBlock tempBlock;
+                synchronized (MUTATION_LOCK) {
+                    tempBlock = REVERT_QUEUE.peek();
+                    if (tempBlock == null || currentTime < tempBlock.getRevertTime()) return;
+                    REVERT_QUEUE.poll();
+                    tempBlock.inRevertQueue = false;
+                }
+                tempBlock.trueRevertBlock(false);
             }
         }
     }

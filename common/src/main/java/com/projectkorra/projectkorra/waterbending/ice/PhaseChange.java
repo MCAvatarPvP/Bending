@@ -13,6 +13,7 @@ import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.block.data.type.Snow;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.TempBlock;
 import com.projectkorra.projectkorra.waterbending.SurgeWall;
@@ -30,7 +31,7 @@ public class PhaseChange extends IceAbility {
     private static List<Block> BLOCKS = new ArrayList<>();
     private final List<PhaseChangeType> active_types = new ArrayList<>();
     private final CopyOnWriteArrayList<TempBlock> blocks = new CopyOnWriteArrayList<>();
-    private final Random r = new Random();
+    private final Random r;
     private final CopyOnWriteArrayList<Block> melted_blocks = new CopyOnWriteArrayList<>();
     @Attribute(Attribute.SELECT_RANGE)
     private double sourceRange = 8;
@@ -66,6 +67,7 @@ public class PhaseChange extends IceAbility {
     private boolean instantMelt;
     public PhaseChange(final Player player, final PhaseChangeType type) {
         super(player);
+        this.r = PredictionDeterminism.random(player.getUniqueId(), getClass().getName());
         this.startNewType(type);
         this.start();
     }

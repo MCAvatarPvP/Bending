@@ -10,7 +10,7 @@ import java.util.UUID;
  * Raw Bukkit plugin-message codec matching Fabric's RegistryByteBuf layout.
  */
 final class PaperPredictionProtocol {
-    static final int VERSION = 17;
+    static final int VERSION = 18;
     static final String HELLO = "projectkorra:client_hello";
     static final String INPUT = "projectkorra:input_frame";
     static final String PREPARE = "projectkorra:action_prepare";
@@ -137,7 +137,7 @@ final class PaperPredictionProtocol {
                     .varLong(operation.actionSequence()).varLong(operation.layerId())
                     .varLong(operation.revision()).bool(operation.ownerId() != null);
             if (operation.ownerId() != null) out.uuid(operation.ownerId());
-            out.string(operation.viewerMaterial(), 128);
+            out.string(operation.viewerMaterial(), 128).bool(operation.packetExpected());
         }
         return out.bytes();
     }
@@ -218,7 +218,7 @@ final class PaperPredictionProtocol {
 
     record TempBlockOp(TempOperation operation, String world, int x, int y, int z, String material,
                        long revertAtMillis, long actionSequence, long layerId, long revision,
-                       UUID ownerId, String viewerMaterial) {
+                       UUID ownerId, String viewerMaterial, boolean packetExpected) {
     }
 
     static final class Writer {

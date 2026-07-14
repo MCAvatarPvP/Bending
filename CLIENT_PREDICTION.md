@@ -9,7 +9,7 @@ the ability produces in local play.
 
 ## Flow
 
-1. The Fabric client advertises protocol 17 over vanilla `projectkorra:*` custom
+1. The Fabric client advertises protocol 18 over vanilla `projectkorra:*` custom
    payload channels. Paper receives those channels through its plugin messaging
    API—Fabric Loader is not installed on the server. The server returns a random per-connection
    session ID, public configuration, ability validation metadata, binds,
@@ -44,11 +44,38 @@ the ability produces in local play.
   than creating a display-entity overlay. Water and other fluid states therefore
   use their real client fluid/block behavior.
 - Temporary blocks are ordered owner layers with stable layer IDs and revisions.
-  Paper uses PacketEvents to remove the initiating prediction client's own
-  server block updates (including multi-block and chunk packets); other viewers
-  still receive normal authoritative blocks. Per-viewer receipts preserve the
-  correct underlying state across nested and overlapping layers, and reverts
-  cannot overwrite a newer predicted layer.
+  The owner sees their locally predicted layer, or the first non-owned layer/original
+  block beneath it; the physical server TempBlock is not exposed to that owner.
+  With PacketEvents, a receipt is armed before the physical world write and that
+  exact owner update is suppressed. Mixed packets keep every unrelated entry, and
+  Fabric is explicitly told that no vanilla receipt will arrive. Without PacketEvents,
+  Fabric performs bounded receipt-scoped suppression after delivery.
+  A predicted CREATE is confirmed only when its action, coordinate, and complete
+  block state all match. TempBlock lifecycle history is retained separately from
+  disposable vanilla-packet echoes, so ordinary authority cannot erase prediction
+  proof before delayed CREATE metadata arrives. This prevents predicted PhaseChange
+  ICE from being misclassified as hidden and then "corrected" to underlying WATER.
+  A suppressed REVERT is reconciled directly from ordered lifecycle metadata;
+  a newer same-action CREATE is preserved only when it follows the exact confirmed
+  CREATE/revert lifecycle at that coordinate. Chunk snapshots
+  restore the resolved server-layer view, never an unrelated stale local mutation.
+  When ordinary block authority wins, Fabric discards the corresponding local
+  TempBlock stack without running its delayed revert or attachment callbacks.
+  Metadata-only changes and join snapshots cannot create phantom receipts.
+  Ordinary block authority and mixed chunk-delta entries remain authoritative.
+  Per-session layer tracking guarantees that every delivered CREATE receives its
+  REVERT even after leaving view distance. Server-absent client trail blocks use
+  the measured input round-trip plus a jitter margin as a negative-receipt deadline,
+  instead of remaining for an unconditional two seconds. Unresolved disagreement is
+  forced back to the latest known server state at that deadline. During the
+  bounded window, a translucent amber block marker exposes the disagreement.
+- Newly-created authoritative abilities are backdated by the bounded input rewind.
+  Charge and duration clocks therefore represent the same action age as the local
+  prediction; EarthSmash release cannot fail merely because its server instance
+  started one network trip later.
+- Gameplay-affecting random selection can use the shared action seed. PhaseChange
+  melt uses this seed, so client and server traverse the same ice-block sequence
+  even though the client begins that sequence earlier for prediction.
 - Every common-model `setVelocity` call reaches the native client entity
   immediately. A later matching vanilla velocity packet is treated as an
   acknowledgement and is not applied a second time. A materially different
@@ -108,11 +135,11 @@ make damage server-only.
 
 - Minecraft: 1.21.11
 - Java: 21
-- PacketEvents 2.12+ is required on Paper for exact prediction. Without it the
-  plugin deliberately stays on normal server-authoritative bending so owner
-  TempBlock packets cannot create a partially synchronized mode.
-- The server runs Paper and installs `ProjectKorra-1.10.7-bukkit.jar` from this fork.
-- Predicting players install `ProjectKorra-1.10.7-fabric.jar` in their Fabric client.
+- PacketEvents is optional but recommended. When installed, owned TempBlock packets
+  are matched by coordinate and complete block state before network delivery,
+  eliminating the delayed one-frame flash. Unrelated authority is never suppressed.
+- The server runs Paper and installs `ProjectKorra-1.10.8-bukkit.jar` from this fork.
+- Predicting players install `ProjectKorra-1.10.8-fabric.jar` in their Fabric client.
 - The Paper server does **not** install Fabric Loader or the Fabric jar.
 - Players without the mod use normal ProjectKorra input and normal latency.
 - Fabric integrated-singleplayer prediction is disabled because the legacy common core

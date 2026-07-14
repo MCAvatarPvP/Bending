@@ -26,9 +26,11 @@ import com.projectkorra.projectkorra.prediction.HitResolutionSync;
 import com.projectkorra.projectkorra.prediction.ReactionWindow;
 import com.projectkorra.projectkorra.prediction.PendingHitResolution;
 import com.projectkorra.projectkorra.prediction.TempBlockSync;
+import com.projectkorra.projectkorra.prediction.TempBlockDeliveryTracker;
 import com.projectkorra.projectkorra.prediction.VelocitySync;
 import com.projectkorra.projectkorra.waterbending.passive.FastSwim;
 import com.projectkorra.projectkorra.util.Cooldown;
+import com.projectkorra.projectkorra.util.TempBlock;
 import com.projectkorra.projectkorra.firebending.FireBlastCharged;
 import com.jedk1.jedcore.ability.passive.WallRun;
 import com.jedk1.jedcore.ability.firebending.FirePunch;
@@ -71,6 +73,7 @@ public final class PredictionServer implements TempBlockSync.Listener,
     private static final double MAX_ORIGIN_ERROR = 8.0;
     private static final int INPUTS_PER_SECOND = 80;
     private static final int CLAIMS_PER_SECOND = 48;
+    private static final int TEMP_BLOCK_OPS_PER_PACKET = 8;
     private static final double CLAIM_QUERY_TOLERANCE = 1.0;
     private static PredictionServer active;
     private static boolean receiversRegistered;
@@ -177,7 +180,13 @@ public final class PredictionServer implements TempBlockSync.Listener,
         sessions.entrySet().removeIf(entry -> server.getPlayerManager().getPlayer(entry.getKey()) == null);
         abilityActions.entrySet().removeIf(entry -> entry.getKey().isRemoved() || !sessions.containsKey(entry.getValue().owner));
 
-        if (tick % 20 == 0) syncPlayerStateChanges();
+        if (tick % 20 == 0) {
+            syncPlayerStateChanges();
+            for (Session session : sessions.values()) {
+                final ServerPlayerEntity player = server.getPlayerManager().getPlayer(session.playerId);
+                if (player != null) sendTempBlockSnapshot(player, session);
+            }
+        }
         if (tick % 100 == 0) {
             requestPublicSnapshotRebuild(true);
         }
@@ -427,7 +436,7 @@ public final class PredictionServer implements TempBlockSync.Listener,
                 change.operation() == TempBlockSync.Operation.REVERT ? 0L : change.revertAtMillis(),
                 action == null ? (inputSequence == null ? 0L : inputSequence) : action.sequence,
                 change.layerId(), change.revision(), change.ownerId(),
-                TempBlockSync.encode(change.data())), Map.copyOf(ownerViews)));
+                TempBlockSync.encode(change.data()), change.packetExpected()), Map.copyOf(ownerViews)));
     }
 
     @Override
@@ -616,6 +625,14 @@ public final class PredictionServer implements TempBlockSync.Listener,
             INPUT_SEQUENCE.remove();
             INPUT_LOCALLY_PREDICTED.remove();
         }
+        if (input.locallyPredicted()) {
+            for (CoreAbility candidate : CoreAbility.getAbilitiesByInstances()) {
+                if (!before.contains(candidate) && candidate.getPlayer() != null
+                        && candidate.getPlayer().getUniqueId().equals(player.getUuid())) {
+                    PredictionTiming.alignStart(candidate);
+                }
+            }
+        }
         if (!dispatched) {
             session.actions.remove(input.sequence());
             reconcile(player, session, input.sequence(), false, "input_rejected", abilityName, origin,
@@ -779,17 +796,29 @@ public final class PredictionServer implements TempBlockSync.Listener,
             ServerPlayerEntity player = server.getPlayerManager().getPlayer(session.playerId);
             if (player != null && ServerPlayNetworking.canSend(player, PredictionPayloads.TempBlockBatch.ID)) {
                 String viewerWorld = player.getEntityWorld().getRegistryKey().getValue().toString();
-                List<PredictionPayloads.TempBlockOp> visible = batch.stream()
-                        .filter(pending -> PredictionVisibility.tracksBlock(viewerWorld, pending.operation.world(),
-                                 (int) Math.floor(player.getX()), (int) Math.floor(player.getZ()),
-                                 pending.operation.x(), pending.operation.z(), server.getPlayerManager().getViewDistance()))
-                        .map(pending -> pending.forViewer(session.playerId))
-                        .toList();
+                List<PredictionPayloads.TempBlockOp> visible = new ArrayList<>();
+                for (PendingTempBlock pending : batch) {
+                    final long layerId = pending.operation.layerId();
+                    final boolean inView = PredictionVisibility.tracksBlock(viewerWorld, pending.operation.world(),
+                            (int) Math.floor(player.getX()), (int) Math.floor(player.getZ()),
+                            pending.operation.x(), pending.operation.z(), server.getPlayerManager().getViewDistance());
+                    if (!session.tempLayers.route(layerId,
+                            pending.operation.operation() == PredictionPayloads.TempOperation.REVERT, inView)) continue;
+                    visible.add(pending.forViewer(session.playerId));
+                }
                 if (!visible.isEmpty()) {
-                    ServerPlayNetworking.send(player, new PredictionPayloads.TempBlockBatch(
-                            tick, System.currentTimeMillis(), visible));
+                    sendTempBlockOperations(player, visible);
                 }
             }
+        }
+    }
+
+    private void sendTempBlockOperations(final ServerPlayerEntity player,
+                                         final List<PredictionPayloads.TempBlockOp> operations) {
+        final long now = System.currentTimeMillis();
+        for (int start = 0; start < operations.size(); start += TEMP_BLOCK_OPS_PER_PACKET) {
+            ServerPlayNetworking.send(player, new PredictionPayloads.TempBlockBatch(tick, now,
+                    operations.subList(start, Math.min(start + TEMP_BLOCK_OPS_PER_PACKET, operations.size()))));
         }
     }
 
@@ -866,6 +895,31 @@ public final class PredictionServer implements TempBlockSync.Listener,
         ServerPlayNetworking.send(player, new PredictionPayloads.ServerSnapshot(PredictionPayloads.PROTOCOL_VERSION,
                 session.sessionId, tick, System.currentTimeMillis(), configEpoch, MAX_REWIND_TICKS,
                 publicConfig, profiles, binds, cooldowns, elements, subElements, airBlastDecay));
+        sendTempBlockSnapshot(player, session);
+    }
+
+    private void sendTempBlockSnapshot(final ServerPlayerEntity player, final Session session) {
+        if (!ServerPlayNetworking.canSend(player, PredictionPayloads.TempBlockBatch.ID)) return;
+        final String viewerWorld = player.getEntityWorld().getRegistryKey().getValue().toString();
+        final List<PredictionPayloads.TempBlockOp> operations = new ArrayList<>();
+        for (TempBlock layer : TempBlock.getActiveLayers()) {
+            final Block block = layer.getBlock();
+            if (block.getWorld() == null
+                    || !PredictionVisibility.tracksBlock(viewerWorld, block.getWorld().getName(),
+                    (int) Math.floor(player.getX()), (int) Math.floor(player.getZ()),
+                    block.getX(), block.getZ(), server.getPlayerManager().getViewDistance())) continue;
+            final CoreAbility ability = layer.getAbility().orElse(null);
+            final Action action = ability == null ? null : actionForEffect(ability);
+            final BlockData viewerData = TempBlock.getVisibleData(block, session.playerId);
+            operations.add(new PredictionPayloads.TempBlockOp(PredictionPayloads.TempOperation.CREATE,
+                    block.getWorld().getName(), block.getX(), block.getY(), block.getZ(),
+                    TempBlockSync.encode(layer.getBlockData()), layer.getRevertTime(),
+                    action == null ? 0L : action.sequence, layer.getLayerId(), layer.getRevision(),
+                    layer.getOwnerId().orElse(null),
+                    TempBlockSync.encode(viewerData == null ? layer.getBlockData() : viewerData), false));
+            session.tempLayers.markActive(layer.getLayerId());
+        }
+        sendTempBlockOperations(player, operations);
     }
 
     private void reconcile(ServerPlayerEntity player, Session session, long sequence, boolean accepted, String reason,
@@ -950,6 +1004,7 @@ public final class PredictionServer implements TempBlockSync.Listener,
         final RateLimiter inputLimiter = new RateLimiter();
         final RateLimiter claimLimiter = new RateLimiter();
         final LinkedHashMap<Long, Action> actions = new LinkedHashMap<>();
+        final TempBlockDeliveryTracker tempLayers = new TempBlockDeliveryTracker();
         long lastSequence;
         int playerStateDigest;
 
@@ -979,7 +1034,7 @@ public final class PredictionServer implements TempBlockSync.Listener,
             return new PredictionPayloads.TempBlockOp(operation.operation(), operation.world(),
                     operation.x(), operation.y(), operation.z(), operation.material(), operation.revertAtMillis(),
                     operation.actionSequence(), operation.layerId(), operation.revision(), operation.ownerId(),
-                    ownerViews.getOrDefault(viewer, operation.material()));
+                    ownerViews.getOrDefault(viewer, operation.material()), operation.packetExpected());
         }
     }
 

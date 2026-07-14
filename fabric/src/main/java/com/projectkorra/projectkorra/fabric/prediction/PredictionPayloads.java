@@ -14,7 +14,7 @@ import java.util.UUID;
 
 /** Wire contract used by the Fabric client and the Paper/Fabric server endpoints. */
 public final class PredictionPayloads {
-    public static final int PROTOCOL_VERSION = 17;
+    public static final int PROTOCOL_VERSION = 18;
     public static final int MAX_CONFIG_ENTRIES = 16_384;
     public static final int MAX_PROFILES = 2_048;
     public static final int MAX_TEMP_OPS = 4_096;
@@ -246,18 +246,19 @@ public final class PredictionPayloads {
 
     public record TempBlockOp(TempOperation operation, String world, int x, int y, int z,
                               String material, long revertAtMillis, long actionSequence,
-                              long layerId, long revision, UUID ownerId, String viewerMaterial) {
+                              long layerId, long revision, UUID ownerId, String viewerMaterial,
+                              boolean packetExpected) {
         static TempBlockOp read(RegistryByteBuf buf) {
             return new TempBlockOp(buf.readEnumConstant(TempOperation.class), buf.readString(256), buf.readInt(), buf.readInt(),
                     buf.readInt(), buf.readString(128), buf.readLong(), buf.readVarLong(), buf.readVarLong(),
-                    buf.readVarLong(), buf.readBoolean() ? buf.readUuid() : null, buf.readString(128));
+                    buf.readVarLong(), buf.readBoolean() ? buf.readUuid() : null, buf.readString(128), buf.readBoolean());
         }
         void write(RegistryByteBuf buf) {
             buf.writeEnumConstant(operation); buf.writeString(world, 256); buf.writeInt(x); buf.writeInt(y); buf.writeInt(z);
             buf.writeString(material, 128); buf.writeLong(revertAtMillis); buf.writeVarLong(actionSequence);
             buf.writeVarLong(layerId); buf.writeVarLong(revision); buf.writeBoolean(ownerId != null);
             if (ownerId != null) buf.writeUuid(ownerId);
-            buf.writeString(viewerMaterial, 128);
+            buf.writeString(viewerMaterial, 128); buf.writeBoolean(packetExpected);
         }
     }
 

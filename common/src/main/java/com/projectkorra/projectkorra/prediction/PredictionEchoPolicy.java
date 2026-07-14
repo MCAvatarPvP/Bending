@@ -9,10 +9,20 @@ public final class PredictionEchoPolicy {
 
     public static boolean shouldSuppress(boolean explicitlyForced, boolean hasNewerPredictedState,
                                          boolean clientAlreadyMatches) {
-        // Explicitly-forced echoes are only emitted after reconciliation has
-        // proven this packet belongs to an older layer of the same accepted
-        // action. Applying it would erase a newer client redraw.
-        return clientAlreadyMatches || explicitlyForced || hasNewerPredictedState;
+        // A matching predicted write does not prove that a newer local write
+        // will also happen on the server. Tiny timing differences in moving
+        // water/earth routinely produce one extra local state. Suppressing the
+        // older server packet in that situation can preserve the extra state
+        // forever. Authority is therefore skipped only when applying it would
+        // be a literal no-op in the client world.
+        return clientAlreadyMatches;
+    }
+
+    public static boolean confirmedByLatestAuthority(boolean previouslyConfirmed,
+                                                       boolean latestAuthorityMatchesPrediction) {
+        // Confirmation describes the latest server state, never historical
+        // agreement with an earlier packet.
+        return latestAuthorityMatchesPrediction;
     }
 
     public static boolean mayApplyLocalMutationOverServerTemp(boolean serverTempActive,
