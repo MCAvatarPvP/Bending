@@ -34,6 +34,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.jar.JarFile;
@@ -198,11 +199,81 @@ public final class FabricAutoUpdater {
             Path target = current.resolveSibling(safeName(assetName));
             long pid = ProcessHandle.current().pid();
             Path script;
-            ProcessBuilder process;
             if (System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")) {
                 script = Files.createTempFile("projectkorra-update-", ".ps1");
                 Path failureLog = current.resolveSibling(current.getFileName() + ".update-error.log");
-                String body = """
+                String body = windowsInstallerScript();
+                Files.writeString(script, body, StandardCharsets.UTF_8);
+                launchDetachedWindowsInstaller(script, pid, staged, current, target, failureLog);
+            } else {
+                script = Files.createTempFile("projectkorra-update-", ".sh");
+                Path failureLog = current.resolveSibling(current.getFileName() + ".update-error.log");
+                String body = posixInstallerScript(pid, staged, current, target, failureLog);
+                Files.writeString(script, body, StandardCharsets.UTF_8);
+                new ProcessBuilder("nohup", "sh", script.toString())
+                        .redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
+            }
+        } catch (IOException exception) {
+            throw new IllegalStateException("Could not stage the update installer", exception);
+        }
+    }
+
+    private static void launchDetachedWindowsInstaller(Path installer, long pid, Path staged, Path current,
+                                                        Path target, Path failureLog) throws IOException {
+        Path launcher = Files.createTempFile("projectkorra-update-launcher-", ".ps1");
+        Files.writeString(launcher, windowsDetachedLauncherScript(), StandardCharsets.UTF_8);
+        Process process = new ProcessBuilder("powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive",
+                "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", launcher.toString(),
+                installer.toAbsolutePath().toString(), Long.toString(pid), staged.toAbsolutePath().toString(),
+                current.toAbsolutePath().toString(), target.toAbsolutePath().toString(),
+                failureLog.toAbsolutePath().toString())
+                .redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
+        try {
+            if (!process.waitFor(10, TimeUnit.SECONDS)) {
+                process.destroyForcibly();
+                throw new IOException("Timed out while detaching the Windows updater");
+            }
+            if (process.exitValue() != 0) {
+                String detail = Files.exists(failureLog) ? Files.readString(failureLog).trim() : "unknown error";
+                throw new IOException("Could not detach the Windows updater: " + detail);
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted while detaching the Windows updater", exception);
+        }
+    }
+
+    static String windowsDetachedLauncherScript() {
+        return """
+                param(
+                    [string]$Installer,
+                    [long]$MinecraftProcessId,
+                    [string]$StagedJar,
+                    [string]$CurrentJar,
+                    [string]$TargetJar,
+                    [string]$FailureLog
+                )
+                $ErrorActionPreference = 'Stop'
+                try {
+                    $powershell = Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe'
+                    $commandLine = '\"' + $powershell + '\" -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden' +
+                        ' -ExecutionPolicy Bypass -File \"' + $Installer + '\" ' + $MinecraftProcessId +
+                        ' \"' + $StagedJar + '\" \"' + $CurrentJar + '\" \"' + $TargetJar + '\" \"' + $FailureLog + '\"'
+                    $result = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{CommandLine = $commandLine}
+                    if ($result.ReturnValue -ne 0 -or $result.ProcessId -le 0) {
+                        throw "Windows process service returned $($result.ReturnValue)."
+                    }
+                } catch {
+                    ($_ | Out-String) | Set-Content -LiteralPath $FailureLog -Encoding UTF8
+                    exit 1
+                } finally {
+                    Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
+                }
+                """;
+    }
+
+    static String windowsInstallerScript() {
+        return """
                         param(
                             [long]$MinecraftProcessId,
                             [string]$StagedJar,
@@ -258,16 +329,10 @@ public final class FabricAutoUpdater {
                             Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
                         }
                         """;
-                Files.writeString(script, body, StandardCharsets.UTF_8);
-                process = new ProcessBuilder("powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive",
-                        "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", script.toString(),
-                        Long.toString(pid), staged.toAbsolutePath().toString(), current.toAbsolutePath().toString(),
-                        target.toAbsolutePath().toString(),
-                        failureLog.toAbsolutePath().toString());
-            } else {
-                script = Files.createTempFile("projectkorra-update-", ".sh");
-                Path failureLog = current.resolveSibling(current.getFileName() + ".update-error.log");
-                String body = "#!/bin/sh\n"
+    }
+
+    static String posixInstallerScript(long pid, Path staged, Path current, Path target, Path failureLog) {
+        return "#!/bin/sh\n"
                         + "pid=" + pid + "\n"
                         + "staged=" + sh(staged) + "\n"
                         + "current=" + sh(current) + "\n"
@@ -294,13 +359,6 @@ public final class FabricAutoUpdater {
                         + "  fail 'Installed the new jar, but could not remove the old ProjectKorra jar.'\n"
                         + "fi\n"
                         + "rm -f \"$backup\" \"$failure\" \"$0\"\n";
-                Files.writeString(script, body, StandardCharsets.UTF_8);
-                process = new ProcessBuilder("sh", script.toString());
-            }
-            process.redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
-        } catch (IOException exception) {
-            throw new IllegalStateException("Could not stage the update installer", exception);
-        }
     }
 
     private static String sh(Path path) { return "'" + path.toAbsolutePath().toString().replace("'", "'\\''") + "'"; }
