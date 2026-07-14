@@ -1,0 +1,112 @@
+import groovy.json.JsonOutput
+
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.security.MessageDigest
+
+def gitPublishProperty = { String name, String fallback ->
+    def value = project.findProperty(name)
+    value == null || value.toString().isBlank() ? fallback : value.toString()
+}
+
+def gitOutput = { String... arguments ->
+    providers.exec {
+        commandLine((["git"] + arguments.toList()) as String[])
+        workingDir rootProject.projectDir
+    }.standardOutput.asText.get().trim()
+}
+
+def sha256 = { File file ->
+    MessageDigest digest = MessageDigest.getInstance('SHA-256')
+    file.withInputStream { input ->
+        byte[] buffer = new byte[64 * 1024]
+        int read
+        while ((read = input.read(buffer)) >= 0) {
+            if (read > 0) digest.update(buffer, 0, read)
+        }
+    }
+    digest.digest().collect { String.format('%02x', it & 0xff) }.join()
+}
+
+tasks.register('publishGithubJars') {
+    group = 'publishing'
+    description = 'Builds, commits, and pushes the Bukkit/Fabric jars using Git for Windows authentication.'
+    dependsOn ':bukkit:shadowJar', ':fabric:remapJar'
+    outputs.upToDateWhen { false }
+
+    doLast {
+        String status = gitOutput('status', '--porcelain', '--untracked-files=all')
+        if (!status.isBlank()) {
+            throw new GradleException('Refusing to publish with uncommitted files. Commit the source changes first.')
+        }
+
+        String remote = gitPublishProperty('githubRemote', 'bending')
+        String branch = gitPublishProperty('githubBranch', 'master')
+        String tag = gitPublishProperty('releaseTag', "v${project.version}")
+        String message = gitPublishProperty('releaseCommitMessage', "Publish ProjectKorra ${tag}")
+        if (!(tag ==~ /[A-Za-z0-9][A-Za-z0-9._-]*/)) {
+            throw new GradleException("Invalid release tag directory '${tag}'. Use only letters, numbers, dots, underscores, and hyphens.")
+        }
+        if (gitOutput('branch', '--show-current') != branch) {
+            throw new GradleException("Checkout ${branch} before publishing, or set -PgithubBranch to the current branch.")
+        }
+
+        File bukkitJar = rootProject.file("bukkit/build/libs/ProjectKorra-${project.version}-bukkit.jar")
+        File fabricJar = rootProject.file("fabric/build/libs/ProjectKorra-${project.version}-fabric.jar")
+        if (!bukkitJar.isFile() || !fabricJar.isFile()) {
+            throw new GradleException('The Bukkit or Fabric release jar was not produced by the build.')
+        }
+
+        File releaseDirectory = rootProject.file("releases/${tag}")
+        releaseDirectory.mkdirs()
+        copy {
+            from bukkitJar, fabricJar
+            into releaseDirectory
+        }
+
+        List<File> publishedJars = [
+                new File(releaseDirectory, bukkitJar.name),
+                new File(releaseDirectory, fabricJar.name)
+        ]
+        String checksums = publishedJars.collect { "${sha256(it)}  ${it.name}" }.join(System.lineSeparator()) + System.lineSeparator()
+        Files.writeString(new File(releaseDirectory, 'SHA256SUMS').toPath(), checksums, StandardCharsets.UTF_8)
+
+        File releaseRoot = rootProject.file('releases')
+        File latestManifest = new File(releaseRoot, 'latest.json')
+        String fabricChecksum = sha256(publishedJars[1])
+        String manifest = JsonOutput.prettyPrint(JsonOutput.toJson([
+                version  : project.version.toString(),
+                tag      : tag,
+                fabricJar: publishedJars[1].name,
+                path     : "releases/${tag}/${publishedJars[1].name}",
+                sha256   : fabricChecksum,
+                size     : publishedJars[1].length()
+        ])) + System.lineSeparator()
+        Files.writeString(latestManifest.toPath(), manifest, StandardCharsets.UTF_8)
+
+        String configuredBash = project.findProperty('gitBash')?.toString()
+        File windowsGitBash = new File('C:/Program Files/Git/bin/bash.exe')
+        String bash = configuredBash ?: (windowsGitBash.isFile() ? windowsGitBash.absolutePath : 'bash')
+        String relativeReleaseDirectory = rootProject.projectDir.toPath().relativize(releaseRoot.toPath())
+                .toString().replace('\\', '/')
+
+        def publish = providers.exec {
+            executable bash
+            args rootProject.file('gradle/publish-jars.sh').absolutePath
+            workingDir rootProject.projectDir
+            environment 'PK_GITHUB_REMOTE', remote
+            environment 'PK_GITHUB_BRANCH', branch
+            environment 'PK_RELEASE_DIRECTORY', relativeReleaseDirectory
+            environment 'PK_RELEASE_MESSAGE', message
+            ignoreExitValue = true
+        }
+        String standardOutput = publish.standardOutput.asText.get().trim()
+        String standardError = publish.standardError.asText.get().trim()
+        int exitCode = publish.result.get().exitValue
+        if (!standardOutput.isBlank()) logger.lifecycle(standardOutput)
+        if (exitCode != 0) {
+            throw new GradleException("Git Bash publishing failed with exit code ${exitCode}${standardError.isBlank() ? '' : ":\n${standardError}"}")
+        }
+        if (!standardError.isBlank()) logger.lifecycle(standardError)
+    }
+}
