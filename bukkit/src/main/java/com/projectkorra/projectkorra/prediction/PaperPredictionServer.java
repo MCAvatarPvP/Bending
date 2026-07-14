@@ -9,6 +9,7 @@ import com.projectkorra.projectkorra.ability.activation.AbilityActivationManager
 import com.projectkorra.projectkorra.ability.util.MultiAbilityManager;
 import com.projectkorra.projectkorra.ability.util.PassiveManager;
 import com.projectkorra.projectkorra.firebending.FireBlastCharged;
+import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.listener.CommonInputHandler;
 import com.projectkorra.projectkorra.platform.bukkit.BukkitMC;
 import com.projectkorra.projectkorra.platform.mc.Material;
@@ -43,12 +44,13 @@ import java.util.function.ToLongFunction;
  */
 public final class PaperPredictionServer implements PluginMessageListener, Runnable, TempBlockSync.Listener,
         CooldownSync.Listener, VelocitySync.Listener,
-        AbilityRemovalSync.Listener {
+        AbilityRemovalSync.Listener, HitResolutionSync.Listener {
     public static final int MAX_REWIND_TICKS = 12;
     private static final int CAPABILITY_EXACT = 8;
     private static final int INPUTS_PER_SECOND = 80;
     private static final int CLAIMS_PER_SECOND = 48;
     private static final double MAX_ORIGIN_ERROR = 8.0;
+    private static final double CLAIM_QUERY_TOLERANCE = 1.0;
     private static final ThreadLocal<UUID> EFFECT_OWNER = new ThreadLocal<>();
     private static final ThreadLocal<Boolean> EFFECT_PREDICTED = new ThreadLocal<>();
     private static final ThreadLocal<Long> INPUT_SEQUENCE = new ThreadLocal<>();
@@ -60,6 +62,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     private final Map<CoreAbility, Action> abilityActions = Collections.synchronizedMap(new IdentityHashMap<>());
     private final Map<UUID, EnumMap<PaperPredictionProtocol.InputKind, Long>> pendingVanilla = new HashMap<>();
     private final List<PendingTempBlock> pendingTempBlocks = new ArrayList<>();
+    private final List<Claim> pendingReactions = new ArrayList<>();
     private final AtomicBoolean snapshotBuildRunning = new AtomicBoolean();
     private volatile List<PaperPredictionProtocol.ConfigEntry> publicConfig = List.of();
     private volatile List<PaperPredictionProtocol.AbilityProfile> profiles = List.of();
@@ -80,6 +83,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         TempBlockSync.install(server);
         VelocitySync.install(server);
         AbilityRemovalSync.install(server);
+        HitResolutionSync.install(server);
         PredictionTiming.install(server.timingProvider);
         CooldownSync.install(server);
         server.scheduleTicker();
@@ -254,11 +258,71 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             }
             Entity target = Bukkit.getEntity(claim.target);
             if (!(target instanceof org.bukkit.entity.LivingEntity) || !target.getWorld().equals(world)) continue;
-            // The client claim is authoritative for this diagnostic path.
-            // Do not gate it a second time using the server's rewound box.
+            if (!query.clone().expand(CLAIM_QUERY_TOLERANCE).contains(claim.contact)) continue;
+            // onHit validated the contact against the target's rewound box.
+            // The ability still controls whether this query produces an effect.
             result.put(target.getUniqueId(), BukkitMC.entity(target));
             claim.consumedTick = server.tick;
         }
+    }
+
+    @Override
+    public boolean defer(HitResolutionSync.Effect effect, Ability ability,
+                         com.projectkorra.projectkorra.platform.mc.entity.Entity target,
+                         Runnable commit) {
+        if (!reactionEnabled() || !(ability instanceof CoreAbility coreAbility) || target == null) return false;
+        Action action = abilityActions.get(coreAbility);
+        if (action == null) {
+            UUID owner = ability.getPlayer() == null ? EFFECT_OWNER.get() : ability.getPlayer().getUniqueId();
+            Long sequence = INPUT_SEQUENCE.get();
+            Session session = owner == null ? null : sessions.get(owner);
+            action = session == null || sequence == null ? null : session.actions.get(sequence);
+        }
+        if (action == null) return false;
+        Claim claim = action.claims.values().stream()
+                .filter(candidate -> candidate.target.equals(target.getUniqueId()))
+                .findFirst().orElse(null);
+        if (claim == null || claim.consumedTick != tick
+                || claim.pending != null && claim.pending.isResolved()) return false;
+        Player defender = Bukkit.getPlayer(claim.target);
+        if (defender == null || defender.isDead()) return false;
+
+        if (claim.pending == null) {
+            claim.pending = new PendingHitResolution(tick + reactionTicks(defender.getPing()),
+                    new com.projectkorra.projectkorra.platform.mc.util.Vector(
+                            claim.contact.getX(), claim.contact.getY(), claim.contact.getZ()));
+            pendingReactions.add(claim);
+        }
+        return claim.pending.add(commit);
+    }
+
+    private void resolvePendingReactions() {
+        Iterator<Claim> iterator = pendingReactions.iterator();
+        while (iterator.hasNext()) {
+            Claim claim = iterator.next();
+            Player defender = Bukkit.getPlayer(claim.target);
+            com.projectkorra.projectkorra.platform.mc.util.BoundingBox box =
+                    defender == null || defender.isDead() ? null : BukkitMC.entity(defender).getBoundingBox();
+            PendingHitResolution.Result result = claim.pending.resolve(tick, box, reactionContactTolerance());
+            if (result != PendingHitResolution.Result.WAITING) iterator.remove();
+        }
+    }
+
+    private static boolean reactionEnabled() {
+        return ConfigManager.getConfig().getBoolean("Properties.Prediction.Reaction.Enabled", true);
+    }
+
+    private static int reactionTicks(int pingMillis) {
+        int maximum = ConfigManager.getConfig().getInt(
+                "Properties.Prediction.Reaction.MaxCompensationMillis", 200);
+        int jitter = ConfigManager.getConfig().getInt(
+                "Properties.Prediction.Reaction.JitterAllowanceMillis", 25);
+        return ReactionWindow.compensationTicks(pingMillis, maximum, jitter);
+    }
+
+    private static double reactionContactTolerance() {
+        return Math.max(0D, ConfigManager.getConfig().getDouble(
+                "Properties.Prediction.Reaction.ContactTolerance", 0.2));
     }
 
     private static boolean createdAbility(Set<CoreAbility> before, UUID owner, String abilityName) {
@@ -365,9 +429,11 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         abilityActions.clear();
         pendingVanilla.clear();
         pendingTempBlocks.clear();
+        pendingReactions.clear();
         TempBlockSync.clear(this);
         VelocitySync.clear(this);
         AbilityRemovalSync.clear(this);
+        HitResolutionSync.clear(this);
         PredictionTiming.clear(this.timingProvider);
         CooldownSync.clear(this);
         if (active == this) active = null;
@@ -466,6 +532,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     public void run() {
         tick++;
         recordHistory();
+        resolvePendingReactions();
         flushTempBlocks();
         pendingVanilla.values().forEach(map -> map.entrySet().removeIf(entry -> entry.getValue() < tick));
         pendingVanilla.entrySet().removeIf(entry -> entry.getValue().isEmpty() || Bukkit.getPlayer(entry.getKey()) == null);
@@ -756,6 +823,12 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             return;
         long rewindTick = session.mapClientTick(hit.clientTick(), tick, player.getPing());
         Vector contact = new Vector(hit.x(), hit.y(), hit.z());
+        EntityFrame targetFrame = frameAt(target.getUniqueId(), rewindTick);
+        if (targetFrame == null || !targetFrame.world.equals(target.getWorld().getUID())
+                || !targetFrame.box.clone().expand(0.5).contains(contact)
+                || contact.distanceSquared(new Vector(action.eyeX, action.eyeY, action.eyeZ)) > 130D * 130D) {
+            return;
+        }
         Claim claim = new Claim(target.getUniqueId(), rewindTick,
                 tick + MAX_REWIND_TICKS + 4, contact.clone());
         action.claims.put(hit.entityId(), claim);
@@ -1079,6 +1152,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         final long rewindTick, expiresTick;
         final Vector contact;
         long consumedTick = -1;
+        PendingHitResolution pending;
 
         Claim(UUID target, long rewindTick, long expiresTick, Vector contact) {
             this.target = target;

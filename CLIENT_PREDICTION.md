@@ -55,10 +55,23 @@ action sequence, client tick, target entity ID, and contact point. The server:
 
 - rate-limits and session-validates claims;
 - maps the client tick into a bounded 12-tick history window;
-- checks finite coordinates, target state, rewound hit box, distance, view cone,
-  and line of sight; and
+- checks finite coordinates, target state, rewound hit box, distance, and the
+  real ability query's proximity to the claimed contact; and
 - only exposes an accepted rewound player to the **real server ability's nearby
   entity query**. The real ability still decides whether and how much to damage.
+
+Accepted contact is provisional. Damage and velocity applied through
+`DamageHandler` and `GeneralMethods.setVelocity` are held for the defender's
+bounded round-trip time plus a small jitter allowance. At the deadline the
+server commits both effects, in their original order, only when the claimed
+contact is still inside the defender's authoritative hit box. Moving the hit
+box clear drops both effects; pressing an unrelated ability does not.
+
+The defaults are under `Properties.Prediction.Reaction`: compensation is capped
+at 200 ms, jitter allowance is 25 ms, and contact tolerance is 0.2 blocks.
+This path applies only to accepted predicted hit claims. Direct addon damage,
+direct `Entity#setVelocity` calls, potion effects, and custom addon state are
+not made provisional unless they use the common ProjectKorra effect paths.
 
 The server never accepts client health, cooldown, block, element, bind, source,
 or origin state as authority. Claimed yaw/pitch is not used for validation; the

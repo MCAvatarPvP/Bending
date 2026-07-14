@@ -6,6 +6,7 @@ import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.activation.AbilityActivationManager;
 import com.projectkorra.projectkorra.ability.util.MultiAbilityManager;
 import com.projectkorra.projectkorra.ability.util.PassiveManager;
+import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
@@ -21,6 +22,9 @@ import com.projectkorra.projectkorra.platform.fabric.FabricMC;
 import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
 import com.projectkorra.projectkorra.prediction.PredictionTiming;
 import com.projectkorra.projectkorra.prediction.PredictionVisibility;
+import com.projectkorra.projectkorra.prediction.HitResolutionSync;
+import com.projectkorra.projectkorra.prediction.ReactionWindow;
+import com.projectkorra.projectkorra.prediction.PendingHitResolution;
 import com.projectkorra.projectkorra.prediction.TempBlockSync;
 import com.projectkorra.projectkorra.prediction.VelocitySync;
 import com.projectkorra.projectkorra.waterbending.passive.FastSwim;
@@ -62,11 +66,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class PredictionServer implements TempBlockSync.Listener,
         CooldownSync.Listener, VelocitySync.Listener,
-        AbilityRemovalSync.Listener {
+        AbilityRemovalSync.Listener, HitResolutionSync.Listener {
     public static final int MAX_REWIND_TICKS = 12;
     private static final double MAX_ORIGIN_ERROR = 8.0;
     private static final int INPUTS_PER_SECOND = 80;
     private static final int CLAIMS_PER_SECOND = 48;
+    private static final double CLAIM_QUERY_TOLERANCE = 1.0;
     private static PredictionServer active;
     private static boolean receiversRegistered;
     private static final ThreadLocal<UUID> INPUT_OWNER = new ThreadLocal<>();
@@ -79,6 +84,7 @@ public final class PredictionServer implements TempBlockSync.Listener,
     private final Map<UUID, Deque<EntityFrame>> history = new HashMap<>();
     private final Map<CoreAbility, Action> abilityActions = Collections.synchronizedMap(new IdentityHashMap<>());
     private final List<PredictionPayloads.TempBlockOp> pendingTempBlocks = new ArrayList<>();
+    private final List<Claim> pendingReactions = new ArrayList<>();
     private volatile List<PredictionPayloads.ConfigEntry> publicConfig = List.of();
     private volatile List<PredictionPayloads.AbilityProfile> profiles = List.of();
     private volatile Map<String, PredictionPayloads.AbilityProfile> profilesByName = Map.of();
@@ -101,6 +107,7 @@ public final class PredictionServer implements TempBlockSync.Listener,
         TempBlockSync.install(prediction);
         VelocitySync.install(prediction);
         AbilityRemovalSync.install(prediction);
+        HitResolutionSync.install(prediction);
         PredictionTiming.install(prediction.timingProvider);
         CooldownSync.install(prediction);
         prediction.requestPublicSnapshotRebuild(false);
@@ -111,12 +118,14 @@ public final class PredictionServer implements TempBlockSync.Listener,
         TempBlockSync.clear(this);
         VelocitySync.clear(this);
         AbilityRemovalSync.clear(this);
+        HitResolutionSync.clear(this);
         PredictionTiming.clear(this.timingProvider);
         CooldownSync.clear(this);
         sessions.clear();
         history.clear();
         abilityActions.clear();
         pendingTempBlocks.clear();
+        pendingReactions.clear();
         if (active == this) active = null;
     }
 
@@ -163,6 +172,7 @@ public final class PredictionServer implements TempBlockSync.Listener,
     public void tick() {
         tick++;
         recordHistory();
+        resolvePendingReactions();
         flushTempBlocks();
         sessions.entrySet().removeIf(entry -> server.getPlayerManager().getPlayer(entry.getKey()) == null);
         abilityActions.entrySet().removeIf(entry -> entry.getKey().isRemoved() || !sessions.containsKey(entry.getValue().owner));
@@ -197,14 +207,76 @@ public final class PredictionServer implements TempBlockSync.Listener,
             }
             Entity target = world.getEntityById(claim.targetEntityId);
             if (!(target instanceof net.minecraft.entity.LivingEntity) || target.getUuid().equals(action.owner)) continue;
-            // Trust the client claim for this diagnostic path; the claimed
-            // entity must not be discarded by the server's divergent box.
+            if (!query.expand(CLAIM_QUERY_TOLERANCE).contains(claim.contact)) continue;
+            // onHitClaim validated the contact against the target's rewound
+            // box. The ability still controls whether this query has effects.
             com.projectkorra.projectkorra.platform.mc.entity.Entity wrapped = FabricMC.entity(target);
             if (wrapped != null) {
                 result.put(target.getId(), wrapped);
                 claim.consumedTick = prediction.tick;
             }
         }
+    }
+
+    @Override
+    public boolean defer(HitResolutionSync.Effect effect, Ability ability,
+                         com.projectkorra.projectkorra.platform.mc.entity.Entity target,
+                         Runnable commit) {
+        if (!reactionEnabled() || !(ability instanceof CoreAbility coreAbility) || target == null) return false;
+        Action action = abilityActions.get(coreAbility);
+        if (action == null) {
+            UUID owner = ability.getPlayer() == null ? INPUT_OWNER.get() : ability.getPlayer().getUniqueId();
+            Long sequence = INPUT_SEQUENCE.get();
+            Session session = owner == null ? null : sessions.get(owner);
+            action = session == null || sequence == null ? null : session.actions.get(sequence);
+        }
+        if (action == null) return false;
+        Claim claim = action.claims.values().stream()
+                .filter(candidate -> candidate.targetUuid.equals(target.getUniqueId()))
+                .findFirst().orElse(null);
+        if (claim == null || claim.consumedTick != tick
+                || claim.pending != null && claim.pending.isResolved()) return false;
+        ServerPlayerEntity defender = server.getPlayerManager().getPlayer(claim.targetUuid);
+        if (defender == null || defender.isDead()) return false;
+
+        if (claim.pending == null) {
+            claim.pending = new PendingHitResolution(
+                    tick + reactionTicks(defender.networkHandler.getLatency()),
+                    new Vector(claim.contact.x, claim.contact.y, claim.contact.z));
+            pendingReactions.add(claim);
+        }
+        return claim.pending.add(commit);
+    }
+
+    private void resolvePendingReactions() {
+        var iterator = pendingReactions.iterator();
+        while (iterator.hasNext()) {
+            Claim claim = iterator.next();
+            ServerPlayerEntity defender = server.getPlayerManager().getPlayer(claim.targetUuid);
+            com.projectkorra.projectkorra.platform.mc.entity.Entity wrapped =
+                    defender == null ? null : FabricMC.entity(defender);
+            com.projectkorra.projectkorra.platform.mc.util.BoundingBox box =
+                    defender == null || defender.isDead() || wrapped == null ? null : wrapped.getBoundingBox();
+            PendingHitResolution.Result result = claim.pending.resolve(tick, box, reactionContactTolerance());
+            if (result != PendingHitResolution.Result.WAITING) iterator.remove();
+        }
+    }
+
+    private static boolean reactionEnabled() {
+        return ConfigManager.getConfig().getBoolean("Properties.Prediction.Reaction.Enabled", true);
+    }
+
+    private static int reactionTicks(int pingMillis) {
+        int maximum = ConfigManager.getConfig().getInt(
+                "Properties.Prediction.Reaction.MaxCompensationMillis", 200);
+        int jitter = ConfigManager.getConfig().getInt(
+                "Properties.Prediction.Reaction.JitterAllowanceMillis", 25);
+        return ReactionWindow.compensationTicks(pingMillis, maximum, jitter);
+    }
+
+    private static double reactionContactTolerance() {
+        return Math.max(0D, ConfigManager.getConfig().getDouble(
+                "Properties.Prediction.Reaction.ContactTolerance", 0.2));
     }
 
     /**
@@ -607,7 +679,14 @@ public final class PredictionServer implements TempBlockSync.Listener,
 
         long rewindTick = session.mapClientTick(payload.clientTick(), tick, player.networkHandler.getLatency());
         Vec3d contact = new Vec3d(payload.contactX(), payload.contactY(), payload.contactZ());
-        Claim claim = new Claim(target.getId(), rewindTick, contact,
+        EntityFrame targetFrame = frameAt(target.getUuid(), rewindTick);
+        if (targetFrame == null
+                || !targetFrame.world.equals(target.getEntityWorld().getRegistryKey().getValue().toString())
+                || !targetFrame.box.expand(0.5).contains(contact)
+                || contact.squaredDistanceTo(new Vec3d(action.eyeX, action.eyeY, action.eyeZ)) > 130D * 130D) {
+            return;
+        }
+        Claim claim = new Claim(target.getId(), target.getUuid(), rewindTick, contact,
                 tick + MAX_REWIND_TICKS + 4);
         action.claims.put(target.getId(), claim);
         if ("FirePunch".equalsIgnoreCase(action.abilityName)) {
@@ -916,12 +995,15 @@ public final class PredictionServer implements TempBlockSync.Listener,
 
     private static final class Claim {
         final int targetEntityId;
+        final UUID targetUuid;
         final long rewindTick;
         final Vec3d contact;
         final long expiresTick;
         long consumedTick = -1;
-        private Claim(int targetEntityId, long rewindTick, Vec3d contact, long expiresTick) {
+        PendingHitResolution pending;
+        private Claim(int targetEntityId, UUID targetUuid, long rewindTick, Vec3d contact, long expiresTick) {
             this.targetEntityId = targetEntityId;
+            this.targetUuid = targetUuid;
             this.rewindTick = rewindTick;
             this.contact = contact;
             this.expiresTick = expiresTick;

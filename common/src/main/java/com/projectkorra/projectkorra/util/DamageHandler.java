@@ -17,6 +17,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageByEntityEvent;
 import com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent;
 import com.projectkorra.projectkorra.platform.mc.metadata.FixedMetadataValue;
+import com.projectkorra.projectkorra.prediction.HitResolutionSync;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.HashMap;
@@ -151,6 +152,21 @@ public class DamageHandler {
         if (ability == null) {
             return;
         }
+
+        final Player requestedSource = source;
+        final double requestedDamage = damage;
+        final boolean requestedIgnoreArmor = ignoreArmor;
+        if (HitResolutionSync.defer(HitResolutionSync.Effect.DAMAGE, ability, entity,
+                () -> damageEntityNow(entity, requestedSource, requestedDamage, ability,
+                        requestedIgnoreArmor, doSourcelessDamage))) {
+            return;
+        }
+
+        damageEntityNow(entity, source, damage, ability, ignoreArmor, doSourcelessDamage);
+    }
+
+    private static void damageEntityNow(final Entity entity, Player source, double damage, final Ability ability,
+                                        boolean ignoreArmor, final boolean doSourcelessDamage) {
 
         damage *= ConfigManager.getConfig().getDouble("Properties.DamageMultiplier");
 

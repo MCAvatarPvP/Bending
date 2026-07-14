@@ -40,6 +40,7 @@ import com.projectkorra.projectkorra.platform.mc.plugin.java.JavaPlugin;
 import com.projectkorra.projectkorra.platform.mc.util.BoundingBox;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.VelocitySync;
+import com.projectkorra.projectkorra.prediction.HitResolutionSync;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.storage.DBConnection;
 import com.projectkorra.projectkorra.util.*;
@@ -1992,9 +1993,17 @@ public class GeneralMethods {
         // Publish explicit ownership before the platform emits its vanilla
         // velocity packet. Exact prediction uses this receipt (ability owner,
         // action and impulse ordinal) instead of guessing from a nearby vector.
-        VelocitySync.publish(
-                event.getAbility(), event.getAffected(), velocity);
-        event.getAffected().setVelocity(velocity);
+        final Ability velocityAbility = event.getAbility();
+        final Entity velocityTarget = event.getAffected();
+        final Vector committedVelocity = velocity.clone();
+        final Runnable commitVelocity = () -> {
+            VelocitySync.publish(velocityAbility, velocityTarget, committedVelocity);
+            velocityTarget.setVelocity(committedVelocity.clone());
+        };
+        if (!HitResolutionSync.defer(HitResolutionSync.Effect.VELOCITY, velocityAbility,
+                velocityTarget, commitVelocity)) {
+            commitVelocity.run();
+        }
     }
 
     public static int getMCVersion() {
