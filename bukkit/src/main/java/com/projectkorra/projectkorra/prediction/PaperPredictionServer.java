@@ -62,6 +62,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     private final Map<UUID, Session> sessions = new ConcurrentHashMap<>();
     private final Map<UUID, Deque<EntityFrame>> history = new HashMap<>();
     private final Map<CoreAbility, Action> abilityActions = Collections.synchronizedMap(new IdentityHashMap<>());
+    private final Map<Long, Action> tempLayerActions = new HashMap<>();
     private final Map<UUID, EnumMap<PaperPredictionProtocol.InputKind, Long>> pendingVanilla = new HashMap<>();
     private final List<PendingTempBlock> pendingTempBlocks = new ArrayList<>();
     private TempBlockPacketFilter tempBlockPacketFilter;
@@ -446,6 +447,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         sessions.clear();
         history.clear();
         abilityActions.clear();
+        tempLayerActions.clear();
         pendingVanilla.clear();
         pendingTempBlocks.clear();
         pendingReactions.clear();
@@ -579,6 +581,20 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         Session session = sessions.get(ability.getPlayer().getUniqueId());
         if (session == null) return null;
         List<Action> recent = new ArrayList<>(session.actions.values());
+        // Long-lived abilities (notably PhaseChange) can emit TempBlocks well
+        // after the old four-tick fallback. Keep an exact owner + ability-name
+        // association for the full client action lifetime so metadata never
+        // degrades to sequence 0 and underlying WATER authority.
+        for (int i = recent.size() - 1; i >= 0; i--) {
+            Action candidate = recent.get(i);
+            if (candidate.locallyPredicted
+                    && candidate.ability.equalsIgnoreCase(ability.getName())) {
+                abilityActions.put(ability, candidate);
+                return candidate;
+            }
+        }
+        // Combo/runtime names may differ from the bound input. Their fallback
+        // remains deliberately short to avoid assigning an unrelated action.
         for (int i = recent.size() - 1; i >= 0; i--) {
             Action candidate = recent.get(i);
             if (candidate.locallyPredicted && tick - candidate.acceptedTick <= 4) {
@@ -612,13 +628,17 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         };
         Block block = change.block();
         CoreAbility effectiveAbility = change.ability() == null ? AbilityExecutionContext.current() : change.ability();
-        Action action = effectiveAbility == null ? null : actionForEffect(effectiveAbility);
+        Action currentAction = effectiveAbility == null ? null : actionForEffect(effectiveAbility);
         Long inputSequence = INPUT_SEQUENCE.get();
         UUID worldId = block.getWorld() != null && block.getWorld().handle() instanceof World world
                 ? world.getUID() : null;
         if (worldId == null) return;
         Map<UUID, String> ownerViews = new HashMap<>();
         change.ownerViews().forEach((owner, data) -> ownerViews.put(owner, TempBlockSync.encode(data)));
+        if (change.operation() == TempBlockSync.Operation.CREATE && currentAction != null) {
+            tempLayerActions.put(change.layerId(), currentAction);
+        }
+        Action action = tempLayerActions.getOrDefault(change.layerId(), currentAction);
         pendingTempBlocks.add(new PendingTempBlock(worldId,
                 new PaperPredictionProtocol.TempBlockOp(wireOperation, worldKey(block.getWorld()),
                 block.getX(), block.getY(), block.getZ(), TempBlockSync.encode(change.data()),
@@ -627,6 +647,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                 change.layerId(), change.revision(), change.ownerId(),
                 TempBlockSync.encode(change.data()),
                 change.packetExpected() && this.tempBlockPacketFilter == null), Map.copyOf(ownerViews)));
+        if (change.operation() == TempBlockSync.Operation.REVERT) tempLayerActions.remove(change.layerId());
     }
 
     @Override
@@ -1096,7 +1117,8 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                     location.getBlockX(), location.getBlockZ(), block.getX(), block.getZ(),
                     player.getClientViewDistance())) continue;
             final CoreAbility ability = layer.getAbility().orElse(null);
-            final Action action = ability == null ? null : actionForEffect(ability);
+            final Action action = tempLayerActions.getOrDefault(layer.getLayerId(),
+                    ability == null ? null : actionForEffect(ability));
             final BlockData viewerData = TempBlock.getVisibleData(block, session.player);
             operations.add(new PaperPredictionProtocol.TempBlockOp(
                     PaperPredictionProtocol.TempOperation.CREATE, worldKey(block.getWorld()),

@@ -86,6 +86,7 @@ public final class PredictionServer implements TempBlockSync.Listener,
     private final Map<UUID, Session> sessions = new ConcurrentHashMap<>();
     private final Map<UUID, Deque<EntityFrame>> history = new HashMap<>();
     private final Map<CoreAbility, Action> abilityActions = Collections.synchronizedMap(new IdentityHashMap<>());
+    private final Map<Long, Action> tempLayerActions = new HashMap<>();
     private final List<PendingTempBlock> pendingTempBlocks = new ArrayList<>();
     private final List<Claim> pendingReactions = new ArrayList<>();
     private volatile List<PredictionPayloads.ConfigEntry> publicConfig = List.of();
@@ -127,6 +128,7 @@ public final class PredictionServer implements TempBlockSync.Listener,
         sessions.clear();
         history.clear();
         abilityActions.clear();
+        tempLayerActions.clear();
         pendingTempBlocks.clear();
         pendingReactions.clear();
         if (active == this) active = null;
@@ -362,6 +364,14 @@ public final class PredictionServer implements TempBlockSync.Listener,
         List<Action> recent = new ArrayList<>(session.actions.values());
         for (int i = recent.size() - 1; i >= 0; i--) {
             Action candidate = recent.get(i);
+            if (candidate.locallyPredicted
+                    && candidate.abilityName.equalsIgnoreCase(ability.getName())) {
+                abilityActions.put(ability, candidate);
+                return candidate;
+            }
+        }
+        for (int i = recent.size() - 1; i >= 0; i--) {
+            Action candidate = recent.get(i);
             if (candidate.locallyPredicted && tick - candidate.acceptedServerTick <= 4) {
                 abilityActions.put(ability, candidate);
                 return candidate;
@@ -427,16 +437,21 @@ public final class PredictionServer implements TempBlockSync.Listener,
         };
         Block block = change.block();
         CoreAbility effectiveAbility = change.ability() == null ? AbilityExecutionContext.current() : change.ability();
-        Action action = effectiveAbility == null ? null : actionForEffect(effectiveAbility);
+        Action currentAction = effectiveAbility == null ? null : actionForEffect(effectiveAbility);
         Long inputSequence = INPUT_SEQUENCE.get();
         Map<UUID, String> ownerViews = new HashMap<>();
         change.ownerViews().forEach((owner, data) -> ownerViews.put(owner, TempBlockSync.encode(data)));
+        if (change.operation() == TempBlockSync.Operation.CREATE && currentAction != null) {
+            tempLayerActions.put(change.layerId(), currentAction);
+        }
+        Action action = tempLayerActions.getOrDefault(change.layerId(), currentAction);
         pendingTempBlocks.add(new PendingTempBlock(new PredictionPayloads.TempBlockOp(wireOperation, block.getWorld().getName(),
                 block.getX(), block.getY(), block.getZ(), TempBlockSync.encode(change.data()),
                 change.operation() == TempBlockSync.Operation.REVERT ? 0L : change.revertAtMillis(),
                 action == null ? (inputSequence == null ? 0L : inputSequence) : action.sequence,
                 change.layerId(), change.revision(), change.ownerId(),
                 TempBlockSync.encode(change.data()), change.packetExpected()), Map.copyOf(ownerViews)));
+        if (change.operation() == TempBlockSync.Operation.REVERT) tempLayerActions.remove(change.layerId());
     }
 
     @Override
@@ -909,7 +924,8 @@ public final class PredictionServer implements TempBlockSync.Listener,
                     (int) Math.floor(player.getX()), (int) Math.floor(player.getZ()),
                     block.getX(), block.getZ(), server.getPlayerManager().getViewDistance())) continue;
             final CoreAbility ability = layer.getAbility().orElse(null);
-            final Action action = ability == null ? null : actionForEffect(ability);
+            final Action action = tempLayerActions.getOrDefault(layer.getLayerId(),
+                    ability == null ? null : actionForEffect(ability));
             final BlockData viewerData = TempBlock.getVisibleData(block, session.playerId);
             operations.add(new PredictionPayloads.TempBlockOp(PredictionPayloads.TempOperation.CREATE,
                     block.getWorld().getName(), block.getX(), block.getY(), block.getZ(),

@@ -57,11 +57,11 @@ class PaperPredictionProtocolTest {
     }
 
     @Test
-    void blockEchoPolicyNeverHidesAuthorityBehindNewerPrediction() {
-        assertFalse(PredictionEchoPolicy.shouldSuppress(false, true, false));
+    void blockEchoPolicyKeepsOrderedMovementAheadOfOlderServerEchoes() {
+        assertTrue(PredictionEchoPolicy.shouldSuppress(false, true, false));
         assertTrue(PredictionEchoPolicy.shouldSuppress(false, false, true));
         assertFalse(PredictionEchoPolicy.shouldSuppress(false, false, false));
-        assertFalse(PredictionEchoPolicy.shouldSuppress(true, true, false));
+        assertTrue(PredictionEchoPolicy.shouldSuppress(true, false, false));
         assertFalse(PredictionEchoPolicy.confirmedByLatestAuthority(true, false),
                 "an older match must not keep a diverged block confirmed");
         assertTrue(PredictionEchoPolicy.confirmedByLatestAuthority(false, true));

@@ -23,14 +23,17 @@ class AuthoritativeBlockBoundaryTest {
         String chunk = method(runtime, "private void acceptAuthoritativeChunk0",
                 "private void applyTempBlockBatch0");
 
-        assertFalse(batch.contains("setBlockState("),
-                "batch restoration must stay behind the owned-receipt helper");
+        assertTrue(batch.contains("localOwnedTempBlockState") && batch.contains("setBlockState("),
+                "a leaked batch update must restore a proven live owner TempBlock instead of deleting the ability");
         assertTrue(batch.contains("OwnedBatchRestore"));
+        assertTrue(runtime.contains("Set<Integer> consumedEchoes")
+                        && runtime.contains("world.getBlockState(pos), mutation != null && mutation.locallyPredicted"),
+                "mixed chunk deltas must restore ordered Earth movement echoes without hiding unrelated entries");
         assertTrue(chunk.contains("hasOwnedLayer(mutation)"),
                 "a chunk snapshot may preserve only a proven owned TempBlock layer");
-        assertTrue(chunk.contains("BlockState desired = mutation.serverTempState;"),
-                "chunk authority must not restore stale predicted WATER over an active server ICE layer");
-        assertFalse(chunk.contains("mutation.predicted : mutation.serverTempState"));
+        assertTrue(chunk.contains("localOwnedTempBlockState")
+                        && chunk.contains("mutation.preservePredictedOwnedState"),
+                "chunk authority must prefer a live owned TempBlock before ledger fallbacks");
         assertTrue(chunk.contains("blockEchoes.removeIf"));
         assertTrue(chunk.contains("blocks.entrySet().removeIf"));
         assertTrue(runtime.contains("invalidateClientTempStack"),
@@ -60,24 +63,39 @@ class AuthoritativeBlockBoundaryTest {
         assertTrue(metadata.contains("nextBlockEchoOrdinal")
                         && metadata.contains("lastMatchedLocalCreateOrdinal"),
                 "repeated WATER/AIR/WATER lifecycles must consume CREATE echoes in order");
+        assertTrue(metadata.contains("final boolean confirmedLocalCreate = exactLocalCreate || newerSameActionState")
+                        || metadata.contains("final boolean confirmedLocalCreate = exactLocalCreate")
+                        && runtime.contains("hasNewerLocalStateAfter"),
+                "a lagging server CREATE must not repaint a newer state from the same Water/Earth action");
+        assertTrue(metadata.contains("liveSameActionTempBlock")
+                        && runtime.contains("isLiveLocalTempBlockForAction"),
+                "material differences must not discard a live EarthSmash/WaterFlow layer from the same action");
         assertTrue(metadata.contains("localPredictionAtCoordinate"),
-                "a mismatched local prediction must be corrected without exposing unpredicted owner layers");
+                "owned metadata must still classify prediction for receipts and diagnostics");
         assertTrue(metadata.contains("hasActionBlockHistory(world, pos, operation.actionSequence())"),
                 "PhaseChange history must survive ICE-to-original-WATER removing the live mutation entry");
         assertTrue(runtime.contains("private final List<BlockEcho> localBlockHistory")
                         && runtime.contains("localBlockHistory.add(echo)"),
                 "TempBlock lifecycle proof must survive disposal of vanilla packet echoes");
-        assertTrue(runtime.contains("if (mutation.localPredictionObserved) return layers.get(layers.size() - 1).state;"),
-                "an active lower ICE layer must never resolve to original WATER after an overlapping REVERT");
+        assertFalse(runtime.contains("localPredictionObserved"),
+                "merely touching a coordinate must not expose delayed server TempBlocks during chunk authority");
+        assertTrue(runtime.contains("boolean preservePredictedOwnedState")
+                        && runtime.contains("this.preservePredictedOwnedState = false;"),
+                "newer-state preservation must be explicit and cleared whenever authority is adopted");
+        assertTrue(metadata.contains("mutation.preservePredictedOwnedState = newerSameActionState || liveSameActionTempBlock;"),
+                "exact PhaseChange ICE must not grant later WATER permission to survive authority");
+        assertTrue(runtime.contains("mutation.preservePredictedOwnedState = action == mutation.serverAction;"),
+                "a different PhaseChange input must clear preservation inherited from the prior action");
         assertFalse(metadata.contains("boolean locallyPredictedLayer = ownPredictedAction"),
                 "a REVERT must be tied to its confirmed layer, not merely its action");
         assertTrue(metadata.contains("ownedTempReceipts.addLast"));
-        assertTrue(metadata.contains("reconcileSuppressedOwnedTempMetadata"),
-                "suppressed CREATE/REVERT metadata is the only remaining lifecycle authority");
-        assertTrue(runtime.contains("hasNewerLocalBlockEcho"),
-                "an older same-action REVERT must not erase a newer overlapping Water/Earth CREATE");
-        assertTrue(runtime.contains("localCreateOrdinal >= 0L"),
-                "same-action overlap preservation requires an exact preceding CREATE receipt");
+        assertFalse(runtime.contains("reconcileSuppressedOwnedTempMetadata"),
+                "owner TempBlock metadata must never repaint or discard the client ability");
+        assertTrue(metadata.contains("BlockState desired = currentState;")
+                        && metadata.contains("BlockState desired = world.getBlockState(pos);"),
+                "owned CREATE and REVERT receipts must preserve the currently rendered local state");
+        assertTrue(runtime.contains("if (layer.ownedByLocalPlayer) continue;"),
+                "server-owned layers are ledger/diagnostic state, not owner-visible world state");
         assertFalse(runtime.contains("earlyPhaseChangeThaw"),
                 "owned ICE-to-WATER prediction must not wait for a rollback");
         assertTrue(runtime.contains("isTopLayerOwnedByLocalPlayer(mutation)"),
@@ -99,10 +117,20 @@ class AuthoritativeBlockBoundaryTest {
                         && runtime.contains("blockConfirmationTicks(mutation.lastAction)"),
                 "only server-absent predicted trail blocks may use the shorter measured deadline");
         assertTrue(runtime.contains("MIN_ACTION_BLOCK_CONFIRMATION_TICKS = 4"));
+        assertTrue(runtime.contains("if (mutation.serverTempActive && hasOwnedLayer(mutation)) return false;"),
+                "an active owner layer must never expire into delayed server TempBlock state");
         assertTrue(runtime.contains("invalidateClientTempStack(mutation.world, mutation.pos);"),
                 "negative receipts must retire the local TempBlock object before correcting its world state");
-        assertTrue(runtime.contains("invalidateClientTempStack(world, mutation.pos);"),
-                "suppressed metadata corrections must prevent delayed local cleanup from resurrecting ghosts");
+        assertTrue(runtime.contains("localOwnedTempBlockState(world, pos, mutation)"),
+                "normal block traffic must preserve a live owner TempBlock instead of letting delayed server state replace it");
+        assertFalse(runtime.contains("reconcileSuppressedOwnedTempMetadata"),
+                "owner TempBlock metadata must remain ledger-only and never rewrite the client world");
+        assertTrue(runtime.contains("recordPhysicalAuthority")
+                        && runtime.contains("BlockState physicalAuthority"),
+                "physical TempBlock confirmations must never replace the owner-visible rollback baseline");
+        assertTrue(runtime.contains("recordViewerAuthority(mutation.serverTempState)")
+                        && runtime.contains("recordViewerAuthority(reverted)"),
+                "CREATE and REVERT metadata must advance the owner's exact latest server-visible rollback state");
     }
 
     private static String method(String source, String startMarker, String endMarker) {

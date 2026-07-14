@@ -35,12 +35,13 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 
 /**
  * Suppresses only server block packets proven to belong to an exact client's
- * owned TempBlock lifecycle. Each suppression consumes a pre-armed, bounded,
- * exact-state receipt. Unrelated authority at the same coordinate and unrelated
- * entries in a multi-block packet always pass unchanged.
+ * owned TempBlock lifecycle. CREATE receipts remain active for the layer lifetime
+ * because one physical water/neighbor mutation can emit several packets. REVERT
+ * receipts retain a short duplicate tail. Unrelated states at the same coordinate
+ * and unrelated entries in a multi-block packet always pass unchanged.
  */
 public final class TempBlockPacketFilter extends PacketListenerAbstract {
-    private static final long RECEIPT_LIFETIME_MILLIS = 3_000L;
+    private static final long REVERT_RECEIPT_LIFETIME_MILLIS = 1_000L;
     private final Map<UUID, Map<BlockKey, ConcurrentLinkedDeque<Receipt>>> receipts = new ConcurrentHashMap<>();
 
     private TempBlockPacketFilter() {
@@ -67,11 +68,18 @@ public final class TempBlockPacketFilter extends PacketListenerAbstract {
         if (viewers.isEmpty()) return;
         BlockKey key = new BlockKey(world.getUID(), change.block().getX(), change.block().getY(), change.block().getZ());
         String physicalState = TempBlockSync.encode(change.data());
-        long expiresAt = System.currentTimeMillis() + RECEIPT_LIFETIME_MILLIS;
+        boolean layerLifetime = change.operation() == TempBlockSync.Operation.CREATE;
+        long expiresAt = layerLifetime ? Long.MAX_VALUE
+                : System.currentTimeMillis() + REVERT_RECEIPT_LIFETIME_MILLIS;
         for (UUID viewer : viewers) {
-            receipts.computeIfAbsent(viewer, ignored -> new ConcurrentHashMap<>())
-                    .computeIfAbsent(key, ignored -> new ConcurrentLinkedDeque<>())
-                    .addLast(new Receipt(physicalState, expiresAt));
+            ConcurrentLinkedDeque<Receipt> queue = receipts
+                    .computeIfAbsent(viewer, ignored -> new ConcurrentHashMap<>())
+                    .computeIfAbsent(key, ignored -> new ConcurrentLinkedDeque<>());
+            // setType/revision replaces the receipt for this exact layer. A
+            // REVERT removes its persistent CREATE before arming the brief
+            // receipt for duplicate packets produced by the restoring write.
+            queue.removeIf(receipt -> receipt.layerId == change.layerId());
+            queue.addLast(new Receipt(change.layerId(), physicalState, expiresAt, layerLifetime));
         }
     }
 
@@ -143,16 +151,12 @@ public final class TempBlockPacketFilter extends PacketListenerAbstract {
                 break;
             }
         }
-        if (matched != null) {
-            Receipt consumed;
-            do {
-                consumed = queue.pollFirst();
-            } while (consumed != null && consumed != matched);
-            if (queue.isEmpty()) byBlock.remove(key, queue);
-            if (byBlock.isEmpty()) receipts.remove(viewer, byBlock);
-            return matched;
-        }
+        // Do not consume a matching receipt. Fluid and neighbor propagation can
+        // encode the same owned mutation more than once. CREATE remains until
+        // its layer REVERT; the bounded REVERT receipt expires naturally.
+        if (matched != null) return matched;
         if (queue.isEmpty()) byBlock.remove(key, queue);
+        if (byBlock.isEmpty()) receipts.remove(viewer, byBlock);
         return null;
     }
 
@@ -197,5 +201,5 @@ public final class TempBlockPacketFilter extends PacketListenerAbstract {
     }
 
     private record BlockKey(UUID world, int x, int y, int z) { }
-    private record Receipt(String physicalState, long expiresAt) { }
+    private record Receipt(long layerId, String physicalState, long expiresAt, boolean layerLifetime) { }
 }

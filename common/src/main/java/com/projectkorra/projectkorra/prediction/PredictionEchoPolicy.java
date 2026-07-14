@@ -9,13 +9,12 @@ public final class PredictionEchoPolicy {
 
     public static boolean shouldSuppress(boolean explicitlyForced, boolean hasNewerPredictedState,
                                          boolean clientAlreadyMatches) {
-        // A matching predicted write does not prove that a newer local write
-        // will also happen on the server. Tiny timing differences in moving
-        // water/earth routinely produce one extra local state. Suppressing the
-        // older server packet in that situation can preserve the extra state
-        // forever. Authority is therefore skipped only when applying it would
-        // be a literal no-op in the client world.
-        return clientAlreadyMatches;
+        // Ordered moving abilities can advance several block states during one
+        // round trip. A server packet matching an earlier predicted write is an
+        // acknowledgement of that step, not permission to repaint the client
+        // backwards over a newer step. A genuinely client-only final step is
+        // still retired by the measured negative-receipt deadline.
+        return explicitlyForced || hasNewerPredictedState || clientAlreadyMatches;
     }
 
     public static boolean confirmedByLatestAuthority(boolean previouslyConfirmed,

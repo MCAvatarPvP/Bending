@@ -47,7 +47,9 @@ the ability produces in local play.
   The owner sees their locally predicted layer, or the first non-owned layer/original
   block beneath it; the physical server TempBlock is not exposed to that owner.
   With PacketEvents, a receipt is armed before the physical world write and that
-  exact owner update is suppressed. Mixed packets keep every unrelated entry, and
+  exact owner update is suppressed. CREATE receipts remain active until their exact
+  layer REVERT, covering duplicate fluid and neighbor packets from one world write;
+  REVERT receipts retain only a short duplicate tail. Mixed packets keep every unrelated entry, and
   Fabric is explicitly told that no vanilla receipt will arrive. Without PacketEvents,
   Fabric performs bounded receipt-scoped suppression after delivery.
   A predicted CREATE is confirmed only when its action, coordinate, and complete
@@ -57,18 +59,33 @@ the ability produces in local play.
   ICE from being misclassified as hidden and then "corrected" to underlying WATER.
   A suppressed REVERT is reconciled directly from ordered lifecycle metadata;
   a newer same-action CREATE is preserved only when it follows the exact confirmed
-  CREATE/revert lifecycle at that coordinate. Chunk snapshots
+  CREATE/revert lifecycle at that coordinate. A delayed server CREATE also cannot
+  repaint a provably newer state from the same action, which keeps moving WaterFlow,
+  WaterSpoutWave, and EarthSmash lifecycles client-owned. That permission is scoped
+  to the exact action and is cleared when a later action touches the coordinate, so
+  confirmed PhaseChange ICE cannot lend its authority to a later predicted WATER.
+  Chunk snapshots
   restore the resolved server-layer view, never an unrelated stale local mutation.
   When ordinary block authority wins, Fabric discards the corresponding local
   TempBlock stack without running its delayed revert or attachment callbacks.
   Metadata-only changes and join snapshots cannot create phantom receipts.
-  Ordinary block authority and mixed chunk-delta entries remain authoritative.
+  Ordinary block authority and unrelated mixed chunk-delta entries remain
+  authoritative. Ordered predicted entries inside a mixed delta are restored
+  after vanilla applies the unrelated entries, so an older EarthBlast step
+  cannot briefly repaint over the client's newer step.
   Per-session layer tracking guarantees that every delivered CREATE receives its
   REVERT even after leaving view distance. Server-absent client trail blocks use
   the measured input round-trip plus a jitter margin as a negative-receipt deadline,
   instead of remaining for an unconditional two seconds. Unresolved disagreement is
-  forced back to the latest known server state at that deadline. During the
+  forced back to the latest owner-visible server state at that deadline. Physical
+  server TempBlock confirmation is tracked separately and can never replace that
+  rollback baseline with temporary ICE, WATER, or EARTH. During the
   bounded window, a translucent amber block marker exposes the disagreement.
+- The server binds an input action to each TempBlock layer at CREATE and retains
+  that binding through REVERT. Reusing a long-lived ability instance cannot relabel
+  older PhaseChange ICE as the newer input. On Fabric, a live local TempBlock owned
+  by that exact action remains client-owned even if its source material representation
+  differs, preventing catch-up metadata from deleting EarthSmash or WaterFlow.
 - Newly-created authoritative abilities are backdated by the bounded input rewind.
   Charge and duration clocks therefore represent the same action age as the local
   prediction; EarthSmash release cannot fail merely because its server instance

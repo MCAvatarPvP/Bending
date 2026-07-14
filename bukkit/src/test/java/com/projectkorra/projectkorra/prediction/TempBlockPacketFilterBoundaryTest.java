@@ -23,6 +23,12 @@ class TempBlockPacketFilterBoundaryTest {
         assertTrue(filter.contains("if (receipt == null) visible.add(block)"));
         assertTrue(filter.contains("packet.setBlocks"),
                 "mixed updates must retain every non-TempBlock entry");
+        assertTrue(filter.contains("queue.removeIf(receipt -> receipt.layerId == change.layerId())"),
+                "a REVERT or revision must close the persistent receipt for that exact layer");
+        assertTrue(filter.contains("if (matched != null) return matched;"),
+                "duplicate fluid/neighbor packets must not consume CREATE ownership after the first packet");
+        assertFalse(filter.contains("queue.pollFirst()"),
+                "one owned world mutation can emit more than one exact packet");
     }
 
     @Test
