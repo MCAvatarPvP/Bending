@@ -1,7 +1,5 @@
 package com.projectkorra.projectkorra.fabric.client;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.math.BigInteger;
@@ -42,8 +40,8 @@ import java.util.jar.JarFile;
 /** Opt-in, checksum-verified updater for the Fabric prediction client. */
 public final class FabricAutoUpdater {
     private static final String MOD_ID = "projectkorra";
-    private static final String DEFAULT_REPOSITORY = "BendingNationsMC/ProjectKorraFalling";
-    private static final String API_VERSION = "2022-11-28";
+    private static final String DEFAULT_REPOSITORY = "MCAvatarPvP/Bending";
+    private static final String DEFAULT_BRANCH = "master";
     private static final AtomicBoolean INITIALIZED = new AtomicBoolean();
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(15))
@@ -84,11 +82,13 @@ public final class FabricAutoUpdater {
         if (!repository.matches("[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")) {
             throw new IllegalArgumentException("Invalid updater repository");
         }
+        String branch = System.getProperty("projectkorra.updater.branch", DEFAULT_BRANCH).trim();
+        if (!branch.matches("[A-Za-z0-9_.-]+")) throw new IllegalArgumentException("Invalid updater branch");
 
-        HttpRequest request = HttpRequest.newBuilder(URI.create("https://api.github.com/repos/" + repository + "/releases/latest"))
+        URI manifestUri = URI.create("https://raw.githubusercontent.com/" + repository + "/" + branch + "/releases/latest.json");
+        HttpRequest request = HttpRequest.newBuilder(manifestUri)
                 .timeout(Duration.ofSeconds(20))
-                .header("Accept", "application/vnd.github+json")
-                .header("X-GitHub-Api-Version", API_VERSION)
+                .header("Accept", "application/json")
                 .header("User-Agent", "ProjectKorra-Fabric-Updater/" + current)
                 .GET().build();
         HttpResponse<String> response;
@@ -100,33 +100,27 @@ public final class FabricAutoUpdater {
             Thread.currentThread().interrupt();
             throw new CompletionException(exception);
         }
-        if (response.statusCode() != 200) throw new IllegalStateException("GitHub returned HTTP " + response.statusCode());
+        if (response.statusCode() != 200) throw new IllegalStateException("Update manifest returned HTTP " + response.statusCode());
 
-        JsonObject release = JsonParser.parseString(response.body()).getAsJsonObject();
-        String latest = cleanVersion(string(release, "tag_name"));
+        JsonObject manifest = JsonParser.parseString(response.body()).getAsJsonObject();
+        String latest = cleanVersion(string(manifest, "version"));
         if (latest.isBlank() || compareVersions(latest, cleanVersion(current)) <= 0) return null;
-        JsonArray assets = release.getAsJsonArray("assets");
-        if (assets == null) throw new IllegalStateException("Latest release has no assets");
-        for (JsonElement element : assets) {
-            JsonObject asset = element.getAsJsonObject();
-            String name = string(asset, "name");
-            if (!name.toLowerCase(Locale.ROOT).endsWith("-fabric.jar")
-                    || name.toLowerCase(Locale.ROOT).contains("sources")) continue;
-            String digest = string(asset, "digest");
-            if (!digest.startsWith("sha256:") || digest.length() != 71) {
-                throw new IllegalStateException("Fabric release asset is missing its GitHub SHA-256 digest");
-            }
-            URI download = URI.create(string(asset, "browser_download_url"));
-            if (!"https".equalsIgnoreCase(download.getScheme())
-                    || !(download.getHost().equalsIgnoreCase("github.com")
-                    || download.getHost().endsWith(".githubusercontent.com"))) {
-                throw new IllegalStateException("Release asset has an untrusted download host");
-            }
-            long size = asset.has("size") ? asset.get("size").getAsLong() : -1L;
-            return new Release(current, latest, name, download, digest.substring(7).toLowerCase(Locale.ROOT), size,
-                    URI.create(string(release, "html_url")));
+        String tag = string(manifest, "tag");
+        if (!tag.matches("[A-Za-z0-9][A-Za-z0-9._-]*")) throw new IllegalStateException("Update manifest has an invalid tag");
+        String name = string(manifest, "fabricJar");
+        if (!name.matches("[A-Za-z0-9._-]+-fabric\\.jar") || name.toLowerCase(Locale.ROOT).contains("sources")) {
+            throw new IllegalStateException("Update manifest has an invalid Fabric jar name");
         }
-        throw new IllegalStateException("Latest release does not contain a *-fabric.jar asset");
+        String path = string(manifest, "path");
+        String expectedPath = "releases/" + tag + "/" + name;
+        if (!path.equals(expectedPath)) throw new IllegalStateException("Update manifest has an invalid Fabric jar path");
+        String digest = string(manifest, "sha256").toLowerCase(Locale.ROOT);
+        if (!digest.matches("[0-9a-f]{64}")) throw new IllegalStateException("Update manifest has an invalid SHA-256 digest");
+        long size = manifest.has("size") ? manifest.get("size").getAsLong() : -1L;
+        if (size <= 0) throw new IllegalStateException("Update manifest has an invalid jar size");
+        URI download = URI.create("https://raw.githubusercontent.com/" + repository + "/" + branch + "/" + path);
+        URI releasePage = URI.create("https://github.com/" + repository + "/tree/" + branch + "/releases/" + tag);
+        return new Release(current, latest, name, download, digest, size, releasePage);
     }
 
     private static CompletableFuture<Path> download(Release release, DownloadState state) {

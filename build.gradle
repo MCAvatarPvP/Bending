@@ -4,6 +4,8 @@ plugins {
     id 'xyz.jpenilla.run-paper' version '3.0.2' apply false
 }
 
+apply from: rootProject.file('gradle/git-publish.gradle')
+
 allprojects {
     group = 'com.projectkorra'
     version = '1.10.2'
