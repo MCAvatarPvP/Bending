@@ -20,6 +20,7 @@ import com.projectkorra.projectkorra.fabric.FabricGameplayBridge;
 import com.projectkorra.projectkorra.platform.fabric.FabricMC;
 import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
 import com.projectkorra.projectkorra.prediction.PredictionTiming;
+import com.projectkorra.projectkorra.prediction.PredictionVisibility;
 import com.projectkorra.projectkorra.prediction.TempBlockSync;
 import com.projectkorra.projectkorra.prediction.VelocitySync;
 import com.projectkorra.projectkorra.waterbending.passive.FastSwim;
@@ -685,11 +686,19 @@ public final class PredictionServer implements TempBlockSync.Listener,
         if (pendingTempBlocks.isEmpty()) return;
         List<PredictionPayloads.TempBlockOp> batch = List.copyOf(pendingTempBlocks);
         pendingTempBlocks.clear();
-        PredictionPayloads.TempBlockBatch payload = new PredictionPayloads.TempBlockBatch(tick, System.currentTimeMillis(), batch);
         for (Session session : sessions.values()) {
             ServerPlayerEntity player = server.getPlayerManager().getPlayer(session.playerId);
             if (player != null && ServerPlayNetworking.canSend(player, PredictionPayloads.TempBlockBatch.ID)) {
-                ServerPlayNetworking.send(player, payload);
+                String viewerWorld = player.getEntityWorld().getRegistryKey().getValue().toString();
+                List<PredictionPayloads.TempBlockOp> visible = batch.stream()
+                        .filter(operation -> PredictionVisibility.tracksBlock(viewerWorld, operation.world(),
+                                (int) Math.floor(player.getX()), (int) Math.floor(player.getZ()),
+                                operation.x(), operation.z(), server.getPlayerManager().getViewDistance()))
+                        .toList();
+                if (!visible.isEmpty()) {
+                    ServerPlayNetworking.send(player, new PredictionPayloads.TempBlockBatch(
+                            tick, System.currentTimeMillis(), visible));
+                }
             }
         }
     }

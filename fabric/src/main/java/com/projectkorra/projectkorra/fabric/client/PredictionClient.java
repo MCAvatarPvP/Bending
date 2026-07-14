@@ -34,7 +34,7 @@ import java.util.UUID;
 public final class PredictionClient {
     private static final int CAPABILITIES = 1 | 2 | 4 | 8;
     private static final PredictionClient INSTANCE = new PredictionClient();
-    private static final boolean DEBUG = Boolean.parseBoolean(System.getProperty("projectkorra.prediction.debug", "true"));
+    private static final boolean DEBUG = Boolean.parseBoolean(System.getProperty("projectkorra.prediction.debug", "false"));
     private static boolean initialized;
 
     private UUID sessionId;

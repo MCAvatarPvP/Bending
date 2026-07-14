@@ -65,6 +65,7 @@ public abstract class ClientPlayNetworkHandlerPredictionMixin {
     private void projectkorra$reconcileVelocity(EntityVelocityUpdateS2CPacket packet, CallbackInfo ci) {
         if (!MinecraftClient.getInstance().isOnThread()) return;
         if (ExactPredictionRuntime.hasEntityAlias(packet.getEntityId())) { ci.cancel(); return; }
+        if (!ExactPredictionRuntime.tracksVelocityEntity(packet.getEntityId())) return;
         if (ExactPredictionRuntime.authoritativeVelocity(packet.getEntityId(), packet.getVelocity())) ci.cancel();
     }
 

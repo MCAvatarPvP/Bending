@@ -94,7 +94,7 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
     private static final int ACTION_RETENTION_TICKS = 160;
     private static final int BLOCK_CONFIRMATION_TICKS = 40;
     private static final int VELOCITY_RECEIPT_TICKS = 4;
-    private static final boolean DEBUG = Boolean.parseBoolean(System.getProperty("projectkorra.prediction.debug", "true"));
+    private static final boolean DEBUG = Boolean.parseBoolean(System.getProperty("projectkorra.prediction.debug", "false"));
 
     private final Map<Long, Action> actions = new LinkedHashMap<>();
     private final Map<CoreAbility, Long> abilityActions = new IdentityHashMap<>();
@@ -283,6 +283,7 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
     public static boolean reconcileSpawn(EntitySpawnS2CPacket packet) { return INSTANCE.reconcileSpawn0(packet); }
     public static Entity aliasedEntity(int serverEntityId) { return INSTANCE.authoritativeEntityAliases.get(serverEntityId); }
     public static boolean hasEntityAlias(int serverEntityId) { return INSTANCE.authoritativeEntityAliases.containsKey(serverEntityId); }
+    public static boolean tracksVelocityEntity(int entityId) { return INSTANCE.tracksVelocityEntity0(entityId); }
     public static boolean removeAliasedEntity(int serverEntityId) { return INSTANCE.removeAliasedEntity0(serverEntityId); }
     public static long captureAction() { return INSTANCE.currentAction(); }
     public static void runWithAction(long action, Runnable task) {
@@ -1086,6 +1087,7 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
         for (PredictionPayloads.TempBlockOp operation : batch.operations()) {
             if (!matchesWorld(worldName, operation.world())) continue;
             BlockPos pos = new BlockPos(operation.x(), operation.y(), operation.z()).toImmutable();
+            if (!world.getChunkManager().isChunkLoaded(pos.getX() >> 4, pos.getZ() >> 4)) continue;
             BlockKey key = new BlockKey(world, pos);
             BlockMutation mutation = blocks.get(key);
             if (mutation == null) {
@@ -1226,6 +1228,14 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
         debug("runtime allowed unowned authoritative velocity packet=" + velocityString(velocity)
                 + " pendingReceipts=" + velocityReceipts.size());
         return false;
+    }
+
+    private boolean tracksVelocityEntity0(int entityId) {
+        if (!ready || entityId < 0) return false;
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player != null && client.player.getId() == entityId) return true;
+        return velocities.stream().anyMatch(mutation -> mutation.entityId == entityId)
+                || velocityReceipts.stream().anyMatch(receipt -> receipt.entityId == entityId);
     }
 
     private void noteVelocityOwner0(Entity localPlayer, PredictionPayloads.VelocityOwner owner) {

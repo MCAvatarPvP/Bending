@@ -59,7 +59,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     private final Map<UUID, Deque<EntityFrame>> history = new HashMap<>();
     private final Map<CoreAbility, Action> abilityActions = Collections.synchronizedMap(new IdentityHashMap<>());
     private final Map<UUID, EnumMap<PaperPredictionProtocol.InputKind, Long>> pendingVanilla = new HashMap<>();
-    private final List<PaperPredictionProtocol.TempBlockOp> pendingTempBlocks = new ArrayList<>();
+    private final List<PendingTempBlock> pendingTempBlocks = new ArrayList<>();
     private final AtomicBoolean snapshotBuildRunning = new AtomicBoolean();
     private volatile List<PaperPredictionProtocol.ConfigEntry> publicConfig = List.of();
     private volatile List<PaperPredictionProtocol.AbilityProfile> profiles = List.of();
@@ -513,9 +513,13 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         CoreAbility effectiveAbility = ability == null ? AbilityExecutionContext.current() : ability;
         Action action = effectiveAbility == null ? null : actionForEffect(effectiveAbility);
         Long inputSequence = INPUT_SEQUENCE.get();
-        pendingTempBlocks.add(new PaperPredictionProtocol.TempBlockOp(wireOperation, worldKey(block.getWorld()),
+        UUID worldId = block.getWorld() != null && block.getWorld().handle() instanceof World world
+                ? world.getUID() : null;
+        if (worldId == null) return;
+        pendingTempBlocks.add(new PendingTempBlock(worldId,
+                new PaperPredictionProtocol.TempBlockOp(wireOperation, worldKey(block.getWorld()),
                 block.getX(), block.getY(), block.getZ(), TempBlockSync.encode(data), revertAtMillis,
-                action == null ? (inputSequence == null ? 0L : inputSequence) : action.sequence));
+                action == null ? (inputSequence == null ? 0L : inputSequence) : action.sequence)));
     }
 
     @Override
@@ -824,12 +828,23 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
 
     private void flushTempBlocks() {
         if (pendingTempBlocks.isEmpty()) return;
-        List<PaperPredictionProtocol.TempBlockOp> operations = List.copyOf(pendingTempBlocks);
+        List<PendingTempBlock> operations = List.copyOf(pendingTempBlocks);
         pendingTempBlocks.clear();
-        byte[] payload = PaperPredictionProtocol.tempBlocks(tick, System.currentTimeMillis(), operations);
         for (Session session : sessions.values()) {
             Player player = Bukkit.getPlayer(session.player);
-            if (player != null) send(player, PaperPredictionProtocol.TEMP_BLOCKS, payload);
+            if (player == null) continue;
+            Location location = player.getLocation();
+            String viewerWorld = player.getWorld().getUID().toString();
+            List<PaperPredictionProtocol.TempBlockOp> visible = operations.stream()
+                    .filter(pending -> PredictionVisibility.tracksBlock(viewerWorld, pending.worldId.toString(),
+                            location.getBlockX(), location.getBlockZ(), pending.operation.x(), pending.operation.z(),
+                            player.getClientViewDistance()))
+                    .map(PendingTempBlock::operation)
+                    .toList();
+            if (!visible.isEmpty()) {
+                send(player, PaperPredictionProtocol.TEMP_BLOCKS,
+                        PaperPredictionProtocol.tempBlocks(tick, System.currentTimeMillis(), visible));
+            }
         }
     }
 
@@ -1002,6 +1017,9 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     }
 
     private record OutboundPayload(String channel, byte[] payload) {
+    }
+
+    private record PendingTempBlock(UUID worldId, PaperPredictionProtocol.TempBlockOp operation) {
     }
 
     private static final class Session {
