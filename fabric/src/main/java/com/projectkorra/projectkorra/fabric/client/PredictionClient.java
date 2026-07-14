@@ -331,7 +331,7 @@ public final class PredictionClient {
         }
         final Map<String, Long> authoritativeCooldowns = convertCooldowns(state.cooldowns());
         ExactPredictionRuntime.updatePlayerState(binds, authoritativeCooldowns, elements, subElements, airBlastDecay);
-        ExactPredictionRuntime.reconcileActiveFlightAbilities(state.activeFlightAbilities());
+        ExactPredictionRuntime.reconcileActiveFlightAbilities(state.activeFlightAbilities(), state.acknowledgedSequence());
         debug("player state applied binds=" + binds + " cooldowns=" + authoritativeCooldowns.keySet()
                 + " elements=" + elements + " subElements=" + subElements);
     }

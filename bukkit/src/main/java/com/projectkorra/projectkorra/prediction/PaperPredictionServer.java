@@ -218,6 +218,13 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         if (server != null) server.scheduleTicker();
     }
 
+    public static boolean isExactClient(final UUID playerId) {
+        final PaperPredictionServer server = active;
+        if (server == null || playerId == null) return false;
+        final Session session = server.sessions.get(playerId);
+        return session != null && (session.capabilities & CAPABILITY_EXACT) != 0;
+    }
+
     private static void runWithOwner(UUID owner, Runnable task) {
         runWithOwner(owner, true, task);
     }
@@ -575,23 +582,28 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     }
 
     @Override
-    public void onChange(TempBlockSync.Operation operation, Block block,
-                         BlockData data, long revertAtMillis, CoreAbility ability) {
-        PaperPredictionProtocol.TempOperation wireOperation = switch (operation) {
+    public void onChange(TempBlockSync.Change change) {
+        PaperPredictionProtocol.TempOperation wireOperation = switch (change.operation()) {
             case CREATE -> PaperPredictionProtocol.TempOperation.CREATE;
             case UPDATE_EXPIRY -> PaperPredictionProtocol.TempOperation.UPDATE_EXPIRY;
             case REVERT -> PaperPredictionProtocol.TempOperation.REVERT;
         };
-        CoreAbility effectiveAbility = ability == null ? AbilityExecutionContext.current() : ability;
+        Block block = change.block();
+        CoreAbility effectiveAbility = change.ability() == null ? AbilityExecutionContext.current() : change.ability();
         Action action = effectiveAbility == null ? null : actionForEffect(effectiveAbility);
         Long inputSequence = INPUT_SEQUENCE.get();
         UUID worldId = block.getWorld() != null && block.getWorld().handle() instanceof World world
                 ? world.getUID() : null;
         if (worldId == null) return;
+        Map<UUID, String> ownerViews = new HashMap<>();
+        change.ownerViews().forEach((owner, data) -> ownerViews.put(owner, TempBlockSync.encode(data)));
         pendingTempBlocks.add(new PendingTempBlock(worldId,
                 new PaperPredictionProtocol.TempBlockOp(wireOperation, worldKey(block.getWorld()),
-                block.getX(), block.getY(), block.getZ(), TempBlockSync.encode(data), revertAtMillis,
-                action == null ? (inputSequence == null ? 0L : inputSequence) : action.sequence)));
+                block.getX(), block.getY(), block.getZ(), TempBlockSync.encode(change.data()),
+                change.operation() == TempBlockSync.Operation.REVERT ? 0L : change.revertAtMillis(),
+                action == null ? (inputSequence == null ? 0L : inputSequence) : action.sequence,
+                change.layerId(), change.revision(), change.ownerId(),
+                TempBlockSync.encode(change.data())), Map.copyOf(ownerViews)));
     }
 
     @Override
@@ -917,7 +929,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                     .filter(pending -> PredictionVisibility.tracksBlock(viewerWorld, pending.worldId.toString(),
                             location.getBlockX(), location.getBlockZ(), pending.operation.x(), pending.operation.z(),
                             player.getClientViewDistance()))
-                    .map(PendingTempBlock::operation)
+                    .map(pending -> pending.forViewer(session.player))
                     .toList();
             if (!visible.isEmpty()) {
                 send(player, PaperPredictionProtocol.TEMP_BLOCKS,
@@ -941,12 +953,12 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         List<String> elements = PaperPredictionSnapshot.elements(bending), subs = PaperPredictionSnapshot.subElements(bending);
         double airBlastDecay = bending == null ? 1.0 : bending.getAirBlastDecay();
         List<String> activeFlights = activeFlightAbilities(player.getUniqueId());
-        int digest = (((31 * binds.hashCode() + cooldowns.hashCode()) * 31 + elements.hashCode()) * 31 + subs.hashCode()) * 31
-                + Double.hashCode(airBlastDecay) * 31 + activeFlights.hashCode();
+        int digest = ((((31 * binds.hashCode() + cooldowns.hashCode()) * 31 + elements.hashCode()) * 31 + subs.hashCode()) * 31
+                + Double.hashCode(airBlastDecay) * 31 + activeFlights.hashCode()) * 31 + Long.hashCode(session.lastSequence);
         if (!force && digest == session.stateDigest) return;
         session.stateDigest = digest;
         send(player, PaperPredictionProtocol.STATE, PaperPredictionProtocol.state(session.session, tick,
-                System.currentTimeMillis(), binds, cooldowns, elements, subs, airBlastDecay, activeFlights));
+                System.currentTimeMillis(), session.lastSequence, binds, cooldowns, elements, subs, airBlastDecay, activeFlights));
     }
 
     private void requestSnapshotRebuild(boolean broadcastChanges) {
@@ -1070,6 +1082,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                            String ability, Location origin, long cooldown) {
         send(player, PaperPredictionProtocol.RECONCILE, PaperPredictionProtocol.reconcile(session.session, sequence, accepted,
                 reason, tick, System.currentTimeMillis(), ability, origin.getX(), origin.getY(), origin.getZ(), cooldown));
+        if ("WaterSpout".equalsIgnoreCase(ability)) sendState(player, session, true);
     }
 
     private void send(Player player, String channel, byte[] payload) {
@@ -1097,7 +1110,14 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     private record OutboundPayload(String channel, byte[] payload) {
     }
 
-    private record PendingTempBlock(UUID worldId, PaperPredictionProtocol.TempBlockOp operation) {
+    private record PendingTempBlock(UUID worldId, PaperPredictionProtocol.TempBlockOp operation,
+                                    Map<UUID, String> ownerViews) {
+        private PaperPredictionProtocol.TempBlockOp forViewer(final UUID viewer) {
+            return new PaperPredictionProtocol.TempBlockOp(operation.operation(), operation.world(),
+                    operation.x(), operation.y(), operation.z(), operation.material(), operation.revertAtMillis(),
+                    operation.actionSequence(), operation.layerId(), operation.revision(), operation.ownerId(),
+                    ownerViews.getOrDefault(viewer, operation.material()));
+        }
     }
 
     private static final class Session {

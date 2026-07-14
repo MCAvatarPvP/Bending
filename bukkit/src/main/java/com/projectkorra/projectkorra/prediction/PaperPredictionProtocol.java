@@ -10,7 +10,7 @@ import java.util.UUID;
  * Raw Bukkit plugin-message codec matching Fabric's RegistryByteBuf layout.
  */
 final class PaperPredictionProtocol {
-    static final int VERSION = 16;
+    static final int VERSION = 17;
     static final String HELLO = "projectkorra:client_hello";
     static final String INPUT = "projectkorra:input_frame";
     static final String PREPARE = "projectkorra:action_prepare";
@@ -90,11 +90,11 @@ final class PaperPredictionProtocol {
         return out.bytes();
     }
 
-    static byte[] state(UUID session, long serverTick, long serverNowMillis, Map<Integer, String> binds,
+    static byte[] state(UUID session, long serverTick, long serverNowMillis, long acknowledgedSequence, Map<Integer, String> binds,
                         Map<String, Long> cooldowns, List<String> elements, List<String> subElements,
                         double airBlastDecay, List<String> activeFlightAbilities) {
         Writer out = new Writer();
-        out.uuid(session).i64(serverTick).i64(serverNowMillis);
+        out.uuid(session).i64(serverTick).i64(serverNowMillis).varLong(acknowledgedSequence);
         writeBinds(out, binds);
         writeCooldowns(out, cooldowns);
         writeStrings(out, elements);
@@ -134,7 +134,10 @@ final class PaperPredictionProtocol {
             out.enumeration(operation.operation()).string(operation.world(), 256)
                     .i32(operation.x()).i32(operation.y()).i32(operation.z())
                     .string(operation.material(), 128).i64(operation.revertAtMillis())
-                    .varLong(operation.actionSequence());
+                    .varLong(operation.actionSequence()).varLong(operation.layerId())
+                    .varLong(operation.revision()).bool(operation.ownerId() != null);
+            if (operation.ownerId() != null) out.uuid(operation.ownerId());
+            out.string(operation.viewerMaterial(), 128);
         }
         return out.bytes();
     }
@@ -214,7 +217,8 @@ final class PaperPredictionProtocol {
     }
 
     record TempBlockOp(TempOperation operation, String world, int x, int y, int z, String material,
-                       long revertAtMillis, long actionSequence) {
+                       long revertAtMillis, long actionSequence, long layerId, long revision,
+                       UUID ownerId, String viewerMaterial) {
     }
 
     static final class Writer {

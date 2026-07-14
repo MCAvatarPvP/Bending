@@ -5,6 +5,8 @@ import com.projectkorra.projectkorra.platform.mc.permissions.Permission;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -151,6 +153,54 @@ class PaperPredictionProtocolTest {
         assertEquals(10_000L, reader.i64());
         assertFalse(reader.bool());
         assertTrue(Double.isNaN(reader.f64()));
+        reader.finished();
+    }
+
+    @Test
+    void playerStateCarriesAcknowledgedInputBeforeFlightState() {
+        UUID session = UUID.randomUUID();
+        byte[] payload = PaperPredictionProtocol.state(session, 90, 10_000, 44,
+                Map.of(), Map.of(), List.of(), List.of(), 1.0, List.of("waterspout"));
+        PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(payload);
+        assertEquals(session, reader.uuid());
+        assertEquals(90L, reader.i64());
+        assertEquals(10_000L, reader.i64());
+        assertEquals(44L, reader.varLong());
+        assertEquals(0, reader.varInt());
+        assertEquals(0, reader.varInt());
+        assertEquals(0, reader.varInt());
+        assertEquals(0, reader.varInt());
+        assertEquals(1.0, reader.f64());
+        assertEquals(1, reader.varInt());
+        assertEquals("waterspout", reader.string(8_192));
+        reader.finished();
+    }
+
+    @Test
+    void tempBlockReceiptCarriesStableLayerOwnerAndHiddenState() {
+        UUID owner = UUID.randomUUID();
+        PaperPredictionProtocol.TempBlockOp operation = new PaperPredictionProtocol.TempBlockOp(
+                PaperPredictionProtocol.TempOperation.CREATE, "world", 1, 64, 2,
+                "minecraft:stone", 12_000, 45, 7, 99, owner, "minecraft:air");
+        byte[] payload = PaperPredictionProtocol.tempBlocks(91, 10_000, List.of(operation));
+        PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(payload);
+        assertEquals(91L, reader.i64());
+        assertEquals(10_000L, reader.i64());
+        assertEquals(1, reader.varInt());
+        assertEquals(PaperPredictionProtocol.TempOperation.CREATE,
+                reader.enumeration(PaperPredictionProtocol.TempOperation.values()));
+        assertEquals("world", reader.string(256));
+        assertEquals(1, reader.i32());
+        assertEquals(64, reader.i32());
+        assertEquals(2, reader.i32());
+        assertEquals("minecraft:stone", reader.string(128));
+        assertEquals(12_000L, reader.i64());
+        assertEquals(45L, reader.varLong());
+        assertEquals(7L, reader.varLong());
+        assertEquals(99L, reader.varLong());
+        assertTrue(reader.bool());
+        assertEquals(owner, reader.uuid());
+        assertEquals("minecraft:air", reader.string(128));
         reader.finished();
     }
 

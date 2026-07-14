@@ -7,6 +7,7 @@ import net.minecraft.client.network.ClientPlayNetworkHandler;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.network.packet.s2c.play.BlockUpdateS2CPacket;
 import net.minecraft.network.packet.s2c.play.ChunkDeltaUpdateS2CPacket;
+import net.minecraft.network.packet.s2c.play.ChunkDataS2CPacket;
 import net.minecraft.network.packet.s2c.play.EntityVelocityUpdateS2CPacket;
 import net.minecraft.network.packet.s2c.play.EntitySpawnS2CPacket;
 import net.minecraft.network.packet.s2c.play.EntityTrackerUpdateS2CPacket;
@@ -59,6 +60,12 @@ public abstract class ClientPlayNetworkHandlerPredictionMixin {
             states.add(state);
         });
         ExactPredictionRuntime.restoreAuthoritativeBlockBatch(world, positions, states);
+    }
+
+    @Inject(method = "onChunkData", at = @At("TAIL"))
+    private void projectkorra$restorePredictedChunk(ChunkDataS2CPacket packet, CallbackInfo ci) {
+        if (!MinecraftClient.getInstance().isOnThread()) return;
+        ExactPredictionRuntime.restorePredictedChunk(world, packet.getChunkX(), packet.getChunkZ());
     }
 
     @Inject(method = "onEntityVelocityUpdate", at = @At("HEAD"), cancellable = true)

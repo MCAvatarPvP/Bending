@@ -14,7 +14,7 @@ import java.util.UUID;
 
 /** Wire contract used by the Fabric client and the Paper/Fabric server endpoints. */
 public final class PredictionPayloads {
-    public static final int PROTOCOL_VERSION = 16;
+    public static final int PROTOCOL_VERSION = 17;
     public static final int MAX_CONFIG_ENTRIES = 16_384;
     public static final int MAX_PROFILES = 2_048;
     public static final int MAX_TEMP_OPS = 4_096;
@@ -114,15 +114,15 @@ public final class PredictionPayloads {
         @Override public Id<ServerSnapshot> getId() { return ID; }
     }
 
-    public record PlayerState(UUID sessionId, long serverTick, long serverNowMillis, Map<Integer, String> binds,
+    public record PlayerState(UUID sessionId, long serverTick, long serverNowMillis, long acknowledgedSequence, Map<Integer, String> binds,
                               Map<String, Long> cooldowns, List<String> elements,
                               List<String> subElements, double airBlastDecay,
                               List<String> activeFlightAbilities) implements CustomPayload {
         public static final Id<PlayerState> ID = id("player_state");
         public static final PacketCodec<RegistryByteBuf, PlayerState> CODEC = PacketCodec.of(PlayerState::write, PlayerState::new);
-        private PlayerState(RegistryByteBuf buf) { this(buf.readUuid(), buf.readLong(), buf.readLong(), readBinds(buf), readCooldowns(buf), readStrings(buf, 64), readStrings(buf, 128), buf.readDouble(), readStrings(buf, 32)); }
+        private PlayerState(RegistryByteBuf buf) { this(buf.readUuid(), buf.readLong(), buf.readLong(), buf.readVarLong(), readBinds(buf), readCooldowns(buf), readStrings(buf, 64), readStrings(buf, 128), buf.readDouble(), readStrings(buf, 32)); }
         private void write(RegistryByteBuf buf) {
-            buf.writeUuid(sessionId); buf.writeLong(serverTick); buf.writeLong(serverNowMillis);
+            buf.writeUuid(sessionId); buf.writeLong(serverTick); buf.writeLong(serverNowMillis); buf.writeVarLong(acknowledgedSequence);
             buf.writeVarInt(binds.size());
             binds.forEach((slot, ability) -> { buf.writeVarInt(slot); buf.writeString(ability, 128); });
             buf.writeVarInt(cooldowns.size());
@@ -245,14 +245,19 @@ public final class PredictionPayloads {
     }
 
     public record TempBlockOp(TempOperation operation, String world, int x, int y, int z,
-                              String material, long revertAtMillis, long actionSequence) {
+                              String material, long revertAtMillis, long actionSequence,
+                              long layerId, long revision, UUID ownerId, String viewerMaterial) {
         static TempBlockOp read(RegistryByteBuf buf) {
             return new TempBlockOp(buf.readEnumConstant(TempOperation.class), buf.readString(256), buf.readInt(), buf.readInt(),
-                    buf.readInt(), buf.readString(128), buf.readLong(), buf.readVarLong());
+                    buf.readInt(), buf.readString(128), buf.readLong(), buf.readVarLong(), buf.readVarLong(),
+                    buf.readVarLong(), buf.readBoolean() ? buf.readUuid() : null, buf.readString(128));
         }
         void write(RegistryByteBuf buf) {
             buf.writeEnumConstant(operation); buf.writeString(world, 256); buf.writeInt(x); buf.writeInt(y); buf.writeInt(z);
             buf.writeString(material, 128); buf.writeLong(revertAtMillis); buf.writeVarLong(actionSequence);
+            buf.writeVarLong(layerId); buf.writeVarLong(revision); buf.writeBoolean(ownerId != null);
+            if (ownerId != null) buf.writeUuid(ownerId);
+            buf.writeString(viewerMaterial, 128);
         }
     }
 

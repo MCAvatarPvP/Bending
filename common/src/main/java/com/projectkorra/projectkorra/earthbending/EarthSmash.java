@@ -13,6 +13,7 @@ import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.mc.*;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
+import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
@@ -241,11 +242,14 @@ public class EarthSmash extends EarthAbility {
         if (this.state == State.START && this.progressCounter > 1) {
             if (!this.player.isSneaking()) {
                 if (System.currentTimeMillis() - this.getStartTime() >= this.chargeTime) {
-                    this.origin = this.getEarthSourceBlock(this.selectRange);
+                    this.origin = this.getVisibleEarthSourceBlock();
                     if (this.origin == null) {
                         this.remove();
                         return;
-                    } else if (TempBlock.isTempBlock(this.origin) && !isBendableEarthTempBlock(this.origin)) {
+                    } else if (TempBlock.isTempBlock(this.origin)
+                            && !TempBlock.isTopLayerOwnedBy(this.origin.getWorld(), this.origin.getX(), this.origin.getY(),
+                            this.origin.getZ(), this.player.getUniqueId())
+                            && !isBendableEarthTempBlock(this.origin)) {
                         this.remove();
                         return;
                     }
@@ -282,7 +286,7 @@ public class EarthSmash extends EarthAbility {
 
                 // Check to make sure the new location is available to move to.
                 for (final Block block : blocks) {
-                    if (!ElementalAbility.isAir(block.getType()) && !this.isTransparent(block)) {
+                    if (!ElementalAbility.isAir(this.visibleType(block)) && !this.isVisibleTransparent(block)) {
                         this.location = oldLoc;
                         break;
                     }
@@ -312,7 +316,8 @@ public class EarthSmash extends EarthAbility {
                 // If an earthsmash runs into too many blocks we should remove it.
                 int badBlocksFound = 0;
                 for (final Block block : this.getBlocks()) {
-                    if (!ElementalAbility.isAir(block.getType()) && (!this.isTransparent(block) || block.getType() == Material.WATER)) {
+                    final Material visibleType = this.visibleType(block);
+                    if (!ElementalAbility.isAir(visibleType) && (!this.isVisibleTransparent(block) || visibleType == Material.WATER)) {
                         badBlocksFound++;
                     }
                 }
@@ -406,7 +411,7 @@ public class EarthSmash extends EarthAbility {
                 // Make sure there is a clear path upward otherwise remove.
                 for (int y = 0; y <= 3; y++) {
                     final Block tempBlock = this.location.clone().add(0, y, 0).getBlock();
-                    if (!this.isTransparent(tempBlock) && !ElementalAbility.isAir(tempBlock.getType())) {
+                    if (!this.isVisibleTransparent(tempBlock) && !ElementalAbility.isAir(this.visibleType(tempBlock))) {
                         this.remove();
                         return;
                     }
@@ -418,7 +423,9 @@ public class EarthSmash extends EarthAbility {
                         for (int z = -1; z <= 1; z++) {
                             if ((Math.abs(x) + Math.abs(y) + Math.abs(z)) % 2 == 0) {
                                 final Block block = tempLoc.clone().add(x, y, z).getBlock();
-                                this.currentBlocks.add(new BlockRepresenter(x, y, z, this.selectMaterialForRepresenter(block.getType()), block.getBlockData()));
+                                final BlockData visibleData = this.visibleData(block);
+                                this.currentBlocks.add(new BlockRepresenter(x, y, z,
+                                        this.selectMaterialForRepresenter(visibleData.getMaterial()), visibleData));
                             }
                         }
                     }
@@ -479,7 +486,7 @@ public class EarthSmash extends EarthAbility {
             if (block.getType().equals(Material.SAND) || block.getType().equals(Material.GRAVEL)) { // Check if block can be affected by gravity.
 
             }
-            if (this.player != null && this.isTransparent(block)) {
+            if (this.player != null && this.isVisibleTransparent(block)) {
                 this.affectedBlocks.add(new TempBlock(block, blockRep.getData(), this));
                 getPreventEarthbendingBlocks().add(block);
             }
@@ -495,6 +502,32 @@ public class EarthSmash extends EarthAbility {
             this.affectedBlocks.remove(i);
             i--;
         }
+    }
+
+    private Block getVisibleEarthSourceBlock() {
+        final Location eye = this.player.getEyeLocation();
+        final Vector direction = eye.getDirection().clone().normalize();
+        for (double distance = 0; distance <= this.selectRange; distance += 0.2) {
+            final Block candidate = eye.clone().add(direction.clone().multiply(distance)).getBlock();
+            if (RegionProtection.isRegionProtected(this.player, candidate.getLocation(), this)) continue;
+            if (this.isEarthbendable(candidate)) return candidate;
+            if (!this.isVisibleTransparent(candidate)) return null;
+        }
+        return null;
+    }
+
+    private BlockData visibleData(final Block block) {
+        final BlockData data = TempBlock.getVisibleData(block, this.player.getUniqueId());
+        return data == null ? block.getBlockData() : data;
+    }
+
+    private Material visibleType(final Block block) {
+        return this.visibleData(block).getMaterial();
+    }
+
+    private boolean isVisibleTransparent(final Block block) {
+        return ElementalAbility.getTransparentMaterialSet().contains(this.visibleType(block))
+                && !RegionProtection.isRegionProtected(this.player, block.getLocation(), this);
     }
 
     /**

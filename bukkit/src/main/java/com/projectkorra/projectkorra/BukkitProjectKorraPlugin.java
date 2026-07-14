@@ -10,6 +10,7 @@ import com.projectkorra.projectkorra.platform.bukkit.BukkitProjectKorraPlatform;
 import com.projectkorra.projectkorra.platform.mc.command.Command;
 import com.projectkorra.projectkorra.platform.mc.command.CommandSender;
 import com.projectkorra.projectkorra.prediction.PaperPredictionServer;
+import com.projectkorra.projectkorra.prediction.TempBlockPacketFilter;
 import com.projectkorra.projectkorra.region.BukkitRegionProtectionBootstrap;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
@@ -20,6 +21,7 @@ import org.bukkit.plugin.java.JavaPlugin;
  */
 public final class BukkitProjectKorraPlugin extends JavaPlugin {
     private PaperPredictionServer prediction;
+    private TempBlockPacketFilter tempBlockPacketFilter;
 
     private static CommandSender wrapSender(final org.bukkit.command.CommandSender sender) {
         if (sender instanceof Player player) {
@@ -46,11 +48,33 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
         registerCommands();
         Platform.events().registerListener(new PKListener(this));
         BetonQuestHook.register(this);
-        this.prediction = PaperPredictionServer.start(this);
+        if (getServer().getPluginManager().isPluginEnabled("packetevents")) {
+            try {
+                this.tempBlockPacketFilter = TempBlockPacketFilter.register();
+                this.prediction = PaperPredictionServer.start(this);
+                getLogger().info("Enabled prediction-owned TempBlock packet filtering.");
+            } catch (Throwable failure) {
+                if (this.tempBlockPacketFilter != null) this.tempBlockPacketFilter.stop();
+                this.tempBlockPacketFilter = null;
+                if (this.prediction != null) this.prediction.stop();
+                this.prediction = null;
+                getLogger().warning("Could not enable exact client prediction safely; using server authority: "
+                        + failure.getMessage());
+            }
+        } else {
+            // Fail closed: normal server-authoritative bending remains active,
+            // but exact client prediction is not offered without the packet
+            // ownership filter required to keep TempBlocks synchronized.
+            getLogger().warning("PacketEvents is unavailable; exact client prediction is disabled to prevent TempBlock desyncs.");
+        }
     }
 
     @Override
     public void onDisable() {
+        if (this.tempBlockPacketFilter != null) {
+            this.tempBlockPacketFilter.stop();
+            this.tempBlockPacketFilter = null;
+        }
         if (this.prediction != null) {
             this.prediction.stop();
             this.prediction = null;

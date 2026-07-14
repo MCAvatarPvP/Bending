@@ -9,7 +9,7 @@ the ability produces in local play.
 
 ## Flow
 
-1. The Fabric client advertises protocol 14 over vanilla `projectkorra:*` custom
+1. The Fabric client advertises protocol 17 over vanilla `projectkorra:*` custom
    payload channels. Paper receives those channels through its plugin messaging
    API—Fabric Loader is not installed on the server. The server returns a random per-connection
    session ID, public configuration, ability validation metadata, binds,
@@ -43,6 +43,12 @@ the ability produces in local play.
   server later sends the same vanilla state, it confirms the ledger entry rather
   than creating a display-entity overlay. Water and other fluid states therefore
   use their real client fluid/block behavior.
+- Temporary blocks are ordered owner layers with stable layer IDs and revisions.
+  Paper uses PacketEvents to remove the initiating prediction client's own
+  server block updates (including multi-block and chunk packets); other viewers
+  still receive normal authoritative blocks. Per-viewer receipts preserve the
+  correct underlying state across nested and overlapping layers, and reverts
+  cannot overwrite a newer predicted layer.
 - Every common-model `setVelocity` call reaches the native client entity
   immediately. A later matching vanilla velocity packet is treated as an
   acknowledgement and is not applied a second time. A materially different
@@ -102,8 +108,11 @@ make damage server-only.
 
 - Minecraft: 1.21.11
 - Java: 21
-- The server runs Paper and installs `ProjectKorra-1.10.2-bukkit.jar` from this fork.
-- Predicting players install `ProjectKorra-1.10.2-fabric.jar` in their Fabric client.
+- PacketEvents 2.12+ is required on Paper for exact prediction. Without it the
+  plugin deliberately stays on normal server-authoritative bending so owner
+  TempBlock packets cannot create a partially synchronized mode.
+- The server runs Paper and installs `ProjectKorra-1.10.7-bukkit.jar` from this fork.
+- Predicting players install `ProjectKorra-1.10.7-fabric.jar` in their Fabric client.
 - The Paper server does **not** install Fabric Loader or the Fabric jar.
 - Players without the mod use normal ProjectKorra input and normal latency.
 - Fabric integrated-singleplayer prediction is disabled because the legacy common core

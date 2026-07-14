@@ -128,7 +128,7 @@ final class CoreAbilityActivationBootstrap {
         register("OctopusForm", ClickType.LEFT_CLICK, context -> created(new OctopusForm(context.getPlayer())));
         register("PhaseChange", ClickType.LEFT_CLICK, context -> phaseChange(context.getPlayer(), PhaseChange.PhaseChangeType.FREEZE));
         register("WaterBubble", ClickType.LEFT_CLICK, context -> created(new WaterBubble(context.getPlayer(), false)));
-        register("WaterSpout", ClickType.LEFT_CLICK, context -> created(new WaterSpout(context.getPlayer())));
+        register("WaterSpout", ClickType.LEFT_CLICK, CoreAbilityActivationBootstrap::toggleWaterSpout);
         register("WaterManipulation", ClickType.LEFT_CLICK, context -> {
             WaterManipulation.moveWater(context.getPlayer());
             return true;
@@ -247,6 +247,14 @@ final class CoreAbilityActivationBootstrap {
         context.stopProcessing();
         context.cancelEvent();
         return true;
+    }
+
+    private static boolean toggleWaterSpout(final ActivationContext context) {
+        final boolean removingExisting = CoreAbility.hasAbility(context.getPlayer(), WaterSpout.class);
+        final WaterSpout result = new WaterSpout(context.getPlayer());
+        // Removing an existing spout is a complete state transition even
+        // though the constructor correctly does not start a replacement.
+        return removingExisting || created(result);
     }
 
     private static void registerMultiAbilities() {

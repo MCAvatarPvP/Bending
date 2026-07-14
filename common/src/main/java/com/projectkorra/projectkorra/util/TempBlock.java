@@ -18,10 +18,12 @@ import com.projectkorra.projectkorra.platform.mc.block.data.Levelled;
 import com.projectkorra.projectkorra.platform.mc.block.data.Snowable;
 import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
 import com.projectkorra.projectkorra.prediction.PredictionTiming;
+import com.projectkorra.projectkorra.prediction.TempBlockOwnershipPolicy;
 import com.projectkorra.projectkorra.prediction.TempBlockSync;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 
 public class TempBlock {
@@ -29,6 +31,9 @@ public class TempBlock {
     private static final Map<Block, LinkedList<TempBlock>> instances_ = new HashMap<>();
     private static final PriorityQueue<TempBlock> REVERT_QUEUE = new PriorityQueue<>(128,
             (t1, t2) -> Long.compare(t1.revertTime, t2.revertTime));
+    private static final AtomicLong NEXT_LAYER_ID = new AtomicLong();
+    private static final AtomicLong NEXT_REVISION = new AtomicLong();
+    private static final Map<VisibilityKey, VisibilitySnapshot> VISIBILITY = new ConcurrentHashMap<>();
     /**
      * Marked for removal. Doesn't do anything right now
      */
@@ -37,6 +42,9 @@ public class TempBlock {
     private static boolean REVERT_TASK_RUNNING;
 
     private final Block block;
+    private final long layerId = NEXT_LAYER_ID.incrementAndGet();
+    private long revision;
+    private UUID ownerId;
     private BlockData newData;
     private BlockState state;
     private Set<TempBlock> attachedTempBlocks; //Temp Block states that should be reverted as well when the temp block expires (e.g. double blocks)
@@ -80,6 +88,8 @@ public class TempBlock {
                       final CoreAbility owner, final boolean ignored) {
         this.block = block;
         this.ability = Optional.ofNullable(owner != null ? owner : AbilityExecutionContext.current());
+        this.ownerId = this.ability.map(CoreAbility::getPlayer).filter(Objects::nonNull)
+                .map(com.projectkorra.projectkorra.platform.mc.entity.Entity::getUniqueId).orElse(null);
         this.attachedTempBlocks = new HashSet<>(0);
         this.suffocate = ability.isPresent() ? !(ability.get() instanceof WaterAbility) : false;
 
@@ -120,8 +130,7 @@ public class TempBlock {
         // Creation is one ordered operation. Previously timed blocks published a
         // CREATE with expiry 0 followed immediately by UPDATE_EXPIRY, doubling
         // the reconciliation work for every trail/wall block.
-        TempBlockSync.publish(TempBlockSync.Operation.CREATE, this.block, this.newData,
-                this.revertTime, this.ability.orElse(null));
+        publish(TempBlockSync.Operation.CREATE, this.newData);
     }
 
     /**
@@ -158,6 +167,7 @@ public class TempBlock {
             instances_.put(block, new LinkedList<>());
         }
         instances_.get(block).add(tempBlock);
+        refreshVisibility(block);
     }
 
     public static boolean isTempBlock(final Block block) {
@@ -228,7 +238,78 @@ public class TempBlock {
             if (instances_.get(tempBlock.block).size() == 0) {
                 instances_.remove(tempBlock.block);
             }
+            refreshVisibility(tempBlock.block);
         }
+    }
+
+    private static void refreshVisibility(final Block block) {
+        if (block == null || block.getWorld() == null) return;
+        final VisibilityKey key = VisibilityKey.of(block);
+        final LinkedList<TempBlock> layers = instances_.get(block);
+        if (layers == null || layers.isEmpty()) {
+            VISIBILITY.remove(key);
+            return;
+        }
+        final List<LayerView> views = new ArrayList<>(layers.size());
+        final List<UUID> owners = new ArrayList<>(layers.size());
+        for (TempBlock layer : layers) {
+            views.add(new LayerView(layer.layerId, layer.ownerId, layer.newData.clone()));
+            owners.add(layer.ownerId);
+        }
+        VISIBILITY.put(key, new VisibilitySnapshot(layers.getFirst().state.getBlockData().clone(),
+                List.copyOf(views), Collections.unmodifiableList(owners)));
+    }
+
+    public static boolean isTopLayerOwnedBy(final World world, final int x, final int y, final int z,
+                                             final UUID playerId) {
+        if (world == null || playerId == null) return false;
+        final VisibilitySnapshot snapshot = VISIBILITY.get(new VisibilityKey(world, x, y, z));
+        return snapshot != null && TempBlockOwnershipPolicy.topLayerOwnedBy(snapshot.owners, playerId);
+    }
+
+    public static BlockData getVisibleData(final Block block, final UUID playerId) {
+        if (block == null || block.getWorld() == null) return null;
+        return getVisibleData(block.getWorld(), block.getX(), block.getY(), block.getZ(), playerId);
+    }
+
+    public static BlockData getVisibleData(final World world, final int x, final int y, final int z,
+                                           final UUID playerId) {
+        final VisibilitySnapshot snapshot = VISIBILITY.get(new VisibilityKey(world, x, y, z));
+        if (snapshot == null) return null;
+        final int visibleIndex = TempBlockOwnershipPolicy.visibleLayerIndex(snapshot.owners, playerId);
+        return visibleIndex < 0 ? snapshot.original.clone() : snapshot.layers.get(visibleIndex).data.clone();
+    }
+
+    public static Map<UUID, BlockData> getOwnerViews(final Block block, final UUID additionalOwner) {
+        if (block == null || block.getWorld() == null) return Map.of();
+        final VisibilitySnapshot snapshot = VISIBILITY.get(VisibilityKey.of(block));
+        final Set<UUID> owners = new HashSet<>();
+        if (snapshot != null) {
+            for (UUID owner : snapshot.owners) if (owner != null) owners.add(owner);
+        }
+        if (additionalOwner != null) owners.add(additionalOwner);
+        final Map<UUID, BlockData> views = new HashMap<>();
+        for (UUID owner : owners) {
+            final BlockData visible = getVisibleData(block, owner);
+            if (visible != null) views.put(owner, visible.clone());
+        }
+        return Map.copyOf(views);
+    }
+
+    public static List<VisibleBlock> getOwnedBlocksInChunk(final World world, final int chunkX, final int chunkZ,
+                                                            final UUID playerId) {
+        if (world == null || playerId == null) return List.of();
+        final List<VisibleBlock> result = new ArrayList<>();
+        VISIBILITY.forEach((key, snapshot) -> {
+            if (key.world != world && !key.world.equals(world) || key.x >> 4 != chunkX || key.z >> 4 != chunkZ) return;
+            boolean owned = false;
+            for (LayerView layer : snapshot.layers) {
+                if (playerId.equals(layer.ownerId)) { owned = true; break; }
+            }
+            if (owned) result.add(new VisibleBlock(key.x, key.y, key.z,
+                    getVisibleData(world, key.x, key.y, key.z, playerId)));
+        });
+        return result;
     }
 
     /**
@@ -303,9 +384,23 @@ public class TempBlock {
         return this.ability;
     }
 
+    public long getLayerId() {
+        return this.layerId;
+    }
+
+    public long getRevision() {
+        return this.revision;
+    }
+
+    public Optional<UUID> getOwnerId() {
+        return Optional.ofNullable(this.ownerId);
+    }
+
     public TempBlock setAbility(CoreAbility ability) {
-        this.ability = Optional.of(ability);
-        TempBlockSync.publish(TempBlockSync.Operation.CREATE, this.block, this.newData, this.revertTime, ability);
+        this.ability = Optional.ofNullable(ability);
+        this.ownerId = ability == null || ability.getPlayer() == null ? null : ability.getPlayer().getUniqueId();
+        refreshVisibility(this.block);
+        publish(TempBlockSync.Operation.CREATE, this.newData);
         return this;
     }
 
@@ -346,7 +441,7 @@ public class TempBlock {
             this.inRevertQueue = true;
         }
         REVERT_QUEUE.add(this);
-        TempBlockSync.publish(TempBlockSync.Operation.UPDATE_EXPIRY, this.block, this.newData, this.revertTime, this.ability.orElse(null));
+        publish(TempBlockSync.Operation.UPDATE_EXPIRY, this.newData);
     }
 
     /**
@@ -381,7 +476,7 @@ public class TempBlock {
         final BlockData effectiveData = instances_.containsKey(this.block)
                 ? instances_.get(this.block).getLast().newData
                 : this.state.getBlockData();
-        TempBlockSync.publish(TempBlockSync.Operation.REVERT, this.block, effectiveData, 0L, this.ability.orElse(null));
+        publish(TempBlockSync.Operation.REVERT, effectiveData);
         Platform.chunks().getChunkAtAsync(this.block.getLocation()).thenAccept(result -> {
             // Other overlapping TempBlocks may revert while the chunk future is
             // pending. Resolve the live top layer here instead of relying on the
@@ -496,9 +591,14 @@ public class TempBlock {
         if (isReverted())
             return;
         this.newData = data;
+        refreshVisibility(this.block);
         this.block.setBlockData(data, applyPhysics(data.getMaterial()));
-        TempBlockSync.publish(TempBlockSync.Operation.CREATE, this.block, this.newData,
-                this.revertTime, this.ability.orElse(null));
+        publish(TempBlockSync.Operation.CREATE, this.newData);
+    }
+
+    private void publish(final TempBlockSync.Operation operation, final BlockData effectiveData) {
+        this.revision = NEXT_REVISION.incrementAndGet();
+        TempBlockSync.publish(operation, this, effectiveData);
     }
 
     /**
@@ -542,6 +642,21 @@ public class TempBlock {
      * Will be removed in future. Exactly the same as a Runnable so no point having a unique class for it
      */
     public interface RevertTask extends Runnable {
+    }
+
+    public record VisibleBlock(int x, int y, int z, BlockData data) {
+    }
+
+    private record VisibilityKey(World world, int x, int y, int z) {
+        private static VisibilityKey of(final Block block) {
+            return new VisibilityKey(block.getWorld(), block.getX(), block.getY(), block.getZ());
+        }
+    }
+
+    private record LayerView(long id, UUID ownerId, BlockData data) {
+    }
+
+    private record VisibilitySnapshot(BlockData original, List<LayerView> layers, List<UUID> owners) {
     }
 
     public static class TempBlockRevertTask implements Runnable {

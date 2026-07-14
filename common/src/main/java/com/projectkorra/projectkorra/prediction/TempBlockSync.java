@@ -6,12 +6,17 @@ import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.block.data.Levelled;
 import com.projectkorra.projectkorra.platform.mc.block.data.type.Fire;
+import com.projectkorra.projectkorra.util.TempBlock;
 
 import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
 
 /**
- * Loader-neutral observation point for temporary-block visual metadata. The
- * actual block update remains server authoritative and travels over vanilla.
+ * Loader-neutral observation point for temporary-block ownership metadata.
+ * Every operation identifies one stable layer. This lets clients acknowledge
+ * their own predicted layer without mistaking a later overlapping layer for
+ * the same block mutation.
  */
 public final class TempBlockSync {
     private static volatile Listener listener;
@@ -27,11 +32,17 @@ public final class TempBlockSync {
         if (listener == expected) listener = null;
     }
 
-    public static void publish(final Operation operation, final Block block, final BlockData data,
-                               final long revertAtMillis, final CoreAbility ability) {
+    public static void publish(final Operation operation, final TempBlock layer, final BlockData effectiveData) {
         final Listener current = listener;
-        if (current != null && block != null && data != null) {
-            current.onChange(operation, block, data.clone(), revertAtMillis, ability);
+        if (current != null && layer != null && effectiveData != null) {
+            final UUID ownerId = layer.getOwnerId().orElse(null);
+            final BlockData ownerVisible = ownerId == null
+                    ? effectiveData : TempBlock.getVisibleData(layer.getBlock(), ownerId);
+            current.onChange(new Change(operation, layer.getBlock(), effectiveData.clone(),
+                    layer.getRevertTime(), layer.getAbility().orElse(null), layer.getLayerId(),
+                    layer.getRevision(), ownerId,
+                    ownerVisible == null ? effectiveData.clone() : ownerVisible.clone(),
+                    TempBlock.getOwnerViews(layer.getBlock(), ownerId)));
         }
     }
 
@@ -56,8 +67,14 @@ public final class TempBlockSync {
 
     public enum Operation {CREATE, UPDATE_EXPIRY, REVERT}
 
+    public record Change(Operation operation, Block block, BlockData data,
+                         long revertAtMillis, CoreAbility ability, long layerId,
+                         long revision, UUID ownerId, BlockData ownerVisibleData,
+                         Map<UUID, BlockData> ownerViews) {
+    }
+
     @FunctionalInterface
     public interface Listener {
-        void onChange(Operation operation, Block block, BlockData data, long revertAtMillis, CoreAbility ability);
+        void onChange(Change change);
     }
 }

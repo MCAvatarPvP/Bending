@@ -223,16 +223,18 @@ public abstract class EarthAbility extends ElementalAbility {
 
     public static boolean isEarthbendable(final Player player, final String abilityName, final Block block) {
         final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-        if (bPlayer == null || !isEarthbendable(block.getType(), true, true, true) || PREVENT_EARTHBENDING.contains(block)
+        final BlockData visibleData = player == null ? null : TempBlock.getVisibleData(block, player.getUniqueId());
+        final Material visibleType = visibleData == null ? block.getType() : visibleData.getMaterial();
+        if (bPlayer == null || !isEarthbendable(visibleType, true, true, true) || PREVENT_EARTHBENDING.contains(block)
                 || RegionProtection.isRegionProtected(player, block.getLocation(), CoreAbility.getAbility(abilityName))) {
             return false;
         }
-        final boolean earth = isEarth(block);
-        if (isMetal(block) && !earth && !bPlayer.canMetalbend()) {
+        final boolean earth = isEarth(visibleType);
+        if (isMetal(visibleType) && !earth && !bPlayer.canMetalbend()) {
             return false;
-        } else if (isSand(block) && !earth && !bPlayer.canSandbend()) {
+        } else if (isSand(visibleType) && !earth && !bPlayer.canSandbend()) {
             return false;
-        } else if (isLava(block) && !earth && !bPlayer.canLavabend()) {
+        } else if (isLava(visibleType) && !earth && !bPlayer.canLavabend()) {
             return false;
         }
         return true;
