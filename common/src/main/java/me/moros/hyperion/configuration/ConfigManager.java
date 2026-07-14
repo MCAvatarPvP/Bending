@@ -53,7 +53,6 @@ public class ConfigManager {
         config.addDefault("AvatarState.Combustion.ChargeTime", 0);
         config.addDefault("AvatarState.Bolt.Cooldown", 0);
         config.addDefault("AvatarState.Bolt.ChargeTime", 0);
-        config.addDefault("AvatarState.EarthLine.Damage", 10);
         config.addDefault("AvatarState.IceCrawl.Range", 48);
         config.addDefault("AvatarState.EarthSmash.ChargeTime", 0);
         config.addDefault("AvatarState.EarthSmash.Cooldown", 0);
@@ -88,26 +87,6 @@ public class ConfigManager {
         config.addDefault("Abilities.Earth.LockSmithing.Enabled", true);
         config.addDefault("Abilities.Earth.LockSmithing.Description", "This passive ability allows metalbenders to forge keys out of various metals and lock containers.");
         config.addDefault("Abilities.Earth.LockSmithing.Instructions", "Right click a container using an ingot to create a key and lock it. Hold sneak while right clicking with a valid key to remove the lock.");
-        config.addDefault("Abilities.Earth.EarthLine.Cooldown", 500);
-
-        config.addDefault("Abilities.Earth.EarthLine.Enabled", true);
-        config.addDefault("Abilities.Earth.EarthLine.Description", "Tap sneak while looking at an earthbendable block on the ground and then left click in a direction to launch a narrow line of earth towards your target to deal damage and knock them back. Additionally, you can hold sneak to control the direction of the line. Left clicking will cause spikes to erupt at the line's current location. Right click (you need an item in your offhand for right click to be detected if you are targeting air) instead to imprison your target without dealing damage.");
-        config.addDefault("Abilities.Earth.EarthLine.Damage", 3.0);
-        config.addDefault("Abilities.Earth.EarthLine.Cooldown", 3000);
-        config.addDefault("Abilities.Earth.EarthLine.Range", 24);
-        config.addDefault("Abilities.Earth.EarthLine.Speed", 0.8);
-        config.addDefault("Abilities.Earth.EarthLine.SelectRange", 6);
-        config.addDefault("Abilities.Earth.EarthLine.MakeSpikes", true);
-        config.addDefault("Abilities.Earth.EarthLine.AllowUnderWater", true);
-        config.addDefault("Abilities.Earth.EarthLine.Magma.DamageModifier", 2.0);
-        config.addDefault("Abilities.Earth.EarthLine.Magma.Speed", 0.6);
-        config.addDefault("Abilities.Earth.EarthLine.Magma.BreakBlocks", true);
-        config.addDefault("Abilities.Earth.EarthLine.Magma.RegenDelay", 20000);
-        config.addDefault("Abilities.Earth.EarthLine.PrisonCooldown", 15000);
-        config.addDefault("Abilities.Earth.EarthLine.PrisonDuration", 3000);
-        config.addDefault("Abilities.Earth.EarthLine.PrisonRadius", 0.8);
-        config.addDefault("Abilities.Earth.EarthLine.PrisonPoints", 8);
-
         config.addDefault("Abilities.Earth.EarthShot.Enabled", true);
         config.addDefault("Abilities.Earth.EarthShot.Description", "EarthShot is an offensive earth projectile move. Tap sneak while looking at a nearby earthbendable block and it will ascend to your eye height. Left click to launch your projectile. Once thrown, you can hold sneak to control its movement. If you are a Lavabender you can hold sneak while looking at your raised source to turn it into a more powerful MagmaShot!");
         config.addDefault("Abilities.Earth.EarthShot.Damage", 3.0);

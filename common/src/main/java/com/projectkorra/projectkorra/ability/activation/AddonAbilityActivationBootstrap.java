@@ -6,6 +6,7 @@ import com.jedk1.jedcore.ability.avatar.SpiritBeam;
 import com.jedk1.jedcore.ability.avatar.elementsphere.ElementSphere;
 import com.jedk1.jedcore.ability.earthbending.*;
 import com.jedk1.jedcore.ability.earthbending.EarthKick;
+import com.jedk1.jedcore.ability.earthbending.EarthLine;
 import com.jedk1.jedcore.ability.earthbending.combo.Crevice;
 import com.jedk1.jedcore.ability.earthbending.combo.MagmaBlast;
 import com.jedk1.jedcore.ability.firebending.*;
@@ -26,7 +27,6 @@ import me.literka.abilities.*;
 import me.moros.hyperion.Hyperion;
 import me.moros.hyperion.abilities.chiblocking.Smokescreen;
 import me.moros.hyperion.abilities.earthbending.*;
-import me.moros.hyperion.abilities.earthbending.EarthLine;
 import me.moros.hyperion.abilities.firebending.Bolt;
 import me.moros.hyperion.abilities.firebending.FlameRush;
 import me.moros.hyperion.abilities.waterbending.IceBreath;
@@ -74,11 +74,6 @@ final class AddonAbilityActivationBootstrap {
         register("Evade", ClickType.LEFT_CLICK, context -> created(new me.moros.hyperion.abilities.airbending.Evade(context.getPlayer())));
         register("Smokescreen", ClickType.LEFT_CLICK, context -> created(new Smokescreen(context.getPlayer())));
 
-        register("EarthLine", ClickType.SHIFT_DOWN, context -> created(new EarthLine(context.getPlayer())));
-        register("EarthLine", ClickType.LEFT_CLICK, context -> {
-            EarthLine.shootLine(context.getPlayer());
-            return true;
-        });
         register("EarthShot", ClickType.SHIFT_DOWN, context -> created(new EarthShot(context.getPlayer())));
         register("EarthShot", ClickType.LEFT_CLICK, context -> {
             EarthShot.throwProjectile(context.getPlayer());
@@ -179,7 +174,7 @@ final class AddonAbilityActivationBootstrap {
 
         register("EarthArmor", ClickType.LEFT_CLICK, context -> created(new MetalArmor(context.getPlayer())));
         register("EarthKick", ClickType.SHIFT_DOWN, context -> created(new EarthKick(context.getPlayer())));
-        register("EarthLine", ClickType.SHIFT_DOWN, context -> com.jedk1.jedcore.ability.earthbending.EarthLine.prepareLine(context.getPlayer()));
+        register("EarthLine", ClickType.SHIFT_DOWN, context -> EarthLine.prepareLine(context.getPlayer()));
         registerGlobal(ClickType.LEFT_CLICK, AddonAbilityActivationBootstrap::shootPreparedEarthLine);
         register("EarthLine", ClickType.LEFT_CLICK, context -> {
             if (!CoreAbility.hasAbility(context.getPlayer(), EarthLine.class)) {

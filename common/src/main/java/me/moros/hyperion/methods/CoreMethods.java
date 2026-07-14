@@ -218,8 +218,6 @@ public class CoreMethods {
 
         ProjectKorra.getCollisionInitializer().addSmallAbility(CoreAbility.getAbility(MetalCable.class));
 
-        ProjectKorra.getCollisionManager().addCollision(new Collision(CoreAbility.getAbility(EarthLine.class), CoreAbility.getAbility(AirShield.class), false, true));
-
         ProjectKorra.getCollisionManager().addCollision(new Collision(CoreAbility.getAbility(IceCrawl.class), CoreAbility.getAbility(AirShield.class), false, true));
 
         ProjectKorra.getCollisionInitializer().addLargeAbility(CoreAbility.getAbility(Combustion.class));
