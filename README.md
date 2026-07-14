@@ -19,11 +19,12 @@ Unmodded clients retain the normal server-only path.
 ## Publishing jars to GitHub
 
 The `publishGithubJars` task builds the shaded Bukkit jar and remapped Fabric
-jar, copies them and their SHA-256 checksums into `releases/v<version>`, commits
-that directory on top of the source history, and pushes through the Git
-credentials already registered with Git for Windows/Git Bash. No GitHub token
-environment variable is required. It refuses to publish uncommitted source
-files or a diverged branch.
+jar, creates a real release under
+`https://github.com/MCAvatarPvP/Bending/releases`, generates release notes from
+the pushed commit history, and uploads both jars plus `SHA256SUMS`. Authentication
+is read privately from the credentials already registered with Git Credential
+Manager/Git Bash; no token environment variable is required. It refuses to
+publish uncommitted or unpushed source.
 
 Commit your source changes first, then run:
 
@@ -31,21 +32,21 @@ Commit your source changes first, then run:
 ./gradlew publishGithubJars
 ```
 
-The defaults push `v1.10.2` to the `master` branch through the `bending` remote.
-Override the commit message when needed:
+The defaults publish `v1.10.2` from the `master` branch through the `bending`
+remote. Override the release name when needed:
 
 ```powershell
-./gradlew publishGithubJars -PreleaseCommitMessage="Publish updated ProjectKorra jars"
+./gradlew publishGithubJars -PreleaseName="ProjectKorra 1.10.2"
 ```
 
-Other options are `-PgithubRemote=<remote>`, `-PgithubBranch=<branch>`, and
-`-PgitBash=<path-to-bash.exe>`. Change the root project version before publishing
-a new version. Re-running the same version only creates another commit when the
-jar contents changed.
+Other options are `-PgithubRemote=<remote>`, `-PgithubBranch=<branch>`,
+`-PreleaseTag=<tag>`, `-PreleaseDraft=true`, and `-PreleasePrerelease=true`.
+Change the root project version before publishing a new version. Re-running the
+same tag replaces assets with matching filenames.
 
-Publishing also updates `releases/latest.json`. The Fabric auto-updater reads
-that manifest from `https://github.com/MCAvatarPvP/Bending` and verifies the
-downloaded jar against its committed SHA-256 checksum before installation.
+The Fabric auto-updater reads the latest release from
+`https://github.com/MCAvatarPvP/Bending/releases`, downloads its Fabric asset,
+and verifies GitHub's SHA-256 digest before installation.
 
 ## Credits and upstream projects
 

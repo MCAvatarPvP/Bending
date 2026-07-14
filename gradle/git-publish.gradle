@@ -1,12 +1,24 @@
 import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
 
+import java.net.URI
+import java.net.URLEncoder
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.security.MessageDigest
+import java.time.Duration
 
-def gitPublishProperty = { String name, String fallback ->
+def releaseProperty = { String name, String fallback ->
     def value = project.findProperty(name)
     value == null || value.toString().isBlank() ? fallback : value.toString()
+}
+
+def releaseBoolean = { String name, boolean fallback ->
+    def value = project.findProperty(name)
+    value == null ? fallback : Boolean.parseBoolean(value.toString())
 }
 
 def gitOutput = { String... arguments ->
@@ -30,7 +42,7 @@ def sha256 = { File file ->
 
 tasks.register('publishGithubJars') {
     group = 'publishing'
-    description = 'Builds, commits, and pushes the Bukkit/Fabric jars using Git for Windows authentication.'
+    description = 'Creates a GitHub Release and uploads the Bukkit/Fabric jars using stored Git credentials.'
     dependsOn ':bukkit:shadowJar', ':fabric:remapJar'
     outputs.upToDateWhen { false }
 
@@ -40,15 +52,56 @@ tasks.register('publishGithubJars') {
             throw new GradleException('Refusing to publish with uncommitted files. Commit the source changes first.')
         }
 
-        String remote = gitPublishProperty('githubRemote', 'bending')
-        String branch = gitPublishProperty('githubBranch', 'master')
-        String tag = gitPublishProperty('releaseTag', "v${project.version}")
-        String message = gitPublishProperty('releaseCommitMessage', "Publish ProjectKorra ${tag}")
+        String remote = releaseProperty('githubRemote', 'bending')
+        String branch = releaseProperty('githubBranch', 'master')
+        String tag = releaseProperty('releaseTag', "v${project.version}")
+        String releaseName = releaseProperty('releaseName', "ProjectKorra ${project.version}")
+        boolean draft = releaseBoolean('releaseDraft', false)
+        boolean prerelease = releaseBoolean('releasePrerelease', false)
         if (!(tag ==~ /[A-Za-z0-9][A-Za-z0-9._-]*/)) {
-            throw new GradleException("Invalid release tag directory '${tag}'. Use only letters, numbers, dots, underscores, and hyphens.")
+            throw new GradleException("Invalid release tag '${tag}'.")
         }
         if (gitOutput('branch', '--show-current') != branch) {
             throw new GradleException("Checkout ${branch} before publishing, or set -PgithubBranch to the current branch.")
+        }
+
+        String remoteUrl = gitOutput('remote', 'get-url', remote)
+        String repository = remoteUrl
+                .replaceFirst(/^https?:\/\/github\.com\//, '')
+                .replaceFirst(/^git@github\.com:/, '')
+                .replaceFirst(/\.git$/, '')
+        if (!(repository ==~ /[^\s\/]+\/[^\s\/]+/)) {
+            throw new GradleException("Remote ${remote} is not a supported GitHub repository URL: ${remoteUrl}")
+        }
+
+        gitOutput('fetch', remote, branch)
+        String localHead = gitOutput('rev-parse', 'HEAD')
+        String remoteHead = gitOutput('rev-parse', "${remote}/${branch}")
+        if (localHead != remoteHead) {
+            throw new GradleException("Local HEAD is not ${remote}/${branch}. Commit and push the source before publishing.")
+        }
+
+        String credentialInput = "protocol=https\nhost=github.com\npath=${repository}.git\n\n"
+        def credentialExec = providers.exec {
+            commandLine 'git', 'credential', 'fill'
+            workingDir rootProject.projectDir
+            standardInput = new ByteArrayInputStream(credentialInput.getBytes(StandardCharsets.UTF_8))
+            ignoreExitValue = true
+        }
+        String credentialOutput = credentialExec.standardOutput.asText.get()
+        String credentialError = credentialExec.standardError.asText.get().trim()
+        int credentialExit = credentialExec.result.get().exitValue
+        if (credentialExit != 0) {
+            throw new GradleException("Git Credential Manager could not provide GitHub authentication${credentialError.isBlank() ? '' : ": ${credentialError}"}")
+        }
+        Map<String, String> credential = [:]
+        credentialOutput.readLines().each { line ->
+            int separator = line.indexOf('=')
+            if (separator > 0) credential[line.substring(0, separator)] = line.substring(separator + 1)
+        }
+        String token = credential.password ?: credential.oauth_token ?: credential.token
+        if (token == null || token.isBlank()) {
+            throw new GradleException('Git Credential Manager returned no GitHub token. Authenticate the bending remote with Git Credential Manager first.')
         }
 
         File bukkitJar = rootProject.file("bukkit/build/libs/ProjectKorra-${project.version}-bukkit.jar")
@@ -56,57 +109,94 @@ tasks.register('publishGithubJars') {
         if (!bukkitJar.isFile() || !fabricJar.isFile()) {
             throw new GradleException('The Bukkit or Fabric release jar was not produced by the build.')
         }
+        File checksumFile = rootProject.file('build/github-release/SHA256SUMS')
+        checksumFile.parentFile.mkdirs()
+        List<File> artifacts = [bukkitJar, fabricJar]
+        String checksums = artifacts.collect { "${sha256(it)}  ${it.name}" }.join(System.lineSeparator()) + System.lineSeparator()
+        Files.writeString(checksumFile.toPath(), checksums, StandardCharsets.UTF_8)
+        artifacts.add(checksumFile)
 
-        File releaseDirectory = rootProject.file("releases/${tag}")
-        releaseDirectory.mkdirs()
-        copy {
-            from bukkitJar, fabricJar
-            into releaseDirectory
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(30))
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .build()
+        JsonSlurper json = new JsonSlurper()
+        String api = "https://api.github.com/repos/${repository}"
+        def encode = { String value ->
+            URLEncoder.encode(value, StandardCharsets.UTF_8).replace('+', '%20')
+        }
+        def request = { String method, String url, Object body = null ->
+            HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
+                    .timeout(Duration.ofMinutes(2))
+                    .header('Accept', 'application/vnd.github+json')
+                    .header('Authorization', "Bearer ${token}")
+                    .header('X-GitHub-Api-Version', '2022-11-28')
+                    .header('User-Agent', 'ProjectKorra-Gradle-Publisher')
+            switch (method) {
+                case 'GET' -> builder.GET()
+                case 'POST' -> builder.header('Content-Type', 'application/json')
+                        .POST(HttpRequest.BodyPublishers.ofString(JsonOutput.toJson(body), StandardCharsets.UTF_8))
+                case 'DELETE' -> builder.DELETE()
+                default -> throw new GradleException("Unsupported HTTP method ${method}")
+            }
+            client.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
         }
 
-        List<File> publishedJars = [
-                new File(releaseDirectory, bukkitJar.name),
-                new File(releaseDirectory, fabricJar.name)
-        ]
-        String checksums = publishedJars.collect { "${sha256(it)}  ${it.name}" }.join(System.lineSeparator()) + System.lineSeparator()
-        Files.writeString(new File(releaseDirectory, 'SHA256SUMS').toPath(), checksums, StandardCharsets.UTF_8)
-
-        File releaseRoot = rootProject.file('releases')
-        File latestManifest = new File(releaseRoot, 'latest.json')
-        String fabricChecksum = sha256(publishedJars[1])
-        String manifest = JsonOutput.prettyPrint(JsonOutput.toJson([
-                version  : project.version.toString(),
-                tag      : tag,
-                fabricJar: publishedJars[1].name,
-                path     : "releases/${tag}/${publishedJars[1].name}",
-                sha256   : fabricChecksum,
-                size     : publishedJars[1].length()
-        ])) + System.lineSeparator()
-        Files.writeString(latestManifest.toPath(), manifest, StandardCharsets.UTF_8)
-
-        String configuredBash = project.findProperty('gitBash')?.toString()
-        File windowsGitBash = new File('C:/Program Files/Git/bin/bash.exe')
-        String bash = configuredBash ?: (windowsGitBash.isFile() ? windowsGitBash.absolutePath : 'bash')
-        String relativeReleaseDirectory = rootProject.projectDir.toPath().relativize(releaseRoot.toPath())
-                .toString().replace('\\', '/')
-
-        def publish = providers.exec {
-            executable bash
-            args rootProject.file('gradle/publish-jars.sh').absolutePath
-            workingDir rootProject.projectDir
-            environment 'PK_GITHUB_REMOTE', remote
-            environment 'PK_GITHUB_BRANCH', branch
-            environment 'PK_RELEASE_DIRECTORY', relativeReleaseDirectory
-            environment 'PK_RELEASE_MESSAGE', message
-            ignoreExitValue = true
+        HttpResponse<String> releaseResponse = request('GET', "${api}/releases/tags/${encode(tag)}")
+        def release
+        if (releaseResponse.statusCode() == 200) {
+            release = json.parseText(releaseResponse.body())
+            logger.lifecycle("Reusing ${release.html_url}; matching assets will be replaced.")
+        } else if (releaseResponse.statusCode() == 404) {
+            releaseResponse = request('POST', "${api}/releases", [
+                    tag_name              : tag,
+                    target_commitish      : branch,
+                    name                  : releaseName,
+                    draft                 : draft,
+                    prerelease            : prerelease,
+                    generate_release_notes: true
+            ])
+            if (releaseResponse.statusCode() != 201) {
+                throw new GradleException("GitHub release creation failed: HTTP ${releaseResponse.statusCode()} ${releaseResponse.body()}")
+            }
+            release = json.parseText(releaseResponse.body())
+            logger.lifecycle("Created ${release.html_url} with notes generated from commit history.")
+        } else {
+            throw new GradleException("GitHub release lookup failed: HTTP ${releaseResponse.statusCode()} ${releaseResponse.body()}")
         }
-        String standardOutput = publish.standardOutput.asText.get().trim()
-        String standardError = publish.standardError.asText.get().trim()
-        int exitCode = publish.result.get().exitValue
-        if (!standardOutput.isBlank()) logger.lifecycle(standardOutput)
-        if (exitCode != 0) {
-            throw new GradleException("Git Bash publishing failed with exit code ${exitCode}${standardError.isBlank() ? '' : ":\n${standardError}"}")
+
+        artifacts.each { File artifact ->
+            def existing = release.assets?.find { it.name == artifact.name }
+            if (existing != null) {
+                HttpResponse<String> deleted = request('DELETE', "${api}/releases/assets/${existing.id}")
+                if (deleted.statusCode() != 204) {
+                    throw new GradleException("Could not replace ${artifact.name}: HTTP ${deleted.statusCode()} ${deleted.body()}")
+                }
+            }
+
+            String uploadUrl = "https://uploads.github.com/repos/${repository}/releases/${release.id}/assets?name=${encode(artifact.name)}"
+            HttpRequest upload = HttpRequest.newBuilder(URI.create(uploadUrl))
+                    .timeout(Duration.ofMinutes(10))
+                    .header('Accept', 'application/vnd.github+json')
+                    .header('Authorization', "Bearer ${token}")
+                    .header('X-GitHub-Api-Version', '2022-11-28')
+                    .header('User-Agent', 'ProjectKorra-Gradle-Publisher')
+                    .header('Content-Type', 'application/octet-stream')
+                    .POST(HttpRequest.BodyPublishers.ofFile(artifact.toPath()))
+                    .build()
+            HttpResponse<String> uploaded = client.send(upload, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
+            if (uploaded.statusCode() != 201) {
+                throw new GradleException("Upload failed for ${artifact.name}: HTTP ${uploaded.statusCode()} ${uploaded.body()}")
+            }
+            logger.lifecycle("Uploaded ${artifact.name} (${Files.size(artifact.toPath())} bytes)")
         }
-        if (!standardError.isBlank()) logger.lifecycle(standardError)
+
+        logger.lifecycle("Published GitHub Release: ${release.html_url}")
     }
+}
+
+tasks.register('publishGithubRelease') {
+    group = 'publishing'
+    description = 'Alias for publishGithubJars.'
+    dependsOn tasks.named('publishGithubJars')
 }
