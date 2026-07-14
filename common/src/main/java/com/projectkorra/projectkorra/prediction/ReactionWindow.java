@@ -17,6 +17,27 @@ public final class ReactionWindow {
         return (int) Math.max(1L, (total + TICK_MILLIS - 1L) / TICK_MILLIS);
     }
 
+    /**
+     * Returns how much longer a provisional hit must wait so the defender has
+     * received both the configured visible reaction budget and their bounded
+     * network round trip. Time already spent running visibly on the server is
+     * deducted, so sufficiently telegraphed projectiles gain no extra delay.
+     */
+    public static int visibilityDelayTicks(final long alreadyVisibleTicks,
+                                           final int minimumVisibleMillis,
+                                           final int defenderRoundTripMillis,
+                                           final int maximumCompensationMillis,
+                                           final int jitterMillis) {
+        final long visibleMillis = Math.max(0L, alreadyVisibleTicks) * TICK_MILLIS;
+        final long boundedPing = Math.min(Math.max(0L, defenderRoundTripMillis),
+                Math.max(0L, maximumCompensationMillis));
+        final long requiredMillis = Math.max(0L, minimumVisibleMillis)
+                + boundedPing + Math.max(0L, jitterMillis);
+        final long missingMillis = Math.max(0L, requiredMillis - visibleMillis);
+        final long ticks = (missingMillis + TICK_MILLIS - 1L) / TICK_MILLIS;
+        return (int) Math.min(Integer.MAX_VALUE, ticks);
+    }
+
     public static boolean containsContact(final BoundingBox box, final Vector contact,
                                           final double tolerance) {
         if (box == null || contact == null || !finite(contact)) return false;

@@ -240,8 +240,10 @@ public final class PredictionServer implements TempBlockSync.Listener,
         if (defender == null || defender.isDead()) return false;
 
         if (claim.pending == null) {
+            int delayTicks = reactionTicks(action, defender.networkHandler.getLatency());
+            if (delayTicks <= 0) return false;
             claim.pending = new PendingHitResolution(
-                    tick + reactionTicks(defender.networkHandler.getLatency()),
+                    tick + delayTicks,
                     new Vector(claim.contact.x, claim.contact.y, claim.contact.z));
             pendingReactions.add(claim);
         }
@@ -266,12 +268,15 @@ public final class PredictionServer implements TempBlockSync.Listener,
         return ConfigManager.getConfig().getBoolean("Properties.Prediction.Reaction.Enabled", true);
     }
 
-    private static int reactionTicks(int pingMillis) {
+    private int reactionTicks(Action action, int pingMillis) {
+        int minimumVisible = ConfigManager.getConfig().getInt(
+                "Properties.Prediction.Reaction.MinimumVisibleMillis", 200);
         int maximum = ConfigManager.getConfig().getInt(
                 "Properties.Prediction.Reaction.MaxCompensationMillis", 200);
         int jitter = ConfigManager.getConfig().getInt(
                 "Properties.Prediction.Reaction.JitterAllowanceMillis", 25);
-        return ReactionWindow.compensationTicks(pingMillis, maximum, jitter);
+        return ReactionWindow.visibilityDelayTicks(tick - action.acceptedServerTick,
+                minimumVisible, pingMillis, maximum, jitter);
     }
 
     private static double reactionContactTolerance() {

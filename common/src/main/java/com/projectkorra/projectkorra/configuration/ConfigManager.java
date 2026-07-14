@@ -900,6 +900,7 @@ public class ConfigManager {
             config.addDefault("Properties.IgnoreArmorPercentage.Default", 0.5);
             config.addDefault("Properties.DamageMultiplier", 1.0);
             config.addDefault("Properties.Prediction.Reaction.Enabled", true);
+            config.addDefault("Properties.Prediction.Reaction.MinimumVisibleMillis", 200);
             config.addDefault("Properties.Prediction.Reaction.MaxCompensationMillis", 200);
             config.addDefault("Properties.Prediction.Reaction.JitterAllowanceMillis", 25);
             config.addDefault("Properties.Prediction.Reaction.ContactTolerance", 0.2);

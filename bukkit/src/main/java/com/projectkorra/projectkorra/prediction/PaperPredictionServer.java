@@ -288,7 +288,9 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         if (defender == null || defender.isDead()) return false;
 
         if (claim.pending == null) {
-            claim.pending = new PendingHitResolution(tick + reactionTicks(defender.getPing()),
+            int delayTicks = reactionTicks(action, defender.getPing());
+            if (delayTicks <= 0) return false;
+            claim.pending = new PendingHitResolution(tick + delayTicks,
                     new com.projectkorra.projectkorra.platform.mc.util.Vector(
                             claim.contact.getX(), claim.contact.getY(), claim.contact.getZ()));
             pendingReactions.add(claim);
@@ -312,12 +314,15 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         return ConfigManager.getConfig().getBoolean("Properties.Prediction.Reaction.Enabled", true);
     }
 
-    private static int reactionTicks(int pingMillis) {
+    private int reactionTicks(Action action, int pingMillis) {
+        int minimumVisible = ConfigManager.getConfig().getInt(
+                "Properties.Prediction.Reaction.MinimumVisibleMillis", 200);
         int maximum = ConfigManager.getConfig().getInt(
                 "Properties.Prediction.Reaction.MaxCompensationMillis", 200);
         int jitter = ConfigManager.getConfig().getInt(
                 "Properties.Prediction.Reaction.JitterAllowanceMillis", 25);
-        return ReactionWindow.compensationTicks(pingMillis, maximum, jitter);
+        return ReactionWindow.visibilityDelayTicks(tick - action.acceptedTick,
+                minimumVisible, pingMillis, maximum, jitter);
     }
 
     private static double reactionContactTolerance() {

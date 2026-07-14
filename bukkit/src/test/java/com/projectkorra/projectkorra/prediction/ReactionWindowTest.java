@@ -24,6 +24,28 @@ class ReactionWindowTest {
     }
 
     @Test
+    void unseenInstantHitGivesZeroPingDefenderAVisibleReactionBudget() {
+        assertEquals(5, ReactionWindow.visibilityDelayTicks(0,
+                200, 0, 200, 25));
+    }
+
+    @Test
+    void timeAlreadyVisibleIsDeductedFromReactionDelay() {
+        assertEquals(3, ReactionWindow.visibilityDelayTicks(2,
+                200, 0, 200, 25));
+        assertEquals(0, ReactionWindow.visibilityDelayTicks(5,
+                200, 0, 200, 25));
+    }
+
+    @Test
+    void defenderNetworkBudgetIsCappedEvenForExtremePing() {
+        assertEquals(9, ReactionWindow.visibilityDelayTicks(0,
+                200, 1_000, 200, 25));
+        assertEquals(9, ReactionWindow.visibilityDelayTicks(0,
+                200, 200, 200, 25));
+    }
+
+    @Test
     void stationaryHitCommitsEffectsInOriginalOrderAtDeadline() {
         List<String> committed = new ArrayList<>();
         PendingHitResolution pending = new PendingHitResolution(14, new Vector(0, 0.9, 0));
