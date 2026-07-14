@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "projectkorra",
+  "version": "${version}",
+  "name": "ProjectKorra",
+  "description": "ProjectKorra Fabric client with exact prediction for authoritative Paper servers.",
+  "entrypoints": {
+    "main": ["com.projectkorra.projectkorra.fabric.ProjectKorraFabricMod"],
+    "client": ["com.projectkorra.projectkorra.fabric.client.ProjectKorraClientMod"]
+  },
+  "mixins": ["projectkorra.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "fabric-api": "*",
+    "minecraft": "=1.21.11"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "required": true,
+  "package": "com.projectkorra.projectkorra.fabric.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "FlowableFluidMixin",
+    "ProjectileEntityMixin",
+    "ServerPlayNetworkHandlerMixin"
+  ],
+  "client": [
+    "client.AreaEffectCloudEntityAccessor",
+    "client.ClientPlayNetworkHandlerMovementMixin",
+    "client.ClientPlayNetworkHandlerPredictionMixin",
+    "client.ClientWorldPredictionAliasMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

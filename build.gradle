@@ -1,0 +1,24 @@
+plugins {
+    id 'fabric-loom' version '1.14.10' apply false
+    id 'com.gradleup.shadow' version '9.5.1' apply false
+    id 'xyz.jpenilla.run-paper' version '3.0.2' apply false
+}
+
+allprojects {
+    group = 'com.projectkorra'
+    version = '1.10.2'
+}
+
+subprojects {
+    plugins.withType(JavaPlugin) {
+        java {
+            toolchain.languageVersion = JavaLanguageVersion.of(21)
+            withSourcesJar()
+        }
+
+        tasks.withType(JavaCompile).configureEach {
+            options.encoding = 'UTF-8'
+            options.release = 21
+        }
+    }
+}

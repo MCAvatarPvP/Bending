@@ -1,0 +1,40 @@
+plugins {
+    id 'fabric-loom'
+    id 'java-library'
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    mappings "net.fabricmc:yarn:${yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${fabric_loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_api_version}"
+    implementation 'org.xerial:sqlite-jdbc:3.49.1.0'
+    include 'org.xerial:sqlite-jdbc:3.49.1.0'
+    api project(':common')
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') { expand(version: project.version) }
+}
+
+jar {
+    from(project(':common').sourceSets.main.output)
+    // Loom's remapJar consumes this development jar. It must not share the
+    // final remapped jar's path or the remapper reads and overwrites one file.
+    archiveFileName = "ProjectKorra-${project.version}-fabric-dev.jar"
+}
+
+tasks.named('remapJar') {
+    archiveFileName = "ProjectKorra-${project.version}-fabric.jar"
+}
+
+tasks.named('remapSourcesJar') {
+    archiveFileName = "ProjectKorra-${project.version}-fabric-sources.jar"
+}

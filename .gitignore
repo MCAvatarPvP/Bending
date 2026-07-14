@@ -240,3 +240,26 @@ classes/
 out/
 projectkorra.iml
 .vscode/settings.json
+
+#################
+## Project-local build and inspection files
+#################
+
+.gradle/
+*.iml
+*.ipr
+*.iws
+/bukkit/run/
+/fabric/run/
+
+# Root-level archives and locally built/reference jars. Required dependency
+# jars under libs/ remain eligible for version control.
+/*.jar
+/*.zip
+
+# Local runtime configuration and migration/inspection artifacts.
+/config
+/airblast_javap.txt
+/platform_boundary_check.txt
+/legacy-bukkit-source-before-module-split/
+/legacy-single-module-pom.xml

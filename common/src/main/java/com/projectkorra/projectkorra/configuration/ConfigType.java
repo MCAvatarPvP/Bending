@@ -1,0 +1,55 @@
+package com.projectkorra.projectkorra.configuration;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+
+public class ConfigType {
+
+    public static final ConfigType DEFAULT = new ConfigType("Default");
+    public static final ConfigType PRESETS = new ConfigType("Presets");
+    public static final ConfigType LANGUAGE = new ConfigType("Language");
+    public static final ConfigType COLLISION = new ConfigType("Collision");
+    public static final ConfigType FIRECOLORS = new ConfigType("FireColors");
+    public static final ConfigType AIRCOLORS = new ConfigType("AirColors");
+    public static final ConfigType WATERCOSMETICS = new ConfigType("WaterCosmetics");
+    public static final ConfigType AVATAR_STATE = new ConfigType("AvatarState");
+    public static final ConfigType EARTHCOSMETICS = new ConfigType("EarthCosmetics");
+    public static final ConfigType FALLDAMAGE = new ConfigType("FallDamage");
+    public static final ConfigType[] CORE_TYPES = {DEFAULT, PRESETS, LANGUAGE, COLLISION, FIRECOLORS, AIRCOLORS, WATERCOSMETICS, EARTHCOSMETICS, FALLDAMAGE, AVATAR_STATE};
+    private static final HashMap<String, ConfigType> ALL_TYPES = new HashMap<>();
+    private final String string;
+
+    public ConfigType(final String string) {
+        this.string = string;
+        ALL_TYPES.put(string, this);
+    }
+
+    public static List<ConfigType> addonValues() {
+        final List<ConfigType> values = new ArrayList<>();
+        for (final String key : ALL_TYPES.keySet()) {
+            if (!Arrays.asList(CORE_TYPES).contains(ALL_TYPES.get(key))) {
+                values.add(ALL_TYPES.get(key));
+            }
+        }
+        return values;
+    }
+
+    public static List<ConfigType> coreValues() {
+        return Arrays.asList(CORE_TYPES);
+    }
+
+    public static List<ConfigType> values() {
+        final List<ConfigType> values = new ArrayList<>();
+        for (final String key : ALL_TYPES.keySet()) {
+            values.add(ALL_TYPES.get(key));
+        }
+        return values;
+    }
+
+    @Override
+    public String toString() {
+        return this.string;
+    }
+}

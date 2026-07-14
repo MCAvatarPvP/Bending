@@ -1,0 +1,501 @@
+package com.projectkorra.projectkorra.airbending;
+
+import com.projectkorra.projectkorra.BendingPlayer;
+import com.projectkorra.projectkorra.Element;
+import com.projectkorra.projectkorra.GeneralMethods;
+import com.projectkorra.projectkorra.ability.AirAbility;
+import com.projectkorra.projectkorra.ability.CoreAbility;
+import com.projectkorra.projectkorra.ability.util.Collision;
+import com.projectkorra.projectkorra.attribute.Attribute;
+import com.projectkorra.projectkorra.command.Commands;
+import com.projectkorra.projectkorra.configuration.ConfigManager;
+import com.projectkorra.projectkorra.object.HorizontalVelocityTracker;
+import com.projectkorra.projectkorra.platform.mc.Effect;
+import com.projectkorra.projectkorra.platform.mc.Location;
+import com.projectkorra.projectkorra.platform.mc.Material;
+import com.projectkorra.projectkorra.platform.mc.block.Block;
+import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
+import com.projectkorra.projectkorra.platform.mc.block.data.type.Door;
+import com.projectkorra.projectkorra.platform.mc.block.data.type.TrapDoor;
+import com.projectkorra.projectkorra.platform.mc.entity.Entity;
+import com.projectkorra.projectkorra.platform.mc.entity.Player;
+import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.region.RegionProtection;
+import com.projectkorra.projectkorra.util.AbilityLagCompensator;
+import com.projectkorra.projectkorra.waterbending.WaterSpout;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Random;
+
+public class AirSuction extends AirAbility {
+
+    private final List<Block> affectedDoors = new ArrayList<>();
+
+    private boolean progressing;
+    private int particleCount;
+    @Attribute(Attribute.COOLDOWN)
+    private long cooldown;
+    @Attribute(Attribute.SPEED)
+    private double speed;
+    @Attribute(Attribute.RANGE)
+    private double range;
+    @Attribute(Attribute.RADIUS)
+    private double radius;
+    @Attribute(Attribute.KNOCKBACK)
+    private double pushFactor;
+    @Attribute(Attribute.KNOCKBACK + "Others")
+    private double pushFactorForOthers;
+    private double decayAmount;
+    private double decayMinimum;
+    private long minimumAirBlastTime;
+    private boolean requireSourceTouchingBlock;
+    private Random random;
+    private Location location;
+    private Location origin;
+    private Vector direction;
+    private boolean canAffectSelf;
+    private boolean usedStaminaThisShot;
+    private boolean pushed;
+    private double otherAirPush;
+
+    private AbilityLagCompensator lagCompensator;
+
+    public AirSuction(final Player player) {
+        super(player);
+
+        if (this.bPlayer.isOnCooldown(this)) {
+            return;
+        } else if (player.getEyeLocation().getBlock().isLiquid()) {
+            return;
+        } else if (hasAbility(player, AirSpout.class) || hasAbility(player, WaterSpout.class)) {
+            return;
+        }
+
+        if (hasAbility(player, AirSuction.class)) {
+            final AirSuction suc = getAbility(player, AirSuction.class);
+            if (!suc.isProgressing()) {
+                final Location loc = this.getTargetLocation();
+
+                if (suc.isValidSource(loc)) {
+                    suc.setOrigin(loc);
+                }
+            }
+            return;
+        }
+
+        this.progressing = false;
+        this.particleCount = getConfig().getInt("Abilities.Air.AirSuction.Particles");
+        this.speed = getConfig().getDouble("Abilities.Air.AirSuction.Speed");
+        this.range = getConfig().getDouble("Abilities.Air.AirSuction.Range");
+        this.radius = getConfig().getDouble("Abilities.Air.AirSuction.Radius");
+        this.pushFactor = getConfig().getDouble("Abilities.Air.AirSuction.Push.Self");
+        this.pushFactorForOthers = getConfig().getDouble("Abilities.Air.AirSuction.Push.Others");
+        this.cooldown = getConfig().getLong("Abilities.Air.AirSuction.Cooldown");
+        this.decayAmount = getConfig().getDouble("Abilities.Air.AirBlast.DecayAmount");
+        this.decayMinimum = getConfig().getDouble("Abilities.Air.AirBlast.DecayMinimum");
+        this.otherAirPush = getConfig().getDouble("Abilities.Air.AirSuction.OtherAirPush");
+        this.minimumAirBlastTime = getConfig().getLong("Abilities.Air.AirBlast.MinimumAirBlastTime");
+        this.requireSourceTouchingBlock = getConfig().getBoolean("Abilities.Air.AirSuction.RequireSourceTouchingBlock");
+        this.random = new Random();
+        this.origin = this.getTargetLocation();
+        this.canAffectSelf = true;
+
+        if (!this.isValidSource(this.origin)) {
+            return;
+        }
+
+        this.location = null;
+
+        this.start();
+    }
+
+    public static void shoot(final Player player) {
+        AirSuction suc = null;
+
+        if (CoreAbility.hasAbility(player, AirSuction.class)) {
+            suc = CoreAbility.getAbility(player, AirSuction.class);
+            if (suc.isProgressing()) {
+                return;
+            }
+        } else {
+            suc = new AirSuction(player);
+            suc.setOrigin(player.getEyeLocation().clone());
+            suc.setCanEffectSelf(false);
+        }
+
+        if (suc.getOrigin() != null) {
+            suc.shoot();
+        }
+    }
+
+    /**
+     * This method was used for the old collision detection system. Please see
+     * {@link Collision} for the new system.
+     */
+    @Deprecated
+    public static boolean removeAirSuctionsAroundPoint(final Location location, final double radius) {
+        boolean removed = false;
+        for (final AirSuction airSuction : getAbilities(AirSuction.class)) {
+            final Location airSuctionlocation = airSuction.location;
+            if (location.getWorld() == airSuctionlocation.getWorld()) {
+                if (location.distanceSquared(airSuctionlocation) <= radius * radius) {
+                    airSuction.remove();
+                }
+                removed = true;
+            }
+        }
+        return removed;
+    }
+
+    public static int getSelectParticles(BendingPlayer bPlayer) {
+        return ConfigManager.getConfig(bPlayer).getInt("Abilities.Air.AirSuction.SelectParticles");
+    }
+
+    public static double getSelectRange(BendingPlayer bPlayer) {
+        return ConfigManager.getConfig(bPlayer).getDouble("Abilities.Air.AirSuction.SelectRange");
+    }
+
+    private void advanceLocation() {
+        playAirbendingParticles(this.location, this.particleCount, 0.275F, 0.275F, 0.275F);
+        if (this.random.nextInt(4) == 0) {
+            playAirbendingSound(this.location);
+        }
+        final double speedFactor = this.speed * 0.05;
+        this.location = this.location.add(this.direction.clone().multiply(speedFactor));
+
+        if ((Arrays.asList(AirBlast.DOORS).contains(this.location.getBlock().getType()) || Arrays.asList(AirBlast.TDOORS).contains(this.location.getBlock().getType())) && !this.affectedDoors.contains(this.location.getBlock())) {
+            this.handleDoorMechanics(this.location.getBlock());
+        }
+    }
+
+    private void handleDoorMechanics(final Block block) {
+        boolean tDoor = false;
+        boolean open = false;
+
+        if (Arrays.asList(AirBlast.DOORS).contains(block.getType())) {
+            final Door door = (Door) block.getBlockData();
+            final BlockFace face = door.getFacing();
+            final Vector toPlayer = GeneralMethods.getDirection(block.getLocation(), this.player.getLocation().getBlock().getLocation());
+            final double[] dims = {toPlayer.getX(), toPlayer.getY(), toPlayer.getZ()};
+
+            for (int i = 0; i < 3; i++) {
+                if (i == 1) {
+                    continue;
+                }
+                final BlockFace bf = GeneralMethods.getBlockFaceFromValue(i, dims[i]);
+
+                if (bf == face) {
+                    if (!door.isOpen()) {
+                        return;
+                    }
+                } else if (bf.getOppositeFace() == face) {
+                    if (door.isOpen()) {
+                        return;
+                    }
+                }
+            }
+
+            door.setOpen(!door.isOpen());
+            block.setBlockData(door);
+            open = door.isOpen();
+        } else {
+            tDoor = true;
+            final TrapDoor trap = (TrapDoor) block.getBlockData();
+
+            if (this.origin.getY() < block.getY()) {
+                if (trap.isOpen()) {
+                    return;
+                }
+            } else {
+                if (!trap.isOpen()) {
+                    return;
+                }
+            }
+
+            trap.setOpen(!trap.isOpen());
+            block.setBlockData(trap);
+            open = trap.isOpen();
+        }
+
+        final String sound = "block_wooden_" + (tDoor ? "trap" : "") + "door_" + (!open ? "open" : "close");
+        block.getWorld().playSound(block.getLocation(), sound, 0.5f, 0);
+        this.affectedDoors.add(block);
+    }
+
+    private Location getTargetLocation() {
+        final Material[] ignore = new Material[getTransparentMaterials().length + AirBlast.DOORS.length + AirBlast.TDOORS.length];
+
+        for (int i = 0; i < ignore.length; i++) {
+            if (i < getTransparentMaterials().length) {
+                ignore[i] = getTransparentMaterials()[i];
+            } else if (i < getTransparentMaterials().length + AirBlast.DOORS.length) {
+                ignore[i] = AirBlast.DOORS[i - getTransparentMaterials().length];
+            } else {
+                ignore[i] = AirBlast.TDOORS[i - getTransparentMaterials().length - AirBlast.DOORS.length];
+            }
+        }
+
+        return GeneralMethods.getTargetedLocation(this.player, getSelectRange(bPlayer), ignore);
+    }
+
+    private boolean isValidSource(final Location location) {
+        return !RegionProtection.isRegionProtected(this.player, location, this.getName()) && (!this.requireSourceTouchingBlock || this.isTouchingSourceBlock(location));
+    }
+
+    private boolean isTouchingSourceBlock(final Location location) {
+        final Block block = location.getBlock();
+        final BlockFace[] faces = {BlockFace.UP, BlockFace.DOWN, BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST};
+
+        for (final BlockFace face : faces) {
+            if (GeneralMethods.isSolid(block.getRelative(face))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    @Override
+    public void progress() {
+        if (this.player.isDead() || !this.player.isOnline()) {
+            this.remove();
+            return;
+        }
+
+        if (this.progressing) {
+            if (RegionProtection.isRegionProtected(this.player, this.location, "AirSuction")) {
+                this.remove();
+                return;
+            } else if (!this.location.getWorld().equals(this.origin.getWorld()) || this.location.distanceSquared(this.origin) > this.range * this.range || this.location.distanceSquared(this.origin) <= 1) {
+                this.remove();
+                return;
+            }
+
+            this.lagCompensator.addSnapshot(this.location, this.radius);
+
+            for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(this.location, this.radius)) {
+                if (GeneralMethods.isRegionProtectedFromBuild(this, entity.getLocation()) || ((entity instanceof Player) && Commands.invincible.contains(((Player) entity).getName()))) {
+                    continue;
+                }
+
+                if (entity instanceof Player p) {
+                    this.lagCompensator.addPlayer(p);
+                    continue;
+                }
+
+                this.affect(entity, this.location);
+            }
+
+            this.lagCompensator.update();
+
+            this.advanceLocation();
+        } else {
+            if (bPlayer == null || player.isDead() || !player.isOnline()) {
+                return;
+            } else if (!origin.getWorld().equals(player.getWorld())) {
+                remove();
+                return;
+            } else if (!bPlayer.canBendIgnoreCooldowns(this)) {
+                remove();
+                return;
+            } else if (origin.distanceSquared(player.getLocation()) > this.range * this.range) {
+                remove();
+                return;
+            }
+
+            playAirbendingParticles(this.origin, 5, 0.5, 0.5, 0.5);
+        }
+    }
+
+    public void affect(final Entity entity, final Location location) {
+        if ((entity.getEntityId() == this.player.getEntityId()) && !this.canAffectSelf) {
+            return;
+        }
+
+        final boolean isUser = entity.getEntityId() == this.player.getEntityId();
+        double knockback = this.pushFactor;
+
+        if (!isUser) {
+            double otherKB = this.pushFactorForOthers;
+            if (entity instanceof Player entityPlayer) {
+
+                BendingPlayer otherBP = BendingPlayer.getBendingPlayer(entityPlayer);
+                if (otherBP != null && otherBP.hasElement(Element.AIR)) {
+                    otherKB = this.otherAirPush;
+                }
+            }
+
+            knockback = otherKB;
+        } else {
+            if (this.usedStaminaThisShot) {
+                this.usedStaminaThisShot = false;
+                this.bPlayer.increaseAirBlastDecay(this.decayAmount, this.decayMinimum);
+                knockback *= this.bPlayer.getAirBlastDecay();
+            }
+
+            if (!this.pushed) {
+                this.bPlayer.resetAirBlast();
+                this.pushed = true;
+            }
+        }
+
+        final Vector velocity = entity.getVelocity();
+        final double max = this.speed;
+        final Vector push = this.direction.clone();
+
+        if (Math.abs(push.getY()) > max) {
+            if (push.getY() < 0) {
+                push.setY(-max);
+            } else {
+                push.setY(max);
+            }
+        }
+
+        if (location.getWorld().equals(this.origin.getWorld())) {
+            knockback *= 1 - location.distance(this.origin) / (2 * this.range);
+        }
+
+        final double comp = velocity.dot(push.clone().normalize());
+        if (comp > knockback) {
+            velocity.multiply(.5);
+            velocity.add(push.clone().normalize().multiply(velocity.clone().dot(push.clone().normalize())));
+        } else if (comp + knockback * .5 > knockback) {
+            velocity.add(push.clone().multiply(knockback - comp));
+        } else {
+            velocity.add(push.clone().multiply(knockback * .5));
+        }
+        GeneralMethods.setVelocity(this, entity, velocity);
+
+        new HorizontalVelocityTracker(entity, this.player, 200l, this);
+        entity.setFallDistance(0);
+
+        if (entity.getFireTicks() > 0) {
+            entity.getWorld().playEffect(entity.getLocation(), Effect.EXTINGUISH, 0);
+        }
+        entity.setFireTicks(0);
+        breakBreathbendingHold(entity);
+    }
+
+    public void shoot() {
+        Location target;
+        final Entity entity = GeneralMethods.getTargetedEntity(this.player, this.range);
+
+        if (entity != null) {
+            target = entity.getLocation();
+        } else {
+            target = this.getTargetLocation();
+        }
+
+        this.location = target.clone();
+        this.direction = GeneralMethods.getDirection(this.location, this.origin).normalize();
+        this.usedStaminaThisShot = System.currentTimeMillis() - this.bPlayer.getLastAirBlastTime() < this.minimumAirBlastTime;
+        this.pushed = false;
+        this.progressing = true;
+        this.bPlayer.addCooldown(this);
+        this.lagCompensator = new AbilityLagCompensator((p, snapshot) -> this.affect(p, snapshot.getLocation()));
+    }
+
+    @Override
+    public String getName() {
+        return "AirSuction";
+    }
+
+    @Override
+    public Location getLocation() {
+        return this.location;
+    }
+
+    public void setLocation(final Location location) {
+        this.location = location;
+    }
+
+    @Override
+    public long getCooldown() {
+        return this.cooldown;
+    }
+
+    public void setCooldown(final long cooldown) {
+        this.cooldown = cooldown;
+    }
+
+    @Override
+    public boolean isSneakAbility() {
+        return true;
+    }
+
+    @Override
+    public boolean isHarmlessAbility() {
+        return false;
+    }
+
+    @Override
+    public double getCollisionRadius() {
+        return this.getRadius();
+    }
+
+    public boolean isProgressing() {
+        return this.progressing;
+    }
+
+    public Location getOrigin() {
+        return this.origin;
+    }
+
+    public void setOrigin(final Location origin) {
+        this.origin = origin;
+    }
+
+    public Vector getDirection() {
+        return this.direction;
+    }
+
+    public void setDirection(final Vector direction) {
+        this.direction = direction;
+    }
+
+    public int getParticleCount() {
+        return this.particleCount;
+    }
+
+    public void setParticleCount(final int particleCount) {
+        this.particleCount = particleCount;
+    }
+
+    public double getSpeed() {
+        return this.speed;
+    }
+
+    public void setSpeed(final double speed) {
+        this.speed = speed;
+    }
+
+    public double getRange() {
+        return this.range;
+    }
+
+    public void setRange(final double range) {
+        this.range = range;
+    }
+
+    public double getRadius() {
+        return this.radius;
+    }
+
+    public void setRadius(final double radius) {
+        this.radius = radius;
+    }
+
+    public double getPushFactor() {
+        return this.pushFactor;
+    }
+
+    public void setPushFactor(final double pushFactor) {
+        this.pushFactor = pushFactor;
+    }
+
+    public void setCanEffectSelf(final boolean affect) {
+        this.canAffectSelf = affect;
+    }
+}

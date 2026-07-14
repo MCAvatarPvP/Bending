@@ -1,0 +1,30 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        maven { url = 'https://maven.fabricmc.net/' }
+        maven { url = 'https://repo.papermc.io/repository/maven-public/' }
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
+    repositories {
+        mavenCentral()
+        maven { url = uri('localrepo') }
+        maven { url = 'https://maven.fabricmc.net/' }
+        maven { url = 'https://repo.papermc.io/repository/maven-public/' }
+        maven { url = 'https://maven.enginehub.org/repo/' }
+        maven { url = 'https://repo.codemc.io/repository/maven-releases/' }
+        maven { url = 'https://repo.extendedclip.com/content/repositories/placeholderapi/' }
+        maven { url = 'https://repo.opencollab.dev/main/' }
+        maven { url = 'https://jitpack.io' }
+        maven { url = 'https://repo.aikar.co/nexus/content/groups/aikar/' }
+        maven { url = 'https://hub.spigotmc.org/nexus/content/repositories/snapshots/' }
+        maven { url = 'https://repo.glaremasters.me/repository/bloodshot' }
+        maven { url = 'https://raw.githubusercontent.com/FabioZumbi12/RedProtect/mvn-repo/' }
+        maven { url = 'https://repo.betonquest.org/betonquest/' }
+    }
+}
+
+rootProject.name = 'ProjectKorra'
+include 'common', 'bukkit', 'fabric'

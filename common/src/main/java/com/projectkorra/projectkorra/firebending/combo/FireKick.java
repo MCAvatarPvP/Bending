@@ -1,0 +1,213 @@
+package com.projectkorra.projectkorra.firebending.combo;
+
+import com.projectkorra.projectkorra.GeneralMethods;
+import com.projectkorra.projectkorra.ProjectKorra;
+import com.projectkorra.projectkorra.ability.ComboAbility;
+import com.projectkorra.projectkorra.ability.FireAbility;
+import com.projectkorra.projectkorra.ability.util.Collision;
+import com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation;
+import com.projectkorra.projectkorra.ability.util.ComboUtil;
+import com.projectkorra.projectkorra.attribute.Attribute;
+import com.projectkorra.projectkorra.attribute.markers.DayNightFactor;
+import com.projectkorra.projectkorra.configuration.ConfigManager;
+import com.projectkorra.projectkorra.platform.mc.Location;
+import com.projectkorra.projectkorra.platform.mc.Sound;
+import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
+import com.projectkorra.projectkorra.platform.mc.entity.Player;
+import com.projectkorra.projectkorra.platform.mc.scheduler.BukkitRunnable;
+import com.projectkorra.projectkorra.platform.mc.util.Vector;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class FireKick extends FireAbility implements ComboAbility {
+
+    @Attribute(Attribute.COOLDOWN)
+    @DayNightFactor(invert = true)
+    private long cooldown;
+    @Attribute(Attribute.DAMAGE)
+    @DayNightFactor
+    private double damage;
+    @Attribute(Attribute.SPEED)
+    private double speed;
+    @Attribute(Attribute.RANGE)
+    @DayNightFactor
+    private double range;
+    private double radius;
+    private double collisionRadius;
+    private Location location;
+    private Location destination;
+    private ArrayList<LivingEntity> affectedEntities;
+    private ArrayList<BukkitRunnable> tasks;
+    private double pitchOffset;
+
+    public FireKick(final Player player) {
+        super(player);
+
+        if (!this.bPlayer.canBendIgnoreBindsCooldowns(this)) {
+            return;
+        }
+
+        this.affectedEntities = new ArrayList<>();
+        this.tasks = new ArrayList<>();
+
+        this.damage = getConfig().getDouble("Abilities.Fire.FireKick.Damage");
+        this.range = getConfig().getDouble("Abilities.Fire.FireKick.Range");
+        this.cooldown = getConfig().getLong("Abilities.Fire.FireKick.Cooldown");
+        this.speed = getConfig().getDouble("Abilities.Fire.FireKick.Speed");
+        this.radius = getConfig().getDouble("Abilities.Fire.FireKick.Radius");
+        this.collisionRadius = getConfig().getDouble("Abilities.Fire.FireKick.CollisionRadius");
+        this.pitchOffset = getConfig().getDouble("Abilities.Fire.FireKick.PitchOffset", 1);
+
+        this.start();
+    }
+
+    @Override
+    public String getName() {
+        return "FireKick";
+    }
+
+    @Override
+    public boolean isCollidable() {
+        return true;
+    }
+
+    @Override
+    public void progress() {
+        for (int i = 0; i < this.tasks.size(); i++) {
+            final BukkitRunnable br = this.tasks.get(i);
+            if (br instanceof FireComboStream) {
+                final FireComboStream fs = (FireComboStream) br;
+                if (fs.isCancelled()) {
+                    this.tasks.remove(fs);
+                }
+            }
+        }
+
+        if (!this.bPlayer.canBendIgnoreBindsCooldowns(this)) {
+            this.remove();
+            return;
+        }
+
+        if (this.destination == null) {
+            if (this.bPlayer.isOnCooldown("FireKick")) {
+                this.remove();
+                return;
+            }
+
+            this.bPlayer.addCooldown("FireKick", this.cooldown);
+            final Vector eyeDir = this.player.getEyeLocation().getDirection().normalize().multiply(this.range);
+            this.destination = this.player.getEyeLocation().add(eyeDir);
+
+            this.player.getWorld().playSound(this.player.getLocation(), Sound.ENTITY_HORSE_JUMP, 0.5f, 0f);
+            this.player.getWorld().playSound(this.player.getLocation(), Sound.ENTITY_CREEPER_PRIMED, 0.5f, 1f);
+            for (int i = -30; i <= 30; i += 5) {
+                Vector vec = GeneralMethods.getDirection(this.player.getLocation(), this.destination.clone());
+                vec = GeneralMethods.rotateXZ(vec, i);
+
+                final FireComboStream fs = new FireComboStream(this.player, this, vec, this.player.getLocation(), this.range, this.speed);
+                fs.setSpread(0.2F);
+                fs.setDensity(5);
+                fs.setUseNewParticles(true);
+                fs.setDamage(this.damage);
+                fs.setCollisionRadius(this.collisionRadius);
+                fs.runTaskTimer(ProjectKorra.plugin, 0, 1L);
+                this.tasks.add(fs);
+                this.player.getWorld().playSound(this.player.getLocation(), Sound.ITEM_FLINTANDSTEEL_USE, 0.5f, 1f);
+            }
+        } else if (this.tasks.size() == 0) {
+            this.remove();
+            return;
+        }
+    }
+
+    @Override
+    public void remove() {
+        super.remove();
+        for (final BukkitRunnable task : this.tasks) {
+            task.cancel();
+        }
+    }
+
+    @Override
+    public void handleCollision(final Collision collision) {
+        if (collision.isRemovingFirst()) {
+            final ArrayList<BukkitRunnable> newTasks = new ArrayList<>();
+            final double collisionDistanceSquared = Math.pow(this.getCollisionRadius() + collision.getAbilitySecond().getCollisionRadius(), 2);
+            // Remove all of the streams that are by this specific ourLocation.
+            // Don't just do a single stream at a time or this algorithm becomes O(n^2) with Collision's detection algorithm.
+            for (final BukkitRunnable task : this.getTasks()) {
+                if (task instanceof FireComboStream) {
+                    final FireComboStream stream = (FireComboStream) task;
+                    if (stream.getLocation().distanceSquared(collision.getLocationSecond()) > collisionDistanceSquared) {
+                        newTasks.add(stream);
+                    } else {
+                        stream.cancel();
+                    }
+                } else {
+                    newTasks.add(task);
+                }
+            }
+            this.setTasks(newTasks);
+        }
+    }
+
+    @Override
+    public List<Location> getLocations() {
+        final ArrayList<Location> locations = new ArrayList<>();
+        for (final BukkitRunnable task : this.getTasks()) {
+            if (task instanceof FireComboStream) {
+                final FireComboStream stream = (FireComboStream) task;
+                locations.add(stream.getLocation());
+            }
+        }
+        return locations;
+    }
+
+    @Override
+    public boolean isSneakAbility() {
+        return true;
+    }
+
+    @Override
+    public boolean isHarmlessAbility() {
+        return false;
+    }
+
+    @Override
+    public long getCooldown() {
+        return this.cooldown;
+    }
+
+    @Override
+    public Location getLocation() {
+        return this.location;
+    }
+
+    @Override
+    public double getCollisionRadius() {
+        return this.collisionRadius;
+    }
+
+    @Override
+    public Object createNewComboInstance(final Player player) {
+        return new FireKick(player);
+    }
+
+    @Override
+    public ArrayList<AbilityInformation> getCombination() {
+        return ComboUtil.generateCombinationFromList(this, ConfigManager.defaultConfig.get().getStringList("Abilities.Fire.FireKick.Combination"));
+    }
+
+    public ArrayList<LivingEntity> getAffectedEntities() {
+        return this.affectedEntities;
+    }
+
+    public ArrayList<BukkitRunnable> getTasks() {
+        return this.tasks;
+    }
+
+    public void setTasks(final ArrayList<BukkitRunnable> tasks) {
+        this.tasks = tasks;
+    }
+}

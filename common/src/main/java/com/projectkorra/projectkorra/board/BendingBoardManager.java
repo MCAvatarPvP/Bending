@@ -1,0 +1,255 @@
+package com.projectkorra.projectkorra.board;
+
+import com.projectkorra.projectkorra.BendingPlayer;
+import com.projectkorra.projectkorra.Element;
+import com.projectkorra.projectkorra.ProjectKorra;
+import com.projectkorra.projectkorra.ability.ComboAbility;
+import com.projectkorra.projectkorra.ability.CoreAbility;
+import com.projectkorra.projectkorra.ability.util.MultiAbilityManager;
+import com.projectkorra.projectkorra.configuration.ConfigManager;
+import com.projectkorra.projectkorra.configuration.PKConfigurationSection;
+import com.projectkorra.projectkorra.platform.Platform;
+import com.projectkorra.projectkorra.platform.mc.ChatColor;
+import com.projectkorra.projectkorra.platform.mc.entity.Player;
+import com.projectkorra.projectkorra.storage.DBConnection;
+import com.projectkorra.projectkorra.util.ChatUtil;
+
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+
+/**
+ * Manages every individual {@link BendingBoard}
+ */
+public final class BendingBoardManager {
+
+    private static final Set<String> disabledWorlds = new HashSet<>();
+    private static final Map<String, ChatColor> trackedCooldowns = new ConcurrentHashMap<>();
+    private static final Set<UUID> disabledPlayers = Collections.synchronizedSet(new HashSet<>());
+    private static final Map<Player, BendingBoard> scoreboardPlayers = new ConcurrentHashMap<>();
+    public static Function<BendingPlayer, BendingBoard> boardSupplier = BendingBoard::new;
+    private static boolean enabled;
+
+    private BendingBoardManager() {
+    }
+
+    public static void setup() {
+        loadDisabledPlayers();
+        initialize();
+        Platform.players().<Player>onlinePlayers().forEach(BendingBoardManager::getBoard);
+    }
+
+    public static void reload() {
+        scoreboardPlayers.values().forEach(BendingBoard::destroy);
+        scoreboardPlayers.clear();
+        setup();
+    }
+
+    private static void initialize() {
+        enabled = ConfigManager.getConfig().getBoolean("Properties.BendingBoard");
+
+        disabledWorlds.clear();
+        trackedCooldowns.clear();
+        disabledWorlds.addAll(ConfigManager.getConfig().getStringList("Properties.DisabledWorlds"));
+        registerDefaultTrackedCooldowns();
+
+        if (ConfigManager.languageConfig.get().contains("Board.Extras")) {
+            PKConfigurationSection section = ConfigManager.languageConfig.get().getConfigurationSection("Board.Extras");
+            for (String key : section.getKeys(false)) {
+                try {
+                    trackedCooldowns.put(key, ChatColor.of(section.getString(key)));
+                } catch (Exception e) {
+                    ProjectKorra.plugin.getLogger().warning("Couldn't parse color from 'Board.Extras." + key + "', using white.");
+                    trackedCooldowns.put(key, ChatColor.WHITE);
+                }
+            }
+        }
+    }
+
+    private static void registerDefaultTrackedCooldowns() {
+        trackedCooldowns.put("FireBlastCharged", Element.FIRE.getColor());
+        trackedCooldowns.put("RaiseEarthWall", Element.EARTH.getColor());
+        trackedCooldowns.put("SurgeWave", Element.WATER.getColor());
+        trackedCooldowns.put("SpoutHop", Element.WATER.getColor());
+        trackedCooldowns.put("IceSpikeField", Element.ICE.getColor());
+    }
+
+    private static ChatColor getTrackedCooldownColor(final String cooldownName) {
+        switch (cooldownName) {
+            case "FireBlastCharged":
+                return Element.FIRE.getColor();
+            case "RaiseEarthWall":
+                return Element.EARTH.getColor();
+            case "SurgeWave":
+            case "SpoutHop":
+                return Element.WATER.getColor();
+            case "IceSpikeField":
+                return Element.ICE.getColor();
+            default:
+                return trackedCooldowns.get(cooldownName);
+        }
+    }
+
+    /**
+     * Check if the player has the BendingBoard toggled off (disabled)
+     *
+     * @param player {@link Player} to check toggled
+     * @return true if player has the BendingBoard toggled off
+     */
+    public static boolean isDisabled(Player player) {
+        return disabledPlayers.contains(player.getUniqueId());
+    }
+
+    public static void changeWorld(Player player) {
+        getBoard(player).ifPresent((b) -> b.setVisible(!disabledWorlds.contains(player.getWorld().getName())));
+    }
+
+    /**
+     * Toggles the bendingboard for the given player if the board is enabled and they are in a bending enabled world
+     *
+     * @param player Player with the bendingboard
+     * @param force  True to ignore the enabled conditions and force a toggle update
+     */
+    public static void toggleBoard(Player player, boolean force) {
+        if (!force && (!enabled || disabledWorlds.contains(player.getWorld().getName()))) {
+            ChatUtil.sendBrandingMessage(player, ChatColor.RED + ConfigManager.languageConfig.get().getString("Commands.Board.Disabled"));
+            return;
+        }
+
+        if (scoreboardPlayers.containsKey(player)) {
+            scoreboardPlayers.get(player).hide();
+            disabledPlayers.add(player.getUniqueId());
+            scoreboardPlayers.remove(player);
+            ChatUtil.sendBrandingMessage(player, ChatColor.RED + ConfigManager.languageConfig.get().getString("Commands.Board.ToggledOff"));
+        } else {
+            disabledPlayers.remove(player.getUniqueId());
+            getBoard(player).ifPresent(BendingBoard::show);
+            ChatUtil.sendBrandingMessage(player, ChatColor.GREEN + ConfigManager.languageConfig.get().getString("Commands.Board.ToggledOn"));
+        }
+    }
+
+    /**
+     * Gets the player's bendingboard if not disabled for some reason, and if it does not exist but
+     * should one will be created and stored for them
+     *
+     * @param player the player to get the bendingboard of
+     * @return empty if the board is disabled
+     */
+    public static Optional<BendingBoard> getBoard(Player player) {
+        if (!enabled || disabledPlayers.contains(player.getUniqueId()) || !player.hasPermission("bending.command.board")) {
+            return Optional.empty();
+        }
+
+        if (!player.isOnline()) {
+            return Optional.empty();
+        }
+
+        if (!scoreboardPlayers.containsKey(player)) {
+            BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
+            if (bPlayer == null) {
+                return Optional.empty();
+            }
+
+            scoreboardPlayers.put(player, boardSupplier.apply(bPlayer));
+        }
+
+        return Optional.of(scoreboardPlayers.get(player));
+    }
+
+    /**
+     * Sets the bendingboard to match the player's current slots, update the active slot, and match cooldowns
+     *
+     * @param player Player with the bendingboard, silently ignored if board is disabled
+     */
+    public static void updateAllSlots(Player player) {
+        getBoard(player).ifPresent(BendingBoard::updateAll);
+    }
+
+    /**
+     * Update the player's bendingboard based on the given information.
+     * <ul>
+     * <li>If the player has a multiability bound, all slots will be updated
+     * <li>If the name is null or empty, the given slot is cleared
+     * <li>Combos or names without an ability are updated on the extras portion
+     * <li>The specific slot is updated if is in bounds [1, 9]
+     * <li>The given ability name is set to match forceCooldown
+     * </ul>
+     * <br>
+     *
+     * @param player        Player with the bendingboard, silently ignored if board is disabled
+     * @param name          Name of the ability being affected
+     * @param forceCooldown Force if the name is strikethroughed on the board
+     * @param slot          Slot being affected, use 0 if more than one slot is involved
+     */
+    public static void updateBoard(Player player, String name, boolean forceCooldown, int slot) {
+        getBoard(player).ifPresent((board) -> {
+            if (MultiAbilityManager.hasMultiAbilityBound(player)) {
+                scoreboardPlayers.get(player).updateAll();
+            }
+
+            if (name == null || name.isEmpty()) {
+                scoreboardPlayers.get(player).clearSlot(slot);
+                return;
+            }
+
+            CoreAbility coreAbility = CoreAbility.getAbility(name);
+            if (coreAbility instanceof ComboAbility) {
+                scoreboardPlayers.get(player).updateMisc(name, coreAbility.getElement().getColor(), forceCooldown);
+            } else if (coreAbility == null && getTrackedCooldownColor(name) != null) {
+                scoreboardPlayers.get(player).updateMisc(name, getTrackedCooldownColor(name), forceCooldown);
+            } else if (coreAbility != null && slot > 0) {
+                scoreboardPlayers.get(player).setSlot(slot, name, forceCooldown);
+            } else {
+                scoreboardPlayers.get(player).setAbilityCooldown(name, forceCooldown);
+            }
+        });
+    }
+
+    /**
+     * Sets the active slot on the player's bendingboard
+     *
+     * @param player  Player with the bendingboad, silently ignored if board is disabled
+     * @param newSlot New slot to be set as the active one
+     */
+    public static void changeActiveSlot(Player player, int newSlot) {
+        getBoard(player).ifPresent((board) -> board.setActiveSlot(newSlot));
+    }
+
+
+    /**
+     * Some abilities use internal cooldowns with custom names that don't correspond to bound abilities' names.
+     * Adds the internal cooldown name and color to the map of tracked abilities so as they can appear on the bending board.
+     *
+     * @param cooldownName the internal cooldown name
+     * @param color        the color to use when rendering the board entry
+     */
+    public static void addCooldownToTrack(String cooldownName, ChatColor color) {
+        trackedCooldowns.put(cooldownName, color);
+    }
+
+    /**
+     * Load into memory the list of players who have toggled the bending board off.
+     */
+    public static void loadDisabledPlayers() {
+        Platform.scheduler().runAsync(() -> {
+            final Set<UUID> disabled = DBConnection.getAdapter().boards().loadDisabled();
+            disabledPlayers.clear();
+            disabledPlayers.addAll(disabled);
+        });
+    }
+
+    /**
+     * Called on player logout
+     * Removes the board instance and stores the player's toggle preference for the bending board in the database
+     *
+     * @param player
+     */
+    public static void clean(final Player player) {
+        scoreboardPlayers.remove(player);
+        final UUID uuid = player.getUniqueId();
+        final boolean enabled = !disabledPlayers.contains(uuid);
+        Platform.scheduler().runAsync(() -> {
+            DBConnection.getAdapter().boards().setBoardState(uuid, enabled);
+        });
+    }
+}

@@ -1,0 +1,106 @@
+package com.projectkorra.projectkorra.chiblocking;
+
+import com.projectkorra.projectkorra.BendingPlayer;
+import com.projectkorra.projectkorra.Element;
+import com.projectkorra.projectkorra.ability.ChiAbility;
+import com.projectkorra.projectkorra.ability.CoreAbility;
+import com.projectkorra.projectkorra.airbending.Suffocate;
+import com.projectkorra.projectkorra.attribute.Attribute;
+import com.projectkorra.projectkorra.command.Commands;
+import com.projectkorra.projectkorra.platform.mc.Location;
+import com.projectkorra.projectkorra.platform.mc.Sound;
+import com.projectkorra.projectkorra.platform.mc.entity.Creature;
+import com.projectkorra.projectkorra.platform.mc.entity.Entity;
+import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
+import com.projectkorra.projectkorra.platform.mc.entity.Player;
+import com.projectkorra.projectkorra.util.MovementHandler;
+
+public class Paralyze extends ChiAbility {
+
+    @Attribute(Attribute.COOLDOWN)
+    private long cooldown;
+    @Attribute(Attribute.DURATION)
+    private long duration;
+    private Entity target;
+
+    public Paralyze(final Player sourceplayer, final Entity targetentity) {
+        super(sourceplayer);
+        if (!this.bPlayer.canBend(this)) {
+            return;
+        }
+        this.target = targetentity;
+        if (!(this.target instanceof LivingEntity)) {
+            return;
+        }
+        this.cooldown = getConfig().getLong("Abilities.Chi.Paralyze.Cooldown");
+        this.duration = getConfig().getLong("Abilities.Chi.Paralyze.Duration");
+        this.start();
+    }
+
+    @Override
+    public void progress() {
+        if (this.bPlayer.canBend(this)) {
+            if (this.target instanceof Player) {
+                if (Commands.invincible.contains(((Player) this.target).getName()) || !BendingPlayer.getBendingPlayer((Player) this.target).canBeChiblocked()) {
+                    this.remove();
+                    return;
+                }
+            }
+            this.paralyze(this.target);
+            this.bPlayer.addCooldown(this);
+        }
+        this.remove();
+    }
+
+    private void paralyze(final Entity entity) {
+        if (entity instanceof Creature) {
+            ((Creature) entity).setTarget(null);
+        }
+
+        if (entity instanceof Player) {
+            if (Suffocate.isChannelingSphere((Player) entity)) {
+                Suffocate.remove((Player) entity);
+            }
+        }
+        final MovementHandler mh = new MovementHandler((LivingEntity) entity, CoreAbility.getAbility(Paralyze.class));
+        mh.stopWithDuration(this.duration, Element.CHI.getColor() + "* Paralyzed *");
+        entity.getWorld().playSound(entity.getLocation(), Sound.ENTITY_ENDER_DRAGON_HURT, 2, 0);
+    }
+
+    @Override
+    public String getName() {
+        return "Paralyze";
+    }
+
+    @Override
+    public Location getLocation() {
+        return this.target != null ? this.target.getLocation() : null;
+    }
+
+    @Override
+    public long getCooldown() {
+        return this.cooldown;
+    }
+
+    @Override
+    public boolean isSneakAbility() {
+        return false;
+    }
+
+    @Override
+    public boolean isHarmlessAbility() {
+        return false;
+    }
+
+    public Entity getTarget() {
+        return this.target;
+    }
+
+    public void setTarget(final Entity target) {
+        this.target = target;
+    }
+
+    public long getDuration() {
+        return this.duration;
+    }
+}

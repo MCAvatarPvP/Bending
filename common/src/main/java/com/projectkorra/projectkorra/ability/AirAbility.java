@@ -1,0 +1,260 @@
+package com.projectkorra.projectkorra.ability;
+
+import com.projectkorra.projectkorra.BendingPlayer;
+import com.projectkorra.projectkorra.Element;
+import com.projectkorra.projectkorra.GeneralMethods;
+import com.projectkorra.projectkorra.ability.util.Collision;
+import com.projectkorra.projectkorra.airbending.AirSpout;
+import com.projectkorra.projectkorra.airbending.Suffocate;
+import com.projectkorra.projectkorra.configuration.ConfigManager;
+import com.projectkorra.projectkorra.platform.mc.Color;
+import com.projectkorra.projectkorra.platform.mc.Location;
+import com.projectkorra.projectkorra.platform.mc.Particle;
+import com.projectkorra.projectkorra.platform.mc.Sound;
+import com.projectkorra.projectkorra.platform.mc.entity.Entity;
+import com.projectkorra.projectkorra.platform.mc.entity.Player;
+import com.projectkorra.projectkorra.util.ParticleEffect;
+import com.projectkorra.projectkorra.util.ParticleUtil;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public abstract class AirAbility extends ElementalAbility {
+
+    public AirAbility(final Player player) {
+        super(player);
+    }
+
+    /**
+     * Breaks a breathbendng hold on an entity or one a player is inflicting on
+     * an entity.
+     *
+     * @param entity The entity to be acted upon
+     */
+    public static void breakBreathbendingHold(final Entity entity) {
+        if (Suffocate.isBreathbent(entity)) {
+            Suffocate.breakSuffocate(entity);
+            return;
+        }
+
+        if (entity instanceof Player) {
+            final Player player = (Player) entity;
+            if (Suffocate.isChannelingSphere(player)) {
+                Suffocate.remove(player);
+            }
+        }
+    }
+
+    /**
+     * Gets the Air Particles from the config.
+     *
+     * @return Config specified ParticleEffect
+     */
+    public static ParticleEffect getAirbendingParticles() {
+        final String particle = ConfigManager.getConfig().getString("Properties.Air.Particles");
+        if (particle == null) {
+            return ParticleEffect.CLOUD;
+        } else if (particle.equalsIgnoreCase("spell")) {
+            return ParticleEffect.SPELL;
+        } else if (particle.equalsIgnoreCase("blacksmoke")) {
+            return ParticleEffect.COOL_AIR_PARTICLE;
+        } else if (particle.equalsIgnoreCase("smoke")) {
+            return ParticleEffect.CLOUD;
+        } else if (particle.equalsIgnoreCase("smallsmoke")) {
+            return ParticleEffect.SNOW_SHOVEL;
+        } else {
+            return ParticleEffect.CLOUD;
+        }
+    }
+
+    /**
+     * This method was used for the old collision detection system. Please see
+     * {@link Collision} for the new system.
+     * <p>
+     * Checks whether a location is within an AirShield.
+     *
+     * @param loc The location to check
+     * @return true If the location is inside an AirShield.
+     */
+    @Deprecated
+    public static boolean isWithinAirShield(final Location loc) {
+        final List<String> list = new ArrayList<String>();
+        list.add("AirShield");
+        return GeneralMethods.blockAbilities(null, list, loc, 0);
+    }
+
+    /**
+     * Plays an integer amount of air particles in a location.
+     *
+     * @param bPlayer Used for air colors
+     * @param loc     The location to use
+     * @param amount  The amount of particles
+     */
+    public static void playAirbendingParticles(BendingPlayer bPlayer, final Location loc, final int amount) {
+        playAirbendingParticles(bPlayer, loc, amount, Math.random(), Math.random(), Math.random());
+    }
+
+    /**
+     * Plays an integer amount of air particles in a location with a given
+     * xOffset, yOffset, and zOffset.
+     *
+     * @param bPlayer Used for air colors
+     * @param loc     The location to use
+     * @param amount  The amount of particles
+     * @param xOffset The xOffset to use
+     * @param yOffset The yOffset to use
+     * @param zOffset The zOffset to use
+     */
+    public static void playAirbendingParticles(final BendingPlayer bPlayer, final Location loc, final int amount, final double xOffset, final double yOffset, final double zOffset) {
+        playAirbendingParticles(bPlayer, loc, amount, xOffset, yOffset, zOffset, 0);
+    }
+
+    /**
+     * Plays an integer amount of air particles in a location with a given
+     * xOffset, yOffset, and zOffset.
+     *
+     * @param bPlayer Used for air colors
+     * @param loc     The location to use
+     * @param amount  The amount of particles
+     * @param xOffset The xOffset to use
+     * @param yOffset The yOffset to use
+     * @param zOffset The zOffset to use
+     * @param speed   The speed of particles
+     */
+    public static void playAirbendingParticles(final BendingPlayer bPlayer, final Location loc, final int amount, final double xOffset, final double yOffset, final double zOffset, final double speed) {
+        ParticleEffect effect = getAirbendingParticles();
+        double multiplier = ConfigManager.getConfig().getDouble("Properties.Air.SprinkleMultiplier");
+        int amountMultiplied = Math.max((int) (amount * multiplier), 1);
+        if (bPlayer.isSprinkleEnabled())
+            ParticleEffect.END_ROD.display(loc, amountMultiplied, xOffset, yOffset, zOffset, speed);
+        if (bPlayer.getAirColor() != null && bPlayer.getAirColor().getName().equalsIgnoreCase("dust")) {
+            ParticleEffect.COOL_AIR_PARTICLE.display(loc, amount, xOffset, yOffset, zOffset, speed);
+            return;
+        }
+        if (effect == ParticleEffect.SPELL && bPlayer.getAirColor() != null) {
+            if (!bPlayer.getAirColor().getName().equalsIgnoreCase("none")) {
+                Color color = bPlayer.getAirColor().getColor().getColor();
+
+                ParticleUtil.spawn(
+                        Particle.ENTITY_EFFECT,
+                        loc,
+                        amount,
+                        xOffset, yOffset, zOffset,
+                        speed,
+                        color
+                );
+                return;
+            }
+        }
+        getAirbendingParticles().display(loc, amount, xOffset, yOffset, zOffset, speed);
+    }
+
+    /**
+     * Plays the Airbending Sound at a location if enabled in the config.
+     *
+     * @param loc The location to play the sound at
+     */
+    public static void playAirbendingSound(final Location loc) {
+        final float pitch = (float) ConfigManager.getConfig().getDouble("Properties.Air.Sound.Pitch");
+        playAirbendingSound(loc, pitch);
+    }
+
+    public static void playAirbendingSound(final Location loc, float pitch) {
+        if (ConfigManager.getConfig().getBoolean("Properties.Air.PlaySound")) {
+            final float volume = (float) ConfigManager.getConfig().getDouble("Properties.Air.Sound.Volume");
+
+            Sound sound = Sound.ENTITY_CREEPER_HURT;
+            String soundString = ConfigManager.getConfig().getString("Properties.Air.Sound.Sound");
+
+            GeneralMethods.playSound(loc, sound, soundString, volume, pitch);
+        }
+    }
+
+    /**
+     * This method was used for the old collision detection system. Please see
+     * {@link Collision} for the new system.
+     * <p>
+     * Removes all air spouts in a location within a certain radius.
+     *
+     * @param loc    The location to use
+     * @param radius The radius around the location to remove spouts in
+     * @param source The player causing the removal
+     */
+    @Deprecated
+    public static void removeAirSpouts(final Location loc, final double radius, final Player source) {
+        AirSpout.removeSpouts(loc, radius, source);
+    }
+
+    /**
+     * This method was used for the old collision detection system. Please see
+     * {@link Collision} for the new system.
+     * <p>
+     * Removes all air spouts in a location with a radius of 1.5.
+     *
+     * @param loc    The location to use
+     * @param source The player causing the removal
+     */
+    @Deprecated
+    public static void removeAirSpouts(final Location loc, final Player source) {
+        removeAirSpouts(loc, 1.5, source);
+    }
+
+    @Override
+    public boolean isIgniteAbility() {
+        return false;
+    }
+
+    @Override
+    public boolean isExplosiveAbility() {
+        return false;
+    }
+
+    @Override
+    public Element getElement() {
+        return Element.AIR;
+    }
+
+    @Override
+    public void handleCollision(final Collision collision) {
+        super.handleCollision(collision);
+    }
+
+    /**
+     * Plays an integer amount of air particles in a location.
+     *
+     * @param loc    The location to use
+     * @param amount The amount of particles
+     */
+    public void playAirbendingParticles(final Location loc, final int amount) {
+        playAirbendingParticles(this.bPlayer, loc, amount);
+    }
+
+    /**
+     * Plays an integer amount of air particles in a location with a given
+     * xOffset, yOffset, and zOffset.
+     *
+     * @param loc     The location to use
+     * @param amount  The amount of particles
+     * @param xOffset The xOffset to use
+     * @param yOffset The yOffset to use
+     * @param zOffset The zOffset to use
+     */
+    public void playAirbendingParticles(final Location loc, final int amount, final double xOffset, final double yOffset, final double zOffset) {
+        playAirbendingParticles(this.bPlayer, loc, amount, xOffset, yOffset, zOffset);
+    }
+
+    /**
+     * Plays an integer amount of air particles in a location with a given
+     * xOffset, yOffset, and zOffset.
+     *
+     * @param loc     The location to use
+     * @param amount  The amount of particles
+     * @param xOffset The xOffset to use
+     * @param yOffset The yOffset to use
+     * @param zOffset The zOffset to use
+     * @param speed   The speed of particles
+     */
+    public void playAirbendingParticles(final Location loc, final int amount, final double xOffset, final double yOffset, final double zOffset, final double speed) {
+        playAirbendingParticles(this.bPlayer, loc, amount, xOffset, yOffset, zOffset, speed);
+    }
+}

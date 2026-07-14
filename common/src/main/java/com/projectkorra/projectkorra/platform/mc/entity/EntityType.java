@@ -1,0 +1,11 @@
+package com.projectkorra.projectkorra.platform.mc.entity;
+
+public enum EntityType {
+    BLAZE, CAVE_SPIDER, DROWNED, ENDERMAN, ENDERMITE, GHAST, GIANT, HUSK, IRON_GOLEM, MAGMA_CUBE,
+    PHANTOM, PIGLIN, PLAYER, SHULKER, SILVERFISH, SKELETON, SKELETON_HORSE, SLIME, SPIDER, STRAY,
+    WITCH, WITHER, WITHER_SKELETON, ZOGLIN, ZOMBIE, ZOMBIE_HORSE, ZOMBIE_VILLAGER, ZOMBIFIED_PIGLIN;
+
+    public Object handle() {
+        return this;
+    }
+}

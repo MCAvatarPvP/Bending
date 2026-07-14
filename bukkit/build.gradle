@@ -1,0 +1,70 @@
+plugins {
+    id 'java-library'
+    id 'com.gradleup.shadow'
+    id 'xyz.jpenilla.run-paper'
+}
+
+def optional = { Object notation ->
+    dependencies.add('compileOnly', notation) { transitive = false }
+}
+
+dependencies {
+    api project(':common')
+    compileOnly "io.papermc.paper:paper-api:${paper_api_version}"
+    implementation 'org.xerial:sqlite-jdbc:3.49.1.0'
+    implementation 'io.papermc:paperlib:1.0.1'
+    implementation 'co.aikar:minecraft-timings:1.0.4'
+    optional 'com.github.retrooper:packetevents-spigot:2.12.0'
+    optional 'com.github.retrooper:packetevents-api:2.12.0'
+    optional 'org.geysermc.floodgate:api:2.2.5-SNAPSHOT'
+    optional 'com.github.SaberLLC:Saber-Factions:2.4.0-RC'
+    optional 'com.github.drtshock:Factions:0.6.11'
+    optional 'com.github.TechFortress:GriefPrevention:16.18'
+    optional 'com.griefcraft:lwc:2.2.5'
+    optional 'fr.neatmonster:nocheatplus:3.16.1-SNAPSHOT'
+    optional 'com.github.angeschossen:LandsAPI:6.26.16'
+    optional 'com.bekvon.bukkit:residence:5.0.1.0'
+    optional 'com.github.TownyAdvanced:Towny:0.98.3.0'
+    optional 'com.sk89q.worldedit:worldedit-core:7.3.9'
+    optional 'com.sk89q.worldedit:worldedit-bukkit:7.3.9'
+    optional 'com.sk89q.worldguard:worldguard-core:7.0.13'
+    optional 'com.sk89q.worldguard:worldguard-bukkit:7.0.13'
+    optional 'br.net.fabiozumbi12.RedProtect:RedProtect-Core:7.7.2'
+    optional 'br.net.fabiozumbi12.RedProtect:RedProtect-Spigot:7.7.2'
+    optional 'com.github.cryptomorin:kingdoms:1.13.9'
+    optional 'me.clip:placeholderapi:2.11.6'
+    optional 'com.griefdefender:api:2.1.0-SNAPSHOT'
+    compileOnly 'org.betonquest.betonquest:api:3.1.0-SNAPSHOT'
+    compileOnly files('../libs/NeptuneAPI-2.3.jar', '../libs/strikepractice-api.jar')
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
+}
+
+processResources {
+    filesMatching('plugin.yml') { expand(version: project.version) }
+}
+
+shadowJar {
+    archiveFileName = "ProjectKorra-${project.version}-bukkit.jar"
+    relocate 'co.aikar.timings.lib', 'timingslib.projectkorra'
+    relocate 'io.papermc.lib', 'paperlib.projectkorra'
+    relocate 'org.apache.commons', 'commonslang3.projectkorra'
+}
+
+assemble.dependsOn shadowJar
+
+tasks.named('runServer') {
+    minecraftVersion project.minecraft_version
+    runDirectory file('run')
+}
+
+tasks.register('runPaperServer') {
+    group = 'paper'
+    description = 'Builds ProjectKorra and runs a local Paper server with the Bukkit plugin installed.'
+    dependsOn tasks.named('runServer')
+}
+
