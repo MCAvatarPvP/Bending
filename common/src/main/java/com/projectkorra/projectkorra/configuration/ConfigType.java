@@ -7,6 +7,8 @@ import java.util.List;
 
 public class ConfigType {
 
+    private static final HashMap<String, ConfigType> ALL_TYPES = new HashMap<>();
+
     public static final ConfigType DEFAULT = new ConfigType("Default");
     public static final ConfigType PRESETS = new ConfigType("Presets");
     public static final ConfigType LANGUAGE = new ConfigType("Language");
@@ -18,7 +20,6 @@ public class ConfigType {
     public static final ConfigType EARTHCOSMETICS = new ConfigType("EarthCosmetics");
     public static final ConfigType FALLDAMAGE = new ConfigType("FallDamage");
     public static final ConfigType[] CORE_TYPES = {DEFAULT, PRESETS, LANGUAGE, COLLISION, FIRECOLORS, AIRCOLORS, WATERCOSMETICS, EARTHCOSMETICS, FALLDAMAGE, AVATAR_STATE};
-    private static final HashMap<String, ConfigType> ALL_TYPES = new HashMap<>();
     private final String string;
 
     public ConfigType(final String string) {

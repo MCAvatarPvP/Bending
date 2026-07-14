@@ -107,8 +107,7 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
     private final List<SelectedSlotMutation> selectedSlots = new ArrayList<>();
     private final Map<Integer, Entity> authoritativeEntityAliases = new HashMap<>();
     private final Map<Entity, Vec3d> predictedSpawnOrigins = new IdentityHashMap<>();
-    private final Map<String, Long> predictedCooldownExpiries = new HashMap<>();
-    private final Set<String> serverConfirmedPredictedCooldowns = new HashSet<>();
+    private final PredictionCooldownAuthority cooldownAuthority = new PredictionCooldownAuthority();
     private FabricClientPredictionPlatform platform;
     private BendingManager bendingManager;
     private BendingPlayer bendingPlayer;
@@ -427,10 +426,12 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
             if (element instanceof Element.SubElement subElement) bendingPlayer.getSubElements().add(subElement);
         }
         PassiveManager.registerPassives(bendingPlayer.getPlayer());
-        // The exact Fabric runtime owns its cooldown clock. Server cooldowns
-        // are authority for acceptance/rejection only; importing their expiry
-        // timestamps makes latency part of the displayed/client cooldown.
-        bendingPlayer.getCooldowns().entrySet().removeIf(entry -> entry.getValue().getCooldown() <= System.currentTimeMillis());
+        // The exact Fabric runtime owns cooldown expiry times so latency never
+        // extends a locally started cooldown. Server state still reconciles
+        // presence transitions: once the server has confirmed a predicted
+        // cooldown, its later absence must release a stale local gate.
+        expireCooldowns();
+        reconcileAuthoritativeCooldowns(cooldowns);
         // Seed stamina once when prediction starts. Periodic server snapshots
         // arrive on a different clock and otherwise fight the locally
         // progressed AirAgility XP bar. Explicit resets use StateDirective.
@@ -664,6 +665,18 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
         if (bendingPlayer == null) return;
         long now = System.currentTimeMillis();
         bendingPlayer.getCooldowns().entrySet().removeIf(entry -> entry.getValue().getCooldown() <= now);
+        cooldownAuthority.retainLocallyActive(Set.copyOf(bendingPlayer.getCooldowns().keySet()));
+    }
+
+    private void reconcileAuthoritativeCooldowns(final Map<String, Long> authoritativeCooldowns) {
+        if (bendingPlayer == null) return;
+        final Set<String> authoritative = authoritativeCooldowns == null
+                ? Set.of() : Set.copyOf(authoritativeCooldowns.keySet());
+        final Set<String> local = Set.copyOf(bendingPlayer.getCooldowns().keySet());
+        for (final String ability : cooldownAuthority.reconcile(authoritative, local)) {
+            bendingPlayer.removeCooldown(ability);
+            debug("runtime released server-expired predicted cooldown ability=" + ability);
+        }
     }
 
     private void ensurePredictedAirBlastShot(Player player) {
@@ -878,8 +891,7 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
         abilityStates.clear(); experiences.clear(); selectedSlots.clear(); authoritativeEntityAliases.clear();
         predictedSpawnOrigins.clear();
         CooldownSync.clear(this);
-        predictedCooldownExpiries.clear();
-        serverConfirmedPredictedCooldowns.clear();
+        cooldownAuthority.clear();
         platform = null; bendingManager = null; bendingPlayer = null; ready = false; managersStarted = false;
         debug("runtime stopped");
     }
@@ -887,15 +899,13 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
     @Override
     public void onAdded(BendingPlayer player, String ability, long expiresAtMillis) {
         if (player != bendingPlayer || ability == null || ability.isBlank()) return;
-        predictedCooldownExpiries.put(ability, expiresAtMillis);
-        serverConfirmedPredictedCooldowns.remove(ability);
+        cooldownAuthority.onLocalAdded(ability, expiresAtMillis);
     }
 
     @Override
     public void onRemoved(BendingPlayer player, String ability) {
         if (player != bendingPlayer || ability == null) return;
-        predictedCooldownExpiries.remove(ability);
-        serverConfirmedPredictedCooldowns.remove(ability);
+        cooldownAuthority.onLocalRemoved(ability);
     }
 
     private void setBlock0(ClientWorld world, BlockPos pos, BlockState state) {

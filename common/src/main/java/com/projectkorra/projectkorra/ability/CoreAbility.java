@@ -124,12 +124,21 @@ public abstract class CoreAbility implements Ability {
      * @see #start()
      */
     public CoreAbility(final Player player) {
-        if (player == null || !this.isEnabled()) {
+        if (player == null) {
             return;
         }
 
         this.player = player;
         this.bPlayer = BendingPlayer.getBendingPlayer(player);
+
+        // isEnabled() is implemented by each ability and may resolve
+        // player/style-specific configuration through bPlayer. Initialize the
+        // player context first; otherwise a disabled ability leaves bPlayer
+        // null while Java continues running the subclass constructor.
+        if (!this.isEnabled()) {
+            return;
+        }
+
         this.flightHandler = Manager.getManager(FlightHandler.class);
         this.startTime = System.currentTimeMillis();
         this.started = false;

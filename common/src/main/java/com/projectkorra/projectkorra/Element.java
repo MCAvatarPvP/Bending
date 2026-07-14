@@ -12,6 +12,9 @@ import java.util.*;
 
 public class Element {
 
+    // Element constructors register themselves here, so this registry must exist
+    // before any of the static element constants are constructed.
+    private static final HashMap<String, Element> ALL_ELEMENTS = new HashMap<>();
     public static final Element AIR = new Element("Air");
     public static final Element WATER = new Element("Water");
     public static final Element EARTH = new Element("Earth");
@@ -32,7 +35,6 @@ public class Element {
     public static final SubElement BLUE_FIRE = new SubElement("BlueFire", FIRE);
     private static final Element[] ELEMENTS = {AIR, WATER, EARTH, FIRE, CHI, FLIGHT, SPIRITUAL, BLOOD, HEALING, ICE, PLANT, LAVA, METAL, SAND, LIGHTNING, COMBUSTION, BLUE_FIRE};
     private static final SubElement[] SUB_ELEMENTS = {FLIGHT, SPIRITUAL, BLOOD, HEALING, ICE, PLANT, LAVA, METAL, SAND, LIGHTNING, COMBUSTION, BLUE_FIRE};
-    private static final HashMap<String, Element> ALL_ELEMENTS = new HashMap<>(); // Must be initialized first.
     private static final Element[] MAIN_ELEMENTS = {AIR, WATER, EARTH, FIRE, CHI};
     protected final String name;
     protected final ElementType type;

@@ -329,9 +329,10 @@ public final class PredictionClient {
                     + " binds=" + binds + " elements=" + elements + " subElements=" + subElements);
             if (!active) return;
         }
-        ExactPredictionRuntime.updatePlayerState(binds, cooldowns, elements, subElements, airBlastDecay);
+        final Map<String, Long> authoritativeCooldowns = convertCooldowns(state.cooldowns());
+        ExactPredictionRuntime.updatePlayerState(binds, authoritativeCooldowns, elements, subElements, airBlastDecay);
         ExactPredictionRuntime.reconcileActiveFlightAbilities(state.activeFlightAbilities());
-        debug("player state applied binds=" + binds + " cooldowns=" + cooldowns.keySet()
+        debug("player state applied binds=" + binds + " cooldowns=" + authoritativeCooldowns.keySet()
                 + " elements=" + elements + " subElements=" + subElements);
     }
 
