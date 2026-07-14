@@ -10,7 +10,7 @@ import java.util.UUID;
  * Raw Bukkit plugin-message codec matching Fabric's RegistryByteBuf layout.
  */
 final class PaperPredictionProtocol {
-    static final int VERSION = 17;
+    static final int VERSION = 16;
     static final String HELLO = "projectkorra:client_hello";
     static final String INPUT = "projectkorra:input_frame";
     static final String PREPARE = "projectkorra:action_prepare";

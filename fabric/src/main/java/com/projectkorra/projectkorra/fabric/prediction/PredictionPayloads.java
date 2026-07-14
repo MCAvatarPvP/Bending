@@ -14,7 +14,7 @@ import java.util.UUID;
 
 /** Wire contract used by the Fabric client and the Paper/Fabric server endpoints. */
 public final class PredictionPayloads {
-    public static final int PROTOCOL_VERSION = 17;
+    public static final int PROTOCOL_VERSION = 16;
     public static final int MAX_CONFIG_ENTRIES = 16_384;
     public static final int MAX_PROFILES = 2_048;
     public static final int MAX_TEMP_OPS = 4_096;
