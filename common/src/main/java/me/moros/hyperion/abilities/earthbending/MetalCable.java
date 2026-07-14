@@ -346,9 +346,13 @@ public class MetalCable extends MetalAbility implements AddonAbility {
     }
 
     public boolean hasRequiredInv() {
-        Set<String> materials = new HashSet<>(ConfigManager.getConfig(bPlayer).getStringList("Abilities.Earth.MetalCable.RequiredItems"));
+        Set<Material> materials = ConfigManager.getConfig(bPlayer)
+                .getStringList("Abilities.Earth.MetalCable.RequiredItems").stream()
+                .map(Material::getMaterial)
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
         if (materials.isEmpty()) return true;
-        return materials.stream().map(Material::getMaterial).filter(Objects::nonNull).anyMatch(player.getInventory()::contains);
+        return materials.stream().anyMatch(player.getInventory()::contains);
     }
 
     public static class CableTarget {

@@ -23,6 +23,9 @@ import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.platform.mc.Material;
 
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+import java.util.Objects;
 
 public class ConfigManager {
 
@@ -64,10 +67,10 @@ public class ConfigManager {
 
         config.addDefault("EnableCollisions", true);
 
-        final String[] extras = {
+        final List<String> extras = List.of(
                 Material.ANCIENT_DEBRIS.name(),
                 Material.NETHERITE_BLOCK.name()
-        };
+        );
 
         config.addDefault("ExtraUnbreakableMaterials", extras);
 
@@ -141,7 +144,7 @@ public class ConfigManager {
         config.addDefault("Abilities.Earth.EarthGuard.WallDuration", 2000);
         config.addDefault("Abilities.Earth.EarthGuard.WallCooldown", 3000);
 
-        final String[] materials = {
+        final List<String> materials = List.of(
                 Material.COBBLESTONE.name(),
                 Material.ACACIA_LOG.name(),
                 Material.BIRCH_LOG.name(),
@@ -151,7 +154,7 @@ public class ConfigManager {
                 Material.SPRUCE_LOG.name(),
                 Material.ICE.name(),
                 Material.PACKED_ICE.name()
-        };
+        );
         config.addDefault("Abilities.Earth.LavaDisk.Enabled", true);
         config.addDefault("Abilities.Earth.LavaDisk.Description", "Tap sneak to select a nearby earth or lava source. This disk made of molten earth will destroy any earthbendable and any soft materials it comes in contact with. The closer you are to the LavaDisk the faster it spins and the more damage it deals.");
         config.addDefault("Abilities.Earth.LavaDisk.MaxDamage", 6.0);
@@ -162,11 +165,11 @@ public class ConfigManager {
         config.addDefault("Abilities.Earth.LavaDisk.PassThroughEntities", true);
         config.addDefault("Abilities.Earth.LavaDisk.AdditionalMeltableBlocks", materials);
 
-        final String[] cableMaterials = {
+        final List<String> cableMaterials = List.of(
                 Material.IRON_CHESTPLATE.name(),
                 Material.IRON_INGOT.name(),
                 Material.IRON_BLOCK.name()
-        };
+        );
 
         config.addDefault("Abilities.Earth.MetalCable.Enabled", true);
         config.addDefault("Abilities.Earth.MetalCable.Description", "This incredibly versatile ability is used by Metalbenders for all purposes. Left click to launch a metal cable. If it connects to an entity or a block you will be pulled towards it. If you hold sneak, the entity or block will be pulled towards you instead. You can also left click again to throw any grabbed targets towards the direction you are looking at. Thrown blocks also deal damage. Note, depending on the server config, you might need some form of metal in your inventory to use this ability.");
@@ -275,7 +278,25 @@ public class ConfigManager {
         config.addDefault("Abilities.Chi.Smokescreen.BlindnessTicks", 30);
         config.addDefault("Abilities.Chi.Smokescreen.Radius", 5.0);
 
+        repairMaterialList(config, "ExtraUnbreakableMaterials", extras);
+        repairMaterialList(config, "Abilities.Earth.LavaDisk.AdditionalMeltableBlocks", materials);
+        repairMaterialList(config, "Abilities.Earth.MetalCable.RequiredItems", cableMaterials);
+
         config.options().copyDefaults(true);
         ConfigManager.config.saveConfig();
+    }
+
+    private static void repairMaterialList(Config config, String path, List<String> defaults) {
+        Object configured = config.get(path);
+        if (!(configured instanceof Collection<?> entries)) {
+            config.set(path, defaults);
+            return;
+        }
+        if (!entries.isEmpty() && entries.stream()
+                .map(String::valueOf)
+                .map(Material::getMaterial)
+                .noneMatch(Objects::nonNull)) {
+            config.set(path, defaults);
+        }
     }
 }

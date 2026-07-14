@@ -25,6 +25,8 @@ public class Dig extends EarthAbility implements AddonAbility {
     private long revertTime;
     @Attribute(Attribute.SPEED)
     private double speed;
+    @Attribute(Attribute.RADIUS)
+    private double radius;
 
     public Dig(Player player) {
         super(player);
@@ -37,6 +39,7 @@ public class Dig extends EarthAbility implements AddonAbility {
         this.duration = ProjectAddons.instance.getConfig(bPlayer).getLong("Abilities.Earth.Dig.Duration");
         this.revertTime = ProjectAddons.instance.getConfig(bPlayer).getLong("Abilities.Earth.Dig.RevertTime");
         this.speed = ProjectAddons.instance.getConfig(bPlayer).getDouble("Abilities.Earth.Dig.Speed");
+        this.radius = ProjectAddons.instance.getConfig(bPlayer).getDouble("Abilities.Earth.Dig.Radius");
 
         start();
     }
@@ -60,7 +63,7 @@ public class Dig extends EarthAbility implements AddonAbility {
             return;
         }
 
-        for (Block block : GeneralMethods.getBlocksAroundPoint(player.getEyeLocation(), 2.4)) {
+        for (Block block : GeneralMethods.getBlocksAroundPoint(player.getEyeLocation(), radius)) {
             if (isEarthbendable(block)) {
                 ParticleEffect.BLOCK_CRACK.display(block.getLocation().add(0.5, 0.5, 0.5), 5, 0.25, 0.25, 0.25, block.getBlockData());
                 new TempBlock(block, Material.AIR).setRevertTime(revertTime);

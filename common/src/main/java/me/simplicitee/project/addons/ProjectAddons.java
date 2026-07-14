@@ -172,6 +172,7 @@ public class ProjectAddons implements JavaPlugin {
         c.addDefault("Abilities.Earth.Dig.Duration", -1);
         c.addDefault("Abilities.Earth.Dig.RevertTime", 3500);
         c.addDefault("Abilities.Earth.Dig.Speed", 0.51);
+        c.addDefault("Abilities.Earth.Dig.Radius", 2.4);
 
         // Dig Combo
         c.addDefault("Abilities.Earth.DigCombo.Enabled", true);
