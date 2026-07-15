@@ -6,6 +6,7 @@ import com.projectkorra.projectkorra.Element.SubElement;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.ComboAbility;
 import com.projectkorra.projectkorra.ability.CoreAbility;
+import com.projectkorra.projectkorra.ability.activation.AbilityActivationManager;
 import com.projectkorra.projectkorra.event.ComboHelpCompleteEvent;
 import com.projectkorra.projectkorra.event.ComboHelpInputEvent;
 import com.projectkorra.projectkorra.event.ComboHelpStartEvent;
@@ -85,17 +86,27 @@ public class ComboManager {
             return;
         }
 
+        Object created = null;
         if (comboAbil.getComboType() instanceof Class) {
             final Class<?> clazz = (Class<?>) comboAbil.getComboType();
             try {
-                ReflectionHandler.instantiateObject(clazz, player);
+                created = ReflectionHandler.instantiateObject(clazz, player);
             } catch (final Exception e) {
                 e.printStackTrace();
             }
         } else {
             if (comboAbil.getComboType() instanceof ComboAbility) {
-                ((ComboAbility) comboAbil.getComboType()).createNewComboInstance(player);
+                created = ((ComboAbility) comboAbil.getComboType()).createNewComboInstance(player);
             }
+        }
+
+        // A combo is created by the final bound-ability input, so its runtime
+        // name normally differs from that input (for example Blaze:SHIFT_UP
+        // creates FireWheel). Report the successfully started instance to the
+        // activation tracker; prediction reconciliation must not reject it as
+        // an unrelated/unhandled input and immediately remove it.
+        if (created instanceof CoreAbility ability && ability.isStarted() && !ability.isRemoved()) {
+            AbilityActivationManager.markHandled();
         }
     }
 

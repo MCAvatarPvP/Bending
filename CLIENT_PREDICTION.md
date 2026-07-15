@@ -21,11 +21,11 @@ the ability produces in local play.
 3. A supported input is executed locally in the input frame, then sent with a
    monotonic sequence number. The normal vanilla input is still sent and the
    server consumes it as a duplicate.
-4. The server runs the real ability from its actual player position and view,
-   enforces its own cooldown and source rules, and replies with acceptance,
-   authoritative origin, and cooldown expiry.
-5. Acceptance keeps the local simulation. A small origin discrepancy translates
-   origin-near `Location` fields in the predicted ability. Rejection removes the
+4. The server validates the input eye pose against its player, then runs the real
+   ability under that immutable input-time position and view. It enforces its own
+   cooldown and source rules and replies with acceptance, the pose it executed,
+   and cooldown expiry.
+5. Acceptance keeps the local simulation at that same execution pose. Rejection removes the
    predicted ability and rolls back its blocks, spawned visual entities, and
    still-current velocity changes.
 
@@ -89,7 +89,11 @@ the ability produces in local play.
 - Newly-created authoritative abilities are backdated by the bounded input rewind.
   Charge and duration clocks therefore represent the same action age as the local
   prediction; EarthSmash release cannot fail merely because its server instance
-  started one network trip later.
+  started one network trip later. EarthSmash grab, shoot, flight, sneak and no-op
+  bound inputs are classified as transitions on the existing instance even though
+  its constructor does not start a new ability. Reconciliation never performs a
+  global EarthSmash handoff; rejection rolls back only effects created by that
+  input, and an authoritative removal targets the matching instance/action.
 - Gameplay-affecting random selection can use the shared action seed. PhaseChange
   melt uses this seed, so client and server traverse the same ice-block sequence
   even though the client begins that sequence earlier for prediction.
@@ -110,27 +114,32 @@ action sequence, client tick, target entity ID, and contact point. The server:
 - only exposes an accepted rewound player to the **real server ability's nearby
   entity query**. The real ability still decides whether and how much to damage.
 
-Accepted contact is provisional. Damage and velocity applied through
-`DamageHandler` and `GeneralMethods.setVelocity` are held until the defender
+Accepted claimed contact is provisional. Server-observed contacts without a
+prediction claim use the same path, keyed by ability, target, and server tick;
+their contact point is the defender's authoritative hit-box center at impact.
+Damage, velocity, confirmed impact sounds, and server-only contact rewards such
+as AirSwipe/AirSweep stamina regeneration are held in one decision until the defender
 has received a minimum server-visible reaction budget plus their bounded round
 trip and a small jitter allowance. Time between authoritative ability
 acceptance and contact is deducted, so an already-telegraphed projectile gains
 little or no additional delay while an unseen instant hit receives the full
-budget. At the deadline the server commits both effects, in their original
-order, only when the claimed contact is still inside the defender's
-authoritative hit box. Moving the hit box clear drops both effects; pressing an
+budget. At the deadline the server commits every bundled effect, in its original
+order, only when the claimed or server-observed contact is still inside the defender's
+authoritative hit box. Moving the hit box clear drops every effect; pressing an
 unrelated ability does not.
 
 The defaults are under `Properties.Prediction.Reaction`: minimum visible time
 is 200 ms, compensation is capped at 200 ms, jitter allowance is 25 ms, and
 contact tolerance is 0.2 blocks.
-This path applies only to accepted predicted hit claims. Direct addon damage,
-direct `Entity#setVelocity` calls, potion effects, and custom addon state are
-not made provisional unless they use the common ProjectKorra effect paths.
+This applies whether the attacker and defender are modded or unmodded. Direct
+addon damage, direct `Entity#setVelocity` calls, potion effects, and custom
+addon state are not provisional unless they use the common ProjectKorra effect
+paths; bundled combat abilities are routed through those paths.
 
 The server never accepts client health, cooldown, block, element, bind, source,
-or origin state as authority. Claimed yaw/pitch is not used for validation; the
-server player's own view is used.
+or final origin state as authority. The input pose is bounded against the native
+player position, then supplied only as the immutable context in which the server
+runs its own source-selection code.
 
 ## Addons and compatibility
 
@@ -139,6 +148,11 @@ on both logical sides and run their actual classes. Every `Config` created by a
 bundled addon is automatically registered for public prediction sync. An addon
 may also register a tighter server hit envelope through
 `PredictionSnapshotBuilder.registerProfile`.
+
+Projectile-backed addons must expose their projectile type on the prediction
+platform and cannot rely exclusively on server-only projectile callbacks.
+ChiRework RopeDart launches a tracked predicted arrow and performs target
+attachment through a swept contact test in the ability runtime.
 
 A third-party server-only addon cannot be predicted exactly because its code is
 absent from the client. The client detects that the bound ability is not in its

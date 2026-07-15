@@ -108,7 +108,7 @@ public class EarthShardsProjectile extends EarthAbility implements AddonAbility 
                 DamageHandler.damageEntity(lEnt, damage, this);
                 lEnt.setNoDamageTicks(0);
                 Vector dir = GeneralMethods.getDirection(origin, lEnt.getLocation()).normalize().multiply(0.2);
-                lEnt.setVelocity(dir.clone());
+                GeneralMethods.setVelocity(this, lEnt, dir.clone());
                 remove();
                 return;
             }

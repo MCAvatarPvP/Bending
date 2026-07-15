@@ -16,7 +16,6 @@ import com.projectkorra.projectkorra.airbending.AirSpout;
 import com.projectkorra.projectkorra.airbending.flight.FlightMultiAbility;
 import com.projectkorra.projectkorra.firebending.FireBlastCharged;
 import com.projectkorra.projectkorra.firebending.FireJet;
-import com.projectkorra.projectkorra.earthbending.EarthSmash;
 import com.projectkorra.projectkorra.ability.util.ComboManager;
 import com.projectkorra.projectkorra.ability.util.MultiAbilityManager;
 import com.projectkorra.projectkorra.ability.util.PassiveManager;
@@ -46,13 +45,10 @@ import com.projectkorra.projectkorra.prediction.PredictionStateOrdering;
 import com.projectkorra.projectkorra.prediction.TempBlockSync;
 import com.projectkorra.projectkorra.util.ClickType;
 import com.projectkorra.projectkorra.util.TempBlock;
-import com.projectkorra.projectkorra.util.Cooldown;
-import com.projectkorra.projectkorra.util.AbilityLagCompensator;
 import com.projectkorra.projectkorra.util.FallHandler;
 import com.projectkorra.projectkorra.waterbending.passive.FastSwim;
 import com.projectkorra.projectkorra.waterbending.WaterSpout;
 import com.jedk1.jedcore.ability.passive.WallRun;
-import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Objects;
@@ -536,9 +532,6 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
                     case SNEAK_START -> CommonInputHandler.handleSneak(player, false);
                     case SNEAK_STOP -> CommonInputHandler.handleSneak(player, true);
                 }
-                if (kind == PredictionPayloads.InputKind.LEFT_CLICK && "AirBlast".equalsIgnoreCase(bendingPlayer.getBoundAbilityName())) {
-                    ensurePredictedAirBlastShot(player);
-                }
             });
         } catch (Throwable failure) {
             ProjectKorra.log.warning("Predicted input " + sequence + " failed: " + failure.getMessage());
@@ -572,18 +565,23 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
         boolean hasMatchingExistingAbility = affectedExistingAbility(before, boundName);
         boolean deferredSneakTransition = (kind == PredictionPayloads.InputKind.SNEAK_START
                 || kind == PredictionPayloads.InputKind.SNEAK_STOP) && hasMatchingExistingAbility;
-        boolean affectedExisting = (handled || deferredSneakTransition) && hasMatchingExistingAbility;
-        boolean locallyPredicted = !action.abilities.isEmpty() || !action.spawned.isEmpty() || affectedExisting
-                || (kind == PredictionPayloads.InputKind.LEFT_CLICK
-                && "AirBlast".equalsIgnoreCase(bendingPlayer.getBoundAbilityName())
-                && CoreAbility.getAbilities(bendingPlayer.getPlayer(), AirBlast.class).stream().anyMatch(AirBlast::isProgressing));
+        // EarthSmash grab, shoot and flight inputs mutate the existing instance
+        // from inside a short-lived constructor and therefore do not call
+        // CoreAbility#start. The generic activation tracker cannot observe
+        // those transitions. Treat any input aimed at an existing EarthSmash
+        // as predicted existing-instance work so reconciliation never mistakes
+        // it for an unpredicted server-only transition and deletes the smash.
+        boolean earthSmashExistingTransition = "EarthSmash".equalsIgnoreCase(boundName)
+                && hasMatchingExistingAbility;
+        boolean affectedExisting = (handled || deferredSneakTransition || earthSmashExistingTransition)
+                && hasMatchingExistingAbility;
+        boolean locallyPredicted = !action.abilities.isEmpty() || !action.spawned.isEmpty() || affectedExisting;
         action.locallyPredicted = locallyPredicted;
         if (affectedExisting) {
             for (CoreAbility ability : before) {
                 if (ability != null && !ability.isRemoved() && matchesInputAbility(ability, boundName)
                         && ability.getPlayer() != null
                         && ability.getPlayer().getUniqueId().equals(player.getUniqueId())) {
-                    action.affectedAbilities.add(ability);
                     abilityActions.put(ability, sequence);
                 }
             }
@@ -719,102 +717,6 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
         }
     }
 
-    private void ensurePredictedAirBlastShot(Player player) {
-        if (bendingPlayer == null || bendingPlayer.isOnCooldown("AirBlast")) {
-            debug("runtime did not repair AirBlast while cooldown is active");
-            return;
-        }
-        if (!AirBlast.hasSufficientStamina(bendingPlayer)) {
-            debug("runtime did not repair AirBlast without sufficient stamina=" + airBlastStamina());
-            return;
-        }
-        boolean hadShootableBlast = false;
-        for (AirBlast blast : CoreAbility.getAbilities(player, AirBlast.class)) {
-            if (blast.getSource() == null && !blast.isProgressing()) {
-                hadShootableBlast = true;
-                shootPredictedAirBlast(player);
-                debug("runtime repaired predicted AirBlast staged shot progressing="
-                        + CoreAbility.getAbilities(player, AirBlast.class).stream().anyMatch(AirBlast::isProgressing));
-                return;
-            }
-        }
-        if (!hadShootableBlast && CoreAbility.getAbilities(player, AirBlast.class).stream().noneMatch(AirBlast::isProgressing)) {
-            shootPredictedAirBlast(player);
-            debug("runtime repaired predicted AirBlast direct shot progressing="
-                    + CoreAbility.getAbilities(player, AirBlast.class).stream().anyMatch(AirBlast::isProgressing));
-        }
-    }
-
-    private void shootPredictedAirBlast(Player player) {
-        Cooldown previous = bendingPlayer == null ? null : bendingPlayer.getCooldowns().remove("AirBlast");
-        int before = CoreAbility.getAbilities(player, AirBlast.class).size();
-        AirBlast.shoot(player);
-        boolean progressed = CoreAbility.getAbilities(player, AirBlast.class).stream().anyMatch(AirBlast::isProgressing);
-        if (!progressed) {
-            for (AirBlast blast : CoreAbility.getAbilities(player, AirBlast.class)) {
-                if (blast.getSource() == null && !blast.isProgressing()) {
-                    progressed = forcePredictedAirBlast(blast, player);
-                    break;
-                }
-            }
-        }
-        if (!progressed && previous != null && bendingPlayer != null) {
-            bendingPlayer.getCooldowns().put("AirBlast", previous);
-        }
-        debug("runtime predicted AirBlast shoot before=" + before
-                + " after=" + CoreAbility.getAbilities(player, AirBlast.class).size()
-                + " progressed=" + progressed
-                + " restoredCooldown=" + (!progressed && previous != null));
-    }
-
-    private boolean forcePredictedAirBlast(AirBlast blast, Player player) {
-        if (blast == null || player == null) return false;
-        Location origin = blast.getOrigin() == null ? player.getEyeLocation() : blast.getOrigin().clone();
-        Vector direction = player.getEyeLocation().getDirection();
-        if (direction == null || direction.lengthSquared() == 0
-                || !Double.isFinite(direction.getX()) || !Double.isFinite(direction.getY()) || !Double.isFinite(direction.getZ())) {
-            return false;
-        }
-        blast.setFromOtherOrigin(true);
-        blast.setOrigin(origin);
-        blast.setLocation(origin.clone());
-        blast.setDirection(direction.normalize());
-        blast.setTicks(0);
-        blast.setProgressing(true);
-        try {
-            Field lag = AirBlast.class.getDeclaredField("lagCompensator");
-            lag.trySetAccessible();
-            Method affect = AirBlast.class.getDeclaredMethod("affect",
-                    com.projectkorra.projectkorra.platform.mc.entity.Entity.class, Location.class);
-            affect.trySetAccessible();
-            lag.set(blast, new AbilityLagCompensator((target, snapshot) -> {
-                try {
-                    if (target.getUniqueId().equals(player.getUniqueId())) {
-                        debug("runtime AirBlast affect local before stamina=" + airBlastStamina()
-                                + " velocity=" + velocityString(MinecraftClient.getInstance().player == null ? null : MinecraftClient.getInstance().player.getVelocity())
-                                + " blastLocation=" + snapshot.getLocation()
-                                + " blastProgressing=" + blast.isProgressing()
-                                + " blastTicks=" + blast.getTicks()
-                                + " blastRadius=" + blast.getRadius());
-                    }
-                    affect.invoke(blast, target, snapshot.getLocation());
-                    if (target.getUniqueId().equals(player.getUniqueId())) {
-                        debug("runtime AirBlast affect local after stamina=" + airBlastStamina()
-                                + " velocity=" + velocityString(MinecraftClient.getInstance().player == null ? null : MinecraftClient.getInstance().player.getVelocity()));
-                    }
-                } catch (ReflectiveOperationException exception) {
-                    debug("runtime forced AirBlast affect failed: " + exception.getMessage());
-                }
-            }));
-        } catch (ReflectiveOperationException exception) {
-            debug("runtime forced AirBlast setup failed: " + exception.getMessage());
-            blast.setProgressing(false);
-            return false;
-        }
-        debug("runtime forced predicted AirBlast origin=" + origin + " direction=" + direction);
-        return true;
-    }
-
     private void reconcile0(long sequence, boolean accepted, Vec3d authoritativeOrigin,
                             String ability, long cooldownUntil) {
         // Never import the server timestamp here. The locally executed PK
@@ -827,15 +729,9 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
         action.accepted = accepted;
         if (!accepted) {
             debug("runtime reconcile rejected sequence=" + sequence + " ability=" + ability);
-            if (isEarthSmashAction(action) && !action.affectedAbilities.isEmpty()) {
-                handoffEarthSmashToAuthority(action, "rejected existing-state input");
-            }
             rollback(action);
             actions.remove(sequence);
             return;
-        }
-        if (isEarthSmashAction(action) && !action.locallyPredicted) {
-            handoffEarthSmashToAuthority(action, "server accepted an unpredicted state transition");
         }
         // The time from local execution to this accepted reconcile is a direct
         // measurement of how far the client simulation runs ahead of the server.
@@ -891,30 +787,10 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
         }
     }
 
-    private boolean isEarthSmashAction(Action action) {
-        return action != null && "EarthSmash".equalsIgnoreCase(action.inputAbility);
-    }
-
     private int blockConfirmationTicks(final long actionSequence) {
         final Action action = actions.get(actionSequence);
         return action == null || !action.accepted
                 ? BLOCK_CONFIRMATION_TICKS : action.blockConfirmationTicks;
-    }
-
-    private void handoffEarthSmashToAuthority(Action action, String reason) {
-        if (bendingPlayer == null || bendingPlayer.getPlayer() == null) return;
-        for (EarthSmash smash : List.copyOf(CoreAbility.getAbilities(bendingPlayer.getPlayer(), EarthSmash.class))) {
-            try { smash.remove(); } catch (Throwable ignored) { }
-            abilityActions.remove(smash);
-            if (action != null) {
-                action.abilities.remove(smash);
-                action.affectedAbilities.remove(smash);
-            }
-        }
-        if (action != null) action.locallyPredicted = false;
-        if (action != null) PredictionClient.requestAuthorityHandoff(action.sequence);
-        debug("runtime handed EarthSmash to server authority sequence="
-                + (action == null ? 0 : action.sequence) + " reason=" + reason);
     }
 
     private void stop0(MinecraftClient client) {
@@ -952,6 +828,11 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
         cooldownAuthority.clear();
         platform = null; bendingManager = null; bendingPlayer = null; ready = false; managersStarted = false;
         debug("runtime stopped");
+    }
+
+    @Override
+    public boolean isAuthoritative() {
+        return false;
     }
 
     @Override
@@ -2083,7 +1964,6 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
         final double eyeHeight;
         final String inputAbility;
         final Set<CoreAbility> abilities = Collections.newSetFromMap(new IdentityHashMap<>());
-        final Set<CoreAbility> affectedAbilities = Collections.newSetFromMap(new IdentityHashMap<>());
         final Set<Entity> spawned = Collections.newSetFromMap(new IdentityHashMap<>());
         final Set<Integer> claimedTargets = new HashSet<>();
         final Map<Integer, Integer> velocityOrdinals = new HashMap<>();

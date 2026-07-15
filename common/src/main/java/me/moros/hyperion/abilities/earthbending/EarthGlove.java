@@ -209,7 +209,7 @@ public class EarthGlove extends EarthAbility implements AddonAbility {
                 }
                 DamageHandler.damageEntity(livingEntity, damage, this);
                 livingEntity.setNoDamageTicks(0);
-                livingEntity.setVelocity(new Vector());
+                GeneralMethods.setVelocity(this, livingEntity, new Vector());
                 shatterGlove();
                 return;
             }

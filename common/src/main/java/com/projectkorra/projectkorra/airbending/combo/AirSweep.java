@@ -24,6 +24,7 @@ import com.projectkorra.projectkorra.platform.mc.scheduler.BukkitRunnable;
 import com.projectkorra.projectkorra.platform.mc.util.BoundingBox;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.CooldownSync;
+import com.projectkorra.projectkorra.prediction.ConfirmedHitEffects;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.colliders.AABB;
 import com.projectkorra.projectkorra.util.colliders.Ray;
@@ -303,14 +304,16 @@ public class AirSweep extends AirAbility implements ComboAbility {
             return false;
         }
 
-        playSound(entity.getLocation(), Sound.ENTITY_BREEZE_WIND_BURST, 1, 0.5f);
         DamageHandler.damageEntity(entity, this.damage, this);
+        final Location hitLocation = entity.getLocation().clone();
+        ConfirmedHitEffects.sound(this, entity,
+                () -> playSound(hitLocation, Sound.ENTITY_BREEZE_WIND_BURST, 1, 0.5f));
 
         if (entity instanceof Player entityPlayer) {
             final BendingPlayer otherBP = BendingPlayer.getBendingPlayer(entityPlayer);
             if (otherBP != null && otherBP.hasElement(Element.AIR)) {
-                this.bPlayer.regenerateAirBlastDecay(this.regenAmount, 1.0);
-                CooldownSync.airBlastRegenerated(this.bPlayer);
+                CooldownSync.regenerateAirBlastOnConfirmedHit(
+                        this, entity, this.bPlayer, this.regenAmount, 1.0);
             }
         }
 

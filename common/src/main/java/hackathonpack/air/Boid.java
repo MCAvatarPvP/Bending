@@ -76,7 +76,8 @@ public class Boid {
                 }
                 final Vector alignment = alignmentVector();
                 if (alignment.lengthSquared() > 0) {
-                    entity.setVelocity(entity.getVelocity().add(alignment.normalize().multiply(this.knockbackPower)));
+                    GeneralMethods.setVelocity(this.airSpray, entity,
+                            entity.getVelocity().add(alignment.normalize().multiply(this.knockbackPower)));
                 }
             }
         }

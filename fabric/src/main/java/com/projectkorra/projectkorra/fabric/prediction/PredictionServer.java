@@ -15,14 +15,17 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.AbilityRemovalSync;
 import com.projectkorra.projectkorra.prediction.CapturedInputPose;
+import com.projectkorra.projectkorra.prediction.ConfirmedHitEffects;
 import com.projectkorra.projectkorra.prediction.CooldownSync;
 import com.projectkorra.projectkorra.prediction.PredictionCooldownTimeline;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.fabric.FabricGameplayBridge;
 import com.projectkorra.projectkorra.platform.fabric.FabricMC;
 import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
 import com.projectkorra.projectkorra.prediction.PredictionTiming;
 import com.projectkorra.projectkorra.prediction.PredictionVisibility;
 import com.projectkorra.projectkorra.prediction.HitResolutionSync;
+import com.projectkorra.projectkorra.prediction.NativeHitResolution;
 import com.projectkorra.projectkorra.prediction.ReactionWindow;
 import com.projectkorra.projectkorra.prediction.PendingHitResolution;
 import com.projectkorra.projectkorra.prediction.TempBlockSync;
@@ -89,6 +92,7 @@ public final class PredictionServer implements TempBlockSync.Listener,
     private final Map<Long, Action> tempLayerActions = new HashMap<>();
     private final List<PendingTempBlock> pendingTempBlocks = new ArrayList<>();
     private final List<Claim> pendingReactions = new ArrayList<>();
+    private final List<NativeHitResolution> pendingNativeReactions = new ArrayList<>();
     private volatile List<PredictionPayloads.ConfigEntry> publicConfig = List.of();
     private volatile List<PredictionPayloads.AbilityProfile> profiles = List.of();
     private volatile Map<String, PredictionPayloads.AbilityProfile> profilesByName = Map.of();
@@ -131,6 +135,7 @@ public final class PredictionServer implements TempBlockSync.Listener,
         tempLayerActions.clear();
         pendingTempBlocks.clear();
         pendingReactions.clear();
+        pendingNativeReactions.clear();
         if (active == this) active = null;
     }
 
@@ -234,6 +239,8 @@ public final class PredictionServer implements TempBlockSync.Listener,
                          com.projectkorra.projectkorra.platform.mc.entity.Entity target,
                          Runnable commit) {
         if (!reactionEnabled() || !(ability instanceof CoreAbility coreAbility) || target == null) return false;
+        if (ability.getPlayer() != null
+                && ability.getPlayer().getUniqueId().equals(target.getUniqueId())) return false;
         Action action = abilityActions.get(coreAbility);
         if (action == null) {
             UUID owner = ability.getPlayer() == null ? INPUT_OWNER.get() : ability.getPlayer().getUniqueId();
@@ -241,24 +248,36 @@ public final class PredictionServer implements TempBlockSync.Listener,
             Session session = owner == null ? null : sessions.get(owner);
             action = session == null || sequence == null ? null : session.actions.get(sequence);
         }
-        if (action == null) return false;
-        Claim claim = action.claims.values().stream()
+        Claim claim = action == null ? null : action.claims.values().stream()
                 .filter(candidate -> candidate.targetUuid.equals(target.getUniqueId()))
                 .findFirst().orElse(null);
-        if (claim == null || claim.consumedTick != tick
-                || claim.pending != null && claim.pending.isResolved()) return false;
-        ServerPlayerEntity defender = server.getPlayerManager().getPlayer(claim.targetUuid);
+        ServerPlayerEntity defender = server.getPlayerManager().getPlayer(target.getUniqueId());
         if (defender == null || defender.isDead()) return false;
 
-        if (claim.pending == null) {
-            int delayTicks = reactionTicks(action, defender.networkHandler.getLatency());
-            if (delayTicks <= 0) return false;
-            claim.pending = new PendingHitResolution(
-                    tick + delayTicks,
-                    new Vector(claim.contact.x, claim.contact.y, claim.contact.z));
-            pendingReactions.add(claim);
+        final long visibleTicks = action == null ? coreAbility.getRunningTicks() : tick - action.acceptedServerTick;
+        final int delayTicks = reactionTicks(visibleTicks, defender.networkHandler.getLatency());
+        if (delayTicks <= 0) return false;
+
+        if (claim != null && claim.consumedTick == tick
+                && (claim.pending == null || !claim.pending.isResolved())) {
+            if (claim.pending == null) {
+                claim.pending = new PendingHitResolution(
+                        tick + delayTicks,
+                        new Vector(claim.contact.x, claim.contact.y, claim.contact.z));
+                pendingReactions.add(claim);
+            }
+            return claim.pending.add(commit);
         }
-        return claim.pending.add(commit);
+
+        NativeHitResolution nativeHit = pendingNativeReactions.stream()
+                .filter(candidate -> candidate.matches(coreAbility, target.getUniqueId(), tick))
+                .findFirst().orElse(null);
+        if (nativeHit == null) {
+            nativeHit = new NativeHitResolution(coreAbility, target.getUniqueId(), tick,
+                    tick + delayTicks, target.getBoundingBox().getCenter());
+            pendingNativeReactions.add(nativeHit);
+        }
+        return nativeHit.add(commit);
     }
 
     private void resolvePendingReactions() {
@@ -273,20 +292,31 @@ public final class PredictionServer implements TempBlockSync.Listener,
             PendingHitResolution.Result result = claim.pending.resolve(tick, box, reactionContactTolerance());
             if (result != PendingHitResolution.Result.WAITING) iterator.remove();
         }
+        var nativeIterator = pendingNativeReactions.iterator();
+        while (nativeIterator.hasNext()) {
+            NativeHitResolution pending = nativeIterator.next();
+            ServerPlayerEntity defender = server.getPlayerManager().getPlayer(pending.target());
+            com.projectkorra.projectkorra.platform.mc.entity.Entity wrapped =
+                    defender == null ? null : FabricMC.entity(defender);
+            com.projectkorra.projectkorra.platform.mc.util.BoundingBox box =
+                    defender == null || defender.isDead() || wrapped == null ? null : wrapped.getBoundingBox();
+            PendingHitResolution.Result result = pending.resolve(tick, box, reactionContactTolerance());
+            if (result != PendingHitResolution.Result.WAITING) nativeIterator.remove();
+        }
     }
 
     private static boolean reactionEnabled() {
         return ConfigManager.getConfig().getBoolean("Properties.Prediction.Reaction.Enabled", true);
     }
 
-    private int reactionTicks(Action action, int pingMillis) {
+    private int reactionTicks(long visibleTicks, int pingMillis) {
         int minimumVisible = ConfigManager.getConfig().getInt(
                 "Properties.Prediction.Reaction.MinimumVisibleMillis", 200);
         int maximum = ConfigManager.getConfig().getInt(
                 "Properties.Prediction.Reaction.MaxCompensationMillis", 200);
         int jitter = ConfigManager.getConfig().getInt(
                 "Properties.Prediction.Reaction.JitterAllowanceMillis", 25);
-        return ReactionWindow.visibilityDelayTicks(tick - action.acceptedServerTick,
+        return ReactionWindow.visibilityDelayTicks(visibleTicks,
                 minimumVisible, pingMillis, maximum, jitter);
     }
 
@@ -318,6 +348,7 @@ public final class PredictionServer implements TempBlockSync.Listener,
     }
 
     public static ServerPlayerEntity predictedSoundEffectOwner() {
+        if (ConfirmedHitEffects.isBroadcastingAuthoritativeSound()) return null;
         return predictedEffectOwner();
     }
 
@@ -629,7 +660,10 @@ public final class PredictionServer implements TempBlockSync.Listener,
         }
         AbilityActivationManager.beginTracking();
         try {
-            dispatched = gameplay.handlePredictedInput(player, input.kind());
+            final boolean[] dispatchResult = {false};
+            PredictionDeterminism.run(input.sequence(), () ->
+                    dispatchResult[0] = gameplay.handlePredictedInput(player, input.kind()));
+            dispatched = dispatchResult[0];
         } finally {
             handled = AbilityActivationManager.finishTracking();
             if (guardedCooldown) {
@@ -665,8 +699,10 @@ public final class PredictionServer implements TempBlockSync.Listener,
                     claimedOrigin, cooldownAfter);
             return;
         }
+        boolean earthSmashExistingTransition = "EarthSmash".equalsIgnoreCase(abilityName)
+                && hadExistingMatchingAbility;
         boolean directTargetTransition = "FirePunch".equalsIgnoreCase(abilityName);
-        if (input.locallyPredicted() && !handled && !directTargetTransition
+        if (input.locallyPredicted() && !handled && !earthSmashExistingTransition && !directTargetTransition
                 && cooldownAfter <= cooldownBefore
                 && !createdAbility(before, player.getUuid(), abilityName)) {
             flushTempBlocks();
@@ -688,8 +724,10 @@ public final class PredictionServer implements TempBlockSync.Listener,
 
         long cooldownUntil = cooldownAfter;
         flushTempBlocks();
+        // The authoritative ability was executed under capturedEffectPose,
+        // therefore its authoritative source is the validated input pose too.
         reconcile(player, session, input.sequence(), true, "accepted", abilityName,
-                isSneakTransition(input.kind()) ? claimedOrigin : origin, cooldownUntil);
+                claimedOrigin, cooldownUntil);
     }
 
     private static boolean createdAbility(Set<CoreAbility> before, UUID owner, String abilityName) {

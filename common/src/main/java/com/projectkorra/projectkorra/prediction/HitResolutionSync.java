@@ -33,7 +33,9 @@ public final class HitResolutionSync {
 
     public enum Effect {
         DAMAGE,
-        VELOCITY
+        VELOCITY,
+        STAMINA,
+        SOUND
     }
 
     @FunctionalInterface

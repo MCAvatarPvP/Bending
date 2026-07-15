@@ -67,6 +67,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     private final List<PendingTempBlock> pendingTempBlocks = new ArrayList<>();
     private TempBlockPacketFilter tempBlockPacketFilter;
     private final List<Claim> pendingReactions = new ArrayList<>();
+    private final List<NativeHitResolution> pendingNativeReactions = new ArrayList<>();
     private final AtomicBoolean snapshotBuildRunning = new AtomicBoolean();
     private volatile List<PaperPredictionProtocol.ConfigEntry> publicConfig = List.of();
     private volatile List<PaperPredictionProtocol.AbilityProfile> profiles = List.of();
@@ -144,6 +145,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     }
 
     public static Player predictedSoundEffectOwner() {
+        if (ConfirmedHitEffects.isBroadcastingAuthoritativeSound()) return null;
         // Predicted clients already ran the ability sound locally. Hit claims
         // now validate registration only; they must not opt the owner back
         // into the authoritative sound broadcast and play a second hit sound.
@@ -286,6 +288,8 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                          com.projectkorra.projectkorra.platform.mc.entity.Entity target,
                          Runnable commit) {
         if (!reactionEnabled() || !(ability instanceof CoreAbility coreAbility) || target == null) return false;
+        if (ability.getPlayer() != null
+                && ability.getPlayer().getUniqueId().equals(target.getUniqueId())) return false;
         Action action = abilityActions.get(coreAbility);
         if (action == null) {
             UUID owner = ability.getPlayer() == null ? EFFECT_OWNER.get() : ability.getPlayer().getUniqueId();
@@ -293,24 +297,36 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             Session session = owner == null ? null : sessions.get(owner);
             action = session == null || sequence == null ? null : session.actions.get(sequence);
         }
-        if (action == null) return false;
-        Claim claim = action.claims.values().stream()
+        Claim claim = action == null ? null : action.claims.values().stream()
                 .filter(candidate -> candidate.target.equals(target.getUniqueId()))
                 .findFirst().orElse(null);
-        if (claim == null || claim.consumedTick != tick
-                || claim.pending != null && claim.pending.isResolved()) return false;
-        Player defender = Bukkit.getPlayer(claim.target);
+        Player defender = Bukkit.getPlayer(target.getUniqueId());
         if (defender == null || defender.isDead()) return false;
 
-        if (claim.pending == null) {
-            int delayTicks = reactionTicks(action, defender.getPing());
-            if (delayTicks <= 0) return false;
-            claim.pending = new PendingHitResolution(tick + delayTicks,
-                    new com.projectkorra.projectkorra.platform.mc.util.Vector(
-                            claim.contact.getX(), claim.contact.getY(), claim.contact.getZ()));
-            pendingReactions.add(claim);
+        final long visibleTicks = action == null ? coreAbility.getRunningTicks() : tick - action.acceptedTick;
+        final int delayTicks = reactionTicks(visibleTicks, defender.getPing());
+        if (delayTicks <= 0) return false;
+
+        if (claim != null && claim.consumedTick == tick
+                && (claim.pending == null || !claim.pending.isResolved())) {
+            if (claim.pending == null) {
+                claim.pending = new PendingHitResolution(tick + delayTicks,
+                        new com.projectkorra.projectkorra.platform.mc.util.Vector(
+                                claim.contact.getX(), claim.contact.getY(), claim.contact.getZ()));
+                pendingReactions.add(claim);
+            }
+            return claim.pending.add(commit);
         }
-        return claim.pending.add(commit);
+
+        NativeHitResolution nativeHit = pendingNativeReactions.stream()
+                .filter(candidate -> candidate.matches(coreAbility, target.getUniqueId(), tick))
+                .findFirst().orElse(null);
+        if (nativeHit == null) {
+            nativeHit = new NativeHitResolution(coreAbility, target.getUniqueId(), tick,
+                    tick + delayTicks, target.getBoundingBox().getCenter());
+            pendingNativeReactions.add(nativeHit);
+        }
+        return nativeHit.add(commit);
     }
 
     private void resolvePendingReactions() {
@@ -323,20 +339,29 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             PendingHitResolution.Result result = claim.pending.resolve(tick, box, reactionContactTolerance());
             if (result != PendingHitResolution.Result.WAITING) iterator.remove();
         }
+        Iterator<NativeHitResolution> nativeIterator = pendingNativeReactions.iterator();
+        while (nativeIterator.hasNext()) {
+            NativeHitResolution pending = nativeIterator.next();
+            Player defender = Bukkit.getPlayer(pending.target());
+            com.projectkorra.projectkorra.platform.mc.util.BoundingBox box =
+                    defender == null || defender.isDead() ? null : BukkitMC.entity(defender).getBoundingBox();
+            PendingHitResolution.Result result = pending.resolve(tick, box, reactionContactTolerance());
+            if (result != PendingHitResolution.Result.WAITING) nativeIterator.remove();
+        }
     }
 
     private static boolean reactionEnabled() {
         return ConfigManager.getConfig().getBoolean("Properties.Prediction.Reaction.Enabled", true);
     }
 
-    private int reactionTicks(Action action, int pingMillis) {
+    private int reactionTicks(long visibleTicks, int pingMillis) {
         int minimumVisible = ConfigManager.getConfig().getInt(
                 "Properties.Prediction.Reaction.MinimumVisibleMillis", 200);
         int maximum = ConfigManager.getConfig().getInt(
                 "Properties.Prediction.Reaction.MaxCompensationMillis", 200);
         int jitter = ConfigManager.getConfig().getInt(
                 "Properties.Prediction.Reaction.JitterAllowanceMillis", 25);
-        return ReactionWindow.visibilityDelayTicks(tick - action.acceptedTick,
+        return ReactionWindow.visibilityDelayTicks(visibleTicks,
                 minimumVisible, pingMillis, maximum, jitter);
     }
 
@@ -451,6 +476,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         pendingVanilla.clear();
         pendingTempBlocks.clear();
         pendingReactions.clear();
+        pendingNativeReactions.clear();
         TempBlockSync.clear(this);
         VelocitySync.clear(this);
         AbilityRemovalSync.clear(this);
@@ -832,8 +858,11 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             return;
         }
         boolean deferredSneakTransition = isSneakTransition(input.kind()) && hadExistingMatchingAbility;
+        boolean earthSmashExistingTransition = "EarthSmash".equalsIgnoreCase(abilityName)
+                && hadExistingMatchingAbility;
         boolean directTargetTransition = "FirePunch".equalsIgnoreCase(abilityName);
-        if (input.locallyPredicted() && !handled && !deferredSneakTransition && !directTargetTransition
+        if (input.locallyPredicted() && !handled && !deferredSneakTransition
+                && !earthSmashExistingTransition && !directTargetTransition
                 && cooldownAfter <= cooldownBefore
                 && !createdAbility(before, player.getUniqueId(), abilityName)) {
             flushTempBlocks();
@@ -853,9 +882,11 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                 abilityActions.put(candidate, action);
         }
         flushTempBlocks();
-        Location reconcileOrigin = isSneakTransition(input.kind())
-                ? new Location(player.getWorld(), input.x(), input.y(), input.z(), input.yaw(), input.pitch())
-                : player.getEyeLocation();
+        // dispatch() installed this validated input pose while the common
+        // ability selected its source, so reconciliation must report the same
+        // authority instead of the later native player position.
+        Location reconcileOrigin = new Location(player.getWorld(), input.x(), input.y(), input.z(),
+                input.yaw(), input.pitch());
         reconcile(player, session, input.sequence(), true, "accepted", abilityName, reconcileOrigin, cooldownAfter);
     }
 

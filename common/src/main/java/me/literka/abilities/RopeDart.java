@@ -8,10 +8,14 @@ import com.projectkorra.projectkorra.platform.mc.GameMode;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Particle;
 import com.projectkorra.projectkorra.platform.mc.entity.Arrow;
+import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.metadata.FixedMetadataValue;
+import com.projectkorra.projectkorra.platform.mc.util.BoundingBox;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.util.colliders.AABB;
+import com.projectkorra.projectkorra.util.colliders.Ray;
 import me.literka.ChiRework;
 import me.literka.util.ParticleEffect;
 
@@ -32,6 +36,7 @@ public class RopeDart extends ChiAbility implements AddonAbility {
     private Location origin;
     private Vector originVec;
     private Arrow arrow;
+    private Location previousArrowLocation;
     private LivingEntity target;
     private double targetYOffset;
     private boolean oldChi;
@@ -74,6 +79,7 @@ public class RopeDart extends ChiAbility implements AddonAbility {
         GeneralMethods.setVelocity(this, arrow, player.getLocation().getDirection().multiply(shootPower));
         arrow.setPickupStatus(Arrow.PickupStatus.DISALLOWED);
         arrow.setMetadata("ropedart", new FixedMetadataValue(ChiRework.plugin, this));
+        previousArrowLocation = arrow.getLocation().clone();
 
         retract = false;
 
@@ -102,6 +108,10 @@ public class RopeDart extends ChiAbility implements AddonAbility {
         }
 
         Location arrowLoc = arrow.getLocation();
+        if (target == null) {
+            findTargetAlongPath(previousArrowLocation, arrowLoc);
+        }
+        previousArrowLocation = arrowLoc.clone();
         if (!retract && origin.distanceSquared(arrowLoc) > maxRange * maxRange) {
             GeneralMethods.setVelocity(this, arrow, arrow.getVelocity().multiply(-1));
             retract = true;
@@ -173,8 +183,31 @@ public class RopeDart extends ChiAbility implements AddonAbility {
         }
     }
 
+    /**
+     * Projectile hit callbacks are server-only. Running the same swept-box
+     * contact test in the ability keeps the predicted dart attached to the
+     * same target instead of leaving a client-only arrow flying through it.
+     */
+    private void findTargetAlongPath(final Location from, final Location to) {
+        if (from == null || to == null || from.getWorld() == null || from.getWorld() != to.getWorld()) return;
+        final Vector delta = to.toVector().subtract(from.toVector());
+        final double distance = delta.length();
+        final AABB search = new AABB(from, to).expand(0.4);
+        final Ray movement = distance < 1.0E-6 ? null : new Ray(from, delta.clone().normalize(), distance);
+
+        for (final Entity entity : search.getEntities(candidate -> candidate instanceof LivingEntity
+                && !candidate.isDead() && !candidate.getUniqueId().equals(player.getUniqueId()))) {
+            final BoundingBox hitBox = entity.getBoundingBox().expand(0.35);
+            final AABB collider = new AABB(entity.getWorld(), hitBox);
+            if (movement == null ? collider.contains(to) : movement.intersects(collider)) {
+                setTarget((LivingEntity) entity);
+                return;
+            }
+        }
+    }
+
     public void setTarget(LivingEntity target) {
-        if (player.getUniqueId() == target.getUniqueId()) return;
+        if (target == null || player.getUniqueId().equals(target.getUniqueId()) || this.target != null) return;
         this.target = target;
         this.targetYOffset = Math.min(arrow.getLocation().getY() - target.getLocation().getY(), target.getEyeHeight());
         arrow.remove();

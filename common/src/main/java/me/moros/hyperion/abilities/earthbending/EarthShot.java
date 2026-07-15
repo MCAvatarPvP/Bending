@@ -233,7 +233,7 @@ public class EarthShot extends EarthAbility implements AddonAbility {
                 DamageHandler.damageEntity(entity, dmg, this);
                 if (!iframes) ((LivingEntity) entity).setNoDamageTicks(0);
                 Vector vector = player.getEyeLocation().getDirection();
-                entity.setVelocity(vector.normalize().multiply(0.4));
+                GeneralMethods.setVelocity(this, entity, vector.normalize().multiply(0.4));
                 hit = true;
             }
         }

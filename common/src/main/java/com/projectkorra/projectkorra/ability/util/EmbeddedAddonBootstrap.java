@@ -33,10 +33,13 @@ public final class EmbeddedAddonBootstrap {
         // CoreAbility.registerAbilities clears the registry on reload and on a
         // new client connection. Re-register embedded packages without
         // rebuilding their config/scheduler state.
+        // Hyperion and JedCore both bundle an ability named Combustion. Load
+        // Hyperion first and JedCore last so the public name deterministically
+        // resolves to JedCore's Warmup-based implementation on both sides.
+        tryEnable("Hyperion abilities", () -> CoreAbility.registerPluginAbilities(Hyperion.getPlugin(), "me.moros.hyperion.abilities"));
         tryEnable("JedCore abilities", () -> CoreAbility.registerPluginAbilities(jedCore, "com.jedk1.jedcore.ability"));
         tryEnable("ProjectAddons abilities", () -> CoreAbility.registerPluginAbilities(projectAddons, "me.simplicitee.project.addons.ability"));
         tryEnable("ChiRework abilities", () -> CoreAbility.registerPluginAbilities(chiRework, "me.literka.abilities"));
-        tryEnable("Hyperion abilities", () -> CoreAbility.registerPluginAbilities(Hyperion.getPlugin(), "me.moros.hyperion.abilities"));
     }
 
     public static synchronized void disable() {

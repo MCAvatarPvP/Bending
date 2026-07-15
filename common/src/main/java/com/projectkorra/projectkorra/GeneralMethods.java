@@ -41,6 +41,7 @@ import com.projectkorra.projectkorra.platform.mc.util.BoundingBox;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.VelocitySync;
 import com.projectkorra.projectkorra.prediction.HitResolutionSync;
+import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.storage.DBConnection;
 import com.projectkorra.projectkorra.util.*;
@@ -1933,7 +1934,7 @@ public class GeneralMethods {
 
     @Deprecated
     public static void setVelocity(Entity entity, Vector vector) {
-        setVelocity(null, entity, vector);
+        setVelocity(AbilityExecutionContext.current(), entity, vector);
     }
 
     public static void setVelocity(Ability ability, Entity entity, Vector vector) {

@@ -19,6 +19,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.BlockIterator;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.ConfirmedHitEffects;
 import com.projectkorra.projectkorra.util.ClickType;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
@@ -663,7 +664,9 @@ public class EarthSmash extends EarthAbility {
                 }
 
                 DamageHandler.damageEntity(entity, damage, this);
-                this.playEntityHitSoundEffect(entity.getLocation());
+                final Location hitLocation = entity.getLocation().clone();
+                ConfirmedHitEffects.sound(this, entity,
+                        () -> this.playEntityHitSoundEffect(hitLocation));
                 final Vector travelVec = GeneralMethods.getDirection(this.location, entity.getLocation());
                 GeneralMethods.setVelocity(this, entity, travelVec.setY(this.knockup).normalize().multiply(this.knockback));
             }

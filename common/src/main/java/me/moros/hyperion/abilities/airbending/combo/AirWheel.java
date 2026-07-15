@@ -104,7 +104,8 @@ public class AirWheel extends AirAbility implements AddonAbility, ComboAbility {
                 if (affectedEntities.getOrDefault(entity, 0L) > time) continue;
                 DamageHandler.damageEntity(entity, damage, this);
                 if (entity.isValid()) {
-                    entity.setVelocity(CoreMethods.calculateFlatVector(tempLoc, entity.getLocation()).multiply(knockback).setY(0.5));
+                    GeneralMethods.setVelocity(this, entity,
+                            CoreMethods.calculateFlatVector(tempLoc, entity.getLocation()).multiply(knockback).setY(0.5));
                 }
                 affectedEntities.put(entity, time + affectCooldown);
             }

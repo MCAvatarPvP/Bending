@@ -52,6 +52,7 @@ import com.projectkorra.projectkorra.platform.model.PKLocation;
 import com.projectkorra.projectkorra.platform.model.PKPlayer;
 import com.projectkorra.projectkorra.platform.model.PKWorld;
 import com.projectkorra.projectkorra.platform.model.PKVec3;
+import java.lang.reflect.Field;
 import java.util.HashSet;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
@@ -649,6 +650,15 @@ public final class FabricPredictionMC {
                     RaycastContext.FluidHandling.NONE, value)).getType() == HitResult.Type.MISS;
         }
         @Override public <T extends Projectile> T launchProjectile(Class<T> type) {
+            if (type == Arrow.class) {
+                ClientWorld world = (ClientWorld) value.getEntityWorld();
+                ArrowEntity entity = new ArrowEntity(
+                        world, value, new net.minecraft.item.ItemStack(Items.ARROW), null);
+                entity.setVelocity(value, value.getPitch(), value.getYaw(), 0.0F, 3.0F, 1.0F);
+                world.addEntity(entity);
+                ExactPredictionRuntime.trackSpawn(entity);
+                return type.cast(new ClientArrow(entity));
+            }
             if (type == Snowball.class) {
                 Location spawn = getEyeLocation();
                 Snowball projectile = getWorld().spawn(spawn,
@@ -965,6 +975,7 @@ public final class FabricPredictionMC {
         @Override public World getWorld() { return world((ClientWorld) value.getEntityWorld()); }
         @Override public Vector getVelocity() { return commonVector(value.getVelocity()); }
         @Override public void setVelocity(Vector velocity) { ExactPredictionRuntime.setPredictedVelocity(value, nativeVector(velocity)); }
+        @Override public Object getShooter() { return entity(value.getOwner()); }
         @Override public void setShooter(Object shooter) { value.setOwner(nativeEntity(shooter)); }
         @Override public void setPickupStatus(PickupStatus status) {
             value.pickupType = PersistentProjectileEntity.PickupPermission.valueOf(status.name());
@@ -980,6 +991,10 @@ public final class FabricPredictionMC {
         @Override public boolean isValid() { return !value.isRemoved(); }
         @Override public int getEntityId() { return value.getId(); }
         @Override public boolean isOnGround() { return value.isOnGround(); }
+        @Override public Block getAttachedBlock() {
+            if (!isInGround()) return null;
+            return block((ClientWorld) value.getEntityWorld(), value.getBlockPos());
+        }
         @Override public BoundingBox getBoundingBox() { return commonBox(value.getBoundingBox()); }
         @Override public void setMetadata(String key, MetadataValue metadata) { metadata(value, key, metadata); }
         @Override public boolean hasMetadata(String key) { return FabricPredictionMC.hasMetadata(value, key); }
@@ -987,6 +1002,15 @@ public final class FabricPredictionMC {
         @Override public void removeMetadata(String key, Object owner) { FabricPredictionMC.removeMetadata(value, key); }
         @Override public Object handle() { return value; }
         @Override public Object nativeHandle() { return value; }
+        private boolean isInGround() {
+            try {
+                Field field = PersistentProjectileEntity.class.getDeclaredField("inGroundTime");
+                field.setAccessible(true);
+                return field.getInt(value) > 0;
+            } catch (ReflectiveOperationException ignored) {
+                return false;
+            }
+        }
     }
 
     private static final class ClientSlime extends Slime implements ClientBacked {

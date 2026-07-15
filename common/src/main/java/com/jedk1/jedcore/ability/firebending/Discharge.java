@@ -12,6 +12,7 @@ import com.projectkorra.projectkorra.command.Commands;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.colliders.Sphere;
@@ -23,7 +24,7 @@ import java.util.Random;
 
 public class Discharge extends LightningAbility implements AddonAbility {
     private final HashMap<Integer, Location> branches = new HashMap<>();
-    private final Random rand = new Random();
+    private final Random rand;
     private Location location;
     private Vector direction;
     private boolean hit;
@@ -43,6 +44,7 @@ public class Discharge extends LightningAbility implements AddonAbility {
 
     public Discharge(Player player) {
         super(player);
+        this.rand = PredictionDeterminism.random(player == null ? null : player.getUniqueId(), Discharge.class.getName());
 
         if (!bPlayer.canBend(this) || hasAbility(player, Discharge.class) || !bPlayer.canLightningbend()) {
             return;
@@ -50,7 +52,11 @@ public class Discharge extends LightningAbility implements AddonAbility {
 
         setFields();
 
-        direction = player.getEyeLocation().getDirection().normalize();
+        // Capture both values while prediction is applying the input pose.
+        // Initializing location on the first delayed server progress tick made
+        // the same seeded branch start from a different point than the client.
+        location = player.getEyeLocation().clone();
+        direction = location.getDirection().normalize();
 
         if (bPlayer.isAvatarState() || JCMethods.isSozinsComet(player.getWorld())) {
             this.cooldown = avatarCooldown;

@@ -143,7 +143,7 @@ public class FireDisc extends FireAbility implements AddonAbility {
         for (Entity entity : GeneralMethods.getEntitiesAroundPoint(loc, 1.5)) {
             if (entity instanceof LivingEntity && entity.getEntityId() != player.getEntityId()) {
                 DamageHandler.damageEntity(entity, player, damage, this);
-                entity.setVelocity(direction.clone().multiply(knockback));
+                GeneralMethods.setVelocity(this, entity, direction.clone().multiply(knockback));
                 remove();
                 return;
             }

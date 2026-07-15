@@ -226,7 +226,8 @@ public class CombustBeam extends CombustionAbility implements AddonAbility {
                 if (e instanceof LivingEntity) {
                     double knockback = power / (0.3 + e.getLocation().distance(curr));
                     DamageHandler.damageEntity(e, damage, this);
-                    e.setVelocity(GeneralMethods.getDirection(curr, e.getLocation().add(0, 1, 0)).normalize().multiply(knockback));
+                    GeneralMethods.setVelocity(this, e,
+                            GeneralMethods.getDirection(curr, e.getLocation().add(0, 1, 0)).normalize().multiply(knockback));
                 }
             }
 

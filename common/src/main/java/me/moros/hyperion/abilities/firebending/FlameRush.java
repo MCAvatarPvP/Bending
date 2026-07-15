@@ -298,7 +298,8 @@ public class FlameRush extends FireAbility implements AddonAbility {
                     living.setFireTicks(fireTicks);
                     new FireDamageTimer(living, player, FlameRush.this);
                 }
-                living.setVelocity(streamDirection.clone().normalize().multiply(knockback));
+                GeneralMethods.setVelocity(FlameRush.this, living,
+                        streamDirection.clone().normalize().multiply(knockback));
             }
         }
     }

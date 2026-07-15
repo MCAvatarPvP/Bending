@@ -164,7 +164,7 @@ public class MagmaSlap extends LavaAbility implements AddonAbility {
         for (Entity entity : GeneralMethods.getEntitiesAroundPoint(fb.getLocation(), 2)) {
             if (entity instanceof LivingEntity && entity.getEntityId() != player.getEntityId()) {
                 DamageHandler.damageEntity(entity, damage, this);
-                entity.setVelocity(fb.getVelocity().multiply(2.5));
+                GeneralMethods.setVelocity(this, entity, fb.getVelocity().multiply(2.5));
             }
         }
 

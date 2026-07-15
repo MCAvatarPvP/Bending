@@ -464,11 +464,11 @@ public final class PredictionClient {
             return;
         }
         long sequence = ++nextSequence;
-        ServerPose pose = serverVisiblePose(client);
-        if (pose == null) {
-            pose = new ServerPose(client.player.getX(), client.player.getY(), client.player.getZ(),
-                    client.player.getYaw(), client.player.getPitch(), client.player.getEyeY() - client.player.getY());
-        }
+        // Ability source selection is evaluated from this exact input frame on
+        // both runtimes. Using the previous movement packet here displaced
+        // airborne AirBlast sources by one network update before reconciliation.
+        ServerPose pose = new ServerPose(client.player.getX(), client.player.getY(), client.player.getZ(),
+                client.player.getYaw(), client.player.getPitch(), client.player.getEyeY() - client.player.getY());
         Vec3d origin = pose.eyePos();
         boolean locallyBlockedByCooldown = ExactPredictionRuntime.isOnLocalCooldown(ability);
         if (ClientPlayNetworking.canSend(PredictionPayloads.ActionPrepare.ID)) {

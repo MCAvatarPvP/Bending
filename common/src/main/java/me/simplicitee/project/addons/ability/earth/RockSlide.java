@@ -133,7 +133,7 @@ public class RockSlide extends EarthAbility implements AddonAbility, ComboAbilit
                 knock.setY(knockup);
                 knock.normalize().multiply(knockback);
 
-                e.setVelocity(knock);
+                GeneralMethods.setVelocity(this, e, knock);
             }
         }
     }

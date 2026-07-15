@@ -91,7 +91,7 @@ public class GaleGust extends AirAbility implements AddonAbility {
                 DamageHandler.damageEntity(e, damage, this);
             }
 
-            e.setVelocity(direction);
+            GeneralMethods.setVelocity(this, e, direction);
             e.setFireTicks(0);
         }
 

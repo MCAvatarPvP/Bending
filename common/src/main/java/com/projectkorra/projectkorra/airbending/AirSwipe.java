@@ -275,8 +275,8 @@ public class AirSwipe extends AirAbility {
                             if (entity instanceof Player entityPlayer) {
                                 BendingPlayer otherBP = BendingPlayer.getBendingPlayer(entityPlayer);
                                 if (otherBP != null && otherBP.hasElement(Element.AIR)) {
-                                    bPlayer.regenerateAirBlastDecay(regenAmount, 1.0);
-                                    CooldownSync.airBlastRegenerated(bPlayer);
+                                    CooldownSync.regenerateAirBlastOnConfirmedHit(
+                                            abil, entity, bPlayer, regenAmount, 1.0);
                                 }
                             }
                             AirSwipe.this.affectedEntities.add(entity);

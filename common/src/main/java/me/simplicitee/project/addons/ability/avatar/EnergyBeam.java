@@ -181,8 +181,8 @@ public class EnergyBeam extends AvatarAbility implements AddonAbility {
             if (e instanceof LivingEntity) {
                 Vector direction = GeneralMethods.getDirection(center, e.getLocation().clone().add(0, 0.75, 0));
                 ParticleEffect.SWEEP_ATTACK.display(e.getLocation(), 1);
-                e.setVelocity(direction.clone().multiply(3.5));
                 DamageHandler.damageEntity(e, damage, this);
+                GeneralMethods.setVelocity(this, e, direction.clone().multiply(3.5));
             }
         }
     }
@@ -261,7 +261,7 @@ public class EnergyBeam extends AvatarAbility implements AddonAbility {
                         DamageHandler.damageEntity(e, player, damage, this);
                         le.setFireTicks(90);
                         le.setNoDamageTicks(0);
-                        e.setVelocity(map.get(loc).clone().multiply(3));
+                        GeneralMethods.setVelocity(this, e, map.get(loc).clone().multiply(3));
                         if (!le.hasPotionEffect(PotionEffectType.SLOWNESS)) {
                             le.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 30, 1));
                         }

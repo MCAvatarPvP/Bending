@@ -14,6 +14,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Display;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Transformation;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.ConfirmedHitEffects;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.colliders.Sphere;
@@ -143,10 +144,12 @@ public class AirBlade extends AirAbility implements AddonAbility {
                         lastLoc = tempLoc;
 
                         boolean hit = CollisionDetector.checkEntityCollisions(player, new Sphere(tempLoc, entityCollisionRadius), entity -> {
-                            entity.getWorld().playSound(entity.getLocation(), Sound.ENTITY_PLAYER_ATTACK_CRIT, 1f, 1.45F);
-                            entity.getWorld().playSound(entity.getLocation(), Sound.ENTITY_BREEZE_HURT, 1f, 2f);
-
                             DamageHandler.damageEntity(entity, damage, this);
+                            final Location hitLocation = entity.getLocation().clone();
+                            ConfirmedHitEffects.sound(this, entity, () -> {
+                                hitLocation.getWorld().playSound(hitLocation, Sound.ENTITY_PLAYER_ATTACK_CRIT, 1f, 1.45F);
+                                hitLocation.getWorld().playSound(hitLocation, Sound.ENTITY_BREEZE_HURT, 1f, 2f);
+                            });
                             remove();
                             return true;
                         });

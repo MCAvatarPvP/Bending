@@ -18,7 +18,6 @@ import com.projectkorra.projectkorra.earthbending.lava.LavaSurge;
 import com.projectkorra.projectkorra.earthbending.metal.Extraction;
 import com.projectkorra.projectkorra.earthbending.metal.MetalClips;
 import com.projectkorra.projectkorra.firebending.*;
-import com.projectkorra.projectkorra.firebending.combustion.Combustion;
 import com.projectkorra.projectkorra.firebending.lightning.Lightning;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.util.ChatUtil;
@@ -184,7 +183,6 @@ final class CoreAbilityActivationBootstrap {
         register("FireBurst", ClickType.SHIFT_DOWN, context -> created(new FireBurst(context.getPlayer())));
         register("FireShield", ClickType.SHIFT_DOWN, context -> created(new FireShield(context.getPlayer(), true)));
         register("Lightning", ClickType.SHIFT_DOWN, context -> created(new Lightning(context.getPlayer())));
-        //register("Combustion", ClickType.SHIFT_DOWN, context -> created(new Combustion(context.getPlayer())));
         register("FireManipulation", ClickType.SHIFT_DOWN, context -> created(new FireManipulation(context.getPlayer(), FireManipulation.FireManipulationType.SHIFT)));
 
         register("Blaze", ClickType.LEFT_CLICK, context -> created(new Blaze(context.getPlayer())));
@@ -198,10 +196,6 @@ final class CoreAbilityActivationBootstrap {
         });
         register("FireShield", ClickType.LEFT_CLICK, context -> created(new FireShield(context.getPlayer())));
         register("WallOfFire", ClickType.LEFT_CLICK, context -> created(new WallOfFire(context.getPlayer())));
-        register("Combustion", ClickType.LEFT_CLICK, context -> {
-            Combustion.explode(context.getPlayer());
-            return true;
-        });
         register("FireManipulation", ClickType.LEFT_CLICK, CoreAbilityActivationBootstrap::clickFireManipulation);
     }
 

@@ -93,11 +93,6 @@ final class AddonAbilityActivationBootstrap {
             return true;
         });
 
-        register("Combustion", ClickType.SHIFT_DOWN, context -> created(new me.moros.hyperion.abilities.firebending.Combustion(context.getPlayer())));
-        register("Combustion", ClickType.LEFT_CLICK, context -> {
-            me.moros.hyperion.abilities.firebending.Combustion.attemptExplode(context.getPlayer());
-            return true;
-        });
         register("Bolt", ClickType.SHIFT_DOWN, context -> created(new Bolt(context.getPlayer())));
         register("FlameRush", ClickType.SHIFT_DOWN, context -> created(new FlameRush(context.getPlayer())));
 

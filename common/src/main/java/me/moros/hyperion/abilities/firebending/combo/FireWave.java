@@ -172,8 +172,8 @@ public class FireWave extends FireAbility implements AddonAbility, ComboAbility 
                 }
                 for (Block block : blocks) {
                     if (entity.getLocation().distanceSquared(block.getLocation()) <= 1.5 * 1.5) {
-                        entity.setVelocity(new Vector(0, 0, 0));
                         DamageHandler.damageEntity(entity, damage, this);
+                        GeneralMethods.setVelocity(this, entity, new Vector(0, 0, 0));
                         entity.setFireTicks(fireTicks);
                         new FireDamageTimer(entity, player, this);
                         AirAbility.breakBreathbendingHold(entity);

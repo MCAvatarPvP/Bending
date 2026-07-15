@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class PredictionTimingBoundaryTest {
     @Test
@@ -26,6 +27,24 @@ class PredictionTimingBoundaryTest {
         assertTrue(timing.contains("ability.alignPredictedStart(compensation(ability))"));
         assertTrue(paper.contains("PredictionTiming.alignStart(candidate)"));
         assertTrue(fabric.contains("PredictionTiming.alignStart(candidate)"));
+    }
+
+    @Test
+    void existingEarthSmashTransitionsAreNeverTreatedAsMissingPrediction() throws IOException {
+        String runtime = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
+        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
+        String fabric = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java");
+
+        assertTrue(runtime.contains("boolean earthSmashExistingTransition")
+                        && runtime.contains("handled || deferredSneakTransition || earthSmashExistingTransition"),
+                "grab/shoot/flight transitions mutate an existing EarthSmash without starting a new ability");
+        assertFalse(runtime.contains("handoffEarthSmashToAuthority"),
+                "reconciliation must never delete every EarthSmash to roll back one input");
+        assertTrue(paper.contains("!earthSmashExistingTransition && !directTargetTransition"));
+        assertTrue(fabric.contains("!earthSmashExistingTransition && !directTargetTransition"));
     }
 
     private static String read(String moduleRelative, String rootRelative) throws IOException {
