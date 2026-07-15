@@ -5,15 +5,16 @@ import java.util.Set;
 
 /**
  * Tracks which TempBlock layers were announced to one client. Once CREATE is
- * delivered, REVERT is mandatory even if the player has left view distance.
+ * delivered, its REVERT or DISCARD closure is mandatory even if the player has
+ * left view distance.
  */
 public final class TempBlockDeliveryTracker {
     private final Set<Long> delivered = new HashSet<>();
 
-    public boolean route(final long layerId, final boolean revert, final boolean inView) {
+    public boolean route(final long layerId, final boolean closesLayer, final boolean inView) {
         final boolean tracked = this.delivered.contains(layerId);
         if (!inView && !tracked) return false;
-        if (revert) this.delivered.remove(layerId);
+        if (closesLayer) this.delivered.remove(layerId);
         else this.delivered.add(layerId);
         return true;
     }

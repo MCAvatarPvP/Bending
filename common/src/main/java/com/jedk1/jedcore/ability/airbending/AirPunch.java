@@ -11,6 +11,8 @@ import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.CooldownSync;
+import com.projectkorra.projectkorra.prediction.EntityHitboxProvider;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.colliders.Sphere;
@@ -18,7 +20,7 @@ import com.projectkorra.projectkorra.util.colliders.Sphere;
 import java.util.Collections;
 import java.util.List;
 
-public class AirPunch extends AirAbility implements AddonAbility {
+public class AirPunch extends AirAbility implements AddonAbility, EntityHitboxProvider {
 
     private Location location;
     private Vector direction;
@@ -115,6 +117,7 @@ public class AirPunch extends AirAbility implements AddonAbility {
     }
 
     private void progressShot() {
+        final boolean authoritative = CooldownSync.isAuthoritative();
         double remaining = projectileSpeed;
 
         while (remaining > 0) {
@@ -136,6 +139,7 @@ public class AirPunch extends AirAbility implements AddonAbility {
             playAirbendingSound(location);
 
             boolean hit = CollisionDetector.checkEntityCollisions(player, new Sphere(location, entityCollisionRadius), (entity) -> {
+                if (!authoritative) return true;
                 if (applyVelocity) {
                     GeneralMethods.setVelocity(this, entity, direction.clone().multiply(projectileSpeed * velocityMultiplier));
                 }
@@ -143,7 +147,7 @@ public class AirPunch extends AirAbility implements AddonAbility {
                 return true;
             });
 
-            if (hit) {
+            if (hit && authoritative) {
                 prepareRemove();
                 return;
             }
@@ -197,6 +201,16 @@ public class AirPunch extends AirAbility implements AddonAbility {
             return Collections.emptyList();
         }
         return Collections.singletonList(location);
+    }
+
+    @Override
+    public List<Location> getEntityHitLocations() {
+        return getLocations();
+    }
+
+    @Override
+    public double getEntityHitRadius() {
+        return entityCollisionRadius;
     }
 
     @Override

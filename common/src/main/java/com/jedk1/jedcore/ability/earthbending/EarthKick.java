@@ -17,6 +17,7 @@ import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.entity.FallingBlock;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.EntityHitboxProvider;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
@@ -30,7 +31,7 @@ import java.util.Random;
 
 import static java.util.stream.Collectors.toList;
 
-public class EarthKick extends EarthAbility implements AddonAbility {
+public class EarthKick extends EarthAbility implements AddonAbility, EntityHitboxProvider {
     private final List<TempFallingBlock> temps = new ArrayList<>();
     private final Random rand = new Random();
     private BlockData materialData;
@@ -197,6 +198,16 @@ public class EarthKick extends EarthAbility implements AddonAbility {
     @Override
     public double getCollisionRadius() {
         return JedCoreConfig.getConfig(this.bPlayer).getDouble("Abilities.Earth.EarthKick.AbilityCollisionRadius");
+    }
+
+    @Override
+    public List<Location> getEntityHitLocations() {
+        return getLocations();
+    }
+
+    @Override
+    public double getEntityHitRadius() {
+        return entityCollisionRadius;
     }
 
     @Override

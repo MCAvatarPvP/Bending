@@ -47,11 +47,13 @@ public final class ProjectKorraFabricMod implements ModInitializer {
 
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
             if (this.platform != null) {
+                // Publish TempBlock closures while the prediction endpoint is
+                // still installed, then tear the transport down.
+                GeneralMethods.stopBending();
                 if (this.prediction != null) {
                     this.prediction.stop();
                     this.prediction = null;
                 }
-                GeneralMethods.stopBending();
                 this.gameplay.stop();
                 this.platform.disable();
                 this.platform = null;

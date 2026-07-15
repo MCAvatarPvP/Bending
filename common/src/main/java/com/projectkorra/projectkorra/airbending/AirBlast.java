@@ -37,6 +37,8 @@ import com.projectkorra.projectkorra.util.TempBlock;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Random;
 
 public class AirBlast extends AirAbility {
@@ -201,7 +203,24 @@ public class AirBlast extends AirAbility {
     }
 
     public static Location getTargetedLocation(final Player player, final double range, final Material... nonOpaque2) {
-        return GeneralMethods.getTargetedLocation(player, Math.max(0, range), nonOpaque2);
+        final Location origin = player.getEyeLocation();
+        final Vector direction = origin.getDirection();
+
+        final HashSet<Material> transparent = new HashSet<>();
+        transparent.add(Material.AIR);
+        transparent.add(Material.CAVE_AIR);
+        transparent.add(Material.VOID_AIR);
+        if (nonOpaque2 != null) {
+            Collections.addAll(transparent, nonOpaque2);
+        }
+
+        // Keep the legacy AirBlast targeting contract. In unobstructed air the
+        // source must sit just inside SelectRange; the generic target marcher
+        // returns the exact range boundary, and progress() can immediately
+        // remove that source after normal movement or floating-point drift.
+        final Block block = player.getTargetBlock(transparent, (int) range + 1);
+        final double blockDistance = block.getLocation().distance(origin) - 1.5;
+        return origin.add(direction.multiply(AirBlastTargeting.targetDistance(blockDistance, range)));
     }
 
     public static int getSelectParticles(BendingPlayer bPlayer) {

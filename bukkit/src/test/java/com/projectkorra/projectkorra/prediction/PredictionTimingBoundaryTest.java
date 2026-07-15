@@ -39,7 +39,7 @@ class PredictionTimingBoundaryTest {
                 "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java");
 
         assertTrue(runtime.contains("boolean earthSmashExistingTransition")
-                        && runtime.contains("handled || deferredSneakTransition || earthSmashExistingTransition"),
+                        && runtime.contains("|| deferredSneakTransition || earthSmashExistingTransition"),
                 "grab/shoot/flight transitions mutate an existing EarthSmash without starting a new ability");
         assertFalse(runtime.contains("handoffEarthSmashToAuthority"),
                 "reconciliation must never delete every EarthSmash to roll back one input");

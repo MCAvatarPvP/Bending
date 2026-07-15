@@ -15,11 +15,15 @@ import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.block.data.Levelled;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.CooldownSync;
+import com.projectkorra.projectkorra.prediction.EntityHitboxProvider;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.colliders.AABB;
 
-public class WaterBlast extends WaterAbility implements AddonAbility {
+import java.util.List;
+
+public class WaterBlast extends WaterAbility implements AddonAbility, EntityHitboxProvider {
 
     static {
         CollisionInitializer.abilityMap.put("WaterBlast", "WaterGimbal");
@@ -72,6 +76,7 @@ public class WaterBlast extends WaterAbility implements AddonAbility {
     }
 
     private boolean advanceAttack() {
+        final boolean authoritative = CooldownSync.isAuthoritative();
         int steps = (int) Math.ceil(speed);
         // This is how much the last step should move by.
         double remainder = speed - Math.floor(speed);
@@ -123,11 +128,12 @@ public class WaterBlast extends WaterAbility implements AddonAbility {
                 AABB collider = new AABB(location, entityCollisionRadius);
 
                 boolean hit = CollisionDetector.checkEntityCollisions(player, collider, (entity) -> {
+                    if (!authoritative) return true;
                     DamageHandler.damageEntity(entity, damage, ability);
                     return true;
                 });
 
-                if (hit) {
+                if (hit && authoritative) {
                     return false;
                 }
             }
@@ -153,6 +159,16 @@ public class WaterBlast extends WaterAbility implements AddonAbility {
     @Override
     public double getCollisionRadius() {
         return abilityCollisionRadius;
+    }
+
+    @Override
+    public List<Location> getEntityHitLocations() {
+        return location == null ? List.of() : List.of(location.clone());
+    }
+
+    @Override
+    public double getEntityHitRadius() {
+        return entityCollisionRadius;
     }
 
     @Override

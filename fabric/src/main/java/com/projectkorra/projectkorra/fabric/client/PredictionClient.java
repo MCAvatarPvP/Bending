@@ -96,6 +96,8 @@ public final class PredictionClient {
                 (payload, context) -> INSTANCE.onVelocityOwner(context.client(), payload));
         ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.VelocityOwnerV2.ID,
                 (payload, context) -> INSTANCE.onVelocityOwner(context.client(), payload));
+        ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.TempFallingBlockReceipt.ID,
+                (payload, context) -> INSTANCE.onTempFallingBlock(context.client(), payload));
         ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.AbilityRemoved.ID,
                 (payload, context) -> INSTANCE.onAbilityRemoved(context.client(), payload));
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> INSTANCE.onJoin(sender, client));
@@ -387,6 +389,11 @@ public final class PredictionClient {
         if (client.player != null) ExactPredictionRuntime.noteVelocityOwner(client.player, owner);
     }
 
+    private void onTempFallingBlock(MinecraftClient client,
+                                    PredictionPayloads.TempFallingBlockReceipt receipt) {
+        if (client.player != null) ExactPredictionRuntime.noteTempFallingBlock(client.player, receipt);
+    }
+
     private void onAbilityRemoved(MinecraftClient client, PredictionPayloads.AbilityRemoved removed) {
         if (client.player != null) ExactPredictionRuntime.removeAuthoritativeAbility(client.player, removed);
     }
@@ -464,11 +471,14 @@ public final class PredictionClient {
             return;
         }
         long sequence = ++nextSequence;
-        // Ability source selection is evaluated from this exact input frame on
-        // both runtimes. Using the previous movement packet here displaced
-        // airborne AirBlast sources by one network update before reconciliation.
-        ServerPose pose = new ServerPose(client.player.getX(), client.player.getY(), client.player.getZ(),
+        // Legacy Bukkit evaluates an ability input from the movement/look state
+        // already processed before the swing packet.  The local camera can move
+        // again before this hook runs, so using the live player yaw/pitch here
+        // makes staged abilities (most visibly AirBlast) fire toward a look
+        // vector the server had never received for that input.
+        ServerPose localPose = new ServerPose(client.player.getX(), client.player.getY(), client.player.getZ(),
                 client.player.getYaw(), client.player.getPitch(), client.player.getEyeY() - client.player.getY());
+        ServerPose pose = poseForInput(serverPose, localPose);
         Vec3d origin = pose.eyePos();
         boolean locallyBlockedByCooldown = ExactPredictionRuntime.isOnLocalCooldown(ability);
         if (ClientPlayNetworking.canSend(PredictionPayloads.ActionPrepare.ID)) {
@@ -489,6 +499,10 @@ public final class PredictionClient {
                 + " locallyPredicted=" + locallyPredicted
                 + " locallyBlockedByCooldown=" + locallyBlockedByCooldown
                 + " yaw=" + pose.yaw() + " pitch=" + pose.pitch() + " origin=" + origin);
+    }
+
+    static ServerPose poseForInput(ServerPose serverVisible, ServerPose latestLocal) {
+        return serverVisible != null ? serverVisible : latestLocal;
     }
 
     private void recordServerVisibleSelectedSlot(MinecraftClient client, int slot) {

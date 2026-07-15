@@ -285,7 +285,7 @@ public class BloodPuppet extends BloodAbility implements AddonAbility {
                                     break;
                             }
                         }
-                        ((LivingEntity) e).damage(damage, puppet);
+                        DamageHandler.damageEntity(e, damage, this);
                         if (e instanceof Creature)
                             ((Creature) e).setTarget(puppet);
                     }

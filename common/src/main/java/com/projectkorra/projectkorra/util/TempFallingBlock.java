@@ -10,6 +10,7 @@ import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.entity.FallingBlock;
 import com.projectkorra.projectkorra.platform.mc.metadata.FixedMetadataValue;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.TempFallingBlockSync;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -44,6 +45,7 @@ public class TempFallingBlock {
         this.creation = System.currentTimeMillis();
         this.expire = expire;
         instances.put(fallingblock, this);
+        TempFallingBlockSync.publish(ability, fallingblock);
     }
 
     public static void manage() {

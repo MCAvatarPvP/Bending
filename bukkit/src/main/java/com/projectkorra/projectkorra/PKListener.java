@@ -290,6 +290,14 @@ public class PKListener implements Listener {
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onBlockMeltEvent(final BlockFadeEvent event) {
         final var block = BukkitMC.block(event.getBlock());
+        if (TempBlock.isTempBlock(block)) {
+            // Expiry/removal is the sole authority for a live layer. Allowing
+            // vanilla fire, ice, snow, or coral fading here would mutate the
+            // physical block while leaving a client-visible layer registered.
+            event.setCancelled(true);
+            return;
+        }
+
         if (block.getType() == com.projectkorra.projectkorra.platform.mc.Material.FIRE) {
             return;
         }
@@ -319,6 +327,10 @@ public class PKListener implements Listener {
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onBlockPhysics(final BlockPhysicsEvent event) {
         final var block = BukkitMC.block(event.getBlock());
+        if (TempBlock.isTempBlock(block)) {
+            event.setCancelled(true);
+            return;
+        }
 
         //try (MCTiming timing = TimingPhysicsWaterManipulationCheck.startTiming()) {
         if (!WaterManipulation.canPhysicsChange(block)) {
@@ -350,6 +362,41 @@ public class PKListener implements Listener {
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
+    public void onTempBlockBurn(final BlockBurnEvent event) {
+        if (TempBlock.isTempBlock(BukkitMC.block(event.getBlock()))) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
+    public void onTempBlockGrow(final BlockGrowEvent event) {
+        if (TempBlock.isTempBlock(BukkitMC.block(event.getBlock()))) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
+    public void onTempBlockSpread(final BlockSpreadEvent event) {
+        if (TempBlock.isTempBlock(BukkitMC.block(event.getBlock()))) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
+    public void onTempLeavesDecay(final LeavesDecayEvent event) {
+        if (TempBlock.isTempBlock(BukkitMC.block(event.getBlock()))) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
+    public void onTempMoistureChange(final MoistureChangeEvent event) {
+        if (TempBlock.isTempBlock(BukkitMC.block(event.getBlock()))) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onBlockPlace(final BlockPlaceEvent event) {
         final var player = BukkitMC.player(event.getPlayer());
 
@@ -363,15 +410,16 @@ public class PKListener implements Listener {
         //triggers that have already been added.
         ComboManager.removeRecentType(player, ClickType.RIGHT_CLICK_BLOCK);
 
-        //If the event is cancelled, don't bother checking the stuff bellow
-        if (event.isCancelled()) {
-            return;
-        }
+    }
 
-        //When a player places a block that isn't fire, remove the temp block that was there
-        if (TempBlock.isTempBlock(BukkitMC.block(event.getBlock())) && (event.getItemInHand().getType() != Material.FLINT_AND_STEEL
-                && event.getItemInHand().getType() != Material.FIRE_CHARGE)) {
-            TempBlock.removeBlock(BukkitMC.block(event.getBlock()));
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onBlockPlaceAuthority(final BlockPlaceEvent event) {
+        final var block = BukkitMC.block(event.getBlock());
+        if (TempBlock.isTempBlock(block)) {
+            // Placement is explicit world authority. At MONITOR the final
+            // cancellation state is known and Bukkit already exposes the
+            // placed data, so retire the stack without restoring underneath.
+            TempBlock.removeBlock(block);
         }
     }
 
@@ -431,6 +479,17 @@ public class PKListener implements Listener {
                 tfb.remove();
                 event.setCancelled(true);
             }
+        }
+
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onEntityChangeBlockAuthority(final EntityChangeBlockEvent event) {
+        final var block = BukkitMC.block(event.getBlock());
+        if (TempBlock.isTempBlock(block)) {
+            // A vanilla falling block, enderman, or other entity is about to
+            // replace this coordinate. Hand off without a stale restore.
+            TempBlock.removeBlock(block);
         }
     }
 
@@ -622,6 +681,29 @@ public class PKListener implements Listener {
 
             if (EarthAbility.getMovedEarth().containsKey(commonBlock)) {
                 EarthAbility.removeRevertIndex(commonBlock);
+            }
+
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onEntityExplodeAuthority(final EntityExplodeEvent event) {
+        for (final Block block : event.blockList()) {
+            final var commonBlock = BukkitMC.block(block);
+            if (TempBlock.isTempBlock(commonBlock)) {
+                // The explosion supplies the final block state immediately
+                // after the event. Retire metadata, never restore a snapshot.
+                TempBlock.removeBlock(commonBlock);
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onBlockExplode(final BlockExplodeEvent event) {
+        for (final Block block : event.blockList()) {
+            final var commonBlock = BukkitMC.block(block);
+            if (TempBlock.isTempBlock(commonBlock)) {
+                TempBlock.removeBlock(commonBlock);
             }
         }
     }
@@ -1595,7 +1677,8 @@ public class PKListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBlockPistonExtendEvent(final BlockPistonExtendEvent event) {
         for (final Block b : event.getBlocks()) {
-            if (TempBlock.isTempBlock(BukkitMC.block(b))) {
+            if (TempBlock.isTempBlock(BukkitMC.block(b))
+                    || TempBlock.isTempBlock(BukkitMC.block(b.getRelative(event.getDirection())))) {
                 event.setCancelled(true);
                 break;
             }
@@ -1605,7 +1688,8 @@ public class PKListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBlockPistonRetractEvent(final BlockPistonRetractEvent event) {
         for (final Block b : event.getBlocks()) {
-            if (TempBlock.isTempBlock(BukkitMC.block(b))) {
+            if (TempBlock.isTempBlock(BukkitMC.block(b))
+                    || TempBlock.isTempBlock(BukkitMC.block(b.getRelative(event.getDirection())))) {
                 event.setCancelled(true);
                 break;
             }

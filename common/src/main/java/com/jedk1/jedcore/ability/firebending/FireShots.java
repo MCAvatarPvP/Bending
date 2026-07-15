@@ -15,6 +15,7 @@ import com.projectkorra.projectkorra.firebending.util.FireDamageTimer;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.CooldownSync;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
 import com.projectkorra.projectkorra.util.colliders.Sphere;
@@ -297,6 +298,7 @@ public class FireShots extends FireAbility implements AddonAbility {
         }
 
         public boolean progress() {
+            final boolean authoritative = CooldownSync.isAuthoritative();
             if (player.isDead() || !player.isOnline()) {
                 return false;
             }
@@ -334,13 +336,14 @@ public class FireShots extends FireAbility implements AddonAbility {
                 Sphere collider = new Sphere(location, collisionRadius);
 
                 boolean hit = CollisionDetector.checkEntityCollisions(player, collider, (entity) -> {
+                    if (!authoritative) return true;
                     DamageHandler.damageEntity(entity, damage, ability);
                     FireTick.set(entity, Math.round(fireTicks / 50F));
                     new FireDamageTimer(entity, player, FireShots.this);
                     return true;
                 });
 
-                if (hit) {
+                if (hit && authoritative) {
                     return false;
                 }
             }

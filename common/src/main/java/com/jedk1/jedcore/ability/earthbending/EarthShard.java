@@ -19,6 +19,8 @@ import com.projectkorra.projectkorra.platform.mc.entity.FallingBlock;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.CooldownSync;
+import com.projectkorra.projectkorra.prediction.EntityHitboxProvider;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
 import com.projectkorra.projectkorra.util.TempBlock;
@@ -29,7 +31,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class EarthShard extends EarthAbility implements AddonAbility {
+public class EarthShard extends EarthAbility implements AddonAbility, EntityHitboxProvider {
     @Attribute(Attribute.RANGE)
     public static int range;
     public static int abilityRange;
@@ -270,6 +272,7 @@ public class EarthShard extends EarthAbility implements AddonAbility {
                 AABB collider = BlockUtil.getFallingBlockBoundsFull(fb, entityCollisionRadius);
 
                 CollisionDetector.checkEntityCollisions(player, collider, (e) -> {
+                    if (!CooldownSync.isAuthoritative()) return true;
                     DamageHandler.damageEntity(e, isMetal(fb.getBlockData().getMaterial()) ? metalDmg : normalDmg, this);
                     ((LivingEntity) e).setNoDamageTicks(0);
                     ParticleEffect.BLOCK_CRACK.display(fb.getLocation(), 20, 0, 0, 0, 0, fb.getBlockData());
@@ -432,6 +435,16 @@ public class EarthShard extends EarthAbility implements AddonAbility {
     @Override
     public double getCollisionRadius() {
         return abilityCollisionRadius;
+    }
+
+    @Override
+    public List<Location> getEntityHitLocations() {
+        return getLocations();
+    }
+
+    @Override
+    public double getEntityHitRadius() {
+        return entityCollisionRadius;
     }
 
     @Override

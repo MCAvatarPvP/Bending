@@ -19,29 +19,49 @@ public final class AbilityActivationManager {
     private static final Map<String, EnumMap<ClickType, List<ActivationHandler>>> MULTI_HANDLERS = new ConcurrentHashMap<>();
     private static final EnumMap<ClickType, List<ActivationHandler>> GLOBAL_HANDLERS = new EnumMap<>(ClickType.class);
     private static final Set<Class<?>> DISCOVERED = ConcurrentHashMap.newKeySet();
-    private static final ThreadLocal<ArrayDeque<Boolean>> HANDLED_TRACKING =
+    private static final ThreadLocal<ArrayDeque<TrackingFrame>> HANDLED_TRACKING =
             ThreadLocal.withInitial(ArrayDeque::new);
 
     private AbilityActivationManager() {
     }
 
     public static void beginTracking() {
-        HANDLED_TRACKING.get().push(Boolean.FALSE);
+        HANDLED_TRACKING.get().push(new TrackingFrame());
     }
 
     public static boolean finishTracking() {
-        final ArrayDeque<Boolean> stack = HANDLED_TRACKING.get();
-        final boolean handled = !stack.isEmpty() && stack.pop();
+        return finishTrackingResult().handled();
+    }
+
+    public static TrackingResult finishTrackingResult() {
+        final ArrayDeque<TrackingFrame> stack = HANDLED_TRACKING.get();
+        final TrackingFrame frame = stack.isEmpty() ? null : stack.pop();
         if (stack.isEmpty()) HANDLED_TRACKING.remove();
-        return handled;
+        return frame == null
+                ? new TrackingResult(false, List.of())
+                : new TrackingResult(frame.handled, List.copyOf(frame.affectedAbilities));
     }
 
     public static void markHandled() {
-        final ArrayDeque<Boolean> stack = HANDLED_TRACKING.get();
+        markHandled(null);
+    }
+
+    public static void markHandled(final CoreAbility affectedAbility) {
+        final ArrayDeque<TrackingFrame> stack = HANDLED_TRACKING.get();
         if (!stack.isEmpty()) {
-            stack.pop();
-            stack.push(Boolean.TRUE);
+            final TrackingFrame frame = stack.peek();
+            frame.handled = true;
+            if (affectedAbility != null) frame.affectedAbilities.add(affectedAbility);
         }
+    }
+
+    public record TrackingResult(boolean handled, List<CoreAbility> affectedAbilities) {
+    }
+
+    private static final class TrackingFrame {
+        private boolean handled;
+        private final Set<CoreAbility> affectedAbilities =
+                Collections.newSetFromMap(new IdentityHashMap<>());
     }
 
     public static void reload() {

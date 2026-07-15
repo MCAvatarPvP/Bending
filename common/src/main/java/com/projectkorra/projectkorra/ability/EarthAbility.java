@@ -348,8 +348,13 @@ public abstract class EarthAbility extends ElementalAbility {
                 EarthAbility.revertBlock(block);
             }
 
-            MOVED_EARTH.remove(block);
+            retireMovedEarth(block);
         }
+    }
+
+    private static Information retireMovedEarth(final Block block) {
+        RaiseEarth.revertWallAffectedBlock(block);
+        return MOVED_EARTH.remove(block);
     }
 
     public static void revertAirBlock(final int i) {
@@ -388,7 +393,7 @@ public abstract class EarthAbility extends ElementalAbility {
 
     public static boolean revertBlock(final Block block) {
         if (!isEarthRevertOn()) {
-            MOVED_EARTH.remove(block);
+            retireMovedEarth(block);
             return false;
         }
         if (MOVED_EARTH.containsKey(block)) {
@@ -396,7 +401,7 @@ public abstract class EarthAbility extends ElementalAbility {
             final Block sourceblock = info.getState().getBlock();
 
             if (ElementalAbility.isAir(info.getState().getType())) {
-                MOVED_EARTH.remove(block);
+                retireMovedEarth(block);
                 return true;
             }
 
@@ -409,13 +414,13 @@ public abstract class EarthAbility extends ElementalAbility {
                 if (RaiseEarth.blockInAllAffectedBlocks(block)) {
                     RaiseEarth.revertAffectedBlock(block);
                 }
-                MOVED_EARTH.remove(block);
+                retireMovedEarth(block);
                 return true;
             }
 
             if (MOVED_EARTH.containsKey(sourceblock)) {
                 addTempAirBlock(block);
-                MOVED_EARTH.remove(block);
+                retireMovedEarth(block);
                 return true;
             }
 
@@ -442,7 +447,7 @@ public abstract class EarthAbility extends ElementalAbility {
             if (RaiseEarth.blockInAllAffectedBlocks(block)) {
                 RaiseEarth.revertAffectedBlock(block);
             }
-            MOVED_EARTH.remove(block);
+            retireMovedEarth(block);
         }
         return true;
     }
@@ -453,6 +458,7 @@ public abstract class EarthAbility extends ElementalAbility {
         if (isEarthRevertOn()) {
             removeAllEarthbendedBlocks();
         }
+        RaiseEarth.clearWallBlocks();
     }
 
     public int getEarthbendableBlocksLength(final Block block, Vector direction, final int maxlength) {
@@ -659,6 +665,11 @@ public abstract class EarthAbility extends ElementalAbility {
     public void moveEarthBlock(final Block source, final Block target) {
         Information info;
 
+        // Moving a registered RaiseEarthWall coordinate consumes that exact
+        // wall position. RaiseEarth itself re-registers the newly raised
+        // coordinates after each movement step; other moves intentionally
+        // invalidate Collapse eligibility for the altered coordinate.
+        RaiseEarth.revertWallAffectedBlock(source);
         if (MOVED_EARTH.containsKey(source)) {
             info = MOVED_EARTH.get(source);
             MOVED_EARTH.remove(source);

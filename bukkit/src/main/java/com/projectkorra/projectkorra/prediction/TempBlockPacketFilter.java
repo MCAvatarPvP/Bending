@@ -4,24 +4,14 @@ import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.event.PacketListenerAbstract;
 import com.github.retrooper.packetevents.event.PacketSendEvent;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
-import com.github.retrooper.packetevents.protocol.player.ClientVersion;
 import com.github.retrooper.packetevents.protocol.world.chunk.BaseChunk;
 import com.github.retrooper.packetevents.protocol.world.chunk.Column;
 import com.github.retrooper.packetevents.protocol.world.states.WrappedBlockState;
-import com.github.retrooper.packetevents.protocol.world.states.enums.East;
-import com.github.retrooper.packetevents.protocol.world.states.enums.North;
-import com.github.retrooper.packetevents.protocol.world.states.enums.South;
-import com.github.retrooper.packetevents.protocol.world.states.enums.West;
-import com.github.retrooper.packetevents.protocol.world.states.type.StateType;
-import com.github.retrooper.packetevents.protocol.world.states.type.StateTypes;
-import com.github.retrooper.packetevents.protocol.world.states.type.StateValue;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerBlockChange;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerChunkData;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerMultiBlockChange;
 import com.projectkorra.projectkorra.platform.bukkit.BukkitMC;
-import com.projectkorra.projectkorra.platform.mc.World;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
-import com.projectkorra.projectkorra.util.TempBlock;
 import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
@@ -31,55 +21,86 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedDeque;
 
 /**
- * Suppresses only server block packets proven to belong to an exact client's
- * owned TempBlock lifecycle. CREATE receipts remain active for the layer lifetime
- * because one physical water/neighbor mutation can emit several packets. REVERT
- * receipts retain a short duplicate tail. Unrelated states at the same coordinate
- * and unrelated entries in a multi-block packet always pass unchanged.
+ * Hides physical server TempBlocks from the client that owns them.
+ *
+ * <p>Suppression is intentionally coordinate/lifecycle based. A single water
+ * write can emit source, flowing-level and neighbor variants, none of which is
+ * a reliable receipt for one logical TempBlock. The owner sees its local
+ * client TempBlock; every physical server update at that coordinate is hidden
+ * until the owned server layer closes. A short closing fence covers packets
+ * queued by the restoring write itself.</p>
  */
 public final class TempBlockPacketFilter extends PacketListenerAbstract {
-    private static final long REVERT_RECEIPT_LIFETIME_MILLIS = 1_000L;
-    private final Map<UUID, Map<BlockKey, ConcurrentLinkedDeque<Receipt>>> receipts = new ConcurrentHashMap<>();
+    // PacketEvents observes the restoring write synchronously. Keep only a
+    // two-tick scheduling cushion; a one-second coordinate fence could hide a
+    // legitimate fluid/physics update and manufacture the very ghost it is
+    // meant to prevent.
+    private static final long CLOSING_FENCE_MILLIS = 100L;
+    private final Map<UUID, Map<BlockKey, HideGate>> hidden = new ConcurrentHashMap<>();
 
     private TempBlockPacketFilter() {
     }
 
     public static TempBlockPacketFilter register() {
-        TempBlockPacketFilter filter = new TempBlockPacketFilter();
+        final TempBlockPacketFilter filter = new TempBlockPacketFilter();
         PacketEvents.getAPI().getEventManager().registerListener(filter);
         return filter;
     }
 
     public void stop() {
-        receipts.clear();
+        this.hidden.clear();
         PacketEvents.getAPI().getEventManager().unregisterListener(this);
     }
 
-    public void record(final TempBlockSync.Change change) {
+    /** Starts a handshake with no gates inherited from an older connection. */
+    public void resetViewer(final UUID viewer) {
+        if (viewer != null) this.hidden.remove(viewer);
+    }
+
+    /** Arms an exact client that joined while this owned layer was active. */
+    public void recordSnapshot(final com.projectkorra.projectkorra.platform.mc.block.Block block,
+                               final UUID viewer, final long layerId, final BlockData viewerData) {
+        if (block == null || viewer == null || block.getWorld() == null
+                || !(block.getWorld().handle() instanceof org.bukkit.World world)
+                || viewerData == null) return;
+        this.hidden.computeIfAbsent(viewer, ignored -> new ConcurrentHashMap<>())
+                .compute(new BlockKey(world.getUID(), block.getX(), block.getY(), block.getZ()),
+                        (ignored, previous) -> HideGate.withLayer(previous, layerId, viewerData));
+    }
+
+    /** Removes closing fences even when no later packet visits their coordinate. */
+    public void pruneExpired() {
+        final long now = System.currentTimeMillis();
+        this.hidden.forEach((viewer, byBlock) -> {
+            byBlock.entrySet().removeIf(entry -> !entry.getValue().active
+                    && entry.getValue().untilMillis < now);
+            if (byBlock.isEmpty()) this.hidden.remove(viewer, byBlock);
+        });
+    }
+
+    /** Updates the fence before a world write and after metadata-only changes. */
+    public void record(final TempBlockSync.Change change, final UUID predictedOwner,
+                       final Map<UUID, BlockData> ownerViews) {
         if (change == null || change.block() == null || change.block().getWorld() == null
-                || !change.packetExpected()
-                || change.operation() == TempBlockSync.Operation.UPDATE_EXPIRY
                 || !(change.block().getWorld().handle() instanceof org.bukkit.World world)) return;
-        Set<UUID> viewers = new HashSet<>(change.ownerViews().keySet());
-        if (change.ownerId() != null) viewers.add(change.ownerId());
+
+        final BlockKey key = new BlockKey(world.getUID(), change.block().getX(),
+                change.block().getY(), change.block().getZ());
+        final Set<UUID> viewers = new HashSet<>(ownerViews == null ? Set.of() : ownerViews.keySet());
+        if (predictedOwner != null) viewers.add(predictedOwner);
         if (viewers.isEmpty()) return;
-        BlockKey key = new BlockKey(world.getUID(), change.block().getX(), change.block().getY(), change.block().getZ());
-        String physicalState = TempBlockSync.encode(change.data());
-        boolean layerLifetime = change.operation() == TempBlockSync.Operation.CREATE;
-        long expiresAt = layerLifetime ? Long.MAX_VALUE
-                : System.currentTimeMillis() + REVERT_RECEIPT_LIFETIME_MILLIS;
+
+        final long now = System.currentTimeMillis();
         for (UUID viewer : viewers) {
-            ConcurrentLinkedDeque<Receipt> queue = receipts
-                    .computeIfAbsent(viewer, ignored -> new ConcurrentHashMap<>())
-                    .computeIfAbsent(key, ignored -> new ConcurrentLinkedDeque<>());
-            // setType/revision replaces the receipt for this exact layer. A
-            // REVERT removes its persistent CREATE before arming the brief
-            // receipt for duplicate packets produced by the restoring write.
-            queue.removeIf(receipt -> receipt.layerId == change.layerId());
-            queue.addLast(new Receipt(change.layerId(), physicalState, expiresAt, layerLifetime));
+            final BlockData viewerData = ownerViews == null ? null : ownerViews.get(viewer);
+            final Map<BlockKey, HideGate> byBlock = this.hidden
+                    .computeIfAbsent(viewer, ignored -> new ConcurrentHashMap<>());
+            byBlock.compute(key, (ignored, previous) -> HideGate.advance(previous,
+                    change.layerId(), viewer.equals(predictedOwner), change.operation(),
+                    change.packetExpected(), now, viewerData));
+            if (byBlock.isEmpty()) this.hidden.remove(viewer, byBlock);
         }
     }
 
@@ -87,29 +108,30 @@ public final class TempBlockPacketFilter extends PacketListenerAbstract {
     public void onPacketSend(final PacketSendEvent event) {
         if (!(event.getPlayer() instanceof Player player)
                 || !PaperPredictionServer.isExactClient(player.getUniqueId())) return;
-        UUID viewer = player.getUniqueId();
-        UUID worldId = player.getWorld().getUID();
+        final UUID viewer = player.getUniqueId();
+        final UUID worldId = player.getWorld().getUID();
 
         if (event.getPacketType() == PacketType.Play.Server.BLOCK_CHANGE) {
-            WrapperPlayServerBlockChange packet = new WrapperPlayServerBlockChange(event);
-            var pos = packet.getBlockPosition();
-            Receipt receipt = consume(viewer, new BlockKey(worldId, pos.getX(), pos.getY(), pos.getZ()),
-                    packet.getBlockState(), event.getUser().getClientVersion());
-            if (receipt != null) event.setCancelled(true);
+            final WrapperPlayServerBlockChange packet = new WrapperPlayServerBlockChange(event);
+            final var pos = packet.getBlockPosition();
+            if (isHidden(viewer, new BlockKey(worldId, pos.getX(), pos.getY(), pos.getZ()))) {
+                event.setCancelled(true);
+            }
             return;
         }
 
         if (event.getPacketType() == PacketType.Play.Server.MULTI_BLOCK_CHANGE) {
-            WrapperPlayServerMultiBlockChange packet = new WrapperPlayServerMultiBlockChange(event);
-            List<WrapperPlayServerMultiBlockChange.EncodedBlock> visible = new ArrayList<>();
+            final WrapperPlayServerMultiBlockChange packet = new WrapperPlayServerMultiBlockChange(event);
+            final List<WrapperPlayServerMultiBlockChange.EncodedBlock> visible = new ArrayList<>();
             for (WrapperPlayServerMultiBlockChange.EncodedBlock block : packet.getBlocks()) {
-                Receipt receipt = consume(viewer, new BlockKey(worldId, block.getX(), block.getY(), block.getZ()),
-                        block.getBlockState(event.getUser().getClientVersion()), event.getUser().getClientVersion());
-                if (receipt == null) visible.add(block);
+                if (!isHidden(viewer, new BlockKey(worldId, block.getX(), block.getY(), block.getZ()))) {
+                    visible.add(block);
+                }
             }
             if (visible.size() == packet.getBlocks().length) return;
-            if (visible.isEmpty()) event.setCancelled(true);
-            else {
+            if (visible.isEmpty()) {
+                event.setCancelled(true);
+            } else {
                 packet.setBlocks(visible.toArray(WrapperPlayServerMultiBlockChange.EncodedBlock[]::new));
                 event.markForReEncode(true);
             }
@@ -117,89 +139,77 @@ public final class TempBlockPacketFilter extends PacketListenerAbstract {
         }
 
         if (event.getPacketType() == PacketType.Play.Server.CHUNK_DATA) {
-            WrapperPlayServerChunkData packet = new WrapperPlayServerChunkData(event);
-            Column column = packet.getColumn();
-            BaseChunk[] sections = column.getChunks();
-            World commonWorld = BukkitMC.world(player.getWorld());
+            final WrapperPlayServerChunkData packet = new WrapperPlayServerChunkData(event);
+            final Column column = packet.getColumn();
+            final BaseChunk[] sections = column.getChunks();
             boolean changed = false;
-            for (TempBlock.VisibleBlock block : TempBlock.getOwnedBlocksInChunk(
-                    commonWorld, column.getX(), column.getZ(), viewer)) {
-                int relativeY = block.y() - player.getWorld().getMinHeight();
-                int sectionIndex = relativeY >> 4;
-                if (sectionIndex < 0 || sectionIndex >= sections.length || sections[sectionIndex] == null
-                        || block.data() == null) continue;
-                WrappedBlockState state = packetState(event.getUser().getClientVersion(), block.data());
-                sections[sectionIndex].set(block.x() & 15, relativeY & 15, block.z() & 15, state);
+            final Map<BlockKey, HideGate> byBlock = this.hidden.get(viewer);
+            if (byBlock == null) return;
+            for (Map.Entry<BlockKey, HideGate> entry : byBlock.entrySet()) {
+                final BlockKey block = entry.getKey();
+                final HideGate gate = entry.getValue();
+                if (!block.world.equals(worldId) || block.x >> 4 != column.getX()
+                        || block.z >> 4 != column.getZ() || !gate.active
+                        || gate.viewerData == null) continue;
+                final int relativeY = block.y - player.getWorld().getMinHeight();
+                final int sectionIndex = relativeY >> 4;
+                if (sectionIndex < 0 || sectionIndex >= sections.length || sections[sectionIndex] == null) continue;
+                final WrappedBlockState state = packetState(event, gate.viewerData);
+                sections[sectionIndex].set(block.x & 15, relativeY & 15, block.z & 15, state);
                 changed = true;
             }
             if (changed) event.markForReEncode(true);
         }
     }
 
-    private Receipt consume(final UUID viewer, final BlockKey key, final WrappedBlockState incoming,
-                            final ClientVersion clientVersion) {
-        Map<BlockKey, ConcurrentLinkedDeque<Receipt>> byBlock = receipts.get(viewer);
-        if (byBlock == null) return null;
-        ConcurrentLinkedDeque<Receipt> queue = byBlock.get(key);
-        if (queue == null) return null;
-        long now = System.currentTimeMillis();
-        queue.removeIf(receipt -> receipt.expiresAt < now);
-        Receipt matched = null;
-        for (Receipt receipt : queue) {
-            if (incoming != null && packetState(clientVersion, receipt.physicalState).equals(incoming)) {
-                matched = receipt;
-                break;
-            }
+    private boolean isHidden(final UUID viewer, final BlockKey key) {
+        final Map<BlockKey, HideGate> byBlock = this.hidden.get(viewer);
+        if (byBlock == null) return false;
+        final HideGate gate = byBlock.get(key);
+        if (gate == null) return false;
+        if (gate.active || gate.untilMillis >= System.currentTimeMillis()) return true;
+        byBlock.remove(key, gate);
+        if (byBlock.isEmpty()) this.hidden.remove(viewer, byBlock);
+        return false;
+    }
+
+    private static WrappedBlockState packetState(final PacketSendEvent event, final BlockData data) {
+        final org.bukkit.block.data.BlockData nativeData = BukkitMC.blockDataHandle(data);
+        return WrappedBlockState.getByString(event.getUser().getClientVersion(), nativeData.getAsString());
+    }
+
+    private record BlockKey(UUID world, int x, int y, int z) {
+    }
+
+    private record HideGate(Set<Long> layers, BlockData viewerData, boolean active, long untilMillis) {
+        private static HideGate withLayer(final HideGate previous, final long layerId,
+                                          final BlockData viewerData) {
+            final Set<Long> layers = previous == null ? new HashSet<>() : new HashSet<>(previous.layers);
+            layers.add(layerId);
+            return new HideGate(Set.copyOf(layers), viewerData.clone(), true, Long.MAX_VALUE);
         }
-        // Do not consume a matching receipt. Fluid and neighbor propagation can
-        // encode the same owned mutation more than once. CREATE remains until
-        // its layer REVERT; the bounded REVERT receipt expires naturally.
-        if (matched != null) return matched;
-        if (queue.isEmpty()) byBlock.remove(key, queue);
-        if (byBlock.isEmpty()) receipts.remove(viewer, byBlock);
-        return null;
-    }
 
-    private static WrappedBlockState packetState(final ClientVersion clientVersion, final BlockData data) {
-        return packetState(clientVersion, TempBlockSync.encode(data));
-    }
-
-    private static WrappedBlockState packetState(final ClientVersion clientVersion, final String encoded) {
-        String[] fields = encoded.split(";");
-        String name = fields.length == 0 || fields[0].isBlank() ? "minecraft:air" : fields[0];
-        StateType type = StateTypes.getByName(name);
-        if (type == null && name.startsWith("minecraft:")) type = StateTypes.getByName(name.substring(10));
-        if (type == null) return WrappedBlockState.getByString(clientVersion, "minecraft:air");
-        WrappedBlockState state = WrappedBlockState.getDefaultState(clientVersion, type);
-        for (int index = 1; index < fields.length; index++) {
-            int separator = fields[index].indexOf('=');
-            if (separator <= 0) continue;
-            String property = fields[index].substring(0, separator);
-            String value = fields[index].substring(separator + 1);
-            try {
-                if (property.equals("level") && state.hasProperty(StateValue.LEVEL)) {
-                    state.setData(StateValue.LEVEL, Integer.parseInt(value));
-                } else if (property.equals("waterlogged") && state.hasProperty(StateValue.WATERLOGGED)) {
-                    state.setData(StateValue.WATERLOGGED, value.equals("1"));
-                } else if (property.equals("faces")) {
-                    Set<String> faces = Set.of(value.split(","));
-                    if (state.hasProperty(StateValue.NORTH)) state.setData(StateValue.NORTH,
-                            faces.contains("NORTH") ? North.TRUE : North.FALSE);
-                    if (state.hasProperty(StateValue.EAST)) state.setData(StateValue.EAST,
-                            faces.contains("EAST") ? East.TRUE : East.FALSE);
-                    if (state.hasProperty(StateValue.SOUTH)) state.setData(StateValue.SOUTH,
-                            faces.contains("SOUTH") ? South.TRUE : South.FALSE);
-                    if (state.hasProperty(StateValue.WEST)) state.setData(StateValue.WEST,
-                            faces.contains("WEST") ? West.TRUE : West.FALSE);
-                    if (state.hasProperty(StateValue.UP)) state.setData(StateValue.UP, faces.contains("UP"));
-                }
-            } catch (IllegalArgumentException ignored) {
-                return WrappedBlockState.getDefaultState(clientVersion, type);
+        private static HideGate advance(final HideGate previous, final long layerId,
+                                        final boolean ownsOperation,
+                                        final TempBlockSync.Operation operation,
+                                        final boolean packetExpected, final long now,
+                                        final BlockData viewerData) {
+            final Set<Long> layers = previous == null ? new HashSet<>() : new HashSet<>(previous.layers);
+            final boolean closes = operation == TempBlockSync.Operation.REVERT
+                    || operation == TempBlockSync.Operation.DISCARD;
+            if (ownsOperation) {
+                if (closes) layers.remove(layerId);
+                else layers.add(layerId);
             }
+            final BlockData visible = viewerData != null ? viewerData.clone()
+                    : previous == null || previous.viewerData == null ? null : previous.viewerData.clone();
+            if (!layers.isEmpty()) {
+                return new HideGate(Set.copyOf(layers), visible, true, Long.MAX_VALUE);
+            }
+            if (ownsOperation && closes && packetExpected) {
+                return new HideGate(Set.of(), visible, false, now + CLOSING_FENCE_MILLIS);
+            }
+            return null;
         }
-        return state;
     }
-
-    private record BlockKey(UUID world, int x, int y, int z) { }
-    private record Receipt(long layerId, String physicalState, long expiresAt, boolean layerLifetime) { }
 }

@@ -15,6 +15,8 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Transformation;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.ConfirmedHitEffects;
+import com.projectkorra.projectkorra.prediction.CooldownSync;
+import com.projectkorra.projectkorra.prediction.EntityHitboxProvider;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.colliders.Sphere;
@@ -24,7 +26,7 @@ import org.joml.Vector3f;
 import java.util.ArrayList;
 import java.util.List;
 
-public class AirBlade extends AirAbility implements AddonAbility {
+public class AirBlade extends AirAbility implements AddonAbility, EntityHitboxProvider {
 
     private static final double ARC_STEP = 8.0;
     // Less air particles, but collision/head math still uses the full arc.
@@ -102,6 +104,7 @@ public class AirBlade extends AirAbility implements AddonAbility {
     }
 
     private void progressBlade() {
+        final boolean authoritative = CooldownSync.isAuthoritative();
         for (int j = 0; j < 2; j++) {
             location = location.add(direction.clone());
             travelled++;
@@ -144,6 +147,7 @@ public class AirBlade extends AirAbility implements AddonAbility {
                         lastLoc = tempLoc;
 
                         boolean hit = CollisionDetector.checkEntityCollisions(player, new Sphere(tempLoc, entityCollisionRadius), entity -> {
+                            if (!authoritative) return true;
                             DamageHandler.damageEntity(entity, damage, this);
                             final Location hitLocation = entity.getLocation().clone();
                             ConfirmedHitEffects.sound(this, entity, () -> {
@@ -154,7 +158,7 @@ public class AirBlade extends AirAbility implements AddonAbility {
                             return true;
                         });
 
-                        if (hit) {
+                        if (hit && authoritative) {
                             remove();
                             return;
                         }
@@ -333,6 +337,16 @@ public class AirBlade extends AirAbility implements AddonAbility {
     @Override
     public double getCollisionRadius() {
         return JedCoreConfig.getConfig(this.bPlayer).getDouble("Abilities.Air.AirBlade.AbilityCollisionRadius");
+    }
+
+    @Override
+    public List<Location> getEntityHitLocations() {
+        return getLocations();
+    }
+
+    @Override
+    public double getEntityHitRadius() {
+        return entityCollisionRadius;
     }
 
     public long getCooldown() {

@@ -18,6 +18,7 @@ import com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageByEnti
 import com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent;
 import com.projectkorra.projectkorra.platform.mc.metadata.FixedMetadataValue;
 import com.projectkorra.projectkorra.prediction.HitResolutionSync;
+import com.projectkorra.projectkorra.prediction.PredictedContactSync;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.HashMap;
@@ -150,6 +151,13 @@ public class DamageHandler {
      */
     public static void damageEntity(final Entity entity, Player source, double damage, final Ability ability, boolean ignoreArmor, boolean doSourcelessDamage) {
         if (ability == null) {
+            return;
+        }
+
+        // Remote health is never client-predicted. This also transfers
+        // lifecycle ownership before the callback can remove its ability from
+        // a stale local contact.
+        if (PredictedContactSync.mark(ability, entity)) {
             return;
         }
 

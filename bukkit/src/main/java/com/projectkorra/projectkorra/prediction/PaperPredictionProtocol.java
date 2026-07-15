@@ -10,7 +10,8 @@ import java.util.UUID;
  * Raw Bukkit plugin-message codec matching Fabric's RegistryByteBuf layout.
  */
 final class PaperPredictionProtocol {
-    static final int VERSION = 18;
+    static final int VERSION = 21;
+    static final int MAX_BLOCK_STATE_CHARACTERS = 512;
     static final String HELLO = "projectkorra:client_hello";
     static final String INPUT = "projectkorra:input_frame";
     static final String PREPARE = "projectkorra:action_prepare";
@@ -23,6 +24,7 @@ final class PaperPredictionProtocol {
     static final String TEMP_BLOCKS = "projectkorra:temp_blocks";
     static final String VELOCITY_OWNER = "projectkorra:velocity_owner";
     static final String VELOCITY_OWNER_V2 = "projectkorra:velocity_owner_v2";
+    static final String TEMP_FALLING_BLOCK = "projectkorra:temp_falling_block";
     static final String ABILITY_REMOVED = "projectkorra:ability_removed";
     static final String STATE_DIRECTIVE = "projectkorra:state_directive";
 
@@ -133,11 +135,11 @@ final class PaperPredictionProtocol {
         for (TempBlockOp operation : operations) {
             out.enumeration(operation.operation()).string(operation.world(), 256)
                     .i32(operation.x()).i32(operation.y()).i32(operation.z())
-                    .string(operation.material(), 128).i64(operation.revertAtMillis())
+                    .string(operation.material(), MAX_BLOCK_STATE_CHARACTERS).i64(operation.revertAtMillis())
                     .varLong(operation.actionSequence()).varLong(operation.layerId())
                     .varLong(operation.revision()).bool(operation.ownerId() != null);
             if (operation.ownerId() != null) out.uuid(operation.ownerId());
-            out.string(operation.viewerMaterial(), 128).bool(operation.packetExpected());
+            out.string(operation.viewerMaterial(), MAX_BLOCK_STATE_CHARACTERS).bool(operation.packetExpected());
         }
         return out.bytes();
     }
@@ -154,6 +156,12 @@ final class PaperPredictionProtocol {
         return new Writer().i64(serverTick).varLong(actionSequence).varInt(impulseOrdinal)
                 .uuid(abilityOwner).uuid(target).varInt(targetEntityId).string(ability, 128)
                 .f64(velocityX).f64(velocityY).f64(velocityZ).bytes();
+    }
+
+    static byte[] tempFallingBlock(long serverTick, long actionSequence, int spawnOrdinal,
+                                   UUID abilityOwner, int serverEntityId, String ability) {
+        return new Writer().i64(serverTick).varLong(actionSequence).varInt(spawnOrdinal)
+                .uuid(abilityOwner).varInt(serverEntityId).string(ability, 128).bytes();
     }
 
     static byte[] abilityRemoved(UUID player, String ability, long actionSequence) {
@@ -189,7 +197,7 @@ final class PaperPredictionProtocol {
 
     enum ValueType {STRING, BOOLEAN, INTEGER, DECIMAL, STRING_LIST}
 
-    enum TempOperation {CREATE, UPDATE_EXPIRY, REVERT}
+    enum TempOperation {CREATE, UPDATE_EXPIRY, REVERT, DISCARD}
 
     record ConfigEntry(String path, ValueType type, List<String> values) {
     }

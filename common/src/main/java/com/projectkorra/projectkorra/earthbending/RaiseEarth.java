@@ -19,7 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class RaiseEarth extends EarthAbility {
 
-    private static final Set<Block> WALL_BLOCKS = ConcurrentHashMap.newKeySet();
+    private static final ConcurrentHashMap<WallKey, Integer> WALL_BLOCKS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<Block, Integer> ACTIVE_BLOCKS = new ConcurrentHashMap<>();
 
     private int distance;
@@ -38,6 +38,7 @@ public class RaiseEarth extends EarthAbility {
     private Location origin;
     private Location location;
     private boolean raisedByWall;
+    private boolean completed;
     private ConcurrentHashMap<Block, Block> affectedBlocks;
     private Set<Block> wallBlocks;
 
@@ -143,16 +144,11 @@ public class RaiseEarth extends EarthAbility {
     }
 
     public static void revertWallAffectedBlock(final Block block) {
-        Block matched = null;
-        for (final Block wallBlock : WALL_BLOCKS) {
-            if (isSameBlock(wallBlock, block)) {
-                matched = wallBlock;
-                break;
-            }
+        if (block == null) {
+            return;
         }
-        if (matched != null) {
-            WALL_BLOCKS.remove(matched);
-        }
+
+        WALL_BLOCKS.remove(wallKey(block));
 
         for (final RaiseEarth raiseEarth : getAbilities(RaiseEarth.class)) {
             raiseEarth.removeTrackedWallBlock(block);
@@ -189,19 +185,23 @@ public class RaiseEarth extends EarthAbility {
     }
 
     private static boolean containsWallBlock(final Block block) {
-        for (final Block wallBlock : WALL_BLOCKS) {
-            if (isSameBlock(wallBlock, block)) {
-                return true;
-            }
-        }
-        return false;
+        return block != null && WALL_BLOCKS.containsKey(wallKey(block));
     }
 
     private static boolean isSameBlock(final Block first, final Block second) {
-        return first.getX() == second.getX()
+        return first != null && second != null
+                && first.getX() == second.getX()
                 && first.getY() == second.getY()
                 && first.getZ() == second.getZ()
                 && first.getWorld().equals(second.getWorld());
+    }
+
+    /** Clears persistent wall identity during a full bending-runtime shutdown. */
+    public static void clearWallBlocks() {
+        WALL_BLOCKS.clear();
+        for (final RaiseEarth raiseEarth : getAbilities(RaiseEarth.class)) {
+            raiseEarth.wallBlocks.clear();
+        }
     }
 
     private void setFields() {
@@ -259,6 +259,7 @@ public class RaiseEarth extends EarthAbility {
             this.loadAffectedBlocks();
 
             if (this.location.distanceSquared(this.origin) >= this.distance * this.distance) {
+                this.completed = true;
                 this.remove();
                 return;
             }
@@ -278,16 +279,25 @@ public class RaiseEarth extends EarthAbility {
 
     private void trackWallBlocks() {
         for (final Block affected : this.affectedBlocks.keySet()) {
-            this.wallBlocks.add(affected);
-            WALL_BLOCKS.add(affected);
+            if (this.wallBlocks.add(affected)) {
+                WALL_BLOCKS.merge(wallKey(affected), 1, Integer::sum);
+            }
         }
     }
 
     private void clearTrackedWallBlocks() {
         for (final Block wallBlock : this.wallBlocks) {
-            RaiseEarth.revertWallAffectedBlock(wallBlock);
+            WALL_BLOCKS.computeIfPresent(wallKey(wallBlock),
+                    (ignored, references) -> references > 1 ? references - 1 : null);
         }
         this.wallBlocks.clear();
+    }
+
+    private static WallKey wallKey(final Block block) {
+        return new WallKey(block.getWorld().getName(), block.getX(), block.getY(), block.getZ());
+    }
+
+    private record WallKey(String world, int x, int y, int z) {
     }
 
     private void removeTrackedWallBlock(final Block block) {
@@ -416,7 +426,15 @@ public class RaiseEarth extends EarthAbility {
     @Override
     public void remove() {
         this.discardAffectedBlocks();
-        this.clearTrackedWallBlocks();
+        if (this.raisedByWall && this.completed) {
+            // A completed RaiseEarthWall no longer has a live ability instance,
+            // but Collapse still needs to identify the moved blocks. Detach the
+            // instance-local set while retaining the global wall identity until
+            // Collapse or EarthAbility's normal moved-earth restoration consumes it.
+            this.wallBlocks.clear();
+        } else {
+            this.clearTrackedWallBlocks();
+        }
         super.remove();
     }
 

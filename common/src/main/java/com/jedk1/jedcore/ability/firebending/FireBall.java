@@ -21,6 +21,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.CooldownSync;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
@@ -150,7 +151,7 @@ public class FireBall extends FireAbility implements AddonAbility {
                 if (this.distanceTravelled > 2 && this.fireTrail) {
                     new BlazeArc(player, location.clone().subtract(direction).subtract(direction), direction, 2);
                 }
-            } else {
+            } else if (CooldownSync.isAuthoritative()) {
                 remove();
                 return;
             }
@@ -159,6 +160,7 @@ public class FireBall extends FireAbility implements AddonAbility {
 
     private boolean doDamage(Entity entity) {
         if (!(entity instanceof LivingEntity)) return false;
+        if (!CooldownSync.isAuthoritative()) return true;
 
         distanceTravelled = range;
         DamageHandler.damageEntity(entity, damage, this);

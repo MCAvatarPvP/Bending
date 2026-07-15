@@ -13,11 +13,13 @@ import com.projectkorra.projectkorra.platform.mc.Sound;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.EntityHitboxProvider;
 import com.projectkorra.projectkorra.util.ParticleEffect;
 
 import java.util.ArrayList;
+import java.util.List;
 
-public class JetBlaze extends FireAbility implements ComboAbility {
+public class JetBlaze extends FireAbility implements ComboAbility, EntityHitboxProvider {
 
     private boolean firstTime;
     private int progressCounter;
@@ -137,6 +139,22 @@ public class JetBlaze extends FireAbility implements ComboAbility {
     @Override
     public Location getLocation() {
         return this.player.getLocation();
+    }
+
+    @Override
+    public List<Location> getEntityHitLocations() {
+        final List<Location> locations = new ArrayList<>();
+        for (final FireComboStream task : this.tasks) {
+            if (!task.isCancelled() && task.getLocation() != null) {
+                locations.add(task.getLocation().clone());
+            }
+        }
+        return locations;
+    }
+
+    @Override
+    public double getEntityHitRadius() {
+        return 2D;
     }
 
     @Override

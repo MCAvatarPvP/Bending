@@ -36,4 +36,9 @@ public class BlockState {
     public Object handle() {
         return this;
     }
+
+    /** True when replacing this state would discard block-entity data. */
+    public boolean hasBlockEntity() {
+        return this instanceof Container;
+    }
 }

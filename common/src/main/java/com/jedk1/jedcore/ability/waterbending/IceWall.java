@@ -147,7 +147,7 @@ public class IceWall extends IceAbility implements AddonAbility {
 
                     for (Entity e : GeneralMethods.getEntitiesAroundPoint(location, 3)) {
                         if (e instanceof LivingEntity) {
-                            ((LivingEntity) e).damage(7, entity);
+                            DamageHandler.damageEntity(e, 7, iw);
                         }
                     }
                     return true;

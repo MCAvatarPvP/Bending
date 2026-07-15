@@ -10,6 +10,7 @@ import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.World;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
+import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.block.data.type.Snow;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
@@ -26,6 +27,8 @@ import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 public class PhaseChange extends IceAbility {
+
+    private static final long MELT_REVERT_MILLIS = 120_000L;
 
     private static Map<TempBlock, Player> PLAYER_BY_BLOCK = new HashMap<>();
     private static List<Block> BLOCKS = new ArrayList<>();
@@ -79,18 +82,20 @@ public class PhaseChange extends IceAbility {
      * @return true when it is thawed successfully
      */
     public static boolean thaw(final TempBlock tb) {
-        if (!PLAYER_BY_BLOCK.containsKey(tb)) {
+        if (tb == null || !PLAYER_BY_BLOCK.containsKey(tb)) {
             return false;
         } else {
             final Player p = PLAYER_BY_BLOCK.get(tb);
             final PhaseChange pc = getAbility(p, PhaseChange.class);
             if (pc == null) {
+                untrackFrozenIndexes(tb);
                 return false;
             }
-            PLAYER_BY_BLOCK.remove(tb);
-            BLOCKS.remove(tb.getBlock());
-            if (pc.getFrozenBlocks() != null) {
-                pc.getFrozenBlocks().remove(tb);
+            if (tb.isReverted()) {
+                pc.untrackFrozen(tb);
+                return false;
+            }
+            if (pc.getFrozenBlocks().contains(tb)) {
                 tb.revertBlock();
                 return true;
             }
@@ -105,11 +110,13 @@ public class PhaseChange extends IceAbility {
      * @return false if not a {@link TempBlock}
      */
     public static boolean thaw(final Block b) {
-        if (!TempBlock.isTempBlock(b)) {
-            return false;
+        final List<TempBlock> layers = TempBlock.getAll(b);
+        if (layers == null) return false;
+        for (int index = layers.size() - 1; index >= 0; index--) {
+            final TempBlock layer = layers.get(index);
+            if (PLAYER_BY_BLOCK.containsKey(layer)) return thaw(layer);
         }
-        final TempBlock tb = TempBlock.get(b);
-        return thaw(tb);
+        return false;
     }
 
     public static Map<TempBlock, Player> getFrozenBlocksMap() {
@@ -122,6 +129,13 @@ public class PhaseChange extends IceAbility {
 
     @Override
     public void progress() {
+        // A client-side DISCARD intentionally skips revert callbacks. Purge
+        // those retired handles here so PhaseChange's indexes cannot keep a
+        // dead layer alive after an explicit server authority handoff.
+        for (final TempBlock block : this.blocks) {
+            if (block.isReverted()) untrackFrozen(block);
+        }
+
         if (!this.player.isOnline() || this.player.isDead()) {
             this.remove();
             return;
@@ -136,14 +150,8 @@ public class PhaseChange extends IceAbility {
             for (final TempBlock tb : this.blocks) {
                 if (tb.getLocation().getWorld() != this.player.getWorld()) {
                     tb.revertBlock();
-                    this.blocks.remove(tb);
-                    PLAYER_BY_BLOCK.remove(tb);
-                    BLOCKS.remove(tb.getBlock());
                 } else if (tb.getLocation().distanceSquared(this.player.getLocation()) > (this.controlRadius * this.controlRadius)) {
                     tb.revertBlock();
-                    this.blocks.remove(tb);
-                    PLAYER_BY_BLOCK.remove(tb);
-                    BLOCKS.remove(tb.getBlock());
                 }
             }
         }
@@ -169,14 +177,8 @@ public class PhaseChange extends IceAbility {
             for (final TempBlock tb : this.blocks) {
                 if (tb.getLocation().getWorld() != this.player.getWorld()) {
                     tb.revertBlock();
-                    this.blocks.remove(tb);
-                    PLAYER_BY_BLOCK.remove(tb);
-                    BLOCKS.remove(tb.getBlock());
                 } else if (tb.getLocation().distanceSquared(this.player.getLocation()) > (this.controlRadius * this.controlRadius)) {
                     tb.revertBlock();
-                    this.blocks.remove(tb);
-                    PLAYER_BY_BLOCK.remove(tb);
-                    BLOCKS.remove(tb.getBlock());
                 }
             }
         }
@@ -326,34 +328,53 @@ public class PhaseChange extends IceAbility {
             return;
         }
 
-        if (!isWater(b)) {
+        TempBlock tb = TempBlock.get(b);
+        final BlockData visibleData = tb == null ? b.getBlockData() : tb.getBlockData();
+        if (!isWater(visibleData)) {
             return;
         }
 
-        TempBlock tb = null;
-
-        if (TempBlock.isTempBlock(b)) {
-            tb = TempBlock.get(b);
-            if (this.melted_blocks.contains(tb.getBlock())) {
-                this.melted_blocks.remove(tb.getBlock());
-                tb.revertBlock();
-                tb.setType(Material.ICE);
-            }
-        }
-        if (tb == null) {
+        if (tb == null || tb.isReverted() || tb.getAbility().orElse(null) != this
+                || tb.getBlockData().getMaterial() != Material.ICE) {
+            // Never adopt or mutate another ability's layer. Refreezing a
+            // PhaseChange melt creates a new ICE layer over its timed WATER
+            // layer, so both lifecycles remain well-formed.
             tb = new TempBlock(b, Material.ICE.createBlockData(), this);
             tb.setCanSuffocate(false);
         }
-        this.blocks.add(tb);
-        PLAYER_BY_BLOCK.put(tb, this.player);
-        BLOCKS.add(tb.getBlock());
+        this.melted_blocks.remove(b);
+        trackFrozen(tb);
         playIcebendingSound(b.getLocation());
+    }
+
+    private void trackFrozen(final TempBlock block) {
+        if (!this.blocks.contains(block)) this.blocks.add(block);
+        PLAYER_BY_BLOCK.put(block, this.player);
+        if (!BLOCKS.contains(block.getBlock())) BLOCKS.add(block.getBlock());
+        block.setRevertTask(() -> untrackFrozen(block));
+    }
+
+    private void untrackFrozen(final TempBlock block) {
+        this.blocks.remove(block);
+        untrackFrozenIndexes(block);
+    }
+
+    private static void untrackFrozenIndexes(final TempBlock block) {
+        PLAYER_BY_BLOCK.remove(block);
+        boolean coordinateStillFrozen = false;
+        for (TempBlock remaining : PLAYER_BY_BLOCK.keySet()) {
+            if (remaining.getBlock().equals(block.getBlock())) {
+                coordinateStillFrozen = true;
+                break;
+            }
+        }
+        if (!coordinateStillFrozen) BLOCKS.remove(block.getBlock());
     }
 
     public void meltArea(final Location center, final int radius) {
         final List<Block> ice = new ArrayList<Block>();
         for (final Location l : GeneralMethods.getCircle(center, radius, 3, !instantMelt, true, 0)) {
-            if (isMeltableIce(l.getBlock()) || isSnow(l.getBlock())) {
+            if (isRegisteredMeltable(l.getBlock())) {
                 ice.add(l.getBlock());
             }
         }
@@ -409,33 +430,42 @@ public class PhaseChange extends IceAbility {
             return;
         }
         if (TempBlock.isTempBlock(b)) {
-            final TempBlock tb = TempBlock.get(b);
-
-            if (!isMeltableIce(tb.getBlock()) && !isSnow(tb.getBlock())) {
+            // A registered PhaseChange layer can be buried beneath a newer
+            // overlap. Retire that exact layer first; never infer ownership
+            // from whichever layer happens to be physically on top.
+            if (thaw(b)) {
+                playWaterbendingSound(b.getLocation());
                 return;
             }
 
-            if (PLAYER_BY_BLOCK.containsKey(tb)) {
-                thaw(tb);
+            final TempBlock tb = TempBlock.get(b);
+            final BlockData visibleData = tb.getBlockData();
+
+            if (!isIce(visibleData.getMaterial()) && !isSnow(visibleData.getMaterial())) {
+                return;
             }
 
-            if (b.getType() == Material.SNOW) {
-                if (b.getBlockData() instanceof Snow) {
-                    final Snow snow = (Snow) b.getBlockData();
-                    if (snow.getLayers() == snow.getMinimumLayers()) {
-                        tb.revertBlock();
-                        new TempBlock(b, Material.AIR.createBlockData(), 120 * 1000L, this);
-                    } else {
-                        tb.revertBlock();
-                        snow.setLayers(snow.getLayers() - 1);
-                        new TempBlock(b, snow, 120 * 1000L, this);
-                    }
+            if (this.allowMeltFlow && isIce(visibleData.getMaterial())) {
+                // Flow is a real world edit. Explicitly hand off every layer
+                // at this coordinate before writing it; removeBlock never
+                // writes an old snapshot back into the world.
+                TempBlock.removeBlock(b);
+                if (b.getWorld().getEnvironment() == World.Environment.NETHER) {
+                    b.setType(Material.AIR);
+                } else {
+                    b.setType(Material.WATER);
+                    b.setBlockData(GeneralMethods.getWaterData(0));
                 }
+            } else {
+                final BlockData melted = meltedData(visibleData, b.getWorld());
+                if (melted == null) return;
+                // Preserve the foreign layer and put PhaseChange's bounded
+                // lifecycle above it. This produces the same stack on a
+                // predicting client even when the foreign server layer is
+                // represented only by overlay metadata there.
+                new TempBlock(b, melted, MELT_REVERT_MILLIS, this);
             }
-
-            if (isIce(tb.getBlock()) && ElementalAbility.isWater(tb.getState().getBlockData().getMaterial())) {
-                tb.revertBlock();
-            }
+            this.melted_blocks.addIfAbsent(b);
         } else if (isWater(b)) {
             // Figure out what to do here also.
         } else if (isMeltableIce(b)) {
@@ -443,56 +473,69 @@ public class PhaseChange extends IceAbility {
                 if (this.allowMeltFlow) {
                     b.setType(Material.AIR);
                 } else {
-                    new TempBlock(b, Material.AIR.createBlockData(), this);
+                    new TempBlock(b, Material.AIR.createBlockData(), MELT_REVERT_MILLIS, this);
                 }
             } else {
                 if (this.allowMeltFlow) {
                     b.setType(Material.WATER);
                     b.setBlockData(GeneralMethods.getWaterData(0));
                 } else {
-                    new TempBlock(b, Material.WATER.createBlockData(), this);
+                    new TempBlock(b, Material.WATER.createBlockData(), MELT_REVERT_MILLIS, this);
                 }
             }
 
-            this.melted_blocks.add(b);
+            this.melted_blocks.addIfAbsent(b);
         } else if (b.getType() == Material.SNOW_BLOCK || b.getType() == Material.SNOW) {
-            if (b.getBlockData() instanceof Snow) {
-                final Snow snow = (Snow) b.getBlockData();
-                if (snow.getLayers() == snow.getMinimumLayers()) {
-                    new TempBlock(b, Material.AIR.createBlockData(), 120 * 1000L, this);
-                } else {
-                    snow.setLayers(snow.getLayers() - 1);
-                    new TempBlock(b, snow, 120 * 1000L, this);
-                }
-            }
-
-            this.melted_blocks.add(b);
+            final BlockData melted = meltedData(b.getBlockData(), b.getWorld());
+            if (melted == null) return;
+            new TempBlock(b, melted, MELT_REVERT_MILLIS, this);
+            this.melted_blocks.addIfAbsent(b);
         }
         playWaterbendingSound(b.getLocation());
+    }
+
+    private static BlockData meltedData(final BlockData visibleData, final World world) {
+        if (visibleData == null) return null;
+        if (visibleData.getMaterial() == Material.SNOW) {
+            if (!(visibleData instanceof Snow snow) || snow.getLayers() <= snow.getMinimumLayers()) {
+                return Material.AIR.createBlockData();
+            }
+            final Snow thinner = snow.clone();
+            thinner.setLayers(snow.getLayers() - 1);
+            return thinner;
+        }
+        if (visibleData.getMaterial() == Material.SNOW_BLOCK) {
+            return Material.AIR.createBlockData();
+        }
+        if (isIce(visibleData.getMaterial())) {
+            return world != null && world.getEnvironment() == World.Environment.NETHER
+                    ? Material.AIR.createBlockData() : Material.WATER.createBlockData();
+        }
+        return null;
+    }
+
+    private static boolean isRegisteredMeltable(final Block block) {
+        final TempBlock layer = TempBlock.get(block);
+        if (layer == null) return isMeltableIce(block) || isSnow(block);
+        final Material material = layer.getBlockData().getMaterial();
+        return isIce(material) || isSnow(material);
     }
 
     public void revertFrozenBlocks() {
         if (this.active_types.contains(PhaseChangeType.FREEZE) || this.active_types.contains(PhaseChangeType.CUSTOM)) {
             for (final TempBlock tb : this.blocks) {
-                PLAYER_BY_BLOCK.remove(tb);
-                BLOCKS.remove(tb.getBlock());
                 tb.revertBlock();
+                if (tb.isReverted()) untrackFrozen(tb);
             }
             this.blocks.clear();
         }
     }
 
     public void revertMeltedBlocks() {
-        if (this.active_types.contains(PhaseChangeType.MELT)) {
-            for (final Block b : this.melted_blocks) {
-                if (TempBlock.isTempBlock(b)) {
-                    TempBlock.get(b).revertBlock();
-                } else {
-                    b.setType(Material.ICE);
-                }
-            }
-            this.melted_blocks.clear();
-        }
+        // Melt layers have their own bounded TempBlock lifetime. Ability
+        // removal must not immediately roll them back (or leave the no-expiry
+        // variants behind forever); the client lifecycle is the visual answer.
+        this.melted_blocks.clear();
     }
 
     @Override

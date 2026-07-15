@@ -15,10 +15,14 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionEffect;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionEffectType;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.CooldownSync;
+import com.projectkorra.projectkorra.prediction.EntityHitboxProvider;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.colliders.Sphere;
 
-public class SonicBlast extends AirAbility implements AddonAbility {
+import java.util.List;
+
+public class SonicBlast extends AirAbility implements AddonAbility, EntityHitboxProvider {
 
     private Location location;
     private Vector direction;
@@ -110,6 +114,7 @@ public class SonicBlast extends AirAbility implements AddonAbility {
     }
 
     private void advanceLocation() {
+        final boolean authoritative = CooldownSync.isAuthoritative();
         travelled++;
 
         if (location == null) {
@@ -126,6 +131,7 @@ public class SonicBlast extends AirAbility implements AddonAbility {
             }
 
             boolean hit = CollisionDetector.checkEntityCollisions(player, new Sphere(location, entityCollisionRadius), (entity) -> {
+                if (!authoritative) return true;
                 DamageHandler.damageEntity(entity, damage, this);
                 LivingEntity lE = (LivingEntity) entity;
                 lE.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, nauseaDur / 50, 1));
@@ -133,7 +139,7 @@ public class SonicBlast extends AirAbility implements AddonAbility {
                 return true;
             });
 
-            if (hit) {
+            if (hit && authoritative) {
                 remove();
                 return;
             }
@@ -157,6 +163,16 @@ public class SonicBlast extends AirAbility implements AddonAbility {
     @Override
     public Location getLocation() {
         return location;
+    }
+
+    @Override
+    public List<Location> getEntityHitLocations() {
+        return location == null ? List.of() : List.of(location.clone());
+    }
+
+    @Override
+    public double getEntityHitRadius() {
+        return entityCollisionRadius;
     }
 
     @Override

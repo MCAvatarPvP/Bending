@@ -10,6 +10,8 @@ import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.block.BlockState;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.block.data.Levelled;
+import com.projectkorra.projectkorra.platform.mc.block.data.type.Fire;
+import com.projectkorra.projectkorra.platform.mc.block.data.type.Snow;
 import com.projectkorra.projectkorra.platform.mc.command.CommandSender;
 import com.projectkorra.projectkorra.platform.mc.entity.*;
 import com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent;
@@ -35,7 +37,11 @@ import com.projectkorra.projectkorra.platform.mc.util.Transformation;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
 import com.projectkorra.projectkorra.prediction.CapturedInputPose;
+import com.projectkorra.projectkorra.prediction.HitResolutionSync;
 import com.projectkorra.projectkorra.prediction.PaperPredictionServer;
+import com.projectkorra.projectkorra.prediction.TempBlockSync;
+import com.projectkorra.projectkorra.prediction.VelocitySync;
+import com.projectkorra.projectkorra.util.TempBlock;
 import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
@@ -69,6 +75,23 @@ public final class BukkitMC {
     private static final Map<UUID, CapturedInputPose> VIEW_OVERRIDES = new ConcurrentHashMap<>();
 
     private BukkitMC() {
+    }
+
+    private static void applyHitStatus(final Entity target, final Runnable commit) {
+        if (!HitResolutionSync.defer(HitResolutionSync.Effect.STATUS,
+                AbilityExecutionContext.current(), target, commit)) {
+            commit.run();
+        }
+    }
+
+    private static boolean applyHitStatus(final Entity target, final java.util.function.BooleanSupplier commit) {
+        final boolean[] result = {true};
+        final Runnable action = () -> result[0] = commit.getAsBoolean();
+        if (!HitResolutionSync.defer(HitResolutionSync.Effect.STATUS,
+                AbilityExecutionContext.current(), target, action)) {
+            action.run();
+        }
+        return result[0];
     }
 
     private static void setScoreboard(org.bukkit.entity.Player player, Scoreboard board) {
@@ -376,12 +399,30 @@ public final class BukkitMC {
     public static org.bukkit.block.data.BlockData blockDataHandle(final BlockData value) {
         org.bukkit.Material material = material(value == null ? Material.AIR : value.getMaterial());
         org.bukkit.block.data.BlockData nativeData = material.createBlockData();
+        if (value != null && value.getClass() == BlockData.class && value.getExactState() != null) {
+            try {
+                final org.bukkit.block.data.BlockData exact = Bukkit.createBlockData(value.getExactState());
+                if (exact.getMaterial() == material) return exact;
+            } catch (IllegalArgumentException ignored) { }
+        }
         if (value instanceof Levelled levelled) {
             if (nativeData instanceof org.bukkit.block.data.Levelled nativeLevelled) {
                 nativeLevelled.setLevel(Math.max(0, Math.min(nativeLevelled.getMaximumLevel(), levelled.getLevel())));
             }
             if (nativeData instanceof Waterlogged waterlogged) {
                 waterlogged.setWaterlogged(levelled.isWaterlogged());
+            }
+        } else if (value instanceof Snow snow
+                && nativeData instanceof org.bukkit.block.data.type.Snow nativeSnow) {
+            nativeSnow.setLayers(Math.max(nativeSnow.getMinimumLayers(),
+                    Math.min(nativeSnow.getMaximumLayers(), snow.getLayers())));
+        } else if (value instanceof Fire fire
+                && nativeData instanceof org.bukkit.block.data.MultipleFacing nativeFire) {
+            for (BlockFace face : fire.getFaces()) {
+                try {
+                    org.bukkit.block.BlockFace nativeFace = org.bukkit.block.BlockFace.valueOf(face.name());
+                    if (nativeFire.getAllowedFaces().contains(nativeFace)) nativeFire.setFace(nativeFace, true);
+                } catch (IllegalArgumentException ignored) { }
             }
         }
         return nativeData;
@@ -396,6 +437,18 @@ public final class BukkitMC {
             if (value instanceof Waterlogged waterlogged) {
                 levelled.setWaterlogged(waterlogged.isWaterlogged());
             }
+        } else if (data instanceof Snow snow
+                && value instanceof org.bukkit.block.data.type.Snow nativeSnow) {
+            snow.setLayers(nativeSnow.getLayers());
+        } else if (data instanceof Fire fire
+                && value instanceof org.bukkit.block.data.MultipleFacing nativeFire) {
+            for (org.bukkit.block.BlockFace nativeFace : nativeFire.getFaces()) {
+                try {
+                    fire.setFace(BlockFace.valueOf(nativeFace.name()), true);
+                } catch (IllegalArgumentException ignored) { }
+            }
+        } else if (data.getClass() == BlockData.class) {
+            data.setExactState(value.getAsString());
         }
         return data;
     }
@@ -923,11 +976,13 @@ public final class BukkitMC {
 
         @Override
         public void setType(Material type) {
+            prepareExternalWrite();
             value.setType(material(type));
         }
 
         @Override
         public void setType(Material type, boolean physics) {
+            prepareExternalWrite();
             value.setType(material(type), physics);
         }
 
@@ -938,12 +993,20 @@ public final class BukkitMC {
 
         @Override
         public void setBlockData(BlockData data) {
+            prepareExternalWrite();
             value.setBlockData(blockDataHandle(data));
         }
 
         @Override
         public void setBlockData(BlockData data, boolean physics) {
+            prepareExternalWrite();
             value.setBlockData(blockDataHandle(data), physics);
+        }
+
+        private void prepareExternalWrite() {
+            if (TempBlockSync.currentWorldMutation() == null && TempBlock.isTempBlock(this)) {
+                TempBlock.removeBlock(this);
+            }
         }
 
         @Override
@@ -1108,12 +1171,21 @@ public final class BukkitMC {
 
         @Override
         public boolean update(boolean force, boolean physics) {
+            final Block block = getBlock();
+            if (TempBlockSync.currentWorldMutation() == null && TempBlock.isTempBlock(block)) {
+                TempBlock.removeBlock(block);
+            }
             return value.update(force, physics);
         }
 
         @Override
         public Object handle() {
             return value;
+        }
+
+        @Override
+        public boolean hasBlockEntity() {
+            return value instanceof org.bukkit.block.TileState;
         }
     }
 
@@ -1288,7 +1360,8 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
-            value.setVelocity(vector(velocity));
+            VelocitySync.applyDirect(AbilityExecutionContext.current(), this, velocity,
+                    () -> value.setVelocity(vector(velocity)));
         }
 
         @Override
@@ -1313,7 +1386,7 @@ public final class BukkitMC {
 
         @Override
         public void setFireTicks(int ticks) {
-            value.setFireTicks(ticks);
+            applyHitStatus(this, () -> value.setFireTicks(ticks));
         }
 
         @Override
@@ -1404,7 +1477,7 @@ public final class BukkitMC {
 
         @Override
         public void setNoDamageTicks(int ticks) {
-            value.setNoDamageTicks(ticks);
+            applyHitStatus(this, () -> value.setNoDamageTicks(ticks));
         }
 
         @Override
@@ -1425,17 +1498,17 @@ public final class BukkitMC {
 
         @Override
         public void addPotionEffect(PotionEffect effect) {
-            value.addPotionEffect(potionEffectHandle(effect));
+            applyHitStatus(this, () -> value.addPotionEffect(potionEffectHandle(effect)));
         }
 
         @Override
         public void addPotionEffects(Collection<PotionEffect> effects) {
-            value.addPotionEffects(effects.stream().map(BukkitMC::potionEffectHandle).toList());
+            applyHitStatus(this, () -> value.addPotionEffects(effects.stream().map(BukkitMC::potionEffectHandle).toList()));
         }
 
         @Override
         public boolean addPotionEffect(PotionEffect effect, boolean force) {
-            return value.addPotionEffect(potionEffectHandle(effect), force);
+            return applyHitStatus(this, () -> value.addPotionEffect(potionEffectHandle(effect), force));
         }
 
         @Override
@@ -1447,7 +1520,7 @@ public final class BukkitMC {
         @Override
         public void removePotionEffect(PotionEffectType type) {
             final org.bukkit.potion.PotionEffectType nativeType = potionEffectTypeHandle(type);
-            if (nativeType != null) value.removePotionEffect(nativeType);
+            if (nativeType != null) applyHitStatus(this, () -> value.removePotionEffect(nativeType));
         }
 
         @Override
@@ -1462,7 +1535,7 @@ public final class BukkitMC {
 
         @Override
         public void setRemainingAir(int ticks) {
-            value.setRemainingAir(ticks);
+            applyHitStatus(this, () -> value.setRemainingAir(ticks));
         }
 
         @Override
@@ -1879,7 +1952,8 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
-            value.setVelocity(vector(velocity));
+            VelocitySync.applyDirect(AbilityExecutionContext.current(), this, velocity,
+                    () -> value.setVelocity(vector(velocity)));
         }
 
         @Override
@@ -1899,7 +1973,7 @@ public final class BukkitMC {
 
         @Override
         public void setFireTicks(int ticks) {
-            value.setFireTicks(ticks);
+            applyHitStatus(this, () -> value.setFireTicks(ticks));
         }
 
         @Override
@@ -2262,7 +2336,7 @@ public final class BukkitMC {
 
         @Override
         public void setNoDamageTicks(int ticks) {
-            value.setNoDamageTicks(ticks);
+            applyHitStatus(this, () -> value.setNoDamageTicks(ticks));
         }
 
         @Override
@@ -2283,17 +2357,17 @@ public final class BukkitMC {
 
         @Override
         public void addPotionEffect(PotionEffect effect) {
-            value.addPotionEffect(potionEffectHandle(effect));
+            applyHitStatus(this, () -> value.addPotionEffect(potionEffectHandle(effect)));
         }
 
         @Override
         public void addPotionEffects(Collection<PotionEffect> effects) {
-            value.addPotionEffects(effects.stream().map(BukkitMC::potionEffectHandle).toList());
+            applyHitStatus(this, () -> value.addPotionEffects(effects.stream().map(BukkitMC::potionEffectHandle).toList()));
         }
 
         @Override
         public boolean addPotionEffect(PotionEffect effect, boolean force) {
-            return value.addPotionEffect(potionEffectHandle(effect), force);
+            return applyHitStatus(this, () -> value.addPotionEffect(potionEffectHandle(effect), force));
         }
 
         @Override
@@ -2305,7 +2379,7 @@ public final class BukkitMC {
         @Override
         public void removePotionEffect(PotionEffectType type) {
             final org.bukkit.potion.PotionEffectType nativeType = potionEffectTypeHandle(type);
-            if (nativeType != null) value.removePotionEffect(nativeType);
+            if (nativeType != null) applyHitStatus(this, () -> value.removePotionEffect(nativeType));
         }
 
         @Override
@@ -2320,7 +2394,7 @@ public final class BukkitMC {
 
         @Override
         public void setRemainingAir(int ticks) {
-            value.setRemainingAir(ticks);
+            applyHitStatus(this, () -> value.setRemainingAir(ticks));
         }
 
         @Override

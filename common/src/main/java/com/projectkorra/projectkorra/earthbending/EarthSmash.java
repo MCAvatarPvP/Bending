@@ -496,12 +496,11 @@ public class EarthSmash extends EarthAbility {
 
     public void revert() {
         this.checkRemainingBlocks();
-        for (int i = 0; i < this.affectedBlocks.size(); i++) {
-            final TempBlock tblock = this.affectedBlocks.get(i);
+        final List<TempBlock> retiring = List.copyOf(this.affectedBlocks);
+        this.affectedBlocks.clear();
+        for (final TempBlock tblock : retiring) {
             getPreventEarthbendingBlocks().remove(tblock.getBlock());
             tblock.revertBlock();
-            this.affectedBlocks.remove(i);
-            i--;
         }
     }
 
@@ -545,8 +544,24 @@ public class EarthSmash extends EarthAbility {
         for (int i = 0; i < this.currentBlocks.size(); i++) {
             final BlockRepresenter brep = this.currentBlocks.get(i);
             final Block block = this.location.clone().add(brep.getX(), brep.getY(), brep.getZ()).getBlock();
+            // The registered client TempBlock is the visual source of truth.
+            // A hidden or delayed physical server packet must never make a
+            // live smash delete pieces from its model.
+            TempBlock smashLayer = null;
+            final List<TempBlock> layers = TempBlock.getAll(block);
+            if (layers != null) {
+                for (int layerIndex = layers.size() - 1; layerIndex >= 0; layerIndex--) {
+                    final TempBlock candidate = layers.get(layerIndex);
+                    if (candidate.getAbility().orElse(null) == this) {
+                        smashLayer = candidate;
+                        break;
+                    }
+                }
+            }
+            final Material visible = smashLayer == null
+                    ? block.getType() : smashLayer.getBlockData().getMaterial();
             // Check for grass because sometimes the dirt turns into grass.
-            if (block.getType() != brep.getType() && (block.getType() != Material.GRASS_BLOCK) && (block.getType() != Material.COBBLESTONE)) {
+            if (visible != brep.getType() && visible != Material.GRASS_BLOCK && visible != Material.COBBLESTONE) {
                 this.currentBlocks.remove(i);
                 i--;
             }

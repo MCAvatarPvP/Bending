@@ -35,7 +35,8 @@ public final class HitResolutionSync {
         DAMAGE,
         VELOCITY,
         STAMINA,
-        SOUND
+        SOUND,
+        STATUS
     }
 
     @FunctionalInterface

@@ -20,6 +20,10 @@ public final class AbilityExecutionContext {
         CURRENT.set(ability);
         try {
             progress.run();
+        } catch (final PredictedContactSync.Abort ignored) {
+            // Remote entity state is not deterministic on the predicting
+            // client. The hit claim was emitted; server reconciliation now
+            // owns effects and ability termination.
         } finally {
             if (previous == null) CURRENT.remove();
             else CURRENT.set(previous);

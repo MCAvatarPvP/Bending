@@ -13,6 +13,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.BoundingBox;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.CooldownSync;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.TempBlock;
 
@@ -52,6 +53,8 @@ public class WallOfFire extends FireAbility {
     private Location origin;
     private List<Block> blocks;
     private Map<Entity, Long> affected;
+    private Map<UUID, BoundingBox> previousEntityBounds;
+    private Set<UUID> predictedContacts;
     private BoundingBox wofBoundingBox;
     private Vector uLR;
     private Vector vUD;
@@ -76,6 +79,8 @@ public class WallOfFire extends FireAbility {
         this.random = new Random();
         this.blocks = new ArrayList<>();
         this.affected = new HashMap<>();
+        this.previousEntityBounds = new HashMap<>();
+        this.predictedContacts = new HashSet<>();
 
         if (hasAbility(player, WallOfFire.class)) {
             return;
@@ -94,7 +99,8 @@ public class WallOfFire extends FireAbility {
         final Vector direction = player.getEyeLocation().getDirection();
         final Vector compare = direction.clone();
         compare.setY(0);
-        if (Math.abs(direction.angle(compare)) > Math.toRadians(this.maxAngle)) {
+        if (compare.lengthSquared() < 1.0E-12
+                || Math.abs(direction.angle(compare)) > Math.toRadians(this.maxAngle)) {
             return;
         }
         this.wofBoundingBox = new BoundingBox();
@@ -117,6 +123,11 @@ public class WallOfFire extends FireAbility {
 
     private void affect(final Entity entity) {
         if (affected.containsKey(entity)) return;
+        // Remote mutation emits an exact hit claim and aborts the remainder of
+        // this predicted progress call. Remember that target before the abort
+        // so it cannot starve every later entity on subsequent ticks.
+        if (!CooldownSync.isAuthoritative()
+                && !this.predictedContacts.add(entity.getUniqueId())) return;
         final boolean noStop = entity.getVelocity().lengthSquared() > 0.3;
 
         if (!noStop) {
@@ -144,14 +155,16 @@ public class WallOfFire extends FireAbility {
 
         radius = radius + 20;
         final List<Entity> entities = GeneralMethods.getEntitiesAroundPoint(this.origin, radius);
-        Map<UUID, BoundingBox> lastBoundingBB = new HashMap<>();
+        final Set<UUID> observed = new HashSet<>();
 
         for (final Entity entity : entities) {
             if (entity == this.player) continue;
             if (GeneralMethods.isRegionProtectedFromBuild(this, entity.getLocation())) continue;
 
             final BoundingBox curBB = entity.getBoundingBox();
-            final BoundingBox prevBB = lastBoundingBB.getOrDefault(entity.getUniqueId(), curBB);
+            final UUID entityId = entity.getUniqueId();
+            final BoundingBox prevBB = this.previousEntityBounds.getOrDefault(entityId, curBB);
+            observed.add(entityId);
 
             final Vector curC = new Vector((curBB.getMinX() + curBB.getMaxX()) * 0.5,
                     (curBB.getMinY() + curBB.getMaxY()) * 0.5,
@@ -177,13 +190,12 @@ public class WallOfFire extends FireAbility {
             double minY = -halfH - ey, maxY = halfH + ey;
             double minZ = -halfT - ez, maxZ = halfT + ez;
 
-            if (segmentIntersectsLocalAABB(p0, p1, minX, maxX, minY, maxY, minZ, maxZ)) {
-                this.affect(entity);
-                break;
-            }
-
-            lastBoundingBB.put(entity.getUniqueId(), curBB);
+            final boolean intersects = WallOfFireHitGeometry.segmentIntersectsLocalAABB(
+                    p0, p1, minX, maxX, minY, maxY, minZ, maxZ);
+            this.previousEntityBounds.put(entityId, curBB);
+            if (intersects) this.affect(entity);
         }
+        this.previousEntityBounds.keySet().retainAll(observed);
     }
 
     private void display() {
@@ -421,29 +433,4 @@ public class WallOfFire extends FireAbility {
         return this.blocks;
     }
 
-    private boolean segmentIntersectsLocalAABB(Vector P0, Vector P1, double minX, double maxX, double minY, double maxY, double minZ, double maxZ) {
-        double tmin = 0.0, tmax = 1.0;
-        double[] a0 = {P0.getX(), P0.getY(), P0.getZ()};
-        double[] a1 = {P1.getX(), P1.getY(), P1.getZ()};
-        double[] mn = {minX, minY, minZ};
-        double[] mx = {maxX, maxY, maxZ};
-        for (int i = 0; i < 3; i++) {
-            double d = a1[i] - a0[i];
-            if (Math.abs(d) < 1e-9) {
-                if (a0[i] < mn[i] || a0[i] > mx[i]) return false;
-            } else {
-                double inv = 1.0 / d;
-                double t1 = (mn[i] - a0[i]) * inv, t2 = (mx[i] - a0[i]) * inv;
-                if (t1 > t2) {
-                    double tmp = t1;
-                    t1 = t2;
-                    t2 = tmp;
-                }
-                tmin = Math.max(tmin, t1);
-                tmax = Math.min(tmax, t2);
-                if (tmin > tmax) return false;
-            }
-        }
-        return true;
-    }
 }

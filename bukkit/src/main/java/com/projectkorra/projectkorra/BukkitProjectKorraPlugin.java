@@ -53,7 +53,7 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
             if (getServer().getPluginManager().isPluginEnabled("packetevents")) {
                 this.tempBlockPacketFilter = TempBlockPacketFilter.register();
                 this.prediction.setTempBlockPacketFilter(this.tempBlockPacketFilter);
-                getLogger().info("Enabled exact-state owned TempBlock packet suppression.");
+                getLogger().info("Enabled lifecycle-coordinate owned TempBlock packet suppression.");
             } else {
                 getLogger().info("PacketEvents is unavailable; using Fabric-side owned TempBlock suppression.");
             }
@@ -69,6 +69,10 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        // Keep lifecycle publication and coordinate filtering alive while
+        // abilities restore their server state. Exact clients can then finish
+        // their own ordered TempBlock lifecycles during a reload.
+        GeneralMethods.stopBending();
         if (this.tempBlockPacketFilter != null) {
             this.tempBlockPacketFilter.stop();
             this.tempBlockPacketFilter = null;
@@ -77,10 +81,6 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
             this.prediction.stop();
             this.prediction = null;
         }
-        // Restore every temporary world mutation before Paper saves chunks.
-        // Prediction/filtering is already stopped, so the authoritative
-        // reverts are not hidden from clients that remain during a reload.
-        GeneralMethods.stopBending();
         Platform.scheduler().cancelAll();
     }
 

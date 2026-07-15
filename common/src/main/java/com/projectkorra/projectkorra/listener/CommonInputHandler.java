@@ -277,8 +277,9 @@ public final class CommonInputHandler {
         if ("AirBlast".equalsIgnoreCase(abilityName)) {
             for (final AirBlast blast : CoreAbility.getAbilities(player, AirBlast.class)) {
                 if (blast.getSource() == null && !blast.isProgressing()) {
-                    AirBlast.shoot(player);
-                    AbilityActivationManager.markHandled();
+                    blast.setFromOtherOrigin(true);
+                    blast.shoot();
+                    AbilityActivationManager.markHandled(blast);
                     return InputResult.cancel();
                 }
             }

@@ -9,128 +9,141 @@ import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Prevents generic prediction from repainting authority while allowing proven owned TempBlock receipts. */
+/** Guards the no-rollback authority boundary for common TempBlocks. */
 class AuthoritativeBlockBoundaryTest {
     @Test
-    void onlyOwnedTempLayersMaySurviveBatchesAndChunkSnapshots() throws IOException {
-        Path source = Path.of("src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
-        if (!Files.exists(source)) source = Path.of("fabric").resolve(source);
-        assertTrue(Files.exists(source));
+    void commonTempBlocksBypassTheGenericPredictionLedger() throws IOException {
+        String runtime = runtime();
+        String direct = method(runtime, "private void setTempBlock0", "private void setBlock0");
 
-        String runtime = Files.readString(source);
-        String batch = method(runtime, "private void acceptAuthoritativeBlockBatch0",
+        assertTrue(runtime.contains("if (TempBlockSync.currentWorldMutation() != null)"));
+        assertTrue(runtime.contains("INSTANCE.setTempBlock0(world, pos.toImmutable(), state)"));
+        assertTrue(direct.contains("world.setBlockState(pos, visibleState, 19)"));
+        assertTrue(direct.contains("blocks.remove(key)"));
+        assertTrue(direct.contains("blockEchoes.removeIf"));
+        assertFalse(direct.contains("blocks.computeIfAbsent"),
+                "TempBlocks must never enter the timeout/correction ledger");
+        assertFalse(direct.contains("new BlockEcho"),
+                "TempBlocks must never manufacture vanilla receipt expectations");
+        assertFalse(runtime.contains("clientTempBlockActions"),
+                "TempBlocks must never be assigned to an action rollback ledger");
+        assertTrue(runtime.contains("TempBlock.discardAll()"),
+                "world/runtime shutdown must drop old-world bookkeeping without repainting it");
+        assertTrue(runtime.indexOf("TempBlock.discardAll()") < runtime.indexOf("CoreAbility.removeAll()"),
+                "TempBlocks must be discarded before ability removal can repaint the outgoing ClientWorld");
+        assertTrue(direct.contains("pendingTempBlockReveals.remove(key)"));
+        assertTrue(direct.contains("clientTempBlockState(world, pos) == null"),
+                "an overlapping server underlay may be revealed only after the local stack closes");
+        assertTrue(direct.contains("serverTempBlocks.viewerState(key)"),
+                "a late snapshot must supply the baseline when the physical server layer predated prediction");
+    }
+
+    @Test
+    void physicalServerTrafficIsHiddenForTheWholeOwnedLifecycle() throws IOException {
+        String runtime = runtime();
+        String single = method(runtime, "private boolean authoritativeBlock0",
+                "private boolean authoritativeBlockBatch0");
+        String batch = method(runtime, "private boolean authoritativeBlockBatch0",
+                "private void acceptAuthoritativeBlockBatch0");
+        String tail = method(runtime, "private void acceptAuthoritativeBlockBatch0",
                 "private void acceptAuthoritativeChunk0");
         String chunk = method(runtime, "private void acceptAuthoritativeChunk0",
                 "private void applyTempBlockBatch0");
 
-        assertTrue(batch.contains("localOwnedTempBlockState") && batch.contains("setBlockState("),
-                "a leaked batch update must restore a proven live owner TempBlock instead of deleting the ability");
-        assertTrue(batch.contains("OwnedBatchRestore"));
-        assertTrue(runtime.contains("Set<Integer> consumedEchoes")
-                        && runtime.contains("world.getBlockState(pos), mutation != null && mutation.locallyPredicted"),
-                "mixed chunk deltas must restore ordered Earth movement echoes without hiding unrelated entries");
-        assertTrue(chunk.contains("hasOwnedLayer(mutation)"),
-                "a chunk snapshot may preserve only a proven owned TempBlock layer");
-        assertTrue(chunk.contains("localOwnedTempBlockState")
-                        && chunk.contains("mutation.preservePredictedOwnedState"),
-                "chunk authority must prefer a live owned TempBlock before ledger fallbacks");
-        assertTrue(chunk.contains("blockEchoes.removeIf"));
-        assertTrue(chunk.contains("blocks.entrySet().removeIf"));
-        assertTrue(runtime.contains("invalidateClientTempStack"),
-                "winning authority must invalidate live client TempBlocks before their late cleanup can ghost");
+        assertTrue(single.indexOf("hidesServerTempBlock(key)") < single.indexOf("consumeBlockEcho"),
+                "coordinate ownership must be checked before state/echo matching");
+        assertTrue(batch.contains("tempBlockBatchRestores.put(key, desiredTempBlockState(key))"));
+        assertTrue(batch.contains("if (hiddenTempBlocks == positions.size())"));
+        assertTrue(tail.contains("tempBlockBatchRestores.remove(key)"));
+        assertTrue(tail.contains("world.setBlockState(pos, tempBlockRestore, 19)"));
+        assertTrue(chunk.contains("TempBlock.getActiveLayers()"));
+        assertTrue(chunk.contains("desiredTempBlockState(new BlockKey(world, pos))"),
+                "chunk reapplication must preserve a newer remote/server overlay above a local layer");
+        assertTrue(chunk.contains("serverTempBlocks.hiddenViewerStates(viewerId)"));
+        assertFalse(chunk.contains("discardBlock(") || chunk.contains("removeBlock("),
+                "chunk delivery is transport, never authority over a local TempBlock stack");
     }
 
     @Test
-    void ownedReceiptsAreBoundedAndMetadataStartsANewConfirmationWindow() throws IOException {
-        Path source = Path.of("src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
-        if (!Files.exists(source)) source = Path.of("fabric").resolve(source);
-        String runtime = Files.readString(source);
+    void lifecycleMetadataCannotReconcileOrRetireAClientTempBlock() throws IOException {
+        String runtime = runtime();
         String metadata = method(runtime, "private void applyTempBlockBatch0",
-                "private static BlockState visibleServerLayer");
+                "private void setVelocity0");
 
-        assertTrue(runtime.contains("OWNED_TEMP_RECEIPT_TICKS = 40"));
-        assertTrue(metadata.contains("mutation.lastTick = tick;"),
-                "PhaseChange REVERT metadata must not inherit an already-expired prediction deadline");
-        assertTrue(metadata.contains("operation.packetExpected()"),
-                "metadata-only layer changes and snapshots must not create phantom packet receipts");
-        assertTrue(metadata.contains("final boolean localPredictionAtCoordinate = (ownPredictedAction")
-                        && metadata.contains("&& mutation.locallyPredicted"),
-                "ability-level prediction must not expose a coordinate the client never predicted");
-        assertTrue(metadata.contains("mutation.predicted.equals(material)"),
-                "a matching action and coordinate must not confirm the wrong PhaseChange material");
-        assertTrue(metadata.contains("world.getBlockState(pos).equals(material)"),
-                "the actual client block must also match an exact CREATE receipt");
-        assertTrue(metadata.contains("nextBlockEchoOrdinal")
-                        && metadata.contains("lastMatchedLocalCreateOrdinal"),
-                "repeated WATER/AIR/WATER lifecycles must consume CREATE echoes in order");
-        assertTrue(metadata.contains("final boolean confirmedLocalCreate = exactLocalCreate || newerSameActionState")
-                        || metadata.contains("final boolean confirmedLocalCreate = exactLocalCreate")
-                        && runtime.contains("hasNewerLocalStateAfter"),
-                "a lagging server CREATE must not repaint a newer state from the same Water/Earth action");
-        assertTrue(metadata.contains("liveSameActionTempBlock")
-                        && runtime.contains("isLiveLocalTempBlockForAction"),
-                "material differences must not discard a live EarthSmash/WaterFlow layer from the same action");
-        assertTrue(metadata.contains("localPredictionAtCoordinate"),
-                "owned metadata must still classify prediction for receipts and diagnostics");
-        assertTrue(metadata.contains("hasActionBlockHistory(world, pos, operation.actionSequence())"),
-                "PhaseChange history must survive ICE-to-original-WATER removing the live mutation entry");
-        assertTrue(runtime.contains("private final List<BlockEcho> localBlockHistory")
-                        && runtime.contains("localBlockHistory.add(echo)"),
-                "TempBlock lifecycle proof must survive disposal of vanilla packet echoes");
-        assertFalse(runtime.contains("localPredictionObserved"),
-                "merely touching a coordinate must not expose delayed server TempBlocks during chunk authority");
-        assertTrue(runtime.contains("boolean preservePredictedOwnedState")
-                        && runtime.contains("this.preservePredictedOwnedState = false;"),
-                "newer-state preservation must be explicit and cleared whenever authority is adopted");
-        assertTrue(metadata.contains("mutation.preservePredictedOwnedState = newerSameActionState || liveSameActionTempBlock;"),
-                "exact PhaseChange ICE must not grant later WATER permission to survive authority");
-        assertTrue(runtime.contains("mutation.preservePredictedOwnedState = action == mutation.serverAction;"),
-                "a different PhaseChange input must clear preservation inherited from the prior action");
-        assertFalse(metadata.contains("boolean locallyPredictedLayer = ownPredictedAction"),
-                "a REVERT must be tied to its confirmed layer, not merely its action");
-        assertTrue(metadata.contains("ownedTempReceipts.addLast"));
-        assertFalse(runtime.contains("reconcileSuppressedOwnedTempMetadata"),
-                "owner TempBlock metadata must never repaint or discard the client ability");
-        assertTrue(metadata.contains("BlockState desired = currentState;")
-                        && metadata.contains("BlockState desired = world.getBlockState(pos);"),
-                "owned CREATE and REVERT receipts must preserve the currently rendered local state");
-        assertTrue(runtime.contains("if (layer.ownedByLocalPlayer) continue;"),
-                "server-owned layers are ledger/diagnostic state, not owner-visible world state");
-        assertFalse(runtime.contains("earlyPhaseChangeThaw"),
-                "owned ICE-to-WATER prediction must not wait for a rollback");
-        assertTrue(runtime.contains("isTopLayerOwnedByLocalPlayer(mutation)"),
-                "a buried owned layer must not overwrite an overlapping authoritative top layer");
-        assertFalse(metadata.contains("world.setBlockState("),
-                "metadata records receipts but never directly changes the world");
+        assertTrue(metadata.contains("serverTempBlocks.apply"));
+        assertTrue(metadata.contains("clientTempBlockState(world, pos) == null"),
+                "late-join concealment must never overwrite a live client TempBlock");
+        assertTrue(metadata.contains("desiredTempBlockState(key)"));
+        assertTrue(runtime.contains("serverTempBlocks.overlayState(key, player.getUuid())"),
+                "a newer server-only/remote layer must overlay and later reveal the client layer");
+        assertTrue(metadata.contains("hiddenBefore && commonOperation == TempBlockSync.Operation.DISCARD"));
+        assertTrue(metadata.contains("TempBlock.discardBlock(FabricPredictionMC.block(world, pos))"),
+                "only an explicit DISCARD authority handoff may retire bookkeeping");
+        assertTrue(metadata.contains("pendingTempBlockReveals.put(key, viewerState)"),
+                "a metadata-only buried close must retain the underlay until the client stack ends");
+        assertFalse(metadata.contains("revertBlock(") || metadata.contains("removeBlock("),
+                "server TempBlock traffic must never run a local rollback lifecycle");
+        assertFalse(metadata.contains("blocks.computeIfAbsent"));
+        assertFalse(metadata.contains("blockEchoes.add("));
     }
 
     @Test
-    void clientOnlyTrailBlocksUseTheMeasuredActionWindow() throws IOException {
+    void legacyTempBlockRollbackMachineryCannotReturn() throws IOException {
+        String runtime = runtime();
+
+        assertFalse(runtime.contains("OwnedTempReceipt"));
+        assertFalse(runtime.contains("invalidateClientTempStack"));
+        assertFalse(runtime.contains("localBlockHistory"));
+        assertFalse(runtime.contains("serverTempActive"));
+        assertFalse(runtime.contains("physicalAuthority"));
+        assertTrue(runtime.contains("private final ClientTempBlockLedger<BlockKey, BlockState> serverTempBlocks"));
+        assertTrue(runtime.contains("private List<PredictionDesyncBlock> ownedTempDesyncs0"));
+        assertTrue(runtime.contains("return List.of();"),
+                "an intentionally hidden physical TempBlock is not a rollback/desync marker");
+    }
+
+    @Test
+    void fallingBlocksRequireExactCasterOwnershipInsteadOfProximity() throws IOException {
+        String runtime = runtime();
+        String receipt = method(runtime, "private void noteTempFallingBlock0",
+                "private boolean reconcileSpawn0");
+        String spawn = method(runtime, "private boolean reconcileSpawn0",
+                "private boolean removeAliasedEntity0");
+        String payloads = source("src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionPayloads.java");
+        String client = source("src/main/java/com/projectkorra/projectkorra/fabric/client/PredictionClient.java");
+
+        assertTrue(receipt.contains("localPlayer.getUuid().equals(receipt.abilityOwner())"));
+        assertTrue(receipt.contains("new TempFallingBlockKey(")
+                && receipt.contains("receipt.actionSequence(), receipt.spawnOrdinal()"));
+        assertTrue(receipt.contains("pending.ability.equalsIgnoreCase(receipt.ability())"),
+                "an ordinal mismatch must never alias a different ability's falling block");
+        assertTrue(receipt.contains("world.getEntityById(receipt.serverEntityId())"),
+                "a late receipt must keep an already-spawned authoritative entity");
+        assertTrue(receipt.contains("observedFallingBlockSpawns.remove(receipt.serverEntityId())")
+                        && receipt.contains("vanillaSpawnSeen"),
+                "a receipt arriving after a short-lived vanilla entity must not create a ghost alias");
+        assertTrue(spawn.contains("authoritativeEntityAliases.containsKey(packet.getEntityId())")
+                && spawn.contains("return true"));
+        assertTrue(spawn.contains("packet.getEntityType() == net.minecraft.entity.EntityType.FALLING_BLOCK"));
+        assertTrue(spawn.contains("return false"),
+                "an unreceipted remote falling block must always take the vanilla spawn path");
+        assertTrue(payloads.contains("record TempFallingBlockReceipt"));
+        assertTrue(payloads.contains("playS2C().register(TempFallingBlockReceipt.ID"));
+        assertTrue(client.contains("registerGlobalReceiver(PredictionPayloads.TempFallingBlockReceipt.ID"));
+    }
+
+    private static String runtime() throws IOException {
         Path source = Path.of("src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
         if (!Files.exists(source)) source = Path.of("fabric").resolve(source);
-        String runtime = Files.readString(source);
+        assertTrue(Files.exists(source));
+        return Files.readString(source);
+    }
 
-        assertTrue(runtime.contains("tick - action.createdTick")
-                        && runtime.contains("+ ACTION_BLOCK_CONFIRMATION_MARGIN_TICKS"),
-                "accepted input RTT must define when a missing server TempBlock becomes a negative receipt");
-        assertTrue(runtime.contains("mutation.serverTempActive")
-                        && runtime.contains("blockConfirmationTicks(mutation.lastAction)"),
-                "only server-absent predicted trail blocks may use the shorter measured deadline");
-        assertTrue(runtime.contains("MIN_ACTION_BLOCK_CONFIRMATION_TICKS = 4"));
-        assertTrue(runtime.contains("if (mutation.serverTempActive && hasOwnedLayer(mutation)) return false;"),
-                "an active owner layer must never expire into delayed server TempBlock state");
-        assertTrue(runtime.contains("invalidateClientTempStack(mutation.world, mutation.pos);"),
-                "negative receipts must retire the local TempBlock object before correcting its world state");
-        assertTrue(runtime.contains("localOwnedTempBlockState(world, pos, mutation)"),
-                "normal block traffic must preserve a live owner TempBlock instead of letting delayed server state replace it");
-        assertFalse(runtime.contains("reconcileSuppressedOwnedTempMetadata"),
-                "owner TempBlock metadata must remain ledger-only and never rewrite the client world");
-        assertTrue(runtime.contains("recordPhysicalAuthority")
-                        && runtime.contains("BlockState physicalAuthority"),
-                "physical TempBlock confirmations must never replace the owner-visible rollback baseline");
-        assertTrue(runtime.contains("recordViewerAuthority(mutation.serverTempState)")
-                        && runtime.contains("recordViewerAuthority(reverted)"),
-                "CREATE and REVERT metadata must advance the owner's exact latest server-visible rollback state");
+    private static String source(String relative) throws IOException {
+        Path source = Path.of(relative);
+        if (!Files.exists(source)) source = Path.of("fabric").resolve(relative);
+        assertTrue(Files.exists(source));
+        return Files.readString(source);
     }
 
     private static String method(String source, String startMarker, String endMarker) {

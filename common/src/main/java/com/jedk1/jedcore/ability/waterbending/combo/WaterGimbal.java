@@ -25,6 +25,7 @@ import com.projectkorra.projectkorra.platform.mc.inventory.PlayerInventory;
 import com.projectkorra.projectkorra.platform.mc.inventory.meta.PotionMeta;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionType;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.EntityHitboxProvider;
 import com.projectkorra.projectkorra.util.BlockSource;
 import com.projectkorra.projectkorra.util.ClickType;
 import com.projectkorra.projectkorra.util.TempBlock;
@@ -39,7 +40,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 
-public class WaterGimbal extends WaterAbility implements AddonAbility, ComboAbility {
+public class WaterGimbal extends WaterAbility implements AddonAbility, ComboAbility, EntityHitboxProvider {
 
     static {
         CollisionInitializer.abilityMap.put("WaterGimbal", "");
@@ -392,6 +393,22 @@ public class WaterGimbal extends WaterAbility implements AddonAbility, ComboAbil
     @Override
     public Location getLocation() {
         return null;
+    }
+
+    @Override
+    public List<Location> getEntityHitLocations() {
+        final List<Location> locations = new ArrayList<>();
+        for (final WaterBlast blast : getAbilities(WaterBlast.class)) {
+            if (blast.getAbility() == this && blast.getLocation() != null) {
+                locations.add(blast.getLocation().clone());
+            }
+        }
+        return locations;
+    }
+
+    @Override
+    public double getEntityHitRadius() {
+        return entityCollisionRadius;
     }
 
     @Override

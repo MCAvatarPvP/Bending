@@ -9,7 +9,7 @@ the ability produces in local play.
 
 ## Flow
 
-1. The Fabric client advertises protocol 18 over vanilla `projectkorra:*` custom
+1. The Fabric client advertises protocol 21 over vanilla `projectkorra:*` custom
    payload channels. Paper receives those channels through its plugin messaging
    API—Fabric Loader is not installed on the server. The server returns a random per-connection
    session ID, public configuration, ability validation metadata, binds,
@@ -25,62 +25,59 @@ the ability produces in local play.
    ability under that immutable input-time position and view. It enforces its own
    cooldown and source rules and replies with acceptance, the pose it executed,
    and cooldown expiry.
-5. Acceptance keeps the local simulation at that same execution pose. Rejection removes the
-   predicted ability and rolls back its blocks, spawned visual entities, and
-   still-current velocity changes.
+5. Acceptance keeps the local simulation at that same execution pose. Rejection ends the
+   predicted action and lets its local ability lifecycle clean up blocks, spawned
+   visual entities, and still-current velocity changes.
 
 ## Why effects do not play twice
 
 - During a predicted server ability tick, server particles and sounds are sent
   normally to every viewer except the initiating compatible client. That client
   already rendered the exact effect locally.
-- Spawned falling blocks, item/armor-stand visuals, block displays, arrows,
-  snowballs, fireballs, shulker bullets, area clouds, and scooter slimes begin
+- Spawned item/armor-stand visuals, block displays, arrows, snowballs, fireballs,
+  shulker bullets, area clouds, and scooter slimes begin
   as real client entities. When Paper's later spawn arrives, its server entity
   ID is aliased to that existing entity; the duplicate spawn and lagging
   movement packets are suppressed until Paper removes it.
-- A client block mutation changes the real `ClientWorld` block state. When the
-  server later sends the same vanilla state, it confirms the ledger entry rather
-  than creating a display-entity overlay. Water and other fluid states therefore
-  use their real client fluid/block behavior.
-- Temporary blocks are ordered owner layers with stable layer IDs and revisions.
-  The owner sees their locally predicted layer, or the first non-owned layer/original
-  block beneath it; the physical server TempBlock is not exposed to that owner.
-  With PacketEvents, a receipt is armed before the physical world write and that
-  exact owner update is suppressed. CREATE receipts remain active until their exact
-  layer REVERT, covering duplicate fluid and neighbor packets from one world write;
-  REVERT receipts retain only a short duplicate tail. Mixed packets keep every unrelated entry, and
-  Fabric is explicitly told that no vanilla receipt will arrive. Without PacketEvents,
-  Fabric performs bounded receipt-scoped suppression after delivery.
-  A predicted CREATE is confirmed only when its action, coordinate, and complete
-  block state all match. TempBlock lifecycle history is retained separately from
-  disposable vanilla-packet echoes, so ordinary authority cannot erase prediction
-  proof before delayed CREATE metadata arrives. This prevents predicted PhaseChange
-  ICE from being misclassified as hidden and then "corrected" to underlying WATER.
-  A suppressed REVERT is reconciled directly from ordered lifecycle metadata;
-  a newer same-action CREATE is preserved only when it follows the exact confirmed
-  CREATE/revert lifecycle at that coordinate. A delayed server CREATE also cannot
-  repaint a provably newer state from the same action, which keeps moving WaterFlow,
-  WaterSpoutWave, and EarthSmash lifecycles client-owned. That permission is scoped
-  to the exact action and is cleared when a later action touches the coordinate, so
-  confirmed PhaseChange ICE cannot lend its authority to a later predicted WATER.
-  Chunk snapshots
-  restore the resolved server-layer view, never an unrelated stale local mutation.
-  When ordinary block authority wins, Fabric discards the corresponding local
-  TempBlock stack without running its delayed revert or attachment callbacks.
-  Metadata-only changes and join snapshots cannot create phantom receipts.
-  Ordinary block authority and unrelated mixed chunk-delta entries remain
-  authoritative. Ordered predicted entries inside a mixed delta are restored
-  after vanilla applies the unrelated entries, so an older EarthBlast step
-  cannot briefly repaint over the client's newer step.
-  Per-session layer tracking guarantees that every delivered CREATE receives its
-  REVERT even after leaving view distance. Server-absent client trail blocks use
-  the measured input round-trip plus a jitter margin as a negative-receipt deadline,
-  instead of remaining for an unconditional two seconds. Unresolved disagreement is
-  forced back to the latest owner-visible server state at that deadline. Physical
-  server TempBlock confirmation is tracked separately and can never replace that
-  rollback baseline with temporary ICE, WATER, or EARTH. During the
-  bounded window, a translucent amber block marker exposes the disagreement.
+- TempFallingBlocks use an owner-only receipt containing the exact action,
+  spawn ordinal, ability, owner, and authoritative entity ID. Only the caster's
+  matching predicted duplicate may be consumed; every other player's falling
+  block always follows the normal vanilla spawn path.
+- Ordinary predicted block mutations change the real `ClientWorld` state and use
+  the normal bounded authority ledger. A common `TempBlock` is different: its world
+  write is explicitly scoped and goes directly to `ClientWorld`, so it never enters
+  the generic receipt, timeout, correction, or rollback path. Water and fluids still
+  use real client block behavior rather than display-entity overlays.
+- Temporary blocks are transactional stacks with stable layer IDs and monotonically
+  increasing revisions. The registry is advanced before the physical world write,
+  and the same revision is published before that write can emit a vanilla packet.
+  A leaked vanilla packet is transport noise; it cannot audit, discard, or revert a
+  live client TempBlock.
+- The initiating client hides every physical server block update at an owned
+  coordinate for the complete CREATE-to-REVERT lifecycle, independent of material,
+  fluid level, neighbor shape, packet duplication, or arrival time. PacketEvents
+  removes owned entries before delivery when available. Fabric enforces the same
+  coordinate fence, including mixed section updates, when PacketEvents is absent.
+  Unrelated entries in a mixed packet remain authoritative.
+- Chunk snapshots are patched to the owner-visible state on Paper and reapply the
+  merged local/remote layer view on Fabric. Join/re-handshake snapshots arm the coordinate fence;
+  if no local layer exists because the physical block predates the client session,
+  Fabric performs a one-time concealment to the server-computed underlying view.
+  It never overwrites, retires, or rewinds a live client TempBlock.
+- Apart from late-session concealment, revealing a server-computed underlay after the
+  local stack has ended, and an explicit `DISCARD` authority handoff, lifecycle metadata
+  is bookkeeping: it opens and closes coordinate fences and cannot manufacture vanilla
+  receipts. A buried-layer reveal waits while any local TempBlock remains. An authority
+  handoff discards local registry entries without invoking reverts or callbacks before
+  showing the supplied real state.
+  There are no TempBlock negative receipts,
+  material-match confirmations, disagreement timeouts, rollback baselines, or desync
+  markers. The server still restores its physical gameplay block when a layer expires,
+  but that physical write is hidden from the owner; the client's own ordered lifecycle
+  remains the visual answer.
+- Per-session layer tracking guarantees that every delivered CREATE receives its
+  REVERT even after leaving view distance. Stale or duplicate revisions are ignored,
+  and a reverted layer cannot be resurrected by delayed metadata.
 - The server binds an input action to each TempBlock layer at CREATE and retains
   that binding through REVERT. Reusing a long-lived ability instance cannot relabel
   older PhaseChange ICE as the newer input. On Fabric, a live local TempBlock owned
@@ -166,11 +163,12 @@ make damage server-only.
 
 - Minecraft: 1.21.11
 - Java: 21
-- PacketEvents is optional but recommended. When installed, owned TempBlock packets
-  are matched by coordinate and complete block state before network delivery,
-  eliminating the delayed one-frame flash. Unrelated authority is never suppressed.
-- The server runs Paper and installs `ProjectKorra-1.10.8-bukkit.jar` from this fork.
-- Predicting players install `ProjectKorra-1.10.8-fabric.jar` in their Fabric client.
+- PacketEvents is optional but recommended. When installed, all physical updates at
+  an owned TempBlock coordinate are hidden for that layer's lifecycle, eliminating
+  fluid/neighbor variants and the delayed one-frame flash. Unrelated coordinates in
+  the same packet are preserved.
+- The server runs Paper and installs `ProjectKorra-1.10.10-bukkit.jar` from this fork.
+- Predicting players install `ProjectKorra-1.10.10-fabric.jar` in their Fabric client.
 - The Paper server does **not** install Fabric Loader or the Fabric jar.
 - Players without the mod use normal ProjectKorra input and normal latency.
 - Fabric integrated-singleplayer prediction is disabled because the legacy common core
@@ -185,7 +183,7 @@ Test with artificial 100/200/350 ms RTT and packet jitter:
 | --- | --- |
 | Inputs | left/right click, block/entity right click, sneak press/release, combos, multiabilities |
 | Movement | AirBlast self/target, AirScooter, spouts, jets, flight, knockback chains |
-| Blocks | water/ice streams, RaiseEarth, Surge/Torrent, lava, overlapping temp blocks, rejection rollback |
+| Blocks | water/ice streams, RaiseEarth, Surge/Torrent, lava, overlapping temp blocks, rejection cleanup |
 | Hits | stationary/moving players, edge-of-range, occlusion, 12+ tick latency, duplicate claims |
 | State | bind/element changes, cooldown rejection, reconnect, config reload, missing client addon |
 | Compatibility | Paper + modded Fabric initiator, unmodded initiator, mixed viewers, Paper restart/reload |

@@ -13,22 +13,30 @@ import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
+import com.projectkorra.projectkorra.prediction.CooldownSync;
+import com.projectkorra.projectkorra.prediction.EntityHitboxProvider;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.colliders.Sphere;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
+import java.util.UUID;
 
-public class Discharge extends LightningAbility implements AddonAbility {
+public class Discharge extends LightningAbility implements AddonAbility, EntityHitboxProvider {
     private final HashMap<Integer, Location> branches = new HashMap<>();
+    private final List<Location> entityHitSamples = new ArrayList<>();
+    private final Set<UUID> predictedContacts = new HashSet<>();
     private final Random rand;
     private Location location;
     private Vector direction;
     private boolean hit;
     private int spaces;
+    private int nextBranchId = 1;
     private double branchSpace;
     @Attribute(Attribute.DAMAGE)
     private double damage;
@@ -57,6 +65,7 @@ public class Discharge extends LightningAbility implements AddonAbility {
         // the same seeded branch start from a different point than the client.
         location = player.getEyeLocation().clone();
         direction = location.getDirection().normalize();
+        branches.put(nextBranchId++, location.clone());
 
         if (bPlayer.isAvatarState() || JCMethods.isSozinsComet(player.getWorld())) {
             this.cooldown = avatarCooldown;
@@ -111,13 +120,23 @@ public class Discharge extends LightningAbility implements AddonAbility {
         if (location == null) {
             Location origin = player.getEyeLocation().clone();
             location = origin.clone();
-            branches.put(branches.size() + 1, location);
+            branches.put(nextBranchId++, location.clone());
         }
 
+        entityHitSamples.clear();
+        final boolean authoritative = CooldownSync.isAuthoritative();
         spaces++;
         if (spaces % 3 == 0) {
-            Location prevBranch = branches.get(1);
-            branches.put(branches.size() + 1, prevBranch);
+            Location fork = branches.get(1);
+            if (fork == null) {
+                fork = branches.values().stream().filter(java.util.Objects::nonNull).findFirst().orElse(null);
+            }
+            if (fork != null) {
+                // Branch ids must never be derived from map size: removing an
+                // older branch otherwise reuses a live id and silently replaces
+                // that branch with null, making predicted Discharge vanish.
+                branches.put(nextBranchId++, fork.clone());
+            }
         }
 
         List<Integer> cleanup = new ArrayList<>();
@@ -137,6 +156,7 @@ public class Discharge extends LightningAbility implements AddonAbility {
                 branchSpace += 0.001;
 
                 for (int j = 0; j < 5; j++) {
+                    entityHitSamples.add(l.clone());
                     playLightningbendingParticle(l.clone(), 0f, 0f, 0f);
 
                     if (rand.nextInt(3) == 0) {
@@ -145,8 +165,13 @@ public class Discharge extends LightningAbility implements AddonAbility {
 
                     Vector vec = l.toVector();
 
-                    hit = CollisionDetector.checkEntityCollisions(player, new Sphere(l, entityCollisionRadius), (entity) -> {
+                    final boolean collided = CollisionDetector.checkEntityCollisions(player,
+                            new Sphere(l, entityCollisionRadius), (entity) -> {
                         if (RegionProtection.isRegionProtected(this, entity.getLocation()) || ((entity instanceof Player) && Commands.invincible.contains(entity.getName()))) {
+                            return true;
+                        }
+
+                        if (!authoritative && !predictedContacts.add(entity.getUniqueId())) {
                             return true;
                         }
 
@@ -164,6 +189,14 @@ public class Discharge extends LightningAbility implements AddonAbility {
                     });
 
                     l = l.add(direction.clone().multiply(0.2));
+                    if (collided && authoritative) {
+                        branches.put(i, l);
+                        // A predicted remote position may be stale. The server
+                        // owns terminal collision; its removal packet will end
+                        // the predicted instance after a confirmed contact.
+                        hit = true;
+                        return;
+                    }
                 }
 
                 branches.put(i, l);
@@ -216,6 +249,17 @@ public class Discharge extends LightningAbility implements AddonAbility {
     @Override
     public double getCollisionRadius() {
         return JedCoreConfig.getConfig(this.bPlayer).getDouble("Abilities.Fire.Discharge.AbilityCollisionRadius");
+    }
+
+    @Override
+    public List<Location> getEntityHitLocations() {
+        if (entityHitSamples.isEmpty()) return getLocations();
+        return entityHitSamples.stream().map(Location::clone).toList();
+    }
+
+    @Override
+    public double getEntityHitRadius() {
+        return entityCollisionRadius;
     }
 
     @Override

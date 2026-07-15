@@ -44,6 +44,10 @@ import com.projectkorra.projectkorra.platform.mc.util.BoundingBox;
 import com.projectkorra.projectkorra.platform.mc.util.RayTraceResult;
 import com.projectkorra.projectkorra.platform.mc.util.Transformation;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
+import com.projectkorra.projectkorra.prediction.PredictedContactSync;
+import com.projectkorra.projectkorra.prediction.TempBlockSync;
+import com.projectkorra.projectkorra.util.TempBlock;
 import com.projectkorra.projectkorra.platform.model.PKAdapter;
 import com.projectkorra.projectkorra.platform.model.PKBlock;
 import com.projectkorra.projectkorra.platform.model.PKEntity;
@@ -394,8 +398,16 @@ public final class FabricPredictionMC {
         @Override public Block getRelative(int x, int y, int z) { return block(world, pos.add(x, y, z)); }
         @Override public BlockData getBlockData() { return FabricMC.blockData(nativeState()); }
         @Override public void setBlockData(BlockData data) { setBlockData(data, false); }
-        @Override public void setBlockData(BlockData data, boolean physics) { ExactPredictionRuntime.setPredictedBlock(world, pos, FabricMC.blockState(data)); }
-        @Override public BlockState getState() { return new ClientBlockState(this, getBlockData()); }
+        @Override public void setBlockData(BlockData data, boolean physics) {
+            prepareExternalWrite();
+            ExactPredictionRuntime.setPredictedBlock(world, pos, FabricMC.blockState(data));
+        }
+        private void prepareExternalWrite() {
+            if (TempBlockSync.currentWorldMutation() == null && TempBlock.isTempBlock(this)) {
+                TempBlock.removeBlock(this);
+            }
+        }
+        @Override public BlockState getState() { return new ClientBlockState(this, nativeState()); }
         @Override public int getX() { return pos.getX(); }
         @Override public int getY() { return pos.getY(); }
         @Override public int getZ() { return pos.getZ(); }
@@ -429,14 +441,22 @@ public final class FabricPredictionMC {
 
     private static final class ClientBlockState extends BlockState {
         private final ClientBlockView block;
-        private final BlockData data;
-        private ClientBlockState(ClientBlockView block, BlockData data) { this.block = block; this.data = data.clone(); }
-        @Override public Material getType() { return data.getMaterial(); }
-        @Override public BlockData getBlockData() { return data.clone(); }
+        private final net.minecraft.block.BlockState state;
+        private ClientBlockState(ClientBlockView block, net.minecraft.block.BlockState state) {
+            this.block = block;
+            this.state = state;
+        }
+        @Override public Material getType() { return FabricMC.material(state); }
+        @Override public BlockData getBlockData() { return FabricMC.blockData(state); }
         @Override public Block getBlock() { return block; }
         @Override public Location getLocation() { return block.getLocation(); }
-        @Override public boolean update(boolean force, boolean physics) { block.setBlockData(data, physics); return true; }
+        @Override public boolean update(boolean force, boolean physics) {
+            block.prepareExternalWrite();
+            ExactPredictionRuntime.setPredictedBlock(block.world, block.pos, state);
+            return true;
+        }
         @Override public Object handle() { return block.handle(); }
+        @Override public boolean hasBlockEntity() { return block.world.getBlockEntity(block.pos) != null; }
     }
 
     private static class ClientEntityView extends Entity implements ClientBacked {
@@ -477,13 +497,17 @@ public final class FabricPredictionMC {
         @Override public Location getEyeLocation() { return location((ClientWorld) value.getEntityWorld(), value.getEyePos(), value.getYaw(), value.getPitch()); }
         @Override public World getWorld() { return world((ClientWorld) value.getEntityWorld()); }
         @Override public Vector getVelocity() { return commonVector(value.getVelocity()); }
-        @Override public void setVelocity(Vector velocity) { ExactPredictionRuntime.setPredictedVelocity(value, nativeVector(velocity)); }
+        private boolean suppressRemoteMutation() {
+            return !ExactPredictionRuntime.isPredictedOwned(value)
+                    && PredictedContactSync.mark(AbilityExecutionContext.current(), this);
+        }
+        @Override public void setVelocity(Vector velocity) { if (!suppressRemoteMutation()) ExactPredictionRuntime.setPredictedVelocity(value, nativeVector(velocity)); }
         @Override public boolean isDead() { return !value.isAlive(); }
         @Override public boolean isValid() { return !value.isRemoved(); }
         @Override public int getEntityId() { return value.getId(); }
         @Override public String getName() { return value.getName().getString(); }
         @Override public int getFireTicks() { return value.getFireTicks(); }
-        @Override public void setFireTicks(int ticks) { value.setFireTicks(ticks); }
+        @Override public void setFireTicks(int ticks) { if (!suppressRemoteMutation()) value.setFireTicks(ticks); }
         @Override public boolean isOnGround() { return value.isOnGround(); }
         @Override public double getHeight() { return value.getHeight(); }
         @Override public float getFallDistance() { return (float) value.fallDistance; }
@@ -491,17 +515,17 @@ public final class FabricPredictionMC {
         @Override public BoundingBox getBoundingBox() { return commonBox(value.getBoundingBox()); }
         @Override public double getHealth() { return value.getHealth(); }
         @Override public double getMaxHealth() { return value.getMaxHealth(); }
-        @Override public void damage(double amount) { ExactPredictionRuntime.claimDamage(value, amount); }
-        @Override public void damage(double amount, Entity source) { ExactPredictionRuntime.claimDamage(value, amount); }
+        @Override public void damage(double amount) { if (!suppressRemoteMutation()) ExactPredictionRuntime.claimDamage(value, amount); }
+        @Override public void damage(double amount, Entity source) { if (!suppressRemoteMutation()) ExactPredictionRuntime.claimDamage(value, amount); }
         @Override public boolean hasPotionEffect(PotionEffectType type) { return value.hasStatusEffect(FabricMC.status(type)); }
-        @Override public void addPotionEffect(PotionEffect effect) { value.addStatusEffect(nativeEffect(effect)); }
+        @Override public void addPotionEffect(PotionEffect effect) { if (!suppressRemoteMutation()) value.addStatusEffect(nativeEffect(effect)); }
         @Override public PotionEffect getPotionEffect(PotionEffectType type) { return commonEffect(value.getStatusEffect(FabricMC.status(type))); }
-        @Override public void removePotionEffect(PotionEffectType type) { value.removeStatusEffect(FabricMC.status(type)); }
+        @Override public void removePotionEffect(PotionEffectType type) { if (!suppressRemoteMutation()) value.removeStatusEffect(FabricMC.status(type)); }
         @Override public Collection<PotionEffect> getActivePotionEffects() { return value.getActiveStatusEffects().values().stream().map(FabricPredictionMC::commonEffect).toList(); }
         @Override public int getNoDamageTicks() { return value.timeUntilRegen; }
-        @Override public void setNoDamageTicks(int ticks) { value.timeUntilRegen = ticks; }
+        @Override public void setNoDamageTicks(int ticks) { if (!suppressRemoteMutation()) value.timeUntilRegen = ticks; }
         @Override public int getRemainingAir() { return value.getAir(); }
-        @Override public void setRemainingAir(int ticks) { value.setAir(ticks); }
+        @Override public void setRemainingAir(int ticks) { if (!suppressRemoteMutation()) value.setAir(ticks); }
         @Override public void setMetadata(String key, MetadataValue metadata) { METADATA.computeIfAbsent(getUniqueId(), ignored -> new HashMap<>()).computeIfAbsent(key, ignored -> new ArrayList<>()).add(metadata); }
         @Override public boolean hasMetadata(String key) { return METADATA.getOrDefault(getUniqueId(), Map.of()).containsKey(key); }
         @Override public List<MetadataValue> getMetadata(String key) { return List.copyOf(METADATA.getOrDefault(getUniqueId(), Map.of()).getOrDefault(key, List.of())); }
@@ -520,6 +544,11 @@ public final class FabricPredictionMC {
             if (this.value == value) return;
             this.value = value;
             this.inventory.rebind(value);
+        }
+        private boolean suppressRemoteMutation() {
+            ClientPlayerEntity local = MinecraftClient.getInstance().player;
+            return local != null && !local.getUuid().equals(value.getUuid())
+                    && PredictedContactSync.mark(AbilityExecutionContext.current(), this);
         }
         @Override public UUID getUniqueId() { return value.getUuid(); }
         @Override public String getName() { return value.getName().getString(); }
@@ -540,26 +569,26 @@ public final class FabricPredictionMC {
         }
         @Override public World getWorld() { return world((ClientWorld) value.getEntityWorld()); }
         @Override public Vector getVelocity() { return commonVector(value.getVelocity()); }
-        @Override public void setVelocity(Vector velocity) { ExactPredictionRuntime.setPredictedVelocity(value, nativeVector(velocity)); }
+        @Override public void setVelocity(Vector velocity) { if (!suppressRemoteMutation()) ExactPredictionRuntime.setPredictedVelocity(value, nativeVector(velocity)); }
         @Override public PlayerInventory getInventory() { return inventory; }
         @Override public GameMode getGameMode() { return value.isSpectator() ? GameMode.SPECTATOR : GameMode.valueOf(value.isCreative() ? "CREATIVE" : "SURVIVAL"); }
         @Override public boolean isDead() { return !value.isAlive(); }
         @Override public boolean isValid() { return !value.isRemoved(); }
         @Override public int getEntityId() { return value.getId(); }
         @Override public int getFireTicks() { return value.getFireTicks(); }
-        @Override public void setFireTicks(int ticks) { value.setFireTicks(ticks); }
+        @Override public void setFireTicks(int ticks) { if (!suppressRemoteMutation()) value.setFireTicks(ticks); }
         @Override public boolean isOnGround() { return value.isOnGround(); }
         @Override public float getFallDistance() { return (float) value.fallDistance; }
         @Override public void setFallDistance(float distance) { value.fallDistance = distance; }
         @Override public BoundingBox getBoundingBox() { return commonBox(value.getBoundingBox()); }
         @Override public double getHealth() { return value.getHealth(); }
         @Override public double getMaxHealth() { return value.getMaxHealth(); }
-        @Override public void damage(double amount) { ExactPredictionRuntime.claimDamage(value, amount); }
-        @Override public void damage(double amount, Entity source) { ExactPredictionRuntime.claimDamage(value, amount); }
+        @Override public void damage(double amount) { if (!suppressRemoteMutation()) ExactPredictionRuntime.claimDamage(value, amount); }
+        @Override public void damage(double amount, Entity source) { if (!suppressRemoteMutation()) ExactPredictionRuntime.claimDamage(value, amount); }
         @Override public boolean hasPotionEffect(PotionEffectType type) { return value.hasStatusEffect(FabricMC.status(type)); }
-        @Override public void addPotionEffect(PotionEffect effect) { value.addStatusEffect(nativeEffect(effect)); }
+        @Override public void addPotionEffect(PotionEffect effect) { if (!suppressRemoteMutation()) value.addStatusEffect(nativeEffect(effect)); }
         @Override public PotionEffect getPotionEffect(PotionEffectType type) { return commonEffect(value.getStatusEffect(FabricMC.status(type))); }
-        @Override public void removePotionEffect(PotionEffectType type) { value.removeStatusEffect(FabricMC.status(type)); }
+        @Override public void removePotionEffect(PotionEffectType type) { if (!suppressRemoteMutation()) value.removeStatusEffect(FabricMC.status(type)); }
         @Override public Collection<PotionEffect> getActivePotionEffects() { return value.getActiveStatusEffects().values().stream().map(FabricPredictionMC::commonEffect).toList(); }
         @Override public boolean isSneaking() {
             MinecraftClient client = MinecraftClient.getInstance();
@@ -567,14 +596,14 @@ public final class FabricPredictionMC {
                     ? PredictionClient.serverVisibleSneaking(client) : value.isSneaking();
         }
         @Override public boolean isSprinting() { return value.isSprinting(); }
-        @Override public void setSprinting(boolean sprinting) { value.setSprinting(sprinting); }
-        @Override public void setSneaking(boolean sneaking) { value.setSneaking(sneaking); }
+        @Override public void setSprinting(boolean sprinting) { if (!suppressRemoteMutation()) value.setSprinting(sprinting); }
+        @Override public void setSneaking(boolean sneaking) { if (!suppressRemoteMutation()) value.setSneaking(sneaking); }
         @Override public boolean isFlying() { return value.getAbilities().flying; }
-        @Override public void setFlying(boolean flying) { value.getAbilities().flying = flying; noteAbilityState(); }
+        @Override public void setFlying(boolean flying) { if (!suppressRemoteMutation()) { value.getAbilities().flying = flying; noteAbilityState(); } }
         @Override public boolean getAllowFlight() { return value.getAbilities().allowFlying; }
         @Override public void setAllowFlight(boolean allow) { value.getAbilities().allowFlying = allow; noteAbilityState(); }
         @Override public boolean isGliding() { return value.isGliding(); }
-        @Override public void setGliding(boolean gliding) { if (gliding) value.startGliding(); else value.stopGliding(); }
+        @Override public void setGliding(boolean gliding) { if (!suppressRemoteMutation()) { if (gliding) value.startGliding(); else value.stopGliding(); } }
         @Override public float getFlySpeed() { return value.getAbilities().getFlySpeed() * 2; }
         @Override public void setFlySpeed(float speed) { value.getAbilities().setFlySpeed(speed / 2); noteAbilityState(); }
         @Override public float getExp() { return value.experienceProgress; }
@@ -583,11 +612,11 @@ public final class FabricPredictionMC {
             ExactPredictionRuntime.notePredictedExperience(value.experienceProgress, value.totalExperience, value.experienceLevel);
         }
         @Override public double getAbsorptionAmount() { return value.getAbsorptionAmount(); }
-        @Override public void setAbsorptionAmount(double amount) { value.setAbsorptionAmount((float) Math.max(0, amount)); }
+        @Override public void setAbsorptionAmount(double amount) { if (!suppressRemoteMutation()) value.setAbsorptionAmount((float) Math.max(0, amount)); }
         @Override public int getNoDamageTicks() { return value.timeUntilRegen; }
-        @Override public void setNoDamageTicks(int ticks) { value.timeUntilRegen = ticks; }
+        @Override public void setNoDamageTicks(int ticks) { if (!suppressRemoteMutation()) value.timeUntilRegen = ticks; }
         @Override public int getRemainingAir() { return value.getAir(); }
-        @Override public void setRemainingAir(int ticks) { value.setAir(ticks); }
+        @Override public void setRemainingAir(int ticks) { if (!suppressRemoteMutation()) value.setAir(ticks); }
         @Override public int getPing() {
             return 0;
         }
@@ -680,7 +709,11 @@ public final class FabricPredictionMC {
         @Override public void playSound(Location location, Sound sound, float volume, float pitch) {
             if (isLocalReceiver()) getWorld().playSound(location, sound, volume, pitch);
         }
-        @Override public boolean teleport(Location location) { value.setPosition(location.getX(), location.getY(), location.getZ()); return true; }
+        @Override public boolean teleport(Location location) {
+            if (suppressRemoteMutation()) return false;
+            value.setPosition(location.getX(), location.getY(), location.getZ());
+            return true;
+        }
         @Override public void setMetadata(String key, MetadataValue metadata) { METADATA.computeIfAbsent(getUniqueId(), ignored -> new HashMap<>()).computeIfAbsent(key, ignored -> new ArrayList<>()).add(metadata); }
         @Override public boolean hasMetadata(String key) { return METADATA.getOrDefault(getUniqueId(), Map.of()).containsKey(key); }
         @Override public List<MetadataValue> getMetadata(String key) { return List.copyOf(METADATA.getOrDefault(getUniqueId(), Map.of()).getOrDefault(key, List.of())); }
@@ -1016,16 +1049,22 @@ public final class FabricPredictionMC {
     private static final class ClientSlime extends Slime implements ClientBacked {
         private final SlimeEntity value;
         private ClientSlime(SlimeEntity value) { this.value = value; }
+        private boolean suppressRemoteMutation() {
+            return !ExactPredictionRuntime.isPredictedOwned(value)
+                    && PredictedContactSync.mark(AbilityExecutionContext.current(), this);
+        }
         @Override public UUID getUniqueId() { return value.getUuid(); }
         @Override public Location getLocation() { return entityLocation(value); }
         @Override public Location getEyeLocation() { return location((ClientWorld) value.getEntityWorld(), value.getEyePos(), value.getYaw(), value.getPitch()); }
         @Override public World getWorld() { return world((ClientWorld) value.getEntityWorld()); }
         @Override public Vector getVelocity() { return commonVector(value.getVelocity()); }
-        @Override public void setVelocity(Vector velocity) { ExactPredictionRuntime.setPredictedVelocity(value, nativeVector(velocity)); }
+        @Override public void setVelocity(Vector velocity) { if (!suppressRemoteMutation()) ExactPredictionRuntime.setPredictedVelocity(value, nativeVector(velocity)); }
         @Override public void setSize(int size) { value.setSize(size, true); }
         @Override public void addPotionEffect(PotionEffect effect) {
-            value.addStatusEffect(new StatusEffectInstance(FabricMC.status(effect.getType()),
-                    effect.getDuration(), effect.getAmplifier()));
+            if (!suppressRemoteMutation()) {
+                value.addStatusEffect(new StatusEffectInstance(FabricMC.status(effect.getType()),
+                        effect.getDuration(), effect.getAmplifier()));
+            }
         }
         @Override public boolean addPassenger(Entity passenger) {
             net.minecraft.entity.Entity nativePassenger = nativeEntity(passenger);

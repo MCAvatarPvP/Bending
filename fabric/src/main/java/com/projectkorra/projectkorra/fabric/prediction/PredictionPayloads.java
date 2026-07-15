@@ -14,7 +14,8 @@ import java.util.UUID;
 
 /** Wire contract used by the Fabric client and the Paper/Fabric server endpoints. */
 public final class PredictionPayloads {
-    public static final int PROTOCOL_VERSION = 18;
+    public static final int PROTOCOL_VERSION = 21;
+    public static final int MAX_BLOCK_STATE_CHARACTERS = 512;
     public static final int MAX_CONFIG_ENTRIES = 16_384;
     public static final int MAX_PROFILES = 2_048;
     public static final int MAX_TEMP_OPS = 4_096;
@@ -25,7 +26,7 @@ public final class PredictionPayloads {
     public enum InputKind { LEFT_CLICK, RIGHT_CLICK, RIGHT_CLICK_BLOCK, RIGHT_CLICK_ENTITY, SNEAK_START, SNEAK_STOP }
     public enum VisualKind { CAST, PROJECTILE, AREA, TEMP_BLOCK, SELF }
     public enum ValueType { STRING, BOOLEAN, INTEGER, DECIMAL, STRING_LIST }
-    public enum TempOperation { CREATE, UPDATE_EXPIRY, REVERT }
+    public enum TempOperation { CREATE, UPDATE_EXPIRY, REVERT, DISCARD }
 
     public record ConfigEntry(String path, ValueType type, List<String> values) {
         static ConfigEntry read(RegistryByteBuf buf) {
@@ -250,15 +251,16 @@ public final class PredictionPayloads {
                               boolean packetExpected) {
         static TempBlockOp read(RegistryByteBuf buf) {
             return new TempBlockOp(buf.readEnumConstant(TempOperation.class), buf.readString(256), buf.readInt(), buf.readInt(),
-                    buf.readInt(), buf.readString(128), buf.readLong(), buf.readVarLong(), buf.readVarLong(),
-                    buf.readVarLong(), buf.readBoolean() ? buf.readUuid() : null, buf.readString(128), buf.readBoolean());
+                    buf.readInt(), buf.readString(MAX_BLOCK_STATE_CHARACTERS), buf.readLong(), buf.readVarLong(), buf.readVarLong(),
+                    buf.readVarLong(), buf.readBoolean() ? buf.readUuid() : null,
+                    buf.readString(MAX_BLOCK_STATE_CHARACTERS), buf.readBoolean());
         }
         void write(RegistryByteBuf buf) {
             buf.writeEnumConstant(operation); buf.writeString(world, 256); buf.writeInt(x); buf.writeInt(y); buf.writeInt(z);
-            buf.writeString(material, 128); buf.writeLong(revertAtMillis); buf.writeVarLong(actionSequence);
+            buf.writeString(material, MAX_BLOCK_STATE_CHARACTERS); buf.writeLong(revertAtMillis); buf.writeVarLong(actionSequence);
             buf.writeVarLong(layerId); buf.writeVarLong(revision); buf.writeBoolean(ownerId != null);
             if (ownerId != null) buf.writeUuid(ownerId);
-            buf.writeString(viewerMaterial, 128); buf.writeBoolean(packetExpected);
+            buf.writeString(viewerMaterial, MAX_BLOCK_STATE_CHARACTERS); buf.writeBoolean(packetExpected);
         }
     }
 
@@ -307,6 +309,24 @@ public final class PredictionPayloads {
         @Override public Id<VelocityOwnerV2> getId() { return ID; }
     }
 
+    /** Exact ownership of one server TempFallingBlock, sent only to its caster. */
+    public record TempFallingBlockReceipt(long serverTick, long actionSequence, int spawnOrdinal,
+                                          UUID abilityOwner, int serverEntityId,
+                                          String ability) implements CustomPayload {
+        public static final Id<TempFallingBlockReceipt> ID = id("temp_falling_block");
+        public static final PacketCodec<RegistryByteBuf, TempFallingBlockReceipt> CODEC =
+                PacketCodec.of(TempFallingBlockReceipt::write, TempFallingBlockReceipt::new);
+        private TempFallingBlockReceipt(RegistryByteBuf buf) {
+            this(buf.readLong(), buf.readVarLong(), buf.readVarInt(), buf.readUuid(),
+                    buf.readVarInt(), buf.readString(128));
+        }
+        private void write(RegistryByteBuf buf) {
+            buf.writeLong(serverTick); buf.writeVarLong(actionSequence); buf.writeVarInt(spawnOrdinal);
+            buf.writeUuid(abilityOwner); buf.writeVarInt(serverEntityId); buf.writeString(ability, 128);
+        }
+        @Override public Id<TempFallingBlockReceipt> getId() { return ID; }
+    }
+
     public record AbilityRemoved(UUID player, String ability, long actionSequence) implements CustomPayload {
         public static final Id<AbilityRemoved> ID = id("ability_removed");
         public static final PacketCodec<RegistryByteBuf, AbilityRemoved> CODEC = PacketCodec.of(AbilityRemoved::write, AbilityRemoved::new);
@@ -331,6 +351,7 @@ public final class PredictionPayloads {
         PayloadTypeRegistry.playS2C().registerLarge(TempBlockBatch.ID, TempBlockBatch.CODEC, 512 * 1024);
         PayloadTypeRegistry.playS2C().register(VelocityOwner.ID, VelocityOwner.CODEC);
         PayloadTypeRegistry.playS2C().register(VelocityOwnerV2.ID, VelocityOwnerV2.CODEC);
+        PayloadTypeRegistry.playS2C().register(TempFallingBlockReceipt.ID, TempFallingBlockReceipt.CODEC);
         PayloadTypeRegistry.playS2C().register(AbilityRemoved.ID, AbilityRemoved.CODEC);
     }
 

@@ -279,6 +279,7 @@ public enum Material {
 
     public BlockData createBlockData() {
         if (this == FIRE || this == SOUL_FIRE) return new Fire(this);
+        if (this == SNOW) return new com.projectkorra.projectkorra.platform.mc.block.data.type.Snow();
         return (this == WATER || this == LAVA || this == LIGHT || name().contains("CAULDRON")) ? new Levelled(this) : new BlockData(this);
     }
 

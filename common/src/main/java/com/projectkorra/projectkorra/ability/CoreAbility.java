@@ -23,6 +23,7 @@ import com.projectkorra.projectkorra.platform.mc.permissions.Permission;
 import com.projectkorra.projectkorra.platform.mc.plugin.java.JavaPlugin;
 import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
 import com.projectkorra.projectkorra.prediction.AbilityRemovalSync;
+import com.projectkorra.projectkorra.prediction.PredictedContactSync;
 import com.projectkorra.projectkorra.util.AbilityTimingDebugger;
 import com.projectkorra.projectkorra.util.FlightHandler;
 import com.projectkorra.projectkorra.util.TimeUtil;
@@ -778,6 +779,9 @@ public abstract class CoreAbility implements Ability {
      */
     @Override
     public void remove() {
+        if (PredictedContactSync.suppressRemoval(this)) {
+            return;
+        }
         if (this.player == null && this.requiresPlayer()) {
             return;
         }

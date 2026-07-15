@@ -30,6 +30,7 @@ import com.projectkorra.projectkorra.prediction.ReactionWindow;
 import com.projectkorra.projectkorra.prediction.PendingHitResolution;
 import com.projectkorra.projectkorra.prediction.TempBlockSync;
 import com.projectkorra.projectkorra.prediction.TempBlockDeliveryTracker;
+import com.projectkorra.projectkorra.prediction.TempFallingBlockSync;
 import com.projectkorra.projectkorra.prediction.VelocitySync;
 import com.projectkorra.projectkorra.waterbending.passive.FastSwim;
 import com.projectkorra.projectkorra.util.Cooldown;
@@ -54,6 +55,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -70,7 +72,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * come from the server runtime.
  */
 public final class PredictionServer implements TempBlockSync.Listener,
-        CooldownSync.Listener, VelocitySync.Listener,
+        TempFallingBlockSync.Listener, CooldownSync.Listener, VelocitySync.Listener,
         AbilityRemovalSync.Listener, HitResolutionSync.Listener {
     public static final int MAX_REWIND_TICKS = 12;
     private static final double MAX_ORIGIN_ERROR = 8.0;
@@ -89,7 +91,9 @@ public final class PredictionServer implements TempBlockSync.Listener,
     private final Map<UUID, Session> sessions = new ConcurrentHashMap<>();
     private final Map<UUID, Deque<EntityFrame>> history = new HashMap<>();
     private final Map<CoreAbility, Action> abilityActions = Collections.synchronizedMap(new IdentityHashMap<>());
+    private final Map<CoreAbility, Action> abilityCreationActions = Collections.synchronizedMap(new IdentityHashMap<>());
     private final Map<Long, Action> tempLayerActions = new HashMap<>();
+    private final Set<Long> serverOwnedTempLayers = new HashSet<>();
     private final List<PendingTempBlock> pendingTempBlocks = new ArrayList<>();
     private final List<Claim> pendingReactions = new ArrayList<>();
     private final List<NativeHitResolution> pendingNativeReactions = new ArrayList<>();
@@ -113,6 +117,7 @@ public final class PredictionServer implements TempBlockSync.Listener,
         PredictionServer prediction = new PredictionServer(server, gameplay);
         active = prediction;
         TempBlockSync.install(prediction);
+        TempFallingBlockSync.install(prediction);
         VelocitySync.install(prediction);
         AbilityRemovalSync.install(prediction);
         HitResolutionSync.install(prediction);
@@ -124,6 +129,7 @@ public final class PredictionServer implements TempBlockSync.Listener,
 
     public void stop() {
         TempBlockSync.clear(this);
+        TempFallingBlockSync.clear(this);
         VelocitySync.clear(this);
         AbilityRemovalSync.clear(this);
         HitResolutionSync.clear(this);
@@ -132,7 +138,9 @@ public final class PredictionServer implements TempBlockSync.Listener,
         sessions.clear();
         history.clear();
         abilityActions.clear();
+        abilityCreationActions.clear();
         tempLayerActions.clear();
+        serverOwnedTempLayers.clear();
         pendingTempBlocks.clear();
         pendingReactions.clear();
         pendingNativeReactions.clear();
@@ -186,6 +194,8 @@ public final class PredictionServer implements TempBlockSync.Listener,
         flushTempBlocks();
         sessions.entrySet().removeIf(entry -> server.getPlayerManager().getPlayer(entry.getKey()) == null);
         abilityActions.entrySet().removeIf(entry -> entry.getKey().isRemoved() || !sessions.containsKey(entry.getValue().owner));
+        abilityCreationActions.entrySet().removeIf(entry -> entry.getKey().isRemoved()
+                || !sessions.containsKey(entry.getValue().owner));
 
         if (tick % 20 == 0) {
             syncPlayerStateChanges();
@@ -254,30 +264,29 @@ public final class PredictionServer implements TempBlockSync.Listener,
         ServerPlayerEntity defender = server.getPlayerManager().getPlayer(target.getUniqueId());
         if (defender == null || defender.isDead()) return false;
 
+        if (claim != null && claim.pending != null && !claim.pending.isResolved()) {
+            return claim.pending.add(effect, commit);
+        }
+        NativeHitResolution nativeHit = pendingNativeReactions.stream()
+                .filter(candidate -> candidate.matches(coreAbility, target.getUniqueId()))
+                .findFirst().orElse(null);
+        if (nativeHit != null) return nativeHit.add(effect, commit);
+
         final long visibleTicks = action == null ? coreAbility.getRunningTicks() : tick - action.acceptedServerTick;
         final int delayTicks = reactionTicks(visibleTicks, defender.networkHandler.getLatency());
         if (delayTicks <= 0) return false;
 
-        if (claim != null && claim.consumedTick == tick
-                && (claim.pending == null || !claim.pending.isResolved())) {
-            if (claim.pending == null) {
-                claim.pending = new PendingHitResolution(
-                        tick + delayTicks,
-                        new Vector(claim.contact.x, claim.contact.y, claim.contact.z));
-                pendingReactions.add(claim);
-            }
-            return claim.pending.add(commit);
+        if (claim != null && claim.pending == null && claim.consumedTick == tick) {
+            claim.pending = PendingHitResolution.forAbility(tick + delayTicks, coreAbility,
+                    new Vector(claim.contact.x, claim.contact.y, claim.contact.z));
+            pendingReactions.add(claim);
+            return claim.pending.add(effect, commit);
         }
 
-        NativeHitResolution nativeHit = pendingNativeReactions.stream()
-                .filter(candidate -> candidate.matches(coreAbility, target.getUniqueId(), tick))
-                .findFirst().orElse(null);
-        if (nativeHit == null) {
-            nativeHit = new NativeHitResolution(coreAbility, target.getUniqueId(), tick,
-                    tick + delayTicks, target.getBoundingBox().getCenter());
-            pendingNativeReactions.add(nativeHit);
-        }
-        return nativeHit.add(commit);
+        nativeHit = new NativeHitResolution(coreAbility, target.getUniqueId(), tick,
+                tick + delayTicks, target.getBoundingBox().getCenter());
+        pendingNativeReactions.add(nativeHit);
+        return nativeHit.add(effect, commit);
     }
 
     private void resolvePendingReactions() {
@@ -460,29 +469,110 @@ public final class PredictionServer implements TempBlockSync.Listener,
     }
 
     @Override
+    public void beforeWorldChange(final TempBlockSync.Change change) {
+        queueTempBlock(change);
+        flushTempBlocks();
+    }
+
+    @Override
     public void onChange(TempBlockSync.Change change) {
+        if (change.packetExpected()) return;
+        queueTempBlock(change);
+    }
+
+    private void queueTempBlock(final TempBlockSync.Change change) {
         PredictionPayloads.TempOperation wireOperation = switch (change.operation()) {
             case CREATE -> PredictionPayloads.TempOperation.CREATE;
             case UPDATE_EXPIRY -> PredictionPayloads.TempOperation.UPDATE_EXPIRY;
             case REVERT -> PredictionPayloads.TempOperation.REVERT;
+            case DISCARD -> PredictionPayloads.TempOperation.DISCARD;
         };
         Block block = change.block();
         CoreAbility effectiveAbility = change.ability() == null ? AbilityExecutionContext.current() : change.ability();
         Action currentAction = effectiveAbility == null ? null : actionForEffect(effectiveAbility);
         Long inputSequence = INPUT_SEQUENCE.get();
-        Map<UUID, String> ownerViews = new HashMap<>();
-        change.ownerViews().forEach((owner, data) -> ownerViews.put(owner, TempBlockSync.encode(data)));
-        if (change.operation() == TempBlockSync.Operation.CREATE && currentAction != null) {
-            tempLayerActions.put(change.layerId(), currentAction);
+        Action action = tempLayerActions.get(change.layerId());
+        if (action == null && !serverOwnedTempLayers.contains(change.layerId())
+                && change.operation() != TempBlockSync.Operation.REVERT
+                && change.operation() != TempBlockSync.Operation.DISCARD) {
+            if (currentAction == null && inputSequence != null && change.ownerId() != null) {
+                final Session ownerSession = sessions.get(change.ownerId());
+                currentAction = ownerSession == null ? null : ownerSession.actions.get(inputSequence);
+            }
+            if (currentAction != null && currentAction.locallyPredicted
+                    && currentAction.owner.equals(change.ownerId())) {
+                tempLayerActions.put(change.layerId(), currentAction);
+                action = currentAction;
+            } else {
+                serverOwnedTempLayers.add(change.layerId());
+            }
         }
-        Action action = tempLayerActions.getOrDefault(change.layerId(), currentAction);
+        final UUID predictedOwner = action == null ? null : action.owner;
+        final Map<UUID, String> ownerViews = predictedOwnerViews(block, action, change.data());
         pendingTempBlocks.add(new PendingTempBlock(new PredictionPayloads.TempBlockOp(wireOperation, block.getWorld().getName(),
                 block.getX(), block.getY(), block.getZ(), TempBlockSync.encode(change.data()),
-                change.operation() == TempBlockSync.Operation.REVERT ? 0L : change.revertAtMillis(),
-                action == null ? (inputSequence == null ? 0L : inputSequence) : action.sequence,
-                change.layerId(), change.revision(), change.ownerId(),
+                (change.operation() == TempBlockSync.Operation.REVERT
+                        || change.operation() == TempBlockSync.Operation.DISCARD) ? 0L : change.revertAtMillis(),
+                action == null ? 0L : action.sequence,
+                change.layerId(), change.revision(), predictedOwner,
                 TempBlockSync.encode(change.data()), change.packetExpected()), Map.copyOf(ownerViews)));
-        if (change.operation() == TempBlockSync.Operation.REVERT) tempLayerActions.remove(change.layerId());
+        if (change.operation() == TempBlockSync.Operation.REVERT
+                || change.operation() == TempBlockSync.Operation.DISCARD) {
+            tempLayerActions.remove(change.layerId());
+            serverOwnedTempLayers.remove(change.layerId());
+        }
+    }
+
+    private Map<UUID, String> predictedOwnerViews(final Block block, final Action closingAction,
+                                                  final BlockData fallbackData) {
+        final Set<UUID> owners = new HashSet<>();
+        final List<TempBlock> layers = TempBlock.getAll(block);
+        if (layers != null) {
+            for (TempBlock layer : layers) {
+                final Action owner = tempLayerActions.get(layer.getLayerId());
+                if (owner != null) owners.add(owner.owner);
+            }
+        }
+        if (closingAction != null) owners.add(closingAction.owner);
+        final Map<UUID, String> views = new HashMap<>();
+        for (UUID owner : owners) {
+            views.put(owner, TempBlockSync.encode(predictedViewerData(block, owner, fallbackData)));
+        }
+        return views;
+    }
+
+    private BlockData predictedViewerData(final Block block, final UUID viewer,
+                                          final BlockData fallbackData) {
+        final List<TempBlock> layers = TempBlock.getAll(block);
+        if (layers == null || layers.isEmpty()) {
+            return fallbackData == null ? block.getBlockData().clone() : fallbackData.clone();
+        }
+        for (int index = layers.size() - 1; index >= 0; index--) {
+            final TempBlock layer = layers.get(index);
+            final Action action = tempLayerActions.get(layer.getLayerId());
+            if (action == null || !action.owner.equals(viewer)) return layer.getBlockData();
+        }
+        return layers.getFirst().getState().getBlockData().clone();
+    }
+
+    @Override
+    public void onSpawn(final CoreAbility ability,
+                        final com.projectkorra.projectkorra.platform.mc.entity.FallingBlock fallingBlock) {
+        if (ability.getPlayer() == null || fallingBlock.getEntityId() <= 0) return;
+        final UUID ownerId = ability.getPlayer().getUniqueId();
+        final Session ownerSession = sessions.get(ownerId);
+        final ServerPlayerEntity nativeOwner = server.getPlayerManager().getPlayer(ownerId);
+        if (ownerSession == null || nativeOwner == null || (ownerSession.capabilities & 8) == 0
+                || !ServerPlayNetworking.canSend(nativeOwner, PredictionPayloads.TempFallingBlockReceipt.ID)) return;
+
+        Action action = abilityActions.get(ability);
+        final Long inputSequence = INPUT_SEQUENCE.get();
+        if (action == null && inputSequence != null) action = ownerSession.actions.get(inputSequence);
+        if (action == null || !action.locallyPredicted || !ownerId.equals(action.owner)) return;
+
+        final int ordinal = ++action.tempFallingBlockOrdinal;
+        ServerPlayNetworking.send(nativeOwner, new PredictionPayloads.TempFallingBlockReceipt(
+                tick, action.sequence, ordinal, ownerId, fallingBlock.getEntityId(), ability.getName()));
     }
 
     @Override
@@ -521,7 +611,11 @@ public final class PredictionServer implements TempBlockSync.Listener,
     @Override
     public void onRemoved(CoreAbility ability) {
         if (ability.getPlayer() == null || !ability.isStarted()) return;
-        Action action = abilityActions.get(ability);
+        // Removal identifies the instance that was created, not the most
+        // recent input that happened to mutate an ability of the same name.
+        // AirBlast can have several live instances; using its latest action
+        // lets an old projectile delete a newly staged source on the client.
+        Action action = abilityCreationActions.get(ability);
         UUID playerId = ability.getPlayer().getUniqueId();
         Session session = sessions.get(playerId);
         ServerPlayerEntity player = server.getPlayerManager().getPlayer(playerId);
@@ -529,6 +623,8 @@ public final class PredictionServer implements TempBlockSync.Listener,
             long sequence = action != null && action.locallyPredicted ? action.sequence : 0L;
             ServerPlayNetworking.send(player, new PredictionPayloads.AbilityRemoved(playerId, ability.getName(), sequence));
         }
+        abilityActions.remove(ability);
+        abilityCreationActions.remove(ability);
     }
 
     private static synchronized void registerReceivers() {
@@ -648,7 +744,7 @@ public final class PredictionServer implements TempBlockSync.Listener,
                 && matchesInputAbility(candidate, abilityName));
         long cooldownBefore = bending == null ? 0L : bending.getCooldown(abilityName);
         boolean dispatched;
-        boolean handled;
+        AbilityActivationManager.TrackingResult trackingResult;
         INPUT_OWNER.set(player.getUuid());
         INPUT_SEQUENCE.set(input.sequence());
         INPUT_LOCALLY_PREDICTED.set(input.locallyPredicted());
@@ -665,7 +761,7 @@ public final class PredictionServer implements TempBlockSync.Listener,
                     dispatchResult[0] = gameplay.handlePredictedInput(player, input.kind()));
             dispatched = dispatchResult[0];
         } finally {
-            handled = AbilityActivationManager.finishTracking();
+            trackingResult = AbilityActivationManager.finishTrackingResult();
             if (guardedCooldown) {
                 if (previousGuardedCooldown == null) bending.getCooldowns().remove(abilityName);
                 else bending.getCooldowns().put(abilityName, previousGuardedCooldown);
@@ -674,6 +770,7 @@ public final class PredictionServer implements TempBlockSync.Listener,
             INPUT_SEQUENCE.remove();
             INPUT_LOCALLY_PREDICTED.remove();
         }
+        boolean handled = trackingResult.handled();
         if (input.locallyPredicted()) {
             for (CoreAbility candidate : CoreAbility.getAbilitiesByInstances()) {
                 if (!before.contains(candidate) && candidate.getPlayer() != null
@@ -715,10 +812,32 @@ public final class PredictionServer implements TempBlockSync.Listener,
                 Math.max(0L, tick - mappedTick) * 50L, System.currentTimeMillis());
         while (session.actions.size() > 128) session.actions.remove(session.actions.keySet().iterator().next());
 
+        boolean createdMatchingAbility = false;
         for (CoreAbility candidate : CoreAbility.getAbilitiesByInstances()) {
             if (candidate.getPlayer() == null || !candidate.getPlayer().getUniqueId().equals(player.getUuid())) continue;
-            if (!before.contains(candidate) || matchesInputAbility(candidate, abilityName)) {
+            if (!before.contains(candidate)) {
+                abilityCreationActions.putIfAbsent(candidate, action);
                 abilityActions.put(candidate, action);
+                if (matchesInputAbility(candidate, abilityName)) createdMatchingAbility = true;
+            }
+        }
+        boolean explicitlyMappedExisting = false;
+        for (CoreAbility candidate : trackingResult.affectedAbilities()) {
+            if (!before.contains(candidate) || candidate.isRemoved() || candidate.getPlayer() == null
+                    || !candidate.getPlayer().getUniqueId().equals(player.getUuid())) continue;
+            abilityActions.put(candidate, action);
+            explicitlyMappedExisting = true;
+        }
+        // Compatibility path for existing-instance activations that have not
+        // identified their exact instance yet. Never use it when this input
+        // created a same-named instance: that was the AirBlast fan-out bug.
+        if (!explicitlyMappedExisting && handled && !createdMatchingAbility) {
+            for (CoreAbility candidate : CoreAbility.getAbilitiesByInstances()) {
+                if (before.contains(candidate) && !candidate.isRemoved() && candidate.getPlayer() != null
+                        && candidate.getPlayer().getUniqueId().equals(player.getUuid())
+                        && matchesInputAbility(candidate, abilityName)) {
+                    abilityActions.put(candidate, action);
+                }
             }
         }
 
@@ -787,6 +906,7 @@ public final class PredictionServer implements TempBlockSync.Listener,
             punch = new FirePunch(commonPlayer, null);
         }
         abilityActions.put(punch, action);
+        abilityCreationActions.putIfAbsent(punch, action);
         claim.consumedTick = tick;
         FirePunch executing = punch;
         UUID previousOwner = INPUT_OWNER.get();
@@ -855,8 +975,9 @@ public final class PredictionServer implements TempBlockSync.Listener,
                     final boolean inView = PredictionVisibility.tracksBlock(viewerWorld, pending.operation.world(),
                             (int) Math.floor(player.getX()), (int) Math.floor(player.getZ()),
                             pending.operation.x(), pending.operation.z(), server.getPlayerManager().getViewDistance());
-                    if (!session.tempLayers.route(layerId,
-                            pending.operation.operation() == PredictionPayloads.TempOperation.REVERT, inView)) continue;
+                    final boolean closesLayer = pending.operation.operation() == PredictionPayloads.TempOperation.REVERT
+                            || pending.operation.operation() == PredictionPayloads.TempOperation.DISCARD;
+                    if (!session.tempLayers.route(layerId, closesLayer, inView)) continue;
                     visible.add(pending.forViewer(session.playerId));
                 }
                 if (!visible.isEmpty()) {
@@ -961,16 +1082,14 @@ public final class PredictionServer implements TempBlockSync.Listener,
                     || !PredictionVisibility.tracksBlock(viewerWorld, block.getWorld().getName(),
                     (int) Math.floor(player.getX()), (int) Math.floor(player.getZ()),
                     block.getX(), block.getZ(), server.getPlayerManager().getViewDistance())) continue;
-            final CoreAbility ability = layer.getAbility().orElse(null);
-            final Action action = tempLayerActions.getOrDefault(layer.getLayerId(),
-                    ability == null ? null : actionForEffect(ability));
-            final BlockData viewerData = TempBlock.getVisibleData(block, session.playerId);
+            final Action action = tempLayerActions.get(layer.getLayerId());
+            final UUID predictedOwner = action == null ? null : action.owner;
+            final BlockData viewerData = predictedViewerData(block, session.playerId, block.getBlockData());
             operations.add(new PredictionPayloads.TempBlockOp(PredictionPayloads.TempOperation.CREATE,
                     block.getWorld().getName(), block.getX(), block.getY(), block.getZ(),
                     TempBlockSync.encode(layer.getBlockData()), layer.getRevertTime(),
                     action == null ? 0L : action.sequence, layer.getLayerId(), layer.getRevision(),
-                    layer.getOwnerId().orElse(null),
-                    TempBlockSync.encode(viewerData == null ? layer.getBlockData() : viewerData), false));
+                    predictedOwner, TempBlockSync.encode(viewerData), false));
             session.tempLayers.markActive(layer.getLayerId());
         }
         sendTempBlockOperations(player, operations);
@@ -1117,6 +1236,7 @@ public final class PredictionServer implements TempBlockSync.Listener,
         boolean locallyPredicted;
         final Map<Integer, Claim> claims = new HashMap<>();
         final Map<UUID, Integer> velocityOrdinals = new HashMap<>();
+        int tempFallingBlockOrdinal;
         Action(UUID owner, long sequence, long clientTick, long rewindTick, long acceptedServerTick,
                String abilityName, double eyeX, double eyeY, double eyeZ, float yaw, float pitch,
                PredictionPayloads.AbilityProfile profile, boolean locallyPredicted) {

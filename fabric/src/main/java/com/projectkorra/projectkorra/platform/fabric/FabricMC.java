@@ -20,6 +20,7 @@ import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.block.data.Levelled;
 import com.projectkorra.projectkorra.platform.mc.block.data.type.Fire;
+import com.projectkorra.projectkorra.platform.mc.block.data.type.Snow;
 import com.projectkorra.projectkorra.platform.mc.command.CommandSender;
 import com.projectkorra.projectkorra.platform.mc.entity.ArmorStand;
 import com.projectkorra.projectkorra.platform.mc.entity.Arrow;
@@ -49,6 +50,10 @@ import com.projectkorra.projectkorra.platform.mc.util.Transformation;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
 import com.projectkorra.projectkorra.prediction.CapturedInputPose;
+import com.projectkorra.projectkorra.prediction.HitResolutionSync;
+import com.projectkorra.projectkorra.prediction.TempBlockSync;
+import com.projectkorra.projectkorra.prediction.VelocitySync;
+import com.projectkorra.projectkorra.util.TempBlock;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
@@ -157,6 +162,13 @@ public final class FabricMC {
     private static final Map<ServerWorld, World> WORLDS = new ConcurrentHashMap<>();
 
     private FabricMC() {
+    }
+
+    private static void applyHitStatus(final Entity target, final Runnable commit) {
+        if (!HitResolutionSync.defer(HitResolutionSync.Effect.STATUS,
+                AbilityExecutionContext.current(), target, commit)) {
+            commit.run();
+        }
     }
 
     public record BlockRef(ServerWorld world, BlockPos pos) {
@@ -628,6 +640,10 @@ public final class FabricMC {
 
     public static BlockState blockState(BlockData data) {
         if (data == null) data = new BlockData(Material.AIR);
+        if (data.getClass() == BlockData.class && data.getExactState() != null) {
+            final BlockState exact = blockState(data.getExactState());
+            if (material(exact) == data.getMaterial()) return exact;
+        }
         net.minecraft.block.Block block = material(data.getMaterial());
         BlockState state = block.getDefaultState();
         if (data instanceof Levelled levelled) {
@@ -637,6 +653,41 @@ public final class FabricMC {
             }
         } else if (data instanceof Fire fire) {
             state = withFireFaces(state, fire);
+        } else if (data instanceof Snow snow && state.contains(Properties.LAYERS)) {
+            state = state.with(Properties.LAYERS, Math.max(1, Math.min(8, snow.getLayers())));
+        }
+        return state;
+    }
+
+    /**
+     * Decodes the canonical vanilla form used by Bukkit and Fabric, for
+     * example minecraft:oak_stairs[facing=east,half=top,...]. Unknown blocks,
+     * properties and values fail closed to a valid registered/default state.
+     */
+    public static BlockState blockState(final String serialized) {
+        if (serialized == null || serialized.isBlank()) {
+            return material(Material.AIR).getDefaultState();
+        }
+        final String value = serialized.trim();
+        final int bracket = value.indexOf('[');
+        final String blockKey = bracket < 0 ? value : value.substring(0, bracket);
+        final Identifier id = Identifier.tryParse(blockKey);
+        if (id == null || !Registries.BLOCK.containsId(id)) {
+            return material(Material.AIR).getDefaultState();
+        }
+
+        final net.minecraft.block.Block block = Registries.BLOCK.get(id);
+        BlockState state = block.getDefaultState();
+        if (bracket < 0 || !value.endsWith("]")) return state;
+        final String properties = value.substring(bracket + 1, value.length() - 1);
+        if (properties.isBlank()) return state;
+        for (String assignment : properties.split(",")) {
+            final int separator = assignment.indexOf('=');
+            if (separator <= 0 || separator == assignment.length() - 1) continue;
+            final Property<?> property = block.getStateManager().getProperty(
+                    assignment.substring(0, separator).trim());
+            if (property == null) continue;
+            state = withParsedProperty(state, property, assignment.substring(separator + 1).trim());
         }
         return state;
     }
@@ -669,8 +720,36 @@ public final class FabricMC {
             }
         } else if (data instanceof Fire fire) {
             readFireFaces(state, fire);
+        } else if (data instanceof Snow snow && state.contains(Properties.LAYERS)) {
+            snow.setLayers(state.get(Properties.LAYERS));
+        } else if (data.getClass() == BlockData.class) {
+            data.setExactState(serializeBlockState(state));
         }
         return data;
+    }
+
+    private static String serializeBlockState(final BlockState state) {
+        final StringBuilder value = new StringBuilder(Registries.BLOCK.getId(state.getBlock()).toString());
+        boolean first = true;
+        for (Property<?> property : state.getProperties()) {
+            value.append(first ? '[' : ',');
+            first = false;
+            value.append(property.getName()).append('=').append(propertyValueName(state, property));
+        }
+        if (!first) value.append(']');
+        return value.toString();
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static String propertyValueName(final BlockState state, final Property property) {
+        return property.name(state.get(property));
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static BlockState withParsedProperty(final BlockState state, final Property property,
+                                                 final String value) {
+        final Optional<? extends Comparable> parsed = property.parse(value);
+        return parsed.isPresent() ? state.with(property, parsed.get()) : state;
     }
 
     private static BlockState withFireFaces(BlockState state, Fire fire) {
@@ -1371,6 +1450,7 @@ public final class FabricMC {
         @Override
         public void setBlockData(BlockData data, boolean physics) {
             if (data == null) return;
+            prepareExternalWrite();
             int flags = physics
                     ? net.minecraft.block.Block.NOTIFY_ALL
                     : net.minecraft.block.Block.NOTIFY_LISTENERS
@@ -1380,9 +1460,15 @@ public final class FabricMC {
             world.setBlockState(pos, nativeState, flags);
         }
 
+        private void prepareExternalWrite() {
+            if (TempBlockSync.currentWorldMutation() == null && TempBlock.isTempBlock(this)) {
+                TempBlock.removeBlock(this);
+            }
+        }
+
         @Override
         public com.projectkorra.projectkorra.platform.mc.block.BlockState getState() {
-            return new BlockStateView(this, getBlockData());
+            return new BlockStateView(this, state());
         }
 
         @Override
@@ -1542,19 +1628,28 @@ public final class FabricMC {
 
     private static final class BlockStateView extends com.projectkorra.projectkorra.platform.mc.block.BlockState {
         private final BlockView block;
-        private final BlockData data;
+        private final BlockState state;
 
-        private BlockStateView(BlockView block, BlockData data) {
+        private BlockStateView(BlockView block, BlockState state) {
             this.block = block;
-            this.data = data.clone();
+            this.state = state;
         }
 
-        @Override public Material getType() { return data.getMaterial(); }
-        @Override public BlockData getBlockData() { return data.clone(); }
+        @Override public Material getType() { return FabricMC.material(state); }
+        @Override public BlockData getBlockData() { return FabricMC.blockData(state); }
         @Override public Block getBlock() { return block; }
         @Override public Location getLocation() { return block.getLocation(); }
-        @Override public boolean update(boolean force, boolean physics) { block.setBlockData(data, physics); return true; }
+        @Override public boolean update(boolean force, boolean physics) {
+            block.prepareExternalWrite();
+            int flags = physics
+                    ? net.minecraft.block.Block.NOTIFY_ALL
+                    : net.minecraft.block.Block.NOTIFY_LISTENERS
+                            | net.minecraft.block.Block.FORCE_STATE
+                            | net.minecraft.block.Block.SKIP_BLOCK_ADDED_CALLBACK;
+            return block.world.setBlockState(block.pos, state, flags);
+        }
         @Override public Object handle() { return block.handle(); }
+        @Override public boolean hasBlockEntity() { return block.world.getBlockEntity(block.pos) != null; }
     }
 
     private static class EntityView extends Entity {
@@ -1701,8 +1796,10 @@ public final class FabricMC {
 
         @Override
         public void setVelocity(Vector velocity) {
-            value.setVelocity(vector(velocity));
-            value.velocityDirty = true;
+            VelocitySync.applyDirect(AbilityExecutionContext.current(), this, velocity, () -> {
+                value.setVelocity(vector(velocity));
+                value.velocityDirty = true;
+            });
         }
 
         @Override public boolean isOnGround() { return value.isOnGround(); }
@@ -1722,7 +1819,7 @@ public final class FabricMC {
         @Override public boolean isValid() { return !value.isRemoved(); }
         @Override public int getEntityId() { return value.getId(); }
         @Override public int getFireTicks() { return value.getFireTicks(); }
-        @Override public void setFireTicks(int ticks) { value.setFireTicks(ticks); }
+        @Override public void setFireTicks(int ticks) { applyHitStatus(this, () -> value.setFireTicks(ticks)); }
         @Override public String getName() { return value.getName().getString(); }
 
         @Override
@@ -1747,16 +1844,16 @@ public final class FabricMC {
             value.damage((ServerWorld) value.getEntityWorld(), damageSource, (float) amount);
         }
         @Override public int getNoDamageTicks() { return value.timeUntilRegen; }
-        @Override public void setNoDamageTicks(int ticks) { value.timeUntilRegen = ticks; }
+        @Override public void setNoDamageTicks(int ticks) { applyHitStatus(this, () -> value.timeUntilRegen = ticks); }
 
         @Override public boolean hasPotionEffect(PotionEffectType type) { return value.hasStatusEffect(status(type)); }
         @Override public PotionEffect getPotionEffect(PotionEffectType type) { return effect(type, value.getStatusEffect(status(type))); }
-        @Override public void addPotionEffect(PotionEffect effect) { value.addStatusEffect(new StatusEffectInstance(status(effect.getType()), effect.getDuration(), effect.getAmplifier(), true, false)); }
+        @Override public void addPotionEffect(PotionEffect effect) { applyHitStatus(this, () -> value.addStatusEffect(new StatusEffectInstance(status(effect.getType()), effect.getDuration(), effect.getAmplifier(), true, false))); }
         @Override public void addPotionEffects(Collection<PotionEffect> effects) { if (effects != null) effects.forEach(this::addPotionEffect); }
         @Override public boolean addPotionEffect(PotionEffect effect, boolean force) { addPotionEffect(effect); return true; }
-        @Override public void removePotionEffect(PotionEffectType type) { value.removeStatusEffect(status(type)); }
+        @Override public void removePotionEffect(PotionEffectType type) { applyHitStatus(this, () -> value.removeStatusEffect(status(type))); }
         @Override public int getRemainingAir() { return value.getAir(); }
-        @Override public void setRemainingAir(int ticks) { value.setAir(ticks); }
+        @Override public void setRemainingAir(int ticks) { applyHitStatus(this, () -> value.setAir(ticks)); }
         @Override public EntityEquipment getEquipment() { return new EquipmentView(value); }
         @Override public void setAI(boolean enabled) {
             if (value instanceof MobEntity mob) {
@@ -2102,11 +2199,13 @@ public final class FabricMC {
 
         @Override
         public void setVelocity(Vector velocity) {
-            value.setVelocity(vector(velocity));
-            value.velocityDirty = true;
-            if (!suppressPredictionEcho()) {
-                value.networkHandler.sendPacket(new EntityVelocityUpdateS2CPacket(value));
-            }
+            VelocitySync.applyDirect(AbilityExecutionContext.current(), this, velocity, () -> {
+                value.setVelocity(vector(velocity));
+                value.velocityDirty = true;
+                if (!suppressPredictionEcho()) {
+                    value.networkHandler.sendPacket(new EntityVelocityUpdateS2CPacket(value));
+                }
+            });
         }
 
         @Override public boolean isOnGround() { return value.isOnGround(); }
@@ -2155,7 +2254,7 @@ public final class FabricMC {
         @Override public int getEntityId() { return value.getId(); }
         @Override public boolean isValid() { return !value.isRemoved(); }
         @Override public int getFireTicks() { return value.getFireTicks(); }
-        @Override public void setFireTicks(int ticks) { value.setFireTicks(ticks); }
+        @Override public void setFireTicks(int ticks) { applyHitStatus(this, () -> value.setFireTicks(ticks)); }
         @Override public boolean teleport(Location target) {
             value.networkHandler.requestTeleport(target.getX(), target.getY(), target.getZ(), target.getYaw(), target.getPitch());
             return true;
@@ -2197,15 +2296,15 @@ public final class FabricMC {
             value.damage((ServerWorld) value.getEntityWorld(), damageSource, (float) amount);
         }
         @Override public int getNoDamageTicks() { return value.timeUntilRegen; }
-        @Override public void setNoDamageTicks(int ticks) { value.timeUntilRegen = ticks; }
+        @Override public void setNoDamageTicks(int ticks) { applyHitStatus(this, () -> value.timeUntilRegen = ticks); }
         @Override public boolean hasPotionEffect(PotionEffectType type) { return value.hasStatusEffect(status(type)); }
         @Override public PotionEffect getPotionEffect(PotionEffectType type) { return effect(type, value.getStatusEffect(status(type))); }
-        @Override public void addPotionEffect(PotionEffect effect) { value.addStatusEffect(new StatusEffectInstance(status(effect.getType()), effect.getDuration(), effect.getAmplifier(), true, false)); }
+        @Override public void addPotionEffect(PotionEffect effect) { applyHitStatus(this, () -> value.addStatusEffect(new StatusEffectInstance(status(effect.getType()), effect.getDuration(), effect.getAmplifier(), true, false))); }
         @Override public void addPotionEffects(Collection<PotionEffect> effects) { if (effects != null) effects.forEach(this::addPotionEffect); }
         @Override public boolean addPotionEffect(PotionEffect effect, boolean force) { addPotionEffect(effect); return true; }
-        @Override public void removePotionEffect(PotionEffectType type) { value.removeStatusEffect(status(type)); }
+        @Override public void removePotionEffect(PotionEffectType type) { applyHitStatus(this, () -> value.removeStatusEffect(status(type))); }
         @Override public int getRemainingAir() { return value.getAir(); }
-        @Override public void setRemainingAir(int ticks) { value.setAir(ticks); }
+        @Override public void setRemainingAir(int ticks) { applyHitStatus(this, () -> value.setAir(ticks)); }
         @Override public Block getTargetBlockExact(int range) {
             Location eye = getEyeLocation();
             Vec3d origin = vector(eye.toVector());

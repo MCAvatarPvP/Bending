@@ -20,6 +20,8 @@ import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.CooldownSync;
+import com.projectkorra.projectkorra.prediction.EntityHitboxProvider;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
@@ -30,10 +32,12 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
-public class Combustion extends CombustionAbility implements AddonAbility {
+public class Combustion extends CombustionAbility implements AddonAbility, EntityHitboxProvider {
 
     private State state;
     private Location location;
+    private List<Location> entityHitLocations = List.of();
+    private double entityHitRadius;
     @Attribute(Attribute.COOLDOWN)
     private long cooldown;
     private CompositeRemovalPolicy removalPolicy;
@@ -110,6 +114,16 @@ public class Combustion extends CombustionAbility implements AddonAbility {
     @Override
     public double getCollisionRadius() {
         return JedCoreConfig.getConfig(this.bPlayer).getDouble("Abilities.Fire.Combustion.AbilityCollisionRadius");
+    }
+
+    @Override
+    public List<Location> getEntityHitLocations() {
+        return entityHitLocations.stream().map(Location::clone).toList();
+    }
+
+    @Override
+    public double getEntityHitRadius() {
+        return entityHitRadius;
     }
 
     @Override
@@ -301,6 +315,7 @@ public class Combustion extends CombustionAbility implements AddonAbility {
         }
 
         private void travel() {
+            final boolean authoritative = CooldownSync.isAuthoritative();
             int r = (int) Math.sqrt(range);
 
             for (int i = 0; i < r; ++i) {
@@ -309,12 +324,13 @@ public class Combustion extends CombustionAbility implements AddonAbility {
                 Sphere collider = new Sphere(location, entityCollisionRadius);
 
                 boolean hit = CollisionDetector.checkEntityCollisions(player, collider, (entity) -> {
+                    if (!authoritative) return true;
                     location = entity.getLocation();
                     state = new CombustState(location);
                     return true;
                 });
 
-                if (hit) {
+                if (hit && authoritative) {
                     return;
                 }
 
@@ -467,6 +483,8 @@ public class Combustion extends CombustionAbility implements AddonAbility {
         }
 
         private void damageEntities(Location location, double size, double damage, int fireTick) {
+            entityHitLocations = List.of(location.clone());
+            entityHitRadius = Math.max(0D, size);
             for (Entity e : GeneralMethods.getEntitiesAroundPoint(location, size)) {
                 if (e instanceof LivingEntity) {
                     if (!RegionProtection.isRegionProtected(Combustion.this, e.getLocation())) {

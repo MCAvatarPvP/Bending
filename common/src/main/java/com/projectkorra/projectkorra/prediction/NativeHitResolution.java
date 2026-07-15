@@ -10,7 +10,6 @@ import java.util.UUID;
 public final class NativeHitResolution {
     private final CoreAbility ability;
     private final UUID target;
-    private final long hitTick;
     private final PendingHitResolution pending;
 
     public NativeHitResolution(final CoreAbility ability, final UUID target,
@@ -18,18 +17,21 @@ public final class NativeHitResolution {
                                final Vector contact) {
         this.ability = ability;
         this.target = target;
-        this.hitTick = hitTick;
-        this.pending = new PendingHitResolution(resolveTick, contact);
+        this.pending = PendingHitResolution.forAbility(resolveTick, ability, contact);
     }
 
-    /** Damage and velocity from one ability/target/tick share one reaction decision. */
-    public boolean matches(final CoreAbility candidate, final UUID targetId, final long tick) {
-        return this.ability == candidate && this.hitTick == tick && this.target.equals(targetId)
+    /** All streams from one ability/target share one unresolved reaction decision. */
+    public boolean matches(final CoreAbility candidate, final UUID targetId) {
+        return this.ability == candidate && this.target.equals(targetId)
                 && !this.pending.isResolved();
     }
 
     public boolean add(final Runnable commit) {
         return this.pending.add(commit);
+    }
+
+    public boolean add(final HitResolutionSync.Effect effect, final Runnable commit) {
+        return this.pending.add(effect, commit);
     }
 
     public PendingHitResolution.Result resolve(final long currentTick, final BoundingBox defenderBox,

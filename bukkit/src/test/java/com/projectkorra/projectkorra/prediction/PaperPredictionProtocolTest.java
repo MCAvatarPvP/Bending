@@ -158,6 +158,21 @@ class PaperPredictionProtocolTest {
     }
 
     @Test
+    void tempFallingBlockReceiptCarriesExactCasterActionOrdinalAndEntity() {
+        UUID owner = UUID.randomUUID();
+        byte[] payload = PaperPredictionProtocol.tempFallingBlock(
+                93, 29, 6, owner, 418, "EarthLine");
+        PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(payload);
+        assertEquals(93L, reader.i64());
+        assertEquals(29L, reader.varLong());
+        assertEquals(6, reader.varInt());
+        assertEquals(owner, reader.uuid());
+        assertEquals(418, reader.varInt());
+        assertEquals("EarthLine", reader.string(128));
+        reader.finished();
+    }
+
+    @Test
     void stateDirectiveCarriesExternalCooldownAddition() {
         UUID session = UUID.randomUUID();
         byte[] payload = PaperPredictionProtocol.stateDirective(session, "", "AirSpout",
@@ -210,14 +225,14 @@ class PaperPredictionProtocolTest {
         assertEquals(1, reader.i32());
         assertEquals(64, reader.i32());
         assertEquals(2, reader.i32());
-        assertEquals("minecraft:stone", reader.string(128));
+        assertEquals("minecraft:stone", reader.string(PaperPredictionProtocol.MAX_BLOCK_STATE_CHARACTERS));
         assertEquals(12_000L, reader.i64());
         assertEquals(45L, reader.varLong());
         assertEquals(7L, reader.varLong());
         assertEquals(99L, reader.varLong());
         assertTrue(reader.bool());
         assertEquals(owner, reader.uuid());
-        assertEquals("minecraft:air", reader.string(128));
+        assertEquals("minecraft:air", reader.string(PaperPredictionProtocol.MAX_BLOCK_STATE_CHARACTERS));
         assertTrue(reader.bool());
         reader.finished();
     }
@@ -225,7 +240,7 @@ class PaperPredictionProtocolTest {
     @Test
     void boundedTempBlockPageAlwaysFitsPluginMessageLimit() {
         String maximumWorld = "界".repeat(256);
-        String maximumState = "界".repeat(128);
+        String maximumState = "界".repeat(PaperPredictionProtocol.MAX_BLOCK_STATE_CHARACTERS);
         UUID owner = UUID.randomUUID();
         List<PaperPredictionProtocol.TempBlockOp> page = java.util.stream.LongStream.range(0, 8)
                 .mapToObj(layer -> new PaperPredictionProtocol.TempBlockOp(
@@ -236,6 +251,34 @@ class PaperPredictionProtocolTest {
 
         assertTrue(PaperPredictionProtocol.tempBlocks(Long.MAX_VALUE, Long.MAX_VALUE, page).length
                 <= 32_766); // Bukkit Messenger.MAX_MESSAGE_SIZE
+    }
+
+    @Test
+    void exactTempBlockStateIsNeverTruncatedAtTheLegacyMaterialLimit() {
+        String exactState = "minecraft:test_block[" + "property=value,".repeat(18) + "last=true]";
+        PaperPredictionProtocol.TempBlockOp operation = new PaperPredictionProtocol.TempBlockOp(
+                PaperPredictionProtocol.TempOperation.CREATE, "world", 1, 64, 2,
+                exactState, 0L, 1L, 2L, 3L, null, exactState, true);
+        PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(
+                PaperPredictionProtocol.tempBlocks(1L, 2L, List.of(operation)));
+
+        reader.i64();
+        reader.i64();
+        reader.varInt();
+        reader.enumeration(PaperPredictionProtocol.TempOperation.values());
+        reader.string(256);
+        reader.i32();
+        reader.i32();
+        reader.i32();
+        assertEquals(exactState, reader.string(PaperPredictionProtocol.MAX_BLOCK_STATE_CHARACTERS));
+        reader.i64();
+        reader.varLong();
+        reader.varLong();
+        reader.varLong();
+        assertFalse(reader.bool());
+        assertEquals(exactState, reader.string(PaperPredictionProtocol.MAX_BLOCK_STATE_CHARACTERS));
+        assertTrue(reader.bool());
+        reader.finished();
     }
 
     @Test

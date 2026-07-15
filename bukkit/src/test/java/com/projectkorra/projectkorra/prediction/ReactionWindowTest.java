@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -87,14 +88,108 @@ class ReactionWindowTest {
     }
 
     @Test
+    void abilityRadiusIsAppliedInAdditionToNetworkTolerance() {
+        HitGeometry radiusAware = new HitGeometry(List.of(new Vector(0.9, 0.9, 0)), 0.4);
+        HitGeometry tooFar = new HitGeometry(List.of(new Vector(0.91, 0.9, 0)), 0.4);
+
+        assertTrue(ReactionWindow.intersects(PLAYER_BOX, radiusAware, 0.2));
+        assertFalse(ReactionWindow.intersects(PLAYER_BOX, tooFar, 0.2));
+    }
+
+    @Test
+    void anyCollisionLocationCanConfirmAMultiStreamAbility() {
+        HitGeometry streams = new HitGeometry(List.of(
+                new Vector(10, 0.9, 10),
+                new Vector(0.7, 0.9, 0),
+                new Vector(-10, 0.9, -10)), 0.2);
+
+        assertTrue(ReactionWindow.intersects(PLAYER_BOX, streams, 0.2));
+    }
+
+    @Test
+    void pendingResolutionUsesTheLatestLiveStreamGeometry() {
+        AtomicReference<HitGeometry> live = new AtomicReference<>(
+                new HitGeometry(List.of(new Vector(2, 0.9, 0)), 0.25));
+        PendingHitResolution pending = new PendingHitResolution(10,
+                HitGeometry.point(new Vector(0, 0.9, 0)), live::get);
+        List<String> committed = new ArrayList<>();
+        pending.add(HitResolutionSync.Effect.DAMAGE, () -> committed.add("damage"));
+
+        assertEquals(PendingHitResolution.Result.COMMITTED,
+                pending.resolve(10, PLAYER_BOX.shift(2, 0, 0), 0.2));
+        assertEquals(List.of("damage"), committed);
+    }
+
+    @Test
+    void projectileMovingPastAStationaryPointBlankTargetDoesNotEraseItsCollision() {
+        AtomicReference<HitGeometry> live = new AtomicReference<>(
+                new HitGeometry(List.of(new Vector(3, 0.9, 0)), 0.25));
+        PendingHitResolution pending = new PendingHitResolution(10,
+                new HitGeometry(List.of(new Vector(0.5, 0.9, 0)), 0.25), live::get);
+        List<String> committed = new ArrayList<>();
+        pending.add(HitResolutionSync.Effect.DAMAGE, () -> committed.add("damage"));
+
+        assertEquals(PendingHitResolution.Result.COMMITTED,
+                pending.resolve(10, PLAYER_BOX, 0.2));
+        assertEquals(List.of("damage"), committed);
+    }
+
+    @Test
+    void exactCollisionContactSurvivesBrokenAbilityGeometryForEveryMove() {
+        HitGeometry brokenAbilityGeometry = new HitGeometry(
+                List.of(new Vector(100, 100, 100)), 0.1);
+        HitGeometry collisionContact = HitGeometry.point(PLAYER_BOX.getCenter());
+        PendingHitResolution stationary = new PendingHitResolution(10,
+                brokenAbilityGeometry, collisionContact, () -> brokenAbilityGeometry);
+        List<String> committed = new ArrayList<>();
+        stationary.add(() -> committed.add("damage"));
+
+        assertEquals(PendingHitResolution.Result.COMMITTED,
+                stationary.resolve(10, PLAYER_BOX, 0.2));
+        assertEquals(List.of("damage"), committed);
+
+        PendingHitResolution dodged = new PendingHitResolution(10,
+                brokenAbilityGeometry, collisionContact, () -> brokenAbilityGeometry);
+        dodged.add(() -> committed.add("ghost"));
+        assertEquals(PendingHitResolution.Result.DODGED,
+                dodged.resolve(10, PLAYER_BOX.shift(2, 0, 0), 0.2));
+        assertFalse(committed.contains("ghost"));
+    }
+
+    @Test
+    void repeatedStreamEffectsReplaceRatherThanStackDuringOneDecision() {
+        List<String> committed = new ArrayList<>();
+        PendingHitResolution pending = new PendingHitResolution(10, new Vector(0, 0.9, 0));
+        pending.add(HitResolutionSync.Effect.DAMAGE, () -> committed.add("old"));
+        pending.add(HitResolutionSync.Effect.DAMAGE, () -> committed.add("latest"));
+
+        assertEquals(PendingHitResolution.Result.COMMITTED,
+                pending.resolve(10, PLAYER_BOX, 0.2));
+        assertEquals(List.of("latest"), committed);
+    }
+
+    @Test
+    void distinctStatusEffectsFromOneHitAreAllPreserved() {
+        List<String> committed = new ArrayList<>();
+        PendingHitResolution pending = new PendingHitResolution(10, new Vector(0, 0.9, 0));
+        pending.add(HitResolutionSync.Effect.STATUS, () -> committed.add("fire"));
+        pending.add(HitResolutionSync.Effect.STATUS, () -> committed.add("slow"));
+
+        assertEquals(PendingHitResolution.Result.COMMITTED,
+                pending.resolve(10, PLAYER_BOX, 0.2));
+        assertEquals(List.of("fire", "slow"), committed);
+    }
+
+    @Test
     void nativeDamageVelocityAndStaminaFromOneServerHitShareAReactionDecision() {
         UUID target = UUID.randomUUID();
         List<String> committed = new ArrayList<>();
         NativeHitResolution pending = new NativeHitResolution(null, target,
                 30, 35, PLAYER_BOX.getCenter());
 
-        assertTrue(pending.matches(null, target, 30));
-        assertFalse(pending.matches(null, target, 31), "a later tick is a distinct continuous hit");
+        assertTrue(pending.matches(null, target));
+        assertTrue(pending.matches(null, target),
+                "later streams from the same ability share the unresolved decision");
         assertTrue(pending.add(() -> committed.add("damage")));
         assertTrue(pending.add(() -> committed.add("velocity")));
         assertTrue(pending.add(() -> committed.add("stamina")));

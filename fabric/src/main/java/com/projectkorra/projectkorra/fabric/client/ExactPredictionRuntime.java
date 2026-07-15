@@ -34,15 +34,20 @@ import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.block.data.Levelled;
 import com.projectkorra.projectkorra.platform.mc.block.data.type.Fire;
+import com.projectkorra.projectkorra.platform.mc.block.data.type.Snow;
+import com.projectkorra.projectkorra.platform.mc.entity.FallingBlock;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
 import com.projectkorra.projectkorra.prediction.CooldownSync;
+import com.projectkorra.projectkorra.prediction.ClientTempBlockLedger;
 import com.projectkorra.projectkorra.prediction.PredictionConfigSync;
 import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.prediction.PredictionEchoPolicy;
 import com.projectkorra.projectkorra.prediction.PredictionStateOrdering;
+import com.projectkorra.projectkorra.prediction.PredictedContactSync;
 import com.projectkorra.projectkorra.prediction.TempBlockSync;
+import com.projectkorra.projectkorra.prediction.TempFallingBlockSync;
 import com.projectkorra.projectkorra.util.ClickType;
 import com.projectkorra.projectkorra.util.TempBlock;
 import com.projectkorra.projectkorra.util.FallHandler;
@@ -52,6 +57,7 @@ import com.jedk1.jedcore.ability.passive.WallRun;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.logging.Level;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
@@ -87,25 +93,25 @@ import java.util.UUID;
  * progress methods, particles, sounds, ray traces, temp blocks and velocity
  * calls all pass through the same common classes used by the server.
  */
-public final class ExactPredictionRuntime implements CooldownSync.Listener {
+public final class ExactPredictionRuntime implements CooldownSync.Listener, PredictedContactSync.Listener,
+        TempBlockSync.Listener, TempFallingBlockSync.Listener {
     private static final ExactPredictionRuntime INSTANCE = new ExactPredictionRuntime();
     private static final ThreadLocal<Long> INPUT_ACTION = new ThreadLocal<>();
     private static final int ACTION_RETENTION_TICKS = 160;
     private static final int BLOCK_CONFIRMATION_TICKS = 40;
     private static final int MIN_ACTION_BLOCK_CONFIRMATION_TICKS = 4;
     private static final int ACTION_BLOCK_CONFIRMATION_MARGIN_TICKS = 2;
-    private static final int OWNED_TEMP_RECEIPT_TICKS = 40;
     private static final int VELOCITY_RECEIPT_TICKS = 4;
     private static final boolean DEBUG = Boolean.parseBoolean(System.getProperty("projectkorra.prediction.debug", "true"));
 
     private final Map<Long, Action> actions = new LinkedHashMap<>();
     private final Map<CoreAbility, Long> abilityActions = new IdentityHashMap<>();
+    private final Map<CoreAbility, Long> abilityCreationActions = new IdentityHashMap<>();
     private final Map<BlockKey, BlockMutation> blocks = new HashMap<>();
+    private final ClientTempBlockLedger<BlockKey, BlockState> serverTempBlocks = new ClientTempBlockLedger<>();
+    private final Map<BlockKey, BlockState> pendingTempBlockReveals = new HashMap<>();
+    private final Map<BlockKey, BlockState> tempBlockBatchRestores = new HashMap<>();
     private final List<BlockEcho> blockEchoes = new ArrayList<>();
-    // Packet echoes are disposable when vanilla authority arrives. TempBlock
-    // metadata is ordered separately and can arrive afterwards, so retain an
-    // independent lifecycle history for ownership/state confirmation.
-    private final List<BlockEcho> localBlockHistory = new ArrayList<>();
     private final Map<BlockKey, OwnedBatchRestore> ownedBatchRestores = new HashMap<>();
     private final List<VelocityMutation> velocities = new ArrayList<>();
     private final List<VelocityReceipt> velocityReceipts = new ArrayList<>();
@@ -114,12 +120,13 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
     private final List<SelectedSlotMutation> selectedSlots = new ArrayList<>();
     private final Map<Integer, Entity> authoritativeEntityAliases = new HashMap<>();
     private final Map<Entity, Vec3d> predictedSpawnOrigins = new IdentityHashMap<>();
+    private final Map<TempFallingBlockKey, PredictedTempFallingBlock> predictedTempFallingBlocks = new HashMap<>();
+    private final Map<Integer, Long> observedFallingBlockSpawns = new HashMap<>();
     private final PredictionCooldownAuthority cooldownAuthority = new PredictionCooldownAuthority();
     private FabricClientPredictionPlatform platform;
     private BendingManager bendingManager;
     private BendingPlayer bendingPlayer;
     private long tick;
-    private long blockEchoOrdinal;
     private boolean ready;
     private boolean initializing;
     private boolean managersStarted;
@@ -151,12 +158,11 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
                 && CoreAbility.getAbility(FireBlastCharged.class) != null);
     }
     public static boolean shouldPredictInput(String abilityName, PredictionPayloads.InputKind kind) {
-        if (!supports(abilityName)) return false;
-        // Freezing adds collision and is safe to show immediately. Melting
-        // removes collision, so it remains server-owned to prevent the player
-        // entering ice which the server has not removed yet.
-        return !abilityName.equalsIgnoreCase("PhaseChange")
-                || kind == PredictionPayloads.InputKind.LEFT_CLICK;
+        // Every supported input executes the same common lifecycle locally.
+        // In particular, PhaseChange melt must close its client ICE layer; a
+        // server-only melt would leave that collision/visual behind until its
+        // unrelated timer expired.
+        return supports(abilityName);
     }
     public static boolean canActivate(String abilityName) {
         return supports(abilityName) && INSTANCE.bendingPlayer != null && !INSTANCE.bendingPlayer.isOnCooldown(abilityName);
@@ -217,7 +223,11 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
     }
 
     public static void setPredictedBlock(ClientWorld world, BlockPos pos, BlockState state) {
-        INSTANCE.setBlock0(world, pos.toImmutable(), state);
+        if (TempBlockSync.currentWorldMutation() != null) {
+            INSTANCE.setTempBlock0(world, pos.toImmutable(), state);
+        } else {
+            INSTANCE.setBlock0(world, pos.toImmutable(), state);
+        }
     }
 
     public static boolean authoritativeBlock(ClientWorld world, BlockPos pos, BlockState state) {
@@ -254,6 +264,11 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
 
     public static void noteVelocityOwner(Entity localPlayer, PredictionPayloads.VelocityOwnerV2 owner) {
         INSTANCE.noteVelocityOwner0(localPlayer, owner);
+    }
+
+    public static void noteTempFallingBlock(Entity localPlayer,
+                                            PredictionPayloads.TempFallingBlockReceipt receipt) {
+        INSTANCE.noteTempFallingBlock0(localPlayer, receipt);
     }
 
     public static void removeAuthoritativeAbility(Entity localPlayer, PredictionPayloads.AbilityRemoved removed) {
@@ -294,6 +309,9 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
 
     public static void claimDamage(LivingEntity target, double amount) {
         INSTANCE.claimDamage0(target, amount);
+    }
+    public static boolean isPredictedOwned(Entity entity) {
+        return entity != null && INSTANCE.predictedSpawnOrigins.containsKey(entity);
     }
     public static void trackSpawn(Entity entity) { INSTANCE.trackSpawn0(entity); }
     public static boolean reconcileSpawn(EntitySpawnS2CPacket packet) { return INSTANCE.reconcileSpawn0(packet); }
@@ -357,6 +375,9 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
             BendingPlayer.getPlayers().put(player.getUniqueId(), bendingPlayer);
             BendingPlayer.getOfflinePlayers().put(player.getUniqueId(), bendingPlayer);
             CooldownSync.install(this);
+            PredictedContactSync.install(this);
+            TempBlockSync.install(this);
+            TempFallingBlockSync.install(this);
             updatePlayerState0(binds, cooldowns, elements, subElements, airBlastDecay);
             ready = true;
             ProjectKorra.log.info("Exact client prediction enabled with " + CoreAbility.getAbilities().size() + " local abilities");
@@ -508,7 +529,8 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
         Action action = new Action(sequence, tick, origin, pose.yaw(), pose.pitch(), pose.eyeHeight(), boundName);
         actions.put(sequence, action);
         boolean failed = false;
-        boolean handled = false;
+        AbilityActivationManager.TrackingResult trackingResult =
+                new AbilityActivationManager.TrackingResult(false, List.of());
         debug("runtime input start sequence=" + sequence + " kind=" + kind
                 + " bound=" + boundName
                 + " activeBefore=" + before.size() + " tick=" + tick);
@@ -538,12 +560,14 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
             debug("runtime input failed sequence=" + sequence + " " + failure.getClass().getSimpleName() + ": " + failure.getMessage());
             failed = true;
         } finally {
-            handled = AbilityActivationManager.finishTracking();
+            trackingResult = AbilityActivationManager.finishTrackingResult();
             INPUT_ACTION.remove();
         }
+        boolean handled = trackingResult.handled();
         for (CoreAbility ability : CoreAbility.getAbilitiesByInstances()) {
             if (!before.contains(ability)) {
                 abilityActions.put(ability, sequence);
+                abilityCreationActions.putIfAbsent(ability, sequence);
                 action.abilities.add(ability);
                 debug("runtime created ability sequence=" + sequence + " ability=" + ability.getName()
                         + " instance=" + System.identityHashCode(ability));
@@ -564,7 +588,8 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
         // the exact release pose on both Fabric and Paper.
         boolean hasMatchingExistingAbility = affectedExistingAbility(before, boundName);
         boolean deferredSneakTransition = (kind == PredictionPayloads.InputKind.SNEAK_START
-                || kind == PredictionPayloads.InputKind.SNEAK_STOP) && hasMatchingExistingAbility;
+                || kind == PredictionPayloads.InputKind.SNEAK_STOP) && hasMatchingExistingAbility
+                && !"AirBlast".equalsIgnoreCase(boundName);
         // EarthSmash grab, shoot and flight inputs mutate the existing instance
         // from inside a short-lived constructor and therefore do not call
         // CoreAbility#start. The generic activation tracker cannot observe
@@ -573,16 +598,29 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
         // it for an unpredicted server-only transition and deletes the smash.
         boolean earthSmashExistingTransition = "EarthSmash".equalsIgnoreCase(boundName)
                 && hasMatchingExistingAbility;
-        boolean affectedExisting = (handled || deferredSneakTransition || earthSmashExistingTransition)
-                && hasMatchingExistingAbility;
+        List<CoreAbility> explicitExisting = trackingResult.affectedAbilities().stream()
+                .filter(before::contains)
+                .filter(ability -> ability != null && !ability.isRemoved() && ability.getPlayer() != null
+                        && ability.getPlayer().getUniqueId().equals(player.getUniqueId()))
+                .toList();
+        boolean createdMatchingAbility = action.abilities.stream()
+                .anyMatch(ability -> matchesInputAbility(ability, boundName));
+        boolean implicitHandledExisting = handled && explicitExisting.isEmpty()
+                && !createdMatchingAbility && hasMatchingExistingAbility;
+        boolean affectedExisting = !explicitExisting.isEmpty() || implicitHandledExisting
+                || deferredSneakTransition || earthSmashExistingTransition;
         boolean locallyPredicted = !action.abilities.isEmpty() || !action.spawned.isEmpty() || affectedExisting;
         action.locallyPredicted = locallyPredicted;
         if (affectedExisting) {
-            for (CoreAbility ability : before) {
-                if (ability != null && !ability.isRemoved() && matchesInputAbility(ability, boundName)
-                        && ability.getPlayer() != null
-                        && ability.getPlayer().getUniqueId().equals(player.getUniqueId())) {
-                    abilityActions.put(ability, sequence);
+            if (!explicitExisting.isEmpty()) {
+                for (CoreAbility ability : explicitExisting) abilityActions.put(ability, sequence);
+            } else {
+                for (CoreAbility ability : before) {
+                    if (ability != null && !ability.isRemoved() && matchesInputAbility(ability, boundName)
+                            && ability.getPlayer() != null
+                            && ability.getPlayer().getUniqueId().equals(player.getUniqueId())) {
+                        abilityActions.put(ability, sequence);
+                    }
                 }
             }
         }
@@ -647,31 +685,22 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
         Set<CoreAbility> live = Collections.newSetFromMap(new IdentityHashMap<>());
         live.addAll(CoreAbility.getAbilitiesByInstances());
         abilityActions.keySet().removeIf(ability -> !live.contains(ability));
+        abilityCreationActions.keySet().removeIf(ability -> !live.contains(ability));
         velocities.removeIf(mutation -> tick - mutation.tick > ACTION_RETENTION_TICKS);
         velocityReceipts.removeIf(receipt -> tick - receipt.receivedTick > VELOCITY_RECEIPT_TICKS);
         blockEchoes.removeIf(echo -> tick - echo.tick > ACTION_RETENTION_TICKS);
-        localBlockHistory.removeIf(echo -> tick - echo.tick > ACTION_RETENTION_TICKS);
         ownedBatchRestores.entrySet().removeIf(entry -> tick - entry.getValue().tick > 1);
+        tempBlockBatchRestores.clear();
         abilityStates.removeIf(mutation -> tick - mutation.tick > ACTION_RETENTION_TICKS);
         experiences.removeIf(mutation -> tick - mutation.tick > ACTION_RETENTION_TICKS);
         selectedSlots.removeIf(mutation -> tick - mutation.tick > ACTION_RETENTION_TICKS);
+        observedFallingBlockSpawns.entrySet().removeIf(entry -> tick - entry.getValue() > ACTION_RETENTION_TICKS);
         blocks.entrySet().removeIf(entry -> {
             BlockMutation mutation = entry.getValue();
-            mutation.ownedTempReceipts.removeIf(receipt -> tick - receipt.tick > OWNED_TEMP_RECEIPT_TICKS);
-            // An active owner layer is never timed out into server world state.
-            // Its explicit REVERT closes the ledger; until then the local
-            // PhaseChange/EarthSmash/WaterFlow instance owns rendering.
-            if (mutation.serverTempActive && hasOwnedLayer(mutation)) return false;
             long age = tick - mutation.lastTick;
-            int confirmationTicks = mutation.serverTempActive
-                    ? BLOCK_CONFIRMATION_TICKS : blockConfirmationTicks(mutation.lastAction);
+            int confirmationTicks = blockConfirmationTicks(mutation.lastAction);
             if (age <= confirmationTicks) return false;
-            BlockState latestAuthority = mutation.serverTempActive && mutation.serverTempState != null
-                    ? mutation.serverTempState : mutation.authoritative;
-            // Retire the common TempBlock object as part of the same authority
-            // transition. Otherwise its later ability cleanup can write the old
-            // captured state back after this correction and create a second ghost.
-            invalidateClientTempStack(mutation.world, mutation.pos);
+            BlockState latestAuthority = mutation.authoritative;
             if (mutation.world == client.world && !mutation.world.getBlockState(mutation.pos).equals(latestAuthority)) {
                 mutation.world.setBlockState(mutation.pos, latestAuthority, 19);
                 debug("runtime corrected unconfirmed predicted block pos=" + mutation.pos
@@ -679,9 +708,7 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
             }
             mutation.adoptAuthority(latestAuthority);
             clearBlockEchoes(mutation.world, mutation.pos);
-            // Keep only the layer metadata needed to interpret a later REVERT.
-            // The visible world has still been forced back to latest authority.
-            return !mutation.serverTempActive;
+            return true;
         });
         Iterator<Action> iterator = actions.values().iterator();
         while (iterator.hasNext()) {
@@ -689,6 +716,7 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
             action.abilities.removeIf(ability -> !live.contains(ability));
             if (tick - action.createdTick > ACTION_RETENTION_TICKS && action.abilities.isEmpty()) {
                 action.spawned.forEach(predictedSpawnOrigins::remove);
+                predictedTempFallingBlocks.keySet().removeIf(key -> key.actionSequence == action.sequence);
                 iterator.remove();
             }
         }
@@ -729,16 +757,15 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
         action.accepted = accepted;
         if (!accepted) {
             debug("runtime reconcile rejected sequence=" + sequence + " ability=" + ability);
-            rollback(action);
+            rollback(action, true);
             actions.remove(sequence);
             return;
         }
         // The time from local execution to this accepted reconcile is a direct
         // measurement of how far the client simulation runs ahead of the server.
-        // A client-only TempBlock that remains unconfirmed beyond that window is
-        // a negative receipt: the server has reached the same ability age and did
-        // not create it. This retires moving Water/Earth trails without the old
-        // unconditional two-second ghost window.
+        // Ordinary (non-TempBlock) client block mutations use that measurement
+        // as their bounded confirmation window. Common TempBlocks bypass this
+        // ledger completely and own their local lifecycle.
         action.blockConfirmationTicks = Math.max(MIN_ACTION_BLOCK_CONFIRMATION_TICKS,
                 Math.min(BLOCK_CONFIRMATION_TICKS,
                         (int) Math.max(0L, tick - action.createdTick)
@@ -753,30 +780,54 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
     }
 
     private void rollback(Action action) {
+        rollback(action, false);
+    }
+
+    private void rollback(Action action, boolean preserveTempBlockOwners) {
         debug("runtime rollback sequence=" + action.sequence + " abilities=" + action.abilities.size()
                 + " spawned=" + action.spawned.size());
+        boolean preservedVisualAuthority = false;
         for (CoreAbility ability : List.copyOf(action.abilities)) {
-            try { ability.remove(); } catch (Throwable ignored) { }
+            if (preserveTempBlockOwners && ownsClientTempBlock(ability)) {
+                // A negative input receipt is not allowed to call an ability's
+                // remove() hook when that hook would indirectly revert its
+                // live client TempBlocks. The common client ability remains
+                // responsible for its normal expiry/removal lifecycle.
+                preservedVisualAuthority = true;
+                abilityActions.remove(ability);
+                abilityCreationActions.remove(ability);
+                debug("runtime retained TempBlock owner after rejected action sequence="
+                        + action.sequence + " ability=" + ability.getName());
+                continue;
+            }
+            try {
+                PredictedContactSync.forceRemoval(ability, ability::remove);
+            } catch (Throwable ignored) { }
             abilityActions.remove(ability);
+            abilityCreationActions.remove(ability);
         }
         action.abilities.clear();
-        for (Entity entity : action.spawned) if (entity != null && !entity.isRemoved()) entity.discard();
+        // TempBlocks deliberately do not participate in action rejection.
+        // Their client-created layers retain their own ability/expiry lifecycle;
+        // reverting them here races the server's hidden physical echo and is
+        // the exact failure mode that produces PhaseChange ghost blocks.
+        if (!preservedVisualAuthority) {
+            for (Entity entity : action.spawned) {
+                if (entity != null && !entity.isRemoved()) entity.discard();
+            }
+        }
         authoritativeEntityAliases.entrySet().removeIf(entry -> action.spawned.contains(entry.getValue()));
         action.spawned.forEach(predictedSpawnOrigins::remove);
+        predictedTempFallingBlocks.keySet().removeIf(key -> key.actionSequence == action.sequence);
         action.spawned.clear();
         blockEchoes.removeIf(echo -> echo.action == action.sequence);
-        localBlockHistory.removeIf(echo -> echo.action == action.sequence);
         blocks.entrySet().removeIf(entry -> {
             BlockMutation mutation = entry.getValue();
             if (mutation.lastAction != action.sequence) return false;
             if (mutation.world == MinecraftClient.getInstance().world) {
-                mutation.world.setBlockState(entry.getKey().pos,
-                        mutation.serverTempActive && mutation.serverTempState != null
-                                ? mutation.serverTempState : mutation.authoritative, 19);
+                mutation.world.setBlockState(entry.getKey().pos, mutation.authoritative, 19);
             }
-            // Keep tracking a server-confirmed layer after rolling back the
-            // local action which happened to overlap it.
-            return !mutation.serverTempActive;
+            return true;
         });
         for (int i = velocities.size() - 1; i >= 0; i--) {
             VelocityMutation mutation = velocities.get(i);
@@ -785,6 +836,14 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
             if (entity != null && close(entity.getVelocity(), mutation.predicted, .08)) entity.setVelocity(mutation.before);
             velocities.remove(i);
         }
+    }
+
+    private static boolean ownsClientTempBlock(final CoreAbility ability) {
+        if (ability == null) return false;
+        for (TempBlock layer : TempBlock.getActiveLayers()) {
+            if (layer.getAbility().orElse(null) == ability) return true;
+        }
+        return false;
     }
 
     private int blockConfirmationTicks(final long actionSequence) {
@@ -797,6 +856,9 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
         debug("runtime stop ready=" + ready + " initializing=" + initializing
                 + " activeInstances=" + CoreAbility.getAbilitiesByInstances().size()
                 + " actions=" + actions.size());
+        // Retire every client TempBlock before ability removal can invoke its
+        // normal revert path against the outgoing ClientWorld.
+        TempBlock.discardAll();
         if (ready || initializing) {
             try { CoreAbility.removeAll(); } catch (Throwable ignored) { }
             try { EmbeddedAddonBootstrap.disable(); } catch (Throwable ignored) { }
@@ -807,9 +869,7 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
         }
         for (BlockMutation mutation : blocks.values()) {
             if (mutation.world == client.world) {
-                mutation.world.setBlockState(mutation.pos,
-                        mutation.serverTempActive && mutation.serverTempState != null
-                                ? mutation.serverTempState : mutation.authoritative, 19);
+                mutation.world.setBlockState(mutation.pos, mutation.authoritative, 19);
             }
         }
         if (bendingPlayer != null) {
@@ -820,10 +880,18 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
         for (Action action : actions.values()) for (Entity entity : action.spawned) {
             if (entity != null && !entity.isRemoved()) entity.discard();
         }
-        actions.clear(); abilityActions.clear(); blocks.clear(); blockEchoes.clear(); localBlockHistory.clear();
+        actions.clear(); abilityActions.clear(); abilityCreationActions.clear();
+        blocks.clear(); blockEchoes.clear();
+        serverTempBlocks.clear(); pendingTempBlockReveals.clear();
+        tempBlockBatchRestores.clear();
         ownedBatchRestores.clear(); velocities.clear(); velocityReceipts.clear();
         abilityStates.clear(); experiences.clear(); selectedSlots.clear(); authoritativeEntityAliases.clear();
         predictedSpawnOrigins.clear();
+        predictedTempFallingBlocks.clear();
+        observedFallingBlockSpawns.clear();
+        PredictedContactSync.clear();
+        TempBlockSync.clear(this);
+        TempFallingBlockSync.clear(this);
         CooldownSync.clear(this);
         cooldownAuthority.clear();
         platform = null; bendingManager = null; bendingPlayer = null; ready = false; managersStarted = false;
@@ -833,6 +901,19 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
     @Override
     public boolean isAuthoritative() {
         return false;
+    }
+
+    @Override
+    public void onChange(final TempBlockSync.Change change) {
+        // Client TempBlocks are already applied synchronously inside the
+        // world-mutation boundary. No action/reconciliation ledger owns them.
+    }
+
+    @Override
+    public void onPredictedContact(final com.projectkorra.projectkorra.platform.mc.entity.Entity target) {
+        if (target != null && target.handle() instanceof LivingEntity living) {
+            claimHit0(living);
+        }
     }
 
     @Override
@@ -847,48 +928,47 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
         cooldownAuthority.onLocalRemoved(ability);
     }
 
+    /**
+     * Applies a local common TempBlock directly. TempBlocks own their complete
+     * client lifecycle and must never enter the generic negative-receipt or
+     * rollback ledger.
+     */
+    private void setTempBlock0(final ClientWorld world, final BlockPos pos, final BlockState state) {
+        if (world == null || pos == null || state == null) return;
+        final TempBlockSync.WorldMutation lifecycle = TempBlockSync.currentWorldMutation();
+        final BlockKey key = new BlockKey(world, pos);
+        blocks.remove(key);
+        blockEchoes.removeIf(echo -> echo.world == world && echo.pos.equals(pos));
+        ownedBatchRestores.remove(key);
+        tempBlockBatchRestores.remove(key);
+        BlockState visibleState = state;
+        if (lifecycle != null && lifecycle.operation() == TempBlockSync.Operation.REVERT
+                && clientTempBlockState(world, pos) == null) {
+            final BlockState pending = pendingTempBlockReveals.remove(key);
+            visibleState = serverTempBlocks.viewerState(key)
+                    .orElse(pending != null ? pending : state);
+        }
+        final ClientPlayerEntity localPlayer = MinecraftClient.getInstance().player;
+        if (localPlayer != null) {
+            visibleState = serverTempBlocks.overlayState(key, localPlayer.getUuid()).orElse(visibleState);
+        }
+        world.setBlockState(pos, visibleState, 19);
+        debug("runtime applied client TempBlock directly pos=" + pos + " state=" + visibleState);
+    }
+
     private void setBlock0(ClientWorld world, BlockPos pos, BlockState state) {
         if (!ready) return;
         long action = currentAction();
         BlockKey key = new BlockKey(world, pos);
         BlockMutation mutation = blocks.computeIfAbsent(key, ignored -> new BlockMutation(world, pos, world.getBlockState(pos)));
-        // A predicted action may advance its own confirmed TempBlock layer.
-        // Non-owned layers remain protected until server lifecycle metadata or
-        // ordinary vanilla authority changes them.
-        boolean advancesOwnedLayer = action > 0L && isTopLayerOwnedByLocalPlayer(mutation);
-        if (advancesOwnedLayer) {
-            // Only progression of the exact server action may stay ahead of
-            // that action's delayed TempBlock packets. A later PhaseChange
-            // action must not inherit ICE's preservation and keep WATER over
-            // an active authoritative ICE layer.
-            mutation.preservePredictedOwnedState = action == mutation.serverAction;
-        }
-        if (!advancesOwnedLayer && !PredictionEchoPolicy.mayApplyLocalMutationOverServerTemp(mutation.serverTempActive,
-                mutation.serverTempState != null && mutation.serverTempState.equals(state))) {
-            // A local ability instance is cleaning up ahead of the server.
-            // Keep the confirmed server layer until its explicit REVERT.
-            world.setBlockState(pos, mutation.serverTempState, 19);
-            debug("runtime deferred local block mutation over active server temp pos=" + pos
-                    + " requested=" + state + " server=" + mutation.serverTempState);
-            return;
-        }
         // Both halves of a predicted move are ordered echoes. In particular,
         // delayed AIR packets from EarthBlast/WaterManipulation must not punch
         // a temporary hole after the client has already advanced and restored
         // that position.
-        BlockEcho echo = new BlockEcho(world, pos, state, tick, false, action, ++blockEchoOrdinal);
+        BlockEcho echo = new BlockEcho(world, pos, state, tick, false, action);
         blockEchoes.add(echo);
-        localBlockHistory.add(echo);
         if (state.equals(mutation.authoritative)) {
-            if (mutation.serverTempActive) {
-                mutation.lastAction = action;
-                mutation.lastTick = tick;
-                mutation.predicted = state;
-                mutation.confirmed = false;
-                mutation.locallyPredicted = true;
-            } else {
-                blocks.remove(key);
-            }
+            blocks.remove(key);
             world.setBlockState(pos, state, 19);
             return;
         }
@@ -902,90 +982,51 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
 
     private boolean authoritativeBlock0(ClientWorld world, BlockPos pos, BlockState state) {
         BlockKey key = new BlockKey(world, pos);
-        BlockMutation ownedMutation = blocks.get(key);
-        OwnedTempReceipt ownedReceipt = consumeOwnedTempReceipt(ownedMutation, state);
-        if (ownedReceipt != null) {
-            applyOwnedTempReceipt(ownedMutation, state, ownedReceipt);
-            debug("runtime suppressed owned temp-block authority pos=" + pos
-                    + " operation=" + ownedReceipt.operation + " packet=" + state
-                    + " desired=" + ownedReceipt.desiredState);
+        if (hidesServerTempBlock(key)) {
+            debug("runtime hid physical server TempBlock update pos=" + pos + " state=" + state);
             return true;
         }
+        pendingTempBlockReveals.remove(key);
         if (consumeBlockEcho(world, pos, state)) {
             BlockMutation echoed = blocks.get(key);
-            if (echoed != null) {
-                // A vanilla packet which echoes a live local TempBlock proves
-                // the server's physical layer, not the block the owner must
-                // eventually see after that layer is gone. Never replace the
-                // rollback baseline with temporary ICE/WATER/EARTH here.
-                if (localOwnedTempBlockState(world, pos, echoed) != null
-                        || !world.getBlockState(pos).equals(state)) {
-                    // If the client has already advanced, this packet is an
-                    // intermediate Earth/Water step. It may update physical
-                    // diagnostics, but it must not become the rollback target.
-                    echoed.recordPhysicalAuthority(state);
-                } else {
-                    echoed.recordAuthority(state);
-                }
-                if (echoed.serverTempActive && state.equals(echoed.serverTempState)) {
-                    echoed.adoptAuthority(state);
-                }
-            }
+            if (echoed != null && world.getBlockState(pos).equals(state)) echoed.recordAuthority(state);
             debug("runtime suppressed predicted block echo pos=" + pos + " state=" + state);
             return true;
         }
         BlockMutation mutation = blocks.get(key);
-        BlockState liveOwnedState = localOwnedTempBlockState(world, pos, mutation);
-        if (liveOwnedState != null) {
-            if (mutation != null) {
-                mutation.recordPhysicalAuthority(state);
-                mutation.predicted = liveOwnedState;
-                mutation.locallyPredicted = true;
-                markOwnedTempDivergence(mutation, liveOwnedState,
-                        physicalServerLayer(mutation, state));
-            }
-            return true;
-        }
-        if (mutation == null) {
-            invalidateClientTempStack(world, pos);
-            return false;
-        }
+        if (mutation == null) return false;
         mutation.recordAuthority(state);
-        if (mutation.confirmed) {
-            return world.getBlockState(pos).equals(state);
-        }
-        if (mutation.serverTempActive && state.equals(mutation.serverTempState)) {
-            // Adopt the confirmed server layer in the ledger, but only cancel
-            // the packet when the actual client world already matches it.
-            // Layer ownership protects against local cleanup; it must never
-            // conceal an authoritative correction.
-            mutation.adoptAuthority(state);
-            return world.getBlockState(pos).equals(state);
-        }
+        if (mutation.confirmed) return world.getBlockState(pos).equals(state);
         clearBlockEchoes(world, pos);
-        invalidateClientTempStack(world, pos);
         blocks.remove(key);
         return false;
     }
 
     private boolean authoritativeBlockBatch0(ClientWorld world, List<BlockPos> positions, List<BlockState> states) {
         if (!ready || world == null || positions == null || states == null || positions.isEmpty() || positions.size() != states.size()) return false;
-        List<Integer> echoMatches = new ArrayList<>(positions.size());
-        List<Integer> ownedMatches = new ArrayList<>(positions.size());
-        Set<Integer> reserved = new HashSet<>();
+        int hiddenTempBlocks = 0;
+        for (int i = 0; i < positions.size(); i++) {
+            final BlockPos pos = positions.get(i).toImmutable();
+            final BlockKey key = new BlockKey(world, pos);
+            if (!hidesServerTempBlock(key)) continue;
+            hiddenTempBlocks++;
+            tempBlockBatchRestores.put(key, desiredTempBlockState(key));
+        }
+        if (hiddenTempBlocks == positions.size()) {
+            for (BlockPos pos : positions) tempBlockBatchRestores.remove(new BlockKey(world, pos.toImmutable()));
+            debug("runtime hid physical server TempBlock batch entries=" + hiddenTempBlocks);
+            return true;
+        }
+        final List<Integer> echoMatches = new ArrayList<>(positions.size());
+        final Set<Integer> reserved = new HashSet<>();
         boolean suppressWholeBatch = true;
         for (int i = 0; i < positions.size(); i++) {
-            BlockMutation mutation = blocks.get(new BlockKey(world, positions.get(i).toImmutable()));
-            int ownedMatch = findOwnedTempReceipt(mutation, states.get(i));
-            if (ownedMatch < 0 && localOwnedTempBlockState(world, positions.get(i), mutation) != null) {
-                ownedMatch = -2;
-            }
-            ownedMatches.add(ownedMatch);
-            if (ownedMatch != -1) {
-                echoMatches.add(-1);
+            final BlockPos pos = positions.get(i).toImmutable();
+            if (hidesServerTempBlock(new BlockKey(world, pos))) {
+                echoMatches.add(-2);
                 continue;
             }
-            int match = findBlockEcho(world, positions.get(i), states.get(i), reserved);
+            int match = findBlockEcho(world, pos, states.get(i), reserved);
             echoMatches.add(match);
             if (match < 0) {
                 suppressWholeBatch = false;
@@ -1000,69 +1041,31 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
                 suppressWholeBatch = false;
             }
         }
-        if (!suppressWholeBatch) {
-            Set<Integer> consumedEchoes = new HashSet<>();
-            for (int i = 0; i < positions.size(); i++) {
-                BlockPos pos = positions.get(i).toImmutable();
-                BlockKey key = new BlockKey(world, pos);
-                BlockMutation mutation = blocks.get(key);
-                if (ownedMatches.get(i) != -1) {
-                    if (ownedMatches.get(i) == -2) {
-                        BlockState desired = localOwnedTempBlockState(world, pos, mutation);
-                        if (desired != null) ownedBatchRestores.put(key,
-                                new OwnedBatchRestore(desired, true, tick));
-                        continue;
-                    }
-                    OwnedTempReceipt receipt = consumeOwnedTempReceipt(mutation, states.get(i));
-                    if (receipt == null) continue;
-                    applyOwnedTempReceipt(mutation, states.get(i), receipt);
-                    ownedBatchRestores.put(key, new OwnedBatchRestore(
-                            receipt.desiredState, receipt.locallyPredicted, tick));
-                    continue;
-                }
-                int echoMatch = echoMatches.get(i);
-                if (echoMatch < 0 || consumedEchoes.contains(echoMatch)) continue;
-                BlockEcho echo = blockEchoes.get(echoMatch);
-                boolean newer = hasNewerBlockEcho(world, pos, echoMatch);
-                if (!PredictionEchoPolicy.shouldSuppress(echo.force, newer,
-                        world.getBlockState(pos).equals(states.get(i)))) continue;
-                // A chunk-delta packet may mix unrelated authority with an old
-                // EarthBlast step. Vanilla must apply the unrelated entries,
-                // so remember and restore only this ordered predicted entry at
-                // the TAIL injection instead of exposing the lagging step.
+        final Set<Integer> consumedEchoes = new HashSet<>();
+        for (int i = 0; i < positions.size(); i++) {
+            final int match = echoMatches.get(i);
+            if (match < 0 || !consumedEchoes.add(match)) continue;
+            if (!suppressWholeBatch) {
+                final BlockPos pos = positions.get(i).toImmutable();
+                final BlockKey key = new BlockKey(world, pos);
+                final BlockMutation mutation = blocks.get(key);
                 ownedBatchRestores.put(key, new OwnedBatchRestore(
                         world.getBlockState(pos), mutation != null && mutation.locallyPredicted, tick));
-                consumedEchoes.add(echoMatch);
             }
-            consumedEchoes.stream().sorted(Comparator.reverseOrder())
-                    .forEach(index -> blockEchoes.remove((int) index));
-            return false;
         }
-        echoMatches.stream().filter(index -> index >= 0).distinct().sorted(Comparator.reverseOrder())
+        consumedEchoes.stream().sorted(Comparator.reverseOrder())
                 .forEach(index -> blockEchoes.remove((int) index));
+
+        if (!suppressWholeBatch) return false;
         for (int i = 0; i < positions.size(); i++) {
-            BlockMutation mutation = blocks.get(new BlockKey(world, positions.get(i).toImmutable()));
-            if (mutation == null) continue;
-            BlockState authoritative = states.get(i);
-            if (ownedMatches.get(i) != -1) {
-                if (ownedMatches.get(i) == -2) continue;
-                OwnedTempReceipt receipt = consumeOwnedTempReceipt(mutation, authoritative);
-                if (receipt != null) applyOwnedTempReceipt(mutation, authoritative, receipt);
-                continue;
-            }
-            if (world.getBlockState(positions.get(i)).equals(authoritative)) {
-                mutation.recordAuthority(authoritative);
-            } else {
-                // Whole-batch suppression can include an acknowledged older
-                // step from a moving Earth ability. Preserve the last visible
-                // baseline while the newer local step remains on screen.
-                mutation.recordPhysicalAuthority(authoritative);
-            }
-            if (mutation.serverTempActive && authoritative.equals(mutation.serverTempState)) {
-                mutation.adoptAuthority(authoritative);
+            final BlockKey key = new BlockKey(world, positions.get(i).toImmutable());
+            tempBlockBatchRestores.remove(key);
+            final BlockMutation mutation = blocks.get(key);
+            if (mutation != null && world.getBlockState(key.pos).equals(states.get(i))) {
+                mutation.recordAuthority(states.get(i));
             }
         }
-        debug("runtime suppressed predicted block batch echoes=" + positions.size());
+        debug("runtime suppressed predicted/TempBlock batch entries=" + positions.size());
         return true;
     }
 
@@ -1073,215 +1076,142 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
             BlockKey key = new BlockKey(world, pos);
             BlockMutation mutation = blocks.get(key);
             BlockState incoming = states.get(i);
-            OwnedBatchRestore restore = ownedBatchRestores.remove(key);
-            if (restore != null) {
-                restoreOwnedTempAfterBatch(world, pos, mutation, incoming, restore);
+            BlockState tempBlockRestore = tempBlockBatchRestores.remove(key);
+            if (tempBlockRestore != null) {
+                world.setBlockState(pos, tempBlockRestore, 19);
+                debug("runtime restored client TempBlock after mixed server batch pos=" + pos
+                        + " desired=" + tempBlockRestore);
                 continue;
             }
-            BlockState liveOwnedState = localOwnedTempBlockState(world, pos, mutation);
-            if (liveOwnedState != null) {
-                world.setBlockState(pos, liveOwnedState, 19);
-                mutation.predicted = liveOwnedState;
-                mutation.locallyPredicted = true;
+            OwnedBatchRestore restore = ownedBatchRestores.remove(key);
+            if (restore != null) {
+                world.setBlockState(pos, restore.desiredState, 19);
+                if (mutation != null) {
+                    mutation.predicted = restore.desiredState;
+                    mutation.locallyPredicted = restore.locallyPredicted;
+                    mutation.lastTick = tick;
+                }
                 continue;
             }
             clearBlockEchoes(world, pos);
-            if (mutation == null) {
-                invalidateClientTempStack(world, pos);
-                continue;
-            }
-            if (!mutation.serverTempActive || !incoming.equals(mutation.serverTempState)) {
-                invalidateClientTempStack(world, pos);
-            }
+            if (mutation == null) continue;
             mutation.adoptAuthority(incoming);
-            if (!mutation.serverTempActive || !incoming.equals(mutation.serverTempState)) blocks.remove(key);
+            blocks.remove(key);
         }
     }
 
     private void acceptAuthoritativeChunk0(final ClientWorld world, final int chunkX, final int chunkZ) {
         if (!ready || world == null) return;
-        Set<BlockPos> preservedOwned = new HashSet<>();
-        for (Map.Entry<BlockKey, BlockMutation> entry : blocks.entrySet()) {
-            BlockKey key = entry.getKey();
-            if (key.world == world && key.pos.getX() >> 4 == chunkX && key.pos.getZ() >> 4 == chunkZ
-                    && hasOwnedLayer(entry.getValue())) preservedOwned.add(key.pos);
-        }
-        String worldName = FabricPredictionMC.world(world).getName();
-        Set<BlockPos> invalidated = new HashSet<>();
+        final Set<BlockPos> preserved = new HashSet<>();
+        final String worldName = FabricPredictionMC.world(world).getName();
         for (TempBlock layer : TempBlock.getActiveLayers()) {
             com.projectkorra.projectkorra.platform.mc.block.Block block = layer.getBlock();
             if (block.getWorld() == null || !block.getWorld().getName().equals(worldName)
                     || block.getX() >> 4 != chunkX || block.getZ() >> 4 != chunkZ) continue;
             BlockPos pos = new BlockPos(block.getX(), block.getY(), block.getZ()).toImmutable();
-            if (!preservedOwned.contains(pos) && invalidated.add(pos)) invalidateClientTempStack(world, pos);
+            if (!preserved.add(pos)) continue;
+            // Chunk data must use the same merged view as single and delta
+            // updates. A newer remote/server-only layer can legitimately sit
+            // above this locally predicted layer.
+            final BlockState desired = desiredTempBlockState(new BlockKey(world, pos));
+            if (desired != null) world.setBlockState(pos, desired, 19);
         }
+
+        final ClientPlayerEntity localPlayer = MinecraftClient.getInstance().player;
+        final UUID viewerId = localPlayer == null ? null : localPlayer.getUuid();
+        for (Map.Entry<BlockKey, BlockState> entry : serverTempBlocks.hiddenViewerStates(viewerId).entrySet()) {
+            final BlockKey key = entry.getKey();
+            if (key.world != world || key.pos.getX() >> 4 != chunkX || key.pos.getZ() >> 4 != chunkZ
+                    || preserved.contains(key.pos)) continue;
+            world.setBlockState(key.pos, entry.getValue(), 19);
+            preserved.add(key.pos);
+        }
+
         blockEchoes.removeIf(echo -> echo.world == world && echo.pos.getX() >> 4 == chunkX
-                && echo.pos.getZ() >> 4 == chunkZ);
+                && echo.pos.getZ() >> 4 == chunkZ && !preserved.contains(echo.pos));
         blocks.entrySet().removeIf(entry -> {
             final BlockKey key = entry.getKey();
             if (key.world != world || key.pos.getX() >> 4 != chunkX || key.pos.getZ() >> 4 != chunkZ) return false;
-            final BlockMutation mutation = entry.getValue();
-            if (!hasOwnedLayer(mutation)) return true;
-            BlockState localOwnedState = localOwnedTempBlockState(world, key.pos, mutation);
-            BlockState desired = localOwnedState != null ? localOwnedState
-                    : mutation.preservePredictedOwnedState ? mutation.predicted : mutation.serverTempState;
-            if (desired == null) return true;
-            world.setBlockState(key.pos, desired, 19);
-            mutation.predicted = desired;
-            mutation.confirmed = mutation.authoritative.equals(mutation.predicted);
-            return false;
+            return !preserved.contains(key.pos);
         });
     }
 
     private void applyTempBlockBatch0(ClientWorld world, PredictionPayloads.TempBlockBatch batch) {
         if (!ready || world == null || batch == null) return;
         debug("runtime temp-block batch serverTick=" + batch.serverTick() + " ops=" + batch.operations().size());
-        String worldName = world.getRegistryKey().getValue().toString();
+        final String worldName = world.getRegistryKey().getValue().toString();
+        final ClientPlayerEntity localPlayer = MinecraftClient.getInstance().player;
+        final UUID viewerId = localPlayer == null ? null : localPlayer.getUuid();
         for (PredictionPayloads.TempBlockOp operation : batch.operations()) {
             if (!matchesWorld(worldName, operation.world())) continue;
-            BlockPos pos = new BlockPos(operation.x(), operation.y(), operation.z()).toImmutable();
-            BlockKey key = new BlockKey(world, pos);
-            BlockMutation mutation = blocks.get(key);
-            if (mutation == null) {
-                mutation = new BlockMutation(world, pos, world.getBlockState(pos));
-                blocks.put(key, mutation);
-            }
-            final long layerRevision = mutation.serverLayerRevisions.getOrDefault(operation.layerId(), 0L);
-            if (operation.revision() <= layerRevision) {
-                debug("runtime ignored stale temp-block revision=" + operation.revision()
-                        + " current=" + layerRevision + " layer=" + operation.layerId() + " pos=" + pos);
-                continue;
-            }
-            mutation.serverLayerRevisions.put(operation.layerId(), operation.revision());
-            Action serverAction = actions.get(operation.actionSequence());
-            boolean ownPredictedAction = serverAction != null && serverAction.locallyPredicted;
-            ClientPlayerEntity localPlayer = MinecraftClient.getInstance().player;
-            boolean ownedByLocalPlayer = localPlayer != null && operation.ownerId() != null
-                    && operation.ownerId().equals(localPlayer.getUuid());
-            mutation.serverAction = operation.actionSequence();
-            mutation.lastTick = tick;
-            switch (operation.operation()) {
-                case CREATE, UPDATE_EXPIRY -> {
-                    final BlockState material = materialState(operation.material());
-                    ServerTempLayer previousLayer = mutation.serverLayers.get(operation.layerId());
-                    // An action/coordinate match is not a TempBlock receipt. PhaseChange can
-                    // predict WATER on the same coordinate where the server still has ICE,
-                    // and moving water abilities can be one lifecycle ahead. Only the exact
-                    // physical state proves that this particular CREATE was predicted.
-                    final boolean localPredictionAtCoordinate = (ownPredictedAction
-                            && mutation.locallyPredicted
-                            && mutation.lastAction == operation.actionSequence())
-                            || hasActionBlockHistory(world, pos, operation.actionSequence());
-                    final long matchingLocalCreateOrdinal = nextBlockEchoOrdinal(world, pos, material,
-                            operation.actionSequence(), mutation.lastMatchedLocalCreateOrdinal);
-                    final boolean exactLocalCreate = localPredictionAtCoordinate
-                            && matchingLocalCreateOrdinal >= 0L
-                            && mutation.predicted.equals(material)
-                            && world.getBlockState(pos).equals(material);
-                    final BlockState currentState = world.getBlockState(pos);
-                    final boolean newerSameActionState = localPredictionAtCoordinate
-                            && matchingLocalCreateOrdinal >= 0L
-                            && hasNewerLocalStateAfter(world, pos, currentState,
-                            operation.actionSequence(), matchingLocalCreateOrdinal);
-                    final boolean liveSameActionTempBlock = isLiveLocalTempBlockForAction(
-                            world, pos, operation.actionSequence());
-                    final boolean confirmedLocalCreate = exactLocalCreate
-                            || newerSameActionState || liveSameActionTempBlock;
-                    // A mismatched local prediction must expose the metadata authority so
-                    // WATER cannot mask authoritative ICE. A coordinate the client never
-                    // predicted remains suppressed, preserving owner-side TempBlock hiding.
-                    boolean locallyPredictedLayer = localPredictionAtCoordinate
-                            || previousLayer != null && previousLayer.locallyPredicted;
-                    if (confirmedLocalCreate) {
-                        mutation.lastMatchedLocalCreateOrdinal = matchingLocalCreateOrdinal;
-                    }
-                    mutation.preservePredictedOwnedState = newerSameActionState || liveSameActionTempBlock;
-                    mutation.serverLayers.put(operation.layerId(), new ServerTempLayer(
-                            material, ownedByLocalPlayer, locallyPredictedLayer));
-                    mutation.serverTempActive = true;
-                    mutation.serverTempState = visibleServerLayer(mutation,
-                            materialState(operation.viewerMaterial()));
-                    mutation.recordViewerAuthority(mutation.serverTempState);
-                    mutation.recordPhysicalAuthority(physicalServerLayer(mutation, material));
-                    if (operation.operation() == PredictionPayloads.TempOperation.CREATE && ownedByLocalPlayer) {
-                        // Owner metadata is ledger authority, never world authority.
-                        // The local ability exclusively owns its visual TempBlock;
-                        // delayed server CREATE must not repaint or discard it.
-                        BlockState desired = currentState;
-                        markOwnedTempDivergence(mutation, desired,
-                                physicalServerLayer(mutation, material));
-                        if (operation.packetExpected()) {
-                            mutation.ownedTempReceipts.addLast(new OwnedTempReceipt(
-                                    materialState(operation.material()),
-                                    desired, true,
-                                    operation.operation(), tick));
-                        }
-                    }
-                    // A matching local CREATE is already visible. If Paper
-                    // suppressed the physical packet and this coordinate was
-                    // not predicted, metadata installs the owner-visible state.
-                }
-                case REVERT -> {
-                    ServerTempLayer removedLayer = mutation.serverLayers.remove(operation.layerId());
-                    // A REVERT is tied to the layer that was actually confirmed. Merely
-                    // belonging to the same action used to let an unrelated client WATER
-                    // mutation override an authoritative ICE revert indefinitely.
-                    boolean locallyPredictedLayer = removedLayer != null && removedLayer.locallyPredicted;
-                    boolean ownedLayer = ownedByLocalPlayer
-                            || removedLayer != null && removedLayer.ownedByLocalPlayer;
-                    BlockState reverted = visibleServerLayer(mutation,
-                            materialState(operation.viewerMaterial()));
-                    mutation.recordViewerAuthority(reverted);
-                    mutation.serverTempActive = !mutation.serverLayers.isEmpty();
-                    mutation.serverTempState = mutation.serverTempActive
-                            ? visibleServerLayer(mutation, reverted) : null;
-                    mutation.recordPhysicalAuthority(mutation.serverTempActive
-                            ? physicalServerLayer(mutation, reverted) : reverted);
-                    if (ownedLayer) {
-                        // REVERT closes only the matching server layer. It must
-                        // not tear down a local PhaseChange/EarthSmash/WaterFlow
-                        // lifecycle which is still rendering at this coordinate.
-                        BlockState desired = world.getBlockState(pos);
-                        BlockState physicalAuthority = mutation.serverTempActive
-                                ? physicalServerLayer(mutation, reverted) : reverted;
-                        markOwnedTempDivergence(mutation, desired, physicalAuthority);
-                        if (operation.packetExpected()) {
-                            mutation.ownedTempReceipts.addLast(new OwnedTempReceipt(
-                                    materialState(operation.material()),
-                                    desired, true,
-                                    operation.operation(), tick));
-                        }
-                    }
-                    if (world.getBlockState(pos).equals(reverted)) {
-                        mutation.adoptAuthority(reverted);
-                        if (!mutation.serverTempActive && !hasRecentBlockEcho(world, pos)
-                                && mutation.ownedTempReceipts.isEmpty()) {
-                            blocks.remove(key);
-                        }
-                    }
-                    debug("runtime recorded temp-block REVERT sequence="
-                            + operation.actionSequence() + " pos=" + pos + " material=" + operation.material());
-                }
-            }
-        }
-    }
+            final BlockPos pos = new BlockPos(operation.x(), operation.y(), operation.z()).toImmutable();
+            final BlockKey key = new BlockKey(world, pos);
+            final TempBlockSync.Operation commonOperation = switch (operation.operation()) {
+                case CREATE -> TempBlockSync.Operation.CREATE;
+                case UPDATE_EXPIRY -> TempBlockSync.Operation.UPDATE_EXPIRY;
+                case REVERT -> TempBlockSync.Operation.REVERT;
+                case DISCARD -> TempBlockSync.Operation.DISCARD;
+            };
+            final BlockState physicalState = materialState(operation.material());
+            final BlockState viewerState = materialState(operation.viewerMaterial());
+            final boolean hiddenBefore = serverTempBlocks.hidesServerWorld(key, viewerId);
+            final boolean advanced = serverTempBlocks.apply(key, commonOperation,
+                    operation.layerId(), operation.revision(), operation.ownerId(),
+                    physicalState, viewerState);
+            if (!advanced) continue;
 
-    private static BlockState visibleServerLayer(final BlockMutation mutation, final BlockState fallback) {
-        if (mutation == null || mutation.serverLayers.isEmpty()) return fallback;
-        final List<ServerTempLayer> layers = new ArrayList<>(mutation.serverLayers.values());
-        for (int index = layers.size() - 1; index >= 0; index--) {
-            ServerTempLayer layer = layers.get(index);
-            if (layer.ownedByLocalPlayer) continue;
-            return layer.state;
-        }
-        return fallback;
-    }
+            // Once an owned lifecycle is known, no generic prediction timeout
+            // may retain authority over this coordinate. The live common
+            // TempBlock (if any) remains untouched.
+            final boolean hiddenAfter = serverTempBlocks.hidesServerWorld(key, viewerId);
+            if (hiddenAfter) {
+                blocks.remove(key);
+                clearBlockEchoes(world, pos);
+                ownedBatchRestores.remove(key);
+                tempBlockBatchRestores.remove(key);
 
-    private static BlockState physicalServerLayer(final BlockMutation mutation, final BlockState fallback) {
-        if (mutation == null || mutation.serverLayers.isEmpty()) return fallback;
-        BlockState top = fallback;
-        for (ServerTempLayer layer : mutation.serverLayers.values()) top = layer.state;
-        return top;
+                // Re-assert the merged view for every ordered metadata change.
+                // Usually this is the local TempBlock. If a newer server-only
+                // or remote layer is above it, the server-computed overlay wins
+                // until that exact layer closes.
+                world.setBlockState(pos, desiredTempBlockState(key), 19);
+            } else if (hiddenBefore && commonOperation == TempBlockSync.Operation.DISCARD) {
+                // DISCARD is the explicit external-authority path. Drop
+                // bookkeeping without running a TempBlock revert,
+                // then reveal the supplied authoritative view. Physical
+                // TempBlock CREATE/REVERT traffic never enters this branch.
+                TempBlock.discardBlock(FabricPredictionMC.block(world, pos));
+                blocks.remove(key);
+                clearBlockEchoes(world, pos);
+                ownedBatchRestores.remove(key);
+                tempBlockBatchRestores.remove(key);
+                pendingTempBlockReveals.remove(key);
+                world.setBlockState(pos, viewerState, 19);
+            } else if (hiddenBefore) {
+                // A buried server layer can close, or transfer ownership,
+                // without a physical block packet. Reveal the server-computed
+                // underlay only after the corresponding client stack has
+                // ended; until then the local TempBlock remains the sole
+                // visual authority.
+                blocks.remove(key);
+                clearBlockEchoes(world, pos);
+                ownedBatchRestores.remove(key);
+                tempBlockBatchRestores.remove(key);
+                if (clientTempBlockState(world, pos) == null) {
+                    pendingTempBlockReveals.remove(key);
+                    world.setBlockState(pos, viewerState, 19);
+                } else {
+                    pendingTempBlockReveals.put(key, viewerState);
+                }
+            } else if (!hiddenAfter && pendingTempBlockReveals.containsKey(key)) {
+                // Keep a deferred underlay current while a newer server layer
+                // changes above it and a local TempBlock is still concealing it.
+                pendingTempBlockReveals.put(key, viewerState);
+            }
+            debug("runtime recorded server TempBlock operation=" + commonOperation
+                    + " layer=" + operation.layerId() + " revision=" + operation.revision()
+                    + " pos=" + pos + " hidden=" + hiddenAfter);
+        }
     }
 
     private void setVelocity0(Entity entity, Vec3d velocity) {
@@ -1346,15 +1276,23 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
                             + " ability=" + receipt.ability);
                     return true;
                 }
-                // The ownership payload itself is authoritative proof that
-                // this vanilla packet is an echo of a locally predicted
-                // action. A missing mutation only means the two simulations
-                // progressed a different number of ticks (or the local
-                // ability already ended); applying it would push twice.
-                debug("runtime suppressed self-owned velocity without retained mutation action="
+                boolean superseded = velocities.stream().anyMatch(mutation -> mutation.entityId == entityId
+                        && (mutation.action > receipt.actionSequence
+                        || mutation.action == receipt.actionSequence
+                        && mutation.impulseOrdinal > receipt.impulseOrdinal));
+                if (superseded) {
+                    debug("runtime suppressed superseded self-owned velocity action="
+                            + receipt.actionSequence + " ordinal=" + receipt.impulseOrdinal
+                            + " ability=" + receipt.ability);
+                    return true;
+                }
+                // Velocity packets set an absolute state; they are not an
+                // additive impulse. Without the exact predicted write (or a
+                // newer one), suppressing this packet preserves divergence.
+                debug("runtime accepted self-owned velocity without retained mutation action="
                         + receipt.actionSequence + " ordinal=" + receipt.impulseOrdinal
                         + " ability=" + receipt.ability);
-                return true;
+                return false;
             }
             debug("runtime allowed externally-owned authoritative velocity owner=" + receipt.abilityOwner
                     + " action=" + receipt.actionSequence + " ability=" + receipt.ability);
@@ -1424,14 +1362,14 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
         CoreAbility selected = null;
         if (removed.actionSequence() > 0) {
             for (CoreAbility ability : matching) {
-                if (Objects.equals(abilityActions.get(ability), removed.actionSequence())) {
+                if (Objects.equals(abilityCreationActions.get(ability), removed.actionSequence())) {
                     selected = ability;
                     break;
                 }
             }
             if (selected == null && matching.size() == 1) {
                 CoreAbility only = matching.get(0);
-                Long localSequence = abilityActions.get(only);
+                Long localSequence = abilityCreationActions.get(only);
                 // TCP preserves each side's packet order, but the client can
                 // predict a new cast before an older server removal arrives.
                 // Never remove a provably newer cast; an unmapped or older
@@ -1444,8 +1382,10 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
         if (selected != null) {
             debug("runtime applied authoritative ability removal ability=" + removed.ability()
                     + " action=" + removed.actionSequence());
-            selected.remove();
+            final CoreAbility authoritativeSelection = selected;
+            PredictedContactSync.forceRemoval(authoritativeSelection, authoritativeSelection::remove);
             abilityActions.remove(selected);
+            abilityCreationActions.remove(selected);
         }
     }
 
@@ -1520,8 +1460,9 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
                 continue;
             }
             debug("runtime removed flight ability absent from authoritative state ability=" + ability.getName());
-            ability.remove();
+            PredictedContactSync.forceRemoval(ability, ability::remove);
             abilityActions.remove(ability);
+            abilityCreationActions.remove(ability);
         }
         if (active.contains("waterspout") && !CoreAbility.hasAbility(bendingPlayer.getPlayer(), WaterSpout.class)) {
             WaterSpout restored = new WaterSpout(bendingPlayer.getPlayer());
@@ -1634,8 +1575,61 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
         }
     }
 
+    @Override
+    public void onSpawn(final CoreAbility ability, final FallingBlock fallingBlock) {
+        if ((!ready && !initializing) || ability == null || fallingBlock == null
+                || !(fallingBlock.handle() instanceof Entity entity)) return;
+        final long sequence = currentAction();
+        final Action action = actions.get(sequence);
+        if (action == null) return;
+        final int ordinal = ++action.tempFallingBlockOrdinal;
+        predictedTempFallingBlocks.put(new TempFallingBlockKey(sequence, ordinal),
+                new PredictedTempFallingBlock(entity, ability.getName()));
+    }
+
+    private void noteTempFallingBlock0(final Entity localPlayer,
+                                       final PredictionPayloads.TempFallingBlockReceipt receipt) {
+        if (!ready || localPlayer == null || receipt == null
+                || !localPlayer.getUuid().equals(receipt.abilityOwner())) return;
+        final Action action = actions.get(receipt.actionSequence());
+        if (action == null || !action.locallyPredicted) return;
+
+        final TempFallingBlockKey key = new TempFallingBlockKey(
+                receipt.actionSequence(), receipt.spawnOrdinal());
+        final PredictedTempFallingBlock pending = predictedTempFallingBlocks.get(key);
+        if (pending == null || !pending.ability.equalsIgnoreCase(receipt.ability())) return;
+        predictedTempFallingBlocks.remove(key);
+        final Entity predicted = pending.entity;
+
+        final ClientWorld world = MinecraftClient.getInstance().world;
+        final boolean vanillaSpawnSeen = observedFallingBlockSpawns.remove(receipt.serverEntityId()) != null;
+        final Entity authority = world == null ? null : world.getEntityById(receipt.serverEntityId());
+        if (vanillaSpawnSeen || authority != null && authority != predicted) {
+            // The vanilla spawn won the packet race. Keep that exact server
+            // entity and retire only our local duplicate; observers never use
+            // this owner-only reconciliation path.
+            if (!predicted.isRemoved()) predicted.discard();
+            action.spawned.remove(predicted);
+            predictedSpawnOrigins.remove(predicted);
+            return;
+        }
+
+        // The ownership receipt arrived first. The following vanilla spawn is
+        // consumed and all later server packets address this predicted entity
+        // through the numeric-id alias.
+        authoritativeEntityAliases.put(receipt.serverEntityId(), predicted);
+    }
+
     private boolean reconcileSpawn0(EntitySpawnS2CPacket packet) {
-        if (!ready || MinecraftClient.getInstance().world == null || authoritativeEntityAliases.containsKey(packet.getEntityId())) return false;
+        if (!ready || MinecraftClient.getInstance().world == null) return false;
+        if (authoritativeEntityAliases.containsKey(packet.getEntityId())) return true;
+        // Falling blocks are never reconciled by proximity. Only the caster's
+        // exact TempFallingBlock receipt may consume its server entity; every
+        // other player's falling blocks must remain normal vanilla spawns.
+        if (packet.getEntityType() == net.minecraft.entity.EntityType.FALLING_BLOCK) {
+            observedFallingBlockSpawns.put(packet.getEntityId(), tick);
+            return false;
+        }
         Vec3d serverPosition = new Vec3d(packet.getX(), packet.getY(), packet.getZ());
         Entity best = null; double bestDistance = 32.0 * 32.0;
         for (Action action : actions.values()) {
@@ -1708,6 +1702,9 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
     }
 
     private static BlockState materialState(String materialName) {
+        if (materialName != null && !materialName.contains(";")) {
+            return FabricMC.blockState(materialName);
+        }
         Material material;
         String[] fields = materialName == null ? new String[0] : materialName.trim().split(";");
         try {
@@ -1735,6 +1732,8 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
                     for (String face : value.split(",")) {
                         fire.setFace(BlockFace.valueOf(face), true);
                     }
+                } else if (data instanceof Snow snow && name.equals("layers")) {
+                    snow.setLayers(Math.max(1, Math.min(8, Integer.parseInt(value))));
                 }
             } catch (IllegalArgumentException ignored) { }
         }
@@ -1793,162 +1792,39 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
         return false;
     }
 
-    private boolean hasRecentBlockEcho(final ClientWorld world, final BlockPos pos) {
-        for (BlockEcho echo : localBlockHistory) {
-            if (tick - echo.tick <= ACTION_RETENTION_TICKS && echo.world == world && echo.pos.equals(pos)) return true;
-        }
-        return false;
-    }
-
     private void clearBlockEchoes(final ClientWorld world, final BlockPos pos) {
         blockEchoes.removeIf(echo -> echo.world == world && echo.pos.equals(pos));
     }
 
-    private static void invalidateClientTempStack(final ClientWorld world, final BlockPos pos) {
-        if (world == null || pos == null) return;
-        com.projectkorra.projectkorra.platform.mc.block.Block block = FabricPredictionMC.block(world, pos);
-        if (TempBlock.isTempBlock(block)) TempBlock.discardBlock(block);
+    private boolean hidesServerTempBlock(final BlockKey key) {
+        if (key == null || key.world == null || key.pos == null) return false;
+        if (clientTempBlockState(key.world, key.pos) != null) return true;
+        final ClientPlayerEntity player = MinecraftClient.getInstance().player;
+        return player != null && serverTempBlocks.hidesServerWorld(key, player.getUuid());
     }
 
-    private boolean isLiveLocalTempBlockForAction(final ClientWorld world, final BlockPos pos,
-                                                  final long actionSequence) {
-        if (world == null || pos == null || actionSequence <= 0L) return false;
-        com.projectkorra.projectkorra.platform.mc.block.Block block = FabricPredictionMC.block(world, pos);
-        if (!TempBlock.isTempBlock(block)) return false;
-        TempBlock layer = TempBlock.get(block);
-        CoreAbility ability = layer == null ? null : layer.getAbility().orElse(null);
-        Long localAction = ability == null ? null : abilityActions.get(ability);
-        return localAction != null && localAction == actionSequence;
+    private BlockState desiredTempBlockState(final BlockKey key) {
+        final ClientPlayerEntity player = MinecraftClient.getInstance().player;
+        if (player != null) {
+            final Optional<BlockState> overlay = serverTempBlocks.overlayState(key, player.getUuid());
+            if (overlay.isPresent()) return overlay.get();
+        }
+        final BlockState local = clientTempBlockState(key.world, key.pos);
+        if (local != null) return local;
+        return serverTempBlocks.viewerState(key).orElseGet(() -> key.world.getBlockState(key.pos));
     }
 
-    private BlockState localOwnedTempBlockState(final ClientWorld world, final BlockPos pos,
-                                                final BlockMutation mutation) {
+    private static BlockState clientTempBlockState(final ClientWorld world, final BlockPos pos) {
         if (world == null || pos == null) return null;
-        boolean provenOwner = mutation != null && hasOwnedLayer(mutation)
-                || hasRecentBlockEcho(world, pos);
-        if (!provenOwner) return null;
-        com.projectkorra.projectkorra.platform.mc.block.Block block = FabricPredictionMC.block(world, pos);
-        if (!TempBlock.isTempBlock(block)) return null;
-        TempBlock layer = TempBlock.get(block);
+        final com.projectkorra.projectkorra.platform.mc.block.Block block = FabricPredictionMC.block(world, pos);
+        final TempBlock layer = TempBlock.get(block);
         return layer == null ? null : materialState(TempBlockSync.encode(layer.getBlockData()));
     }
 
-    private int findOwnedTempReceipt(final BlockMutation mutation, final BlockState state) {
-        if (mutation == null || state == null) return -1;
-        int index = 0;
-        for (OwnedTempReceipt receipt : mutation.ownedTempReceipts) {
-            if (tick - receipt.tick <= OWNED_TEMP_RECEIPT_TICKS
-                    && receipt.physicalPacketState.equals(state)) return index;
-            index++;
-        }
-        return -1;
-    }
-
-    private OwnedTempReceipt consumeOwnedTempReceipt(final BlockMutation mutation, final BlockState state) {
-        int wanted = findOwnedTempReceipt(mutation, state);
-        if (wanted < 0) return null;
-        OwnedTempReceipt receipt = null;
-        for (int index = 0; index <= wanted; index++) {
-            receipt = mutation.ownedTempReceipts.pollFirst();
-        }
-        return receipt;
-    }
-
-    private void applyOwnedTempReceipt(final BlockMutation mutation, final BlockState authority,
-                                       final OwnedTempReceipt receipt) {
-        mutation.recordPhysicalAuthority(authority);
-        mutation.lastTick = tick;
-        mutation.predicted = receipt.desiredState;
-        mutation.locallyPredicted = receipt.locallyPredicted;
-        mutation.confirmed = authority.equals(receipt.desiredState);
-        markOwnedTempDivergence(mutation, receipt.desiredState, authority);
-    }
-
-    private void restoreOwnedTempAfterBatch(final ClientWorld world, final BlockPos pos,
-                                            final BlockMutation mutation, final BlockState authority,
-                                            final OwnedBatchRestore restore) {
-        if (mutation == null) return;
-        mutation.recordPhysicalAuthority(authority);
-        mutation.lastTick = tick;
-        mutation.predicted = restore.desiredState;
-        mutation.locallyPredicted = restore.locallyPredicted;
-        mutation.confirmed = authority.equals(restore.desiredState);
-        markOwnedTempDivergence(mutation, restore.desiredState, authority);
-        world.setBlockState(pos, restore.desiredState, 19);
-        debug("runtime restored owned temp-block after mixed authority batch pos=" + pos
-                + " packet=" + authority + " desired=" + restore.desiredState);
-    }
-
-    private static boolean hasOwnedLayer(final BlockMutation mutation) {
-        if (mutation == null) return false;
-        for (ServerTempLayer layer : mutation.serverLayers.values()) {
-            if (layer.ownedByLocalPlayer) return true;
-        }
-        return false;
-    }
-
-    private static boolean isTopLayerOwnedByLocalPlayer(final BlockMutation mutation) {
-        if (mutation == null || mutation.serverLayers.isEmpty()) return false;
-        ServerTempLayer top = null;
-        for (ServerTempLayer layer : mutation.serverLayers.values()) top = layer;
-        return top != null && top.ownedByLocalPlayer;
-    }
-
-    private long nextBlockEchoOrdinal(final ClientWorld world, final BlockPos pos,
-                                      final BlockState state, final long actionSequence,
-                                      final long afterOrdinal) {
-        long next = Long.MAX_VALUE;
-        for (BlockEcho echo : localBlockHistory) {
-            if (tick - echo.tick <= ACTION_RETENTION_TICKS && echo.world == world
-                    && echo.action == actionSequence && echo.pos.equals(pos)
-                    && echo.ordinal > afterOrdinal && echo.state.equals(state)) {
-                next = Math.min(next, echo.ordinal);
-            }
-        }
-        return next == Long.MAX_VALUE ? -1L : next;
-    }
-
-    private boolean hasActionBlockHistory(final ClientWorld world, final BlockPos pos,
-                                          final long actionSequence) {
-        for (BlockEcho echo : localBlockHistory) {
-            if (tick - echo.tick <= ACTION_RETENTION_TICKS && echo.world == world
-                    && echo.action == actionSequence && echo.pos.equals(pos)) return true;
-        }
-        return false;
-    }
-
-    private boolean hasNewerLocalStateAfter(final ClientWorld world, final BlockPos pos,
-                                            final BlockState currentState,
-                                            final long actionSequence,
-                                            final long afterOrdinal) {
-        for (BlockEcho echo : localBlockHistory) {
-            if (tick - echo.tick <= ACTION_RETENTION_TICKS && echo.world == world
-                    && echo.action == actionSequence && echo.pos.equals(pos)
-                    && echo.ordinal > afterOrdinal && echo.state.equals(currentState)) return true;
-        }
-        return false;
-    }
-
-    private void markOwnedTempDivergence(final BlockMutation mutation, final BlockState desired,
-                                         final BlockState authority) {
-        mutation.ownedTempDivergedUntilTick = desired != null
-                && (!mutation.world.getBlockState(mutation.pos).equals(desired)
-                || authority != null && !desired.equals(authority))
-                ? tick + BLOCK_CONFIRMATION_TICKS : 0L;
-    }
-
     private List<PredictionDesyncBlock> ownedTempDesyncs0(final ClientWorld world) {
-        if (!ready || world == null) return List.of();
-        final List<PredictionDesyncBlock> result = new ArrayList<>();
-        for (BlockMutation mutation : blocks.values()) {
-            if (mutation.world != world || mutation.ownedTempDivergedUntilTick < tick) continue;
-            BlockState actual = world.getBlockState(mutation.pos);
-            BlockState target = mutation.serverTempActive && mutation.serverTempState != null
-                    ? mutation.serverTempState : mutation.authoritative;
-            if (actual.equals(target)) continue;
-            result.add(new PredictionDesyncBlock(mutation.pos, actual, target));
-        }
-        return List.copyOf(result);
+        // A different physical server TempBlock is expected and intentionally
+        // hidden. It is not a desync and should never render a rollback marker.
+        return List.of();
     }
 
     private static void debug(String message) {
@@ -1967,6 +1843,7 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
         final Set<Entity> spawned = Collections.newSetFromMap(new IdentityHashMap<>());
         final Set<Integer> claimedTargets = new HashSet<>();
         final Map<Integer, Integer> velocityOrdinals = new HashMap<>();
+        int tempFallingBlockOrdinal;
         boolean accepted;
         boolean locallyPredicted;
         int blockConfirmationTicks = BLOCK_CONFIRMATION_TICKS;
@@ -1983,62 +1860,34 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener {
     }
 
     private record BlockKey(ClientWorld world, BlockPos pos) { }
+    private record TempFallingBlockKey(long actionSequence, int spawnOrdinal) { }
+    private record PredictedTempFallingBlock(Entity entity, String ability) { }
     public record PredictionDesyncBlock(BlockPos pos, BlockState predicted, BlockState authoritative) { }
     private record BlockEcho(ClientWorld world, BlockPos pos, BlockState state, long tick, boolean force,
-                             long action, long ordinal) { }
-    private record OwnedTempReceipt(BlockState physicalPacketState, BlockState desiredState,
-                                    boolean locallyPredicted,
-                                    PredictionPayloads.TempOperation operation, long tick) { }
+                             long action) { }
     private record OwnedBatchRestore(BlockState desiredState, boolean locallyPredicted, long tick) { }
     private static final class BlockMutation {
         final ClientWorld world; final BlockPos pos;
-        // authoritative is owner-visible rollback state. physicalAuthority is
-        // the actual server block, which may be one of the owner's hidden
-        // TempBlock layers. Keeping these separate is what preserves the real
-        // pre-move block through delayed packet echoes and negative receipts.
-        BlockState authoritative; BlockState physicalAuthority; BlockState predicted;
+        BlockState authoritative; BlockState predicted;
         long lastAction; long lastTick; boolean confirmed; boolean locallyPredicted;
-        boolean serverTempActive; long serverAction; BlockState serverTempState;
-        long ownedTempDivergedUntilTick;
-        long lastMatchedLocalCreateOrdinal = -1L;
-        boolean preservePredictedOwnedState;
-        final LinkedHashMap<Long, ServerTempLayer> serverLayers = new LinkedHashMap<>();
-        final Map<Long, Long> serverLayerRevisions = new HashMap<>();
-        final java.util.ArrayDeque<OwnedTempReceipt> ownedTempReceipts = new java.util.ArrayDeque<>();
         private BlockMutation(ClientWorld world, BlockPos pos, BlockState authoritative) {
             this.world = world;
             this.pos = pos;
             this.authoritative = authoritative;
-            this.physicalAuthority = authoritative;
             this.predicted = authoritative;
         }
         private void recordAuthority(BlockState state) {
             this.authoritative = state;
-            this.physicalAuthority = state;
-            this.confirmed = PredictionEchoPolicy.confirmedByLatestAuthority(
-                    this.confirmed, state.equals(this.predicted));
-        }
-        private void recordViewerAuthority(BlockState state) {
-            this.authoritative = state;
-            this.confirmed = PredictionEchoPolicy.confirmedByLatestAuthority(
-                    this.confirmed, state.equals(this.predicted));
-        }
-        private void recordPhysicalAuthority(BlockState state) {
-            this.physicalAuthority = state;
             this.confirmed = PredictionEchoPolicy.confirmedByLatestAuthority(
                     this.confirmed, state.equals(this.predicted));
         }
         private void adoptAuthority(BlockState state) {
             this.authoritative = state;
-            this.physicalAuthority = state;
             this.predicted = state;
             this.confirmed = true;
             this.locallyPredicted = false;
-            this.preservePredictedOwnedState = false;
-            this.ownedTempDivergedUntilTick = 0L;
         }
     }
-    private record ServerTempLayer(BlockState state, boolean ownedByLocalPlayer, boolean locallyPredicted) { }
     private static final class VelocityMutation {
         final ClientWorld world; final int entityId; final long action; final int impulseOrdinal; final String ability;
         final long tick; final Vec3d before; final Vec3d predicted;
