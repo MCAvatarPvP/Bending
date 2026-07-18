@@ -58,8 +58,11 @@ class PredictionTimingBoundaryTest {
         assertTrue(mixin.contains("FabricGameplayBridge.onArmSwing")
                         && !mixin.contains("packet.getHand() == Hand.MAIN_HAND"),
                 "legacy PlayerAnimationEvent intentionally processes both arm-animation hands");
-        assertTrue(client.contains("final boolean suppress = droppedItem || rightClickBlockUntilTick >= clientTick"),
-                "the client must retain Bukkit's drop/right-click swing suppression before prediction");
+        assertTrue(client.contains("final boolean suppress = droppedItem || rightClickBlockUntilTick > clientTick"),
+                "the client must expire Bukkit's drop/right-click swing suppression on the same tick as authority");
+        assertTrue(client.contains("owner.rightClickBlockUntilTick <= owner.clientTick")
+                        && bridge.contains("entry.getValue() <= inputTick"),
+                "client and authority must use the same exclusive right-click suppression deadline");
         int clientBlockSuppression = client.indexOf("owner.rightClickBlockUntilTick = owner.clientTick + 2");
         int clientMainHand = client.indexOf("if (block.getHand() == Hand.MAIN_HAND)");
         assertTrue(clientBlockSuppression >= 0 && clientMainHand > clientBlockSuppression,

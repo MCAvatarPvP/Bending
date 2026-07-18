@@ -224,7 +224,7 @@ public final class PredictionClient {
             return;
         }
         if (packet instanceof PlayerInteractItemC2SPacket item) {
-            if (item.getHand() == Hand.MAIN_HAND && owner.rightClickBlockUntilTick < owner.clientTick) {
+            if (item.getHand() == Hand.MAIN_HAND && owner.rightClickBlockUntilTick <= owner.clientTick) {
                 owner.capture(client, PredictionPayloads.InputKind.RIGHT_CLICK);
             }
             return;
@@ -816,7 +816,11 @@ public final class PredictionClient {
     }
 
     private void captureLeftClick(MinecraftClient client) {
-        final boolean suppress = droppedItem || rightClickBlockUntilTick >= clientTick;
+        // Fabric/Paper expires a marker whose deadline equals the current
+        // tick before processing that tick's input. Treat the deadline as an
+        // exclusive bound here as well; keeping it inclusive drops a valid
+        // swing locally while Paper accepts and runs it (notably AirBlast).
+        final boolean suppress = droppedItem || rightClickBlockUntilTick > clientTick;
         droppedItem = false;
         capture(client, PredictionPayloads.InputKind.LEFT_CLICK, suppress);
     }

@@ -128,7 +128,7 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
     private static final int EARTH_CAUSE_RETENTION_TICKS = BLOCK_CONFIRMATION_TICKS;
     private static final Set<String> PERSISTENT_FLIGHT_ABILITIES = Set.of(
             "airscooter", "airspout", "waterspout", "firejet", "flight");
-    private static final boolean DEBUG = Boolean.parseBoolean(System.getProperty("projectkorra.prediction.debug", "false"));
+    private static final boolean DEBUG = Boolean.parseBoolean(System.getProperty("projectkorra.prediction.debug", "true"));
 
     private final Map<Long, Action> actions = new LinkedHashMap<>();
     private final Map<CoreAbility, Long> abilityActions = new IdentityHashMap<>();
