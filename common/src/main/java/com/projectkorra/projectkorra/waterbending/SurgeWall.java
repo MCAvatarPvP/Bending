@@ -229,6 +229,13 @@ public class SurgeWall extends WaterAbility {
         return WALL_BLOCKS;
     }
 
+    /** Drops every source/wall index after the backing TempBlocks are retired. */
+    public static void discardAllTracking() {
+        SOURCE_BLOCKS.clear();
+        AFFECTED_BLOCKS.clear();
+        WALL_BLOCKS.clear();
+    }
+
     private void freezeThaw() {
         if (!this.bPlayer.canIcebend()) {
             return;
@@ -261,7 +268,7 @@ public class SurgeWall extends WaterAbility {
 
         for (final Block block : WALL_BLOCKS.keySet()) {
             if (WALL_BLOCKS.get(block) == this.player) {
-                tempBlocks.put(block, new TempBlock(block, Material.WATER));
+                tempBlocks.put(block, new TempBlock(block, Material.WATER.createBlockData(), this));
             }
         }
     }
@@ -418,9 +425,9 @@ public class SurgeWall extends WaterAbility {
                                 TempBlock tempBlock;
 
                                 if (levelled.getLevel() == 0)
-                                    tempBlock = new TempBlock(blockRelative, Material.OBSIDIAN);
+                                    tempBlock = new TempBlock(blockRelative, Material.OBSIDIAN.createBlockData(), this);
                                 else
-                                    tempBlock = new TempBlock(blockRelative, Material.COBBLESTONE);
+                                    tempBlock = new TempBlock(blockRelative, Material.COBBLESTONE.createBlockData(), this);
 
                                 tempBlock.setRevertTime(obsidianDuration);
                                 tempBlock.getBlock().getWorld().playSound(tempBlock.getLocation(), Sound.BLOCK_LAVA_EXTINGUISH, 0.2F, 1);
@@ -530,7 +537,7 @@ public class SurgeWall extends WaterAbility {
         if (RegionProtection.isRegionProtected(this, block.getLocation())) {
             return;
         } else if (!TempBlock.isTempBlock(block)) {
-            tempBlocks.put(block, new TempBlock(block, Material.WATER));
+            tempBlocks.put(block, new TempBlock(block, Material.WATER.createBlockData(), this));
             AFFECTED_BLOCKS.put(block, block);
         }
     }

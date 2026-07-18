@@ -6,8 +6,13 @@ import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.util.Collision;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
+import com.projectkorra.projectkorra.earthbending.Catapult;
 import com.projectkorra.projectkorra.earthbending.RaiseEarth;
+import com.projectkorra.projectkorra.earthbending.Ripple;
 import com.projectkorra.projectkorra.earthbending.lava.LavaFlow;
+import com.projectkorra.projectkorra.earthbending.lava.LavaSurge;
+import com.projectkorra.projectkorra.earthbending.lava.LavaSurgeWall;
+import com.projectkorra.projectkorra.earthbending.metal.MetalClips;
 import com.projectkorra.projectkorra.earthbending.passive.DensityShift;
 import com.projectkorra.projectkorra.object.EarthCosmetic;
 import com.projectkorra.projectkorra.platform.mc.ChatColor;
@@ -23,6 +28,8 @@ import com.projectkorra.projectkorra.platform.mc.entity.FallingBlock;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
+import com.projectkorra.projectkorra.prediction.DirectBlockSync;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.BlockSource;
 import com.projectkorra.projectkorra.util.Information;
@@ -76,14 +83,21 @@ public abstract class EarthAbility extends ElementalAbility {
         Information info;
 
         if (MOVED_EARTH.containsKey(block)) {
+            // Preserve the legacy dual registration until the caller moves or
+            // restores this coordinate. EarthBlast reads the moved-earth entry
+            // after creating its temporary source hole so it can carry the
+            // original pre-RaiseEarth state forward. Consuming it here loses
+            // that state and turns the later restore into a permanent ghost.
             info = MOVED_EARTH.get(block);
         } else {
             info = new Information();
 
             info.setBlock(block);
             info.setState(block.getState());
+            stampPredictionCause(info, AbilityExecutionContext.current());
         }
-        block.setType(Material.AIR, false);
+        final Information lifecycle = info;
+        DirectBlockSync.runEarthLifecycle(lifecycle, () -> block.setType(Material.AIR, false));
         info.setTime(System.currentTimeMillis());
         TEMP_AIR_LOCATIONS.put(info.getID(), info);
     }
@@ -342,7 +356,7 @@ public abstract class EarthAbility extends ElementalAbility {
         if (MOVED_EARTH.containsKey(block)) {
             final Information info = MOVED_EARTH.get(block);
             if (block.getType() == Material.SANDSTONE && info.getType() == Material.SAND) {
-                block.setType(Material.SAND, false);
+                DirectBlockSync.runEarthLifecycle(info, () -> block.setType(Material.SAND, false));
             }
             if (RaiseEarth.blockInAllAffectedBlocks(block)) {
                 EarthAbility.revertBlock(block);
@@ -367,6 +381,10 @@ public abstract class EarthAbility extends ElementalAbility {
         }
 
         final Information info = TEMP_AIR_LOCATIONS.get(i);
+        DirectBlockSync.runEarthLifecycle(info, () -> revertAirBlock0(i, force, info));
+    }
+
+    private static void revertAirBlock0(final int i, final boolean force, final Information info) {
         final Block block = info.getState().getBlock();
 
         if (!ElementalAbility.isAir(block.getType()) && !block.isLiquid()) {
@@ -383,12 +401,17 @@ public abstract class EarthAbility extends ElementalAbility {
     }
 
     public static void revertAirBlock(Block block) {
-        int i = 0;
-        for (Information info : TEMP_AIR_LOCATIONS.values()) {
-            if (block.equals(info.getBlock())) break;
-            i++;
+        if (block == null) return;
+        for (final Map.Entry<Integer, Information> entry : TEMP_AIR_LOCATIONS.entrySet()) {
+            final Information info = entry.getValue();
+            if (info != null && block.equals(info.getBlock())) {
+                // Information ids begin at Integer.MIN_VALUE and are map keys;
+                // the old port passed a loop index (0, 1, ...) instead, so the
+                // requested source air block was almost never restored.
+                revertAirBlock(entry.getKey());
+                return;
+            }
         }
-        revertAirBlock(i);
     }
 
     public static boolean revertBlock(final Block block) {
@@ -396,51 +419,22 @@ public abstract class EarthAbility extends ElementalAbility {
             retireMovedEarth(block);
             return false;
         }
-        if (MOVED_EARTH.containsKey(block)) {
-            final Information info = MOVED_EARTH.get(block);
-            final Block sourceblock = info.getState().getBlock();
+        final Information info = MOVED_EARTH.get(block);
+        if (info == null) return true;
+        return DirectBlockSync.callEarthLifecycle(info, () -> revertBlock0(block, info));
+    }
 
-            if (ElementalAbility.isAir(info.getState().getType())) {
-                retireMovedEarth(block);
-                return true;
-            }
+    private static boolean revertBlock0(final Block block, final Information info) {
+        final Block sourceblock = info.getState().getBlock();
 
-            if (block.equals(sourceblock)) {
-                revertAirBlock(sourceblock);
-                info.getState().update(true, false);
-                if (RaiseEarth.blockInAllAffectedBlocks(sourceblock)) {
-                    RaiseEarth.revertAffectedBlock(sourceblock);
-                }
-                if (RaiseEarth.blockInAllAffectedBlocks(block)) {
-                    RaiseEarth.revertAffectedBlock(block);
-                }
-                retireMovedEarth(block);
-                return true;
-            }
+        if (ElementalAbility.isAir(info.getState().getType())) {
+            retireMovedEarth(block);
+            return true;
+        }
 
-            if (MOVED_EARTH.containsKey(sourceblock)) {
-                addTempAirBlock(block);
-                retireMovedEarth(block);
-                return true;
-            }
-
-            if (ElementalAbility.isAir(sourceblock.getType()) || sourceblock.isLiquid()) {
-                revertAirBlock(sourceblock);
-                info.getState().update(true, false);
-            } else {
-
-            }
-
-            if (GeneralMethods.isAdjacentToThreeOrMoreSources(block, false)) {
-                final BlockData data = Material.WATER.createBlockData();
-                if (data instanceof Levelled) {
-                    ((Levelled) data).setLevel(7);
-                }
-                block.setBlockData(data, false);
-            } else {
-                block.setType(Material.AIR, false);
-            }
-
+        if (block.equals(sourceblock)) {
+            revertAirBlock(sourceblock);
+            info.getState().update(true, false);
             if (RaiseEarth.blockInAllAffectedBlocks(sourceblock)) {
                 RaiseEarth.revertAffectedBlock(sourceblock);
             }
@@ -448,7 +442,39 @@ public abstract class EarthAbility extends ElementalAbility {
                 RaiseEarth.revertAffectedBlock(block);
             }
             retireMovedEarth(block);
+            return true;
         }
+
+        if (MOVED_EARTH.containsKey(sourceblock)) {
+            addTempAirBlock(block);
+            retireMovedEarth(block);
+            return true;
+        }
+
+        if (ElementalAbility.isAir(sourceblock.getType()) || sourceblock.isLiquid()) {
+            revertAirBlock(sourceblock);
+            info.getState().update(true, false);
+        } else {
+
+        }
+
+        if (GeneralMethods.isAdjacentToThreeOrMoreSources(block, false)) {
+            final BlockData data = Material.WATER.createBlockData();
+            if (data instanceof Levelled) {
+                ((Levelled) data).setLevel(7);
+            }
+            block.setBlockData(data, false);
+        } else {
+            block.setType(Material.AIR, false);
+        }
+
+        if (RaiseEarth.blockInAllAffectedBlocks(sourceblock)) {
+            RaiseEarth.revertAffectedBlock(sourceblock);
+        }
+        if (RaiseEarth.blockInAllAffectedBlocks(block)) {
+            RaiseEarth.revertAffectedBlock(block);
+        }
+        retireMovedEarth(block);
         return true;
     }
 
@@ -459,6 +485,27 @@ public abstract class EarthAbility extends ElementalAbility {
             removeAllEarthbendedBlocks();
         }
         RaiseEarth.clearWallBlocks();
+    }
+
+    /**
+     * Drops every world-scoped Earth registry without restoring a block.
+     * Logical-client prediction uses this when its ClientWorld is replaced;
+     * old-world handles must never be progressed by the next world's manager.
+     */
+    public static void discardAllEarthbendingState() {
+        MOVED_EARTH.clear();
+        TEMP_AIR_LOCATIONS.clear();
+        PREVENT_EARTHBENDING.clear();
+        PREVENT_PHYSICS.clear();
+        DensityShift.getSandBlocks().clear();
+        RaiseEarth.clearAllTracking();
+        Ripple.progressAllCleanup();
+        Catapult.discardAllTracking();
+        LavaFlow.discardAllTracking();
+        LavaSurge.getAllFallingBlocks().clear();
+        LavaSurgeWall.discardAllTracking();
+        MetalClips.getEntityClipsCount().clear();
+        MetalClips.getTargetToAbility().clear();
     }
 
     public int getEarthbendableBlocksLength(final Block block, Vector direction, final int maxlength) {
@@ -679,6 +726,7 @@ public abstract class EarthAbility extends ElementalAbility {
             info.setTime(System.currentTimeMillis());
             info.setState(source.getState());
         }
+        stampPredictionCause(info, this);
         info.setTime(System.currentTimeMillis());
         MOVED_EARTH.put(target, info);
 
@@ -688,19 +736,30 @@ public abstract class EarthAbility extends ElementalAbility {
             targetMat = cos.getMaterial();
         }
 
-        if (targetMat == Material.SAND) {
-            target.setType(Material.SANDSTONE, false);
-        } else if (targetMat == Material.RED_SAND) {
-            target.setType(Material.RED_SANDSTONE, false);
-        } else if (targetMat == Material.GRAVEL) {
-            target.setType(Material.STONE, false);
-        } else if (targetMat.name().endsWith("CONCRETE_POWDER")) {
-            target.setType(Material.getMaterial(targetMat.name().replace("_POWDER", "")), false);
-        } else {
-            target.setBlockData(targetMat.createBlockData(), false);
-        }
+        final Material renderedTarget = targetMat;
+        DirectBlockSync.runEarthLifecycle(info, () -> {
+            if (renderedTarget == Material.SAND) {
+                target.setType(Material.SANDSTONE, false);
+            } else if (renderedTarget == Material.RED_SAND) {
+                target.setType(Material.RED_SANDSTONE, false);
+            } else if (renderedTarget == Material.GRAVEL) {
+                target.setType(Material.STONE, false);
+            } else if (renderedTarget.name().endsWith("CONCRETE_POWDER")) {
+                target.setType(Material.getMaterial(renderedTarget.name().replace("_POWDER", "")), false);
+            } else {
+                target.setBlockData(renderedTarget.createBlockData(), false);
+            }
 
-        source.setType(Material.AIR, false);
+            source.setType(Material.AIR, false);
+        });
+    }
+
+    private static void stampPredictionCause(final Information info, final CoreAbility ability) {
+        if (info == null || ability == null || ability.getPlayer() == null
+                || ability.getPredictionActionSequence() <= 0L) return;
+        info.setPredictionOwner(ability.getPlayer().getUniqueId());
+        info.setPredictionAbility(ability.getName());
+        info.setPredictionActionSequence(ability.getPredictionActionSequence());
     }
 
     /**

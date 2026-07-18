@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.waterbending;
 
 import com.projectkorra.projectkorra.GeneralMethods;
+import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.ability.WaterAbility;
 import com.projectkorra.projectkorra.ability.util.Collision;
@@ -133,6 +134,11 @@ public class WaterSpout extends WaterAbility {
         return AFFECTED_BLOCKS;
     }
 
+    /** Drops old-world column coordinates without writing their blocks. */
+    public static void discardAllTracking() {
+        AFFECTED_BLOCKS.clear();
+    }
+
     private void hop() {
         if (player.isSneaking() && !bPlayer.isOnCooldown("SpoutHop") && canSpoutHop) {
             Vector push = player.getEyeLocation().getDirection().multiply(spoutHopPower);
@@ -164,7 +170,7 @@ public class WaterSpout extends WaterAbility {
 
             final Block block = loc.getBlock();
             if ((!TempBlock.isTempBlock(block)) && (ElementalAbility.isAir(block.getType()) || !GeneralMethods.isSolid(block))) {
-                this.blocks.add(new TempBlock(block, GeneralMethods.getWaterData(7)));
+                this.blocks.add(new TempBlock(block, GeneralMethods.getWaterData(7), this));
                 AFFECTED_BLOCKS.put(block, block);
             }
         }
@@ -182,76 +188,108 @@ public class WaterSpout extends WaterAbility {
         } else if (this.duration != 0 && System.currentTimeMillis() > this.startTime + this.duration) {
             this.bPlayer.addCooldown(this);
             this.remove();
-            return;
-        } else {
-            this.blocks.clear();
-            this.player.setFallDistance(0);
-            this.player.setSprinting(false);
-            if ((new Random()).nextInt(10) == 0) {
-                playWaterbendingSound(this.player.getLocation());
-            }
+            if (this.isRemoved()) return;
+        }
+        this.blocks.clear();
+        this.player.setFallDistance(0);
+        this.player.setSprinting(false);
+        if ((new Random()).nextInt(10) == 0) {
+            playWaterbendingSound(this.player.getLocation());
+        }
 
-            this.player.removePotionEffect(PotionEffectType.SPEED);
+        this.player.removePotionEffect(PotionEffectType.SPEED);
 
-            Location location = this.player.getLocation().clone().add(0, .2, 0);
-            Block block = location.clone().getBlock();
-            final double height = this.spoutableWaterHeight(location);
+        Location location = this.player.getLocation().clone().add(0, .2, 0);
+        Block block = location.clone().getBlock();
+        final double height = this.spoutableWaterHeight(location);
 
-            if (height != -1) {
-                location = this.base.getLocation();
-                final double heightRemoveThreshold = 2;
-                if (!this.isWithinMaxSpoutHeight(location, heightRemoveThreshold)) {
-                    this.bPlayer.addCooldown(this);
-                    this.remove();
-                    return;
-                }
-                for (int i = 1; i <= height; i++) {
-
-                    block = location.clone().add(0, i, 0).getBlock();
-
-                    if (!TempBlock.isTempBlock(block)) {
-                        this.blocks.add(new TempBlock(block, Material.WATER));
-                        AFFECTED_BLOCKS.put(block, block);
-                    }
-                    this.rotateParticles(block);
-                }
-
-                this.displayWaterSpiral(location.clone().add(.5, 0, .5));
-                if (this.player.getLocation().getBlockY() > block.getY()) {
-                    if (this.player.isFlying()) {
-                        this.player.setFlying(false);
-                    }
-                } else {
-                    if (!this.player.isFlying()) {
-                        this.player.setAllowFlight(true);
-                        this.player.setFlying(true);
-                    }
-                }
-            } else {
+        if (height != -1) {
+            location = this.base.getLocation();
+            final double heightRemoveThreshold = 2;
+            if (!this.isWithinMaxSpoutHeight(location, heightRemoveThreshold)) {
                 this.bPlayer.addCooldown(this);
                 this.remove();
                 return;
             }
+            for (int i = 1; i <= height; i++) {
+
+                block = location.clone().add(0, i, 0).getBlock();
+
+                if (!TempBlock.isTempBlock(block)) {
+                    this.blocks.add(new TempBlock(block, Material.WATER.createBlockData(), this));
+                    AFFECTED_BLOCKS.put(block, block);
+                }
+                this.rotateParticles(block);
+            }
+
+            this.displayWaterSpiral(location.clone().add(.5, 0, .5));
+            if (this.player.getLocation().getBlockY() > block.getY()) {
+                if (this.player.isFlying()
+                        && !this.flightHandler.hasOtherInstance(this.player, this.getName())) {
+                    this.player.setFlying(false);
+                }
+            } else {
+                if (!this.player.isFlying()) {
+                    this.player.setAllowFlight(true);
+                    this.player.setFlying(true);
+                }
+            }
+        } else {
+            this.bPlayer.addCooldown(this);
+            this.remove();
+            return;
         }
     }
 
     @Override
     public void remove() {
+        if (this.isRemoved()) return;
         super.remove();
-        this.revertBaseBlock();
-        for (final TempBlock tb : this.blocks) {
-            AFFECTED_BLOCKS.remove(tb.getBlock());
-            tb.revertBlock();
+        // super.remove() unregisters this instance. Cleanup therefore has to
+        // be completion-safe: if one TempBlock restore throws and aborts this
+        // method, a second remove() cannot retry it and the flight lease would
+        // otherwise remain forever. Retire every owned layer independently
+        // and always release flight last.
+        try {
+            this.revertBaseBlockSafely();
+            final List<TempBlock> ownedBlocks = new ArrayList<>(this.blocks);
+            this.blocks.clear();
+            for (final TempBlock tb : ownedBlocks) {
+                AFFECTED_BLOCKS.remove(tb.getBlock());
+                try {
+                    tb.revertBlock();
+                } catch (RuntimeException failure) {
+                    ProjectKorra.log.warning("WaterSpout TempBlock cleanup failed at "
+                            + tb.getLocation() + ": " + failure.getMessage());
+                }
+            }
+            final boolean fallDamage = getConfig().getBoolean("Abilities.Water.WaterSpout.FallDamage");
+            if (!fallDamage) {
+                try {
+                    FallHandler.stopFall(this.player, false);
+                } catch (RuntimeException failure) {
+                    ProjectKorra.log.warning("WaterSpout fall cleanup failed: " + failure.getMessage());
+                }
+            }
+        } finally {
+            // Flight state is more important than any visual cleanup failure:
+            // leaving this lease behind makes later WaterSpout/AirSpout
+            // toggles permanently invert between the client and Paper.
+            this.flightHandler.removeInstance(this.player, this.getName());
         }
-        boolean falldamage = getConfig().getBoolean("Abilities.Water.WaterSpout.FallDamage");
-        if (!falldamage) FallHandler.stopFall(player, false);
-        this.flightHandler.removeInstance(this.player, this.getName());
     }
 
     public void revertBaseBlock() {
-        if (this.baseBlock != null) {
-            this.baseBlock.revertBlock();
-            this.baseBlock = null;
+        final TempBlock ownedBase = this.baseBlock;
+        this.baseBlock = null;
+        if (ownedBase != null) ownedBase.revertBlock();
+    }
+
+    private void revertBaseBlockSafely() {
+        try {
+            this.revertBaseBlock();
+        } catch (RuntimeException failure) {
+            ProjectKorra.log.warning("WaterSpout base TempBlock cleanup failed: " + failure.getMessage());
         }
     }
 
@@ -338,7 +376,7 @@ public class WaterSpout extends WaterAbility {
 
                     if (!TempBlock.isTempBlock(blocki)) {
                         this.revertBaseBlock();
-                        this.baseBlock = new TempBlock(blocki, Material.WATER);
+                        this.baseBlock = new TempBlock(blocki, Material.WATER.createBlockData(), this);
                     }
 
                     this.base = blocki;

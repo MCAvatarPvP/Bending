@@ -4,84 +4,57 @@ import com.projectkorra.projectkorra.ability.Ability;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 
-import java.util.Collections;
-import java.util.Map;
-import java.util.WeakHashMap;
-
 /**
- * Prevents stale remote-entity snapshots from owning a locally predicted
- * ability's lifecycle. Once a predicted ability observes a remote contact,
- * only reconciliation from the authoritative server may remove that instance.
+ * Keeps remote entity state authoritative without interrupting a locally
+ * predicted ability's own visual and world lifecycle.
  */
 public final class PredictedContactSync {
-    private static final Map<CoreAbility, Boolean> AWAITING_AUTHORITY =
-            Collections.synchronizedMap(new WeakHashMap<>());
-    private static final ThreadLocal<Integer> FORCED_REMOVAL_DEPTH =
-            ThreadLocal.withInitial(() -> 0);
-    private static volatile Listener listener;
+    private static final ThreadLocal<CoreAbility> FORCED_REMOVAL = new ThreadLocal<>();
 
     private PredictedContactSync() {
     }
 
-    public static void install(final Listener newListener) {
-        listener = newListener;
-    }
-
-    /** Returns true when a non-authoritative remote target was claimed. */
+    /**
+     * Returns true when a predicted client attempted to mutate a remote
+     * entity. The caller must suppress that mutation and continue its local
+     * visual/world pass.
+     *
+     * <p>This boundary intentionally has no callback. Client contacts are not
+     * evidence, are never sent to the server, and cannot add an entity to an
+     * authoritative collision query. Paper/Fabric's server simulation is the
+     * only hit-registration source.</p>
+     */
     public static boolean mark(final Ability ability, final Entity target) {
         if (CooldownSync.isAuthoritative() || !(ability instanceof CoreAbility coreAbility)
                 || target == null || coreAbility.getPlayer() == null
                 || target.getUniqueId().equals(coreAbility.getPlayer().getUniqueId())) {
             return false;
         }
-        AWAITING_AUTHORITY.put(coreAbility, Boolean.TRUE);
-        final Listener current = listener;
-        if (current != null) current.onPredictedContact(target);
-        // Abort the remainder of this predicted progress call before an
-        // ability-specific callback can set terminal flags, remove child
-        // entities, or run cleanup ahead of CoreAbility#remove.
-        if (AbilityExecutionContext.current() == coreAbility) {
-            throw Abort.INSTANCE;
-        }
+        // The mutation itself is suppressed by the caller, but the ability's
+        // world/visual pass must finish. Throwing here used to abandon loops in
+        // Torrent, WaterFlow and Discharge as soon as another player entered a
+        // collider, leaving partial TempBlock shapes and abruptly stopped
+        // effects. The client's normal range/duration/removal rules remain the
+        // lifecycle authority; retaining a permanent "awaiting server" flag
+        // made terminal AirBurst rays and other projectiles immortal.
         return true;
     }
 
-    public static boolean suppressRemoval(final CoreAbility ability) {
-        return ability != null && !CooldownSync.isAuthoritative()
-                && FORCED_REMOVAL_DEPTH.get() == 0
-                && AWAITING_AUTHORITY.containsKey(ability);
-    }
-
-    /** Runs rollback or server reconciliation without the prediction guard. */
+    /** Runs explicit local cleanup or server reconciliation. */
     public static void forceRemoval(final CoreAbility ability, final Runnable removal) {
         if (removal == null) return;
-        AWAITING_AUTHORITY.remove(ability);
-        final int previous = FORCED_REMOVAL_DEPTH.get();
-        FORCED_REMOVAL_DEPTH.set(previous + 1);
+        final CoreAbility previous = FORCED_REMOVAL.get();
+        if (ability == null) FORCED_REMOVAL.remove();
+        else FORCED_REMOVAL.set(ability);
         try {
             removal.run();
         } finally {
-            if (previous == 0) FORCED_REMOVAL_DEPTH.remove();
-            else FORCED_REMOVAL_DEPTH.set(previous);
+            if (previous == null) FORCED_REMOVAL.remove();
+            else FORCED_REMOVAL.set(previous);
         }
     }
 
-    public static void clear() {
-        listener = null;
-        AWAITING_AUTHORITY.clear();
-        FORCED_REMOVAL_DEPTH.remove();
-    }
-
-    @FunctionalInterface
-    public interface Listener {
-        void onPredictedContact(Entity target);
-    }
-
-    static final class Abort extends RuntimeException {
-        private static final Abort INSTANCE = new Abort();
-
-        private Abort() {
-            super(null, null, false, false);
-        }
+    public static boolean isForcedRemoval(final CoreAbility ability) {
+        return ability != null && FORCED_REMOVAL.get() == ability;
     }
 }

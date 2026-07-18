@@ -23,7 +23,7 @@ import com.projectkorra.projectkorra.platform.mc.permissions.Permission;
 import com.projectkorra.projectkorra.platform.mc.plugin.java.JavaPlugin;
 import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
 import com.projectkorra.projectkorra.prediction.AbilityRemovalSync;
-import com.projectkorra.projectkorra.prediction.PredictedContactSync;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.util.AbilityTimingDebugger;
 import com.projectkorra.projectkorra.util.FlightHandler;
 import com.projectkorra.projectkorra.util.TimeUtil;
@@ -78,6 +78,8 @@ public abstract class CoreAbility implements Ability {
     private boolean removed;
     private boolean hidden;
     private int id;
+    private final long predictionActionSequence = PredictionDeterminism.currentAction();
+    private final long predictionDeterministicSeed = PredictionDeterminism.currentSeed();
     private long startTime;
     private long startTick;
     @Deprecated
@@ -151,8 +153,7 @@ public abstract class CoreAbility implements Ability {
      * that has been started and has not been removed.
      */
     public static void progressAll() {
-        for (final Set<CoreAbility> setAbils : INSTANCES_BY_CLASS.values()) {
-            for (final CoreAbility abil : setAbils) {
+        for (final CoreAbility abil : orderedInstances(INSTANCES)) {
                 if (abil instanceof PassiveAbility) {
                     if (!((PassiveAbility) abil).isProgressable()) {
                         continue;
@@ -202,7 +203,6 @@ public abstract class CoreAbility implements Ability {
                         Platform.logger().severe("unable to fully remove ability of above error");
                     }
                 }
-            }
         }
         currentTick++;
     }
@@ -212,14 +212,12 @@ public abstract class CoreAbility implements Ability {
      * removed.
      */
     public static void removeAll() {
-        for (final Set<CoreAbility> setAbils : INSTANCES_BY_CLASS.values()) {
-            for (final CoreAbility abil : setAbils) {
+        for (final CoreAbility abil : orderedInstances(INSTANCES)) {
                 try {
                     abil.remove();
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
-            }
         }
 
         for (final CoreAbility coreAbility : ABILITIES_BY_NAME.values()) {
@@ -232,6 +230,33 @@ public abstract class CoreAbility implements Ability {
                 }
             }
         }
+    }
+
+    /**
+     * Drops every live-instance index without running ability callbacks.
+     *
+     * <p>This is a shutdown safety net, not a replacement for
+     * {@link #removeAll()}. A logical client replaces its complete world and
+     * player objects during a dimension/server-world transition. If one addon
+     * throws before calling {@code super.remove()}, retaining that instance
+     * makes the next input see a phantom existing toggle (notably
+     * WaterSpout) and prevents the new client ability from starting.</p>
+     */
+    public static void discardAllInstances() {
+        for (final CoreAbility ability : List.copyOf(INSTANCES)) {
+            ability.removed = true;
+            final Map<String, AttributeCache> attributes = ATTRIBUTE_FIELDS.get(ability.getClass());
+            if (attributes != null) {
+                for (final AttributeCache cache : attributes.values()) {
+                    cache.getInitialValues().remove(ability);
+                    cache.getCurrentModifications().remove(ability);
+                }
+            }
+            AbilityTimingDebugger.clear(ability);
+        }
+        INSTANCES.clear();
+        INSTANCES_BY_PLAYER.clear();
+        INSTANCES_BY_CLASS.clear();
     }
 
     /**
@@ -325,7 +350,7 @@ public abstract class CoreAbility implements Ability {
         if (clazz == null || INSTANCES_BY_CLASS.get(clazz) == null || INSTANCES_BY_CLASS.get(clazz).size() == 0) {
             return Collections.emptySet();
         }
-        return (Collection<T>) CoreAbility.INSTANCES_BY_CLASS.get(clazz);
+        return (Collection<T>) orderedInstances(CoreAbility.INSTANCES_BY_CLASS.get(clazz));
     }
 
     /**
@@ -341,7 +366,7 @@ public abstract class CoreAbility implements Ability {
         if (player == null || clazz == null || INSTANCES_BY_PLAYER.get(clazz) == null || INSTANCES_BY_PLAYER.get(clazz).get(player.getUniqueId()) == null) {
             return Collections.emptySet();
         }
-        return (Collection<T>) INSTANCES_BY_PLAYER.get(clazz).get(player.getUniqueId()).values();
+        return (Collection<T>) orderedInstances(INSTANCES_BY_PLAYER.get(clazz).get(player.getUniqueId()).values());
     }
 
     /**
@@ -351,7 +376,24 @@ public abstract class CoreAbility implements Ability {
      * alive. Do not modify this Collection.
      */
     public static Collection<CoreAbility> getAbilitiesByInstances() {
-        return INSTANCES;
+        return orderedInstances(INSTANCES);
+    }
+
+    /**
+     * ConcurrentHashMap iteration depends on process-local Class/object identity
+     * hashes. Paper and Fabric must progress overlapping abilities in the same
+     * order or their TempBlock stacks, collisions and removal callbacks become
+     * different even when every input is identical.
+     */
+    private static <T extends CoreAbility> List<T> orderedInstances(final Collection<T> abilities) {
+        if (abilities == null || abilities.isEmpty()) return List.of();
+        final List<T> ordered = new ArrayList<>(abilities);
+        ordered.sort(Comparator
+                .comparing((CoreAbility ability) -> ability.getPlayer() == null
+                        ? "" : ability.getPlayer().getUniqueId().toString())
+                .thenComparing(ability -> ability.getClass().getName())
+                .thenComparingInt(CoreAbility::getId));
+        return List.copyOf(ordered);
     }
 
     /**
@@ -779,9 +821,6 @@ public abstract class CoreAbility implements Ability {
      */
     @Override
     public void remove() {
-        if (PredictedContactSync.suppressRemoval(this)) {
-            return;
-        }
         if (this.player == null && this.requiresPlayer()) {
             return;
         }
@@ -862,6 +901,16 @@ public abstract class CoreAbility implements Ability {
 
     public int getId() {
         return this.id;
+    }
+
+    /** Input identity inherited by delayed progress work and child abilities. */
+    public long getPredictionActionSequence() {
+        return this.predictionActionSequence;
+    }
+
+    /** Loader-independent random seed inherited from the semantic native input. */
+    public long getPredictionDeterministicSeed() {
+        return this.predictionDeterministicSeed;
     }
 
     @Override

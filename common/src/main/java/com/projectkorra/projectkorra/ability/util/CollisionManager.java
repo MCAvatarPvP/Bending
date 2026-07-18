@@ -4,6 +4,7 @@ import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.PassiveAbility;
 import com.projectkorra.projectkorra.earthbending.EarthSmash;
 import com.projectkorra.projectkorra.event.AbilityCollisionEvent;
+import com.projectkorra.projectkorra.prediction.AbilityRemovalSync;
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.World;
@@ -192,15 +193,17 @@ public class CollisionManager {
         final Collision forwardCollision = new Collision(abilityFirst, abilitySecond, activeCollision.isRemovingFirst(), activeCollision.isRemovingSecond(), entryFirst.location, entrySecond.location);
         final Collision reverseCollision = new Collision(abilitySecond, abilityFirst, activeCollision.isRemovingSecond(), activeCollision.isRemovingFirst(), entrySecond.location, entryFirst.location);
         final AbilityCollisionEvent event = new AbilityCollisionEvent(forwardCollision);
-        Platform.events().call(event);
+        AbilityRemovalSync.runExternalCause(() -> Platform.events().call(event));
         if (event.isCancelled()) {
             return false;
         }
-        if (!isEarthSmashCollision(forwardCollision)) {
-            ElementalCollisionEffects.play(forwardCollision);
-        }
-        abilityFirst.handleCollision(forwardCollision);
-        abilitySecond.handleCollision(reverseCollision);
+        AbilityRemovalSync.runExternalCause(() -> {
+            if (!isEarthSmashCollision(forwardCollision)) {
+                ElementalCollisionEffects.play(forwardCollision);
+            }
+            abilityFirst.handleCollision(forwardCollision);
+            abilitySecond.handleCollision(reverseCollision);
+        });
         if (!this.removeMultipleInstances) {
             alreadyCollided.add(abilityFirst);
             alreadyCollided.add(abilitySecond);

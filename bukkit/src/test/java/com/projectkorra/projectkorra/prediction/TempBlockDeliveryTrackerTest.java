@@ -30,4 +30,16 @@ class TempBlockDeliveryTrackerTest {
         assertTrue(tracker.route(7L, true, false));
         assertFalse(tracker.tracks(7L));
     }
+
+    @Test
+    void worldBoundaryForgetsClosuresFromTheDepartedWorld() {
+        TempBlockDeliveryTracker tracker = new TempBlockDeliveryTracker();
+        tracker.markActive(7L);
+
+        tracker.clear();
+
+        assertFalse(tracker.tracks(7L));
+        assertFalse(tracker.route(7L, true, false),
+                "an old-world close must not be routed into a same-dimension destination");
+    }
 }

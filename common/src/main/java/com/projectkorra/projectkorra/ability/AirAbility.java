@@ -6,6 +6,7 @@ import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.util.Collision;
 import com.projectkorra.projectkorra.airbending.AirSpout;
 import com.projectkorra.projectkorra.airbending.Suffocate;
+import com.projectkorra.projectkorra.airbending.flight.FlightMultiAbility;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.platform.mc.Color;
 import com.projectkorra.projectkorra.platform.mc.Location;
@@ -23,6 +24,11 @@ public abstract class AirAbility extends ElementalAbility {
 
     public AirAbility(final Player player) {
         super(player);
+    }
+
+    /** Drops world/player-scoped Air indexes without invoking ability callbacks. */
+    public static void discardAllAirbendingState() {
+        FlightMultiAbility.discardAllTracking();
     }
 
     /**

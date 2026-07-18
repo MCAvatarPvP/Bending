@@ -11,7 +11,6 @@ import com.projectkorra.projectkorra.platform.fabric.FabricMC;
 import com.projectkorra.projectkorra.platform.mc.command.CommandSender;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.util.ClickType;
-import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.Set;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
@@ -31,9 +30,7 @@ public class FabricGameplayBridge {
     private static FabricGameplayBridge active;
     private final Map<UUID, Boolean> sneaking = new HashMap<>();
     private final Map<UUID, Long> rightClickBlockUntilTick = new HashMap<>();
-    private final Map<UUID, Long> leftClickUntilTick = new HashMap<>();
     private final Set<UUID> droppedItem = new HashSet<>();
-    private final Map<UUID, Map<PredictionPayloads.InputKind, PredictedVanillaEcho>> predictedVanillaUntil = new HashMap<>();
     private static final boolean DEBUG = Boolean.parseBoolean(System.getProperty("projectkorra.prediction.debug", "false"));
     private long inputTick;
     private boolean registered;
@@ -58,18 +55,13 @@ public class FabricGameplayBridge {
     void tick(MinecraftServer server) {
         inputTick++;
         rightClickBlockUntilTick.entrySet().removeIf(entry -> entry.getValue() <= inputTick);
-        leftClickUntilTick.entrySet().removeIf(entry -> entry.getValue() < inputTick);
-        predictedVanillaUntil.values().forEach(pending -> pending.entrySet().removeIf(entry -> entry.getValue().expiresAt < inputTick || entry.getValue().remaining <= 0));
-        predictedVanillaUntil.entrySet().removeIf(entry -> entry.getValue().isEmpty());
     }
 
     void stop() {
         CoreAbility.removeAll();
         sneaking.clear();
         rightClickBlockUntilTick.clear();
-        leftClickUntilTick.clear();
         droppedItem.clear();
-        predictedVanillaUntil.clear();
         active = null;
     }
 
@@ -78,46 +70,42 @@ public class FabricGameplayBridge {
         ServerPlayerEvents.LEAVE.register(this::leave);
     }
 
-    public static boolean onMainHandSwing(ServerPlayerEntity player) {
+    public static boolean onArmSwing(ServerPlayerEntity player) {
         FabricGameplayBridge bridge = active;
         if (bridge == null) return false;
-        if (bridge.consumePredictedVanilla(player.getUuid(), PredictionPayloads.InputKind.LEFT_CLICK)) return true;
-        if (PredictionServer.shouldSuppressVanillaInput(player, PredictionPayloads.InputKind.LEFT_CLICK)) return true;
-        return bridge.onSwing(player);
-    }
-
-    public static boolean onBlockAttack(ServerPlayerEntity player) {
-        FabricGameplayBridge bridge = active;
-        if (bridge == null) return false;
-        if (bridge.consumePredictedVanilla(player.getUuid(), PredictionPayloads.InputKind.LEFT_CLICK)) return true;
-        if (PredictionServer.shouldSuppressVanillaInput(player, PredictionPayloads.InputKind.LEFT_CLICK)) return true;
-        return bridge.onSwing(player);
+        return PredictionServer.handleVanillaInput(player, PredictionPayloads.InputKind.LEFT_CLICK,
+                () -> bridge.onSwing(player));
     }
 
     public static boolean onRightClickBlock(ServerPlayerEntity player, Hand hand) {
         FabricGameplayBridge bridge = active;
-        if (bridge == null || hand != Hand.MAIN_HAND) return false;
+        if (bridge == null) return false;
+        // Paper sets RIGHT_CLICK_INTERACT before its EquipmentSlot.HAND check,
+        // so even an off-hand block interaction suppresses the following arm
+        // swing without becoming a bending action of its own.
         bridge.rightClickBlockUntilTick.put(player.getUuid(), bridge.inputTick + 2);
-        if (bridge.consumePredictedVanilla(player.getUuid(), PredictionPayloads.InputKind.RIGHT_CLICK_BLOCK)) return true;
-        if (PredictionServer.shouldSuppressVanillaInput(player, PredictionPayloads.InputKind.RIGHT_CLICK_BLOCK)) return true;
-        return bridge.onRightClick(player, ClickType.RIGHT_CLICK_BLOCK);
+        if (hand != Hand.MAIN_HAND) return false;
+        return PredictionServer.handleVanillaInput(player, PredictionPayloads.InputKind.RIGHT_CLICK_BLOCK,
+                () -> bridge.onRightClick(player, ClickType.RIGHT_CLICK_BLOCK));
     }
 
     public static boolean onRightClickItem(ServerPlayerEntity player, Hand hand) {
         FabricGameplayBridge bridge = active;
         if (bridge == null || hand != Hand.MAIN_HAND) return false;
         if (bridge.rightClickBlockUntilTick.getOrDefault(player.getUuid(), -1L) >= bridge.inputTick) return false;
-        if (bridge.consumeAnyPredictedRightClick(player.getUuid())) return true;
-        if (PredictionServer.shouldSuppressVanillaInput(player, PredictionPayloads.InputKind.RIGHT_CLICK)) return true;
-        return bridge.onRightClick(player, ClickType.RIGHT_CLICK);
+        return PredictionServer.handleVanillaInput(player, PredictionPayloads.InputKind.RIGHT_CLICK,
+                () -> bridge.onRightClick(player, ClickType.RIGHT_CLICK));
     }
 
     public static boolean onRightClickEntity(ServerPlayerEntity player, Hand hand) {
         FabricGameplayBridge bridge = active;
-        if (bridge == null || hand != Hand.MAIN_HAND) return false;
-        if (bridge.consumePredictedVanilla(player.getUuid(), PredictionPayloads.InputKind.RIGHT_CLICK_ENTITY)) return true;
-        if (PredictionServer.shouldSuppressVanillaInput(player, PredictionPayloads.InputKind.RIGHT_CLICK_ENTITY)) return true;
-        return bridge.onRightClickEntity(player);
+        if (bridge == null) return false;
+        if (hand != Hand.MAIN_HAND) {
+            CommonInputHandler.prepareRightClickEntity(FabricMC.player(player));
+            return false;
+        }
+        return PredictionServer.handleVanillaInput(player, PredictionPayloads.InputKind.RIGHT_CLICK_ENTITY,
+                () -> bridge.onRightClickEntity(player));
     }
 
     public static boolean onPlayerAction(ServerPlayerEntity player, PlayerActionC2SPacket.Action action) {
@@ -129,10 +117,15 @@ public class FabricGameplayBridge {
                 yield false;
             }
             case SWAP_ITEM_WITH_OFFHAND -> {
-                onSwapHands(player);
-                yield false;
+                yield PredictionServer.handleVanillaInput(player, PredictionPayloads.InputKind.SWAP_HANDS,
+                        () -> {
+                            onSwapHands(player);
+                            return false;
+                        });
             }
-            case START_DESTROY_BLOCK -> onBlockAttack(player);
+            // Legacy Bukkit bends from PlayerAnimationEvent (arm swing), not
+            // the earlier block-destroy packet.
+            case START_DESTROY_BLOCK -> false;
             default -> false;
         };
     }
@@ -143,11 +136,14 @@ public class FabricGameplayBridge {
 
     public static void onPlayerInput(ServerPlayerEntity player, boolean sneakingNow) {
         FabricGameplayBridge bridge = active;
+        if (bridge == null) return;
+        final Boolean previous = bridge.sneaking.get(player.getUuid());
+        if (previous != null && previous == sneakingNow) return;
         PredictionPayloads.InputKind kind = sneakingNow ? PredictionPayloads.InputKind.SNEAK_START : PredictionPayloads.InputKind.SNEAK_STOP;
-        if (bridge != null && !bridge.consumePredictedVanilla(player.getUuid(), kind)
-                && !PredictionServer.shouldSuppressVanillaInput(player, kind)) {
+        PredictionServer.handleVanillaInput(player, kind, () -> {
             bridge.onSneakPacket(player, sneakingNow);
-        }
+            return false;
+        });
     }
 
     public static void onDropItem(ServerPlayerEntity nativePlayer) {
@@ -184,15 +180,6 @@ public class FabricGameplayBridge {
         return true;
     }
 
-    public boolean applyPredictedSlot(ServerPlayerEntity nativePlayer, int selectedSlot) {
-        if (selectedSlot < 0 || selectedSlot > 8) return false;
-        final boolean[] accepted = {false};
-        FabricMC.withSelectedSlotPacketSuppressed(nativePlayer, () -> accepted[0] = onSelectedSlot(nativePlayer, selectedSlot));
-        if (!accepted[0]) return false;
-        nativePlayer.getInventory().setSelectedSlot(selectedSlot);
-        return true;
-    }
-
     private void join(ServerPlayerEntity nativePlayer) {
         Player player = FabricMC.player(nativePlayer);
         sneaking.put(nativePlayer.getUuid(), nativePlayer.isSneaking());
@@ -204,73 +191,8 @@ public class FabricGameplayBridge {
         CommonPlayerListenerCore.handleQuit(player);
         sneaking.remove(nativePlayer.getUuid());
         rightClickBlockUntilTick.remove(nativePlayer.getUuid());
-        leftClickUntilTick.remove(nativePlayer.getUuid());
         droppedItem.remove(nativePlayer.getUuid());
-        predictedVanillaUntil.remove(nativePlayer.getUuid());
         FabricMC.clearPlayerState(nativePlayer);
-    }
-
-    /** Dispatches an early custom input and marks the following vanilla packet as a duplicate. */
-    public boolean handlePredictedInput(ServerPlayerEntity nativePlayer, PredictionPayloads.InputKind kind) {
-        Player player = FabricMC.player(nativePlayer);
-        boolean dispatched = switch (kind) {
-            case LEFT_CLICK -> {
-                if (!beginLeftClick(nativePlayer.getUuid())) yield false;
-                CommonInputHandler.handleSwing(player, rightClickBlockUntilTick.keySet(), droppedItem);
-                yield true;
-            }
-            case RIGHT_CLICK -> {
-                CommonInputHandler.handleRightClick(player, ClickType.RIGHT_CLICK);
-                yield true;
-            }
-            case RIGHT_CLICK_BLOCK -> {
-                CommonInputHandler.handleRightClick(player, ClickType.RIGHT_CLICK_BLOCK);
-                yield true;
-            }
-            case RIGHT_CLICK_ENTITY -> {
-                CommonInputHandler.handleRightClickEntity(player);
-                yield true;
-            }
-            case SNEAK_START -> {
-                onSneakPacket(nativePlayer, true);
-                yield true;
-            }
-            case SNEAK_STOP -> {
-                onSneakPacket(nativePlayer, false);
-                yield true;
-            }
-        };
-        if (dispatched) {
-            predictedVanillaUntil.computeIfAbsent(nativePlayer.getUuid(), ignored -> new EnumMap<>(PredictionPayloads.InputKind.class))
-                    .put(kind, new PredictedVanillaEcho(inputTick + 4, vanillaEchoBudget(kind)));
-            debug("predicted-dispatch player=" + nativePlayer.getName().getString() + " kind=" + kind + " tick=" + inputTick);
-        }
-        return dispatched;
-    }
-
-    public void suppressPredictedVanillaInput(ServerPlayerEntity nativePlayer, PredictionPayloads.InputKind kind) {
-        predictedVanillaUntil.computeIfAbsent(nativePlayer.getUuid(), ignored -> new EnumMap<>(PredictionPayloads.InputKind.class))
-                .put(kind, new PredictedVanillaEcho(inputTick + 4, vanillaEchoBudget(kind)));
-        debug("predicted-vanilla-suppressed-without-dispatch player=" + nativePlayer.getName().getString()
-                + " kind=" + kind + " tick=" + inputTick);
-    }
-
-    private boolean consumePredictedVanilla(UUID uuid, PredictionPayloads.InputKind kind) {
-        Map<PredictionPayloads.InputKind, PredictedVanillaEcho> pending = predictedVanillaUntil.get(uuid);
-        if (pending == null) return false;
-        PredictedVanillaEcho echo = pending.get(kind);
-        if (echo == null || echo.expiresAt < inputTick || echo.remaining <= 0) return false;
-        echo.remaining--;
-        if (echo.remaining <= 0) pending.remove(kind);
-        if (pending.isEmpty()) predictedVanillaUntil.remove(uuid);
-        debug("predicted-vanilla-consumed uuid=" + uuid + " kind=" + kind + " tick=" + inputTick);
-        return true;
-    }
-
-    private boolean consumeAnyPredictedRightClick(UUID uuid) {
-        return consumePredictedVanilla(uuid, PredictionPayloads.InputKind.RIGHT_CLICK)
-                || consumePredictedVanilla(uuid, PredictionPayloads.InputKind.RIGHT_CLICK_BLOCK)
-                || consumePredictedVanilla(uuid, PredictionPayloads.InputKind.RIGHT_CLICK_ENTITY);
     }
 
     private boolean onRightClick(ServerPlayerEntity nativePlayer, ClickType type) {
@@ -297,45 +219,17 @@ public class FabricGameplayBridge {
 
     protected void onSneak(ServerPlayerEntity nativePlayer, boolean wasSneaking) {
         Player player = FabricMC.player(nativePlayer);
-        if (droppedItem.remove(nativePlayer.getUuid())) return;
         CommonInputHandler.handleSneak(player, wasSneaking);
     }
 
     protected boolean onSwing(ServerPlayerEntity nativePlayer) {
         Player player = FabricMC.player(nativePlayer);
         if (rightClickBlockUntilTick.getOrDefault(nativePlayer.getUuid(), -1L) >= inputTick) return false;
-        if (!beginLeftClick(nativePlayer.getUuid())) return false;
         return CommonInputHandler.handleSwing(player, rightClickBlockUntilTick.keySet(), droppedItem).cancelEvent();
-    }
-
-    private boolean beginLeftClick(UUID uuid) {
-        if (leftClickUntilTick.getOrDefault(uuid, -1L) >= inputTick) {
-            debug("left-click-deduped uuid=" + uuid + " tick=" + inputTick);
-            return false;
-        }
-        leftClickUntilTick.put(uuid, inputTick + 1);
-        return true;
     }
 
     private static void debug(String message) {
         if (DEBUG) System.out.println("[ProjectKorraPrediction] [FabricGameplay] " + message);
-    }
-
-    private static int vanillaEchoBudget(PredictionPayloads.InputKind kind) {
-        return switch (kind) {
-            case LEFT_CLICK -> 2;
-            case RIGHT_CLICK_BLOCK -> 2;
-            default -> 1;
-        };
-    }
-
-    private static final class PredictedVanillaEcho {
-        final long expiresAt;
-        int remaining;
-        private PredictedVanillaEcho(long expiresAt, int remaining) {
-            this.expiresAt = expiresAt;
-            this.remaining = remaining;
-        }
     }
 
 }

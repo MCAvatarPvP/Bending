@@ -13,9 +13,9 @@ import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.entity.Projectile;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 
 import java.util.Random;
-import java.util.concurrent.ThreadLocalRandom;
 
 public class FireShield extends FireAbility {
 
@@ -48,6 +48,7 @@ public class FireShield extends FireAbility {
     private double shieldFireTicks;
     private Location location;
     private Random random;
+    private Random gameplayRandom;
     private int increment = 20;
 
     public FireShield(final Player player) {
@@ -68,6 +69,8 @@ public class FireShield extends FireAbility {
         this.shieldRadius = getConfig().getDouble("Abilities.Fire.FireShield.Shield.Radius");
         this.shieldFireTicks = getConfig().getDouble("Abilities.Fire.FireShield.Shield.FireTicks");
         this.random = new Random();
+        this.gameplayRandom = PredictionDeterminism.random(player == null ? null : player.getUniqueId(),
+                getClass().getName() + ":block-drying");
 
         if (hasAbility(player, FireShield.class) || this.bPlayer.isOnCooldown("FireShield")) {
             return;
@@ -160,7 +163,7 @@ public class FireShield extends FireAbility {
                 }
             }
             for (final Block block : GeneralMethods.getBlocksAroundPoint(this.location, this.shieldRadius)) {
-                dryWetBlocks(block, this, ThreadLocalRandom.current().nextInt(5) == 0);
+                dryWetBlocks(block, this, this.gameplayRandom.nextInt(5) == 0);
             }
         } else {
             this.location = this.player.getEyeLocation().clone();
@@ -196,7 +199,7 @@ public class FireShield extends FireAbility {
                 }
             }
             for (final Block block : GeneralMethods.getBlocksAroundPoint(this.location, this.discRadius)) {
-                dryWetBlocks(block, this, ThreadLocalRandom.current().nextInt(5) == 0);
+                dryWetBlocks(block, this, this.gameplayRandom.nextInt(5) == 0);
             }
         }
     }

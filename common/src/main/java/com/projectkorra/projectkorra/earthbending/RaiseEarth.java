@@ -204,6 +204,16 @@ public class RaiseEarth extends EarthAbility {
         }
     }
 
+    /** Clears all coordinate indexes without invoking an Earth restore. */
+    public static void clearAllTracking() {
+        WALL_BLOCKS.clear();
+        ACTIVE_BLOCKS.clear();
+        for (final RaiseEarth raiseEarth : getAbilities(RaiseEarth.class)) {
+            raiseEarth.affectedBlocks.clear();
+            raiseEarth.wallBlocks.clear();
+        }
+    }
+
     private void setFields() {
         this.speed = getConfig().getDouble("Abilities.Earth.RaiseEarth.Speed");
         this.height = getConfig().getInt("Abilities.Earth.RaiseEarth.Column.Height");

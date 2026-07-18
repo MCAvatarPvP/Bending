@@ -12,48 +12,114 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PaperPredictionProtocolTest {
-    private static byte[] input(UUID session, int encodedFlag) {
-        return input(session, encodedFlag, 0);
-    }
-
-    private static byte[] input(UUID session, int predictedFlag, int cooldownFlag) {
-        byte[] payload = new PaperPredictionProtocol.Writer()
-                .uuid(session)
-                .varLong(42)
-                .i64(100)
-                .enumeration(PaperPredictionProtocol.InputKind.LEFT_CLICK)
-                .varInt(0)
-                .f32(10.0F)
-                .f32(5.0F)
-                .f64(1.0)
-                .f64(2.0)
-                .f64(3.0)
-                .bool(false)
-                .bool(false)
-                .bytes();
-        payload[payload.length - 2] = (byte) predictedFlag;
-        payload[payload.length - 1] = (byte) cooldownFlag;
-        return payload;
-    }
 
     @Test
-    void inputDecoderConsumesFabricLocallyPredictedFlag() {
+    void worldStateCarriesOpaqueBukkitWorldIdentity() {
         UUID session = UUID.randomUUID();
-        byte[] predicted = input(session, 1, 0);
-        byte[] declined = input(session, 0, 0);
+        UUID world = UUID.randomUUID();
+        PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(
+                PaperPredictionProtocol.worldState(session, 7L, world.toString()));
 
-        PaperPredictionProtocol.Input predictedInput = PaperPredictionProtocol.readInput(predicted);
-        PaperPredictionProtocol.Input declinedInput = PaperPredictionProtocol.readInput(declined);
-
-        assertEquals(session, predictedInput.session());
-        assertTrue(predictedInput.locallyPredicted());
-        assertFalse(declinedInput.locallyPredicted());
+        assertEquals(session, reader.uuid());
+        assertEquals(7L, reader.varLong());
+        assertEquals(world.toString(), reader.string(128));
+        reader.finished();
     }
 
     @Test
-    void inputDecoderRejectsNonBooleanPredictionFlag() {
+    void protocolIncludesExactAbilityStateOwnershipFence() {
+        assertEquals(41, PaperPredictionProtocol.VERSION);
+        assertEquals("projectkorra:ability_state_owner", PaperPredictionProtocol.ABILITY_STATE_OWNER);
+        UUID owner = UUID.randomUUID();
+        UUID target = UUID.randomUUID();
+        assertTrue(PaperPredictionProtocol.abilityStateOwner(7L, 3L, 2,
+                owner, target, "WaterSpout", true, true, 0.1F).length > 32);
+
+        PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(
+                PaperPredictionProtocol.abilityStateOwner(7L, 3L, 2,
+                        owner, target, "WaterSpout", true, true, 0.1F));
+        assertEquals(7L, reader.i64());
+        assertEquals(3L, reader.varLong());
+        assertEquals(2, reader.varInt());
+        assertEquals(owner, reader.uuid());
+        assertEquals(target, reader.uuid());
+        assertEquals("WaterSpout", reader.string(128));
+        assertTrue(reader.bool());
+        assertTrue(reader.bool());
+        assertEquals(0.1F, reader.f32());
+        reader.finished();
+    }
+
+    @Test
+    void airBlastTraceCarriesTheActualLaunchAndFirstProgressEvidence() {
+        UUID session = UUID.randomUUID();
+        AirBlastTraceSync.Trace trace = new AirBlastTraceSync.Trace(
+                3, AirBlastTraceSync.Phase.PROGRESS, 1,
+                1.25, 65.62, -8.75, 180.0F, 90.0F,
+                1.25, 64.2, -5.75, 1.25, 0.2, -5.75,
+                1.25, 64.2, -5.75, 0.0, -1.0, 0.0,
+                23.0, 11.0, 1.5, 1.2, 1.0,
+                1, 64, -5, "AIR", false);
+
+        PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(
+                PaperPredictionProtocol.airBlastTrace(session, 41L, 92L, trace));
+        assertEquals(session, reader.uuid());
+        assertEquals(41L, reader.varLong());
+        assertEquals(92L, reader.i64());
+        assertEquals(3, reader.varInt());
+        assertEquals(AirBlastTraceSync.Phase.PROGRESS,
+                reader.enumeration(AirBlastTraceSync.Phase.values()));
+        assertEquals(1, reader.varInt());
+        assertEquals(1.25, reader.f64());
+        assertEquals(65.62, reader.f64());
+        assertEquals(-8.75, reader.f64());
+        assertEquals(180.0F, reader.f32());
+        assertEquals(90.0F, reader.f32());
+        for (double expected : new double[]{
+                1.25, 64.2, -5.75, 1.25, 0.2, -5.75,
+                1.25, 64.2, -5.75, 0.0, -1.0, 0.0,
+                23.0, 11.0, 1.5, 1.2, 1.0}) {
+            assertEquals(expected, reader.f64());
+        }
+        assertEquals(1, reader.i32());
+        assertEquals(64, reader.i32());
+        assertEquals(-5, reader.i32());
+        assertEquals("AIR", reader.string(128));
+        assertFalse(reader.bool());
+        reader.finished();
+    }
+
+    @Test
+    void inputVetoDecoderCarriesOnlyNegativeNativeEventIdentity() {
+        UUID session = UUID.randomUUID();
+        byte[] payload = new PaperPredictionProtocol.Writer().uuid(session).varLong(41L)
+                .enumeration(PaperPredictionProtocol.InputKind.LEFT_CLICK)
+                .string("AirBurst", 128).bytes();
+        PaperPredictionProtocol.InputVeto veto = PaperPredictionProtocol.readInputVeto(payload);
+
+        assertEquals(session, veto.session());
+        assertEquals(41L, veto.sequence());
+        assertEquals(PaperPredictionProtocol.InputKind.LEFT_CLICK, veto.kind());
+        assertEquals("AirBurst", veto.ability());
+    }
+
+    @Test
+    void readyDecoderCarriesSupportedClientAbilityCatalog() {
+        UUID session = UUID.randomUUID();
+        byte[] payload = new PaperPredictionProtocol.Writer().uuid(session).varInt(3)
+                .string("PhaseChange", 128).string("EarthSmash", 128)
+                .string("WaterArms", 128).bytes();
+        PaperPredictionProtocol.Ready ready = PaperPredictionProtocol.readReady(payload);
+
+        assertEquals(session, ready.session());
+        assertEquals(List.of("PhaseChange", "EarthSmash", "WaterArms"), ready.supportedAbilities());
+    }
+
+    @Test
+    void readyDecoderRejectsUnboundedAbilityCatalog() {
+        byte[] payload = new PaperPredictionProtocol.Writer().uuid(UUID.randomUUID()).varInt(2_049).bytes();
         assertThrows(IllegalArgumentException.class, () ->
-                PaperPredictionProtocol.readInput(input(UUID.randomUUID(), 2)));
+                PaperPredictionProtocol.readReady(payload));
     }
 
     @Test
@@ -99,20 +165,6 @@ class PaperPredictionProtocolTest {
     }
 
     @Test
-    void cooldownTimelineBackdatesServerExpiryToLogicalInputTime() {
-        assertEquals(1_600L, PredictionCooldownTimeline.alignedExpiry(2_000L, 400L, 1_000L));
-        assertEquals(0L, PredictionCooldownTimeline.alignedExpiry(1_300L, 400L, 1_000L));
-    }
-
-    @Test
-    void cooldownGuardStillAllowsCombosAndExistingAbilityActions() {
-        assertTrue(PredictionCooldownTimeline.allowsCooldownGuardedInput(true, false, false));
-        assertTrue(PredictionCooldownTimeline.allowsCooldownGuardedInput(false, true, true));
-        assertFalse(PredictionCooldownTimeline.allowsCooldownGuardedInput(false, true, false));
-        assertFalse(PredictionCooldownTimeline.allowsCooldownGuardedInput(false, false, true));
-    }
-
-    @Test
     void activationOutcomeDistinguishesHandledCastFromComboOnlyInput() {
         AbilityActivationManager.beginTracking();
         assertFalse(AbilityActivationManager.finishTracking());
@@ -134,6 +186,43 @@ class PaperPredictionProtocolTest {
         assertEquals(owner, reader.uuid());
         assertEquals(owner, reader.uuid());
         assertEquals("AirScooter", reader.string(128));
+        reader.finished();
+    }
+
+    @Test
+    void directBlockReceiptCarriesCausalEarthWriteIdentity() {
+        UUID owner = UUID.randomUUID();
+        byte[] payload = PaperPredictionProtocol.directBlock(93, 31, 7, owner,
+                "RaiseEarth", "world", 12, 64, -8, "minecraft:stone", true);
+        PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(payload);
+        assertEquals(93L, reader.i64());
+        assertEquals(31L, reader.varLong());
+        assertEquals(7, reader.varInt());
+        assertEquals(owner, reader.uuid());
+        assertEquals("RaiseEarth", reader.string(128));
+        assertEquals("world", reader.string(256));
+        assertEquals(12, reader.i32());
+        assertEquals(64, reader.i32());
+        assertEquals(-8, reader.i32());
+        assertEquals("minecraft:stone", reader.string(PaperPredictionProtocol.MAX_BLOCK_STATE_CHARACTERS));
+        assertTrue(reader.bool());
+        reader.finished();
+    }
+
+    @Test
+    void abilityRemovalDistinguishesExternalCollisionFromNormalLifecycle() {
+        UUID owner = UUID.randomUUID();
+        PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(
+                PaperPredictionProtocol.abilityRemoved(owner, "WaterSpout",
+                        "com.projectkorra.projectkorra.waterbending.WaterSpoutWave", 47L, true,
+                        52L, 0));
+        assertEquals(owner, reader.uuid());
+        assertEquals("WaterSpout", reader.string(128));
+        assertEquals("com.projectkorra.projectkorra.waterbending.WaterSpoutWave", reader.string(256));
+        assertEquals(47L, reader.varLong());
+        assertTrue(reader.bool());
+        assertEquals(52L, reader.varLong());
+        assertEquals(0, reader.varInt());
         reader.finished();
     }
 
@@ -192,7 +281,9 @@ class PaperPredictionProtocolTest {
     void playerStateCarriesAcknowledgedInputBeforeFlightState() {
         UUID session = UUID.randomUUID();
         byte[] payload = PaperPredictionProtocol.state(session, 90, 10_000, 44,
-                Map.of(), Map.of(), List.of(), List.of(), 1.0, List.of("waterspout"));
+                Map.of(), Map.of(), List.of(), List.of(),
+                List.of("bending.ability.waterspout.wave"), 1.0, true,
+                RegionProtectionAuthority.Snapshot.empty(), List.of("waterspout"));
         PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(payload);
         assertEquals(session, reader.uuid());
         assertEquals(90L, reader.i64());
@@ -202,7 +293,17 @@ class PaperPredictionProtocolTest {
         assertEquals(0, reader.varInt());
         assertEquals(0, reader.varInt());
         assertEquals(0, reader.varInt());
+        assertEquals(1, reader.varInt());
+        assertEquals("bending.ability.waterspout.wave", reader.string(128));
         assertEquals(1.0, reader.f64());
+        assertTrue(reader.bool());
+        assertEquals("", reader.string(256));
+        assertEquals(9, reader.varInt());
+        assertEquals("", reader.string(128));
+        for (int policy = 0; policy < 8; policy++) {
+            assertEquals("@policy:" + policy, reader.string(128));
+        }
+        assertEquals(0, reader.varInt());
         assertEquals(1, reader.varInt());
         assertEquals("waterspout", reader.string(8_192));
         reader.finished();
@@ -210,12 +311,20 @@ class PaperPredictionProtocolTest {
 
     @Test
     void tempBlockReceiptCarriesStableLayerOwnerAndHiddenState() {
+        UUID session = UUID.randomUUID();
+        UUID world = UUID.randomUUID();
         UUID owner = UUID.randomUUID();
         PaperPredictionProtocol.TempBlockOp operation = new PaperPredictionProtocol.TempBlockOp(
                 PaperPredictionProtocol.TempOperation.CREATE, "world", 1, 64, 2,
-                "minecraft:stone", 12_000, 45, 7, 99, owner, "minecraft:air", true);
-        byte[] payload = PaperPredictionProtocol.tempBlocks(91, 10_000, List.of(operation));
+                "minecraft:stone", 12_000, 45, "EarthSmash", 6, 3,
+                7, 99, owner, "minecraft:air", true);
+        byte[] payload = PaperPredictionProtocol.tempBlocks(
+                session, 4L, world.toString(), false, 91, 10_000, List.of(operation));
         PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(payload);
+        assertEquals(session, reader.uuid());
+        assertEquals(4L, reader.varLong());
+        assertEquals(world.toString(), reader.string(128));
+        assertFalse(reader.bool());
         assertEquals(91L, reader.i64());
         assertEquals(10_000L, reader.i64());
         assertEquals(1, reader.varInt());
@@ -228,6 +337,9 @@ class PaperPredictionProtocolTest {
         assertEquals("minecraft:stone", reader.string(PaperPredictionProtocol.MAX_BLOCK_STATE_CHARACTERS));
         assertEquals(12_000L, reader.i64());
         assertEquals(45L, reader.varLong());
+        assertEquals("EarthSmash", reader.string(128));
+        assertEquals(6L, reader.i64());
+        assertEquals(3, reader.varInt());
         assertEquals(7L, reader.varLong());
         assertEquals(99L, reader.varLong());
         assertTrue(reader.bool());
@@ -241,15 +353,18 @@ class PaperPredictionProtocolTest {
     void boundedTempBlockPageAlwaysFitsPluginMessageLimit() {
         String maximumWorld = "界".repeat(256);
         String maximumState = "界".repeat(PaperPredictionProtocol.MAX_BLOCK_STATE_CHARACTERS);
+        String maximumAbility = "界".repeat(128);
         UUID owner = UUID.randomUUID();
-        List<PaperPredictionProtocol.TempBlockOp> page = java.util.stream.LongStream.range(0, 8)
+        List<PaperPredictionProtocol.TempBlockOp> page = java.util.stream.LongStream.range(0, 4)
                 .mapToObj(layer -> new PaperPredictionProtocol.TempBlockOp(
                         PaperPredictionProtocol.TempOperation.CREATE, maximumWorld,
                         Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, maximumState,
-                        Long.MAX_VALUE, Long.MAX_VALUE, layer, Long.MAX_VALUE, owner, maximumState, true))
+                        Long.MAX_VALUE, Long.MAX_VALUE, maximumAbility, Long.MAX_VALUE,
+                        Integer.MAX_VALUE, layer, Long.MAX_VALUE, owner, maximumState, true))
                 .toList();
 
-        assertTrue(PaperPredictionProtocol.tempBlocks(Long.MAX_VALUE, Long.MAX_VALUE, page).length
+        assertTrue(PaperPredictionProtocol.tempBlocks(UUID.randomUUID(), Long.MAX_VALUE,
+                "ç•Œ".repeat(128), true, Long.MAX_VALUE, Long.MAX_VALUE, page).length
                 <= 32_766); // Bukkit Messenger.MAX_MESSAGE_SIZE
     }
 
@@ -258,10 +373,16 @@ class PaperPredictionProtocolTest {
         String exactState = "minecraft:test_block[" + "property=value,".repeat(18) + "last=true]";
         PaperPredictionProtocol.TempBlockOp operation = new PaperPredictionProtocol.TempBlockOp(
                 PaperPredictionProtocol.TempOperation.CREATE, "world", 1, 64, 2,
-                exactState, 0L, 1L, 2L, 3L, null, exactState, true);
+                exactState, 0L, 1L, "FireBlast", 2L, 1,
+                2L, 3L, null, exactState, true);
         PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(
-                PaperPredictionProtocol.tempBlocks(1L, 2L, List.of(operation)));
+                PaperPredictionProtocol.tempBlocks(UUID.randomUUID(), 1L, "world-id", true,
+                        1L, 2L, List.of(operation)));
 
+        reader.uuid();
+        reader.varLong();
+        reader.string(128);
+        reader.bool();
         reader.i64();
         reader.i64();
         reader.varInt();
@@ -273,6 +394,9 @@ class PaperPredictionProtocolTest {
         assertEquals(exactState, reader.string(PaperPredictionProtocol.MAX_BLOCK_STATE_CHARACTERS));
         reader.i64();
         reader.varLong();
+        reader.string(128);
+        reader.i64();
+        reader.varInt();
         reader.varLong();
         reader.varLong();
         assertFalse(reader.bool());
@@ -282,37 +406,25 @@ class PaperPredictionProtocolTest {
     }
 
     @Test
-    void inputDecoderConsumesClientCooldownDecision() {
-        PaperPredictionProtocol.Input input = PaperPredictionProtocol.readInput(input(UUID.randomUUID(), 0, 1));
-        assertTrue(input.locallyBlockedByCooldown());
-        assertFalse(input.locallyPredicted());
-    }
-
-    @Test
-    void authorityHandoffDecoderRequiresExactPayload() {
+    void nativeActionReceiptMatchesFabricOrdering() {
         UUID session = UUID.randomUUID();
-        byte[] payload = new PaperPredictionProtocol.Writer().uuid(session).varLong(73).bytes();
-        PaperPredictionProtocol.Handoff handoff = PaperPredictionProtocol.readHandoff(payload);
-        assertEquals(session, handoff.session());
-        assertEquals(73L, handoff.sequence());
-        assertThrows(IllegalArgumentException.class,
-                () -> PaperPredictionProtocol.readHandoff(Arrays.copyOf(payload, payload.length - 1)));
-    }
-
-    @Test
-    void actionPrepareDecoderMatchesFabricOrdering() {
-        UUID session = UUID.randomUUID();
-        byte[] payload = new PaperPredictionProtocol.Writer()
-                .uuid(session).varLong(81).i64(120)
-                .enumeration(PaperPredictionProtocol.InputKind.LEFT_CLICK).varInt(2)
-                .f32(35.0F).f32(-12.0F).f64(1.25).f64(64.5).f64(-8.75).bytes();
-        PaperPredictionProtocol.Prepare prepare = PaperPredictionProtocol.readPrepare(payload);
-        assertEquals(session, prepare.session());
-        assertEquals(81L, prepare.sequence());
-        assertEquals(PaperPredictionProtocol.InputKind.LEFT_CLICK, prepare.kind());
-        assertEquals(2, prepare.selectedSlot());
-        assertEquals(1.25, prepare.x());
-        assertThrows(IllegalArgumentException.class,
-                () -> PaperPredictionProtocol.readPrepare(Arrays.copyOf(payload, payload.length - 1)));
+        byte[] payload = PaperPredictionProtocol.nativeAction(session, 81, 120,
+                PaperPredictionProtocol.InputKind.LEFT_CLICK, 2, "EarthSmash",
+                1.25, 64.5, -8.75, 35.0F, -12.0F, true);
+        PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(payload);
+        assertEquals(session, reader.uuid());
+        assertEquals(81L, reader.varLong());
+        assertEquals(120L, reader.i64());
+        assertEquals(PaperPredictionProtocol.InputKind.LEFT_CLICK,
+                reader.enumeration(PaperPredictionProtocol.InputKind.values()));
+        assertEquals(2, reader.varInt());
+        assertEquals("EarthSmash", reader.string(128));
+        assertEquals(1.25, reader.f64());
+        assertEquals(64.5, reader.f64());
+        assertEquals(-8.75, reader.f64());
+        assertEquals(35.0F, reader.f32());
+        assertEquals(-12.0F, reader.f32());
+        assertTrue(reader.bool());
+        reader.finished();
     }
 }

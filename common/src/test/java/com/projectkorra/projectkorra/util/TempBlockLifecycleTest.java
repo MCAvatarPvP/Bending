@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.util;
 
+import com.jedk1.jedcore.util.RegenTempBlock;
+import com.projectkorra.projectkorra.Element;
+import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.World;
@@ -8,6 +11,7 @@ import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.block.BlockState;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.prediction.TempBlockSync;
+import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -26,8 +30,31 @@ class TempBlockLifecycleTest {
 
     @AfterEach
     void cleanUp() {
+        RegenTempBlock.revertAll();
         TempBlock.removeAll();
         if (listener != null) TempBlockSync.clear(listener);
+    }
+
+    @Test
+    void regenReplacementConsumesMovingWaterBeforeTimedIceExpires() throws ReflectiveOperationException {
+        FakeBlock block = new FakeBlock(Material.STONE);
+        TempBlock movingWater = new TempBlock(block, Material.WATER);
+
+        final var replacement = RegenTempBlock.class.getDeclaredMethod("retireReplacedLayer", Block.class);
+        replacement.setAccessible(true);
+        replacement.invoke(null, block);
+        TempBlock timedIce = new TempBlock(block, Material.ICE);
+
+        assertTrue(movingWater.isReverted(),
+                "freezing a moving-water lifecycle must retire it instead of burying it");
+        assertEquals(Material.ICE, block.getType());
+        assertEquals(1, TempBlock.getAll(block).size());
+
+        timedIce.revertBlock();
+
+        assertEquals(Material.STONE, block.getType());
+        assertFalse(TempBlock.isTempBlock(block),
+                "the expired ice must not uncover a never-expiring water layer");
     }
 
     @Test
@@ -47,6 +74,101 @@ class TempBlockLifecycleTest {
         second.revertBlock();
         assertEquals(Material.STONE, block.getType());
         assertFalse(TempBlock.isTempBlock(block));
+    }
+
+    @Test
+    void overlappingCloseRevisionsDescribeTheFinalVisibleStateInEventOrder() {
+        FakeBlock block = new FakeBlock(Material.STONE);
+        List<TempBlockSync.Change> closes = new ArrayList<>();
+        TempBlockSync.Listener closeListener = change -> {
+            if (change.operation() == TempBlockSync.Operation.REVERT
+                    || change.operation() == TempBlockSync.Operation.DISCARD) {
+                closes.add(change);
+            }
+        };
+        TempBlockSync.install(closeListener);
+        try {
+            TempBlock buried = new TempBlock(block, Material.WATER);
+            TempBlock top = new TempBlock(block, Material.ICE);
+
+            top.revertBlock();
+            buried.revertBlock();
+
+            assertEquals(2, closes.size());
+            assertEquals(Material.WATER, closes.get(0).data().getMaterial());
+            assertEquals(Material.STONE, closes.get(1).data().getMaterial());
+            assertTrue(closes.get(1).revision() > closes.get(0).revision(),
+                    "the final close revision, not creation/layer id, determines the resulting client state");
+        } finally {
+            TempBlockSync.clear(closeListener);
+        }
+    }
+
+    @Test
+    void legacyCoordinateCleanupRetainsItsAllLayerBehavior() {
+        FakeBlock block = new FakeBlock(Material.STONE);
+        DummyAbility firstOwner = new DummyAbility("first");
+        DummyAbility secondOwner = new DummyAbility("second");
+        TempBlock[] layers = new TempBlock[2];
+        AbilityExecutionContext.run(firstOwner,
+                () -> layers[0] = new TempBlock(block, Material.DIRT));
+        AbilityExecutionContext.run(secondOwner,
+                () -> layers[1] = new TempBlock(block, Material.ICE));
+
+        AbilityExecutionContext.run(firstOwner,
+                () -> TempBlock.revertBlock(block, Material.AIR));
+
+        assertTrue(layers[0].isReverted());
+        assertTrue(layers[1].isReverted());
+        assertEquals(Material.STONE, block.getType());
+    }
+
+    @Test
+    void semanticIdentityIsReproducibleAcrossAbilityInstances() {
+        DummyAbility paper = new DummyAbility("PhaseChange");
+        DummyAbility fabric = new DummyAbility("PhaseChange");
+        TempBlock[] paperLayers = new TempBlock[2];
+        TempBlock[] fabricLayers = new TempBlock[2];
+
+        AbilityExecutionContext.run(paper, () -> {
+            paperLayers[0] = new TempBlock(new FakeBlock(Material.WATER), Material.ICE);
+            paperLayers[1] = new TempBlock(new FakeBlock(Material.WATER), Material.ICE);
+        });
+        AbilityExecutionContext.run(fabric, () -> {
+            fabricLayers[0] = new TempBlock(new FakeBlock(Material.WATER), Material.ICE);
+            fabricLayers[1] = new TempBlock(new FakeBlock(Material.WATER), Material.ICE);
+        });
+
+        for (int index = 0; index < 2; index++) {
+            assertEquals(paperLayers[index].getEffectAbility(), fabricLayers[index].getEffectAbility());
+            assertEquals(paperLayers[index].getEffectStep(), fabricLayers[index].getEffectStep());
+            assertEquals(paperLayers[index].getEffectOrdinal(), fabricLayers[index].getEffectOrdinal());
+        }
+        assertEquals(1, paperLayers[0].getEffectOrdinal());
+        assertEquals(2, paperLayers[1].getEffectOrdinal());
+
+        paperLayers[0].setType(Material.PACKED_ICE);
+        assertEquals(1, paperLayers[0].getEffectOrdinal(),
+                "updates must retain the CREATE identity used to close the layer");
+    }
+
+    @Test
+    void exactDiscardNeverRemovesOrRepaintsAnOverlappingLayer() {
+        FakeBlock block = new FakeBlock(Material.STONE);
+        TempBlock buried = new TempBlock(block, Material.DIRT);
+        TempBlock top = new TempBlock(block, Material.ICE);
+        AtomicBoolean callback = new AtomicBoolean();
+        buried.setRevertTask(() -> callback.set(true));
+
+        buried.discard();
+
+        assertTrue(buried.isReverted());
+        assertFalse(top.isReverted());
+        assertFalse(callback.get());
+        assertEquals(Material.ICE, block.getType());
+        assertEquals(top, TempBlock.get(block));
+        top.revertBlock();
+        assertEquals(Material.STONE, block.getType());
     }
 
     @Test
@@ -76,6 +198,45 @@ class TempBlockLifecycleTest {
         TempBlock.removeBlock(block);
 
         assertEquals(Material.GOLD_BLOCK, block.getType());
+        assertFalse(TempBlock.isTempBlock(block));
+    }
+
+    @Test
+    void externalWriteHandoffPublishesBeforeTheReplacementWithoutRollback() {
+        FakeBlock block = new FakeBlock(Material.STONE);
+        listener = new RecordingListener();
+        TempBlockSync.install(listener);
+        TempBlock layer = new TempBlock(block, Material.ICE);
+        AtomicBoolean callback = new AtomicBoolean();
+        layer.setRevertTask(() -> callback.set(true));
+        listener.events.clear();
+
+        TempBlock.removeBlockBeforeWrite(block, Material.GOLD_BLOCK.createBlockData());
+
+        assertEquals(Material.ICE, block.getType(),
+                "handoff must not restore a captured snapshot before the ordinary write");
+        assertFalse(TempBlock.isTempBlock(block));
+        assertTrue(callback.get());
+        assertEquals(List.of("before:" + layer.getRevision()), listener.events,
+                "the semantic close must be flushed before the adapter emits vanilla authority");
+        block.externalSet(Material.GOLD_BLOCK);
+        assertEquals(Material.GOLD_BLOCK, block.getType());
+    }
+
+    @Test
+    void externalWriteHandoffCarriesOneBaseUnderEveryOverlappingLayer() {
+        FakeBlock block = new FakeBlock(Material.STONE);
+        listener = new RecordingListener();
+        TempBlockSync.install(listener);
+        new TempBlock(block, Material.WATER);
+        new TempBlock(block, Material.ICE);
+        listener.events.clear();
+        listener.underlays.clear();
+
+        TempBlock.removeBlockBeforeWrite(block, Material.AIR.createBlockData());
+
+        assertEquals(List.of(Material.STONE, Material.STONE), listener.underlays,
+                "discarding a stack must never expose a newer layer's intermediate creation snapshot");
         assertFalse(TempBlock.isTempBlock(block));
     }
 
@@ -202,10 +363,12 @@ class TempBlockLifecycleTest {
 
     private final class RecordingListener implements TempBlockSync.Listener {
         private final List<String> events = new ArrayList<>();
+        private final List<Material> underlays = new ArrayList<>();
 
         @Override
         public void beforeWorldChange(TempBlockSync.Change change) {
             events.add("before:" + change.revision());
+            underlays.add(change.underlayData().getMaterial());
         }
 
         @Override
@@ -330,5 +493,23 @@ class TempBlockLifecycleTest {
         public String getName() {
             return "temp-block-test";
         }
+    }
+
+    private static final class DummyAbility extends CoreAbility {
+        private final String name;
+
+        private DummyAbility(String name) {
+            this.name = name;
+        }
+
+        @Override public void progress() { }
+        @Override public boolean isSneakAbility() { return false; }
+        @Override public boolean isHarmlessAbility() { return true; }
+        @Override public boolean isIgniteAbility() { return false; }
+        @Override public boolean isExplosiveAbility() { return false; }
+        @Override public long getCooldown() { return 0; }
+        @Override public String getName() { return name; }
+        @Override public Element getElement() { return Element.EARTH; }
+        @Override public Location getLocation() { return null; }
     }
 }

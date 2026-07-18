@@ -82,6 +82,11 @@ public class Illumination extends FireAbility {
         return BLOCKS;
     }
 
+    /** Drops outgoing-world fake-light ownership. */
+    public static void discardAllTracking() {
+        BLOCKS.clear();
+    }
+
     /**
      * <b>Deprecated. Current Illumination uses fake Blocks, so this will always return false</b>
      * Returns whether the block provided is a torch created by Illumination

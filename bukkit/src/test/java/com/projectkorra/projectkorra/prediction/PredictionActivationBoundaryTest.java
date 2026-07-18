@@ -23,7 +23,7 @@ class PredictionActivationBoundaryTest {
     }
 
     @Test
-    void combustionAlwaysSelectsJedCoreWarmupImplementation() throws IOException {
+    void combustionAlwaysSelectsHyperionImplementationAndHandlers() throws IOException {
         String embedded = read("../common/src/main/java/com/projectkorra/projectkorra/ability/util/EmbeddedAddonBootstrap.java",
                 "common/src/main/java/com/projectkorra/projectkorra/ability/util/EmbeddedAddonBootstrap.java");
         String addons = read("../common/src/main/java/com/projectkorra/projectkorra/ability/activation/AddonAbilityActivationBootstrap.java",
@@ -31,13 +31,15 @@ class PredictionActivationBoundaryTest {
         String core = read("../common/src/main/java/com/projectkorra/projectkorra/ability/activation/CoreAbilityActivationBootstrap.java",
                 "common/src/main/java/com/projectkorra/projectkorra/ability/activation/CoreAbilityActivationBootstrap.java");
 
-        int hyperion = embedded.indexOf("tryEnable(\"Hyperion abilities\"");
         int jedCore = embedded.indexOf("tryEnable(\"JedCore abilities\"");
-        assertTrue(hyperion >= 0 && jedCore > hyperion, "JedCore must win the duplicate public ability name");
-        assertFalse(addons.contains("new me.moros.hyperion.abilities.firebending.Combustion"));
+        int hyperion = embedded.indexOf("tryEnable(\"Hyperion abilities\"");
+        assertTrue(jedCore >= 0 && hyperion > jedCore, "Hyperion must win the duplicate public ability name");
+        assertTrue(addons.contains("CoreAbility.registerPluginAbilities(Hyperion.getPlugin()"),
+                "activation reloads must restore the same duplicate-name winner");
+        assertTrue(addons.contains("new me.moros.hyperion.abilities.firebending.Combustion"));
+        assertTrue(addons.contains("Combustion.attemptExplode(context.getPlayer())"));
         assertFalse(core.contains("register(\"Combustion\""));
-        assertTrue(addons.contains("register(\"Combustion\", ClickType.SHIFT_DOWN, context -> created(new Combustion"));
-        assertTrue(addons.contains("Combustion.combust(context.getPlayer())"));
+        assertFalse(addons.contains("Combustion.combust(context.getPlayer())"));
     }
 
     @Test
@@ -51,72 +53,11 @@ class PredictionActivationBoundaryTest {
         assertTrue(discharge.contains("location = player.getEyeLocation().clone()"));
         assertTrue(discharge.contains("branches.put(nextBranchId++, location.clone())"),
                 "capturing the input origin must also seed the branch advanced by progress()");
-        assertTrue(discharge.contains("implements AddonAbility, EntityHitboxProvider"));
-        assertTrue(discharge.contains("entityHitSamples.add(l.clone())"),
-                "reaction geometry must use every transient sphere tested against entities");
-        assertTrue(discharge.contains("return entityCollisionRadius"),
-                "entity hit resolution must not substitute the ability-collision radius");
         assertTrue(discharge.contains("if (collided && authoritative)"),
                 "a stale predicted entity position must not terminate Discharge");
         assertFalse(discharge.contains("hit = CollisionDetector.checkEntityCollisions"),
                 "later samples must not overwrite an earlier collision result");
-        assertTrue(fabric.contains("PredictionDeterminism.run(input.sequence()"));
-    }
-
-    @Test
-    void everySeparatelyConfiguredJedCoreEntityHitboxFeedsReactionGeometry() throws IOException {
-        Path root = Path.of("../common/src/main/java/com/jedk1/jedcore/ability");
-        if (!Files.exists(root)) root = Path.of("common/src/main/java/com/jedk1/jedcore/ability");
-        assertTrue(Files.exists(root));
-
-        final List<String> missingProviders = new ArrayList<>();
-        try (var files = Files.walk(root)) {
-            files.filter(path -> path.toString().endsWith(".java")).forEach(path -> {
-                try {
-                    final String source = Files.readString(path);
-                    if ((source.contains("EntityCollisionRadius") || source.contains("entityCollisionRadius"))
-                            && !source.contains("EntityHitboxProvider")) {
-                        missingProviders.add(path.toString());
-                    }
-                } catch (final IOException exception) {
-                    throw new RuntimeException(exception);
-                }
-            });
-        }
-        assertTrue(missingProviders.isEmpty(),
-                "separate entity colliders must feed authoritative reaction geometry: " + missingProviders);
-
-        final String hitGeometry = read("../common/src/main/java/com/projectkorra/projectkorra/prediction/HitGeometry.java",
-                "common/src/main/java/com/projectkorra/projectkorra/prediction/HitGeometry.java");
-        final String waterGimbal = read("../common/src/main/java/com/jedk1/jedcore/ability/waterbending/combo/WaterGimbal.java",
-                "common/src/main/java/com/jedk1/jedcore/ability/waterbending/combo/WaterGimbal.java");
-        final String combustion = read("../common/src/main/java/com/jedk1/jedcore/ability/firebending/Combustion.java",
-                "common/src/main/java/com/jedk1/jedcore/ability/firebending/Combustion.java");
-        assertTrue(hitGeometry.contains("entityHitbox.getEntityHitLocations()")
-                && hitGeometry.contains("entityHitbox.getEntityHitRadius()"));
-        assertTrue(waterGimbal.contains("blast.getAbility() == this"),
-                "WaterGimbal must expose the child streams that actually attribute its damage");
-        assertTrue(combustion.contains("entityHitRadius = Math.max(0D, size)"),
-                "Combustion must retain its transient explosion radius for reaction resolution");
-    }
-
-    @Test
-    void comboStreamDamageUsesEveryActiveStreamLocation() throws IOException {
-        final String fireKick = read("../common/src/main/java/com/projectkorra/projectkorra/firebending/combo/FireKick.java",
-                "common/src/main/java/com/projectkorra/projectkorra/firebending/combo/FireKick.java");
-        final String fireSpin = read("../common/src/main/java/com/projectkorra/projectkorra/firebending/combo/FireSpin.java",
-                "common/src/main/java/com/projectkorra/projectkorra/firebending/combo/FireSpin.java");
-        final String jetBlaze = read("../common/src/main/java/com/projectkorra/projectkorra/firebending/combo/JetBlaze.java",
-                "common/src/main/java/com/projectkorra/projectkorra/firebending/combo/JetBlaze.java");
-
-        assertTrue(fireKick.contains("public List<Location> getLocations()")
-                && fireKick.contains("locations.add(stream.getLocation())"));
-        assertTrue(fireSpin.contains("public List<Location> getLocations()")
-                && fireSpin.contains("locations.add(stream.getLocation())"));
-        assertTrue(jetBlaze.contains("implements ComboAbility, EntityHitboxProvider")
-                && jetBlaze.contains("locations.add(task.getLocation().clone())"));
-        assertTrue(jetBlaze.contains("return 2D"),
-                "JetBlaze reaction geometry must use its stream's configured entity radius");
+        assertTrue(fabric.contains("PredictionDeterminism.run(sequence"));
     }
 
     @Test
@@ -162,6 +103,8 @@ class PredictionActivationBoundaryTest {
                 "common/src/main/java/com/projectkorra/projectkorra/ability/CoreAbility.java");
         final String execution = read("../common/src/main/java/com/projectkorra/projectkorra/prediction/AbilityExecutionContext.java",
                 "common/src/main/java/com/projectkorra/projectkorra/prediction/AbilityExecutionContext.java");
+        final String contacts = read("../common/src/main/java/com/projectkorra/projectkorra/prediction/PredictedContactSync.java",
+                "common/src/main/java/com/projectkorra/projectkorra/prediction/PredictedContactSync.java");
         final String fabricEntities = read("../fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricPredictionMC.java",
                 "fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricPredictionMC.java");
         final String runtime = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
@@ -170,27 +113,52 @@ class PredictionActivationBoundaryTest {
                 "bukkit/src/main/java/com/projectkorra/projectkorra/platform/bukkit/BukkitMC.java");
         final String fabricPlatform = read("../fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricMC.java",
                 "fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricMC.java");
+        final String predictionClient = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/PredictionClient.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/PredictionClient.java");
+        final String fabricServer = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java");
+        final String payloads = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionPayloads.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionPayloads.java");
+        final String paperServer = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
+        final String paperProtocol = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionProtocol.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionProtocol.java");
 
         assertTrue(damage.indexOf("PredictedContactSync.mark(ability, entity)")
-                        < damage.indexOf("HitResolutionSync.defer(HitResolutionSync.Effect.DAMAGE"),
+                        < damage.indexOf("damageEntityNow(entity, source, damage"),
                 "remote contact ownership must be established before damage processing");
         assertTrue(velocity.indexOf("PredictedContactSync.mark(ability, entity)")
                         < velocity.indexOf("new AbilityVelocityAffectEntityEvent"),
                 "remote contact ownership must be established before velocity processing");
-        assertTrue(ability.contains("if (PredictedContactSync.suppressRemoval(this))"));
-        assertTrue(execution.contains("catch (final PredictedContactSync.Abort ignored)"),
-                "ability-specific code after a stale remote contact must not run");
+        assertFalse(ability.contains("PredictedContactSync.suppressRemoval"),
+                "remote contacts must not make locally terminal abilities immortal");
+        assertFalse(execution.contains("PredictedContactSync.Abort") || contacts.contains("throw Abort"),
+                "suppressing remote state must not abandon the rest of an ability's visual/world pass");
+        assertFalse(contacts.contains("interface Listener") || contacts.contains("onPredictedContact"),
+                "the client contact boundary must have no network-authority callback");
+        assertFalse(predictionClient.contains("sendExactHitClaim") || predictionClient.contains("PendingHitClaim"),
+                "the exact client must not queue or transmit hit registration");
+        assertFalse(payloads.contains("record HitClaim") || payloads.contains("id(\"hit_claim\")"),
+                "the Fabric wire protocol must not expose a client hit payload");
+        assertFalse(fabricServer.contains("onHitClaim") || fabricServer.contains("augmentNearbyPlayers"),
+                "the Fabric server must register hits only from its native ability queries");
+        assertFalse(paperProtocol.contains("projectkorra:hit_claim")
+                        || paperServer.contains("onHit(") || paperServer.contains("augmentNearbyPlayers"),
+                "Paper must not advertise, accept, or inject client-selected hit targets");
         assertTrue(fabricEntities.contains("private boolean suppressRemoteMutation()")
                 && fabricEntities.contains("!ExactPredictionRuntime.isPredictedOwned(value)"),
                 "direct addon mutations must be blocked without affecting locally spawned ability entities");
-        assertTrue(runtime.contains("PredictedContactSync.forceRemoval(authoritativeSelection"),
-                "server reconciliation must always be able to end a guarded ability");
-        assertTrue(paperPlatform.contains("HitResolutionSync.Effect.STATUS")
-                && fabricPlatform.contains("HitResolutionSync.Effect.STATUS"),
-                "direct fire/potion state from every bundled move must share the hit decision");
+        assertTrue(runtime.contains("forceRemoveAbility(selected)"),
+                "a genuinely unpredicted server removal must still close its matching local instance");
+        assertFalse(runtime.contains("forcingPersistentRemoval")
+                        || ability.contains("AbilityLifecycleSync.deferRemoval"),
+                "accepted client lifecycles must not be kept half alive by delayed Paper presence");
+        assertFalse(paperPlatform.contains("HitResolutionSync")
+                || fabricPlatform.contains("HitResolutionSync"),
+                "status effects must commit immediately without reaction hit registration");
         assertTrue(paperPlatform.contains("VelocitySync.applyDirect(AbilityExecutionContext.current(), this")
                 && fabricPlatform.contains("VelocitySync.applyDirect(AbilityExecutionContext.current(), this"),
-                "legacy/addon direct knockback must share the reaction decision on both servers");
+                "legacy/addon direct knockback must retain ownership receipts on both servers");
     }
 
     @Test
@@ -219,22 +187,26 @@ class PredictionActivationBoundaryTest {
             });
         }
         assertTrue(bypasses.isEmpty(),
-                "direct entity damage bypasses reaction and prediction ownership: " + bypasses);
+                "direct entity damage bypasses prediction ownership: " + bypasses);
     }
 
     @Test
-    void serverNativeAttackersUseTheReactionWindowWithoutAPredictionAction() throws IOException {
+    void reactionHitRegistrationIsCompletelyAbsent() throws IOException {
         String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
                 "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
         String fabric = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java",
                 "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java");
+        String damage = read("../common/src/main/java/com/projectkorra/projectkorra/util/DamageHandler.java",
+                "common/src/main/java/com/projectkorra/projectkorra/util/DamageHandler.java");
+        String velocity = read("../common/src/main/java/com/projectkorra/projectkorra/GeneralMethods.java",
+                "common/src/main/java/com/projectkorra/projectkorra/GeneralMethods.java");
+        String config = read("../common/src/main/java/com/projectkorra/projectkorra/configuration/ConfigManager.java",
+                "common/src/main/java/com/projectkorra/projectkorra/configuration/ConfigManager.java");
 
-        assertFalse(paper.contains("if (action == null) return false"));
-        assertFalse(fabric.contains("if (action == null) return false"));
-        assertTrue(paper.contains("pendingNativeReactions")
-                && paper.contains("target.getBoundingBox().getCenter()"));
-        assertTrue(fabric.contains("pendingNativeReactions")
-                && fabric.contains("target.getBoundingBox().getCenter()"));
+        assertFalse(paper.contains("HitResolutionSync") || paper.contains("pendingNativeReactions"));
+        assertFalse(fabric.contains("HitResolutionSync") || fabric.contains("pendingNativeReactions"));
+        assertFalse(damage.contains("HitResolutionSync") || velocity.contains("HitResolutionSync"));
+        assertFalse(config.contains("Properties.Prediction.Reaction"));
     }
 
     @Test
@@ -251,23 +223,44 @@ class PredictionActivationBoundaryTest {
         assertTrue(commonInput.contains("AbilityActivationManager.markHandled(blast)"));
         assertTrue(paper.contains("Action action = abilityCreationActions.get(ability)"));
         assertTrue(fabric.contains("Action action = abilityCreationActions.get(ability)"));
-        assertTrue(client.contains("abilityCreationActions.get(ability), removed.actionSequence()"));
-        assertTrue(client.contains("accepted self-owned velocity without retained mutation"));
+        assertTrue(client.contains("Objects.equals(abilityCreationActions.get(ability), localCreationSequence)"),
+                "Paper removals must resolve through the correlated local creation identity");
+        assertFalse(client.contains("abilityCreationActions.get(ability), removed.actionSequence()"),
+                "raw Paper and Fabric ordinals are not directly comparable");
+        assertTrue(client.contains("!removed.externallyCaused()"),
+                "collision/other-ability removals must override retained local lifecycle prediction");
+        assertTrue(client.contains("allowed self-owned velocity without retained mutation"),
+                "a receipt cannot suppress AirBlast unless the exact local action+ordinal impulse exists");
     }
 
     @Test
-    void ropeDartConfirmsContactOnceBeforeApplyingItsSustainedPull() throws IOException {
+    void sameNamedAbilityImplementationsCannotRemoveEachOther() throws IOException {
+        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
+        String fabric = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java");
+        String payloads = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionPayloads.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionPayloads.java");
+        String client = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
+
+        assertTrue(paper.contains("AbilityRemovalSync.typeId(ability)"));
+        assertTrue(fabric.contains("AbilityRemovalSync.typeId(ability)"));
+        assertTrue(payloads.contains("String abilityType, long actionSequence"));
+        assertTrue(client.contains("AbilityRemovalSync.isType(ability, removed.abilityType())"),
+                "WaterSpoutWave and WaterSpout share a display name and input but require distinct lifecycles");
+    }
+
+    @Test
+    void ropeDartAppliesItsAuthoritativePullImmediately() throws IOException {
         String ropeDart = read("../common/src/main/java/me/literka/abilities/RopeDart.java",
                 "common/src/main/java/me/literka/abilities/RopeDart.java");
         String generalMethods = read("../common/src/main/java/com/projectkorra/projectkorra/GeneralMethods.java",
                 "common/src/main/java/com/projectkorra/projectkorra/GeneralMethods.java");
 
-        assertTrue(ropeDart.contains("HitResolutionSync.defer(HitResolutionSync.Effect.VELOCITY, this, target, confirm)"),
-                "the hooked defender, rather than the velocity recipient, owns the reaction decision");
-        assertTrue(ropeDart.contains("if (pullResolutionRequested) return;"),
-                "continuous pull ticks must not create independent reaction windows");
-        assertTrue(ropeDart.contains("GeneralMethods.setVelocityAfterConfirmedHit"));
-        assertTrue(generalMethods.contains("if (hitConfirmed || !HitResolutionSync.defer"));
+        assertTrue(ropeDart.contains("GeneralMethods.setVelocity(this"));
+        assertFalse(ropeDart.contains("setVelocityAfterConfirmedHit"));
+        assertFalse(ropeDart.contains("HitResolutionSync") || generalMethods.contains("HitResolutionSync"));
     }
 
     private static String read(String moduleRelative, String rootRelative) throws IOException {

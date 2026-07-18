@@ -149,6 +149,17 @@ public class RegionProtection {
         return checkAll(player, player.getLocation(), ability);
     }
 
+    /** Main-thread query used to build bounded prediction snapshots without polluting the gameplay cache. */
+    public static boolean isRegionProtectedUncached(@NotNull Player player, @Nullable Location location,
+                                                      @Nullable CoreAbility ability) {
+        return isRegionProtectedCached(player, location, ability);
+    }
+
+    /** Invalidates cached decisions after an authoritative client snapshot changes. */
+    public static void clearCache(@Nullable Player player) {
+        if (player != null && player.getName() != null) BLOCK_CACHE.remove(player.getName());
+    }
+
     private static boolean checkAll(Player player, Location location, CoreAbility ability) {
         for (RegionProtectionHook protection : RegionProtection.getActiveProtections().values()) {
             try {

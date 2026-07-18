@@ -17,6 +17,7 @@ import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.entity.FallingBlock;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.prediction.EntityHitboxProvider;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.DamageHandler;
@@ -33,7 +34,7 @@ import static java.util.stream.Collectors.toList;
 
 public class EarthKick extends EarthAbility implements AddonAbility, EntityHitboxProvider {
     private final List<TempFallingBlock> temps = new ArrayList<>();
-    private final Random rand = new Random();
+    private final Random rand;
     private BlockData materialData;
     private Location location;
     @Attribute(Attribute.COOLDOWN)
@@ -48,6 +49,7 @@ public class EarthKick extends EarthAbility implements AddonAbility, EntityHitbo
 
     public EarthKick(Player player) {
         super(player);
+        this.rand = PredictionDeterminism.random(player == null ? null : player.getUniqueId(), getClass().getName());
 
         if (bPlayer == null) return;
         if (!bPlayer.canBend(this)) {

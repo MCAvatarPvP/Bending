@@ -72,8 +72,8 @@ public final class TempBlockSync {
     /**
      * Marks a physical world write as belonging to a TempBlock lifecycle. The
      * predicting Fabric adapter uses this boundary to write directly to its
-     * client TempBlock layer instead of enrolling the change in the generic
-     * authoritative rollback ledger.
+     * client TempBlock layer instead of treating it as an ordinary simulated
+     * permanent/direct world edit.
      */
     public static void runWorldMutation(final Operation operation, final TempBlock layer,
                                         final BlockData effectiveData, final Runnable mutation) {
@@ -93,6 +93,26 @@ public final class TempBlockSync {
         return WORLD_MUTATION.get();
     }
 
+    /**
+     * Whether the prediction transport currently exposes a server TempBlock
+     * at this coordinate without a corresponding common TempBlock handle.
+     * Paper normally answers through {@link TempBlock}; this bridge exists for
+     * remote layers observed by a predicting Fabric client.
+     */
+    public static boolean hasAuthoritativeLayer(final Block block) {
+        final Listener current = listener;
+        return current != null && block != null && current.hasAuthoritativeLayer(block);
+    }
+
+    /** True when the visible authoritative layer belongs to the named ability. */
+    public static boolean hasAuthoritativeEffect(final Block block, final String ability) {
+        if (ability == null || ability.isBlank()) return false;
+        final Listener current = listener;
+        if (current == null || block == null) return false;
+        final String visible = current.authoritativeEffectAbility(block);
+        return visible != null && visible.equalsIgnoreCase(ability);
+    }
+
     private static Change change(final Operation operation, final TempBlock layer,
                                  final BlockData effectiveData, final boolean packetExpected) {
         final UUID ownerId = layer.getOwnerId().orElse(null);
@@ -104,8 +124,10 @@ public final class TempBlockSync {
             ownerViews.put(ownerId, ownerVisible == null ? effectiveData.clone() : ownerVisible.clone());
         }
         return new Change(operation, layer.getBlock(), effectiveData.clone(),
+                layer.getState().getBlockData().clone(),
                 layer.getRevertTime(), layer.getAbility().orElse(null), layer.getLayerId(),
-                layer.getRevision(), ownerId,
+                layer.getRevision(), ownerId, layer.getEffectAbility(),
+                layer.getEffectStep(), layer.getEffectOrdinal(),
                 ownerVisible == null ? effectiveData.clone() : ownerVisible.clone(),
                 Map.copyOf(ownerViews), packetExpected);
     }
@@ -136,9 +158,10 @@ public final class TempBlockSync {
 
     public enum Operation {CREATE, UPDATE_EXPIRY, REVERT, DISCARD}
 
-    public record Change(Operation operation, Block block, BlockData data,
+    public record Change(Operation operation, Block block, BlockData data, BlockData underlayData,
                          long revertAtMillis, CoreAbility ability, long layerId,
-                         long revision, UUID ownerId, BlockData ownerVisibleData,
+                         long revision, UUID ownerId, String effectAbility,
+                         long effectStep, int effectOrdinal, BlockData ownerVisibleData,
                          Map<UUID, BlockData> ownerViews, boolean packetExpected) {
     }
 
@@ -150,6 +173,14 @@ public final class TempBlockSync {
         void onChange(Change change);
 
         default void beforeWorldChange(final Change change) {
+        }
+
+        default boolean hasAuthoritativeLayer(final Block block) {
+            return false;
+        }
+
+        default String authoritativeEffectAbility(final Block block) {
+            return "";
         }
     }
 }

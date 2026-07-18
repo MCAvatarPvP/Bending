@@ -58,6 +58,11 @@ public class IceWave extends IceAbility implements ComboAbility {
         }
     }
 
+    /** Drops frozen-sphere ownership after a complete world/runtime shutdown. */
+    public static void discardAllTracking() {
+        FROZEN_BLOCKS.clear();
+    }
+
     @Override
     public String getName() {
         return "IceWave";

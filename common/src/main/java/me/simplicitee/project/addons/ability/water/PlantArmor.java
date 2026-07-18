@@ -22,6 +22,7 @@ import com.projectkorra.projectkorra.platform.mc.inventory.meta.LeatherArmorMeta
 import com.projectkorra.projectkorra.platform.mc.potion.PotionEffect;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionEffectType;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.util.*;
 import me.simplicitee.project.addons.ProjectAddons;
 import me.simplicitee.project.addons.Util;
@@ -110,9 +111,12 @@ public class PlantArmor extends PlantAbility implements AddonAbility, MultiAbili
     // regenerate variables
     @Attribute("Regenerate_Amount")
     private int regen;
+    private final Random gameplayRandom;
 
     public PlantArmor(Player player, ClickType type) {
         super(player);
+        this.gameplayRandom = PredictionDeterminism.random(player == null ? null : player.getUniqueId(),
+                getClass().getName() + ":plant-source");
 
         if (!bPlayer.canBendIgnoreBinds(this)) {
             return;
@@ -664,7 +668,7 @@ public class PlantArmor extends PlantAbility implements AddonAbility, MultiAbili
             return null;
         }
 
-        return blocks.get(new Random().nextInt(blocks.size()));
+        return blocks.get(this.gameplayRandom.nextInt(blocks.size()));
     }
 
     @Override

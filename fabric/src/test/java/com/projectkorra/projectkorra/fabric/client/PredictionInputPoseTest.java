@@ -3,6 +3,8 @@ package com.projectkorra.projectkorra.fabric.client;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PredictionInputPoseTest {
     @Test
@@ -21,5 +23,13 @@ class PredictionInputPoseTest {
                 new PredictionClient.ServerPose(1, 64, 2, 120, 40, 1.62);
 
         assertSame(latestLocal, PredictionClient.poseForInput(null, latestLocal));
+    }
+
+    @Test
+    void sneakCallbackSeesPaperOldStateThenProgressSeesNewState() {
+        assertFalse(PredictionClient.serverVisibleSneaking(null));
+        PredictionClient.withInputSneaking(true,
+                () -> assertTrue(PredictionClient.serverVisibleSneaking(null)));
+        assertFalse(PredictionClient.serverVisibleSneaking(null));
     }
 }

@@ -4,12 +4,6 @@ import com.projectkorra.projectkorra.ability.Ability;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
-import java.util.WeakHashMap;
-
 /**
  * Loader-neutral observation point for ability-owned velocity writes.  The
  * velocity itself remains server authoritative and is still sent by vanilla;
@@ -17,11 +11,8 @@ import java.util.WeakHashMap;
  * mistaking unrelated knockback for it.
  */
 public final class VelocitySync {
-    private static final long DIRECT_CONTACT_CONTINUITY_MILLIS = 150L;
     private static volatile Listener listener;
     private static final ThreadLocal<Integer> COMMIT_DEPTH = ThreadLocal.withInitial(() -> 0);
-    private static final Map<Ability, Map<UUID, Long>> CONFIRMED_DIRECT_CONTACTS =
-            Collections.synchronizedMap(new WeakHashMap<>());
 
     private VelocitySync() {
     }
@@ -33,7 +24,6 @@ public final class VelocitySync {
     public static void clear(final Listener expected) {
         if (listener == expected) {
             listener = null;
-            CONFIRMED_DIRECT_CONTACTS.clear();
             COMMIT_DEPTH.remove();
         }
     }
@@ -58,37 +48,19 @@ public final class VelocitySync {
         }
     }
 
-    /**
-     * Captures legacy/addon velocity writes which bypass GeneralMethods. The
-     * first contact shares the reaction decision; sustained writes stay smooth
-     * while they continue at least once every three ticks.
-     */
+    /** Captures legacy/addon velocity writes which bypass GeneralMethods. */
     public static void applyDirect(final Ability ability, final Entity target,
                                    final Vector velocity, final Runnable write) {
         if (write == null) return;
         if (COMMIT_DEPTH.get() > 0 || ability == null || target == null || velocity == null
-                || ability.getPlayer() == null
-                || ability.getPlayer().getUniqueId().equals(target.getUniqueId())) {
+                || ability.getPlayer() == null) {
             write.run();
             return;
         }
-
-        final long now = System.currentTimeMillis();
-        final Map<UUID, Long> targets = CONFIRMED_DIRECT_CONTACTS.computeIfAbsent(
-                ability, ignored -> new HashMap<>());
-        final Long confirmedUntil = targets.get(target.getUniqueId());
-        final Runnable commit = () -> {
-            targets.put(target.getUniqueId(), System.currentTimeMillis() + DIRECT_CONTACT_CONTINUITY_MILLIS);
-            publish(ability, target, velocity);
-            commit(write);
-        };
-        if (confirmedUntil != null && confirmedUntil >= now) {
-            commit.run();
-            return;
-        }
-        if (!HitResolutionSync.defer(HitResolutionSync.Effect.VELOCITY, ability, target, commit)) {
-            commit.run();
-        }
+        // Direct addon/core writes still need an ownership receipt; otherwise
+        // the predicting caster applies its local impulse and the vanilla echo.
+        publish(ability, target, velocity);
+        commit(write);
     }
 
     @FunctionalInterface

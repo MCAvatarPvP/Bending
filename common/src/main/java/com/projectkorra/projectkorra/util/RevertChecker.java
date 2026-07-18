@@ -46,6 +46,12 @@ public class RevertChecker implements Runnable {
         }
     }
 
+    /** Drops queued old-world restores without touching either world. */
+    public static void discardAll() {
+        earthRevertQueue.clear();
+        airRevertQueue.clear();
+    }
+
     private void addToAirRevertQueue(final int i) {
         if (!airRevertQueue.containsKey(i)) {
             airRevertQueue.put(i, i);

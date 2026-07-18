@@ -600,6 +600,9 @@ public class BendingPlayer extends OfflineBendingPlayer {
      */
     @Override
     public boolean isOnCooldown(final String ability) {
+        if (CooldownSync.isInputVetoed(this.player.getUniqueId(), ability)) {
+            return true;
+        }
         if (this.cooldowns.containsKey(ability)) {
             return System.currentTimeMillis() < this.cooldowns.get(ability).getCooldown();
         }
@@ -704,6 +707,11 @@ public class BendingPlayer extends OfflineBendingPlayer {
                 Platform.events().call(event);
                 if (!event.isCancelled()) {
                     iterator.remove();
+                    // Natural expiry is a real lifecycle edge too. Prediction
+                    // endpoints need it to retire the exact cooldown generation;
+                    // otherwise a later external cooldown removal can be
+                    // mistaken for the old locally predicted one.
+                    CooldownSync.removed(this, entry.getKey());
 
                     final String abilityName = event.getAbility();
 

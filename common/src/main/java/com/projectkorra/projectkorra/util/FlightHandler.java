@@ -161,6 +161,28 @@ public class FlightHandler extends Manager {
     }
 
     /**
+     * Returns whether another bending ability still owns the player's shared
+     * flight lease. Individual abilities must consult this before temporarily
+     * clearing the vanilla flying bits; otherwise one spout can disable a
+     * simultaneously active spout, scooter, jet, or addon flight grant.
+     *
+     * @param player the player whose leases should be inspected
+     * @param identifier the calling ability's lease identifier
+     * @return true when a different identifier still owns flight
+     */
+    public boolean hasOtherInstance(final Player player, final String identifier) {
+        if (player == null) {
+            return false;
+        }
+        final Flight flight = this.INSTANCES.get(player.getUniqueId());
+        if (flight == null) {
+            return false;
+        }
+        return flight.abilities.keySet().stream()
+                .anyMatch(current -> !current.equals(identifier));
+    }
+
+    /**
      * Removes every bending-owned flight grant for a player and restores the
      * state captured before the first grant was created.
      */

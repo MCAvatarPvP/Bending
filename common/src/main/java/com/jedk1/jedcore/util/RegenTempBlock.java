@@ -54,17 +54,25 @@ public class RegenTempBlock {
         if (blocks.containsKey(block)) {
             blocks.replace(block, new RegenBlockData(System.currentTimeMillis() + delay, callback));
             if (temp) {
+                final BlockState directState = states.remove(block);
+                if (directState != null) directState.update(true);
                 refreshTempBlock(block, data);
             } else {
+                final TempBlock tracked = temps.remove(block);
+                if (tracked != null && !tracked.isReverted()) tracked.revertBlock();
+                states.putIfAbsent(block, block.getState());
                 block.setBlockData(data.clone());
             }
         } else {
             blocks.put(block, new RegenBlockData(System.currentTimeMillis() + delay, callback));
-            if (TempBlock.isTempBlock(block)) {
-                TempBlock.get(block).revertBlock();
-            }
+            // RegenTempBlock is a replacement lifecycle, not an overlapping
+            // TempBlock layer.  WaterFlow relies on this when it freezes its
+            // moving WATER: the water handle is consumed before the timed ICE
+            // handle captures the real world state.  Keeping the water buried
+            // under the ice makes it reappear after the ice expires and leaves
+            // an unowned, never-expiring water trail.
+            retireReplacedLayer(block);
             if (temp) {
-                states.put(block, block.getState());
                 createTempBlock(block, data);
             } else {
                 states.put(block, block.getState());
@@ -94,10 +102,9 @@ public class RegenTempBlock {
                     temps.remove(b);
                 }
 
-                BlockState bs = states.get(b);
+                BlockState bs = states.remove(b);
                 if (bs != null) {
                     bs.update(true);
-                    states.remove(b);
                 }
 
                 iterator.remove();
@@ -116,8 +123,8 @@ public class RegenTempBlock {
      */
     public static void revert(Block block) {
         if (blocks.containsKey(block)) {
-            if (TempBlock.isTempBlock(block) && temps.containsKey(block)) {
-                TempBlock tb = TempBlock.get(block);
+            if (temps.containsKey(block)) {
+                TempBlock tb = temps.get(block);
                 tb.revertBlock();
                 temps.remove(block);
             }
@@ -189,23 +196,23 @@ public class RegenTempBlock {
     private static void refreshTempBlock(Block block, BlockData data) {
         TempBlock trackedTemp = temps.get(block);
 
-        if (trackedTemp != null && !trackedTemp.isReverted() && TempBlock.isTempBlock(block) && TempBlock.get(block) == trackedTemp) {
+        if (trackedTemp != null && !trackedTemp.isReverted() && TempBlock.isTempBlock(block)) {
             trackedTemp.setType(data.clone());
             return;
         }
 
-        if (TempBlock.isTempBlock(block)) {
-            TempBlock.get(block).revertBlock();
-        }
-        if (!states.containsKey(block)) {
-            states.put(block, block.getState());
-        }
+        temps.remove(block);
         createTempBlock(block, data);
     }
 
     private static void createTempBlock(Block block, BlockData data) {
         TempBlock tb = new TempBlock(block, data.clone());
         temps.put(block, tb);
+    }
+
+    private static void retireReplacedLayer(final Block block) {
+        final TempBlock replaced = TempBlock.get(block);
+        if (replaced != null) replaced.revertBlock();
     }
 
     public interface RegenCallback {

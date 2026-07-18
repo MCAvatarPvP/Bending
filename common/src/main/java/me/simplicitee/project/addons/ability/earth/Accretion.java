@@ -16,6 +16,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionEffect;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionEffectType;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
 import com.projectkorra.projectkorra.util.TempBlock;
@@ -43,9 +44,12 @@ public class Accretion extends EarthAbility implements AddonAbility {
     private Map<FallingBlock, TempFallingBlock> tracker;
     private Set<TempBlock> temps;
     private boolean shot;
+    private final Random gameplayRandom;
 
     public Accretion(Player player) {
         super(player);
+        this.gameplayRandom = PredictionDeterminism.random(player == null ? null : player.getUniqueId(),
+                getClass().getName() + ":source-blocks");
 
         if (bPlayer.isOnCooldown(this)) {
             return;
@@ -78,7 +82,7 @@ public class Accretion extends EarthAbility implements AddonAbility {
         List<Location> list = GeneralMethods.getCircle(player.getLocation(), selectRange, 1, false, false, 0);
 
         for (int i = 0; i < list.size(); i++) {
-            Block b = GeneralMethods.getTopBlock(list.get(new Random().nextInt(list.size())), 2);
+            Block b = GeneralMethods.getTopBlock(list.get(this.gameplayRandom.nextInt(list.size())), 2);
 
             if (!isAir(b.getRelative(BlockFace.UP).getType())) {
                 continue;

@@ -31,6 +31,7 @@ import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.UUID;
+import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -57,6 +58,13 @@ public class TempBlock {
     private static final Map<VisibilityKey, VisibilitySnapshot> VISIBILITY = new ConcurrentHashMap<>();
     private static final AtomicLong NEXT_LAYER_ID = new AtomicLong();
     private static final AtomicLong NEXT_REVISION = new AtomicLong();
+    /**
+     * Per-ability semantic creation counters.  Layer ids are process-local,
+     * while an ability's running tick and creation order are reproduced by the
+     * common implementation on Paper and Fabric.  The weak keys ensure an
+     * ended ability cannot be retained by prediction bookkeeping.
+     */
+    private static final Map<CoreAbility, EffectCounter> EFFECT_COUNTERS = new WeakHashMap<>();
 
     /** Compatibility view containing the current top layer at each coordinate. */
     @Deprecated
@@ -64,6 +72,9 @@ public class TempBlock {
 
     private final Block block;
     private final long layerId = NEXT_LAYER_ID.incrementAndGet();
+    private final String effectAbility;
+    private final long effectStep;
+    private final int effectOrdinal;
     private final Set<TempBlock> attachedTempBlocks = new HashSet<>();
     private BlockData newData;
     private BlockState state;
@@ -110,6 +121,10 @@ public class TempBlock {
         Objects.requireNonNull(newData, "newData");
         final CoreAbility resolvedAbility = explicitAbility != null
                 ? explicitAbility : AbilityExecutionContext.current();
+        final EffectIdentity effectIdentity = nextEffectIdentity(resolvedAbility);
+        this.effectAbility = effectIdentity.ability();
+        this.effectStep = effectIdentity.step();
+        this.effectOrdinal = effectIdentity.ordinal();
         this.ability = Optional.ofNullable(resolvedAbility);
         this.ownerId = ownerId(resolvedAbility);
         this.suffocate = resolvedAbility != null && !(resolvedAbility instanceof WaterAbility);
@@ -161,6 +176,18 @@ public class TempBlock {
 
     private static UUID ownerId(final CoreAbility ability) {
         return ability == null || ability.getPlayer() == null ? null : ability.getPlayer().getUniqueId();
+    }
+
+    private static EffectIdentity nextEffectIdentity(final CoreAbility ability) {
+        if (ability == null) return new EffectIdentity("", -1L, 0);
+        synchronized (MUTATION_LOCK) {
+            final long step = ability.isStarted() ? ability.getRunningTicks() : 0L;
+            final EffectCounter previous = EFFECT_COUNTERS.get(ability);
+            final int ordinal = previous != null && previous.step == step
+                    ? previous.ordinal + 1 : 1;
+            EFFECT_COUNTERS.put(ability, new EffectCounter(step, ordinal));
+            return new EffectIdentity(ability.getName(), step, ordinal);
+        }
     }
 
     public static TempBlock get(final Block block) {
@@ -255,6 +282,27 @@ public class TempBlock {
         finishLayers(removed);
     }
 
+    /**
+     * Invalidates a stack immediately before an ordinary platform block write.
+     * The closing metadata is flushed before the vanilla block packet can be
+     * emitted, while the replacement write itself remains ordinary authority.
+     * No captured TempBlock state is restored along the way.
+     */
+    public static void removeBlockBeforeWrite(final Block block, final BlockData replacementData) {
+        if (block == null) return;
+        final BlockData effectiveData = replacementData == null
+                ? block.getBlockData().clone() : replacementData.clone();
+        final List<TempBlock> removed;
+        synchronized (MUTATION_LOCK) {
+            removed = invalidateStackLocked(block, effectiveData, false);
+            for (TempBlock layer : removed) {
+                layer.advanceRevisionLocked();
+                TempBlockSync.beforeWorldChange(TempBlockSync.Operation.DISCARD, layer, effectiveData);
+            }
+        }
+        finishLayers(removed);
+    }
+
     /** Drops one coordinate without a world write or callbacks, while closing its network lifecycle. */
     public static void discardBlock(final Block block) {
         synchronized (MUTATION_LOCK) {
@@ -292,22 +340,27 @@ public class TempBlock {
     }
 
     private static void finishLayer(final TempBlock layer) {
-        if (layer.revertTask != null) {
-            try {
-                layer.revertTask.run();
-            } catch (RuntimeException failure) {
-                ProjectKorra.log.warning("TempBlock revert callback failed at " + layer.getLocation()
-                        + ": " + failure.getMessage());
+        final Runnable completion = () -> {
+            if (layer.revertTask != null) {
+                try {
+                    layer.revertTask.run();
+                } catch (RuntimeException failure) {
+                    ProjectKorra.log.warning("TempBlock revert callback failed at " + layer.getLocation()
+                            + ": " + failure.getMessage());
+                }
             }
-        }
-        for (TempBlock attached : layer.getAttachedTempBlocks()) {
-            try {
-                attached.revertBlock();
-            } catch (RuntimeException failure) {
-                ProjectKorra.log.warning("Attached TempBlock revert failed at " + attached.getLocation()
-                        + ": " + failure.getMessage());
+            for (TempBlock attached : layer.getAttachedTempBlocks()) {
+                try {
+                    attached.revertBlock();
+                } catch (RuntimeException failure) {
+                    ProjectKorra.log.warning("Attached TempBlock revert failed at " + attached.getLocation()
+                            + ": " + failure.getMessage());
+                }
             }
-        }
+        };
+        final CoreAbility owner = layer.ability.orElse(null);
+        if (owner == null) completion.run();
+        else AbilityExecutionContext.run(owner, completion);
     }
 
     private void scheduleLocked(final long duration) {
@@ -476,6 +529,18 @@ public class TempBlock {
         return this.revision;
     }
 
+    public String getEffectAbility() {
+        return this.effectAbility;
+    }
+
+    public long getEffectStep() {
+        return this.effectStep;
+    }
+
+    public int getEffectOrdinal() {
+        return this.effectOrdinal;
+    }
+
     public Optional<UUID> getOwnerId() {
         return Optional.ofNullable(this.ownerId);
     }
@@ -524,6 +589,33 @@ public class TempBlock {
 
     public void revertBlock() {
         revertBlock(true);
+    }
+
+    /**
+     * Retires only this layer without repainting its captured snapshot or
+     * invoking ability callbacks. This is a lifecycle operation for callers
+     * which intentionally abandon a layer; reconciliation never calls it to
+     * undo an already-running client prediction.
+     */
+    public void discard() {
+        synchronized (MUTATION_LOCK) {
+            if (this.reverted) return;
+            final LinkedList<TempBlock> stack = LAYERS.get(this.block);
+            if (stack == null || !stack.contains(this)) {
+                this.reverted = true;
+                unscheduleLocked(this);
+                return;
+            }
+            stack.remove(this);
+            this.reverted = true;
+            unscheduleLocked(this);
+            if (stack.isEmpty()) LAYERS.remove(this.block);
+            refreshViewsLocked(this.block);
+            final BlockData effectiveData = stack.isEmpty()
+                    ? this.state.getBlockData().clone() : stack.getLast().newData.clone();
+            advanceRevisionLocked();
+            publishLocked(TempBlockSync.Operation.DISCARD, effectiveData, false);
+        }
     }
 
     private void revertBlock(final boolean removeFromQueue) {
@@ -714,6 +806,12 @@ public class TempBlock {
     }
 
     private record VisibilitySnapshot(BlockData original, List<LayerView> layers, List<UUID> owners) {
+    }
+
+    private record EffectCounter(long step, int ordinal) {
+    }
+
+    private record EffectIdentity(String ability, long step, int ordinal) {
     }
 
     public static class TempBlockRevertTask implements Runnable {

@@ -26,4 +26,14 @@ public final class TempBlockDeliveryTracker {
     public boolean tracks(final long layerId) {
         return this.delivered.contains(layerId);
     }
+
+    /**
+     * Retires the delivery ledger when its viewer leaves the physical world.
+     * The client discards that world's complete visual ledger at the same
+     * boundary, so forwarding its later closes into another world would be both
+     * unnecessary and unsafe when the two worlds share a vanilla dimension key.
+     */
+    public void clear() {
+        this.delivered.clear();
+    }
 }

@@ -16,6 +16,8 @@ import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
+import com.projectkorra.projectkorra.prediction.TempBlockSync;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.BlockSource;
 import com.projectkorra.projectkorra.util.ClickType;
@@ -82,6 +84,9 @@ public class SurgeWave extends WaterAbility {
     private Vector targetDirection;
     private Map<Block, Block> waveBlocks;
     private Map<Block, Material> frozenBlocks;
+    private Map<Block, TempBlock> waveLayers;
+    private Map<Block, TempBlock> frozenLayers;
+    private Random random;
 
     private double decayAmount;
     private double decayMinimum;
@@ -89,6 +94,7 @@ public class SurgeWave extends WaterAbility {
 
     public SurgeWave(final Player player) {
         super(player);
+        this.random = PredictionDeterminism.random(player.getUniqueId(), getClass().getName());
 
         SurgeWave wave = getAbility(player, SurgeWave.class);
         if (wave != null) {
@@ -123,6 +129,8 @@ public class SurgeWave extends WaterAbility {
 
         this.waveBlocks = new HashMap<>();
         this.frozenBlocks = new HashMap<>();
+        this.waveLayers = new HashMap<>();
+        this.frozenLayers = new HashMap<>();
 
         if (this.prepare()) {
             wave = getAbility(player, SurgeWave.class);
@@ -140,6 +148,7 @@ public class SurgeWave extends WaterAbility {
     }
 
     public static boolean canThaw(final Block block) {
+        if (TempBlockSync.hasAuthoritativeEffect(block, "Surge")) return false;
         for (final SurgeWave surgeWave : getAbilities(SurgeWave.class)) {
             if (surgeWave.frozenBlocks.containsKey(block)) {
                 return false;
@@ -151,15 +160,11 @@ public class SurgeWave extends WaterAbility {
     public static void removeAllCleanup() {
         for (final SurgeWave surgeWave : getAbilities(SurgeWave.class)) {
             for (final Block block : new ArrayList<>(surgeWave.waveBlocks.keySet())) {
-                TempBlock.revertBlock(block, Material.AIR);
-                surgeWave.waveBlocks.remove(block);
+                surgeWave.retireWave(block);
             }
 
             for (final Block block : new ArrayList<>(surgeWave.frozenBlocks.keySet())) {
-                if (TempBlock.isTempBlock(block)) {
-                    TempBlock.get(block).revertBlock();
-                }
-                surgeWave.frozenBlocks.remove(block);
+                surgeWave.retireFrozen(block);
             }
         }
     }
@@ -176,11 +181,7 @@ public class SurgeWave extends WaterAbility {
     public static void thaw(final Block block) {
         for (final SurgeWave surgeWave : getAbilities(SurgeWave.class)) {
             if (surgeWave.frozenBlocks.containsKey(block)) {
-                if (TempBlock.isTempBlock(block)) {
-                    final TempBlock tb = TempBlock.get(block);
-                    tb.revertBlock();
-                }
-                surgeWave.frozenBlocks.remove(block);
+                surgeWave.retireFrozen(block);
             }
         }
     }
@@ -265,9 +266,9 @@ public class SurgeWave extends WaterAbility {
             final TempBlock tempBlock;
 
             if (levelled.getLevel() == 0) {
-                tempBlock = new TempBlock(relative, Material.OBSIDIAN);
+                tempBlock = new TempBlock(relative, Material.OBSIDIAN.createBlockData(), this);
             } else {
-                tempBlock = new TempBlock(relative, Material.COBBLESTONE);
+                tempBlock = new TempBlock(relative, Material.COBBLESTONE.createBlockData(), this);
             }
 
             tempBlock.setRevertTime(this.obsidianDuration);
@@ -320,8 +321,14 @@ public class SurgeWave extends WaterAbility {
             return false;
         }
 
-        new TempBlock(block, Material.WATER);
+        final TempBlock layer = new TempBlock(block, Material.WATER.createBlockData(), this);
+        this.waveLayers.put(block, layer);
         this.waveBlocks.put(block, block);
+        layer.setRevertTask(() -> {
+            if (SurgeWave.this.waveLayers.remove(block, layer)) {
+                SurgeWave.this.waveBlocks.remove(block);
+            }
+        });
         return true;
     }
 
@@ -334,9 +341,8 @@ public class SurgeWave extends WaterAbility {
 
     private void clearWave() {
         for (final Block block : new ArrayList<>(this.waveBlocks.keySet())) {
-            TempBlock.revertBlock(block, Material.AIR);
+            this.retireWave(block);
         }
-        this.waveBlocks.clear();
     }
 
     private void finalRemoveWater(final Block block) {
@@ -345,9 +351,22 @@ public class SurgeWave extends WaterAbility {
         }
 
         if (this.waveBlocks.containsKey(block)) {
-            TempBlock.revertBlock(block, Material.AIR);
-            this.waveBlocks.remove(block);
+            this.retireWave(block);
         }
+    }
+
+    private void retireWave(final Block block) {
+        if (block == null) return;
+        this.waveBlocks.remove(block);
+        final TempBlock layer = this.waveLayers.remove(block);
+        if (layer != null) layer.revertBlock();
+    }
+
+    private void retireFrozen(final Block block) {
+        if (block == null) return;
+        this.frozenBlocks.remove(block);
+        final TempBlock layer = this.frozenLayers.remove(block);
+        if (layer != null) layer.revertBlock();
     }
 
     private void focusBlock() {
@@ -442,9 +461,13 @@ public class SurgeWave extends WaterAbility {
 
                     if (this.iceRevertTime != 0) {
                         final TempBlock tblock = new TempBlock(block, getIceData(), this).setCanSuffocate(false);
-
-                        tblock.setRevertTask(() -> SurgeWave.this.frozenBlocks.remove(block));
-                        tblock.setRevertTime(this.iceRevertTime + ThreadLocalRandom.current().nextInt(1000));
+                        this.frozenLayers.put(block, tblock);
+                        tblock.setRevertTask(() -> {
+                            if (SurgeWave.this.frozenLayers.remove(block, tblock)) {
+                                SurgeWave.this.frozenBlocks.remove(block);
+                            }
+                        });
+                        tblock.setRevertTime(this.iceRevertTime + this.random.nextInt(1000));
                     }
 
                     this.frozenBlocks.put(block, oldType);
@@ -622,8 +645,9 @@ public class SurgeWave extends WaterAbility {
                     final Block block = iterator.next();
 
                     if (!blocks.contains(block)) {
-                        TempBlock.revertBlock(block, Material.AIR);
+                        final TempBlock layer = this.waveLayers.remove(block);
                         iterator.remove();
+                        if (layer != null) layer.revertBlock();
                     }
                 }
 
@@ -725,11 +749,8 @@ public class SurgeWave extends WaterAbility {
     private void thaw() {
         if (this.frozenBlocks != null) {
             for (final Block block : new ArrayList<>(this.frozenBlocks.keySet())) {
-                if (TempBlock.isTempBlock(block)) {
-                    TempBlock.get(block).revertBlock();
-                }
+                this.retireFrozen(block);
             }
-            this.frozenBlocks.clear();
         }
     }
 

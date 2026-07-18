@@ -237,6 +237,7 @@ permissions:
       bending.ability.AirSweep: true
       bending.ability.AirStream: true
       bending.ability.Twister: true
+      bending.ability.SummonSelf: true
   bending.ability.Flight:
     default: false
     description: Grants access to Flight sub-abilities.

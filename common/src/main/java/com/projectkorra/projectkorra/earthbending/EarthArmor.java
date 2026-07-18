@@ -41,6 +41,8 @@ public class EarthArmor extends EarthAbility {
     private double selectRange;
     private Block headBlock;
     private Block legsBlock;
+    private TempBlock headLayer;
+    private TempBlock legsLayer;
     private Location headBlockLocation;
     private Location legsBlockLocation;
     private boolean active;
@@ -364,12 +366,10 @@ public class EarthArmor extends EarthAbility {
     }
 
     private void formArmor() {
-        if (TempBlock.isTempBlock(this.headBlock)) {
-            TempBlock.revertBlock(this.headBlock, Material.AIR);
-        }
-        if (TempBlock.isTempBlock(this.legsBlock)) {
-            TempBlock.revertBlock(this.legsBlock, Material.AIR);
-        }
+        if (this.headLayer != null) this.headLayer.revertBlock();
+        if (this.legsLayer != null) this.legsLayer.revertBlock();
+        this.headLayer = null;
+        this.legsLayer = null;
 
         final ItemStack head = new ItemStack(Material.LEATHER_HELMET, 1);
         final ItemStack chestplate = new ItemStack(Material.LEATHER_CHESTPLATE, 1);
@@ -471,17 +471,15 @@ public class EarthArmor extends EarthAbility {
         }
 
         if (!newHeadBlock.equals(this.headBlock)) {
-            new TempBlock(newHeadBlock, this.headMaterial);
-            if (TempBlock.isTempBlock(this.headBlock)) {
-                TempBlock.revertBlock(this.headBlock, Material.AIR);
-            }
+            final TempBlock next = new TempBlock(newHeadBlock, this.headMaterial.createBlockData(), this);
+            if (this.headLayer != null) this.headLayer.revertBlock();
+            this.headLayer = next;
         }
 
         if (!newLegsBlock.equals(this.legsBlock)) {
-            new TempBlock(newLegsBlock, this.legsMaterial);
-            if (TempBlock.isTempBlock(this.legsBlock)) {
-                TempBlock.revertBlock(this.legsBlock, Material.AIR);
-            }
+            final TempBlock next = new TempBlock(newLegsBlock, this.legsMaterial.createBlockData(), this);
+            if (this.legsLayer != null) this.legsLayer.revertBlock();
+            this.legsLayer = next;
         }
         this.headBlock = newHeadBlock;
         this.legsBlock = newLegsBlock;
@@ -539,12 +537,10 @@ public class EarthArmor extends EarthAbility {
     public void remove() {
         super.remove();
         if (isEarthRevertOn()) {
-            if (TempBlock.isTempBlock(this.headBlock)) {
-                TempBlock.revertBlock(this.headBlock, Material.AIR);
-            }
-            if (TempBlock.isTempBlock(this.legsBlock)) {
-                TempBlock.revertBlock(this.legsBlock, Material.AIR);
-            }
+            if (this.headLayer != null) this.headLayer.revertBlock();
+            if (this.legsLayer != null) this.legsLayer.revertBlock();
+            this.headLayer = null;
+            this.legsLayer = null;
         } else {
             this.headBlock.breakNaturally();
             this.legsBlock.breakNaturally();

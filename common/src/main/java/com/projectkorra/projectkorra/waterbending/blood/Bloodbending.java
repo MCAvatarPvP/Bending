@@ -202,6 +202,11 @@ public class Bloodbending extends BloodAbility {
         return BLOODLESS_ENTITIES;
     }
 
+    /** Drops entity handles belonging to a world/runtime that no longer exists. */
+    public static void discardAllTracking() {
+        TARGETED_ENTITIES.clear();
+    }
+
     @Override
     public double applyModifiers(double value) {
         return canOnlyBeUsedAtNight ? value : super.applyModifiers(value);

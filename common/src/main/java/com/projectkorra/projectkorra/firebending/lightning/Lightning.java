@@ -18,13 +18,14 @@ import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.scheduler.BukkitRunnable;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.MovementHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Random;
 
 public class Lightning extends LightningAbility {
 
@@ -109,8 +110,17 @@ public class Lightning extends LightningAbility {
     private ArrayList<Location> locations;
     private LightningHit pendingHit;
     private int matchedVisualTick;
+    private final Random combatRandom;
+    private final Random waterArcRandom;
+    private final Random visualArcRandom;
+    private final Random cosmeticRandom;
+
     public Lightning(final Player player) {
         super(player);
+        this.combatRandom = PredictionDeterminism.random(player.getUniqueId(), "Lightning:combat");
+        this.waterArcRandom = PredictionDeterminism.random(player.getUniqueId(), "Lightning:water-arcs");
+        this.visualArcRandom = PredictionDeterminism.random(player.getUniqueId(), "Lightning:visual-arcs");
+        this.cosmeticRandom = PredictionDeterminism.random(player.getUniqueId(), "Lightning:cosmetic");
 
         if (!this.bPlayer.canBendIgnoreCooldowns(this)) {
             return;
@@ -204,7 +214,7 @@ public class Lightning extends LightningAbility {
         playLightningbendingHitSound(lent.getLocation());
         playLightningbendingHitSound(this.player.getLocation());
         DamageHandler.damageEntity(lent, this.damage, this);
-        if (ThreadLocalRandom.current().nextDouble() <= this.stunChance) {
+        if (this.combatRandom.nextDouble() <= this.stunChance) {
             final MovementHandler mh = new MovementHandler(lent, CoreAbility.getAbility(Lightning.class));
             mh.stopWithDuration(this.stunDuration, Element.LIGHTNING.getColor() + "* Electrocuted *");
         }
@@ -298,7 +308,7 @@ public class Lightning extends LightningAbility {
 
                     ParticleEffect.CRIT_MAGIC.display(center, 1, 0.2F, 0.2F, 0.2F);
                     emitFirebendingLight(center);
-                    if (ThreadLocalRandom.current().nextDouble() < .2) {
+                    if (this.cosmeticRandom.nextDouble() < .2) {
                         playLightningbendingChargingSound(center);
                     }
 
@@ -344,7 +354,7 @@ public class Lightning extends LightningAbility {
                 final Location localLocation2 = new Location(this.player.getWorld(), d7, newY, d8);
                 playLightningbendingParticle(localLocation2);
                 this.particleRotation += 1.0D / d3;
-                if (ThreadLocalRandom.current().nextDouble() < .2) {
+                if (this.cosmeticRandom.nextDouble() < .2) {
                     playLightningbendingChargingSound(this.player.getLocation());
                 }
             }
@@ -647,7 +657,7 @@ public class Lightning extends LightningAbility {
     }
 
     private void tryChainLightning(final LivingEntity source) {
-        if (this.maxChainArcs < 1 || ThreadLocalRandom.current().nextDouble() > this.chainArcChance) {
+        if (this.maxChainArcs < 1 || this.combatRandom.nextDouble() > this.chainArcChance) {
             return;
         }
 
@@ -708,7 +718,7 @@ public class Lightning extends LightningAbility {
 
     private void generateWaterSpreadArcs(final Location impact) {
         for (int i = 0; i < this.waterArcs; i++) {
-            final double angle = ThreadLocalRandom.current().nextDouble() * Math.PI * 2.0;
+            final double angle = this.waterArcRandom.nextDouble() * Math.PI * 2.0;
             final Vector direction = new Vector(Math.cos(angle), 0, Math.sin(angle));
             Location end = impact.clone();
 
@@ -763,7 +773,7 @@ public class Lightning extends LightningAbility {
         final Vector dir = this.safeNormalize(direction, new Vector(0, 0, 1));
         final Vector right = this.getStablePerpendicular(dir);
         final Vector up = this.safeNormalize(right.clone().crossProduct(dir), new Vector(0, 1, 0));
-        final double angle = ThreadLocalRandom.current().nextDouble() * Math.PI * 2.0;
+        final double angle = this.visualArcRandom.nextDouble() * Math.PI * 2.0;
         return right.multiply(Math.cos(angle) * magnitude).add(up.multiply(Math.sin(angle) * magnitude));
     }
 
@@ -777,7 +787,7 @@ public class Lightning extends LightningAbility {
         final double userAngle = Math.max(0.0, maxArcAngleDegrees);
         final double maxForkAngle = Math.min(BRANCH_MAX_FORK_ANGLE_DEGREES, Math.max(BRANCH_MIN_FORK_ANGLE_DEGREES + 8.0, userAngle * 3.0));
         final double minForkAngle = Math.min(BRANCH_MIN_FORK_ANGLE_DEGREES, maxForkAngle);
-        final double angle = Math.toRadians(ThreadLocalRandom.current().nextDouble(minForkAngle, maxForkAngle));
+        final double angle = Math.toRadians(this.visualArcRandom.nextDouble(minForkAngle, maxForkAngle));
         final Vector sideways = this.randomPerpendicularOffset(dir, Math.sin(angle));
         return this.safeNormalize(dir.multiply(Math.cos(angle)).add(sideways), dir);
     }
@@ -1202,7 +1212,7 @@ public class Lightning extends LightningAbility {
             // lightning when they fork off the body of the bolt instead of growing out of
             // the caster's face or the impact block.
             for (int i = 1; i < this.animationLocations.size() - 1; i++) {
-                if (ThreadLocalRandom.current().nextDouble() < chance) {
+                if (Lightning.this.visualArcRandom.nextDouble() < chance) {
                     final Arc arc = this.createSubArc(this.animationLocations.get(i), range, maxArcAngle);
                     arcs.add(arc);
                     arcs.addAll(arc.generateArcs(chance / 3.0, 0, range / 2.5, maxArcAngle));
@@ -1230,7 +1240,7 @@ public class Lightning extends LightningAbility {
             // to look best. Avoids ugly branch clusters at the origin/destination.
             final double center = (this.animationLocations.size() - 1) / 2.0;
             final double spread = Math.max(1.0, this.animationLocations.size() / 3.0);
-            int index = (int) Math.round(center + ThreadLocalRandom.current().nextGaussian() * spread);
+            int index = (int) Math.round(center + Lightning.this.visualArcRandom.nextGaussian() * spread);
             index = Math.max(1, Math.min(this.animationLocations.size() - 2, index));
             return index;
         }
@@ -1242,7 +1252,7 @@ public class Lightning extends LightningAbility {
             final double parentLength = this.getDirectLength();
             final double lengthCap = Math.max(BRANCH_MIN_LENGTH, Math.min(safeRange, parentLength * BRANCH_MAX_PARENT_LENGTH_RATIO));
             final double minLength = Math.min(lengthCap, Math.max(BRANCH_MIN_LENGTH, lengthCap * 0.35));
-            final double randRange = ThreadLocalRandom.current().nextDouble(minLength, lengthCap + 0.0001);
+            final double randRange = Lightning.this.visualArcRandom.nextDouble(minLength, lengthCap + 0.0001);
             final Location loc2 = loc.clone().add(dir.multiply(randRange));
             final Arc arc = new Arc(loc, loc2);
 
@@ -1297,7 +1307,7 @@ public class Lightning extends LightningAbility {
                     final double endTaper = Math.sin(Math.PI * progress);
                     final double subdivisionFalloff = Math.pow(0.72, level);
                     final double jitterScale = Math.max(0.025, halfSegmentLength * jaggedness * endTaper * subdivisionFalloff);
-                    final double jitter = ThreadLocalRandom.current().nextDouble(0.35, 1.0) * jitterScale;
+                    final double jitter = Lightning.this.visualArcRandom.nextDouble(0.35, 1.0) * jitterScale;
                     newLoc.add(Lightning.this.randomPerpendicularOffset(dir, jitter));
                     this.points.add(j + 1, newLoc);
                 }
@@ -1395,7 +1405,7 @@ public class Lightning extends LightningAbility {
             if (this.count > 5) {
                 this.cancel();
             } else if (this.count == 1) {
-                if (ThreadLocalRandom.current().nextDouble() < .1) {
+                if (Lightning.this.cosmeticRandom.nextDouble() < .1) {
                     playLightningbendingSound(location);
                 }
 

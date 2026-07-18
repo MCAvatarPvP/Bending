@@ -13,6 +13,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.FallingBlock;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.TempBlock;
 import com.projectkorra.projectkorra.util.TempFallingBlock;
@@ -53,9 +54,12 @@ public class LavaSurge extends LavaAbility implements AddonAbility {
     private Set<FallingBlock> blocks;
     private Map<FallingBlock, Long> timeLived;
     private long time;
+    private final Random gameplayRandom;
 
     public LavaSurge(Player player) {
         super(player);
+        this.gameplayRandom = PredictionDeterminism.random(player == null ? null : player.getUniqueId(),
+                getClass().getName() + ":falling-block-velocity");
 
         this.normalBehavior = ProjectAddons.instance.getConfig(bPlayer).getBoolean("Abilities.Earth.LavaSurge.NormalBehavior");
         if (hasAbility(player, LavaSurge.class)) {
@@ -341,6 +345,6 @@ public class LavaSurge extends LavaAbility implements AddonAbility {
     }
 
     private double randomOffset() {
-        return (Math.random() - 0.5) / 4;
+        return (this.gameplayRandom.nextDouble() - 0.5) / 4;
     }
 }

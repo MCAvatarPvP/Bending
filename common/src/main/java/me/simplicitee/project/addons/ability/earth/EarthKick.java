@@ -14,6 +14,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.event.Listener;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
 import com.projectkorra.projectkorra.util.TempBlock;
@@ -40,9 +41,12 @@ public class EarthKick extends EarthAbility implements AddonAbility, Listener {
     public List<TempFallingBlock> kick;
     public long duration = 2500;
     private List<LivingEntity> hitEntities;
+    private final Random gameplayRandom;
 
     public EarthKick(Player player) {
         super(player);
+        this.gameplayRandom = PredictionDeterminism.random(player == null ? null : player.getUniqueId(),
+                getClass().getName() + ":falling-block-velocity");
 
         if (getAbility(this.getClass()) == null) {
             return;
@@ -170,9 +174,9 @@ public class EarthKick extends EarthAbility implements AddonAbility, Listener {
         for (int i = 0; i < maxBlocks; i++) {
             Location loc = player.getLocation().clone();
             loc.setPitch(0);
-            loc.setYaw(loc.getYaw() + new Random().nextInt(25) - 12);
+            loc.setYaw(loc.getYaw() + this.gameplayRandom.nextInt(25) - 12);
             Vector vec = loc.getDirection();
-            vec.setY(Math.max(0.3, Math.random() / 2));
+            vec.setY(Math.max(0.3, this.gameplayRandom.nextDouble() / 2));
             vec.setX(vec.getX() / 1.2);
             vec.setZ(vec.getZ() / 1.2);
             vec.multiply(range);

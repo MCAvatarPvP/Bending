@@ -120,6 +120,13 @@ public class FlightMultiAbility extends FlightAbility implements MultiAbility {
         return flying;
     }
 
+    /** Drops request and flight markers owned by the outgoing client world. */
+    public static void discardAllTracking() {
+        requestedMap.clear();
+        requestTime.clear();
+        flying.clear();
+    }
+
     public static void acceptCarryRequest(final Player requested, final Player requester) {
         if (!requestedCarry(requested, requester)) {
             return;
@@ -172,7 +179,7 @@ public class FlightMultiAbility extends FlightAbility implements MultiAbility {
         if (this.duration > 0) {
             if (System.currentTimeMillis() >= this.duration + this.getStartTime()) {
                 this.remove();
-                return;
+                if (this.isRemoved()) return;
             }
         }
 
@@ -329,6 +336,7 @@ public class FlightMultiAbility extends FlightAbility implements MultiAbility {
     @Override
     public void remove() {
         super.remove();
+        if (!this.isRemoved()) return;
         this.bPlayer.addCooldown(this);
         MultiAbilityManager.unbindMultiAbility(this.player);
         flying.remove(this.player.getUniqueId());

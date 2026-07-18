@@ -55,15 +55,26 @@ class TempBlockAuthorityBoundaryTest {
                         && paper.contains("tempLayerActions.remove(change.layerId())"));
         assertTrue(fabric.contains("tempLayerActions.put(change.layerId(), currentAction)")
                         && fabric.contains("tempLayerActions.remove(change.layerId())"));
-        assertTrue(paper.contains("currentAction.locallyPredicted")
-                        && paper.contains("serverOwnedTempLayers.add(change.layerId())")
-                        && paper.contains("final UUID predictedOwner = action == null ? null : action.owner"));
-        assertTrue(fabric.contains("currentAction.locallyPredicted")
-                        && fabric.contains("serverOwnedTempLayers.add(change.layerId())")
-                        && fabric.contains("final UUID predictedOwner = action == null ? null : action.owner"));
-        assertTrue(paper.contains("predictedOwnerViews(block, action, change.data())")
-                        && fabric.contains("predictedOwnerViews(block, action, change.data())"),
-                "pre-write REVERT metadata must use the computed underlay, not the still-physical TempBlock");
+        String paperQueue = paper.substring(paper.indexOf("private PendingTempBlock queueTempBlock"),
+                paper.indexOf("private Map<UUID, BlockData> predictedOwnerViews"));
+        String fabricQueue = fabric.substring(fabric.indexOf("private void queueTempBlock"),
+                fabric.indexOf("private Map<UUID, String> predictedOwnerViews"));
+        assertFalse(paperQueue.contains("currentAction.locallyPredicted"),
+                "a delayed common layer must not lose ownership because its action had no immediate first-frame block");
+        assertFalse(fabricQueue.contains("currentAction.locallyPredicted"));
+        assertTrue(paper.contains("serverOwnedTempLayers.add(change.layerId())")
+                        && paper.contains("predictedTempBlockOwner(change.ownerId(), action, effectAbility)"));
+        assertTrue(fabric.contains("serverOwnedTempLayers.add(change.layerId())")
+                        && fabric.contains("predictedTempBlockOwner(change.ownerId(), action, effectAbility)"));
+        for (String endpoint : new String[]{paper, fabric}) {
+            assertTrue(endpoint.contains("layer.getOwnerId().orElse(null), action, effectAbility"),
+                    "join snapshots must retain a long-lived layer's authenticated owner after its input Action retires");
+            assertTrue(endpoint.contains("TempBlock.getOwnerViews(block, closingOwner)")
+                            && endpoint.contains("TempBlock.getVisibleData(block, viewer)"),
+                    "owner views must come from the actual TempBlock stack rather than inferred action ordinals");
+            assertTrue(endpoint.contains("session.supportedAbilities.contains(abilityName.toLowerCase(Locale.ROOT))"),
+                    "only an exact client that supports the owning ability may receive owner-hide metadata");
+        }
     }
 
     @Test
@@ -85,16 +96,27 @@ class TempBlockAuthorityBoundaryTest {
                 "fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricMC.java");
         String client = read("../fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricPredictionMC.java",
                 "fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricPredictionMC.java");
+        String tempBlock = read("../common/src/main/java/com/projectkorra/projectkorra/util/TempBlock.java",
+                "common/src/main/java/com/projectkorra/projectkorra/util/TempBlock.java");
 
-        for (String source : new String[]{paper, fabric, client}) {
-            assertTrue(source.contains("prepareExternalWrite()"));
-            assertTrue(source.contains("TempBlockSync.currentWorldMutation() == null"));
-            assertTrue(source.contains("TempBlock.removeBlock"));
+        for (String source : new String[]{paper, fabric}) {
+            assertTrue(source.contains("prepareExternalWrite("));
+            assertTrue(source.contains("TempBlockSync.currentWorldMutation() != null"));
+            assertTrue(source.contains("TempBlock.removeBlockBeforeWrite"));
+            assertTrue(source.contains("DirectBlockSync.beforeWorldChange"),
+                    "ordinary earth movement metadata must be emitted only after a TempBlock handoff");
         }
+        assertTrue(client.contains("ExactPredictionRuntime.setPredictedBlock"));
+        assertTrue(client.contains("TempBlockSync.currentWorldMutation() != null"));
+        assertTrue(client.contains("TempBlock.removeBlockBeforeWrite"),
+                "Fabric must perform the same semantic handoff as Bukkit before an external write");
+        assertTrue(tempBlock.contains("TempBlockSync.beforeWorldChange(TempBlockSync.Operation.DISCARD"),
+                "DISCARD metadata must flush before the replacement's vanilla block packet");
         assertTrue(paper.contains("final Block block = getBlock()"),
                 "BlockState updates must use the same authority boundary as direct writes");
-        assertTrue(fabric.contains("block.prepareExternalWrite()"));
-        assertTrue(client.contains("block.prepareExternalWrite()"));
+        assertTrue(fabric.contains("block.prepareExternalWrite(FabricMC.blockData(state))"));
+        assertTrue(client.contains("block.prepareExternalWrite(FabricMC.blockData(state))"),
+                "Fabric BlockState updates must use the same authority boundary as direct writes");
     }
 
     @Test

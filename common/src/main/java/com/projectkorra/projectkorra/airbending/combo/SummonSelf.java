@@ -11,19 +11,39 @@ import com.projectkorra.projectkorra.command.Commands;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.object.HorizontalVelocityTracker;
 import com.projectkorra.projectkorra.platform.mc.Location;
+import com.projectkorra.projectkorra.platform.mc.Material;
+import com.projectkorra.projectkorra.platform.mc.entity.BlockDisplay;
+import com.projectkorra.projectkorra.platform.mc.entity.Display;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.scheduler.BukkitRunnable;
+import com.projectkorra.projectkorra.platform.mc.util.Transformation;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.util.DamageHandler;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 import java.util.ArrayList;
+import java.util.List;
 
 /**
- * Launches an air-particle outline of the caster. Its speed, recoil, and impact
- * knockback scale with the caster's velocity when the combo is completed.
+ * Launches a translucent BlockDisplay model of the caster. Its speed, recoil,
+ * and impact knockback scale with the caster's velocity when the combo is
+ * completed.
  */
 public class SummonSelf extends AirAbility implements ComboAbility {
+    private static final Material MODEL_MATERIAL = Material.WHITE_STAINED_GLASS;
+    private static final int MODEL_TELEPORT_DURATION = 3;
+    private static final List<ModelPart> MODEL_PARTS = List.of(
+            new ModelPart("head", 0.0F, 0.675F, 0.0F, 0.45F, 0.45F, 0.45F),
+            new ModelPart("torso", 0.0F, 0.1125F, 0.0F, 0.45F, 0.675F, 0.225F),
+            new ModelPart("left_arm", -0.3375F, 0.1125F, 0.0F, 0.225F, 0.675F, 0.225F),
+            new ModelPart("right_arm", 0.3375F, 0.1125F, 0.0F, 0.225F, 0.675F, 0.225F),
+            new ModelPart("left_leg", -0.1125F, -0.5625F, 0.0F, 0.225F, 0.675F, 0.225F),
+            new ModelPart("right_leg", 0.1125F, -0.5625F, 0.0F, 0.225F, 0.675F, 0.225F)
+    );
+
     @Attribute(Attribute.COOLDOWN)
     private long cooldown;
     @Attribute(Attribute.SPEED)
@@ -49,6 +69,8 @@ public class SummonSelf extends AirAbility implements ComboAbility {
     private Location origin;
     private Vector velocity;
     private double projectileSpeed;
+    private float modelYaw;
+    private final ArrayList<BlockDisplay> modelDisplays = new ArrayList<>(MODEL_PARTS.size());
 
     public SummonSelf(final Player player) {
         super(player);
@@ -78,10 +100,13 @@ public class SummonSelf extends AirAbility implements ComboAbility {
         this.velocity = this.player.getEyeLocation().getDirection().normalize().multiply(this.projectileSpeed);
         this.origin = this.player.getEyeLocation().add(this.velocity.clone().normalize().multiply(1.25));
         this.location = this.origin.clone();
+        final Vector modelFacing = this.horizontalFacing();
+        this.modelYaw = (float) Math.atan2(modelFacing.getX(), modelFacing.getZ());
 
         this.applyCasterRecoil();
         this.bPlayer.addCooldown(this);
         this.start();
+        this.createDisplayModel();
     }
 
     private void applyCasterRecoil() {
@@ -114,7 +139,8 @@ public class SummonSelf extends AirAbility implements ComboAbility {
 
         this.velocity.setY(this.velocity.getY() - this.gravity);
         this.location.setDirection(this.velocity);
-        this.renderPlayerOutline();
+        this.updateDisplayModel();
+        this.renderAirTrail();
     }
 
     private boolean hasHitEntity() {
@@ -134,6 +160,7 @@ public class SummonSelf extends AirAbility implements ComboAbility {
             GeneralMethods.setVelocity(this, entity, knockback);
             new HorizontalVelocityTracker(entity, this.player, 200L, this);
             entity.setFallDistance(0);
+            DamageHandler.damageEntity(entity, 1.0, this);
             return true;
         }
         return false;
@@ -143,50 +170,85 @@ public class SummonSelf extends AirAbility implements ComboAbility {
         return !this.isTransparent(this.location.getBlock()) || GeneralMethods.isRegionProtectedFromBuild(this, this.location);
     }
 
-    private void renderPlayerOutline() {
-        final Vector up = new Vector(0, 1, 0);
-        Vector facing = this.velocity.clone().setY(0);
-        if (facing.lengthSquared() < 0.001) {
-            facing = this.player.getLocation().getDirection().setY(0);
-        }
-        if (facing.lengthSquared() < 0.001) {
-            facing = new Vector(0, 0, 1);
-        }
-        facing.normalize();
-        final Vector right = facing.clone().crossProduct(up).normalize();
-        final Location center = this.location.clone();
-
-        // Upright head and torso, yawed toward the projectile's travel direction.
-        final Location head = center.clone().add(up.clone().multiply(0.85));
-        this.renderOutlineRing(head, right, up, 0.28, 8);
-        final Location leftShoulder = center.clone().add(up.clone().multiply(0.42)).subtract(right.clone().multiply(0.3));
-        final Location rightShoulder = center.clone().add(up.clone().multiply(0.42)).add(right.clone().multiply(0.3));
-        final Location leftHip = center.clone().subtract(up.clone().multiply(0.32)).subtract(right.clone().multiply(0.22));
-        final Location rightHip = center.clone().subtract(up.clone().multiply(0.32)).add(right.clone().multiply(0.22));
-        this.renderOutlineSegment(leftShoulder, leftHip, 5);
-        this.renderOutlineSegment(rightShoulder, rightHip, 5);
-        this.renderOutlineSegment(leftShoulder, leftShoulder.clone().subtract(up.clone().multiply(0.75)).subtract(right.clone().multiply(0.08)), 5);
-        this.renderOutlineSegment(rightShoulder, rightShoulder.clone().subtract(up.clone().multiply(0.75)).add(right.clone().multiply(0.08)), 5);
-        this.renderOutlineSegment(leftHip, leftHip.clone().subtract(up.clone().multiply(0.85)), 5);
-        this.renderOutlineSegment(rightHip, rightHip.clone().subtract(up.clone().multiply(0.85)), 5);
-    }
-
-    private void renderOutlineRing(final Location center, final Vector horizontal, final Vector vertical,
-                                   final double radius, final int points) {
-        for (int i = 0; i < points; i++) {
-            final double angle = Math.PI * 2 * i / points;
-            final Vector offset = horizontal.clone().multiply(Math.cos(angle) * radius)
-                    .add(vertical.clone().multiply(Math.sin(angle) * radius));
-            this.playAirbendingParticles(center.clone().add(offset), 1, 0, 0, 0, 0);
+    private void createDisplayModel() {
+        if (this.location == null || this.location.getWorld() == null || !this.modelDisplays.isEmpty()) return;
+        for (final ModelPart part : MODEL_PARTS) {
+            final Location partLocation = this.modelPartLocation(part);
+            final BlockDisplay display = this.location.getWorld().spawn(partLocation, BlockDisplay.class);
+            display.setBlock(MODEL_MATERIAL.createBlockData());
+            display.setPersistent(false);
+            display.setInvulnerable(true);
+            display.setGravity(false);
+            display.setSilent(true);
+            display.setBillboard(Display.Billboard.FIXED);
+            display.setBrightness(new Display.Brightness(15, 15));
+            display.setShadowRadius(0.0F);
+            display.setShadowStrength(0.0F);
+            display.setInterpolationDelay(0);
+            display.setInterpolationDuration(1);
+            display.setTeleportDuration(MODEL_TELEPORT_DURATION);
+            display.setViewRange(32.0F);
+            display.setTransformation(this.modelPartTransformation(part));
+            this.modelDisplays.add(display);
         }
     }
 
-    private void renderOutlineSegment(final Location start, final Location end, final int points) {
-        final Vector segment = end.toVector().subtract(start.toVector());
-        for (int i = 0; i < points; i++) {
-            final Location point = start.clone().add(segment.clone().multiply(i / (points - 1.0)));
-            this.playAirbendingParticles(point, 1, 0, 0, 0, 0);
+    private void updateDisplayModel() {
+        if (this.modelDisplays.size() != MODEL_PARTS.size()) return;
+        for (int index = 0; index < MODEL_PARTS.size(); index++) {
+            final BlockDisplay display = this.modelDisplays.get(index);
+            final ModelPart part = MODEL_PARTS.get(index);
+            if (display != null && display.isValid()) {
+                display.teleport(this.modelPartLocation(part));
+            }
         }
+    }
+
+    private Location modelPartLocation(final ModelPart part) {
+        final Quaternionf rotation = new Quaternionf().rotateY(this.modelYaw);
+        final Vector3f offset = new Vector3f(part.offsetX(), part.offsetY(), part.offsetZ());
+        rotation.transform(offset);
+        final Location center = this.location.clone().add(offset.x, offset.y, offset.z);
+        // Transformation owns the model rotation. Keeping entity rotation at
+        // zero prevents Bukkit/Fabric from applying the yaw a second time.
+        center.setYaw(0.0F);
+        center.setPitch(0.0F);
+        return center;
+    }
+
+    private Transformation modelPartTransformation(final ModelPart part) {
+        final Quaternionf rotation = new Quaternionf().rotateY(this.modelYaw);
+        final Vector3f translation = new Vector3f(
+                part.width() * 0.5F,
+                part.height() * 0.5F,
+                part.depth() * 0.5F
+        );
+        rotation.transform(translation);
+        translation.negate();
+        return new Transformation(
+                translation,
+                rotation,
+                new Vector3f(part.width(), part.height(), part.depth()),
+                new Quaternionf()
+        );
+    }
+
+    private Vector horizontalFacing() {
+        Vector facing = this.velocity.clone().setY(0.0D);
+        if (facing.lengthSquared() < 0.001D) {
+            facing = this.player.getLocation().getDirection().setY(0.0D);
+        }
+        if (facing.lengthSquared() < 0.001D) {
+            facing = new Vector(0.0D, 0.0D, 1.0D);
+        }
+        return facing.normalize();
+    }
+
+    private void renderAirTrail() {
+        if (this.velocity == null || this.velocity.lengthSquared() < 0.001D) return;
+        final Vector behind = this.velocity.clone().normalize().multiply(-0.7D);
+        final Location trail = this.location.clone().add(behind);
+        playAirbendingParticles(trail, 3, 0.18D, 0.28D, 0.18D, 0.01D);
     }
 
     private void impact() {
@@ -235,6 +297,15 @@ public class SummonSelf extends AirAbility implements ComboAbility {
     @Override
     public void remove() {
         super.remove();
+        if (!this.isRemoved()) return;
+        for (final BlockDisplay display : this.modelDisplays) {
+            if (display != null && display.isValid()) display.remove();
+        }
+        this.modelDisplays.clear();
+    }
+
+    private record ModelPart(String name, float offsetX, float offsetY, float offsetZ,
+                             float width, float height, float depth) {
     }
 
     @Override

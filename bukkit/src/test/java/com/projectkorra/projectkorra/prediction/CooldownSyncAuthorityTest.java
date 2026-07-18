@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.prediction;
 
 import com.projectkorra.projectkorra.BendingPlayer;
+import com.projectkorra.projectkorra.ability.CoreAbility;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -24,7 +25,7 @@ class CooldownSyncAuthorityTest {
             }
 
             @Override
-            public void onAdded(BendingPlayer player, String ability, long expiresAtMillis) {
+            public void onAdded(CoreAbility source, BendingPlayer player, String ability, long expiresAtMillis) {
             }
 
             @Override

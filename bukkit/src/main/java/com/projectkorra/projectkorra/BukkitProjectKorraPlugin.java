@@ -10,7 +10,6 @@ import com.projectkorra.projectkorra.platform.bukkit.BukkitProjectKorraPlatform;
 import com.projectkorra.projectkorra.platform.mc.command.Command;
 import com.projectkorra.projectkorra.platform.mc.command.CommandSender;
 import com.projectkorra.projectkorra.prediction.PaperPredictionServer;
-import com.projectkorra.projectkorra.prediction.TempBlockPacketFilter;
 import com.projectkorra.projectkorra.region.BukkitRegionProtectionBootstrap;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
@@ -21,7 +20,6 @@ import org.bukkit.plugin.java.JavaPlugin;
  */
 public final class BukkitProjectKorraPlugin extends JavaPlugin {
     private PaperPredictionServer prediction;
-    private TempBlockPacketFilter tempBlockPacketFilter;
 
     private static CommandSender wrapSender(final org.bukkit.command.CommandSender sender) {
         if (sender instanceof Player player) {
@@ -50,16 +48,12 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
         BetonQuestHook.register(this);
         try {
             this.prediction = PaperPredictionServer.start(this);
-            if (getServer().getPluginManager().isPluginEnabled("packetevents")) {
-                this.tempBlockPacketFilter = TempBlockPacketFilter.register();
-                this.prediction.setTempBlockPacketFilter(this.tempBlockPacketFilter);
-                getLogger().info("Enabled lifecycle-coordinate owned TempBlock packet suppression.");
-            } else {
-                getLogger().info("PacketEvents is unavailable; using Fabric-side owned TempBlock suppression.");
-            }
+            // Lifecycle metadata precedes every physical TempBlock write. A
+            // compatible caster renders its client-owned lifecycle and hides
+            // every Paper layer owned by that accepted action; remote and
+            // genuinely server-only layers retain normal vanilla authority.
+            getLogger().info("Using action-owned Fabric TempBlock lifecycles with ordered Paper metadata.");
         } catch (Throwable failure) {
-            if (this.tempBlockPacketFilter != null) this.tempBlockPacketFilter.stop();
-            this.tempBlockPacketFilter = null;
             if (this.prediction != null) this.prediction.stop();
             this.prediction = null;
             getLogger().warning("Could not enable exact client prediction; using server authority: "
@@ -73,10 +67,6 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
         // abilities restore their server state. Exact clients can then finish
         // their own ordered TempBlock lifecycles during a reload.
         GeneralMethods.stopBending();
-        if (this.tempBlockPacketFilter != null) {
-            this.tempBlockPacketFilter.stop();
-            this.tempBlockPacketFilter = null;
-        }
         if (this.prediction != null) {
             this.prediction.stop();
             this.prediction = null;

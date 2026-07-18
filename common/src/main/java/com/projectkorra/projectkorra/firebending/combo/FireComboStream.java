@@ -21,6 +21,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.scheduler.BukkitRunnable;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.LightManager;
@@ -28,7 +29,7 @@ import com.projectkorra.projectkorra.util.ParticleEffect;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
 
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Random;
 
 /***
  * Is only here for legacy purposes. All fire combos used to use a form of this
@@ -62,6 +63,7 @@ public class FireComboStream extends BukkitRunnable {
     private double damage;
     private double fireTicks;
     private double knockback;
+    private final Random gameplayRandom;
 
     public FireComboStream(final Player player, final CoreAbility coreAbility, final Vector direction, final Location location, final double distance, final double speed) {
         this.useNewParticles = false;
@@ -85,6 +87,10 @@ public class FireComboStream extends BukkitRunnable {
         this.initialLocation = location.clone();
         this.location = location.clone();
         this.distance = distance;
+        final String scope = getClass().getName() + ":block-drying:"
+                + location.getBlockX() + ':' + location.getBlockY() + ':' + location.getBlockZ();
+        this.gameplayRandom = PredictionDeterminism.random(player == null ? null : player.getUniqueId(), scope,
+                coreAbility == null ? PredictionDeterminism.currentSeed() : coreAbility.getPredictionDeterministicSeed());
     }
 
     @Override
@@ -152,7 +158,7 @@ public class FireComboStream extends BukkitRunnable {
         } else if (this.collides && this.checkCollisionCounter % this.checkCollisionDelay == 0) {
             this.checkEntityCollisions(previousLocation);
             for (Block b : GeneralMethods.getBlocksAroundPoint(this.location, this.collisionRadius)) {
-                FireAbility.dryWetBlocks(b, this.coreAbility, ThreadLocalRandom.current().nextInt(5) == 0);
+                FireAbility.dryWetBlocks(b, this.coreAbility, this.gameplayRandom.nextInt(5) == 0);
             }
         }
 

@@ -24,6 +24,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.metadata.FixedMetadataValue;
 import com.projectkorra.projectkorra.platform.mc.util.BlockIterator;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.TempBlock;
@@ -32,7 +33,6 @@ import com.projectkorra.projectkorra.waterbending.plant.PlantRegrowth;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
-import java.util.concurrent.ThreadLocalRandom;
 
 public class FireBlast extends FireAbility {
 
@@ -199,7 +199,8 @@ public class FireBlast extends FireAbility {
         this.flameRadius = getConfig().getDouble("Abilities.Fire.FireBlast.FlameParticleRadius");
         this.damage = getConfig().getDouble("Abilities.Fire.FireBlast.Damage");
         this.coolAfSpiral = getConfig().getBoolean("Abilities.Fire.FireBlast.CoolAfSpiral", true);
-        this.random = new Random();
+        this.random = PredictionDeterminism.random(this.player == null ? null : this.player.getUniqueId(),
+                getClass().getName());
     }
 
     private void advanceLocation() {
@@ -265,7 +266,7 @@ public class FireBlast extends FireAbility {
         for (Block b : GeneralMethods.getBlocksAroundPoint(block.getLocation(), 1.4)) {
             if (!isSnow(b)) continue;
 
-            dryWetBlocks(b, this, ThreadLocalRandom.current().nextInt(4) == 0);
+            dryWetBlocks(b, this, this.random.nextInt(4) == 0);
         }
         if (!GeneralMethods.isPassable(block)) {
             if (block.getType() == Material.FURNACE && this.powerFurnace) {

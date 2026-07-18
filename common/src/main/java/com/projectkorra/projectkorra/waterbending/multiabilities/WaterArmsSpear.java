@@ -13,6 +13,8 @@ import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
+import com.projectkorra.projectkorra.prediction.TempBlockSync;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.TempBlock;
 import com.projectkorra.projectkorra.waterbending.multiabilities.WaterArms.Arm;
@@ -20,12 +22,15 @@ import com.projectkorra.projectkorra.waterbending.multiabilities.WaterArms.Arm;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class WaterArmsSpear extends WaterAbility {
 
     private static final Map<Block, Long> ICE_BLOCKS = new ConcurrentHashMap<Block, Long>();
+    private static final Map<Block, TempBlock> TRACKED_BLOCKS = new ConcurrentHashMap<>();
     private final List<Location> spearLocations;
+    private final Random random;
     private boolean hitEntity;
     private boolean canFreeze;
     private boolean usageCooldownEnabled;
@@ -66,6 +71,7 @@ public class WaterArmsSpear extends WaterAbility {
     public WaterArmsSpear(final Player player, final boolean freeze) {
         super(player);
         this.canFreeze = freeze;
+        this.random = PredictionDeterminism.random(player.getUniqueId(), getClass().getName());
 
         this.usageCooldownEnabled = getConfig().getBoolean("Abilities.Water.WaterArms.Arms.Cooldowns.UsageCooldown.Enabled");
         this.spearDamageEnabled = getConfig().getBoolean("Abilities.Water.WaterArms.Spear.DamageEnabled");
@@ -88,22 +94,54 @@ public class WaterArmsSpear extends WaterAbility {
     }
 
     public static boolean canThaw(final Block block) {
-        return getIceBlocks().containsKey(block) && isIce(block);
+        final TempBlock layer = TRACKED_BLOCKS.get(block);
+        return layer != null && !layer.isReverted() && isIce(layer.getBlockData().getMaterial())
+                || TempBlockSync.hasAuthoritativeEffect(block, "WaterArmsSpear");
     }
 
     public static void thaw(final Block block) {
-        if (canThaw(block)) {
-            getIceBlocks().remove(block);
-            if (TempBlock.isTempBlock(block)) {
-                TempBlock.get(block).revertBlock();
-            } else {
-                block.setType(Material.AIR);
-            }
-        }
+        if (!canThaw(block)) return;
+        final TempBlock layer = TRACKED_BLOCKS.remove(block);
+        ICE_BLOCKS.remove(block);
+        if (layer != null) layer.revertBlock();
     }
 
     public static Map<Block, Long> getIceBlocks() {
         return ICE_BLOCKS;
+    }
+
+    public static Map<Block, TempBlock> getTrackedBlocks() {
+        return Map.copyOf(TRACKED_BLOCKS);
+    }
+
+    public static void expireBlocks(final boolean ignoreTime) {
+        final long now = System.currentTimeMillis();
+        for (Map.Entry<Block, Long> entry : List.copyOf(ICE_BLOCKS.entrySet())) {
+            if (!ignoreTime && now <= entry.getValue()) continue;
+            final Block block = entry.getKey();
+            final TempBlock layer = TRACKED_BLOCKS.remove(block);
+            ICE_BLOCKS.remove(block, entry.getValue());
+            if (layer != null) layer.revertBlock();
+        }
+    }
+
+    /** Drops every old-world spear layer index without restoring a block. */
+    public static void discardAllTracking() {
+        ICE_BLOCKS.clear();
+        TRACKED_BLOCKS.clear();
+    }
+
+    private static void track(final TempBlock layer, final long duration) {
+        if (layer == null || layer.isReverted()) return;
+        final Block block = layer.getBlock();
+        final TempBlock previous = TRACKED_BLOCKS.put(block, layer);
+        final long expiresAt = System.currentTimeMillis() + Math.max(1L, duration);
+        ICE_BLOCKS.put(block, expiresAt);
+        layer.setRevertTask(() -> {
+            if (TRACKED_BLOCKS.remove(block, layer)) ICE_BLOCKS.remove(block);
+        });
+        layer.setRevertTime(Math.max(1L, duration));
+        if (previous != null && previous != layer && !previous.isReverted()) previous.revertBlock();
     }
 
     private void createInstance() {
@@ -188,8 +226,9 @@ public class WaterArmsSpear extends WaterAbility {
                 return;
             }
 
-            waterBlocks.add(new TempBlock(this.location.getBlock(), Material.WATER));
-            getIceBlocks().put(this.location.getBlock(), System.currentTimeMillis() + 600L);
+            final TempBlock water = new TempBlock(this.location.getBlock(), Material.WATER.createBlockData(), this);
+            waterBlocks.add(water);
+            track(water, 600L);
             final Vector direction = GeneralMethods.getDirection(this.initLocation, GeneralMethods.getTargetedLocation(this.player, this.spearRange, getTransparentMaterials())).normalize();
 
             this.location = this.location.add(direction.clone().multiply(1));
@@ -208,13 +247,9 @@ public class WaterArmsSpear extends WaterAbility {
                 final Block block = this.spearLocations.get(i).getBlock();
                 if (this.canPlaceBlock(block)) {
                     playIcebendingSound(block.getLocation());
-                    if (getIceBlocks().containsKey(block)) {
-                        getIceBlocks().remove(block);
-                    }
-
-                    iceBlocks.add(new TempBlock(block, getIceData(), this).setCanSuffocate(false));
-
-                    getIceBlocks().put(block, System.currentTimeMillis() + this.spearDuration + (long) (Math.random() * 500));
+                    final TempBlock ice = new TempBlock(block, getIceData(), this).setCanSuffocate(false);
+                    iceBlocks.add(ice);
+                    track(ice, this.spearDuration + this.random.nextInt(500));
                 }
             }
         }
@@ -245,8 +280,9 @@ public class WaterArmsSpear extends WaterAbility {
                     }
                 }
                 playIcebendingSound(block.getLocation());
-                new TempBlock(block, getIceData(), this).setCanSuffocate(false);
-                getIceBlocks().put(block, System.currentTimeMillis() + this.spearDuration + (long) (Math.random() * 500));
+                final TempBlock ice = new TempBlock(block, getIceData(), this).setCanSuffocate(false);
+                iceBlocks.add(ice);
+                track(ice, this.spearDuration + this.random.nextInt(500));
             }
         }
     }

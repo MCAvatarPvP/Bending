@@ -12,6 +12,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.FallingBlock;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.util.*;
 
 import java.util.*;
@@ -59,7 +60,8 @@ public class LavaSurge extends LavaAbility {
         this.particleInterval = 100;
         this.fallingBlockInterval = 100;
 
-        this.random = new Random();
+        this.random = PredictionDeterminism.random(player == null ? null : player.getUniqueId(),
+                getClass().getName() + ":falling-blocks");
         this.fallingBlocks = new ArrayList<>();
         this.fracture = new ArrayList<>();
         this.fractureTempBlocks = new ArrayList<>();

@@ -14,7 +14,6 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.metadata.FixedMetadataValue;
 import com.projectkorra.projectkorra.platform.mc.util.BoundingBox;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
-import com.projectkorra.projectkorra.prediction.HitResolutionSync;
 import com.projectkorra.projectkorra.util.colliders.AABB;
 import com.projectkorra.projectkorra.util.colliders.Ray;
 import me.literka.ChiRework;
@@ -40,9 +39,6 @@ public class RopeDart extends ChiAbility implements AddonAbility {
     private Location previousArrowLocation;
     private LivingEntity target;
     private double targetYOffset;
-    private boolean pullResolutionRequested;
-    private boolean pullConfirmed;
-    private Vector pendingPullVelocity;
     private boolean oldChi;
     private boolean cooldownApplied;
 
@@ -151,10 +147,8 @@ public class RopeDart extends ChiAbility implements AddonAbility {
         }
 
         if (isTargetAlive && loc1.distanceSquared(loc2) <= minRangeRemove * minRangeRemove) {
-            if (pullConfirmed) {
-                GeneralMethods.setVelocityAfterConfirmedHit(this,
-                        pullYourselfToEnemy ? player : target, new Vector(0, 0, 0));
-            }
+            GeneralMethods.setVelocity(this,
+                    pullYourselfToEnemy ? player : target, new Vector(0, 0, 0));
             removeWithCooldown();
             return;
         }
@@ -179,34 +173,8 @@ public class RopeDart extends ChiAbility implements AddonAbility {
         );
     }
 
-    /**
-     * A hooked entity is one continuous contact, not a new hit every tick.
-     * Ask the reaction system to decide that contact once, then keep applying
-     * the latest pull without reopening the defender's reaction window.
-     */
     private void pullTarget(final Vector velocity) {
-        pendingPullVelocity = velocity.clone();
-        if (pullConfirmed) {
-            applyConfirmedPull(pendingPullVelocity);
-            return;
-        }
-        if (pullResolutionRequested) return;
-
-        pullResolutionRequested = true;
-        final Runnable confirm = () -> {
-            if (isRemoved() || target == null || target.isDead()) return;
-            pullConfirmed = true;
-            if (pendingPullVelocity != null) applyConfirmedPull(pendingPullVelocity);
-        };
-        // The defender is always the hooked target, including self-pull mode;
-        // only the entity receiving the committed velocity changes.
-        if (!HitResolutionSync.defer(HitResolutionSync.Effect.VELOCITY, this, target, confirm)) {
-            confirm.run();
-        }
-    }
-
-    private void applyConfirmedPull(final Vector velocity) {
-        GeneralMethods.setVelocityAfterConfirmedHit(this,
+        GeneralMethods.setVelocity(this,
                 pullYourselfToEnemy ? player : target, velocity.clone());
     }
 

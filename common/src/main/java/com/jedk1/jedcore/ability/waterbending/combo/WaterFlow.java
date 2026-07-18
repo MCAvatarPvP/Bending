@@ -23,6 +23,7 @@ import com.projectkorra.projectkorra.platform.mc.block.data.Levelled;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.BlockSource;
 import com.projectkorra.projectkorra.util.ClickType;
@@ -41,7 +42,7 @@ public class WaterFlow extends WaterAbility implements AddonAbility, ComboAbilit
 
     private final ConcurrentHashMap<Block, Location> directions = new ConcurrentHashMap<>();
     private final List<Block> blocks = new ArrayList<>();
-    Random rand = new Random();
+    private final Random rand;
     @Attribute(Attribute.SELECT_RANGE)
     private int sourceRange; //10
     @Attribute(Attribute.RANGE)
@@ -81,6 +82,7 @@ public class WaterFlow extends WaterAbility implements AddonAbility, ComboAbilit
 
     public WaterFlow(Player player) {
         super(player);
+        this.rand = PredictionDeterminism.random(player == null ? null : player.getUniqueId(), getClass().getName());
         if (!bPlayer.canBendIgnoreBinds(this)) {
             return;
         }

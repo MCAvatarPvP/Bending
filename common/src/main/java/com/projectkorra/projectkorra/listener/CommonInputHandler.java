@@ -19,6 +19,7 @@ import com.projectkorra.projectkorra.board.BendingBoardManager;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.earthbending.EarthBlast;
 import com.projectkorra.projectkorra.earthbending.EarthGrab;
+import com.projectkorra.projectkorra.earthbending.EarthSmash;
 import com.projectkorra.projectkorra.earthbending.passive.FerroControl;
 import com.projectkorra.projectkorra.event.PlayerSwingEvent;
 import com.projectkorra.projectkorra.platform.Platform;
@@ -67,14 +68,27 @@ public final class CommonInputHandler {
     }
 
     public static InputResult handleRightClickEntity(final Player player) {
+        prepareRightClickEntity(player);
+        return handlePreparedRightClickEntity(player);
+    }
+
+    /** First legacy PlayerInteractAtEntityEvent stage, before trap/armor checks. */
+    public static void prepareRightClickEntity(final Player player) {
         if (player == null || player.getGameMode() == GameMode.SPECTATOR) {
-            return InputResult.pass();
+            return;
         }
         final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
         if (bPlayer != null && bPlayer.canCurrentlyBendWithWeapons()) {
             ComboManager.scheduleComboAbility(player, ClickType.RIGHT_CLICK_ENTITY);
         }
+    }
 
+    /** Remaining legacy entity-interaction stage after special entities pass. */
+    public static InputResult handlePreparedRightClickEntity(final Player player) {
+        if (player == null || player.getGameMode() == GameMode.SPECTATOR) {
+            return InputResult.pass();
+        }
+        final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
         boolean cancelled = MovementHandler.isStopped(player) || Bloodbending.isBloodbent(player) || Suffocate.isBreathbent(player);
         if (!cancelled) {
             final ActivationContext context = new ActivationContext(player, bPlayer, ClickType.RIGHT_CLICK_ENTITY);

@@ -20,6 +20,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.BlockIterator;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.ConfirmedHitEffects;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.util.ClickType;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
@@ -243,14 +244,15 @@ public class EarthSmash extends EarthAbility {
         if (this.state == State.START && this.progressCounter > 1) {
             if (!this.player.isSneaking()) {
                 if (System.currentTimeMillis() - this.getStartTime() >= this.chargeTime) {
-                    this.origin = this.getVisibleEarthSourceBlock();
+                    // Preserve legacy Paper sourcing: EarthSmash resolves the
+                    // source from the release/progress view through the shared
+                    // EarthAbility ray, rather than a client-only placement
+                    // shortcut.
+                    this.origin = this.getEarthSourceBlock(this.selectRange);
                     if (this.origin == null) {
                         this.remove();
                         return;
-                    } else if (TempBlock.isTempBlock(this.origin)
-                            && !TempBlock.isTopLayerOwnedBy(this.origin.getWorld(), this.origin.getX(), this.origin.getY(),
-                            this.origin.getZ(), this.player.getUniqueId())
-                            && !isBendableEarthTempBlock(this.origin)) {
+                    } else if (TempBlock.isTempBlock(this.origin) && !isBendableEarthTempBlock(this.origin)) {
                         this.remove();
                         return;
                     }
@@ -504,18 +506,6 @@ public class EarthSmash extends EarthAbility {
         }
     }
 
-    private Block getVisibleEarthSourceBlock() {
-        final Location eye = this.player.getEyeLocation();
-        final Vector direction = eye.getDirection().clone().normalize();
-        for (double distance = 0; distance <= this.selectRange; distance += 0.2) {
-            final Block candidate = eye.clone().add(direction.clone().multiply(distance)).getBlock();
-            if (RegionProtection.isRegionProtected(this.player, candidate.getLocation(), this)) continue;
-            if (this.isEarthbendable(candidate)) return candidate;
-            if (!this.isVisibleTransparent(candidate)) return null;
-        }
-        return null;
-    }
-
     private BlockData visibleData(final Block block) {
         final BlockData data = TempBlock.getVisibleData(block, this.player.getUniqueId());
         return data == null ? block.getBlockData() : data;
@@ -737,7 +727,10 @@ public class EarthSmash extends EarthAbility {
         }
 
         final World world = impactLocation.getWorld();
-        final Random random = new Random();
+        final Random random = PredictionDeterminism.random(
+                this.player == null ? null : this.player.getUniqueId(),
+                getClass().getName() + ":break-apart:" + getRunningTicks(),
+                getPredictionDeterministicSeed());
 
         /*
          * Preserve the original center behavior, but make sure it is in the

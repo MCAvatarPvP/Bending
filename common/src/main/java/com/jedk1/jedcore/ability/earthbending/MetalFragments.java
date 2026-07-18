@@ -14,6 +14,7 @@ import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.entity.*;
 import com.projectkorra.projectkorra.platform.mc.inventory.ItemStack;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.*;
 
@@ -36,9 +37,12 @@ public class MetalFragments extends MetalAbility implements AddonAbility {
     private double damage;
     @Attribute(Attribute.COOLDOWN)
     private long cooldown;
+    private final Random gameplayRandom;
 
     public MetalFragments(Player player) {
         super(player);
+        this.gameplayRandom = PredictionDeterminism.random(player == null ? null : player.getUniqueId(),
+                getClass().getName() + ":fragment-source");
 
         if (hasAbility(player, MetalFragments.class)) {
             MetalFragments.selectAnotherSource(player);
@@ -101,8 +105,7 @@ public class MetalFragments extends MetalAbility implements AddonAbility {
         if (sources.size() <= 0)
             return;
 
-        Random randy = new Random();
-        int i = randy.nextInt(sources.size());
+        int i = this.gameplayRandom.nextInt(sources.size());
         Block source = sources.get(i);
         ItemStack is;
 

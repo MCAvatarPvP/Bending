@@ -12,6 +12,7 @@ import com.projectkorra.projectkorra.earthbending.passive.DensityShift;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.BlockIterator;
@@ -28,7 +29,7 @@ import java.util.Random;
 
 public class Fissure extends LavaAbility implements AddonAbility {
 
-    static Random rand = new Random();
+    private final Random rand;
     private final List<Location> centerSlap = new ArrayList<>();
     private final List<Block> blocks = new ArrayList<>();
     @Attribute(Attribute.RANGE)
@@ -51,6 +52,7 @@ public class Fissure extends LavaAbility implements AddonAbility {
 
     public Fissure(Player player) {
         super(player);
+        this.rand = PredictionDeterminism.random(player == null ? null : player.getUniqueId(), getClass().getName());
 
         if (!bPlayer.canBend(this) || hasAbility(player, Fissure.class) || !bPlayer.canLavabend()) {
             return;

@@ -13,14 +13,16 @@ import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.BoundingBox;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
-import com.projectkorra.projectkorra.prediction.CooldownSync;
+import com.projectkorra.projectkorra.prediction.EntityHitboxProvider;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.TempBlock;
 
 import java.util.*;
-import java.util.concurrent.ThreadLocalRandom;
 
-public class WallOfFire extends FireAbility {
+public class WallOfFire extends FireAbility implements EntityHitboxProvider {
+
+    private static final double ENTITY_HIT_SAMPLE_RADIUS = Math.sqrt(3D) * 0.5D;
 
     //	private int damageTick;
     private int intervalTick;
@@ -50,11 +52,11 @@ public class WallOfFire extends FireAbility {
     private double fireTicks;
     private double maxAngle;
     private Random random;
+    private Random gameplayRandom;
     private Location origin;
     private List<Block> blocks;
     private Map<Entity, Long> affected;
     private Map<UUID, BoundingBox> previousEntityBounds;
-    private Set<UUID> predictedContacts;
     private BoundingBox wofBoundingBox;
     private Vector uLR;
     private Vector vUD;
@@ -77,10 +79,11 @@ public class WallOfFire extends FireAbility {
         this.fireTicks = getConfig().getDouble("Abilities.Fire.WallOfFire.FireTicks");
 
         this.random = new Random();
+        this.gameplayRandom = PredictionDeterminism.random(player == null ? null : player.getUniqueId(),
+                getClass().getName() + ":block-drying");
         this.blocks = new ArrayList<>();
         this.affected = new HashMap<>();
         this.previousEntityBounds = new HashMap<>();
-        this.predictedContacts = new HashSet<>();
 
         if (hasAbility(player, WallOfFire.class)) {
             return;
@@ -123,11 +126,6 @@ public class WallOfFire extends FireAbility {
 
     private void affect(final Entity entity) {
         if (affected.containsKey(entity)) return;
-        // Remote mutation emits an exact hit claim and aborts the remainder of
-        // this predicted progress call. Remember that target before the abort
-        // so it cannot starve every later entity on subsequent ticks.
-        if (!CooldownSync.isAuthoritative()
-                && !this.predictedContacts.add(entity.getUniqueId())) return;
         final boolean noStop = entity.getVelocity().lengthSquared() > 0.3;
 
         if (!noStop) {
@@ -201,7 +199,7 @@ public class WallOfFire extends FireAbility {
     private void display() {
         for (final Block block : this.blocks) {
             if (!this.isTransparent(block)) {
-                dryWetBlocks(block, this, ThreadLocalRandom.current().nextInt(5) == 0);
+                dryWetBlocks(block, this, this.gameplayRandom.nextInt(5) == 0);
                 continue;
             }
 
@@ -323,6 +321,23 @@ public class WallOfFire extends FireAbility {
             locations.add(block.getLocation());
         }
         return locations;
+    }
+
+    @Override
+    public List<Location> getEntityHitLocations() {
+        final List<Location> locations = new ArrayList<>(this.blocks.size());
+        for (final Block block : this.blocks) {
+            locations.add(block.getLocation().add(0.5, 0.5, 0.5));
+        }
+        return locations;
+    }
+
+    @Override
+    public double getEntityHitRadius() {
+        // Block-center samples cover the full unit cube occupied by every
+        // wall cell. This is used only by delayed hit resolution; the initial
+        // collision still uses the exact swept oriented-plane test above.
+        return ENTITY_HIT_SAMPLE_RADIUS;
     }
 
     //	public int getDamageTick() {

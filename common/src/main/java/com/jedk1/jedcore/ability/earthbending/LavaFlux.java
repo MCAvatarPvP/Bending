@@ -15,6 +15,7 @@ import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.block.data.Bisected;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.block.data.Levelled;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
@@ -32,7 +33,7 @@ public class LavaFlux extends LavaAbility implements AddonAbility {
 
     private static final BlockData LAVA = Material.LAVA.createBlockData(bd -> ((Levelled) bd).setLevel(1));
     private final List<Location> flux = new ArrayList<>();
-    Random rand = new Random();
+    private final Random rand;
     @Attribute(Attribute.SPEED)
     private int speed;
     @Attribute(Attribute.RANGE)
@@ -55,6 +56,7 @@ public class LavaFlux extends LavaAbility implements AddonAbility {
 
     public LavaFlux(Player player) {
         super(player);
+        this.rand = PredictionDeterminism.random(player == null ? null : player.getUniqueId(), getClass().getName());
 
         if (!bPlayer.canBend(this) || !bPlayer.canLavabend()) {
             return;

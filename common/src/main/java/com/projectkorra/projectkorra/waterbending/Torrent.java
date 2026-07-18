@@ -14,6 +14,8 @@ import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
+import com.projectkorra.projectkorra.prediction.TempBlockSync;
 import com.projectkorra.projectkorra.util.*;
 import com.projectkorra.projectkorra.util.colliders.AABB;
 import com.projectkorra.projectkorra.waterbending.plant.PlantRegrowth;
@@ -78,9 +80,12 @@ public class Torrent extends WaterAbility {
     private ArrayList<TempBlock> blocks;
     private ArrayList<TempBlock> launchedBlocks;
     private ArrayList<Entity> hurtEntities;
+    private final Random gameplayRandom;
 
     public Torrent(final Player player) {
         super(player);
+        this.gameplayRandom = PredictionDeterminism.random(player == null ? null : player.getUniqueId(),
+                getClass().getName() + ":ice-lifetime");
 
         this.layer = 0;
         this.startAngle = 0;
@@ -215,6 +220,7 @@ public class Torrent extends WaterAbility {
     }
 
     public static boolean canThaw(final Block block) {
+        if (TempBlockSync.hasAuthoritativeEffect(block, "Torrent")) return false;
         if (TempBlock.isTempBlock(block)) {
             final TempBlock tblock = TempBlock.get(block);
             return !FROZEN_BLOCKS.containsKey(tblock);
@@ -226,6 +232,11 @@ public class Torrent extends WaterAbility {
         for (final TempBlock block : FROZEN_BLOCKS.keySet()) {
             thaw(block);
         }
+    }
+
+    /** Drops frozen-layer ownership after a complete world/runtime shutdown. */
+    public static void discardAllTracking() {
+        FROZEN_BLOCKS.clear();
     }
 
     public static boolean wasBrokenFor(final Player player, final Block block) {
@@ -281,7 +292,7 @@ public class Torrent extends WaterAbility {
                 tblock.setCanSuffocate(false);
                 FROZEN_BLOCKS.put(tblock, Pair.of(this.player, this.getId()));
                 if (this.revert) {
-                    tblock.setRevertTime(this.revertTime + (new Random().nextInt((500 + 500) + 1) - 500));
+                    tblock.setRevertTime(this.revertTime + this.gameplayRandom.nextInt(1001) - 500L);
                 }
                 playIcebendingSound(block.getLocation());
             }

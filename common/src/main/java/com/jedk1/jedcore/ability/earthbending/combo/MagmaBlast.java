@@ -20,6 +20,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
 import com.projectkorra.projectkorra.util.TempBlock;
@@ -32,7 +33,7 @@ import java.util.stream.Collectors;
 public class MagmaBlast extends LavaAbility implements AddonAbility, ComboAbility {
     private static final int PARTICLE_COUNT = 20;
     private static final int RAISE_HEIGHT = 3;
-    private static final Random rand = new Random();
+    private final Random random;
 
     private final Set<TempFallingBlock> sources = new HashSet<>();
     private final List<TempBlock> blocks = new ArrayList<>();
@@ -69,6 +70,7 @@ public class MagmaBlast extends LavaAbility implements AddonAbility, ComboAbilit
 
     public MagmaBlast(Player player) {
         super(player);
+        this.random = PredictionDeterminism.random(player == null ? null : player.getUniqueId(), getClass().getName());
         setFields();
 
         if (!bPlayer.canBendIgnoreBinds(this)) {
@@ -124,13 +126,14 @@ public class MagmaBlast extends LavaAbility implements AddonAbility, ComboAbilit
         }
 
         float speed = 0.1f;
-        ParticleEffect.FLAME.display(location, PARTICLE_COUNT, randomBinomial(radius), randomBinomial(radius), randomBinomial(radius), speed);
-        ParticleEffect.SMOKE_LARGE.display(location, PARTICLE_COUNT, randomBinomial(radius), randomBinomial(radius), randomBinomial(radius), speed);
-        ParticleEffect.FIREWORKS_SPARK.display(location, PARTICLE_COUNT, randomBinomial(radius), randomBinomial(radius), randomBinomial(radius), speed);
-        ParticleEffect.SMOKE_LARGE.display(location, PARTICLE_COUNT, randomBinomial(radius), randomBinomial(radius), randomBinomial(radius), speed);
+        final Random random = mb.random;
+        ParticleEffect.FLAME.display(location, PARTICLE_COUNT, randomBinomial(random, radius), randomBinomial(random, radius), randomBinomial(random, radius), speed);
+        ParticleEffect.SMOKE_LARGE.display(location, PARTICLE_COUNT, randomBinomial(random, radius), randomBinomial(random, radius), randomBinomial(random, radius), speed);
+        ParticleEffect.FIREWORKS_SPARK.display(location, PARTICLE_COUNT, randomBinomial(random, radius), randomBinomial(random, radius), randomBinomial(random, radius), speed);
+        ParticleEffect.SMOKE_LARGE.display(location, PARTICLE_COUNT, randomBinomial(random, radius), randomBinomial(random, radius), randomBinomial(random, radius), speed);
 
-        location.getWorld().playSound(location, (rand.nextBoolean()) ? Sound.ENTITY_FIREWORK_ROCKET_BLAST : Sound.ENTITY_FIREWORK_ROCKET_BLAST_FAR, 1f, 1f);
-        location.getWorld().playSound(location, (rand.nextBoolean()) ? Sound.ENTITY_FIREWORK_ROCKET_TWINKLE : Sound.ENTITY_FIREWORK_ROCKET_TWINKLE_FAR, 1f, 1f);
+        location.getWorld().playSound(location, (random.nextBoolean()) ? Sound.ENTITY_FIREWORK_ROCKET_BLAST : Sound.ENTITY_FIREWORK_ROCKET_BLAST_FAR, 1f, 1f);
+        location.getWorld().playSound(location, (random.nextBoolean()) ? Sound.ENTITY_FIREWORK_ROCKET_TWINKLE : Sound.ENTITY_FIREWORK_ROCKET_TWINKLE_FAR, 1f, 1f);
 
         if (!entityCollision) {
             mb.firedBlocks.remove(tfb);
@@ -140,8 +143,8 @@ public class MagmaBlast extends LavaAbility implements AddonAbility, ComboAbilit
     }
 
     // Generates a random number between -max and max.
-    private static float randomBinomial(float max) {
-        return (rand.nextFloat() * max) - (rand.nextFloat() * max);
+    private static float randomBinomial(final Random random, float max) {
+        return (random.nextFloat() * max) - (random.nextFloat() * max);
     }
 
     public void setFields() {
@@ -165,7 +168,7 @@ public class MagmaBlast extends LavaAbility implements AddonAbility, ComboAbilit
     private boolean raiseSources() {
         List<Block> potentialBlocks = GeneralMethods.getBlocksAroundPoint(origin, sourceRange).stream().filter(ElementalAbility::isEarth).collect(Collectors.toList());
 
-        Collections.shuffle(potentialBlocks);
+        Collections.shuffle(potentialBlocks, this.random);
 
         for (Block newSource : potentialBlocks) {
             if (!isValidSource(newSource)) continue;

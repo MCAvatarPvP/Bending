@@ -295,7 +295,9 @@ public final class FabricClientPredictionPlatform implements ProjectKorraPlatfor
 
     private final class ClientScheduler implements PKScheduler {
         private final AtomicInteger ids = new AtomicInteger(1);
-        private final PriorityQueue<Scheduled> queue = new PriorityQueue<>(Comparator.comparingLong(task -> task.nextTick));
+        private final PriorityQueue<Scheduled> queue = new PriorityQueue<>(
+                Comparator.comparingLong((Scheduled task) -> task.nextTick)
+                        .thenComparingInt(task -> task.id));
         private final Map<Integer, Scheduled> tasks = new ConcurrentHashMap<>();
         private long tick;
 
@@ -368,7 +370,11 @@ public final class FabricClientPredictionPlatform implements ProjectKorraPlatfor
             long predictionAction = ExactPredictionRuntime.captureAction();
             Runnable contextualTask = predictionAction <= 0 ? task
                     : () -> ExactPredictionRuntime.runWithAction(predictionAction, task);
-            Scheduled scheduled = new Scheduled(id, contextualTask, tick + Math.max(0, delay), period);
+            // Bukkit never re-enters a task in the scheduler heartbeat that
+            // scheduled it. A zero-delay runTask/runTaskLater is eligible on
+            // the next heartbeat, just like delay=1; executing it immediately
+            // changes child-ability and TempBlock ordering inside progressAll.
+            Scheduled scheduled = new Scheduled(id, contextualTask, tick + Math.max(1, delay), period);
             tasks.put(id, scheduled);
             queue.add(scheduled);
             return new Task(id);

@@ -17,7 +17,8 @@ import com.projectkorra.projectkorra.util.TempFallingBlock;
 import me.simplicitee.project.addons.ProjectAddons;
 
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -80,10 +81,10 @@ public class Bulwark extends EarthAbility implements AddonAbility {
         this.throwSpeed = ProjectAddons.instance.getConfig(bPlayer).getDouble("Abilities.Earth.Bulwark.ThrowSpeed");
         this.height = ProjectAddons.instance.getConfig(bPlayer).getInt("Abilities.Earth.Bulwark.Height");
         this.range = ProjectAddons.instance.getConfig(bPlayer).getDouble("Abilities.Earth.Bulwark.Range");
-        this.blocks = new HashSet<>();
-        this.moved = new HashSet<>();
-        this.tops = new HashSet<>();
-        this.fbs = new HashSet<>();
+        this.blocks = new LinkedHashSet<>();
+        this.moved = new LinkedHashSet<>();
+        this.tops = new LinkedHashSet<>();
+        this.fbs = new LinkedHashSet<>();
         this.launchTime = 0;
 
         Location front = start.clone().add(start.getDirection().setY(0).normalize().multiply(2.5));
@@ -117,7 +118,12 @@ public class Bulwark extends EarthAbility implements AddonAbility {
             for (Block block : tops) {
                 if (moveEarth(block, UP, height)) {
                     blocks.add(block);
-                    moved.add(block.getRelative(BlockFace.UP));
+                    final Block target = block.getRelative(BlockFace.UP);
+                    moved.add(target);
+                    // The target is already a moved-earth coordinate now. It
+                    // must be owned immediately so releasing during the build
+                    // cannot strand the newest row until the next tick.
+                    blocks.add(target);
                 }
             }
 
@@ -174,12 +180,14 @@ public class Bulwark extends EarthAbility implements AddonAbility {
     @Override
     public void remove() {
         super.remove();
-        blocks.forEach((b) -> revertBlock(b));
+        for (final Block block : reverseMovedBlocks()) revertBlock(block);
         for (TempFallingBlock fb : fbs) {
             fb.remove();
         }
         fbs.clear();
         blocks.clear();
+        tops.clear();
+        moved.clear();
         bPlayer.addCooldown(this);
     }
 
@@ -189,18 +197,34 @@ public class Bulwark extends EarthAbility implements AddonAbility {
         }
 
         launched = true;
-        for (Block b : blocks) {
-            BlockData data = b.getBlockData();
-            revertBlock(b);
-            Location location = b.getLocation().add(0.5, 0.75, 0.5);
+        final List<LaunchedBlock> launching = new ArrayList<>();
+        for (Block block : blocks) {
+            launching.add(new LaunchedBlock(block.getLocation().add(0.5, 0.75, 0.5),
+                    block.getBlockData()));
+        }
+        // Unwind the move chain from its newest/bottom-most entries. Hash-set
+        // order used to differ between client and server and could restore a
+        // source after another entry had already consumed it.
+        for (final Block block : reverseMovedBlocks()) revertBlock(block);
+        for (final LaunchedBlock launchedBlock : launching) {
             Vector velocity = player.getEyeLocation().getDirection().setY(0.195).normalize().multiply(throwSpeed);
-            TempFallingBlock fb = new TempFallingBlock(location, data, velocity, this);
+            TempFallingBlock fb = new TempFallingBlock(
+                    launchedBlock.location, launchedBlock.data, velocity, this);
             fbs.add(fb);
         }
 
         launchTime = System.currentTimeMillis();
         blocks.clear();
         bPlayer.addCooldown(this);
+    }
+
+    private List<Block> reverseMovedBlocks() {
+        final List<Block> ordered = new ArrayList<>(this.blocks);
+        Collections.reverse(ordered);
+        return ordered;
+    }
+
+    private record LaunchedBlock(Location location, BlockData data) {
     }
 
     @Override

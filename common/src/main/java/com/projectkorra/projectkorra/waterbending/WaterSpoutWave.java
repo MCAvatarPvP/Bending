@@ -23,12 +23,14 @@ import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.TempBlock;
 import com.projectkorra.projectkorra.waterbending.combo.IceWave;
 import com.projectkorra.projectkorra.waterbending.plant.PlantRegrowth;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
+import com.projectkorra.projectkorra.prediction.TempBlockSync;
 
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ThreadLocalRandom;
 
 public class WaterSpoutWave extends WaterAbility {
 
@@ -82,8 +84,11 @@ public class WaterSpoutWave extends WaterAbility {
     private ArrayList<Entity> affectedEntities;
     private ArrayList<BukkitRunnable> tasks;
     private ConcurrentHashMap<Block, TempBlock> affectedBlocks;
+    private final Random random;
+
     public WaterSpoutWave(final Player player, final AbilityType type) {
         super(player);
+        this.random = PredictionDeterminism.random(player == null ? null : player.getUniqueId(), getClass().getName());
 
         this.charging = false;
         this.iceWave = false;
@@ -182,7 +187,8 @@ public class WaterSpoutWave extends WaterAbility {
     }
 
     public static boolean canThaw(final Block block) {
-        return FROZEN_BLOCKS.containsKey(block);
+        return FROZEN_BLOCKS.containsKey(block)
+                || TempBlockSync.hasAuthoritativeEffect(block, "WaterSpout");
     }
 
     public static void thaw(final Block block) {
@@ -194,6 +200,11 @@ public class WaterSpoutWave extends WaterAbility {
 
     public static Map<Block, TempBlock> getFrozenBlocks() {
         return FROZEN_BLOCKS;
+    }
+
+    /** Drops frozen-wave ownership after a complete world/runtime shutdown. */
+    public static void discardAllTracking() {
+        FROZEN_BLOCKS.clear();
     }
 
     @Override
@@ -412,6 +423,7 @@ public class WaterSpoutWave extends WaterAbility {
 
     @Override
     public void remove() {
+        if (this.isRemoved()) return;
         super.remove();
         if (this.moving) {
             this.bPlayer.addCooldown("WaterSpoutWave", getCooldown());
@@ -478,7 +490,7 @@ public class WaterSpoutWave extends WaterAbility {
                             final TempBlock tblock = new TempBlock(block, getIceData(), this).setCanSuffocate(false);
                             FROZEN_BLOCKS.put(block, tblock);
                             if (this.revertIceSphere) {
-                                tblock.setRevertTime(this.revertSphereTime + ThreadLocalRandom.current().nextLong(-500, 500));
+                                tblock.setRevertTime(this.revertSphereTime + this.random.nextLong(-500, 500));
                             }
                         }
                     }

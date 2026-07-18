@@ -49,9 +49,9 @@ import com.projectkorra.projectkorra.platform.mc.util.RayTraceResult;
 import com.projectkorra.projectkorra.platform.mc.util.Transformation;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
-import com.projectkorra.projectkorra.prediction.CapturedInputPose;
-import com.projectkorra.projectkorra.prediction.HitResolutionSync;
+import com.projectkorra.projectkorra.prediction.AbilityStateSync;
 import com.projectkorra.projectkorra.prediction.TempBlockSync;
+import com.projectkorra.projectkorra.prediction.DirectBlockSync;
 import com.projectkorra.projectkorra.prediction.VelocitySync;
 import com.projectkorra.projectkorra.util.TempBlock;
 import java.lang.reflect.Field;
@@ -165,10 +165,7 @@ public final class FabricMC {
     }
 
     private static void applyHitStatus(final Entity target, final Runnable commit) {
-        if (!HitResolutionSync.defer(HitResolutionSync.Effect.STATUS,
-                AbilityExecutionContext.current(), target, commit)) {
-            commit.run();
-        }
+        commit.run();
     }
 
     public record BlockRef(ServerWorld world, BlockPos pos) {
@@ -379,6 +376,11 @@ public final class FabricMC {
         }
     }
 
+    /**
+     * Installs the validated prediction input state until the next validated
+     * edge. Unlike {@link #withSneakingOverride(ServerPlayerEntity, boolean, Runnable)},
+     * this state is intentionally visible to later ability progress ticks.
+     */
     public static void withSelectedSlotPacketSuppressed(ServerPlayerEntity player, Runnable action) {
         if (player == null || action == null) return;
         UUID uuid = player.getUuid();
@@ -1031,8 +1033,6 @@ public final class FabricMC {
                     entities.put(nativePlayer.getId(), wrapped);
                 }
             }
-            PredictionServer.augmentNearbyPlayers(
-                    value, nativeBox, AbilityExecutionContext.current(), entities);
             return entities.values();
         }
 
@@ -1450,7 +1450,7 @@ public final class FabricMC {
         @Override
         public void setBlockData(BlockData data, boolean physics) {
             if (data == null) return;
-            prepareExternalWrite();
+            prepareExternalWrite(data);
             int flags = physics
                     ? net.minecraft.block.Block.NOTIFY_ALL
                     : net.minecraft.block.Block.NOTIFY_LISTENERS
@@ -1460,10 +1460,10 @@ public final class FabricMC {
             world.setBlockState(pos, nativeState, flags);
         }
 
-        private void prepareExternalWrite() {
-            if (TempBlockSync.currentWorldMutation() == null && TempBlock.isTempBlock(this)) {
-                TempBlock.removeBlock(this);
-            }
+        private void prepareExternalWrite(final BlockData replacementData) {
+            if (TempBlockSync.currentWorldMutation() != null) return;
+            if (TempBlock.isTempBlock(this)) TempBlock.removeBlockBeforeWrite(this, replacementData);
+            DirectBlockSync.beforeWorldChange(this, replacementData);
         }
 
         @Override
@@ -1572,6 +1572,7 @@ public final class FabricMC {
         @Override
         public boolean breakNaturally() {
             if (state().isAir()) return false;
+            prepareExternalWrite(Material.AIR.createBlockData());
             return world.breakBlock(pos, true);
         }
 
@@ -1640,7 +1641,7 @@ public final class FabricMC {
         @Override public Block getBlock() { return block; }
         @Override public Location getLocation() { return block.getLocation(); }
         @Override public boolean update(boolean force, boolean physics) {
-            block.prepareExternalWrite();
+            block.prepareExternalWrite(FabricMC.blockData(state));
             int flags = physics
                     ? net.minecraft.block.Block.NOTIFY_ALL
                     : net.minecraft.block.Block.NOTIFY_LISTENERS
@@ -1666,8 +1667,7 @@ public final class FabricMC {
 
         @Override
         public Location getLocation() {
-            Vec3d claimed = PredictionServer.claimedEffectPosition(value);
-            return location((ServerWorld) value.getEntityWorld(), claimed == null ? value.getEntityPos() : claimed, value.getYaw(), value.getPitch());
+            return location((ServerWorld) value.getEntityWorld(), value.getEntityPos(), value.getYaw(), value.getPitch());
         }
 
         @Override
@@ -1775,8 +1775,7 @@ public final class FabricMC {
 
         @Override
         public Location getLocation() {
-            Vec3d claimed = PredictionServer.claimedEffectPosition(value);
-            return location((ServerWorld) value.getEntityWorld(), claimed == null ? value.getEntityPos() : claimed, value.getYaw(), value.getPitch());
+            return location((ServerWorld) value.getEntityWorld(), value.getEntityPos(), value.getYaw(), value.getPitch());
         }
 
         @Override
@@ -2032,7 +2031,15 @@ public final class FabricMC {
         @Override public boolean isValid() { return !value.isRemoved(); }
         @Override public void remove() { value.discard(); }
         @Override public boolean teleport(Location target) {
-            value.refreshPositionAndAngles(target.getX(), target.getY(), target.getZ(), target.getYaw(), target.getPitch());
+            if (value.getEntityWorld().isClient() && value.getTeleportDuration() > 0) {
+                value.getInterpolator().setLerpDuration(value.getTeleportDuration());
+                value.getInterpolator().refreshPositionAndAngles(
+                        new Vec3d(target.getX(), target.getY(), target.getZ()),
+                        target.getYaw(), target.getPitch());
+            } else {
+                value.refreshPositionAndAngles(target.getX(), target.getY(), target.getZ(),
+                        target.getYaw(), target.getPitch());
+            }
             return true;
         }
         @Override public int getEntityId() { return value.getId(); }
@@ -2115,6 +2122,15 @@ public final class FabricMC {
             if (!suppressPredictionEcho()) value.sendAbilitiesUpdate();
         }
 
+        private void applyAbilityState(final AbilityStateSync.FlightState resultingState,
+                                       final Runnable write) {
+            if (suppressPredictionEcho()) {
+                write.run();
+                return;
+            }
+            AbilityStateSync.apply(AbilityExecutionContext.current(), this, resultingState, write);
+        }
+
         @Override
         public UUID getUniqueId() {
             return value.getUuid();
@@ -2167,24 +2183,12 @@ public final class FabricMC {
 
         @Override
         public Location getLocation() {
-            Vec3d claimed = PredictionServer.claimedEffectPosition(value);
-            if (claimed != null) return location((ServerWorld) value.getEntityWorld(), claimed, value.getYaw(), value.getPitch());
-            CapturedInputPose pose =
-                    PredictionServer.capturedEffectPose(value);
-            return pose == null
-                    ? location((ServerWorld) value.getEntityWorld(), value.getEntityPos(), value.getYaw(), value.getPitch())
-                    : location((ServerWorld) value.getEntityWorld(),
-                    new Vec3d(pose.eyeX(), value.getY(), pose.eyeZ()), pose.yaw(), pose.pitch());
+            return location((ServerWorld) value.getEntityWorld(), value.getEntityPos(), value.getYaw(), value.getPitch());
         }
 
         @Override
         public Location getEyeLocation() {
-            CapturedInputPose pose =
-                    PredictionServer.capturedEffectPose(value);
-            return pose == null
-                    ? location((ServerWorld) value.getEntityWorld(), value.getEyePos(), value.getYaw(), value.getPitch())
-                    : location((ServerWorld) value.getEntityWorld(),
-                    new Vec3d(pose.eyeX(), pose.eyeY(), pose.eyeZ()), pose.yaw(), pose.pitch());
+            return location((ServerWorld) value.getEntityWorld(), value.getEyePos(), value.getYaw(), value.getPitch());
         }
 
         @Override
@@ -2240,12 +2244,24 @@ public final class FabricMC {
             };
         }
 
-        @Override public void setFlying(boolean flying) { value.getAbilities().flying = flying; sendAbilitiesUpdate(); }
+        @Override public void setFlying(boolean flying) {
+            if (value.getAbilities().flying == flying) return;
+            applyAbilityState(new AbilityStateSync.FlightState(flying, getAllowFlight(), getFlySpeed()),
+                    () -> { value.getAbilities().flying = flying; sendAbilitiesUpdate(); });
+        }
         @Override public boolean isFlying() { return value.getAbilities().flying; }
-        @Override public void setAllowFlight(boolean allow) { value.getAbilities().allowFlying = allow; sendAbilitiesUpdate(); }
+        @Override public void setAllowFlight(boolean allow) {
+            if (value.getAbilities().allowFlying == allow) return;
+            applyAbilityState(new AbilityStateSync.FlightState(isFlying(), allow, getFlySpeed()),
+                    () -> { value.getAbilities().allowFlying = allow; sendAbilitiesUpdate(); });
+        }
         @Override public boolean getAllowFlight() { return value.getAbilities().allowFlying; }
-        @Override public float getFlySpeed() { return value.getAbilities().getFlySpeed(); }
-        @Override public void setFlySpeed(float speed) { value.getAbilities().setFlySpeed(speed); sendAbilitiesUpdate(); }
+        @Override public float getFlySpeed() { return value.getAbilities().getFlySpeed() * 2.0F; }
+        @Override public void setFlySpeed(float speed) {
+            if (Float.compare(getFlySpeed(), speed) == 0) return;
+            applyAbilityState(new AbilityStateSync.FlightState(isFlying(), getAllowFlight(), speed),
+                    () -> { value.getAbilities().setFlySpeed(speed / 2.0F); sendAbilitiesUpdate(); });
+        }
         @Override public boolean getCanPickupItems() { return PICKUP_OVERRIDES.getOrDefault(value.getUuid(), true); }
         @Override public void setCanPickupItems(boolean pickup) { PICKUP_OVERRIDES.put(value.getUuid(), pickup); }
         @Override public boolean isSwimming() { return value.isSwimming(); }
@@ -2310,7 +2326,7 @@ public final class FabricMC {
             Vec3d origin = vector(eye.toVector());
             Vec3d end = origin.add(vector(eye.getDirection()).normalize().multiply(Math.max(0, range)));
             HitResult hit = value.getEntityWorld().raycast(new RaycastContext(origin, end,
-                    RaycastContext.ShapeType.OUTLINE, RaycastContext.FluidHandling.NONE, value));
+                    RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, value));
             return hit instanceof BlockHitResult blockHit ? block((ServerWorld) value.getEntityWorld(), blockHit.getBlockPos()) : null;
         }
         @Override

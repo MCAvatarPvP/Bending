@@ -41,6 +41,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionEffect;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionEffectType;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.*;
 import com.projectkorra.projectkorra.waterbending.ice.PhaseChange;
@@ -51,7 +52,6 @@ import me.moros.hyperion.util.BendingFallingBlock;
 import me.moros.hyperion.util.MaterialCheck;
 
 import java.util.*;
-import java.util.concurrent.ThreadLocalRandom;
 
 public class IceBreath extends IceAbility implements AddonAbility {
     private final Set<Location> line = new LinkedHashSet<>();
@@ -71,9 +71,12 @@ public class IceBreath extends IceAbility implements AddonAbility {
     private double currentRange;
     private boolean charged;
     private boolean released;
+    private final Random gameplayRandom;
 
     public IceBreath(Player player) {
         super(player);
+        this.gameplayRandom = PredictionDeterminism.random(player == null ? null : player.getUniqueId(),
+                getClass().getName() + ":ice-lifetime");
 
         if (!bPlayer.canBend(this)) {
             return;
@@ -271,7 +274,8 @@ public class IceBreath extends IceAbility implements AddonAbility {
                 final Block testBlock = testLoc.getBlock();
                 if (MaterialCheck.isLeaf(testBlock)) testBlock.breakNaturally();
                 if (testBlock.getType().isAir() || isWater(testBlock)) {
-                    PhaseChange.getFrozenBlocksMap().put(new TempBlock(testBlock, Material.ICE.createBlockData(), ThreadLocalRandom.current().nextInt(1000) + frostDuration), player);
+                    PhaseChange.getFrozenBlocksMap().put(new TempBlock(testBlock, Material.ICE.createBlockData(),
+                            this.gameplayRandom.nextInt(1000) + frostDuration), player);
                 }
             }
         }

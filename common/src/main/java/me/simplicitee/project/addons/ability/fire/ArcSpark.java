@@ -12,12 +12,14 @@ import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import me.simplicitee.project.addons.ProjectAddons;
 import me.simplicitee.project.addons.Util;
 import me.simplicitee.project.addons.util.SoundEffect;
 
 import java.util.List;
+import java.util.Random;
 
 public class ArcSpark extends LightningAbility implements AddonAbility {
 
@@ -37,9 +39,13 @@ public class ArcSpark extends LightningAbility implements AddonAbility {
     private List<String> attractive;
 
     private SoundEffect charging;
+    private final Random trajectoryRandom;
+    private final Random effectRandom;
 
     public ArcSpark(Player player) {
         super(player);
+        this.trajectoryRandom = PredictionDeterminism.random(player.getUniqueId(), getClass().getName() + ":trajectory");
+        this.effectRandom = PredictionDeterminism.random(player.getUniqueId(), getClass().getName() + ":effects");
 
         this.speed = ProjectAddons.instance.getConfig(bPlayer).getInt("Abilities.Fire.ArcSpark.Speed");
         this.length = ProjectAddons.instance.getConfig(bPlayer).getInt("Abilities.Fire.ArcSpark.Length");
@@ -139,7 +145,9 @@ public class ArcSpark extends LightningAbility implements AddonAbility {
         if (to != null) {
             movement = GeneralMethods.getDirection(loc, to);
         } else {
-            movement = new Vector(Math.random() / 5 - 0.1, Math.random() / 5 - 0.1, Math.random() / 5 - 0.1);
+            movement = new Vector(this.trajectoryRandom.nextDouble() / 5 - 0.1,
+                    this.trajectoryRandom.nextDouble() / 5 - 0.1,
+                    this.trajectoryRandom.nextDouble() / 5 - 0.1);
         }
 
         double angle = movement.angle(loc.getDirection());
@@ -151,7 +159,7 @@ public class ArcSpark extends LightningAbility implements AddonAbility {
         loc.add(loc.getDirection().multiply(0.3));
 
         if (loc.getBlock().getType() == Material.WATER || attractive.contains(loc.getBlock().getType().toString())) {
-            if (Math.random() > 0.55) {
+            if (this.effectRandom.nextDouble() > 0.55) {
                 new Electrify(player, loc.getBlock(), false);
             }
             return false;

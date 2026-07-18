@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.fabric.prediction;
 
+import com.projectkorra.projectkorra.prediction.AirBlastTraceSync;
+import com.projectkorra.projectkorra.prediction.RegionProtectionAuthority;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.minecraft.network.RegistryByteBuf;
 import net.minecraft.network.codec.PacketCodec;
@@ -14,7 +16,7 @@ import java.util.UUID;
 
 /** Wire contract used by the Fabric client and the Paper/Fabric server endpoints. */
 public final class PredictionPayloads {
-    public static final int PROTOCOL_VERSION = 21;
+    public static final int PROTOCOL_VERSION = 41;
     public static final int MAX_BLOCK_STATE_CHARACTERS = 512;
     public static final int MAX_CONFIG_ENTRIES = 16_384;
     public static final int MAX_PROFILES = 2_048;
@@ -23,7 +25,7 @@ public final class PredictionPayloads {
 
     private PredictionPayloads() { }
 
-    public enum InputKind { LEFT_CLICK, RIGHT_CLICK, RIGHT_CLICK_BLOCK, RIGHT_CLICK_ENTITY, SNEAK_START, SNEAK_STOP }
+    public enum InputKind { LEFT_CLICK, RIGHT_CLICK, RIGHT_CLICK_BLOCK, RIGHT_CLICK_ENTITY, SNEAK_START, SNEAK_STOP, SWAP_HANDS }
     public enum VisualKind { CAST, PROJECTILE, AREA, TEMP_BLOCK, SELF }
     public enum ValueType { STRING, BOOLEAN, INTEGER, DECIMAL, STRING_LIST }
     public enum TempOperation { CREATE, UPDATE_EXPIRY, REVERT, DISCARD }
@@ -79,17 +81,75 @@ public final class PredictionPayloads {
         @Override public Id<ClientHello> getId() { return ID; }
     }
 
+    /** One-time session barrier. Gameplay input continues to use vanilla packets only. */
+    public record ClientReady(UUID sessionId, List<String> supportedAbilities) implements CustomPayload {
+        public static final Id<ClientReady> ID = id("client_ready");
+        public static final PacketCodec<RegistryByteBuf, ClientReady> CODEC = PacketCodec.of(ClientReady::write, ClientReady::new);
+        private ClientReady(RegistryByteBuf buf) {
+            this(buf.readUuid(), readStrings(buf, MAX_PROFILES));
+        }
+        private void write(RegistryByteBuf buf) {
+            buf.writeUuid(sessionId);
+            writeStrings(buf, supportedAbilities);
+        }
+        @Override public Id<ClientReady> getId() { return ID; }
+    }
+
+    /**
+     * Opaque authoritative world identity. Paper uses the Bukkit world UUID,
+     * because multiple worlds can share one vanilla dimension key and one
+     * ClientWorld instance during a server-side transfer.
+     */
+    public record ServerWorldState(UUID sessionId, long worldGeneration,
+                                   String worldIdentity) implements CustomPayload {
+        public static final Id<ServerWorldState> ID = id("world_state");
+        public static final PacketCodec<RegistryByteBuf, ServerWorldState> CODEC =
+                PacketCodec.of(ServerWorldState::write, ServerWorldState::new);
+        private ServerWorldState(RegistryByteBuf buf) {
+            this(buf.readUuid(), buf.readVarLong(), buf.readString(128));
+        }
+        private void write(RegistryByteBuf buf) {
+            buf.writeUuid(sessionId); buf.writeVarLong(worldGeneration); buf.writeString(worldIdentity, 128);
+        }
+        @Override public Id<ServerWorldState> getId() { return ID; }
+    }
+
+    /**
+     * Negative-only metadata for a native input which the local common runtime
+     * rejected while its cooldown was still active. The following vanilla
+     * packet remains the sole input/scheduling authority; this message can
+     * only prevent ProjectKorra from replaying an already-rejected cast after
+     * network latency, never make the server accept one.
+     */
+    public record InputVeto(UUID sessionId, long actionSequence, InputKind kind,
+                            String ability) implements CustomPayload {
+        public static final Id<InputVeto> ID = id("input_veto");
+        public static final PacketCodec<RegistryByteBuf, InputVeto> CODEC =
+                PacketCodec.of(InputVeto::write, InputVeto::new);
+        private InputVeto(RegistryByteBuf buf) {
+            this(buf.readUuid(), buf.readVarLong(), buf.readEnumConstant(InputKind.class),
+                    buf.readString(128));
+        }
+        private void write(RegistryByteBuf buf) {
+            buf.writeUuid(sessionId); buf.writeVarLong(actionSequence);
+            buf.writeEnumConstant(kind); buf.writeString(ability, 128);
+        }
+        @Override public Id<InputVeto> getId() { return ID; }
+    }
+
     public record ServerSnapshot(int protocolVersion, UUID sessionId, long serverTick, long serverNowMillis, long configEpoch,
                                  int maxRewindTicks, List<ConfigEntry> config, List<AbilityProfile> profiles,
                                  Map<Integer, String> binds, Map<String, Long> cooldowns,
-                                 List<String> elements, List<String> subElements, double airBlastDecay) implements CustomPayload {
+                                 List<String> elements, List<String> subElements,
+                                 List<String> permissions, double airBlastDecay, boolean chiBlocked,
+                                 RegionProtectionAuthority.Snapshot regionProtection) implements CustomPayload {
         public static final Id<ServerSnapshot> ID = id("server_snapshot");
         public static final PacketCodec<RegistryByteBuf, ServerSnapshot> CODEC = PacketCodec.of(ServerSnapshot::write, ServerSnapshot::new);
 
         private ServerSnapshot(RegistryByteBuf buf) {
             this(buf.readVarInt(), buf.readUuid(), buf.readLong(), buf.readLong(), buf.readLong(), buf.readVarInt(),
                     readConfig(buf), readProfiles(buf), readBinds(buf), readCooldowns(buf), readStrings(buf, 64), readStrings(buf, 128),
-                    buf.readDouble());
+                    readStrings(buf, 2_048), buf.readDouble(), buf.readBoolean(), readRegionProtection(buf));
         }
 
         private void write(RegistryByteBuf buf) {
@@ -109,7 +169,9 @@ public final class PredictionPayloads {
             cooldowns.forEach((ability, until) -> { buf.writeString(ability, 128); buf.writeLong(until); });
             writeStrings(buf, elements);
             writeStrings(buf, subElements);
-            buf.writeDouble(airBlastDecay);
+            writeStrings(buf, permissions);
+            buf.writeDouble(airBlastDecay); buf.writeBoolean(chiBlocked);
+            writeRegionProtection(buf, regionProtection);
         }
 
         @Override public Id<ServerSnapshot> getId() { return ID; }
@@ -117,11 +179,12 @@ public final class PredictionPayloads {
 
     public record PlayerState(UUID sessionId, long serverTick, long serverNowMillis, long acknowledgedSequence, Map<Integer, String> binds,
                               Map<String, Long> cooldowns, List<String> elements,
-                              List<String> subElements, double airBlastDecay,
+                              List<String> subElements, List<String> permissions, double airBlastDecay,
+                              boolean chiBlocked, RegionProtectionAuthority.Snapshot regionProtection,
                               List<String> activeFlightAbilities) implements CustomPayload {
         public static final Id<PlayerState> ID = id("player_state");
         public static final PacketCodec<RegistryByteBuf, PlayerState> CODEC = PacketCodec.of(PlayerState::write, PlayerState::new);
-        private PlayerState(RegistryByteBuf buf) { this(buf.readUuid(), buf.readLong(), buf.readLong(), buf.readVarLong(), readBinds(buf), readCooldowns(buf), readStrings(buf, 64), readStrings(buf, 128), buf.readDouble(), readStrings(buf, 32)); }
+        private PlayerState(RegistryByteBuf buf) { this(buf.readUuid(), buf.readLong(), buf.readLong(), buf.readVarLong(), readBinds(buf), readCooldowns(buf), readStrings(buf, 64), readStrings(buf, 128), readStrings(buf, 2_048), buf.readDouble(), buf.readBoolean(), readRegionProtection(buf), readStrings(buf, 32)); }
         private void write(RegistryByteBuf buf) {
             buf.writeUuid(sessionId); buf.writeLong(serverTick); buf.writeLong(serverNowMillis); buf.writeVarLong(acknowledgedSequence);
             buf.writeVarInt(binds.size());
@@ -130,7 +193,9 @@ public final class PredictionPayloads {
             cooldowns.forEach((ability, until) -> { buf.writeString(ability, 128); buf.writeLong(until); });
             writeStrings(buf, elements);
             writeStrings(buf, subElements);
-            buf.writeDouble(airBlastDecay);
+            writeStrings(buf, permissions);
+            buf.writeDouble(airBlastDecay); buf.writeBoolean(chiBlocked);
+            writeRegionProtection(buf, regionProtection);
             writeStrings(buf, activeFlightAbilities);
         }
         @Override public Id<PlayerState> getId() { return ID; }
@@ -168,42 +233,96 @@ public final class PredictionPayloads {
         @Override public Id<ConfigChunk> getId() { return ID; }
     }
 
-    public record InputFrame(UUID sessionId, long sequence, long clientTick, InputKind kind, int selectedSlot,
-                             float yaw, float pitch, double claimedOriginX, double claimedOriginY,
-                             double claimedOriginZ, boolean locallyPredicted,
-                             boolean locallyBlockedByCooldown) implements CustomPayload {
-        public static final Id<InputFrame> ID = id("input_frame");
-        public static final PacketCodec<RegistryByteBuf, InputFrame> CODEC = PacketCodec.of(InputFrame::write, InputFrame::new);
-        private InputFrame(RegistryByteBuf buf) {
-            this(buf.readUuid(), buf.readVarLong(), buf.readLong(), buf.readEnumConstant(InputKind.class), buf.readVarInt(),
-                    buf.readFloat(), buf.readFloat(), buf.readDouble(), buf.readDouble(), buf.readDouble(),
-                    buf.readBoolean(), buf.readBoolean());
+    /** Causal id assigned by the server immediately before the native input callback runs. */
+    public record NativeAction(UUID sessionId, long actionSequence, long serverTick, InputKind kind,
+                               int selectedSlot, String ability, double originX, double originY,
+                               double originZ, float yaw, float pitch,
+                               boolean predictable) implements CustomPayload {
+        public static final Id<NativeAction> ID = id("native_action");
+        public static final PacketCodec<RegistryByteBuf, NativeAction> CODEC = PacketCodec.of(NativeAction::write, NativeAction::new);
+        private NativeAction(RegistryByteBuf buf) {
+            this(buf.readUuid(), buf.readVarLong(), buf.readLong(), buf.readEnumConstant(InputKind.class),
+                    buf.readVarInt(), buf.readString(128), buf.readDouble(), buf.readDouble(),
+                    buf.readDouble(), buf.readFloat(), buf.readFloat(), buf.readBoolean());
         }
         private void write(RegistryByteBuf buf) {
-            buf.writeUuid(sessionId); buf.writeVarLong(sequence); buf.writeLong(clientTick); buf.writeEnumConstant(kind);
-            buf.writeVarInt(selectedSlot); buf.writeFloat(yaw); buf.writeFloat(pitch);
-            buf.writeDouble(claimedOriginX); buf.writeDouble(claimedOriginY); buf.writeDouble(claimedOriginZ);
-            buf.writeBoolean(locallyPredicted);
-            buf.writeBoolean(locallyBlockedByCooldown);
+            buf.writeUuid(sessionId); buf.writeVarLong(actionSequence); buf.writeLong(serverTick);
+            buf.writeEnumConstant(kind); buf.writeVarInt(selectedSlot); buf.writeString(ability, 128);
+            buf.writeDouble(originX); buf.writeDouble(originY); buf.writeDouble(originZ);
+            buf.writeFloat(yaw); buf.writeFloat(pitch); buf.writeBoolean(predictable);
         }
-        @Override public Id<InputFrame> getId() { return ID; }
+        @Override public Id<NativeAction> getId() { return ID; }
     }
 
-    public record ActionPrepare(UUID sessionId, long sequence, long clientTick, InputKind kind, int selectedSlot,
-                                float yaw, float pitch, double claimedOriginX, double claimedOriginY,
-                                double claimedOriginZ) implements CustomPayload {
-        public static final Id<ActionPrepare> ID = id("action_prepare");
-        public static final PacketCodec<RegistryByteBuf, ActionPrepare> CODEC = PacketCodec.of(ActionPrepare::write, ActionPrepare::new);
-        private ActionPrepare(RegistryByteBuf buf) {
-            this(buf.readUuid(), buf.readVarLong(), buf.readLong(), buf.readEnumConstant(InputKind.class), buf.readVarInt(),
-                    buf.readFloat(), buf.readFloat(), buf.readDouble(), buf.readDouble(), buf.readDouble());
+    /** Read-only evidence comparing the AirBlast state actually used by both runtimes. */
+    public record AirBlastTraceReceipt(UUID sessionId, long actionSequence, long serverTick,
+                                       int eventOrdinal, AirBlastTraceSync.Phase phase, int progressTick,
+                                       double eyeX, double eyeY, double eyeZ, float yaw, float pitch,
+                                       double originX, double originY, double originZ,
+                                       double targetX, double targetY, double targetZ,
+                                       double locationX, double locationY, double locationZ,
+                                       double directionX, double directionY, double directionZ,
+                                       double speed, double range, double radius,
+                                       double preShootStamina, double shotStamina,
+                                       int blockX, int blockY, int blockZ, String blockMaterial,
+                                       boolean removed) implements CustomPayload {
+        public static final Id<AirBlastTraceReceipt> ID = id("airblast_trace");
+        public static final PacketCodec<RegistryByteBuf, AirBlastTraceReceipt> CODEC =
+                PacketCodec.of(AirBlastTraceReceipt::write, AirBlastTraceReceipt::new);
+
+        private AirBlastTraceReceipt(RegistryByteBuf buf) {
+            this(buf.readUuid(), buf.readVarLong(), buf.readLong(),
+                    buf.readVarInt(), buf.readEnumConstant(AirBlastTraceSync.Phase.class), buf.readVarInt(),
+                    buf.readDouble(), buf.readDouble(), buf.readDouble(), buf.readFloat(), buf.readFloat(),
+                    buf.readDouble(), buf.readDouble(), buf.readDouble(),
+                    buf.readDouble(), buf.readDouble(), buf.readDouble(),
+                    buf.readDouble(), buf.readDouble(), buf.readDouble(),
+                    buf.readDouble(), buf.readDouble(), buf.readDouble(),
+                    buf.readDouble(), buf.readDouble(), buf.readDouble(),
+                    buf.readDouble(), buf.readDouble(),
+                    buf.readInt(), buf.readInt(), buf.readInt(), buf.readString(128), buf.readBoolean());
         }
+
+        public static AirBlastTraceReceipt from(UUID sessionId, long actionSequence, long serverTick,
+                                                AirBlastTraceSync.Trace trace) {
+            return new AirBlastTraceReceipt(sessionId, actionSequence, serverTick,
+                    trace.eventOrdinal(), trace.phase(), trace.progressTick(),
+                    trace.eyeX(), trace.eyeY(), trace.eyeZ(), trace.yaw(), trace.pitch(),
+                    trace.originX(), trace.originY(), trace.originZ(),
+                    trace.targetX(), trace.targetY(), trace.targetZ(),
+                    trace.locationX(), trace.locationY(), trace.locationZ(),
+                    trace.directionX(), trace.directionY(), trace.directionZ(),
+                    trace.speed(), trace.range(), trace.radius(),
+                    trace.preShootStamina(), trace.shotStamina(),
+                    trace.blockX(), trace.blockY(), trace.blockZ(), trace.blockMaterial(), trace.removed());
+        }
+
+        public AirBlastTraceSync.Trace trace() {
+            return new AirBlastTraceSync.Trace(eventOrdinal, phase, progressTick,
+                    eyeX, eyeY, eyeZ, yaw, pitch,
+                    originX, originY, originZ, targetX, targetY, targetZ,
+                    locationX, locationY, locationZ,
+                    directionX, directionY, directionZ,
+                    speed, range, radius, preShootStamina, shotStamina,
+                    blockX, blockY, blockZ, blockMaterial, removed);
+        }
+
         private void write(RegistryByteBuf buf) {
-            buf.writeUuid(sessionId); buf.writeVarLong(sequence); buf.writeLong(clientTick); buf.writeEnumConstant(kind);
-            buf.writeVarInt(selectedSlot); buf.writeFloat(yaw); buf.writeFloat(pitch);
-            buf.writeDouble(claimedOriginX); buf.writeDouble(claimedOriginY); buf.writeDouble(claimedOriginZ);
+            buf.writeUuid(sessionId); buf.writeVarLong(actionSequence); buf.writeLong(serverTick);
+            buf.writeVarInt(eventOrdinal); buf.writeEnumConstant(phase); buf.writeVarInt(progressTick);
+            buf.writeDouble(eyeX); buf.writeDouble(eyeY); buf.writeDouble(eyeZ);
+            buf.writeFloat(yaw); buf.writeFloat(pitch);
+            buf.writeDouble(originX); buf.writeDouble(originY); buf.writeDouble(originZ);
+            buf.writeDouble(targetX); buf.writeDouble(targetY); buf.writeDouble(targetZ);
+            buf.writeDouble(locationX); buf.writeDouble(locationY); buf.writeDouble(locationZ);
+            buf.writeDouble(directionX); buf.writeDouble(directionY); buf.writeDouble(directionZ);
+            buf.writeDouble(speed); buf.writeDouble(range); buf.writeDouble(radius);
+            buf.writeDouble(preShootStamina); buf.writeDouble(shotStamina);
+            buf.writeInt(blockX); buf.writeInt(blockY); buf.writeInt(blockZ);
+            buf.writeString(blockMaterial, 128); buf.writeBoolean(removed);
         }
-        @Override public Id<ActionPrepare> getId() { return ID; }
+
+        @Override public Id<AirBlastTraceReceipt> getId() { return ID; }
     }
 
     public record Reconcile(UUID sessionId, long sequence, boolean accepted, String reason, long serverTick, long serverNowMillis,
@@ -223,55 +342,43 @@ public final class PredictionPayloads {
         @Override public Id<Reconcile> getId() { return ID; }
     }
 
-    public record HitClaim(UUID sessionId, long actionSequence, long clientTick, int targetEntityId,
-                           double contactX, double contactY, double contactZ) implements CustomPayload {
-        public static final Id<HitClaim> ID = id("hit_claim");
-        public static final PacketCodec<RegistryByteBuf, HitClaim> CODEC = PacketCodec.of(HitClaim::write, HitClaim::new);
-        private HitClaim(RegistryByteBuf buf) {
-            this(buf.readUuid(), buf.readVarLong(), buf.readLong(), buf.readVarInt(), buf.readDouble(), buf.readDouble(), buf.readDouble());
-        }
-        private void write(RegistryByteBuf buf) {
-            buf.writeUuid(sessionId); buf.writeVarLong(actionSequence); buf.writeLong(clientTick); buf.writeVarInt(targetEntityId);
-            buf.writeDouble(contactX); buf.writeDouble(contactY); buf.writeDouble(contactZ);
-        }
-        @Override public Id<HitClaim> getId() { return ID; }
-    }
-
-    public record AuthorityHandoff(UUID sessionId, long actionSequence) implements CustomPayload {
-        public static final Id<AuthorityHandoff> ID = id("authority_handoff");
-        public static final PacketCodec<RegistryByteBuf, AuthorityHandoff> CODEC = PacketCodec.of(AuthorityHandoff::write, AuthorityHandoff::new);
-        private AuthorityHandoff(RegistryByteBuf buf) { this(buf.readUuid(), buf.readVarLong()); }
-        private void write(RegistryByteBuf buf) { buf.writeUuid(sessionId); buf.writeVarLong(actionSequence); }
-        @Override public Id<AuthorityHandoff> getId() { return ID; }
-    }
-
     public record TempBlockOp(TempOperation operation, String world, int x, int y, int z,
                               String material, long revertAtMillis, long actionSequence,
+                              String effectAbility, long effectStep, int effectOrdinal,
                               long layerId, long revision, UUID ownerId, String viewerMaterial,
                               boolean packetExpected) {
         static TempBlockOp read(RegistryByteBuf buf) {
             return new TempBlockOp(buf.readEnumConstant(TempOperation.class), buf.readString(256), buf.readInt(), buf.readInt(),
-                    buf.readInt(), buf.readString(MAX_BLOCK_STATE_CHARACTERS), buf.readLong(), buf.readVarLong(), buf.readVarLong(),
-                    buf.readVarLong(), buf.readBoolean() ? buf.readUuid() : null,
+                    buf.readInt(), buf.readString(MAX_BLOCK_STATE_CHARACTERS), buf.readLong(), buf.readVarLong(),
+                    buf.readString(128), buf.readLong(), buf.readVarInt(), buf.readVarLong(), buf.readVarLong(),
+                    buf.readBoolean() ? buf.readUuid() : null,
                     buf.readString(MAX_BLOCK_STATE_CHARACTERS), buf.readBoolean());
         }
         void write(RegistryByteBuf buf) {
             buf.writeEnumConstant(operation); buf.writeString(world, 256); buf.writeInt(x); buf.writeInt(y); buf.writeInt(z);
             buf.writeString(material, MAX_BLOCK_STATE_CHARACTERS); buf.writeLong(revertAtMillis); buf.writeVarLong(actionSequence);
+            buf.writeString(effectAbility, 128); buf.writeLong(effectStep); buf.writeVarInt(effectOrdinal);
             buf.writeVarLong(layerId); buf.writeVarLong(revision); buf.writeBoolean(ownerId != null);
             if (ownerId != null) buf.writeUuid(ownerId);
             buf.writeString(viewerMaterial, MAX_BLOCK_STATE_CHARACTERS); buf.writeBoolean(packetExpected);
         }
     }
 
-    public record TempBlockBatch(long serverTick, long serverNowMillis, List<TempBlockOp> operations) implements CustomPayload {
+    public record TempBlockBatch(UUID sessionId, long worldGeneration, String worldIdentity,
+                                 boolean snapshot,
+                                 long serverTick, long serverNowMillis,
+                                 List<TempBlockOp> operations) implements CustomPayload {
         public static final Id<TempBlockBatch> ID = id("temp_blocks");
         public static final PacketCodec<RegistryByteBuf, TempBlockBatch> CODEC = PacketCodec.of(TempBlockBatch::write, TempBlockBatch::new);
         private TempBlockBatch(RegistryByteBuf buf) {
-            this(buf.readLong(), buf.readLong(), readTempOps(buf));
+            this(buf.readUuid(), buf.readVarLong(), buf.readString(128), buf.readBoolean(),
+                    buf.readLong(), buf.readLong(), readTempOps(buf));
         }
         private void write(RegistryByteBuf buf) {
-            buf.writeLong(serverTick); buf.writeLong(serverNowMillis); buf.writeVarInt(operations.size()); operations.forEach(operation -> operation.write(buf));
+            buf.writeUuid(sessionId); buf.writeVarLong(worldGeneration); buf.writeString(worldIdentity, 128);
+            buf.writeBoolean(snapshot);
+            buf.writeLong(serverTick); buf.writeLong(serverNowMillis); buf.writeVarInt(operations.size());
+            operations.forEach(operation -> operation.write(buf));
         }
         @Override public Id<TempBlockBatch> getId() { return ID; }
     }
@@ -309,7 +416,49 @@ public final class PredictionPayloads {
         @Override public Id<VelocityOwnerV2> getId() { return ID; }
     }
 
+    /** Ownership fence sent immediately before one vanilla abilities packet. */
+    public record AbilityStateOwner(long serverTick, long actionSequence, int mutationOrdinal,
+                                    UUID abilityOwner, UUID target, String ability,
+                                    boolean flying, boolean allowFlight,
+                                    float flySpeed) implements CustomPayload {
+        public static final Id<AbilityStateOwner> ID = id("ability_state_owner");
+        public static final PacketCodec<RegistryByteBuf, AbilityStateOwner> CODEC =
+                PacketCodec.of(AbilityStateOwner::write, AbilityStateOwner::new);
+        private AbilityStateOwner(RegistryByteBuf buf) {
+            this(buf.readLong(), buf.readVarLong(), buf.readVarInt(), buf.readUuid(),
+                    buf.readUuid(), buf.readString(128), buf.readBoolean(),
+                    buf.readBoolean(), buf.readFloat());
+        }
+        private void write(RegistryByteBuf buf) {
+            buf.writeLong(serverTick); buf.writeVarLong(actionSequence); buf.writeVarInt(mutationOrdinal);
+            buf.writeUuid(abilityOwner); buf.writeUuid(target); buf.writeString(ability, 128);
+            buf.writeBoolean(flying); buf.writeBoolean(allowFlight); buf.writeFloat(flySpeed);
+        }
+        @Override public Id<AbilityStateOwner> getId() { return ID; }
+    }
+
     /** Exact ownership of one server TempFallingBlock, sent only to its caster. */
+    public record TempFallingBlockPrepare(long serverTick, long actionSequence, int spawnOrdinal,
+                                          UUID abilityOwner, String ability, String world,
+                                          double x, double y, double z,
+                                          String material) implements CustomPayload {
+        public static final Id<TempFallingBlockPrepare> ID = id("temp_falling_prepare");
+        public static final PacketCodec<RegistryByteBuf, TempFallingBlockPrepare> CODEC =
+                PacketCodec.of(TempFallingBlockPrepare::write, TempFallingBlockPrepare::new);
+        private TempFallingBlockPrepare(RegistryByteBuf buf) {
+            this(buf.readLong(), buf.readVarLong(), buf.readVarInt(), buf.readUuid(),
+                    buf.readString(128), buf.readString(256), buf.readDouble(), buf.readDouble(),
+                    buf.readDouble(), buf.readString(MAX_BLOCK_STATE_CHARACTERS));
+        }
+        private void write(RegistryByteBuf buf) {
+            buf.writeLong(serverTick); buf.writeVarLong(actionSequence); buf.writeVarInt(spawnOrdinal);
+            buf.writeUuid(abilityOwner); buf.writeString(ability, 128); buf.writeString(world, 256);
+            buf.writeDouble(x); buf.writeDouble(y); buf.writeDouble(z);
+            buf.writeString(material, MAX_BLOCK_STATE_CHARACTERS);
+        }
+        @Override public Id<TempFallingBlockPrepare> getId() { return ID; }
+    }
+
     public record TempFallingBlockReceipt(long serverTick, long actionSequence, int spawnOrdinal,
                                           UUID abilityOwner, int serverEntityId,
                                           String ability) implements CustomPayload {
@@ -327,11 +476,44 @@ public final class PredictionPayloads {
         @Override public Id<TempFallingBlockReceipt> getId() { return ID; }
     }
 
-    public record AbilityRemoved(UUID player, String ability, long actionSequence) implements CustomPayload {
+    /** Exact causal identity of one client-predictable ordinary earth write. */
+    public record DirectBlockReceipt(long serverTick, long actionSequence, int mutationOrdinal,
+                                     UUID abilityOwner, String ability, String world,
+                                     int x, int y, int z, String material,
+                                     boolean movedEarthLifecycle) implements CustomPayload {
+        public static final Id<DirectBlockReceipt> ID = id("direct_block");
+        public static final PacketCodec<RegistryByteBuf, DirectBlockReceipt> CODEC =
+                PacketCodec.of(DirectBlockReceipt::write, DirectBlockReceipt::new);
+        private DirectBlockReceipt(RegistryByteBuf buf) {
+            this(buf.readLong(), buf.readVarLong(), buf.readVarInt(), buf.readUuid(),
+                    buf.readString(128), buf.readString(256), buf.readInt(), buf.readInt(),
+                    buf.readInt(), buf.readString(MAX_BLOCK_STATE_CHARACTERS), buf.readBoolean());
+        }
+        private void write(RegistryByteBuf buf) {
+            buf.writeLong(serverTick); buf.writeVarLong(actionSequence); buf.writeVarInt(mutationOrdinal);
+            buf.writeUuid(abilityOwner); buf.writeString(ability, 128); buf.writeString(world, 256);
+            buf.writeInt(x); buf.writeInt(y); buf.writeInt(z); buf.writeString(material, MAX_BLOCK_STATE_CHARACTERS);
+            buf.writeBoolean(movedEarthLifecycle);
+        }
+        @Override public Id<DirectBlockReceipt> getId() { return ID; }
+    }
+
+    public record AbilityRemoved(UUID player, String ability, String abilityType, long actionSequence,
+                                 boolean externallyCaused, long acknowledgedSequence,
+                                 int remainingTypeInstances) implements CustomPayload {
         public static final Id<AbilityRemoved> ID = id("ability_removed");
         public static final PacketCodec<RegistryByteBuf, AbilityRemoved> CODEC = PacketCodec.of(AbilityRemoved::write, AbilityRemoved::new);
-        private AbilityRemoved(RegistryByteBuf buf) { this(buf.readUuid(), buf.readString(128), buf.readVarLong()); }
-        private void write(RegistryByteBuf buf) { buf.writeUuid(player); buf.writeString(ability, 128); buf.writeVarLong(actionSequence); }
+        private AbilityRemoved(RegistryByteBuf buf) {
+            this(buf.readUuid(), buf.readString(128), buf.readString(256), buf.readVarLong(), buf.readBoolean(),
+                    buf.readVarLong(), buf.readVarInt());
+        }
+        private void write(RegistryByteBuf buf) {
+            buf.writeUuid(player); buf.writeString(ability, 128); buf.writeString(abilityType, 256);
+            buf.writeVarLong(actionSequence);
+            buf.writeBoolean(externallyCaused);
+            buf.writeVarLong(acknowledgedSequence);
+            buf.writeVarInt(remainingTypeInstances);
+        }
         @Override public Id<AbilityRemoved> getId() { return ID; }
     }
 
@@ -339,11 +521,12 @@ public final class PredictionPayloads {
         if (registered) return;
         registered = true;
         PayloadTypeRegistry.playC2S().register(ClientHello.ID, ClientHello.CODEC);
-        PayloadTypeRegistry.playC2S().register(InputFrame.ID, InputFrame.CODEC);
-        PayloadTypeRegistry.playC2S().register(ActionPrepare.ID, ActionPrepare.CODEC);
-        PayloadTypeRegistry.playC2S().register(HitClaim.ID, HitClaim.CODEC);
-        PayloadTypeRegistry.playC2S().register(AuthorityHandoff.ID, AuthorityHandoff.CODEC);
+        PayloadTypeRegistry.playC2S().register(ClientReady.ID, ClientReady.CODEC);
+        PayloadTypeRegistry.playC2S().register(InputVeto.ID, InputVeto.CODEC);
+        PayloadTypeRegistry.playS2C().register(ServerWorldState.ID, ServerWorldState.CODEC);
         PayloadTypeRegistry.playS2C().registerLarge(ServerSnapshot.ID, ServerSnapshot.CODEC, 2 * 1024 * 1024);
+        PayloadTypeRegistry.playS2C().register(NativeAction.ID, NativeAction.CODEC);
+        PayloadTypeRegistry.playS2C().register(AirBlastTraceReceipt.ID, AirBlastTraceReceipt.CODEC);
         PayloadTypeRegistry.playS2C().register(PlayerState.ID, PlayerState.CODEC);
         PayloadTypeRegistry.playS2C().register(StateDirective.ID, StateDirective.CODEC);
         PayloadTypeRegistry.playS2C().registerLarge(ConfigChunk.ID, ConfigChunk.CODEC, 2 * 1024 * 1024);
@@ -351,7 +534,10 @@ public final class PredictionPayloads {
         PayloadTypeRegistry.playS2C().registerLarge(TempBlockBatch.ID, TempBlockBatch.CODEC, 512 * 1024);
         PayloadTypeRegistry.playS2C().register(VelocityOwner.ID, VelocityOwner.CODEC);
         PayloadTypeRegistry.playS2C().register(VelocityOwnerV2.ID, VelocityOwnerV2.CODEC);
+        PayloadTypeRegistry.playS2C().register(AbilityStateOwner.ID, AbilityStateOwner.CODEC);
+        PayloadTypeRegistry.playS2C().register(TempFallingBlockPrepare.ID, TempFallingBlockPrepare.CODEC);
         PayloadTypeRegistry.playS2C().register(TempFallingBlockReceipt.ID, TempFallingBlockReceipt.CODEC);
+        PayloadTypeRegistry.playS2C().register(DirectBlockReceipt.ID, DirectBlockReceipt.CODEC);
         PayloadTypeRegistry.playS2C().register(AbilityRemoved.ID, AbilityRemoved.CODEC);
     }
 
@@ -400,6 +586,33 @@ public final class PredictionPayloads {
     private static void writeStrings(RegistryByteBuf buf, List<String> values) {
         buf.writeVarInt(values.size());
         for (String value : values) buf.writeString(value, 128);
+    }
+
+    private static RegionProtectionAuthority.Snapshot readRegionProtection(final RegistryByteBuf buf) {
+        final String world = buf.readString(256);
+        final List<String> abilities = readStrings(buf, 63);
+        final int count = bounded(buf.readVarInt(), 512, "region protection boxes");
+        final List<RegionProtectionAuthority.Box> boxes = new ArrayList<>(count);
+        for (int index = 0; index < count; index++) {
+            boxes.add(new RegionProtectionAuthority.Box(buf.readLong(),
+                    buf.readInt(), buf.readInt(), buf.readInt(),
+                    buf.readInt(), buf.readInt(), buf.readInt()));
+        }
+        return new RegionProtectionAuthority.Snapshot(world, abilities, boxes);
+    }
+
+    private static void writeRegionProtection(final RegistryByteBuf buf,
+                                                final RegionProtectionAuthority.Snapshot snapshot) {
+        final RegionProtectionAuthority.Snapshot safe = snapshot == null
+                ? RegionProtectionAuthority.Snapshot.empty() : snapshot;
+        buf.writeString(safe.world(), 256);
+        writeStrings(buf, safe.abilities());
+        buf.writeVarInt(safe.boxes().size());
+        for (RegionProtectionAuthority.Box box : safe.boxes()) {
+            buf.writeLong(box.abilityMask());
+            buf.writeInt(box.minX()); buf.writeInt(box.minY()); buf.writeInt(box.minZ());
+            buf.writeInt(box.maxX()); buf.writeInt(box.maxY()); buf.writeInt(box.maxZ());
+        }
     }
 
     private static int bounded(int value, int maximum, String label) {

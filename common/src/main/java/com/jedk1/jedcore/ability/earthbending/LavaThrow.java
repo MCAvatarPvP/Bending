@@ -17,6 +17,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
@@ -43,9 +44,11 @@ public class LavaThrow extends LavaAbility implements AddonAbility {
     private int fireTicks;
     private Location location;
     private int shots;
+    private final Random random;
 
     public LavaThrow(Player player) {
         super(player);
+        this.random = PredictionDeterminism.random(player == null ? null : player.getUniqueId(), getClass().getName());
 
         if (hasAbility(player, LavaThrow.class)) {
             LavaThrow.createBlast(player);
@@ -73,7 +76,10 @@ public class LavaThrow extends LavaAbility implements AddonAbility {
     }
 
     public static Block getRandomSourceBlock(Location location, int radius) {
-        Random rand = new Random();
+        return getRandomSourceBlock(location, radius, new Random());
+    }
+
+    private static Block getRandomSourceBlock(Location location, int radius, final Random rand) {
         List<Integer> checked = new ArrayList<>();
         List<Block> blocks = GeneralMethods.getBlocksAroundPoint(location, radius);
 
@@ -150,14 +156,14 @@ public class LavaThrow extends LavaAbility implements AddonAbility {
     }
 
     private boolean prepare() {
-        Block block = getRandomSourceBlock(location, 3);
+        Block block = getRandomSourceBlock(location, 3, this.random);
 
         return block != null;
     }
 
     public void createBlast() {
         // TODO: This is just the worst. Fix it so it's not hidden distance selection.
-        Block source = getRandomSourceBlock(location, 3);
+        Block source = getRandomSourceBlock(location, 3, this.random);
 
         if (source != null) {
             shots++;

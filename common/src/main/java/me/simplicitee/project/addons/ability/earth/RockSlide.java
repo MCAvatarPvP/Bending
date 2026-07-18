@@ -13,6 +13,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.util.ClickType;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
@@ -21,6 +22,7 @@ import me.simplicitee.project.addons.ProjectAddons;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -164,7 +166,11 @@ public class RockSlide extends EarthAbility implements AddonAbility, ComboAbilit
                 loc = b.getLocation().add(0.5, 1.1, 0.5);
 
                 if (loc.getBlock().isPassable()) {
-                    Location offset = offset(loc, 0.2, 0.2, 0.2);
+                    Random fallingRandom = PredictionDeterminism.random(
+                            player.getUniqueId(),
+                            getClass().getName() + ":falling:" + getRunningTicks() + ':' + i + ':' + j,
+                            getPredictionDeterministicSeed());
+                    Location offset = offset(loc, 0.2, 0.2, 0.2, fallingRandom);
                     Vector velocity = new Vector(0, 0, 0);
                     TempFallingBlock fb = new TempFallingBlock(offset, b.getBlockData(), velocity, this);
                     blocks.add(fb);
@@ -194,10 +200,10 @@ public class RockSlide extends EarthAbility implements AddonAbility, ComboAbilit
         return b;
     }
 
-    private Location offset(Location loc, double x, double y, double z) {
-        double dx = Math.random() * x - x / 2;
-        double dy = Math.random() * y - y / 2;
-        double dz = Math.random() * z - z / 2;
+    private Location offset(Location loc, double x, double y, double z, Random random) {
+        double dx = random.nextDouble() * x - x / 2;
+        double dy = random.nextDouble() * y - y / 2;
+        double dz = random.nextDouble() * z - z / 2;
         return loc.clone().add(dx, dy, dz);
     }
 

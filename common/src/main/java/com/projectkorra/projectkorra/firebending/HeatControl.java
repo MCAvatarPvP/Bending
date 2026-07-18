@@ -17,6 +17,7 @@ import com.projectkorra.projectkorra.platform.mc.block.data.Levelled;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.inventory.ItemStack;
 import com.projectkorra.projectkorra.platform.mc.scheduler.BukkitRunnable;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.ParticleEffect;
@@ -77,6 +78,7 @@ public class HeatControl extends FireAbility {
     private boolean solidifying;
     private Location solidifyLocation;
     private Random randy;
+    private Random gameplayRandom;
     public HeatControl(final Player player, final HeatControlType heatControlType) {
         super(player);
 
@@ -206,6 +208,11 @@ public class HeatControl extends FireAbility {
         return MELTED_BLOCKS.values();
     }
 
+    /** Drops old-world melted-ice ownership without restoring blocks. */
+    public static void discardAllTracking() {
+        MELTED_BLOCKS.clear();
+    }
+
     public void setFields() {
         if (this.heatControlType == HeatControlType.COOK) {
             this.cookTime = System.currentTimeMillis();
@@ -226,6 +233,8 @@ public class HeatControl extends FireAbility {
             this.solidifyRevert = getConfig().getBoolean("Abilities.Fire.HeatControl.Solidify.Revert");
             this.solidifyRevertTime = getConfig().getLong("Abilities.Fire.HeatControl.Solidify.RevertTime");
             this.randy = new Random();
+            this.gameplayRandom = PredictionDeterminism.random(
+                    this.player == null ? null : this.player.getUniqueId(), getClass().getName() + ":solidify");
         }
     }
 
@@ -398,7 +407,7 @@ public class HeatControl extends FireAbility {
             return;
         }
 
-        final Block b = lava.get(this.randy.nextInt(lava.size()));
+        final Block b = lava.get(this.gameplayRandom.nextInt(lava.size()));
 
         final Material tempRevertMaterial = Material.MAGMA_BLOCK;
 
@@ -432,7 +441,7 @@ public class HeatControl extends FireAbility {
             @Override
             public void run() {
                 if (tempBlock != null) {
-                    final boolean bool = Math.random() > .5 ? true : false;
+                    final boolean bool = HeatControl.this.gameplayRandom.nextBoolean();
                     if (HeatControl.this.solidifyRevert) {
                         if (bool) {
                             tempBlock.setType(Material.STONE);

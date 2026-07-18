@@ -1,6 +1,5 @@
 package com.projectkorra.projectkorra.prediction;
 
-import com.jedk1.jedcore.ability.firebending.FirePunch;
 import com.jedk1.jedcore.ability.passive.WallRun;
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.ability.Ability;
@@ -9,50 +8,42 @@ import com.projectkorra.projectkorra.ability.activation.AbilityActivationManager
 import com.projectkorra.projectkorra.ability.util.MultiAbilityManager;
 import com.projectkorra.projectkorra.ability.util.PassiveManager;
 import com.projectkorra.projectkorra.firebending.FireBlastCharged;
-import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.listener.CommonInputHandler;
 import com.projectkorra.projectkorra.platform.bukkit.BukkitMC;
 import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
-import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.util.ClickType;
-import com.projectkorra.projectkorra.util.Cooldown;
 import com.projectkorra.projectkorra.util.TempBlock;
 import com.projectkorra.projectkorra.waterbending.passive.FastSwim;
 import org.bukkit.Bukkit;
-import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
 import org.bukkit.World;
-import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.plugin.messaging.Messenger;
 import org.bukkit.plugin.messaging.PluginMessageListener;
 import org.bukkit.scheduler.BukkitTask;
-import org.bukkit.util.BoundingBox;
-import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
 
 import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.ToLongFunction;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 /**
  * Authoritative Paper endpoint for Fabric client prediction.
  */
 public final class PaperPredictionServer implements PluginMessageListener, Runnable, TempBlockSync.Listener,
         TempFallingBlockSync.Listener, CooldownSync.Listener, VelocitySync.Listener,
-        AbilityRemovalSync.Listener, HitResolutionSync.Listener {
+        AbilityRemovalSync.Listener, DirectBlockSync.Listener,
+        AbilityStateSync.Listener {
     public static final int MAX_REWIND_TICKS = 12;
     private static final int CAPABILITY_EXACT = 8;
-    private static final int INPUTS_PER_SECOND = 80;
-    private static final int CLAIMS_PER_SECOND = 48;
-    private static final int TEMP_BLOCK_OPS_PER_PACKET = 8;
-    private static final double MAX_ORIGIN_ERROR = 8.0;
-    private static final double CLAIM_QUERY_TOLERANCE = 1.0;
+    private static final int TEMP_BLOCK_OPS_PER_PACKET = 4;
+    private static final int MAX_PREDICTION_PERMISSIONS = 512;
     private static final ThreadLocal<UUID> EFFECT_OWNER = new ThreadLocal<>();
     private static final ThreadLocal<Boolean> EFFECT_PREDICTED = new ThreadLocal<>();
     private static final ThreadLocal<Long> INPUT_SEQUENCE = new ThreadLocal<>();
@@ -60,23 +51,20 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
 
     private final JavaPlugin plugin;
     private final Map<UUID, Session> sessions = new ConcurrentHashMap<>();
-    private final Map<UUID, Deque<EntityFrame>> history = new HashMap<>();
     private final Map<CoreAbility, Action> abilityActions = Collections.synchronizedMap(new IdentityHashMap<>());
     private final Map<CoreAbility, Action> abilityCreationActions = Collections.synchronizedMap(new IdentityHashMap<>());
     private final Map<Long, Action> tempLayerActions = new HashMap<>();
+    private final Map<Long, TempEffectIdentity> tempLayerEffects = new HashMap<>();
     private final Set<Long> serverOwnedTempLayers = new HashSet<>();
-    private final Map<UUID, EnumMap<PaperPredictionProtocol.InputKind, Long>> pendingVanilla = new HashMap<>();
     private final List<PendingTempBlock> pendingTempBlocks = new ArrayList<>();
-    private TempBlockPacketFilter tempBlockPacketFilter;
-    private final List<Claim> pendingReactions = new ArrayList<>();
-    private final List<NativeHitResolution> pendingNativeReactions = new ArrayList<>();
+    private final List<PendingAbilityRemoval> pendingAbilityRemovals = new ArrayList<>();
+    private final Map<UUID, Integer> uncorrelatedExternalVelocityOrdinals = new HashMap<>();
     private final AtomicBoolean snapshotBuildRunning = new AtomicBoolean();
     private volatile List<PaperPredictionProtocol.ConfigEntry> publicConfig = List.of();
     private volatile List<PaperPredictionProtocol.AbilityProfile> profiles = List.of();
     private volatile long configEpoch;
     private volatile boolean snapshotReady;
     private long tick;
-    private final ToLongFunction<CoreAbility> timingProvider = this::latencyCompensationMillis;
     private BukkitTask task;
 
     private PaperPredictionServer(JavaPlugin plugin) {
@@ -88,11 +76,11 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         server.registerChannels();
         active = server;
         TempBlockSync.install(server);
+        DirectBlockSync.install(server);
         TempFallingBlockSync.install(server);
         VelocitySync.install(server);
+        AbilityStateSync.install(server);
         AbilityRemovalSync.install(server);
-        HitResolutionSync.install(server);
-        PredictionTiming.install(server.timingProvider);
         CooldownSync.install(server);
         server.scheduleTicker();
         server.requestSnapshotRebuild(false);
@@ -100,36 +88,41 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         return server;
     }
 
-    public void setTempBlockPacketFilter(final TempBlockPacketFilter filter) {
-        this.tempBlockPacketFilter = filter;
-    }
-
-    public static boolean consumeVanilla(Player player, PaperPredictionProtocol.InputKind kind) {
+    private static CommonInputHandler.InputResult handleVanilla(
+            Player player, PaperPredictionProtocol.InputKind kind,
+            Supplier<CommonInputHandler.InputResult> nativeInput) {
         PaperPredictionServer server = active;
-        if (server == null || player == null) return false;
-        EnumMap<PaperPredictionProtocol.InputKind, Long> pending = server.pendingVanilla.get(player.getUniqueId());
-        if (pending == null) return false;
-        // A single physical action can produce both interact and animation
-        // events. Keep the marker for its short lifetime so every native echo
-        // of the already-dispatched predicted input is ignored.
-        Long until = pending.get(kind);
-        return until != null && until >= server.tick;
+        if (server == null || player == null || nativeInput == null) {
+            return nativeInput == null ? CommonInputHandler.InputResult.pass() : nativeInput.get();
+        }
+        return server.handleVanilla0(player, kind, nativeInput);
     }
 
-    public static boolean consumeLeftClick(Player player) {
-        return consumeVanilla(player, PaperPredictionProtocol.InputKind.LEFT_CLICK);
+    public static CommonInputHandler.InputResult handleLeftClick(
+            Player player, Supplier<CommonInputHandler.InputResult> nativeInput) {
+        return handleVanilla(player, PaperPredictionProtocol.InputKind.LEFT_CLICK, nativeInput);
     }
 
-    public static boolean consumeRightClick(Player player, boolean block) {
-        return consumeVanilla(player, block ? PaperPredictionProtocol.InputKind.RIGHT_CLICK_BLOCK : PaperPredictionProtocol.InputKind.RIGHT_CLICK);
+    public static CommonInputHandler.InputResult handleRightClick(
+            Player player, boolean block, Supplier<CommonInputHandler.InputResult> nativeInput) {
+        return handleVanilla(player, block ? PaperPredictionProtocol.InputKind.RIGHT_CLICK_BLOCK
+                : PaperPredictionProtocol.InputKind.RIGHT_CLICK, nativeInput);
     }
 
-    public static boolean consumeRightClickEntity(Player player) {
-        return consumeVanilla(player, PaperPredictionProtocol.InputKind.RIGHT_CLICK_ENTITY);
+    public static CommonInputHandler.InputResult handleRightClickEntity(
+            Player player, Supplier<CommonInputHandler.InputResult> nativeInput) {
+        return handleVanilla(player, PaperPredictionProtocol.InputKind.RIGHT_CLICK_ENTITY, nativeInput);
     }
 
-    public static boolean consumeSneak(Player player, boolean sneakingNow) {
-        return consumeVanilla(player, sneakingNow ? PaperPredictionProtocol.InputKind.SNEAK_START : PaperPredictionProtocol.InputKind.SNEAK_STOP);
+    public static CommonInputHandler.InputResult handleSneak(
+            Player player, boolean sneakingNow, Supplier<CommonInputHandler.InputResult> nativeInput) {
+        return handleVanilla(player, sneakingNow ? PaperPredictionProtocol.InputKind.SNEAK_START
+                : PaperPredictionProtocol.InputKind.SNEAK_STOP, nativeInput);
+    }
+
+    public static CommonInputHandler.InputResult handleSwapHands(
+            Player player, Supplier<CommonInputHandler.InputResult> nativeInput) {
+        return handleVanilla(player, PaperPredictionProtocol.InputKind.SWAP_HANDS, nativeInput);
     }
 
     public static Player predictedEffectOwner() {
@@ -149,69 +142,35 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
 
     public static Player predictedSoundEffectOwner() {
         if (ConfirmedHitEffects.isBroadcastingAuthoritativeSound()) return null;
-        // Predicted clients already ran the ability sound locally. Hit claims
-        // now validate registration only; they must not opt the owner back
-        // into the authoritative sound broadcast and play a second hit sound.
+        // Predicted clients already ran ordinary ability sounds locally. A
+        // server-confirmed hit sound uses ConfirmedHitEffects to opt back into
+        // the broadcast without granting the client contact authority.
         return predictedEffectOwner();
     }
 
-    public static Location claimedEffectLocation(Entity target) {
-        PaperPredictionServer server = active;
-        if (server == null || target == null) return null;
-        CoreAbility ability = AbilityExecutionContext.current();
-        Action action = ability == null ? null : server.actionForEffect(ability);
-        if (action == null) {
-            UUID owner = EFFECT_OWNER.get();
-            Long sequence = INPUT_SEQUENCE.get();
-            Session session = owner == null ? null : server.sessions.get(owner);
-            action = session == null || sequence == null ? null : session.actions.get(sequence);
-        }
-        if (action == null) return null;
-        Claim claim = action.claims.values().stream()
-                .filter(candidate -> candidate.target.equals(target.getUniqueId())).findFirst().orElse(null);
-        if (claim == null || claim.expiresTick < server.tick
-                || claim.consumedTick >= 0 && claim.consumedTick < server.tick) return null;
-        return new Location(target.getWorld(), claim.contact.getX(),
-                claim.contact.getY() - target.getHeight() * 0.5, claim.contact.getZ());
-    }
-
-    /**
-     * Returns the exact eye pose attached to the input driving the current ability tick.
-     */
-    public static CapturedInputPose capturedEffectPose(Player player) {
-        PaperPredictionServer server = active;
-        if (server == null || player == null) return null;
-        CoreAbility ability = AbilityExecutionContext.current();
-        Action action = ability == null ? null : server.actionForEffect(ability);
-        if (action == null) {
-            UUID owner = EFFECT_OWNER.get();
-            Long sequence = INPUT_SEQUENCE.get();
-            Session session = owner == null ? null : server.sessions.get(owner);
-            action = session == null || sequence == null ? null : session.actions.get(sequence);
-        }
-        if (action == null || !action.locallyPredicted || !action.owner.equals(player.getUniqueId())
-                || server.tick - action.acceptedTick > 1L) return null;
-        Session session = server.sessions.get(action.owner);
-        if (session == null || (session.capabilities & CAPABILITY_EXACT) == 0) return null;
-        return new CapturedInputPose(action.eyeX, action.eyeY, action.eyeZ, action.yaw, action.pitch);
-    }
-
     public static Runnable contextual(Runnable task) {
+        PaperPredictionServer server = active;
         Player owner = predictedEffectOwner();
         if (owner == null) return task;
         UUID uuid = owner.getUniqueId();
-        return () -> runWithOwner(uuid, task);
+        Long sequence = contextualActionSequence(server, uuid);
+        return () -> runWithOwnerAndSequence(uuid, sequence, task);
     }
 
     public static <T> Callable<T> contextual(Callable<T> task) {
+        PaperPredictionServer server = active;
         Player owner = predictedEffectOwner();
         if (owner == null) return task;
         UUID uuid = owner.getUniqueId();
+        Long sequence = contextualActionSequence(server, uuid);
         return () -> {
             UUID previous = EFFECT_OWNER.get();
             Boolean previousPredicted = EFFECT_PREDICTED.get();
+            Long previousSequence = INPUT_SEQUENCE.get();
             EFFECT_OWNER.set(uuid);
             EFFECT_PREDICTED.set(Boolean.TRUE);
+            if (sequence == null) INPUT_SEQUENCE.remove();
+            else INPUT_SEQUENCE.set(sequence);
             try {
                 return task.call();
             } finally {
@@ -219,8 +178,20 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                 else EFFECT_OWNER.set(previous);
                 if (previousPredicted == null) EFFECT_PREDICTED.remove();
                 else EFFECT_PREDICTED.set(previousPredicted);
+                if (previousSequence == null) INPUT_SEQUENCE.remove();
+                else INPUT_SEQUENCE.set(previousSequence);
             }
         };
+    }
+
+    private static Long contextualActionSequence(final PaperPredictionServer server, final UUID owner) {
+        if (server == null || owner == null) return null;
+        final Long current = INPUT_SEQUENCE.get();
+        final Session session = server.sessions.get(owner);
+        if (current != null && session != null && session.actions.containsKey(current)) return current;
+        final CoreAbility ability = AbilityExecutionContext.current();
+        final Action action = ability == null ? null : server.actionForEffect(ability);
+        return action != null && owner.equals(action.owner) ? action.sequence : null;
     }
 
     /**
@@ -238,8 +209,46 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         return session != null && (session.capabilities & CAPABILITY_EXACT) != 0;
     }
 
+    /**
+     * Publishes the destination-world TempBlock ledger in the same server
+     * transaction as Bukkit's world-change event. It is also requested again
+     * by the client after its local runtime restart, covering either packet
+     * ordering and high-latency transitions without waiting for the periodic
+     * self-heal snapshot.
+     */
+    public static void synchronizeWorld(final Player player) {
+        final PaperPredictionServer server = active;
+        if (server == null || player == null) return;
+        final Session session = server.sessions.get(player.getUniqueId());
+        if (session != null && session.ready) {
+            server.sendWorldState(player, session);
+            server.sendTempBlockSnapshot(player, session);
+        }
+    }
+
     private static void runWithOwner(UUID owner, Runnable task) {
         runWithOwner(owner, true, task);
+    }
+
+    private static void runWithOwnerAndSequence(final UUID owner, final Long sequence,
+                                                final Runnable task) {
+        final Long previousSequence = INPUT_SEQUENCE.get();
+        if (sequence == null) INPUT_SEQUENCE.remove();
+        else INPUT_SEQUENCE.set(sequence);
+        try {
+            if (sequence == null || sequence <= 0L) runWithOwner(owner, true, task);
+            else {
+                final PaperPredictionServer server = active;
+                final Session session = server == null ? null : server.sessions.get(owner);
+                final Action action = session == null ? null : session.actions.get(sequence);
+                final long seed = action == null ? PredictionDeterminism.currentSeed() : action.deterministicSeed;
+                PredictionDeterminism.run(sequence, seed > 0L ? seed : sequence,
+                        () -> runWithOwner(owner, true, task));
+            }
+        } finally {
+            if (previousSequence == null) INPUT_SEQUENCE.remove();
+            else INPUT_SEQUENCE.set(previousSequence);
+        }
     }
 
     private static void runWithOwner(UUID owner, boolean locallyPredicted, Runnable task) {
@@ -255,131 +264,6 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             if (previousPredicted == null) EFFECT_PREDICTED.remove();
             else EFFECT_PREDICTED.set(previousPredicted);
         }
-    }
-
-    public static void augmentNearbyPlayers(World world, BoundingBox query, CoreAbility ability,
-                                            Map<UUID, com.projectkorra.projectkorra.platform.mc.entity.Entity> result) {
-        PaperPredictionServer server = active;
-        if (server == null) return;
-        Action action = ability == null ? null : server.actionForEffect(ability);
-        if (action == null) {
-            UUID owner = EFFECT_OWNER.get();
-            Long sequence = INPUT_SEQUENCE.get();
-            Session inputSession = owner == null ? null : server.sessions.get(owner);
-            action = inputSession == null || sequence == null ? null : inputSession.actions.get(sequence);
-        }
-        if (action == null) return;
-        var iterator = action.claims.values().iterator();
-        while (iterator.hasNext()) {
-            Claim claim = iterator.next();
-            if (claim.expiresTick < server.tick || claim.consumedTick >= 0 && claim.consumedTick < server.tick) {
-                iterator.remove();
-                continue;
-            }
-            Entity target = Bukkit.getEntity(claim.target);
-            if (!(target instanceof org.bukkit.entity.LivingEntity) || !target.getWorld().equals(world)) continue;
-            if (!query.clone().expand(CLAIM_QUERY_TOLERANCE).contains(claim.contact)) continue;
-            // onHit validated the contact against the target's rewound box.
-            // The ability still controls whether this query produces an effect.
-            result.put(target.getUniqueId(), BukkitMC.entity(target));
-            claim.consumedTick = server.tick;
-        }
-    }
-
-    @Override
-    public boolean defer(HitResolutionSync.Effect effect, Ability ability,
-                         com.projectkorra.projectkorra.platform.mc.entity.Entity target,
-                         Runnable commit) {
-        if (!reactionEnabled() || !(ability instanceof CoreAbility coreAbility) || target == null) return false;
-        if (ability.getPlayer() != null
-                && ability.getPlayer().getUniqueId().equals(target.getUniqueId())) return false;
-        Action action = abilityActions.get(coreAbility);
-        if (action == null) {
-            UUID owner = ability.getPlayer() == null ? EFFECT_OWNER.get() : ability.getPlayer().getUniqueId();
-            Long sequence = INPUT_SEQUENCE.get();
-            Session session = owner == null ? null : sessions.get(owner);
-            action = session == null || sequence == null ? null : session.actions.get(sequence);
-        }
-        Claim claim = action == null ? null : action.claims.values().stream()
-                .filter(candidate -> candidate.target.equals(target.getUniqueId()))
-                .findFirst().orElse(null);
-        Player defender = Bukkit.getPlayer(target.getUniqueId());
-        if (defender == null || defender.isDead()) return false;
-
-        if (claim != null && claim.pending != null && !claim.pending.isResolved()) {
-            return claim.pending.add(effect, commit);
-        }
-        NativeHitResolution nativeHit = pendingNativeReactions.stream()
-                .filter(candidate -> candidate.matches(coreAbility, target.getUniqueId()))
-                .findFirst().orElse(null);
-        if (nativeHit != null) return nativeHit.add(effect, commit);
-
-        final long visibleTicks = action == null ? coreAbility.getRunningTicks() : tick - action.acceptedTick;
-        final int delayTicks = reactionTicks(visibleTicks, defender.getPing());
-        if (delayTicks <= 0) return false;
-
-        if (claim != null && claim.pending == null && claim.consumedTick == tick) {
-            claim.pending = PendingHitResolution.forAbility(tick + delayTicks, coreAbility,
-                    new com.projectkorra.projectkorra.platform.mc.util.Vector(
-                            claim.contact.getX(), claim.contact.getY(), claim.contact.getZ()));
-            pendingReactions.add(claim);
-            return claim.pending.add(effect, commit);
-        }
-
-        nativeHit = new NativeHitResolution(coreAbility, target.getUniqueId(), tick,
-                tick + delayTicks, target.getBoundingBox().getCenter());
-        pendingNativeReactions.add(nativeHit);
-        return nativeHit.add(effect, commit);
-    }
-
-    private void resolvePendingReactions() {
-        Iterator<Claim> iterator = pendingReactions.iterator();
-        while (iterator.hasNext()) {
-            Claim claim = iterator.next();
-            Player defender = Bukkit.getPlayer(claim.target);
-            com.projectkorra.projectkorra.platform.mc.util.BoundingBox box =
-                    defender == null || defender.isDead() ? null : BukkitMC.entity(defender).getBoundingBox();
-            PendingHitResolution.Result result = claim.pending.resolve(tick, box, reactionContactTolerance());
-            if (result != PendingHitResolution.Result.WAITING) iterator.remove();
-        }
-        Iterator<NativeHitResolution> nativeIterator = pendingNativeReactions.iterator();
-        while (nativeIterator.hasNext()) {
-            NativeHitResolution pending = nativeIterator.next();
-            Player defender = Bukkit.getPlayer(pending.target());
-            com.projectkorra.projectkorra.platform.mc.util.BoundingBox box =
-                    defender == null || defender.isDead() ? null : BukkitMC.entity(defender).getBoundingBox();
-            PendingHitResolution.Result result = pending.resolve(tick, box, reactionContactTolerance());
-            if (result != PendingHitResolution.Result.WAITING) nativeIterator.remove();
-        }
-    }
-
-    private static boolean reactionEnabled() {
-        return ConfigManager.getConfig().getBoolean("Properties.Prediction.Reaction.Enabled", true);
-    }
-
-    private int reactionTicks(long visibleTicks, int pingMillis) {
-        int minimumVisible = ConfigManager.getConfig().getInt(
-                "Properties.Prediction.Reaction.MinimumVisibleMillis", 200);
-        int maximum = ConfigManager.getConfig().getInt(
-                "Properties.Prediction.Reaction.MaxCompensationMillis", 200);
-        int jitter = ConfigManager.getConfig().getInt(
-                "Properties.Prediction.Reaction.JitterAllowanceMillis", 25);
-        return ReactionWindow.visibilityDelayTicks(visibleTicks,
-                minimumVisible, pingMillis, maximum, jitter);
-    }
-
-    private static double reactionContactTolerance() {
-        return Math.max(0D, ConfigManager.getConfig().getDouble(
-                "Properties.Prediction.Reaction.ContactTolerance", 0.2));
-    }
-
-    private static boolean createdAbility(Set<CoreAbility> before, UUID owner, String abilityName) {
-        for (CoreAbility ability : CoreAbility.getAbilitiesByInstances()) {
-            if (!before.contains(ability) && ability.getPlayer() != null
-                    && ability.getPlayer().getUniqueId().equals(owner)
-                    && matchesInputAbility(ability, abilityName)) return true;
-        }
-        return false;
     }
 
     private static boolean createdAnyAbility(Set<CoreAbility> before, UUID owner) {
@@ -413,6 +297,20 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
 
     private static boolean isSneakTransition(PaperPredictionProtocol.InputKind kind) {
         return kind == PaperPredictionProtocol.InputKind.SNEAK_START || kind == PaperPredictionProtocol.InputKind.SNEAK_STOP;
+    }
+
+    private static List<String> inputVetoCooldowns(final String ability,
+                                                   final PaperPredictionProtocol.InputKind kind) {
+        if (ability == null || ability.isBlank()) return List.of();
+        if (ability.equalsIgnoreCase("PhaseChange")) {
+            if (kind == PaperPredictionProtocol.InputKind.LEFT_CLICK) {
+                return List.of(ability, "PhaseChangeFreeze");
+            }
+            if (kind == PaperPredictionProtocol.InputKind.SNEAK_START) {
+                return List.of(ability, "PhaseChangeMelt");
+            }
+        }
+        return List.of(ability);
     }
 
     private static String logicalInputAbility(com.projectkorra.projectkorra.platform.mc.entity.Player player,
@@ -451,12 +349,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
 
     private static String worldKey(com.projectkorra.projectkorra.platform.mc.World world) {
         if (world == null || !(world.handle() instanceof World bukkitWorld)) return "";
-        return switch (bukkitWorld.getEnvironment()) {
-            case NORMAL -> "minecraft:overworld";
-            case NETHER -> "minecraft:the_nether";
-            case THE_END -> "minecraft:the_end";
-            default -> bukkitWorld.getName();
-        };
+        return bukkitWorld.getKey().toString();
     }
 
     private static boolean finite(double... values) {
@@ -467,27 +360,23 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     public void stop() {
         if (task != null) task.cancel();
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.HELLO, this);
-        Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.INPUT, this);
-        Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.PREPARE, this);
-        Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.HIT, this);
-        Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.HANDOFF, this);
+        Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.READY, this);
+        Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.INPUT_VETO, this);
         Bukkit.getMessenger().unregisterOutgoingPluginChannel(plugin);
         sessions.clear();
-        history.clear();
         abilityActions.clear();
         abilityCreationActions.clear();
         tempLayerActions.clear();
+        tempLayerEffects.clear();
         serverOwnedTempLayers.clear();
-        pendingVanilla.clear();
         pendingTempBlocks.clear();
-        pendingReactions.clear();
-        pendingNativeReactions.clear();
+        pendingAbilityRemovals.clear();
         TempBlockSync.clear(this);
+        DirectBlockSync.clear(this);
         TempFallingBlockSync.clear(this);
         VelocitySync.clear(this);
+        AbilityStateSync.clear(this);
         AbilityRemovalSync.clear(this);
-        HitResolutionSync.clear(this);
-        PredictionTiming.clear(this.timingProvider);
         CooldownSync.clear(this);
         if (active == this) active = null;
     }
@@ -495,32 +384,55 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     private void registerChannels() {
         Messenger messenger = Bukkit.getMessenger();
         messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.HELLO, this);
-        messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.INPUT, this);
-        messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.PREPARE, this);
-        messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.HIT, this);
-        messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.HANDOFF, this);
+        messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.READY, this);
+        messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.INPUT_VETO, this);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.SNAPSHOT);
+        messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.WORLD_STATE);
+        messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.NATIVE_ACTION);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.STATE);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.CONFIG_CHUNK);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.RECONCILE);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.TEMP_BLOCKS);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.VELOCITY_OWNER);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.VELOCITY_OWNER_V2);
+        messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.ABILITY_STATE_OWNER);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.TEMP_FALLING_BLOCK);
+        messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.TEMP_FALLING_BLOCK_PREPARE);
+        messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.DIRECT_BLOCK);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.ABILITY_REMOVED);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.STATE_DIRECTIVE);
     }
 
     @Override
-    public void onAdded(BendingPlayer player, String ability, long expiresAtMillis) {
+    public void onAdded(CoreAbility source, BendingPlayer player, String ability, long expiresAtMillis) {
+        // A self-predicted cooldown starts on the input frame. Re-sending its
+        // later Paper expiry would extend it by network latency and make the
+        // client wait after its own exact common lifecycle has completed.
         Player predictedOwner = predictedEffectOwner();
-        if (predictedOwner != null && player != null && player.getPlayer() != null
-                && predictedOwner.getUniqueId().equals(player.getPlayer().getUniqueId())) return;
+        final UUID playerId = player == null || player.getPlayer() == null
+                ? null : player.getPlayer().getUniqueId();
+        final Action lifecycleAction = source == null ? null : actionForEffect(source);
+        final boolean predictedInputWrite = predictedOwner != null && playerId != null
+                && predictedOwner.getUniqueId().equals(playerId);
+        final boolean predictedLifecycleWrite = lifecycleAction != null && playerId != null
+                && lifecycleAction.locallyPredicted && lifecycleAction.owner.equals(playerId);
+        if (predictedInputWrite || predictedLifecycleWrite) {
+            final Session session = sessions.get(playerId);
+            if (session != null && ability != null && !ability.isBlank()) {
+                session.predictedCooldowns.add(ability.toLowerCase(Locale.ROOT));
+            }
+            return;
+        }
         sendDirective(player, "", ability == null ? "" : ability, expiresAtMillis, false, Double.NaN);
     }
 
     @Override
     public void onRemoved(BendingPlayer player, String ability) {
+        final UUID playerId = player == null || player.getPlayer() == null
+                ? null : player.getPlayer().getUniqueId();
+        final Session session = playerId == null ? null : sessions.get(playerId);
+        if (session != null && ability != null
+                && session.predictedCooldowns.remove(ability.toLowerCase(Locale.ROOT))) return;
         Player predictedOwner = predictedEffectOwner();
         if (predictedOwner != null && player != null && player.getPlayer() != null
                 && predictedOwner.getUniqueId().equals(player.getPlayer().getUniqueId())) return;
@@ -558,12 +470,9 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             try {
                 switch (channel) {
                     case PaperPredictionProtocol.HELLO -> onHello(player, PaperPredictionProtocol.readHello(message));
-                    case PaperPredictionProtocol.INPUT -> onInput(player, PaperPredictionProtocol.readInput(message));
-                    case PaperPredictionProtocol.PREPARE ->
-                            onPrepare(player, PaperPredictionProtocol.readPrepare(message));
-                    case PaperPredictionProtocol.HIT -> onHit(player, PaperPredictionProtocol.readHit(message));
-                    case PaperPredictionProtocol.HANDOFF ->
-                            onAuthorityHandoff(player, PaperPredictionProtocol.readHandoff(message));
+                    case PaperPredictionProtocol.READY -> onReady(player, PaperPredictionProtocol.readReady(message));
+                    case PaperPredictionProtocol.INPUT_VETO -> onInputVeto(player,
+                            PaperPredictionProtocol.readInputVeto(message));
                     default -> {
                     }
                 }
@@ -575,25 +484,16 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         else Bukkit.getScheduler().runTask(plugin, handling);
     }
 
-    private void onAuthorityHandoff(Player player, PaperPredictionProtocol.Handoff handoff) {
-        Session session = valid(player, handoff.session());
-        if (session == null) return;
-        Action action = session.actions.get(handoff.sequence());
-        if (action != null && action.owner.equals(player.getUniqueId())) action.locallyPredicted = false;
-    }
-
     @Override
     public void run() {
         tick++;
-        if (this.tempBlockPacketFilter != null && tick % 20L == 0L) {
-            this.tempBlockPacketFilter.pruneExpired();
-        }
-        recordHistory();
-        resolvePendingReactions();
+        uncorrelatedExternalVelocityOrdinals.clear();
         flushTempBlocks();
-        pendingVanilla.values().forEach(map -> map.entrySet().removeIf(entry -> entry.getValue() < tick));
-        pendingVanilla.entrySet().removeIf(entry -> entry.getValue().isEmpty() || Bukkit.getPlayer(entry.getKey()) == null);
-        sessions.entrySet().removeIf(entry -> Bukkit.getPlayer(entry.getKey()) == null);
+        flushAbilityRemovals();
+        sessions.entrySet().removeIf(entry -> {
+            if (Bukkit.getPlayer(entry.getKey()) != null) return false;
+            return true;
+        });
         abilityActions.entrySet().removeIf(entry -> entry.getKey().isRemoved() || !sessions.containsKey(entry.getValue().owner));
         abilityCreationActions.entrySet().removeIf(entry -> entry.getKey().isRemoved()
                 || !sessions.containsKey(entry.getValue().owner));
@@ -605,7 +505,10 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             // waiting for an ability-specific update.
             for (Session session : sessions.values()) {
                 final Player player = Bukkit.getPlayer(session.player);
-                if (player != null) sendTempBlockSnapshot(player, session);
+                if (player != null) {
+                    sendWorldState(player, session);
+                    sendTempBlockSnapshot(player, session);
+                }
             }
         }
         if (tick % 100 == 0) {
@@ -613,11 +516,36 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         }
     }
 
+    private CommonInputHandler.InputResult handleVanilla0(
+            final Player player, final PaperPredictionProtocol.InputKind kind,
+            final Supplier<CommonInputHandler.InputResult> nativeInput) {
+        final Session session = sessions.get(player.getUniqueId());
+        if (session == null || !session.ready) return nativeInput.get();
+        return processInput(player, session, kind, nativeInput);
+    }
+
     private Action actionForEffect(CoreAbility ability) {
-        Action action = abilityActions.get(ability);
-        if (action != null || ability == null || ability.getPlayer() == null) return action;
-        Session session = sessions.get(ability.getPlayer().getUniqueId());
+        if (ability == null || ability.getPlayer() == null) return null;
+        final UUID ownerId = ability.getPlayer().getUniqueId();
+        Action action = currentInputAction(ownerId);
+        if (action != null) return action;
+        action = abilityActions.get(ability);
+        if (action != null) return action;
+        Session session = sessions.get(ownerId);
         if (session == null) return null;
+
+        // Child abilities created during a later progress callback inherit the
+        // parent's deterministic input sequence in CoreAbility. Resolve that
+        // exact identity before the legacy name fallback so RaiseEarthWall's
+        // RaiseEarth children and Shockwave's Ripples use the same causal
+        // ordinals as Fabric.
+        final long inherited = ability.getPredictionActionSequence();
+        action = inherited <= 0L ? null : session.actions.get(inherited);
+        if (action != null) {
+            abilityActions.put(ability, action);
+            abilityCreationActions.putIfAbsent(ability, action);
+            return action;
+        }
         List<Action> recent = new ArrayList<>(session.actions.values());
         // Long-lived abilities (notably PhaseChange) can emit TempBlocks well
         // after the old four-tick fallback. Keep an exact owner + ability-name
@@ -643,9 +571,50 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         return null;
     }
 
-    private long latencyCompensationMillis(CoreAbility ability) {
-        Action action = actionForEffect(ability);
-        return action == null || !action.locallyPredicted ? 0L : Math.max(0L, tick - action.rewindTick) * 50L;
+    /** Mirrors the client's INPUT_ACTION precedence for synchronous effects. */
+    private Action currentInputAction(final UUID ownerId) {
+        final Long sequence = INPUT_SEQUENCE.get();
+        if (ownerId == null || sequence == null) return null;
+        final Session session = sessions.get(ownerId);
+        return session == null ? null : session.actions.get(sequence);
+    }
+
+    @Override
+    public void beforeChange(final CoreAbility ability, final Block block,
+                             final BlockData replacement, final boolean packetExpected) {
+        if (block == null || block.getWorld() == null || replacement == null) return;
+        final DirectBlockSync.EarthLifecycle lifecycle = DirectBlockSync.currentEarthLifecycle();
+        final UUID ownerId = ability != null && ability.getPlayer() != null
+                ? ability.getPlayer().getUniqueId()
+                : lifecycle != null && lifecycle.valid() ? lifecycle.ownerId() : EFFECT_OWNER.get();
+        final Session session = ownerId == null ? null : sessions.get(ownerId);
+        Action action = currentInputAction(ownerId);
+        if (action == null && ability != null) action = actionForEffect(ability);
+        if (action != null && !action.owner.equals(ownerId)) return;
+        final long actionSequence = action != null ? action.sequence
+                : lifecycle != null && lifecycle.valid() ? lifecycle.actionSequence() : 0L;
+        final String abilityName = ability != null ? ability.getName()
+                : lifecycle != null && lifecycle.valid() ? lifecycle.ability()
+                : action == null ? "" : action.ability;
+        if (!DirectBlockSync.isPredictable(ability, abilityName)) return;
+        final Player owner = Bukkit.getPlayer(ownerId);
+        if (actionSequence <= 0L || session == null || owner == null
+                || (session.capabilities & CAPABILITY_EXACT) == 0) return;
+        final DirectBlockCause cause = new DirectBlockCause(actionSequence,
+                abilityName.toLowerCase(Locale.ROOT));
+        final int ordinal;
+        synchronized (session.directBlockOrdinals) {
+            ordinal = session.directBlockOrdinals.merge(cause, 1, Integer::sum);
+            while (session.directBlockOrdinals.size() > 4_096) {
+                session.directBlockOrdinals.remove(session.directBlockOrdinals.keySet().iterator().next());
+            }
+        }
+        if (action != null) action.directBlockOrdinals.put(cause.ability, ordinal);
+        if (!packetExpected) return;
+        send(owner, PaperPredictionProtocol.DIRECT_BLOCK,
+                PaperPredictionProtocol.directBlock(tick, actionSequence, ordinal, ownerId,
+                        abilityName, block.getWorld().getName(), block.getX(), block.getY(), block.getZ(),
+                        TempBlockSync.encode(replacement), lifecycle != null && lifecycle.valid()));
     }
 
     private void scheduleTicker() {
@@ -655,12 +624,9 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     @Override
     public void beforeWorldChange(final TempBlockSync.Change change) {
         // This custom payload is queued before setBlockData can emit a vanilla
-        // packet. It gives clients without PacketEvents the same coordinate
-        // fence and makes the client TempBlock authoritative from frame one.
-        final PendingTempBlock pending = queueTempBlock(change);
-        if (this.tempBlockPacketFilter != null && pending != null) {
-            this.tempBlockPacketFilter.record(change, pending.operation.ownerId(), pending.ownerViews);
-        }
+        // packet. Fabric therefore knows the causal action ownership before it
+        // decides whether the caster should conceal Paper's physical layer.
+        queueTempBlock(change);
         flushTempBlocks();
     }
 
@@ -670,10 +636,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         // the same revision. Publish metadata-only layers and expiry changes
         // here; duplicating physical operations is unnecessary.
         if (change.packetExpected()) return;
-        final PendingTempBlock pending = queueTempBlock(change);
-        if (this.tempBlockPacketFilter != null && pending != null) {
-            this.tempBlockPacketFilter.record(change, pending.operation.ownerId(), pending.ownerViews);
-        }
+        queueTempBlock(change);
     }
 
     private PendingTempBlock queueTempBlock(final TempBlockSync.Change change) {
@@ -685,8 +648,9 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         };
         Block block = change.block();
         CoreAbility effectiveAbility = change.ability() == null ? AbilityExecutionContext.current() : change.ability();
-        Action currentAction = effectiveAbility == null ? null : actionForEffect(effectiveAbility);
-        Long inputSequence = INPUT_SEQUENCE.get();
+        final UUID effectOwner = change.ownerId() == null ? EFFECT_OWNER.get() : change.ownerId();
+        Action currentAction = currentInputAction(effectOwner);
+        if (currentAction == null && effectiveAbility != null) currentAction = actionForEffect(effectiveAbility);
         final UUID worldId = block.getWorld() != null && block.getWorld().handle() instanceof World world
                 ? world.getUID() : null;
         if (worldId == null) return null;
@@ -695,28 +659,46 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         if (action == null && !serverOwnedTempLayers.contains(change.layerId())
                 && change.operation() != TempBlockSync.Operation.REVERT
                 && change.operation() != TempBlockSync.Operation.DISCARD) {
-            if (currentAction == null && inputSequence != null && change.ownerId() != null) {
-                final Session ownerSession = sessions.get(change.ownerId());
-                currentAction = ownerSession == null ? null : ownerSession.actions.get(inputSequence);
-            }
-            if (currentAction != null && currentAction.locallyPredicted
-                    && currentAction.owner.equals(change.ownerId())) {
+            if (currentAction != null && currentAction.owner.equals(effectOwner)) {
                 tempLayerActions.put(change.layerId(), currentAction);
                 action = currentAction;
             } else {
-                // Ability ownership alone is not proof that the client created
-                // this layer. Server-only effects must remain vanilla-visible.
+                // Only a supported, accepted native action enters the map.
+                // Effects with no such causal action remain vanilla-visible.
                 serverOwnedTempLayers.add(change.layerId());
             }
         }
-        final UUID predictedOwner = action == null ? null : action.owner;
-        final Map<UUID, BlockData> ownerViews = predictedOwnerViews(block, action, change.data());
+        TempEffectIdentity effect = tempLayerEffects.get(change.layerId());
+        if (effect == null && action != null
+                && change.operation() != TempBlockSync.Operation.REVERT
+                && change.operation() != TempBlockSync.Operation.DISCARD) {
+            final String semanticAbility = change.effectAbility() == null || change.effectAbility().isBlank()
+                    ? effectiveAbility == null ? action.ability : effectiveAbility.getName()
+                    : change.effectAbility();
+            // This ordinal is causal and action-local. Layer ids and running
+            // ticks are process-local clocks and cannot identify a rapid or
+            // overlapping TempBlock lifecycle across Fabric and Paper.
+            effect = new TempEffectIdentity(semanticAbility, 0L, ++action.tempBlockOrdinal);
+            tempLayerEffects.put(change.layerId(), effect);
+        }
+        final String effectAbility = effect == null ? change.effectAbility() : effect.ability;
+        final long effectStep = effect == null ? change.effectStep() : effect.step;
+        final int effectOrdinal = effect == null ? change.effectOrdinal() : effect.ordinal;
+        // Ownership is a property of the complete ability lifecycle, not of
+        // whether this particular progress tick can still find its input
+        // Action object. Water normally retained that association; moved and
+        // delayed earth frequently did not. Mark every layer from an ability
+        // the owner's client advertised as supported, while leaving unknown
+        // server-only addons fully vanilla-visible.
+        final UUID predictedOwner = predictedTempBlockOwner(change.ownerId(), action, effectAbility);
+        final Map<UUID, BlockData> ownerViews = predictedOwnerViews(block, predictedOwner, change.data());
         final PendingTempBlock pending = new PendingTempBlock(worldId,
                 new PaperPredictionProtocol.TempBlockOp(wireOperation, worldKey(block.getWorld()),
                 block.getX(), block.getY(), block.getZ(), TempBlockSync.encode(change.data()),
                 (change.operation() == TempBlockSync.Operation.REVERT
                         || change.operation() == TempBlockSync.Operation.DISCARD) ? 0L : change.revertAtMillis(),
                 action == null ? 0L : action.sequence,
+                effectAbility, effectStep, effectOrdinal,
                 change.layerId(), change.revision(), predictedOwner,
                 TempBlockSync.encode(change.data()),
                 change.packetExpected()), Map.copyOf(ownerViews));
@@ -724,58 +706,79 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         if (change.operation() == TempBlockSync.Operation.REVERT
                 || change.operation() == TempBlockSync.Operation.DISCARD) {
             tempLayerActions.remove(change.layerId());
+            tempLayerEffects.remove(change.layerId());
             serverOwnedTempLayers.remove(change.layerId());
         }
         return pending;
     }
 
-    private Map<UUID, BlockData> predictedOwnerViews(final Block block, final Action closingAction,
+    private UUID predictedTempBlockOwner(final UUID layerOwner, final Action action,
+                                         final String abilityName) {
+        final UUID candidate = layerOwner != null ? layerOwner : action == null ? null : action.owner;
+        if (candidate == null) return null;
+        final Session session = sessions.get(candidate);
+        if (session == null || !session.ready || (session.capabilities & CAPABILITY_EXACT) == 0) return null;
+        if (action != null && candidate.equals(action.owner)) return candidate;
+        return abilityName != null && session.supportedAbilities.contains(abilityName.toLowerCase(Locale.ROOT))
+                ? candidate : null;
+    }
+
+    private Map<UUID, BlockData> predictedOwnerViews(final Block block, final UUID closingOwner,
                                                      final BlockData fallbackData) {
-        final Set<UUID> owners = new HashSet<>();
-        final List<TempBlock> layers = TempBlock.getAll(block);
-        if (layers != null) {
-            for (TempBlock layer : layers) {
-                final Action owner = tempLayerActions.get(layer.getLayerId());
-                if (owner != null) owners.add(owner.owner);
-            }
+        final Map<UUID, BlockData> views = new HashMap<>(TempBlock.getOwnerViews(block, closingOwner));
+        if (closingOwner != null) {
+            views.put(closingOwner, predictedViewerData(block, closingOwner, fallbackData));
         }
-        if (closingAction != null) owners.add(closingAction.owner);
-        final Map<UUID, BlockData> views = new HashMap<>();
-        for (UUID owner : owners) views.put(owner, predictedViewerData(block, owner, fallbackData));
         return views;
     }
 
     private BlockData predictedViewerData(final Block block, final UUID viewer,
                                           final BlockData fallbackData) {
-        final List<TempBlock> layers = TempBlock.getAll(block);
-        if (layers == null || layers.isEmpty()) {
-            return fallbackData == null ? block.getBlockData().clone() : fallbackData.clone();
-        }
-        for (int index = layers.size() - 1; index >= 0; index--) {
-            final TempBlock layer = layers.get(index);
-            final Action action = tempLayerActions.get(layer.getLayerId());
-            if (action == null || !action.owner.equals(viewer)) return layer.getBlockData();
-        }
-        return layers.getFirst().getState().getBlockData().clone();
+        final BlockData visible = TempBlock.getVisibleData(block, viewer);
+        return visible != null ? visible
+                : fallbackData == null ? block.getBlockData().clone() : fallbackData.clone();
+    }
+
+    @Override
+    public int beforeSpawn(final CoreAbility ability,
+                           final com.projectkorra.projectkorra.platform.mc.Location location,
+                           final BlockData blockData) {
+        if (ability.getPlayer() == null || location == null || location.getWorld() == null
+                || blockData == null) return 0;
+        final UUID ownerId = ability.getPlayer().getUniqueId();
+        final Session ownerSession = sessions.get(ownerId);
+        final Player nativeOwner = Bukkit.getPlayer(ownerId);
+        if (ownerSession == null || nativeOwner == null
+                || (ownerSession.capabilities & CAPABILITY_EXACT) == 0) return 0;
+
+        Action action = currentInputAction(ownerId);
+        if (action == null) action = actionForEffect(ability);
+        if (action == null || !ownerId.equals(action.owner)) return 0;
+
+        final int ordinal = ++action.tempFallingBlockOrdinal;
+        send(nativeOwner, PaperPredictionProtocol.TEMP_FALLING_BLOCK_PREPARE,
+                PaperPredictionProtocol.tempFallingBlockPrepare(tick, action.sequence, ordinal, ownerId,
+                        ability.getName(), location.getWorld().getName(), location.getX(), location.getY(),
+                        location.getZ(), TempBlockSync.encode(blockData)));
+        return ordinal;
     }
 
     @Override
     public void onSpawn(final CoreAbility ability,
-                        final com.projectkorra.projectkorra.platform.mc.entity.FallingBlock fallingBlock) {
-        if (ability.getPlayer() == null || fallingBlock.getEntityId() <= 0) return;
+                        final com.projectkorra.projectkorra.platform.mc.entity.FallingBlock fallingBlock,
+                        final int spawnOrdinal) {
+        if (ability.getPlayer() == null || fallingBlock.getEntityId() <= 0 || spawnOrdinal <= 0) return;
         final UUID ownerId = ability.getPlayer().getUniqueId();
         final Session ownerSession = sessions.get(ownerId);
         final Player nativeOwner = Bukkit.getPlayer(ownerId);
-        if (ownerSession == null || nativeOwner == null || (ownerSession.capabilities & CAPABILITY_EXACT) == 0) return;
+        if (ownerSession == null || nativeOwner == null
+                || (ownerSession.capabilities & CAPABILITY_EXACT) == 0) return;
+        Action action = currentInputAction(ownerId);
+        if (action == null) action = actionForEffect(ability);
+        if (action == null || !ownerId.equals(action.owner)) return;
 
-        Action action = abilityActions.get(ability);
-        final Long inputSequence = INPUT_SEQUENCE.get();
-        if (action == null && inputSequence != null) action = ownerSession.actions.get(inputSequence);
-        if (action == null || !action.locallyPredicted || !ownerId.equals(action.owner)) return;
-
-        final int ordinal = ++action.tempFallingBlockOrdinal;
         send(nativeOwner, PaperPredictionProtocol.TEMP_FALLING_BLOCK,
-                PaperPredictionProtocol.tempFallingBlock(tick, action.sequence, ordinal, ownerId,
+                PaperPredictionProtocol.tempFallingBlock(tick, action.sequence, spawnOrdinal, ownerId,
                         fallingBlock.getEntityId(), ability.getName()));
     }
 
@@ -795,13 +798,39 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         // Velocity ownership must be exact. Do not use actionForEffect's
         // recent-action fallback here: a nearby unrelated input must never
         // acquire this impulse.
-        Action action = abilityActions.get(coreAbility);
-        Long inputSequence = INPUT_SEQUENCE.get();
-        if (action == null && inputSequence != null && ownerSession != null)
-            action = ownerSession.actions.get(inputSequence);
-        if (action == null || !action.locallyPredicted || !action.owner.equals(ownerId)) return;
+        Action action = currentInputAction(ownerId);
+        if (action == null) action = abilityActions.get(coreAbility);
+        if (action == null) {
+            final Session session = sessions.get(ownerId);
+            final long inherited = coreAbility.getPredictionActionSequence();
+            action = session == null || inherited <= 0L ? null : session.actions.get(inherited);
+            if (action != null) abilityActions.put(coreAbility, action);
+        }
+        if (action == null || !action.owner.equals(ownerId)) {
+            // The target still needs an exact ownership fence when the
+            // attacker is vanilla, is not prediction-ready, or owns a
+            // long-lived server ability whose creation action has expired.
+            // This is external authority, so no local action correlation is
+            // needed (and none is invented).
+            if (!ownerId.equals(targetId) && targetSession != null
+                    && (targetSession.capabilities & CAPABILITY_EXACT) != 0) {
+                final int ordinal = uncorrelatedExternalVelocityOrdinals.merge(
+                        targetId, 1, Integer::sum);
+                flushAbilityRemovals();
+                send(nativeTarget, PaperPredictionProtocol.VELOCITY_OWNER_V2,
+                        PaperPredictionProtocol.velocityOwnerV2(tick, 0L, ordinal, ownerId, targetId,
+                                nativeTarget.getEntityId(), ability.getName(),
+                                velocity.getX(), velocity.getY(), velocity.getZ()));
+            }
+            return;
+        }
 
         int ordinal = action.velocityOrdinals.merge(targetId, 1, Integer::sum);
+        // A hit may synchronously remove target-owned locomotion (FireJet,
+        // AirScooter CancelOnHit, etc.) before applying knockback. Publish those
+        // exact removals first so the predicting target cannot run the removed
+        // movement ability over the following authoritative velocity packet.
+        flushAbilityRemovals();
         byte[] receipt = PaperPredictionProtocol.velocityOwnerV2(tick, action.sequence, ordinal, ownerId, targetId,
                 nativeTarget.getEntityId(), ability.getName(), velocity.getX(), velocity.getY(), velocity.getZ());
         if (ownerSession != null && nativeOwner != null && (ownerSession.capabilities & CAPABILITY_EXACT) != 0) {
@@ -813,183 +842,178 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     }
 
     @Override
-    public void onRemoved(CoreAbility ability) {
+    public void beforeWrite(final CoreAbility ability,
+                            final com.projectkorra.projectkorra.platform.mc.entity.Player target,
+                            final AbilityStateSync.FlightState resultingState) {
+        if (target == null) return;
+        final UUID targetId = target.getUniqueId();
+        final UUID contextualOwner = EFFECT_OWNER.get();
+        final UUID ownerId = ability != null && ability.getPlayer() != null
+                ? ability.getPlayer().getUniqueId()
+                : contextualOwner == null ? targetId : contextualOwner;
+        Action action = currentInputAction(ownerId);
+        if (action == null && ability != null) action = abilityActions.get(ability);
+        if (action == null && ability != null) {
+            final Session session = sessions.get(ownerId);
+            final long inherited = ability.getPredictionActionSequence();
+            action = session == null || inherited <= 0L ? null : session.actions.get(inherited);
+            if (action != null) abilityActions.put(ability, action);
+        }
+        if (action == null || !action.owner.equals(ownerId)) return;
+        final Session targetSession = sessions.get(targetId);
+        final Player nativeTarget = Bukkit.getPlayer(targetId);
+        if (targetSession == null || nativeTarget == null
+                || (targetSession.capabilities & CAPABILITY_EXACT) == 0) return;
+        final int ordinal = action.abilityStateOrdinals.merge(targetId, 1, Integer::sum);
+        send(nativeTarget, PaperPredictionProtocol.ABILITY_STATE_OWNER,
+                PaperPredictionProtocol.abilityStateOwner(tick, action.sequence, ordinal,
+                        ownerId, targetId, ability == null ? action.ability : ability.getName(),
+                        resultingState.flying(), resultingState.allowFlight(), resultingState.flySpeed()));
+    }
+
+    @Override
+    public void onRemoved(CoreAbility ability, boolean externallyCaused) {
         if (ability.getPlayer() == null || !ability.isStarted()) return;
         Action action = abilityCreationActions.get(ability);
         UUID playerId = ability.getPlayer().getUniqueId();
-        Player player = Bukkit.getPlayer(playerId);
-        if (sessions.containsKey(playerId) && player != null) {
+        pendingAbilityRemovals.add(new PendingAbilityRemoval(playerId, ability.getName(),
+                AbilityRemovalSync.typeId(ability),
+                action != null && action.locallyPredicted ? action.sequence : 0L,
+                externallyCaused, ability));
+    }
+
+    private void flushAbilityRemovals() {
+        if (pendingAbilityRemovals.isEmpty()) return;
+        final List<PendingAbilityRemoval> removals = List.copyOf(pendingAbilityRemovals);
+        pendingAbilityRemovals.clear();
+        for (PendingAbilityRemoval removal : removals) {
+            // CoreAbility publishes removal from super.remove(), before the
+            // subclass closes its layers. Keep the action association alive
+            // through that synchronous cleanup and retire it only now.
+            abilityActions.remove(removal.instance);
+            abilityCreationActions.remove(removal.instance);
+            final Session session = sessions.get(removal.playerId);
+            final Player player = Bukkit.getPlayer(removal.playerId);
+            if (session == null || player == null) continue;
+            final int remainingTypeInstances = AbilityRemovalSync.activeTypeCount(
+                    removal.playerId, removal.abilityType);
             send(player, PaperPredictionProtocol.ABILITY_REMOVED,
-                    PaperPredictionProtocol.abilityRemoved(playerId, ability.getName(),
-                            action != null && action.locallyPredicted ? action.sequence : 0L));
-            sendState(player, sessions.get(playerId), true);
+                    PaperPredictionProtocol.abilityRemoved(removal.playerId, removal.ability, removal.abilityType,
+                            removal.actionSequence, removal.externallyCaused, session.lastSequence,
+                            remainingTypeInstances));
+            sendState(player, session, true);
         }
-        abilityActions.remove(ability);
-        abilityCreationActions.remove(ability);
     }
 
     private void onHello(Player player, PaperPredictionProtocol.Hello hello) {
         if (hello.version() != PaperPredictionProtocol.VERSION) return;
-        Session session = new Session(player.getUniqueId(), UUID.randomUUID(), hello.clientTick(), tick, hello.capabilities());
+        Session session = new Session(player.getUniqueId(), UUID.randomUUID(), hello.capabilities());
         sessions.put(player.getUniqueId(), session);
-        if (this.tempBlockPacketFilter != null) {
-            this.tempBlockPacketFilter.resetViewer(player.getUniqueId());
-        }
         if (snapshotReady) sendSnapshot(session);
         else requestSnapshotRebuild(false);
     }
 
-    private void onPrepare(Player player, PaperPredictionProtocol.Prepare prepare) {
-        Session session = valid(player, prepare.session());
-        if (session == null || prepare.sequence() <= session.lastSequence
-                || prepare.selectedSlot() < 0 || prepare.selectedSlot() > 8
-                || !finite(prepare.x(), prepare.y(), prepare.z(), prepare.yaw(), prepare.pitch())) return;
-        Location origin = player.getEyeLocation();
-        if (new Vector(prepare.x(), prepare.y(), prepare.z()).distanceSquared(origin.toVector())
-                > MAX_ORIGIN_ERROR * MAX_ORIGIN_ERROR) return;
-        BendingPlayer bending = BendingPlayer.getBendingPlayer(BukkitMC.player(player));
-        String fallback = bending == null ? "" : bending.getAbilities().get(prepare.selectedSlot() + 1);
-        String ability = logicalInputAbility(BukkitMC.player(player), bending, prepare.kind(), fallback);
-        if (ability.isBlank()) return;
-        long mappedTick = session.mapClientTick(prepare.clientTick(), tick, player.getPing());
-        session.actions.put(prepare.sequence(), new Action(player.getUniqueId(), prepare.sequence(), prepare.clientTick(),
-                mappedTick, tick, ability, prepare.x(), prepare.y(), prepare.z(), prepare.yaw(), prepare.pitch(), false));
-        while (session.actions.size() > 128) session.actions.remove(session.actions.keySet().iterator().next());
+    private void onReady(Player player, PaperPredictionProtocol.Ready ready) {
+        final Session session = valid(player, ready.session());
+        if (session == null) return;
+        final boolean wasReady = session.ready;
+        final Set<String> supported = new HashSet<>();
+        for (String ability : ready.supportedAbilities()) {
+            if (ability != null && !ability.isBlank()) supported.add(ability.toLowerCase(Locale.ROOT));
+        }
+        session.supportedAbilities = Set.copyOf(supported);
+        if (!session.ready) {
+            // ClientReady is ordered before every later vanilla input on the
+            // same connection. Both endpoints begin their native-event ordinal
+            // at zero here; no per-cast client packet participates in casting.
+            session.actions.clear();
+            session.inputVetoes.clear();
+            synchronized (session.directBlockOrdinals) {
+                session.directBlockOrdinals.clear();
+            }
+            session.predictedCooldowns.clear();
+            session.lastSequence = 0L;
+            session.ready = true;
+        }
+        if (wasReady) {
+            sendWorldState(player, session);
+            sendTempBlockSnapshot(player, session);
+        }
     }
 
-    private void onInput(Player player, PaperPredictionProtocol.Input input) {
-        Session session = valid(player, input.session());
-        if (session == null || !session.inputLimiter.allow(tick, INPUTS_PER_SECOND)) return;
-        Location origin = player.getEyeLocation();
-        if (input.sequence() <= session.lastSequence) {
-            reconcile(player, session, input.sequence(), false, "stale_sequence", "", origin, 0);
-            return;
-        }
-        session.lastSequence = input.sequence();
-        if (!finite(input.x(), input.y(), input.z(), input.yaw(), input.pitch())) {
-            reconcile(player, session, input.sequence(), false, "non_finite_input", "", origin, 0);
-            return;
-        }
-        if (new Vector(input.x(), input.y(), input.z()).distanceSquared(origin.toVector()) > MAX_ORIGIN_ERROR * MAX_ORIGIN_ERROR) {
-            reconcile(player, session, input.sequence(), false, "origin_out_of_bounds", "", origin, 0);
-            return;
-        }
-        BendingPlayer bending = BendingPlayer.getBendingPlayer(BukkitMC.player(player));
-        if (input.selectedSlot() < 0 || input.selectedSlot() > 8) {
-            reconcile(player, session, input.sequence(), false, "invalid_selected_slot", "", origin, 0);
-            return;
-        }
-        com.projectkorra.projectkorra.platform.mc.entity.Player commonPlayer = BukkitMC.player(player);
-        if (player.getInventory().getHeldItemSlot() != input.selectedSlot()
-                || bending != null && bending.getCurrentSlot() != input.selectedSlot()) {
-            CommonInputHandler.SlotResult slotResult = CommonInputHandler.handleSlotChange(commonPlayer, input.selectedSlot());
-            if (!slotResult.accepted()) {
-                reconcile(player, session, input.sequence(), false, "invalid_selected_slot", "", origin, 0);
-                return;
-            }
-        }
-        String fallback = bending == null ? "" : bending.getAbilities().get(input.selectedSlot() + 1);
-        String abilityName = logicalInputAbility(commonPlayer, bending, input.kind(), fallback);
-        if (abilityName.isBlank()) {
-            reconcile(player, session, input.sequence(), false, "no_bound_ability", "", origin, 0);
-            return;
-        }
+    private void onInputVeto(Player player, PaperPredictionProtocol.InputVeto veto) {
+        final Session session = valid(player, veto.session());
+        if (session == null || !session.ready || veto.kind() == null
+                || veto.ability() == null || veto.ability().isBlank()
+                || veto.sequence() <= 0L || session.inputVetoes.size() >= 128) return;
+        // This negative-only payload is written immediately before its vanilla
+        // input packet on the same ordered connection. The loaders do not
+        // share raw native ordinals, so consume it as a one-shot stream item.
+        session.inputVetoes.addLast(veto);
+    }
 
-        // The custom payload is sent immediately before the matching vanilla
-        // packet. Process it exactly once here and consume every native echo.
-        pendingVanilla.computeIfAbsent(player.getUniqueId(), ignored -> new EnumMap<>(PaperPredictionProtocol.InputKind.class))
-                .put(input.kind(), tick + 4);
-        if (input.locallyBlockedByCooldown()) {
-            // Continue through combo tracking and existing-instance actions,
-            // while guarding against a delayed standalone activation.
+    private CommonInputHandler.InputResult processInput(
+            Player player, Session session, PaperPredictionProtocol.InputKind kind,
+            Supplier<CommonInputHandler.InputResult> nativeInput) {
+        if (player == null || !player.isOnline() || sessions.get(player.getUniqueId()) != session) {
+            return nativeInput.get();
         }
-        long mappedTick = session.mapClientTick(input.clientTick(), tick, player.getPing());
-        Action action = session.actions.get(input.sequence());
-        if (action != null && (action.clientTick != input.clientTick()
-                || !action.ability.equalsIgnoreCase(abilityName)
-                || Math.abs(action.yaw - input.yaw()) > 0.01F || Math.abs(action.pitch - input.pitch()) > 0.01F)) {
-            session.actions.remove(input.sequence());
-            reconcile(player, session, input.sequence(), false, "prepare_mismatch", abilityName, origin,
-                    bending == null ? 0L : bending.getCooldown(abilityName));
-            return;
-        }
-        if (action == null) {
-            action = new Action(player.getUniqueId(), input.sequence(), input.clientTick(), mappedTick, tick,
-                    abilityName, input.x(), input.y(), input.z(), input.yaw(), input.pitch(), input.locallyPredicted());
-            session.actions.put(input.sequence(), action);
-        }
-        action.locallyPredicted = input.locallyPredicted();
+        final long sequence = ++session.lastSequence;
+        final Location origin = player.getEyeLocation();
+        BendingPlayer bending = BendingPlayer.getBendingPlayer(BukkitMC.player(player));
+        com.projectkorra.projectkorra.platform.mc.entity.Player commonPlayer = BukkitMC.player(player);
+        final int selectedSlot = player.getInventory().getHeldItemSlot();
+        String fallback = bending == null ? "" : bending.getAbilities().get(selectedSlot + 1);
+        String abilityName = logicalInputAbility(commonPlayer, bending, kind, fallback);
+        final boolean predictable = !abilityName.isBlank()
+                && session.supportedAbilities.contains(abilityName.toLowerCase(Locale.ROOT));
+        send(player, PaperPredictionProtocol.NATIVE_ACTION,
+                PaperPredictionProtocol.nativeAction(session.session, sequence, tick, kind, selectedSlot,
+                        abilityName, origin.getX(), origin.getY(), origin.getZ(), origin.getYaw(),
+                        origin.getPitch(), predictable));
+
+        final PaperPredictionProtocol.InputVeto veto = session.inputVetoes.pollFirst();
+        final boolean locallyRejectedOnCooldown = predictable && veto != null
+                && veto.kind() == kind && abilityName.equalsIgnoreCase(veto.ability());
+        // Unknown/server-only addons follow unmodified legacy Paper behavior.
+        // They still consume an ordinal so the next supported native event has
+        // the same deterministic id on both endpoints.
+        if (!predictable) return nativeInput.get();
+
+        final Action action = new Action(player.getUniqueId(), sequence, tick,
+                abilityName, origin.getX(), origin.getY(), origin.getZ(), origin.getYaw(), origin.getPitch(),
+                PredictionActionSeed.from(kind.name(), selectedSlot, abilityName,
+                        origin.getX(), origin.getY(), origin.getZ(), origin.getYaw(), origin.getPitch()), true);
+        session.actions.put(sequence, action);
         Set<CoreAbility> before = identitySet(CoreAbility.getAbilitiesByInstances());
         boolean hadExistingMatchingAbility = before.stream().anyMatch(candidate -> candidate.getPlayer() != null
                 && candidate.getPlayer().getUniqueId().equals(player.getUniqueId())
                 && matchesInputAbility(candidate, abilityName));
-        long cooldownBefore = bending.getCooldown(abilityName);
         AbilityActivationManager.TrackingResult trackingResult;
+        final AtomicReference<CommonInputHandler.InputResult> nativeResult = new AtomicReference<>();
         Long previousSequence = INPUT_SEQUENCE.get();
-        INPUT_SEQUENCE.set(input.sequence());
-        Cooldown previousGuardedCooldown = null;
-        boolean guardedCooldown = input.locallyBlockedByCooldown() && bending != null;
-        if (guardedCooldown) {
-            previousGuardedCooldown = bending.getCooldowns().put(abilityName,
-                    new Cooldown(System.currentTimeMillis() + 60_000L, false));
-        }
+        INPUT_SEQUENCE.set(sequence);
         AbilityActivationManager.beginTracking();
         try {
-            PredictionDeterminism.run(input.sequence(), () ->
-                    runWithOwner(player.getUniqueId(), input.locallyPredicted(),
-                            () -> dispatch(player, input.kind(), input.x(), input.y(), input.z(), input.yaw(), input.pitch())));
+            PredictionDeterminism.run(sequence, action.deterministicSeed, () ->
+                    runWithOwner(player.getUniqueId(), true,
+                            () -> nativeResult.set(locallyRejectedOnCooldown
+                                    ? CooldownSync.runInputVeto(player.getUniqueId(),
+                                    inputVetoCooldowns(abilityName, kind), nativeInput)
+                                    : nativeInput.get())));
         } finally {
             trackingResult = AbilityActivationManager.finishTrackingResult();
-            if (guardedCooldown) {
-                if (previousGuardedCooldown == null) bending.getCooldowns().remove(abilityName);
-                else bending.getCooldowns().put(abilityName, previousGuardedCooldown);
-            }
             if (previousSequence == null) INPUT_SEQUENCE.remove();
             else INPUT_SEQUENCE.set(previousSequence);
         }
-        boolean handled = trackingResult.handled();
-        if (input.locallyPredicted()) {
-            for (CoreAbility candidate : CoreAbility.getAbilitiesByInstances()) {
-                if (!before.contains(candidate) && candidate.getPlayer() != null
-                        && candidate.getPlayer().getUniqueId().equals(player.getUniqueId())) {
-                    PredictionTiming.alignStart(candidate);
-                }
-            }
-        }
-        long cooldownAfter = bending.getCooldown(abilityName);
-        boolean createdAny = createdAnyAbility(before, player.getUniqueId());
-        if (input.locallyBlockedByCooldown() && !PredictionCooldownTimeline.allowsCooldownGuardedInput(
-                createdAny, handled, hadExistingMatchingAbility)) {
-            flushTempBlocks();
-            session.actions.remove(input.sequence());
-            reconcile(player, session, input.sequence(), false, "client_cooldown_combo_recorded", abilityName,
-                    new Location(player.getWorld(), input.x(), input.y(), input.z(), input.yaw(), input.pitch()), cooldownAfter);
-            return;
-        }
-        boolean deferredSneakTransition = isSneakTransition(input.kind()) && hadExistingMatchingAbility
-                && !"AirBlast".equalsIgnoreCase(abilityName);
-        boolean earthSmashExistingTransition = "EarthSmash".equalsIgnoreCase(abilityName)
-                && hadExistingMatchingAbility;
-        boolean directTargetTransition = "FirePunch".equalsIgnoreCase(abilityName);
-        if (input.locallyPredicted() && !handled && !deferredSneakTransition
-                && !earthSmashExistingTransition && !directTargetTransition
-                && cooldownAfter <= cooldownBefore
-                && !createdAbility(before, player.getUniqueId(), abilityName)) {
-            flushTempBlocks();
-            session.actions.remove(input.sequence());
-            reconcile(player, session, input.sequence(), false, "cooldown", abilityName,
-                    new Location(player.getWorld(), input.x(), input.y(), input.z(), input.yaw(), input.pitch()),
-                    cooldownAfter);
-            return;
-        }
-        cooldownAfter = PredictionCooldownTimeline.alignNewCooldown(bending, abilityName, cooldownBefore,
-                Math.max(0L, tick - mappedTick) * 50L, System.currentTimeMillis());
         while (session.actions.size() > 128) session.actions.remove(session.actions.keySet().iterator().next());
+        boolean createdAnyAbility = false;
         boolean createdMatchingAbility = false;
         for (CoreAbility candidate : CoreAbility.getAbilitiesByInstances()) {
             if (candidate.getPlayer() == null || !candidate.getPlayer().getUniqueId().equals(player.getUniqueId()))
                 continue;
             if (!before.contains(candidate)) {
+                createdAnyAbility = true;
                 abilityCreationActions.putIfAbsent(candidate, action);
                 abilityActions.put(candidate, action);
                 if (matchesInputAbility(candidate, abilityName)) createdMatchingAbility = true;
@@ -1002,7 +1026,11 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             abilityActions.put(candidate, action);
             explicitlyMappedExisting = true;
         }
-        if (!explicitlyMappedExisting && handled && !createdMatchingAbility) {
+        // Existing-instance transitions are generic. Any input aimed at an
+        // already-running matching ability may mutate it without constructing
+        // a second persistent instance (release, throw, redirect, thaw, etc.).
+        boolean implicitExistingTransition = trackingResult.handled() && hadExistingMatchingAbility;
+        if (!explicitlyMappedExisting && implicitExistingTransition && !createdMatchingAbility) {
             for (CoreAbility candidate : CoreAbility.getAbilitiesByInstances()) {
                 if (before.contains(candidate) && !candidate.isRemoved() && candidate.getPlayer() != null
                         && candidate.getPlayer().getUniqueId().equals(player.getUniqueId())
@@ -1011,124 +1039,21 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                 }
             }
         }
+        action.locallyPredicted = createdAnyAbility || trackingResult.handled()
+                || action.tempBlockOrdinal > 0 || action.tempFallingBlockOrdinal > 0
+                || !action.directBlockOrdinals.isEmpty() || !action.velocityOrdinals.isEmpty()
+                || !action.abilityStateOrdinals.isEmpty();
         flushTempBlocks();
-        // dispatch() installed this validated input pose while the common
-        // ability selected its source, so reconciliation must report the same
-        // authority instead of the later native player position.
-        Location reconcileOrigin = new Location(player.getWorld(), input.x(), input.y(), input.z(),
-                input.yaw(), input.pitch());
-        reconcile(player, session, input.sequence(), true, "accepted", abilityName, reconcileOrigin, cooldownAfter);
-    }
-
-    private void dispatch(Player nativePlayer, PaperPredictionProtocol.InputKind kind,
-                          double eyeX, double eyeY, double eyeZ, float yaw, float pitch) {
-        com.projectkorra.projectkorra.platform.mc.entity.Player player = BukkitMC.player(nativePlayer);
-        Boolean sneakOverride = kind == PaperPredictionProtocol.InputKind.SNEAK_START ? Boolean.TRUE
-                : kind == PaperPredictionProtocol.InputKind.SNEAK_STOP ? Boolean.FALSE : null;
-        if (sneakOverride != null) BukkitMC.setSneakOverride(nativePlayer, sneakOverride);
-        BukkitMC.setViewOverride(nativePlayer, eyeX, eyeY, eyeZ, yaw, pitch);
-        try {
-            switch (kind) {
-                case LEFT_CLICK -> CommonInputHandler.handleSwing(player, Set.of(), new HashSet<>());
-                case RIGHT_CLICK -> CommonInputHandler.handleRightClick(player, ClickType.RIGHT_CLICK);
-                case RIGHT_CLICK_BLOCK -> CommonInputHandler.handleRightClick(player, ClickType.RIGHT_CLICK_BLOCK);
-                case RIGHT_CLICK_ENTITY -> CommonInputHandler.handleRightClickEntity(player);
-                case SNEAK_START -> CommonInputHandler.handleSneak(player, false);
-                case SNEAK_STOP -> CommonInputHandler.handleSneak(player, true);
-            }
-        } finally {
-            if (sneakOverride != null) BukkitMC.setSneakOverride(nativePlayer, null);
-            BukkitMC.setViewOverride(nativePlayer, null, null, null, null, null);
-        }
-    }
-
-    private void onHit(Player player, PaperPredictionProtocol.Hit hit) {
-        Session session = valid(player, hit.session());
-        if (session == null || !session.claimLimiter.allow(tick, CLAIMS_PER_SECOND)) return;
-        Action action = session.actions.get(hit.sequence());
-        if (action == null || tick - action.acceptedTick > 200 || action.claims.containsKey(hit.entityId())
-                || hit.clientTick() < action.clientTick - 1 || hit.clientTick() > action.clientTick + 200
-                || !finite(hit.x(), hit.y(), hit.z())) return;
-        Entity nativeTarget = player.getWorld().getEntities().stream().filter(entity -> entity.getEntityId() == hit.entityId()).findFirst().orElse(null);
-        if (!(nativeTarget instanceof org.bukkit.entity.LivingEntity target) || target.equals(player) || target.isDead())
-            return;
-        long rewindTick = session.mapClientTick(hit.clientTick(), tick, player.getPing());
-        Vector contact = new Vector(hit.x(), hit.y(), hit.z());
-        EntityFrame targetFrame = frameAt(target.getUniqueId(), rewindTick);
-        if (targetFrame == null || !targetFrame.world.equals(target.getWorld().getUID())
-                || !targetFrame.box.clone().expand(0.5).contains(contact)
-                || contact.distanceSquared(new Vector(action.eyeX, action.eyeY, action.eyeZ)) > 130D * 130D) {
-            return;
-        }
-        Claim claim = new Claim(target.getUniqueId(), rewindTick,
-                tick + MAX_REWIND_TICKS + 4, contact.clone());
-        action.claims.put(hit.entityId(), claim);
-        if ("FirePunch".equalsIgnoreCase(action.ability)) {
-            consumeFirePunchClaim(player, target, action, claim);
-        }
-        BendingPlayer bending = BendingPlayer.getBendingPlayer(BukkitMC.player(player));
-        reconcile(player, session, action.sequence, true, "hit_claim_accepted", action.ability,
-                player.getEyeLocation(), bending == null ? 0 : bending.getCooldown(action.ability));
-    }
-
-    private void consumeFirePunchClaim(Player player, org.bukkit.entity.LivingEntity target,
-                                       Action action, Claim claim) {
-        com.projectkorra.projectkorra.platform.mc.entity.Player commonPlayer = BukkitMC.player(player);
-        FirePunch punch = CoreAbility.getAbility(commonPlayer, FirePunch.class);
-        BendingPlayer bending = BendingPlayer.getBendingPlayer(commonPlayer);
-        if (punch == null) {
-            CoreAbility descriptor = CoreAbility.getAbility(FirePunch.class);
-            if (bending == null || descriptor == null || !bending.canBend(descriptor)) return;
-            punch = new FirePunch(commonPlayer, null);
-        }
-        abilityActions.put(punch, action);
-        abilityCreationActions.putIfAbsent(punch, action);
-        claim.consumedTick = tick;
-        FirePunch executing = punch;
-        Long previousSequence = INPUT_SEQUENCE.get();
-        INPUT_SEQUENCE.set(action.sequence);
-        try {
-            runWithOwner(player.getUniqueId(), action.locallyPredicted,
-                    () -> AbilityExecutionContext.run(executing,
-                            () -> executing.punch((LivingEntity)
-                                    BukkitMC.entity(target))));
-        } finally {
-            if (previousSequence == null) INPUT_SEQUENCE.remove();
-            else INPUT_SEQUENCE.set(previousSequence);
-        }
-    }
-
-    private boolean lineOfSight(Player player, Vector start, Vector end, double tolerance) {
-        Vector delta = end.clone().subtract(start);
-        double distance = delta.length();
-        RayTraceResult hit = player.getWorld().rayTraceBlocks(start.toLocation(player.getWorld()), delta.normalize(), distance,
-                FluidCollisionMode.NEVER, true);
-        return hit == null || hit.getHitPosition().distanceSquared(end) <= tolerance * tolerance;
-    }
-
-    private void recordHistory() {
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            Deque<EntityFrame> frames = history.computeIfAbsent(player.getUniqueId(), ignored -> new ArrayDeque<>());
-            frames.addLast(new EntityFrame(tick, player.getWorld().getUID(), player.getLocation().toVector(),
-                    player.getEyeLocation().toVector(), player.getBoundingBox(), player.getYaw(), player.getPitch()));
-            while (!frames.isEmpty() && tick - frames.getFirst().tick > MAX_REWIND_TICKS + 4) frames.removeFirst();
-        }
-        history.keySet().removeIf(uuid -> Bukkit.getPlayer(uuid) == null);
-    }
-
-    private EntityFrame frameAt(UUID player, long wanted) {
-        Deque<EntityFrame> frames = history.get(player);
-        if (frames == null || frames.isEmpty()) return null;
-        EntityFrame best = frames.getFirst();
-        long distance = Math.abs(best.tick - wanted);
-        for (EntityFrame frame : frames) {
-            long candidate = Math.abs(frame.tick - wanted);
-            if (candidate < distance) {
-                best = frame;
-                distance = candidate;
-            }
-        }
-        return best;
+        // Every path here is a supported client-predicted native event. Its
+        // common runtime already started (or deliberately did not start) the
+        // cooldown on the input frame; importing Paper's arrival-time expiry
+        // would add network latency to that gate.
+        final boolean accepted = !locallyRejectedOnCooldown || action.locallyPredicted;
+        final String reason = locallyRejectedOnCooldown
+                ? action.locallyPredicted ? "accepted_combo" : "client_cooldown"
+                : "accepted";
+        reconcile(player, session, sequence, accepted, reason, abilityName, origin, 0L);
+        return nativeResult.get();
     }
 
     private void flushTempBlocks() {
@@ -1138,8 +1063,9 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         for (Session session : sessions.values()) {
             Player player = Bukkit.getPlayer(session.player);
             if (player == null) continue;
+            final WorldScope scope = refreshWorldScope(player, session);
             Location location = player.getLocation();
-            String viewerWorld = player.getWorld().getUID().toString();
+            String viewerWorld = scope.identity();
             List<PaperPredictionProtocol.TempBlockOp> visible = new ArrayList<>();
             for (PendingTempBlock pending : operations) {
                 final long layerId = pending.operation.layerId();
@@ -1153,17 +1079,25 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                 visible.add(pending.forViewer(session.player));
             }
             if (!visible.isEmpty()) {
-                sendTempBlockOperations(player, visible);
+                sendTempBlockOperations(player, session, visible, false);
             }
         }
     }
 
-    private void sendTempBlockOperations(final Player player,
-                                         final List<PaperPredictionProtocol.TempBlockOp> operations) {
+    private void sendTempBlockOperations(final Player player, final Session session,
+                                          final List<PaperPredictionProtocol.TempBlockOp> operations,
+                                          final boolean snapshot) {
         final long now = System.currentTimeMillis();
+        final WorldScope scope = refreshWorldScope(player, session);
+        if (operations.isEmpty()) {
+            send(player, PaperPredictionProtocol.TEMP_BLOCKS,
+                    PaperPredictionProtocol.tempBlocks(session.session, scope.generation(), scope.identity(), snapshot,
+                            tick, now, List.of()));
+            return;
+        }
         for (int start = 0; start < operations.size(); start += TEMP_BLOCK_OPS_PER_PACKET) {
             send(player, PaperPredictionProtocol.TEMP_BLOCKS,
-                    PaperPredictionProtocol.tempBlocks(tick, now,
+                    PaperPredictionProtocol.tempBlocks(session.session, scope.generation(), scope.identity(), snapshot, tick, now,
                             operations.subList(start, Math.min(start + TEMP_BLOCK_OPS_PER_PACKET, operations.size()))));
         }
     }
@@ -1181,14 +1115,53 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         Map<Integer, String> binds = PaperPredictionSnapshot.binds(bending);
         Map<String, Long> cooldowns = PaperPredictionSnapshot.cooldowns(bending);
         List<String> elements = PaperPredictionSnapshot.elements(bending), subs = PaperPredictionSnapshot.subElements(bending);
+        List<String> permissions = predictionPermissions(player);
         double airBlastDecay = bending == null ? 1.0 : bending.getAirBlastDecay();
+        boolean chiBlocked = bending != null && bending.isChiBlocked();
+        RegionProtectionAuthority.Snapshot regionProtection =
+                regionProtectionSnapshot(player, bending, binds, session);
         List<String> activeFlights = activeFlightAbilities(player.getUniqueId());
-        int digest = ((((31 * binds.hashCode() + cooldowns.hashCode()) * 31 + elements.hashCode()) * 31 + subs.hashCode()) * 31
-                + Double.hashCode(airBlastDecay) * 31 + activeFlights.hashCode()) * 31 + Long.hashCode(session.lastSequence);
+        int digest = 31 * binds.hashCode() + cooldowns.hashCode();
+        digest = 31 * digest + elements.hashCode();
+        digest = 31 * digest + subs.hashCode();
+        digest = 31 * digest + permissions.hashCode();
+        digest = 31 * digest + Double.hashCode(airBlastDecay);
+        digest = 31 * digest + Boolean.hashCode(chiBlocked);
+        digest = 31 * digest + regionProtection.hashCode();
+        digest = 31 * digest + activeFlights.hashCode();
+        digest = 31 * digest + Long.hashCode(session.lastSequence);
         if (!force && digest == session.stateDigest) return;
         session.stateDigest = digest;
         send(player, PaperPredictionProtocol.STATE, PaperPredictionProtocol.state(session.session, tick,
-                System.currentTimeMillis(), session.lastSequence, binds, cooldowns, elements, subs, airBlastDecay, activeFlights));
+                System.currentTimeMillis(), session.lastSequence, binds, cooldowns, elements, subs,
+                permissions, airBlastDecay, chiBlocked, regionProtection, activeFlights));
+    }
+
+    private RegionProtectionAuthority.Snapshot regionProtectionSnapshot(
+            final Player player, final BendingPlayer bending, final Map<Integer, String> binds,
+            final Session session) {
+        if (player == null || bending == null) return RegionProtectionAuthority.Snapshot.empty();
+        final List<String> relevant = PaperRegionProtectionSnapshot.relevantAbilities(
+                player, binds == null ? List.of() : binds.values());
+        final List<String> abilities = RegionProtectionAuthority.normalizedAbilities(relevant);
+        final int chunkX = player.getLocation().getBlockX() >> 4;
+        final int chunkZ = player.getLocation().getBlockZ() >> 4;
+        final long spatialKey = 31L * (31L * (31L * player.getWorld().getUID().hashCode()
+                + chunkX) + chunkZ) + abilities.hashCode();
+        if (session.regionProtectionSpatialKey != spatialKey
+                || tick >= session.nextRegionProtectionRefreshTick) {
+            session.regionProtectionSpatial = PaperRegionProtectionSnapshot.spatial(player, abilities);
+            session.regionProtectionSpatialKey = spatialKey;
+            session.nextRegionProtectionRefreshTick = tick + 100L;
+        }
+        final RegionProtectionAuthority.Snapshot point =
+                PaperRegionProtectionSnapshot.currentPoint(player, abilities);
+        final List<RegionProtectionAuthority.Box> boxes = new ArrayList<>(point.boxes());
+        if (session.regionProtectionSpatial.world().equalsIgnoreCase(point.world())
+                && session.regionProtectionSpatial.abilities().equals(point.abilities())) {
+            boxes.addAll(session.regionProtectionSpatial.boxes());
+        }
+        return new RegionProtectionAuthority.Snapshot(point.world(), point.abilities(), boxes);
     }
 
     private void requestSnapshotRebuild(boolean broadcastChanges) {
@@ -1226,9 +1199,15 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         Map<Integer, String> binds = PaperPredictionSnapshot.binds(bending);
         Map<String, Long> cooldowns = PaperPredictionSnapshot.cooldowns(bending);
         List<String> elements = PaperPredictionSnapshot.elements(bending), subs = PaperPredictionSnapshot.subElements(bending);
+        List<String> permissions = predictionPermissions(player);
         double airBlastDecay = bending == null ? 1.0 : bending.getAirBlastDecay();
-        session.stateDigest = (((31 * binds.hashCode() + cooldowns.hashCode()) * 31 + elements.hashCode()) * 31 + subs.hashCode()) * 31
-                + Double.hashCode(airBlastDecay);
+        boolean chiBlocked = bending != null && bending.isChiBlocked();
+        RegionProtectionAuthority.Snapshot regionProtection =
+                regionProtectionSnapshot(player, bending, binds, session);
+        session.stateDigest = 31 * (31 * (31 * (31 * (31 * (31 * (31 * binds.hashCode()
+                + cooldowns.hashCode()) + elements.hashCode()) + subs.hashCode())
+                + permissions.hashCode()) + Double.hashCode(airBlastDecay))
+                + Boolean.hashCode(chiBlocked)) + regionProtection.hashCode();
         List<PaperPredictionProtocol.ConfigEntry> config = publicConfig;
         List<PaperPredictionProtocol.AbilityProfile> profileSnapshot = profiles;
         long epoch = configEpoch;
@@ -1237,7 +1216,8 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             List<OutboundPayload> outbound = new ArrayList<>();
             byte[] payload = PaperPredictionProtocol.snapshot(session.session, serverTick, serverNow, epoch,
-                    MAX_REWIND_TICKS, config, profileSnapshot, binds, cooldowns, elements, subs, airBlastDecay);
+                    MAX_REWIND_TICKS, config, profileSnapshot, binds, cooldowns, elements, subs,
+                    permissions, airBlastDecay, chiBlocked, regionProtection);
             if (payload.length > Messenger.MAX_MESSAGE_SIZE) {
                 List<List<PaperPredictionProtocol.ConfigEntry>> chunks = configChunks(config, Messenger.MAX_MESSAGE_SIZE - 128);
                 for (int i = 0; i < chunks.size(); i++) {
@@ -1245,14 +1225,16 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                             PaperPredictionProtocol.configChunk(session.session, epoch, i, chunks.size(), chunks.get(i))));
                 }
                 payload = PaperPredictionProtocol.snapshot(session.session, serverTick, serverNow, epoch,
-                        MAX_REWIND_TICKS, List.of(), profileSnapshot, binds, cooldowns, elements, subs, airBlastDecay);
+                        MAX_REWIND_TICKS, List.of(), profileSnapshot, binds, cooldowns, elements, subs,
+                        permissions, airBlastDecay, chiBlocked, regionProtection);
             }
             if (payload.length > Messenger.MAX_MESSAGE_SIZE) {
                 int keep = profileSnapshot.size();
                 while (payload.length > Messenger.MAX_MESSAGE_SIZE && keep > 0) {
                     keep /= 2;
                     payload = PaperPredictionProtocol.snapshot(session.session, serverTick, serverNow, epoch,
-                            MAX_REWIND_TICKS, List.of(), profileSnapshot.subList(0, keep), binds, cooldowns, elements, subs, airBlastDecay);
+                            MAX_REWIND_TICKS, List.of(), profileSnapshot.subList(0, keep), binds, cooldowns,
+                            elements, subs, permissions, airBlastDecay, chiBlocked, regionProtection);
                 }
             }
             outbound.add(new OutboundPayload(PaperPredictionProtocol.SNAPSHOT, payload));
@@ -1260,9 +1242,88 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                 Player current = Bukkit.getPlayer(session.player);
                 if (current == null || sessions.get(session.player) != session) return;
                 for (OutboundPayload message : outbound) send(current, message.channel(), message.payload());
+                sendWorldState(current, session);
                 sendTempBlockSnapshot(current, session);
             });
         });
+    }
+
+    /**
+     * Captures decisions, not permission-plugin internals. Registered feature
+     * nodes (WaterSpout.Wave, WaterArms modes, Flight modes, and addons) are
+     * evaluated through Bukkit exactly as the authoritative ability will see
+     * them. Unknown nodes remain denied on the client instead of silently
+     * taking a branch Paper may reject.
+     */
+    private static List<String> predictionPermissions(final Player player) {
+        if (player == null) return List.of();
+        final SortedSet<String> abilityNodes = new TreeSet<>();
+        final SortedSet<String> otherNodes = new TreeSet<>();
+        final Set<String> candidates = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        for (CoreAbility ability : CoreAbility.getAbilities()) {
+            if (ability == null || ability.getName() == null || ability.getName().isBlank()) continue;
+            candidates.add("bending.ability." + ability.getName());
+        }
+        final Collection<org.bukkit.permissions.Permission> registered =
+                Bukkit.getPluginManager().getPermissions();
+        candidates.addAll(expandPermissionCandidates(registered));
+        // WaterSpoutWave is a feature branch whose ability name is
+        // intentionally also "WaterSpout". Keep its child node in the
+        // decision set even if a permission provider does not expose the
+        // plugin.yml child graph through getPermissions().
+        candidates.add("bending.ability.WaterSpout.Wave");
+        player.getEffectivePermissions().forEach(info -> {
+            final String node = info.getPermission();
+            if (node != null && !node.isBlank()) candidates.add(node);
+        });
+        for (String node : candidates) {
+            if (node == null || !node.regionMatches(true, 0, "bending.", 0, 8)
+                    || node.indexOf('*') >= 0 || !player.hasPermission(node)) continue;
+            final String normalized = node.toLowerCase(Locale.ROOT);
+            if (normalized.startsWith("bending.ability.")) abilityNodes.add(normalized);
+            else otherNodes.add(normalized);
+        }
+        final List<String> result = new ArrayList<>(Math.min(MAX_PREDICTION_PERMISSIONS,
+                abilityNodes.size() + otherNodes.size()));
+        for (String node : abilityNodes) {
+            if (result.size() == MAX_PREDICTION_PERMISSIONS) return List.copyOf(result);
+            result.add(node);
+        }
+        for (String node : otherNodes) {
+            if (result.size() == MAX_PREDICTION_PERMISSIONS) break;
+            result.add(node);
+        }
+        return List.copyOf(result);
+    }
+
+    /**
+     * Bukkit registers parent permissions from plugin.yml, but a child used by
+     * ability code is not required to be registered as its own Permission.
+     * Walk the complete parent graph so decisions such as
+     * bending.ability.WaterSpout.Wave are synchronized even when they only
+     * appear as a child of bending.water.
+     */
+    static Set<String> expandPermissionCandidates(
+            final Collection<org.bukkit.permissions.Permission> registered) {
+        if (registered == null || registered.isEmpty()) return Set.of();
+        final Map<String, org.bukkit.permissions.Permission> byName = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (org.bukkit.permissions.Permission permission : registered) {
+            if (permission != null && permission.getName() != null && !permission.getName().isBlank()) {
+                byName.put(permission.getName(), permission);
+            }
+        }
+        final Set<String> result = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        final Deque<String> pending = new ArrayDeque<>(byName.keySet());
+        while (!pending.isEmpty()) {
+            final String node = pending.removeFirst();
+            if (node == null || node.isBlank() || !result.add(node)) continue;
+            final org.bukkit.permissions.Permission permission = byName.get(node);
+            if (permission == null) continue;
+            for (String child : permission.getChildren().keySet()) {
+                if (child != null && !child.isBlank() && !result.contains(child)) pending.addLast(child);
+            }
+        }
+        return Set.copyOf(result);
     }
 
     /**
@@ -1271,8 +1332,9 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
      * prediction snapshot so chunk packets can never leave invisible blocks.
      */
     private void sendTempBlockSnapshot(final Player player, final Session session) {
+        final WorldScope scope = refreshWorldScope(player, session);
         final Location location = player.getLocation();
-        final String viewerWorld = player.getWorld().getUID().toString();
+        final String viewerWorld = scope.identity();
         final List<PaperPredictionProtocol.TempBlockOp> operations = new ArrayList<>();
         for (TempBlock layer : TempBlock.getActiveLayers()) {
             final Block block = layer.getBlock();
@@ -1281,21 +1343,42 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                     location.getBlockX(), location.getBlockZ(), block.getX(), block.getZ(),
                     player.getClientViewDistance())) continue;
             final Action action = tempLayerActions.get(layer.getLayerId());
-            final UUID predictedOwner = action == null ? null : action.owner;
+            final String effectAbility = tempLayerEffects.containsKey(layer.getLayerId())
+                    ? tempLayerEffects.get(layer.getLayerId()).ability : layer.getEffectAbility();
+            final UUID predictedOwner = predictedTempBlockOwner(
+                    layer.getOwnerId().orElse(null), action, effectAbility);
             final BlockData viewerData = predictedViewerData(block, session.player, block.getBlockData());
-            if (this.tempBlockPacketFilter != null && session.player.equals(predictedOwner)) {
-                this.tempBlockPacketFilter.recordSnapshot(
-                        block, session.player, layer.getLayerId(), viewerData);
-            }
             operations.add(new PaperPredictionProtocol.TempBlockOp(
                     PaperPredictionProtocol.TempOperation.CREATE, worldKey(block.getWorld()),
                     block.getX(), block.getY(), block.getZ(), TempBlockSync.encode(layer.getBlockData()),
                     layer.getRevertTime(), action == null ? 0L : action.sequence,
+                    effectAbility,
+                    tempLayerEffects.containsKey(layer.getLayerId())
+                            ? tempLayerEffects.get(layer.getLayerId()).step : layer.getEffectStep(),
+                    tempLayerEffects.containsKey(layer.getLayerId())
+                            ? tempLayerEffects.get(layer.getLayerId()).ordinal : layer.getEffectOrdinal(),
                     layer.getLayerId(), layer.getRevision(), predictedOwner,
                     TempBlockSync.encode(viewerData), false));
             session.tempLayers.markActive(layer.getLayerId());
         }
-        sendTempBlockOperations(player, operations);
+        sendTempBlockOperations(player, session, operations, true);
+    }
+
+    private void sendWorldState(final Player player, final Session session) {
+        if (player == null || session == null || player.getWorld() == null) return;
+        final WorldScope scope = refreshWorldScope(player, session);
+        send(player, PaperPredictionProtocol.WORLD_STATE,
+                PaperPredictionProtocol.worldState(session.session, scope.generation(), scope.identity()));
+    }
+
+    private WorldScope refreshWorldScope(final Player player, final Session session) {
+        final String identity = player.getWorld().getUID().toString();
+        if (!identity.equals(session.worldIdentity)) {
+            session.worldIdentity = identity;
+            session.worldGeneration++;
+            session.tempLayers.clear();
+        }
+        return new WorldScope(session.worldGeneration, session.worldIdentity);
     }
 
     private List<List<PaperPredictionProtocol.ConfigEntry>> configChunks(
@@ -1346,7 +1429,15 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                            String ability, Location origin, long cooldown) {
         send(player, PaperPredictionProtocol.RECONCILE, PaperPredictionProtocol.reconcile(session.session, sequence, accepted,
                 reason, tick, System.currentTimeMillis(), ability, origin.getX(), origin.getY(), origin.getZ(), cooldown));
-        if ("WaterSpout".equalsIgnoreCase(ability)) sendState(player, session, true);
+        if (isPersistentFlightAbility(ability)) sendState(player, session, true);
+    }
+
+    private static boolean isPersistentFlightAbility(final String ability) {
+        return ability != null && (ability.equalsIgnoreCase("AirScooter")
+                || ability.equalsIgnoreCase("AirSpout")
+                || ability.equalsIgnoreCase("WaterSpout")
+                || ability.equalsIgnoreCase("FireJet")
+                || ability.equalsIgnoreCase("Flight"));
     }
 
     private void send(Player player, String channel, byte[] payload) {
@@ -1358,19 +1449,6 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         return current != null && current.session.equals(session) ? current : null;
     }
 
-    private static final class RateLimiter {
-        long start;
-        int count;
-
-        boolean allow(long tick, int maximum) {
-            if (tick - start >= 20) {
-                start = tick;
-                count = 0;
-            }
-            return ++count <= maximum;
-        }
-    }
-
     private record OutboundPayload(String channel, byte[] payload) {
     }
 
@@ -1380,55 +1458,66 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             final BlockData viewerData = ownerViews.get(viewer);
             return new PaperPredictionProtocol.TempBlockOp(operation.operation(), operation.world(),
                     operation.x(), operation.y(), operation.z(), operation.material(), operation.revertAtMillis(),
-                    operation.actionSequence(), operation.layerId(), operation.revision(), operation.ownerId(),
+                    operation.actionSequence(), operation.effectAbility(), operation.effectStep(),
+                    operation.effectOrdinal(), operation.layerId(), operation.revision(), operation.ownerId(),
                     viewerData == null ? operation.material() : TempBlockSync.encode(viewerData),
                     operation.packetExpected());
         }
     }
 
+    private record PendingAbilityRemoval(UUID playerId, String ability, String abilityType, long actionSequence,
+                                         boolean externallyCaused,
+                                         CoreAbility instance) {
+    }
+
     private static final class Session {
         final UUID player, session;
-        final long helloClientTick, helloServerTick;
         final int capabilities;
-        final RateLimiter inputLimiter = new RateLimiter(), claimLimiter = new RateLimiter();
         final LinkedHashMap<Long, Action> actions = new LinkedHashMap<>();
+        final ArrayDeque<PaperPredictionProtocol.InputVeto> inputVetoes = new ArrayDeque<>();
+        final LinkedHashMap<DirectBlockCause, Integer> directBlockOrdinals = new LinkedHashMap<>();
+        final Set<String> predictedCooldowns = new HashSet<>();
         final TempBlockDeliveryTracker tempLayers = new TempBlockDeliveryTracker();
+        Set<String> supportedAbilities = Set.of();
         long lastSequence;
+        long worldGeneration;
+        String worldIdentity = "";
         int stateDigest;
+        long regionProtectionSpatialKey = Long.MIN_VALUE;
+        long nextRegionProtectionRefreshTick;
+        RegionProtectionAuthority.Snapshot regionProtectionSpatial =
+                RegionProtectionAuthority.Snapshot.empty();
+        boolean ready;
 
-        Session(UUID player, UUID session, long clientTick, long serverTick, int capabilities) {
+        Session(UUID player, UUID session, int capabilities) {
             this.player = player;
             this.session = session;
-            this.helloClientTick = clientTick;
-            this.helloServerTick = serverTick;
             this.capabilities = capabilities;
         }
+    }
 
-        long mapClientTick(long clientTick, long now, int pingMillis) {
-            long receiptMapped = helloServerTick + clientTick - helloClientTick;
-            long oneWayTicks = Math.max(0, Math.min(MAX_REWIND_TICKS, Math.round(Math.max(0, pingMillis) / 100.0)));
-            long mapped = receiptMapped - oneWayTicks;
-            return Math.max(now - MAX_REWIND_TICKS, Math.min(now, mapped));
-        }
+    private record WorldScope(long generation, String identity) {
     }
 
     private static final class Action {
         final UUID owner;
-        final long sequence, clientTick, rewindTick, acceptedTick;
+        final long sequence, acceptedTick;
         final String ability;
         final double eyeX, eyeY, eyeZ;
         final float yaw, pitch;
-        final Map<Integer, Claim> claims = new HashMap<>();
+        final long deterministicSeed;
         final Map<UUID, Integer> velocityOrdinals = new HashMap<>();
+        final Map<UUID, Integer> abilityStateOrdinals = new HashMap<>();
+        final Map<String, Integer> directBlockOrdinals = new HashMap<>();
         int tempFallingBlockOrdinal;
+        int tempBlockOrdinal;
         boolean locallyPredicted;
 
-        Action(UUID owner, long sequence, long clientTick, long rewindTick, long acceptedTick, String ability,
-               double eyeX, double eyeY, double eyeZ, float yaw, float pitch, boolean locallyPredicted) {
+        Action(UUID owner, long sequence, long acceptedTick, String ability,
+               double eyeX, double eyeY, double eyeZ, float yaw, float pitch,
+               long deterministicSeed, boolean locallyPredicted) {
             this.owner = owner;
             this.sequence = sequence;
-            this.clientTick = clientTick;
-            this.rewindTick = rewindTick;
             this.acceptedTick = acceptedTick;
             this.ability = ability;
             this.eyeX = eyeX;
@@ -1436,26 +1525,14 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             this.eyeZ = eyeZ;
             this.yaw = yaw;
             this.pitch = pitch;
+            this.deterministicSeed = deterministicSeed;
             this.locallyPredicted = locallyPredicted;
         }
     }
 
-    private static final class Claim {
-        final UUID target;
-        final long rewindTick, expiresTick;
-        final Vector contact;
-        long consumedTick = -1;
-        PendingHitResolution pending;
-
-        Claim(UUID target, long rewindTick, long expiresTick, Vector contact) {
-            this.target = target;
-            this.rewindTick = rewindTick;
-            this.expiresTick = expiresTick;
-            this.contact = contact;
-        }
+    private record TempEffectIdentity(String ability, long step, int ordinal) {
     }
 
-    private record EntityFrame(long tick, UUID world, Vector position, Vector eye, BoundingBox box, float yaw,
-                               float pitch) {
+    private record DirectBlockCause(long sequence, String ability) {
     }
 }

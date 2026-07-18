@@ -238,6 +238,12 @@ public class EarthShard extends EarthAbility implements AddonAbility, EntityHitb
             return;
         }
 
+        // Explicit external authority can discard a coordinate without
+        // running callbacks. Never let retired handles keep this ability in a
+        // prepared state or get launched later as a ghost shard.
+        tblockTracker.removeIf(TempBlock::isReverted);
+        readyBlocksTracker.removeIf(TempBlock::isReverted);
+
         if (!isThrown) {
             if (!bPlayer.canBendIgnoreCooldowns(this)) {
                 remove();
@@ -344,7 +350,11 @@ public class EarthShard extends EarthAbility implements AddonAbility, EntityHitb
         }
 
         for (TempBlock tb : readyBlocksTracker) {
-            fallingBlocks.add(new TempFallingBlock(tb.getLocation(), tb.getBlock().getBlockData(), vel, this));
+            // The physical server state is hidden from the predicting owner.
+            // Spawn from the exact registered layer data so Fabric and Paper
+            // render the same shard even when another layer occupies the
+            // coordinate physically.
+            fallingBlocks.add(new TempFallingBlock(tb.getLocation(), tb.getBlockData(), vel, this));
         }
 
         // Revert every source/raised block exactly once. readyBlocksTracker is

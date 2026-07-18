@@ -15,6 +15,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.DamageHandler;
 
@@ -25,7 +26,9 @@ public class LightningBurst extends LightningAbility implements AddonAbility {
 
     private static final ConcurrentHashMap<Integer, Bolt> BOLTS = new ConcurrentHashMap<>();
     private static int ID = Integer.MIN_VALUE;
-    Random rand = new Random();
+    private final Random chargingRandom;
+    private int nextVisualBoltOrdinal;
+    private int nextDamageBoltOrdinal;
     @Attribute(Attribute.COOLDOWN)
     private long cooldown, avatarCooldown;
     @Attribute(Attribute.CHARGE_DURATION)
@@ -40,6 +43,7 @@ public class LightningBurst extends LightningAbility implements AddonAbility {
 
     public LightningBurst(Player player) {
         super(player);
+        this.chargingRandom = PredictionDeterminism.random(player.getUniqueId(), getClass().getName() + ":charging");
         if (!bPlayer.canBend(this) || hasAbility(player, LightningBurst.class)) {
             return;
         }
@@ -129,7 +133,7 @@ public class LightningBurst extends LightningAbility implements AddonAbility {
         for (int i = -180; i < 180; i += 55) {
             fake.setYaw(i);
             for (double j = -180; j <= 180; j += 55) {
-                if (rand.nextInt(100) == 0) {
+                if (this.chargingRandom.nextInt(100) == 0) {
                     Location temp = fake.clone();
                     Vector dir = fake.getDirection().clone().multiply(1.2 * Math.cos(Math.toRadians(j)));
                     temp.add(dir);
@@ -264,6 +268,7 @@ public class LightningBurst extends LightningAbility implements AddonAbility {
         private final int id;
         private final int arc;
         private final boolean doDamage;
+        private final Random random;
         private Location location;
         private double step;
 
@@ -275,6 +280,14 @@ public class LightningBurst extends LightningAbility implements AddonAbility {
             this.arc = arc;
             this.gap = gap;
             this.doDamage = doDamage;
+            final int ordinal = doDamage
+                    ? LightningBurst.this.nextDamageBoltOrdinal++
+                    : LightningBurst.this.nextVisualBoltOrdinal++;
+            this.random = PredictionDeterminism.random(
+                    player.getUniqueId(),
+                    LightningBurst.this.getClass().getName()
+                            + (doDamage ? ":damage-bolt:" : ":visual-bolt:") + ordinal,
+                    LightningBurst.this.getPredictionDeterministicSeed());
             initYaw = location.getYaw();
             initPitch = location.getPitch();
         }
@@ -295,7 +308,7 @@ public class LightningBurst extends LightningAbility implements AddonAbility {
 
                 playLightningbendingParticle(location, 0f, 0f, 0f);
             }
-            switch (rand.nextInt(3)) {
+            switch (this.random.nextInt(3)) {
                 case 0:
                     location.setYaw(initYaw - arc);
                     break;
@@ -306,7 +319,7 @@ public class LightningBurst extends LightningAbility implements AddonAbility {
                     location.setYaw(initYaw);
                     break;
             }
-            switch (rand.nextInt(3)) {
+            switch (this.random.nextInt(3)) {
                 case 0:
                     location.setPitch(initPitch - arc);
                     break;
@@ -318,7 +331,7 @@ public class LightningBurst extends LightningAbility implements AddonAbility {
                     break;
             }
 
-            if (rand.nextInt(3) == 0) {
+            if (this.random.nextInt(3) == 0) {
                 location.getWorld().playSound(location, Sound.ENTITY_CREEPER_PRIMED, 1, 0);
             }
 

@@ -47,7 +47,6 @@ import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
 import com.projectkorra.projectkorra.prediction.PredictedContactSync;
 import com.projectkorra.projectkorra.prediction.TempBlockSync;
-import com.projectkorra.projectkorra.util.TempBlock;
 import com.projectkorra.projectkorra.platform.model.PKAdapter;
 import com.projectkorra.projectkorra.platform.model.PKBlock;
 import com.projectkorra.projectkorra.platform.model.PKEntity;
@@ -56,6 +55,7 @@ import com.projectkorra.projectkorra.platform.model.PKLocation;
 import com.projectkorra.projectkorra.platform.model.PKPlayer;
 import com.projectkorra.projectkorra.platform.model.PKWorld;
 import com.projectkorra.projectkorra.platform.model.PKVec3;
+import com.projectkorra.projectkorra.util.TempBlock;
 import java.lang.reflect.Field;
 import java.util.HashSet;
 import net.minecraft.client.MinecraftClient;
@@ -99,6 +99,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Predicate;
@@ -162,6 +163,18 @@ public final class FabricPredictionMC {
         return new ClientBlockView(world, pos.toImmutable());
     }
 
+    /**
+     * Captures an arbitrary native state for a client block without first
+     * installing it in {@link ClientWorld}. Prediction uses this to advance a
+     * TempBlock stack's hidden underlay when vanilla authority changes the
+     * coordinate while the client-owned visual layer is still active.
+     */
+    public static BlockState blockStateSnapshot(final ClientWorld world, final BlockPos pos,
+                                                final net.minecraft.block.BlockState state) {
+        if (world == null || pos == null || state == null) return null;
+        return new ClientBlockState(block(world, pos), state);
+    }
+
     public static void clear() {
         PLAYERS.clear();
         METADATA.clear();
@@ -186,6 +199,7 @@ public final class FabricPredictionMC {
         private final ClientWorld value;
         private ClientWorldView(ClientWorld value) { this.value = value; }
         @Override public String getName() { return value.getRegistryKey().getValue().toString(); }
+        @Override public int hashCode() { return 0; }
         @Override public long getTime() { return value.getTimeOfDay(); }
         @Override public long getFullTime() { return value.getTime(); }
         @Override public int getMinHeight() { return value.getBottomY(); }
@@ -300,6 +314,7 @@ public final class FabricPredictionMC {
             entity.refreshPositionAndAngles(location.getX(), location.getY(), location.getZ(), location.getYaw(), location.getPitch());
             FabricMC.setFallingBlockState(entity, FabricMC.blockState(data));
             entity.dropItem = false;
+            entity.setDestroyedOnLanding();
             value.addEntity(entity);
             ExactPredictionRuntime.trackSpawn(entity);
             return new ClientFallingBlock(entity);
@@ -399,20 +414,19 @@ public final class FabricPredictionMC {
         @Override public BlockData getBlockData() { return FabricMC.blockData(nativeState()); }
         @Override public void setBlockData(BlockData data) { setBlockData(data, false); }
         @Override public void setBlockData(BlockData data, boolean physics) {
-            prepareExternalWrite();
+            prepareExternalWrite(data);
             ExactPredictionRuntime.setPredictedBlock(world, pos, FabricMC.blockState(data));
         }
-        private void prepareExternalWrite() {
-            if (TempBlockSync.currentWorldMutation() == null && TempBlock.isTempBlock(this)) {
-                TempBlock.removeBlock(this);
-            }
+        private void prepareExternalWrite(final BlockData replacementData) {
+            if (TempBlockSync.currentWorldMutation() != null) return;
+            if (TempBlock.isTempBlock(this)) TempBlock.removeBlockBeforeWrite(this, replacementData);
         }
         @Override public BlockState getState() { return new ClientBlockState(this, nativeState()); }
         @Override public int getX() { return pos.getX(); }
         @Override public int getY() { return pos.getY(); }
         @Override public int getZ() { return pos.getZ(); }
         @Override public boolean isLiquid() { return !nativeState().getFluidState().isEmpty(); }
-        @Override public boolean isSolid() { return nativeState().isSolidBlock(world, pos); }
+        @Override public boolean isSolid() { return getType().isSolid(); }
         @Override public boolean isPassable() { return nativeState().getCollisionShape(world, pos).isEmpty(); }
         @Override public boolean isEmpty() { return nativeState().isAir(); }
         @Override public byte getLightLevel() { return (byte) world.getLightLevel(pos); }
@@ -436,7 +450,7 @@ public final class FabricPredictionMC {
         @Override public Object handle() { return new ClientBlockRef(world, pos); }
         @Override public Object nativeHandle() { return handle(); }
         @Override public boolean equals(Object value) { return value instanceof ClientBlockView block && world == block.world && pos.equals(block.pos); }
-        @Override public int hashCode() { return 31 * System.identityHashCode(world) + pos.hashCode(); }
+        @Override public int hashCode() { return Objects.hash(pos.getX(), pos.getY(), pos.getZ()); }
     }
 
     private static final class ClientBlockState extends BlockState {
@@ -451,7 +465,7 @@ public final class FabricPredictionMC {
         @Override public Block getBlock() { return block; }
         @Override public Location getLocation() { return block.getLocation(); }
         @Override public boolean update(boolean force, boolean physics) {
-            block.prepareExternalWrite();
+            block.prepareExternalWrite(FabricMC.blockData(state));
             ExactPredictionRuntime.setPredictedBlock(block.world, block.pos, state);
             return true;
         }
@@ -511,12 +525,12 @@ public final class FabricPredictionMC {
         @Override public boolean isOnGround() { return value.isOnGround(); }
         @Override public double getHeight() { return value.getHeight(); }
         @Override public float getFallDistance() { return (float) value.fallDistance; }
-        @Override public void setFallDistance(float distance) { value.fallDistance = distance; }
+        @Override public void setFallDistance(float distance) { if (!suppressRemoteMutation()) value.fallDistance = distance; }
         @Override public BoundingBox getBoundingBox() { return commonBox(value.getBoundingBox()); }
         @Override public double getHealth() { return value.getHealth(); }
         @Override public double getMaxHealth() { return value.getMaxHealth(); }
-        @Override public void damage(double amount) { if (!suppressRemoteMutation()) ExactPredictionRuntime.claimDamage(value, amount); }
-        @Override public void damage(double amount, Entity source) { if (!suppressRemoteMutation()) ExactPredictionRuntime.claimDamage(value, amount); }
+        @Override public void damage(double amount) { suppressRemoteMutation(); }
+        @Override public void damage(double amount, Entity source) { suppressRemoteMutation(); }
         @Override public boolean hasPotionEffect(PotionEffectType type) { return value.hasStatusEffect(FabricMC.status(type)); }
         @Override public void addPotionEffect(PotionEffect effect) { if (!suppressRemoteMutation()) value.addStatusEffect(nativeEffect(effect)); }
         @Override public PotionEffect getPotionEffect(PotionEffectType type) { return commonEffect(value.getStatusEffect(FabricMC.status(type))); }
@@ -553,7 +567,11 @@ public final class FabricPredictionMC {
         @Override public UUID getUniqueId() { return value.getUuid(); }
         @Override public String getName() { return value.getName().getString(); }
         @Override public String getDisplayName() { return value.getDisplayName().getString(); }
-        @Override public boolean hasPermission(String permission) { return true; }
+        @Override public boolean hasPermission(String permission) {
+            final ClientPlayerEntity local = MinecraftClient.getInstance().player;
+            return local != null && local.getUuid().equals(value.getUuid())
+                    && ExactPredictionRuntime.hasPermission(permission);
+        }
         @Override public boolean isOnline() { return MinecraftClient.getInstance().world != null && MinecraftClient.getInstance().world.getPlayerByUuid(value.getUuid()) != null; }
         @Override public Location getLocation() {
             PredictionClient.ServerPose pose = serverPose();
@@ -579,12 +597,12 @@ public final class FabricPredictionMC {
         @Override public void setFireTicks(int ticks) { if (!suppressRemoteMutation()) value.setFireTicks(ticks); }
         @Override public boolean isOnGround() { return value.isOnGround(); }
         @Override public float getFallDistance() { return (float) value.fallDistance; }
-        @Override public void setFallDistance(float distance) { value.fallDistance = distance; }
+        @Override public void setFallDistance(float distance) { if (!suppressRemoteMutation()) value.fallDistance = distance; }
         @Override public BoundingBox getBoundingBox() { return commonBox(value.getBoundingBox()); }
         @Override public double getHealth() { return value.getHealth(); }
         @Override public double getMaxHealth() { return value.getMaxHealth(); }
-        @Override public void damage(double amount) { if (!suppressRemoteMutation()) ExactPredictionRuntime.claimDamage(value, amount); }
-        @Override public void damage(double amount, Entity source) { if (!suppressRemoteMutation()) ExactPredictionRuntime.claimDamage(value, amount); }
+        @Override public void damage(double amount) { suppressRemoteMutation(); }
+        @Override public void damage(double amount, Entity source) { suppressRemoteMutation(); }
         @Override public boolean hasPotionEffect(PotionEffectType type) { return value.hasStatusEffect(FabricMC.status(type)); }
         @Override public void addPotionEffect(PotionEffect effect) { if (!suppressRemoteMutation()) value.addStatusEffect(nativeEffect(effect)); }
         @Override public PotionEffect getPotionEffect(PotionEffectType type) { return commonEffect(value.getStatusEffect(FabricMC.status(type))); }
@@ -599,15 +617,16 @@ public final class FabricPredictionMC {
         @Override public void setSprinting(boolean sprinting) { if (!suppressRemoteMutation()) value.setSprinting(sprinting); }
         @Override public void setSneaking(boolean sneaking) { if (!suppressRemoteMutation()) value.setSneaking(sneaking); }
         @Override public boolean isFlying() { return value.getAbilities().flying; }
-        @Override public void setFlying(boolean flying) { if (!suppressRemoteMutation()) { value.getAbilities().flying = flying; noteAbilityState(); } }
+        @Override public void setFlying(boolean flying) { if (!suppressRemoteMutation() && value.getAbilities().flying != flying) { value.getAbilities().flying = flying; noteAbilityState(); } }
         @Override public boolean getAllowFlight() { return value.getAbilities().allowFlying; }
-        @Override public void setAllowFlight(boolean allow) { value.getAbilities().allowFlying = allow; noteAbilityState(); }
+        @Override public void setAllowFlight(boolean allow) { if (!suppressRemoteMutation() && value.getAbilities().allowFlying != allow) { value.getAbilities().allowFlying = allow; noteAbilityState(); } }
         @Override public boolean isGliding() { return value.isGliding(); }
         @Override public void setGliding(boolean gliding) { if (!suppressRemoteMutation()) { if (gliding) value.startGliding(); else value.stopGliding(); } }
         @Override public float getFlySpeed() { return value.getAbilities().getFlySpeed() * 2; }
-        @Override public void setFlySpeed(float speed) { value.getAbilities().setFlySpeed(speed / 2); noteAbilityState(); }
+        @Override public void setFlySpeed(float speed) { if (!suppressRemoteMutation() && Float.compare(getFlySpeed(), speed) != 0) { value.getAbilities().setFlySpeed(speed / 2); noteAbilityState(); } }
         @Override public float getExp() { return value.experienceProgress; }
         @Override public void setExp(float experience) {
+            if (suppressRemoteMutation()) return;
             value.experienceProgress = Math.max(0.0F, Math.min(1.0F, experience));
             ExactPredictionRuntime.notePredictedExperience(value.experienceProgress, value.totalExperience, value.experienceLevel);
         }
@@ -625,12 +644,15 @@ public final class FabricPredictionMC {
             PredictionClient.ServerPose pose = serverPose();
             if (pose != null) {
                 Vec3d origin = pose.eyePos();
-                Vec3d end = origin.add(Vec3d.fromPolar(pose.pitch(), pose.yaw()).normalize().multiply(Math.max(0, range)));
-                HitResult hit = value.getEntityWorld().raycast(new RaycastContext(origin, end, RaycastContext.ShapeType.OUTLINE,
+                Vec3d end = origin.add(paperDirection(pose.yaw(), pose.pitch()).multiply(Math.max(0, range)));
+                HitResult hit = value.getEntityWorld().raycast(new RaycastContext(origin, end, RaycastContext.ShapeType.COLLIDER,
                         RaycastContext.FluidHandling.NONE, value));
                 return hit instanceof BlockHitResult blockHit ? block((ClientWorld) value.getEntityWorld(), blockHit.getBlockPos()) : null;
             }
-            HitResult hit = value.raycast(range, 0, false);
+            Vec3d origin = value.getEyePos();
+            Vec3d end = origin.add(paperDirection(value.getYaw(), value.getPitch()).multiply(Math.max(0, range)));
+            HitResult hit = value.getEntityWorld().raycast(new RaycastContext(origin, end,
+                    RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, value));
             return hit instanceof BlockHitResult blockHit ? block((ClientWorld) value.getEntityWorld(), blockHit.getBlockPos()) : null;
         }
         @Override public Block getTargetBlock(Set<Material> transparent, int range) {
@@ -641,7 +663,9 @@ public final class FabricPredictionMC {
             passThrough.add(Material.VOID_AIR);
             PredictionClient.ServerPose pose = serverPose();
             Vec3d origin = pose == null ? value.getEyePos() : pose.eyePos();
-            Vec3d direction = pose == null ? value.getRotationVec(1.0F).normalize() : Vec3d.fromPolar(pose.pitch(), pose.yaw()).normalize();
+            Vec3d direction = pose == null
+                    ? paperDirection(value.getYaw(), value.getPitch())
+                    : paperDirection(pose.yaw(), pose.pitch());
             Block last = block((ClientWorld) value.getEntityWorld(), BlockPos.ofFloored(origin));
             for (double distance = 0.0; distance <= Math.max(0, range); distance += 0.2) {
                 Block current = block((ClientWorld) value.getEntityWorld(), BlockPos.ofFloored(origin.add(direction.multiply(distance))));
@@ -659,7 +683,9 @@ public final class FabricPredictionMC {
             passThrough.add(Material.VOID_AIR);
             PredictionClient.ServerPose pose = serverPose();
             Vec3d origin = pose == null ? value.getEyePos() : pose.eyePos();
-            Vec3d direction = pose == null ? value.getRotationVec(1.0F).normalize() : Vec3d.fromPolar(pose.pitch(), pose.yaw()).normalize();
+            Vec3d direction = pose == null
+                    ? paperDirection(value.getYaw(), value.getPitch())
+                    : paperDirection(pose.yaw(), pose.pitch());
             Block previous = block((ClientWorld) value.getEntityWorld(), BlockPos.ofFloored(origin));
             Block current = previous;
             BlockPos lastPos = BlockPos.ofFloored(origin);
@@ -852,7 +878,15 @@ public final class FabricPredictionMC {
         @Override public boolean teleport(Location location) {
             if (location == null || location.getWorld() == null
                     || location.getWorld().handle() != value.getEntityWorld()) return false;
-            value.refreshPositionAndAngles(location.getX(), location.getY(), location.getZ(), location.getYaw(), location.getPitch());
+            if (value.getTeleportDuration() > 0) {
+                value.getInterpolator().setLerpDuration(value.getTeleportDuration());
+                value.getInterpolator().refreshPositionAndAngles(
+                        new Vec3d(location.getX(), location.getY(), location.getZ()),
+                        location.getYaw(), location.getPitch());
+            } else {
+                value.refreshPositionAndAngles(location.getX(), location.getY(), location.getZ(),
+                        location.getYaw(), location.getPitch());
+            }
             return true;
         }
         @Override public void setGravity(boolean gravity) { value.setNoGravity(!gravity); }
@@ -1157,6 +1191,21 @@ public final class FabricPredictionMC {
 
     private static Vec3d nativeVector(Vector vector) { return new Vec3d(vector.getX(), vector.getY(), vector.getZ()); }
     private static Vector commonVector(Vec3d vector) { return new Vector(vector.x, vector.y, vector.z); }
+    /**
+     * Exact unit direction consumed by Bukkit's stepped target-block ray.
+     * Bukkit's Player#getTargetBlock implementation normalizes the result of
+     * Location#getDirection before sampling.  The raw trigonometric vector is
+     * only approximately unit length in floating point; omitting that final
+     * normalization can move a sample across a block boundary and gives a
+     * staged projectile a different source/launch vector on Fabric.
+     */
+    static Vec3d paperDirection(final float yaw, final float pitch) {
+        final double yawRadians = Math.toRadians(yaw);
+        final double pitchRadians = Math.toRadians(pitch);
+        final double horizontal = Math.cos(pitchRadians);
+        return new Vec3d(-horizontal * Math.sin(yawRadians), -Math.sin(pitchRadians),
+                horizontal * Math.cos(yawRadians)).normalize();
+    }
     private static BoundingBox commonBox(Box box) { return new BoundingBox(new Vector(box.minX, box.minY, box.minZ), new Vector(box.maxX, box.maxY, box.maxZ)); }
     private static Location entityLocation(net.minecraft.entity.Entity entity) {
         return location((ClientWorld) entity.getEntityWorld(), entity.getEntityPos(), entity.getYaw(), entity.getPitch());

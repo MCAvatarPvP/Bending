@@ -167,6 +167,11 @@ public class FireBlastCharged extends FireAbility {
         return EXPLOSIONS;
     }
 
+    /** Drops outgoing-world projectile ownership. */
+    public static void discardAllTracking() {
+        EXPLOSIONS.clear();
+    }
+
     @Deprecated
     private void applyModifiers() {
         long chargeTimeMod = 0;
@@ -362,7 +367,7 @@ public class FireBlastCharged extends FireAbility {
             this.location = this.player.getEyeLocation();
             this.origin = this.location.clone();
             this.direction = this.location.getDirection().normalize().multiply(this.collisionRadius / 2);
-            if (Boolean.parseBoolean(System.getProperty("projectkorra.prediction.debug", "true"))) {
+            if (Boolean.parseBoolean(System.getProperty("projectkorra.prediction.debug", "false"))) {
                 System.out.println("[ProjectKorraPrediction] charged FireBlast launch yaw=" + this.location.getYaw()
                         + " pitch=" + this.location.getPitch()
                         + " eye=(" + this.location.getX() + ", " + this.location.getY() + ", " + this.location.getZ() + ")"

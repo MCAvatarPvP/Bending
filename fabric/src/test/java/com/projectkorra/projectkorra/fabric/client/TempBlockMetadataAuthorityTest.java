@@ -9,10 +9,10 @@ import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Guards metadata-only concealment without reviving reconciliation. */
+/** Guards semantic TempBlock pairing and exact lifecycle reconciliation. */
 class TempBlockMetadataAuthorityTest {
     @Test
-    void metadataMayConcealALateSnapshotButCannotTouchALiveClientLayer() throws IOException {
+    void metadataConcealsOnlyAnExactSemanticOperationWhileClientCoordinatesRemainVisualAuthority() throws IOException {
         Path source = Path.of("src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
         if (!Files.exists(source)) source = Path.of("fabric").resolve(source);
         assertTrue(Files.exists(source), "ExactPredictionRuntime source must be available to the invariant test");
@@ -23,44 +23,55 @@ class TempBlockMetadataAuthorityTest {
         assertTrue(start >= 0 && end > start, "TempBlock metadata handler must be present");
 
         String handler = runtime.substring(start, end);
-        assertTrue(handler.contains("if (clientTempBlockState(world, pos) == null)"));
         assertTrue(handler.contains("world.setBlockState(pos, desiredTempBlockState(key), 19)"));
         assertTrue(runtime.contains("serverTempBlocks.overlayState(key, player.getUuid())"));
         assertFalse(handler.contains("world.getBlockState(pos).equals"),
                 "concealment must not depend on a fragile exact physical-state receipt");
-        assertFalse(handler.contains("blockEchoes.add("),
-                "metadata must never invent an echo for a vanilla packet");
-        assertFalse(handler.contains("revertBlock("));
-        assertTrue(handler.contains("hiddenBefore && commonOperation == TempBlockSync.Operation.DISCARD")
-                && handler.contains("TempBlock.discardBlock"),
-                "explicit DISCARD authority may discard bookkeeping, never run a rollback");
-        assertTrue(handler.contains("} else if (hiddenBefore) {")
-                        && handler.contains("pendingTempBlockReveals.put(key, viewerState)"),
-                "a buried expiry or ownership transfer must defer its underlay while a local layer is live");
+        assertFalse(handler.contains("blockEchoes.add("));
+        assertTrue(handler.contains("operation.effectAbility()")
+                        && handler.contains("operation.effectStep()")
+                        && handler.contains("operation.effectOrdinal()"));
+        assertTrue(runtime.contains("pairedTempBlockCoordinates.computeIfAbsent(server.key")
+                        && runtime.contains("shifted="));
+        assertTrue(runtime.contains("authoritativeTempBlockEffects.get(local.effect)")
+                        && runtime.contains("clientTempBlockEffects.get(server.effect)"),
+                "pairing must use the exact causal identity in both arrival orders");
+        assertFalse(runtime.contains("findLocalTempBlockCandidate")
+                        || runtime.contains("MAX_TEMP_BLOCK_STEP_SKEW"),
+                "nearest-tick/coordinate inference can cross-wire rapid overlapping layers");
+        assertTrue(runtime.contains("The client TempBlock is the visual authority")
+                        && runtime.contains("local.serverClosed = true"),
+                "the same semantic operation at another coordinate must keep the client lifecycle");
     }
 
     @Test
-    void rejectedActionsCannotRollBackClientTempBlocks() throws IOException {
+    void reconciliationIsBookkeepingOnlyAndCannotRollBackTheClientLifecycle() throws IOException {
         Path source = Path.of("src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
         if (!Files.exists(source)) source = Path.of("fabric").resolve(source);
         assertTrue(Files.exists(source), "ExactPredictionRuntime source must be available to the invariant test");
 
         String runtime = Files.readString(source);
-        int start = runtime.indexOf("private void rollback(Action action)");
-        int end = runtime.indexOf("private int blockConfirmationTicks", start);
-        assertTrue(start >= 0 && end > start, "action rejection handler must be present");
+        int start = runtime.indexOf("private void reconcile0(");
+        int end = runtime.indexOf("private void abortFailedLocalInput", start);
+        assertTrue(start >= 0 && end > start, "action reconciliation handler must be present");
 
-        String rejection = runtime.substring(start, end);
-        assertFalse(runtime.contains("clientTempBlockActions"),
-                "client TempBlocks must never be assigned to an action rollback ledger");
-        assertFalse(rejection.contains("layer.revertBlock()"),
-                "action rejection must never directly roll back a client-owned TempBlock layer");
-        assertTrue(runtime.contains("rollback(action, true)"));
-        assertTrue(rejection.contains("preserveTempBlockOwners && ownsClientTempBlock(ability)"));
-        assertTrue(rejection.indexOf("preserveTempBlockOwners && ownsClientTempBlock(ability)")
-                        < rejection.indexOf("ability::remove"),
-                "a rejected action must retain its ability before remove() can indirectly revert live layers");
-        assertTrue(rejection.contains("if (!preservedVisualAuthority)"),
-                "entities supporting a retained TempBlock ability must not be torn down underneath it");
+        String reconciliation = runtime.substring(start, end);
+        assertTrue(runtime.contains("clientTempBlockActions"));
+        assertTrue(reconciliation.contains("action.reconciled = true")
+                        && reconciliation.contains("action.previousAbilityActions.clear()"),
+                "reconciliation must be bookkeeping-only");
+        assertFalse(reconciliation.contains("accepted"),
+                "server metadata must not expose a rejection branch to the local lifecycle");
+        assertFalse(reconciliation.contains("ability::remove")
+                        || reconciliation.contains("discardLocalTempBlock")
+                        || reconciliation.contains("world.setBlockState"),
+                "authority metadata must never rewind client ability or block state");
+        assertFalse(runtime.contains("rollback(")
+                        || runtime.contains("reconcileRejectedTempBlocks")
+                        || runtime.contains("\"rejected action\""),
+                "the runtime must not retain a rejection rollback path");
+        assertTrue(runtime.contains("private void abortFailedLocalInput")
+                        && runtime.contains("This is not an authority response"),
+                "exception cleanup must remain isolated from server reconciliation");
     }
 }

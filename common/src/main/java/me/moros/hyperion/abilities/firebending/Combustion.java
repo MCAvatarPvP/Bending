@@ -40,6 +40,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.NumberConversions;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
@@ -50,7 +51,7 @@ import me.moros.hyperion.methods.CoreMethods;
 import me.moros.hyperion.util.FastMath;
 import me.moros.hyperion.util.MaterialCheck;
 
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Random;
 
 public class Combustion extends CombustionAbility implements AddonAbility {
     private Location location;
@@ -90,9 +91,15 @@ public class Combustion extends CombustionAbility implements AddonAbility {
     private int currentRingPoint;
 
     private double randomBeamDistance = 0;
+    private final Random visualRandom;
+    private final Random gameplayRandom;
 
     public Combustion(final Player player) {
         super(player);
+        this.visualRandom = PredictionDeterminism.random(player == null ? null : player.getUniqueId(),
+                getClass().getName() + ":beam");
+        this.gameplayRandom = PredictionDeterminism.random(player == null ? null : player.getUniqueId(),
+                getClass().getName() + ":explosion-blocks");
 
         if (!isEnabled()) return;
 
@@ -192,7 +199,7 @@ public class Combustion extends CombustionAbility implements AddonAbility {
 
     private void advanceLocation() {
         final Vector direction = player.getEyeLocation().getDirection();
-        ThreadLocalRandom rand = ThreadLocalRandom.current();
+        Random rand = this.visualRandom;
         if (distanceTravelled >= randomBeamDistance) {
             player.getWorld().playSound(location, Sound.ENTITY_FIREWORK_ROCKET_BLAST, 1.5f, 0.01F);
             randomBeamDistance = distanceTravelled + 7 + 3 * rand.nextGaussian();
@@ -249,10 +256,11 @@ public class Combustion extends CombustionAbility implements AddonAbility {
                 if (l.getBlock().getType().isAir() || MaterialCheck.isUnbreakable(l.getBlock()) || l.getBlock().isLiquid()) {
                     continue;
                 }
-                new TempBlock(l.getBlock(), Material.AIR.createBlockData(), regenDelay + ThreadLocalRandom.current().nextInt(1000));
+                new TempBlock(l.getBlock(), Material.AIR.createBlockData(),
+                        regenDelay + this.gameplayRandom.nextInt(1000));
             }
             for (Location l : GeneralMethods.getCircle(center, fireRadius, 1, false, true, 0)) {
-                if (ThreadLocalRandom.current().nextInt(3) == 0 && l.getBlock().getRelative(BlockFace.DOWN).getType().isSolid()) {
+                if (this.gameplayRandom.nextInt(3) == 0 && l.getBlock().getRelative(BlockFace.DOWN).getType().isSolid()) {
                     l.getBlock().setType(Material.FIRE);
                 }
             }

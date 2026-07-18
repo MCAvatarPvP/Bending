@@ -14,6 +14,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.FallingBlock;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.TempBlock;
 import com.projectkorra.projectkorra.util.TempFallingBlock;
@@ -23,6 +24,7 @@ import me.simplicitee.project.addons.util.SoundEffect;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Random;
 import java.util.Set;
 
 public class MagmaSlap extends LavaAbility implements AddonAbility {
@@ -44,9 +46,12 @@ public class MagmaSlap extends LavaAbility implements AddonAbility {
     private List<TempBlock> tempBlocks;
     private Set<Block> affected;
     private SoundEffect effect;
+    private final Random gameplayRandom;
 
     public MagmaSlap(Player player) {
         super(player);
+        this.gameplayRandom = PredictionDeterminism.random(player == null ? null : player.getUniqueId(),
+                getClass().getName() + ":falling-block-velocity");
         if (!bPlayer.canBend(this)) {
             return;
         }
@@ -157,7 +162,8 @@ public class MagmaSlap extends LavaAbility implements AddonAbility {
         TempBlock magmaTarget = new TempBlock(b, Material.AIR);
         tempBlocks.add(magmaTarget);
 
-        TempFallingBlock tfb = new TempFallingBlock(b.getLocation().add(0.5, 0.7, 0.5), Material.MAGMA_BLOCK.createBlockData(), new Vector(0, Math.random() * 0.3, 0), this);
+        TempFallingBlock tfb = new TempFallingBlock(b.getLocation().add(0.5, 0.7, 0.5),
+                Material.MAGMA_BLOCK.createBlockData(), new Vector(0, this.gameplayRandom.nextDouble() * 0.3, 0), this);
         tfb.setOnPlace(ignored -> turnToTempBlock(magmaTarget));
         FallingBlock fb = tfb.getFallingBlock();
 

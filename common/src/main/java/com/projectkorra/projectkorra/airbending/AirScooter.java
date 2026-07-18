@@ -215,13 +215,13 @@ public class AirScooter extends AirAbility {
             this.bPlayer.addCooldown(this);
             this.removalReason = "duration expired";
             this.remove();
-            return;
+            if (this.isRemoved()) return;
         }
 
         if (!this.consumeStamina()) {
             this.removalReason = "air stamina was exhausted";
             this.remove();
-            return;
+            if (this.isRemoved()) return;
         }
 
         this.getFloor();
@@ -343,6 +343,7 @@ public class AirScooter extends AirAbility {
     @Override
     public void remove() {
         super.remove();
+        if (!this.isRemoved()) return;
         if (this.slime != null) {
             this.slime.remove();
         }

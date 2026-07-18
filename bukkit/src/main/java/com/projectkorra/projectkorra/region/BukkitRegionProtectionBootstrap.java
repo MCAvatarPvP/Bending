@@ -1,6 +1,10 @@
 package com.projectkorra.projectkorra.region;
 
 import com.projectkorra.projectkorra.platform.Platform;
+import com.projectkorra.projectkorra.platform.mc.entity.Player;
+import com.projectkorra.projectkorra.prediction.RegionProtectionAuthority;
+
+import java.util.List;
 
 /**
  * Registers Bukkit-only protection integrations without leaking them into common.
@@ -32,6 +36,16 @@ public final class BukkitRegionProtectionBootstrap {
         if (enabled("GriefPrevention")) new GriefPrevention();
         if (enabled("Residence")) new Residence();
         if (enabled("Lands")) new Lands();
+    }
+
+    public static List<RegionProtectionAuthority.Box> predictionBoxes(
+            final Player player, final List<String> abilities, final int radius) {
+        if (!enabled("WorldGuard")) return List.of();
+        try {
+            return WorldGuard.predictionBoxes(player, abilities, radius);
+        } catch (LinkageError | RuntimeException ignored) {
+            return List.of();
+        }
     }
 
     private static boolean enabled(final String plugin) {

@@ -12,6 +12,7 @@ import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.util.TempBlock;
 
 import java.util.ArrayList;
@@ -34,9 +35,11 @@ public class IceSpikePillarField extends IceAbility {
     @Attribute(Attribute.KNOCKUP)
     @DayNightFactor
     private double knockup;
+    private final Random random;
 
     public IceSpikePillarField(final Player player) {
         super(player);
+        this.random = PredictionDeterminism.random(player == null ? null : player.getUniqueId(), getClass().getName());
 
         if (this.bPlayer.isOnCooldown("IceSpikePillarField")) {
             return;
@@ -62,7 +65,6 @@ public class IceSpikePillarField extends IceAbility {
 
     @Override
     public void progress() {
-        final Random random = new Random();
         final int locX = this.player.getLocation().getBlockX();
         final int locY = this.player.getLocation().getBlockY();
         final int locZ = this.player.getLocation().getBlockZ();
@@ -113,7 +115,7 @@ public class IceSpikePillarField extends IceAbility {
             if (target != null) {
                 entities.remove(target);
             } else {
-                targetBlock = iceBlocks.get(random.nextInt(iceBlocks.size()));
+                targetBlock = iceBlocks.get(this.random.nextInt(iceBlocks.size()));
             }
 
             if (!isIce(targetBlock.getRelative(BlockFace.UP))) {

@@ -441,7 +441,10 @@ public class AirBlade extends AirAbility implements AddonAbility, EntityHitboxPr
 
     @Override
     public void stop() {
-        if (bladeHeadDisplays != null) {
+        // Registry prototypes are created through a serialization constructor,
+        // so their instance fields are deliberately uninitialized. Shutdown
+        // still invokes AddonAbility#stop on those prototypes.
+        if (bladeHeadDisplays == null) {
             return;
         }
 

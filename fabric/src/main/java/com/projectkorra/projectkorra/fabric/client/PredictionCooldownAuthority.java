@@ -27,6 +27,10 @@ final class PredictionCooldownAuthority {
         serverConfirmed.remove(ability);
     }
 
+    boolean isLocallyPredicted(final String ability) {
+        return ability != null && predictedExpiries.containsKey(ability);
+    }
+
     void retainLocallyActive(final Set<String> locallyActive) {
         predictedExpiries.keySet().removeIf(ability -> !locallyActive.contains(ability));
         serverConfirmed.retainAll(predictedExpiries.keySet());

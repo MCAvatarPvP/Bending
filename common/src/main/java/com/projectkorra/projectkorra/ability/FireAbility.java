@@ -7,12 +7,17 @@ import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.util.Collision;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
+import com.projectkorra.projectkorra.firebending.FireBlastCharged;
+import com.projectkorra.projectkorra.firebending.HeatControl;
+import com.projectkorra.projectkorra.firebending.Illumination;
+import com.projectkorra.projectkorra.firebending.util.FireDamageTimer;
 import com.projectkorra.projectkorra.platform.mc.*;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.block.data.type.Fire;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.util.LightManager;
 import com.projectkorra.projectkorra.util.ParticleEffect;
 import com.projectkorra.projectkorra.util.ParticleUtil;
@@ -26,9 +31,12 @@ public abstract class FireAbility extends ElementalAbility {
 
     private static final Map<Block, Player> SOURCE_PLAYERS = new ConcurrentHashMap<>();
     private static final Set<BlockFace> IGNITE_FACES = new HashSet<>(Arrays.asList(BlockFace.EAST, BlockFace.WEST, BlockFace.NORTH, BlockFace.SOUTH, BlockFace.UP));
+    private final Random tempFireRandom;
 
     public FireAbility(final Player player) {
         super(player);
+        this.tempFireRandom = PredictionDeterminism.random(player == null ? null : player.getUniqueId(),
+                getClass().getName() + ":temp-fire-lifetime");
     }
 
     /**
@@ -261,6 +269,15 @@ public abstract class FireAbility extends ElementalAbility {
         SOURCE_PLAYERS.clear();
     }
 
+    /** Drops world/entity-scoped Fire indexes without invoking callbacks. */
+    public static void discardAllFirebendingState() {
+        SOURCE_PLAYERS.clear();
+        HeatControl.discardAllTracking();
+        FireBlastCharged.discardAllTracking();
+        Illumination.discardAllTracking();
+        FireDamageTimer.discardAllTracking();
+    }
+
     public static Map<Block, Player> getSourcePlayers() {
         return SOURCE_PLAYERS;
     }
@@ -298,7 +315,8 @@ public abstract class FireAbility extends ElementalAbility {
      * fire dissipates or is destroyed.
      */
     public void createTempFire(final Location loc) {
-        createTempFire(loc, ConfigManager.getConfig().getLong("Properties.Fire.RevertTicks") + (long) ((new Random()).nextDouble() * ConfigManager.getConfig().getLong("Properties.Fire.RevertTicks")));
+        final long revertTicks = ConfigManager.getConfig().getLong("Properties.Fire.RevertTicks");
+        createTempFire(loc, revertTicks + (long) (this.tempFireRandom.nextDouble() * revertTicks));
     }
 
     public void createTempFire(final Location loc, final long time) {

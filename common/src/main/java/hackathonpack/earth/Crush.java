@@ -19,6 +19,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.metadata.FixedMetadataValue;
 import com.projectkorra.projectkorra.platform.mc.scheduler.BukkitRunnable;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.util.ClickType;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.TempBlock;
@@ -43,9 +44,12 @@ public class Crush extends EarthAbility implements ComboAbility, AddonAbility {
     private Map<Location, BlockData> firstBlockDatas;
     private ArrayList<FallingBlock> fallingBlocks;
     private State state;
+    private final Random gameplayRandom;
 
     public Crush(final Player player) {
         super(player);
+        this.gameplayRandom = PredictionDeterminism.random(player == null ? null : player.getUniqueId(),
+                getClass().getName() + ":falling-block-velocity");
         if (this.bPlayer.isOnCooldown(this) || !this.bPlayer.canBendIgnoreBindsCooldowns(this) || !ConfigManager.getConfig().getBoolean(path("Enable")))
             return;
         setField();
@@ -171,8 +175,9 @@ public class Crush extends EarthAbility implements ComboAbility, AddonAbility {
             this.firstBlockDatas.putIfAbsent(loc, loc.getBlock().getBlockData().clone());
             final FallingBlock falling = loc.getWorld().spawnFallingBlock(loc, loc.getBlock().getBlockData());
             falling.setMetadata("CrushFallingBlock", new FixedMetadataValue(ProjectKorra.plugin, null));
-            falling.setVelocity(rotateVectorAroundXZ(direction.clone(), Math.random() * 60 - 20).multiply(0.5));
-            falling.setVelocity(falling.getVelocity().add(UtilityMethods.rotateVectorAroundY(falling.getVelocity(), Math.random() * 90 * (1 + flag) - 45 * (1 + flag))).multiply(flag == 0 ? 0.5 : 1));
+            falling.setVelocity(rotateVectorAroundXZ(direction.clone(), this.gameplayRandom.nextDouble() * 60 - 20).multiply(0.5));
+            falling.setVelocity(falling.getVelocity().add(UtilityMethods.rotateVectorAroundY(falling.getVelocity(),
+                    this.gameplayRandom.nextDouble() * 90 * (1 + flag) - 45 * (1 + flag))).multiply(flag == 0 ? 0.5 : 1));
             falling.setDropItem(false);
             this.fallingBlocks.add(falling);
             loc.getBlock().setType(Material.AIR);

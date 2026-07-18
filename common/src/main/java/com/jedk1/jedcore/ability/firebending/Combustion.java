@@ -20,6 +20,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.prediction.CooldownSync;
 import com.projectkorra.projectkorra.prediction.EntityHitboxProvider;
 import com.projectkorra.projectkorra.region.RegionProtection;
@@ -428,7 +429,10 @@ public class Combustion extends CombustionAbility implements AddonAbility, Entit
 
     private abstract class AbstractExplosionMethod implements ExplosionMethod {
         private final boolean destroy;
-        private final Random rand = new Random();
+        private final Random rand = PredictionDeterminism.random(
+                Combustion.this.player == null ? null : Combustion.this.player.getUniqueId(),
+                Combustion.class.getName() + ":explosion-blocks",
+                Combustion.this.getPredictionDeterministicSeed());
         protected List<Material> blocks = Arrays.asList(
                 Material.AIR, Material.VOID_AIR, Material.CAVE_AIR, Material.BEDROCK, Material.CHEST, Material.TRAPPED_CHEST, Material.OBSIDIAN,
                 Material.NETHER_PORTAL, Material.END_PORTAL, Material.END_PORTAL_FRAME, Material.FIRE,
@@ -534,7 +538,6 @@ public class Combustion extends CombustionAbility implements AddonAbility, Entit
 
             if (TempBlock.isTempBlock(block)) {
                 TempBlock.revertBlock(block, Material.AIR);
-                TempBlock.removeBlock(block);
             }
 
             if (!MaterialUtil.isTransparent(block) && !blocks.contains(block.getType()) && !MaterialUtil.isSign(block)) {

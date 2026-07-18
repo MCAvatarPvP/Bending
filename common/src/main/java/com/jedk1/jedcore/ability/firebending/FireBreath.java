@@ -22,6 +22,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.ChatUtil;
 import com.projectkorra.projectkorra.util.DamageHandler;
@@ -35,7 +36,7 @@ public class FireBreath extends FireAbility implements AddonAbility {
 
     public static List<UUID> rainbowPlayer = new ArrayList<>();
     private final List<Location> locations = new ArrayList<>();
-    Random rand = new Random();
+    private final Random rand;
     private int ticks;
     @Attribute(Attribute.COOLDOWN)
     private long cooldown;
@@ -57,6 +58,7 @@ public class FireBreath extends FireAbility implements AddonAbility {
 
     public FireBreath(Player player) {
         super(player);
+        this.rand = PredictionDeterminism.random(player == null ? null : player.getUniqueId(), getClass().getName());
         if (!bPlayer.canBend(this) || hasAbility(player, FireBreath.class)) {
             return;
         }

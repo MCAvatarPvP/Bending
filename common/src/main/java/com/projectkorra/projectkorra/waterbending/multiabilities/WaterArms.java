@@ -17,6 +17,7 @@ import com.projectkorra.projectkorra.platform.mc.World;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
+import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.LightManager;
 import com.projectkorra.projectkorra.util.ParticleEffect;
@@ -155,15 +156,7 @@ public class WaterArms extends WaterAbility {
     }
 
     private static void progressRevert(final boolean ignoreTime) {
-        for (final Block block : WaterArmsSpear.getIceBlocks().keySet()) {
-            final long time = WaterArmsSpear.getIceBlocks().get(block);
-            if (System.currentTimeMillis() > time || ignoreTime) {
-                if (TempBlock.isTempBlock(block)) {
-                    TempBlock.revertBlock(block, Material.AIR);
-                }
-                WaterArmsSpear.getIceBlocks().remove(block);
-            }
-        }
+        WaterArmsSpear.expireBlocks(ignoreTime);
     }
 
     private static List<Location> getOffsetLocations(final int amount, final Location location, final double offset) {
@@ -183,15 +176,16 @@ public class WaterArms extends WaterAbility {
          * Simple fix is just to display the arms again.
          */
         for (final WaterArms waterArms : getAbilities(WaterArms.class)) {
-            waterArms.displayLeftArm();
-            waterArms.displayRightArm();
+            AbilityExecutionContext.run(waterArms, () -> {
+                waterArms.displayLeftArm();
+                waterArms.displayRightArm();
+            });
         }
         WaterArmsWhip.progressAllCleanup();
     }
 
     public static void removeAllCleanup() {
         progressRevert(true);
-        WaterArmsSpear.getIceBlocks().clear();
         WaterArmsWhip.removeAllCleanup();
     }
 

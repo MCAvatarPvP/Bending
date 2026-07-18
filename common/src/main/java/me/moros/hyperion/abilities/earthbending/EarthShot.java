@@ -36,6 +36,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
 import com.projectkorra.projectkorra.util.TempBlock;
@@ -44,7 +45,7 @@ import me.moros.hyperion.configuration.ConfigManager;
 import me.moros.hyperion.methods.CoreMethods;
 import me.moros.hyperion.util.BendingFallingBlock;
 
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Random;
 
 public class EarthShot extends EarthAbility implements AddonAbility {
     private BendingFallingBlock projectile;
@@ -74,9 +75,12 @@ public class EarthShot extends EarthAbility implements AddonAbility {
     private boolean convertedMagma;
     private boolean allowQuickLaunch;
     private long magmaStartTime;
+    private final Random gameplayRandom;
 
     public EarthShot(Player player) {
         super(player);
+        this.gameplayRandom = PredictionDeterminism.random(player == null ? null : player.getUniqueId(),
+                getClass().getName() + ":magma-cancel");
 
         if (hasAbility(player, EarthShot.class) || !bPlayer.canBend(this)) {
             return;
@@ -159,7 +163,7 @@ public class EarthShot extends EarthAbility implements AddonAbility {
                         readySource.setType(Material.MAGMA_BLOCK);
                     }
                 } else {
-                    if (magmaStartTime != 0 && ThreadLocalRandom.current().nextInt(6) == 0) {
+                    if (magmaStartTime != 0 && this.gameplayRandom.nextInt(6) == 0) {
                         remove();
                         return;
                     }

@@ -18,6 +18,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
@@ -33,7 +34,7 @@ import java.util.Random;
  */
 public class ESStream extends AvatarAbility implements AddonAbility {
 
-    Random rand = new Random();
+    private final Random rand;
     @Attribute(Attribute.COOLDOWN)
     private long cooldown;
     @Attribute(Attribute.KNOCKBACK)
@@ -54,6 +55,7 @@ public class ESStream extends AvatarAbility implements AddonAbility {
 
     public ESStream(Player player) {
         super(player);
+        this.rand = PredictionDeterminism.random(player == null ? null : player.getUniqueId(), getClass().getName());
         if (!hasAbility(player, ElementSphere.class)) {
             return;
         }

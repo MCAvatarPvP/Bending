@@ -93,28 +93,28 @@ public class FireJet extends FireAbility {
             this.remove();
             return;
         } else if ((isWater(playerBlock) && !canPassThroughWater(playerBlock) && !isTorrentWater(playerBlock)) || System.currentTimeMillis() > this.time + this.duration) {
+            final boolean durationExpired = System.currentTimeMillis() > this.time + this.duration;
             this.remove();
-            return;
-        } else {
-            if (this.random.nextInt(2) == 0) {
-                playFirebendingSound(this.player.getLocation());
-            }
-
-            playFirebendingParticles(this.player.getLocation(), particleAmount, 0.3, 0.3, 0.3);
-            emitFirebendingLight(this.player.getLocation());
-            this.player.setFireTicks(0);
-            double timefactor;
-
-            if (this.bPlayer.isAvatarState() && this.avatarStateToggled) {
-                timefactor = 1;
-            } else {
-                timefactor = 1 - (System.currentTimeMillis() - this.time) / (2.0 * this.duration);
-            }
-
-            final Vector velocity = this.player.getEyeLocation().getDirection().clone().normalize().multiply(this.speed * timefactor);
-            GeneralMethods.setVelocity(this, this.player, velocity);
-            this.player.setFallDistance(0);
+            if (this.isRemoved() || !durationExpired || this.duration <= 0) return;
         }
+        if (this.random.nextInt(2) == 0) {
+            playFirebendingSound(this.player.getLocation());
+        }
+
+        playFirebendingParticles(this.player.getLocation(), particleAmount, 0.3, 0.3, 0.3);
+        emitFirebendingLight(this.player.getLocation());
+        this.player.setFireTicks(0);
+        double timefactor;
+
+        if (this.bPlayer.isAvatarState() && this.avatarStateToggled) {
+            timefactor = 1;
+        } else {
+            timefactor = 1 - (System.currentTimeMillis() - this.time) / (2.0 * this.duration);
+        }
+
+        final Vector velocity = this.player.getEyeLocation().getDirection().clone().normalize().multiply(this.speed * timefactor);
+        GeneralMethods.setVelocity(this, this.player, velocity);
+        this.player.setFallDistance(0);
     }
 
     private boolean isTorrentWater(final Block block) {
@@ -125,6 +125,7 @@ public class FireJet extends FireAbility {
     @Override
     public void remove() {
         super.remove();
+        if (!this.isRemoved()) return;
         if (this.showGliding) {
             this.player.setGliding(this.previousGlidingState);
         }

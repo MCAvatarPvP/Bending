@@ -40,7 +40,6 @@ import com.projectkorra.projectkorra.platform.mc.plugin.java.JavaPlugin;
 import com.projectkorra.projectkorra.platform.mc.util.BoundingBox;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.VelocitySync;
-import com.projectkorra.projectkorra.prediction.HitResolutionSync;
 import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
 import com.projectkorra.projectkorra.prediction.PredictedContactSync;
 import com.projectkorra.projectkorra.region.RegionProtection;
@@ -1939,22 +1938,9 @@ public class GeneralMethods {
     }
 
     public static void setVelocity(Ability ability, Entity entity, Vector vector) {
-        setVelocity(ability, entity, vector, false);
-    }
-
-    /**
-     * Applies velocity belonging to a hit whose reaction decision has already
-     * committed. Sustained effects use this after their initial contact has
-     * been accepted so each following tick is not treated as a fresh hit.
-     */
-    public static void setVelocityAfterConfirmedHit(Ability ability, Entity entity, Vector vector) {
-        setVelocity(ability, entity, vector, true);
-    }
-
-    private static void setVelocity(Ability ability, Entity entity, Vector vector, boolean hitConfirmed) {
         // Remote knockback is confirmed by the server. Marking first also
         // prevents stale client contacts from ending the predicted move.
-        if (!hitConfirmed && PredictedContactSync.mark(ability, entity)) {
+        if (PredictedContactSync.mark(ability, entity)) {
             return;
         }
         final AbilityVelocityAffectEntityEvent event = new AbilityVelocityAffectEntityEvent(ability, entity, vector);
@@ -2020,10 +2006,7 @@ public class GeneralMethods {
             VelocitySync.publish(velocityAbility, velocityTarget, committedVelocity);
             VelocitySync.commit(() -> velocityTarget.setVelocity(committedVelocity.clone()));
         };
-        if (hitConfirmed || !HitResolutionSync.defer(HitResolutionSync.Effect.VELOCITY, velocityAbility,
-                velocityTarget, commitVelocity)) {
-            commitVelocity.run();
-        }
+        commitVelocity.run();
     }
 
     public static int getMCVersion() {

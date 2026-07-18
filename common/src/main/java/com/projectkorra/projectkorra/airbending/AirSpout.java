@@ -256,6 +256,12 @@ public class AirSpout extends AirAbility {
     }
 
     private void removeFlight() {
+        // FlightHandler is a shared lease. AirSpout may suspend its own lift
+        // above the configured height, but it must not revoke WaterSpout,
+        // AirScooter, FireJet, Flight, or an addon grant owned by the player.
+        if (this.flightHandler.hasOtherInstance(this.player, this.getName())) {
+            return;
+        }
         this.player.setFlying(false);
         this.player.setAllowFlight(false);
     }
@@ -303,13 +309,13 @@ public class AirSpout extends AirAbility {
             this.bPlayer.addCooldown(this);
             this.removalReason = "duration expired";
             this.remove();
-            return;
+            if (this.isRemoved()) return;
         }
 
         if (!this.consumeStamina()) {
             this.removalReason = "air stamina was exhausted";
             this.remove();
-            return;
+            if (this.isRemoved()) return;
         }
 
         final double heightRemoveThreshold = 2.0;
@@ -375,9 +381,12 @@ public class AirSpout extends AirAbility {
 
     @Override
     public void remove() {
+        if (this.isRemoved()) return;
         super.remove();
         this.flightHandler.removeInstance(this.player, this.getName());
-        this.removeFlight();
+        // removeInstance restores the state captured before the first shared
+        // lease only when this was the final owner. Calling removeFlight here
+        // overwrote that restoration and also disabled every remaining owner.
         this.motionHistory.clear();
         this.tendrils.clear();
         this.collisionLocations.clear();

@@ -9,6 +9,9 @@ import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
+
+import java.util.Random;
 
 public class PlantRegrowth extends PlantAbility {
 
@@ -40,7 +43,11 @@ public class PlantRegrowth extends PlantAbility {
                 }
             }
 
-            this.time = System.currentTimeMillis() + this.regrowTime / 2 + (long) (Math.random() * this.regrowTime) / 2;
+            final String scope = getClass().getName() + ':' + block.getX() + ':' + block.getY() + ':' + block.getZ();
+            final Random random = PredictionDeterminism.random(
+                    player == null ? null : player.getUniqueId(), scope, getPredictionDeterministicSeed());
+            this.time = System.currentTimeMillis() + this.regrowTime / 2
+                    + (long) (random.nextDouble() * this.regrowTime) / 2;
             this.start();
         }
     }

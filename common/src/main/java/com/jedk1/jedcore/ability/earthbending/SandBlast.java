@@ -18,6 +18,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.*;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionEffect;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionEffectType;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.TempBlock;
@@ -35,7 +36,7 @@ public class SandBlast extends SandAbility implements AddonAbility {
     private static double damage;
     private final List<Entity> affectedEntities = new ArrayList<>();
     private final List<TempFallingBlock> fallingBlocks = new ArrayList<>();
-    Random rand = new Random();
+    private final Random rand;
     @Attribute(Attribute.COOLDOWN)
     private long cooldown;
     @Attribute(Attribute.SELECT_RANGE)
@@ -53,6 +54,8 @@ public class SandBlast extends SandAbility implements AddonAbility {
 
     public SandBlast(Player player) {
         super(player);
+        this.rand = PredictionDeterminism.random(player == null ? null : player.getUniqueId(),
+                getClass().getName() + ":falling-block-velocity");
 
         if (!bPlayer.canBend(this)) {
             return;

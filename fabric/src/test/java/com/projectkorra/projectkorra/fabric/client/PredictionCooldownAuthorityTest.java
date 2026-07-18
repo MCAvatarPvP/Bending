@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PredictionCooldownAuthorityTest {
@@ -33,5 +34,15 @@ class PredictionCooldownAuthorityTest {
         authority.onLocalAdded("AirBlast", 3_000L);
 
         assertTrue(authority.reconcile(Set.of(), Set.of("AirBlast")).isEmpty());
+    }
+
+    @Test
+    void delayedRemovalCannotClearANewerLocalGeneration() {
+        PredictionCooldownAuthority authority = new PredictionCooldownAuthority();
+        authority.onLocalAdded("AirBlast", 3_000L);
+
+        assertTrue(authority.isLocallyPredicted("AirBlast"));
+        authority.onLocalRemoved("AirBlast");
+        assertFalse(authority.isLocallyPredicted("AirBlast"));
     }
 }

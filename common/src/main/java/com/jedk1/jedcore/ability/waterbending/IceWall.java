@@ -20,6 +20,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
 import com.projectkorra.projectkorra.util.TempBlock;
@@ -71,6 +72,10 @@ public class IceWall extends IceAbility implements AddonAbility {
     private long lifetime = 0;
     private int wallHealth;
     private int tankedDamage;
+    private boolean collapsePending;
+    private boolean pendingCollapseForceful;
+    private Player pendingCollapsePlayer;
+    private CoreAbility pendingCollapseCause;
 
     public IceWall(Player player) {
         super(player);
@@ -484,6 +489,18 @@ public class IceWall extends IceAbility implements AddonAbility {
         if (rising) {
             if (lastBlocks.isEmpty()) {
                 rising = false;
+                if (collapsePending) {
+                    final Player requestedPlayer = pendingCollapsePlayer == null
+                            ? player : pendingCollapsePlayer;
+                    final boolean requestedForceful = pendingCollapseForceful;
+                    final CoreAbility requestedCause = pendingCollapseCause;
+                    collapsePending = false;
+                    pendingCollapseForceful = false;
+                    pendingCollapsePlayer = null;
+                    pendingCollapseCause = null;
+                    AbilityExecutionContext.run(requestedCause,
+                            () -> remove(requestedPlayer, requestedForceful));
+                }
                 return;
             }
 
@@ -522,8 +539,17 @@ public class IceWall extends IceAbility implements AddonAbility {
     }
 
     public void collapse(Player player, boolean forceful) {
-        if (rising)
+        if (isRemoved()) return;
+        if (rising) {
+            // Dropping this request makes a one-tick client/server rise skew
+            // permanent: one side breaks the wall while the other silently
+            // keeps it. Finish constructing the same wall, then collapse it.
+            collapsePending = true;
+            pendingCollapseForceful |= forceful;
+            if (player != null) pendingCollapsePlayer = player;
+            pendingCollapseCause = AbilityExecutionContext.current();
             return;
+        }
 
         remove(player, forceful);
     }

@@ -20,8 +20,11 @@ import com.projectkorra.projectkorra.util.BlockSource;
 import com.projectkorra.projectkorra.util.ParticleEffect;
 import com.projectkorra.projectkorra.util.TempBlock;
 import com.projectkorra.projectkorra.waterbending.*;
+import com.projectkorra.projectkorra.waterbending.blood.Bloodbending;
+import com.projectkorra.projectkorra.waterbending.combo.IceWave;
 import com.projectkorra.projectkorra.waterbending.ice.PhaseChange;
 import com.projectkorra.projectkorra.waterbending.multiabilities.WaterArms;
+import com.projectkorra.projectkorra.waterbending.multiabilities.WaterArmsSpear;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -405,6 +408,25 @@ public abstract class WaterAbility extends ElementalAbility {
         SurgeWall.removeAllCleanup();
         SurgeWave.removeAllCleanup();
         WaterArms.removeAllCleanup();
+        discardAllWaterbendingState();
+    }
+
+    /**
+     * Clears every world-scoped Water ownership index without writing blocks.
+     * The TempBlock registry remains the sole owner of physical restoration;
+     * this method prevents old ClientWorld handles from influencing the next
+     * runtime after a server-world or dimension transition.
+     */
+    public static void discardAllWaterbendingState() {
+        PhaseChange.discardAllTracking();
+        Torrent.discardAllTracking();
+        WaterSpout.discardAllTracking();
+        WaterSpoutWave.discardAllTracking();
+        WaterManipulation.discardAllTracking();
+        SurgeWall.discardAllTracking();
+        IceWave.discardAllTracking();
+        WaterArmsSpear.discardAllTracking();
+        Bloodbending.discardAllTracking();
     }
 
     public boolean canAutoSource() {

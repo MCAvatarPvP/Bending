@@ -312,6 +312,11 @@ public class WaterManipulation extends WaterAbility {
         return AFFECTED_BLOCKS;
     }
 
+    /** Drops old-world moving-water coordinates without writing their blocks. */
+    public static void discardAllTracking() {
+        AFFECTED_BLOCKS.clear();
+    }
+
     private void setFields() {
         this.progressing = false;
         this.falling = false;

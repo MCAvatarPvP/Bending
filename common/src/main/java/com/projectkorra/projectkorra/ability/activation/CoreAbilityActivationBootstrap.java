@@ -286,7 +286,12 @@ final class CoreAbilityActivationBootstrap {
         if (!CoreAbility.hasAbility(player, PhaseChange.class)) {
             return created(new PhaseChange(player, type));
         }
-        CoreAbility.getAbility(player, PhaseChange.class).startNewType(type);
+        final PhaseChange phaseChange = CoreAbility.getAbility(player, PhaseChange.class);
+        phaseChange.startNewType(type);
+        // PhaseChange mutates an existing long-lived instance. Preserve that
+        // exact identity so prediction associates synchronous ice/melt layers
+        // with this input rather than the instance's previous action.
+        AbilityActivationManager.markHandled(phaseChange);
         return true;
     }
 

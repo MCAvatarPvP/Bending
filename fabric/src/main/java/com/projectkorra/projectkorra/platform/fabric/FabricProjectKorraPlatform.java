@@ -150,7 +150,9 @@ public final class FabricProjectKorraPlatform implements ProjectKorraPlatform {
 
     private final class FabricScheduler implements PKScheduler {
         private final AtomicInteger ids = new AtomicInteger(1);
-        private final PriorityQueue<Scheduled> queue = new PriorityQueue<>(Comparator.comparingLong(s -> s.nextTick));
+        private final PriorityQueue<Scheduled> queue = new PriorityQueue<>(
+                Comparator.comparingLong((Scheduled scheduled) -> scheduled.nextTick)
+                        .thenComparingInt(scheduled -> scheduled.id));
         private final Map<Integer, Scheduled> tasks = new ConcurrentHashMap<>();
         private final Object queueLock = new Object();
         private long tick;
@@ -178,19 +180,21 @@ public final class FabricProjectKorraPlatform implements ProjectKorraPlatform {
 
         private PKTask schedule(final Runnable task, final long delay, final long period) {
             int id = ids.getAndIncrement();
-            UUID predictionOwner = PredictionServer.captureEffectOwner();
-            Runnable contextualTask = predictionOwner == null ? task
-                    : () -> PredictionServer.runWithEffectOwner(predictionOwner, task);
-            Scheduled scheduled = new Scheduled(id, contextualTask, tick + Math.max(0, delay), period);
+            PredictionServer.EffectContext predictionContext = PredictionServer.captureEffectContext();
+            Runnable contextualTask = predictionContext == null ? task
+                    : () -> PredictionServer.runWithEffectContext(predictionContext, task);
+            // Match Bukkit: equal-heartbeat tasks run by scheduler id and a
+            // task scheduled with delay zero cannot re-enter this heartbeat.
+            Scheduled scheduled = new Scheduled(id, contextualTask, tick + Math.max(1, delay), period);
             tasks.put(id, scheduled);
             synchronized (queueLock) { queue.add(scheduled); }
             return new FabricTask(id);
         }
 
         private Runnable contextual(final Runnable task) {
-            UUID predictionOwner = PredictionServer.captureEffectOwner();
-            return predictionOwner == null ? task
-                    : () -> PredictionServer.runWithEffectOwner(predictionOwner, task);
+            PredictionServer.EffectContext predictionContext = PredictionServer.captureEffectContext();
+            return predictionContext == null ? task
+                    : () -> PredictionServer.runWithEffectContext(predictionContext, task);
         }
 
         private void tick() {

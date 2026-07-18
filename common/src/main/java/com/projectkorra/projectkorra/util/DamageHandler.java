@@ -17,7 +17,6 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageByEntityEvent;
 import com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent;
 import com.projectkorra.projectkorra.platform.mc.metadata.FixedMetadataValue;
-import com.projectkorra.projectkorra.prediction.HitResolutionSync;
 import com.projectkorra.projectkorra.prediction.PredictedContactSync;
 import org.jetbrains.annotations.NotNull;
 
@@ -158,15 +157,6 @@ public class DamageHandler {
         // lifecycle ownership before the callback can remove its ability from
         // a stale local contact.
         if (PredictedContactSync.mark(ability, entity)) {
-            return;
-        }
-
-        final Player requestedSource = source;
-        final double requestedDamage = damage;
-        final boolean requestedIgnoreArmor = ignoreArmor;
-        if (HitResolutionSync.defer(HitResolutionSync.Effect.DAMAGE, ability, entity,
-                () -> damageEntityNow(entity, requestedSource, requestedDamage, ability,
-                        requestedIgnoreArmor, doSourcelessDamage))) {
             return;
         }
 

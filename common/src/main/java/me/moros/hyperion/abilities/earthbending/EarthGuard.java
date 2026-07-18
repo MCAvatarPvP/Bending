@@ -35,6 +35,7 @@ import com.projectkorra.projectkorra.platform.mc.potion.PotionEffect;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionEffectType;
 import com.projectkorra.projectkorra.platform.mc.util.NumberConversions;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.util.ParticleEffect;
 import com.projectkorra.projectkorra.util.TempBlock;
 import com.projectkorra.projectkorra.util.TempPotionEffect;
@@ -45,7 +46,7 @@ import me.moros.hyperion.util.BendingFallingBlock;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Random;
 
 public class EarthGuard extends EarthAbility implements AddonAbility {
     private final List<ItemStack> oldArmor = new ArrayList<>(4);
@@ -67,9 +68,12 @@ public class EarthGuard extends EarthAbility implements AddonAbility {
     private boolean metal;
     private boolean gold;
     private long time;
+    private final Random gameplayRandom;
 
     public EarthGuard(Player player) {
         super(player);
+        this.gameplayRandom = PredictionDeterminism.random(player == null ? null : player.getUniqueId(),
+                getClass().getName() + ":source-lifetime");
 
         if (hasAbility(player, EarthGuard.class) || !bPlayer.canBend(this)) {
             return;
@@ -97,7 +101,8 @@ public class EarthGuard extends EarthAbility implements AddonAbility {
                 resistance = ConfigManager.getConfig(bPlayer).getInt("Abilities.Earth.EarthGuard.BaseResistance") - 1;
                 playEarthbendingSound(sourceBlock.getLocation());
             }
-            new TempBlock(sourceBlock, Material.AIR.createBlockData(), ThreadLocalRandom.current().nextInt(2500, 5000) + duration);
+            new TempBlock(sourceBlock, Material.AIR.createBlockData(),
+                    this.gameplayRandom.nextInt(2500, 5000) + duration);
             armorFallingBlock = new BendingFallingBlock(sourceBlock.getLocation().add(0.5, 0, 0.5), blockData, new Vector(0, 0.2, 0), this, false);
             start();
             bPlayer.addCooldown(this);

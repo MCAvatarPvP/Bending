@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.fabric.mixin.client;
 
 import com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime;
+import com.projectkorra.projectkorra.fabric.client.PredictionClient;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayNetworkHandler;
@@ -50,18 +51,6 @@ public abstract class ClientPlayNetworkHandlerPredictionMixin {
         if (ExactPredictionRuntime.authoritativeBlockBatch(world, positions, states)) ci.cancel();
     }
 
-    @Inject(method = "onChunkDeltaUpdate", at = @At("TAIL"))
-    private void projectkorra$acceptAuthoritativeBlockBatch(ChunkDeltaUpdateS2CPacket packet, CallbackInfo ci) {
-        if (!MinecraftClient.getInstance().isOnThread()) return;
-        List<BlockPos> positions = new ArrayList<>();
-        List<BlockState> states = new ArrayList<>();
-        packet.visitUpdates((pos, state) -> {
-            positions.add(pos.toImmutable());
-            states.add(state);
-        });
-        ExactPredictionRuntime.acceptAuthoritativeBlockBatch(world, positions, states);
-    }
-
     @Inject(method = "onChunkData", at = @At("TAIL"))
     private void projectkorra$acceptAuthoritativeChunk(ChunkDataS2CPacket packet, CallbackInfo ci) {
         if (!MinecraftClient.getInstance().isOnThread()) return;
@@ -90,10 +79,10 @@ public abstract class ClientPlayNetworkHandlerPredictionMixin {
         }
     }
 
-    @Inject(method = "onUpdateSelectedSlot", at = @At("HEAD"), cancellable = true)
-    private void projectkorra$suppressPredictedSelectedSlot(UpdateSelectedSlotS2CPacket packet, CallbackInfo ci) {
-        if (MinecraftClient.getInstance().isOnThread() && ExactPredictionRuntime.suppressAuthoritativeSelectedSlot(packet)) {
-            ci.cancel();
+    @Inject(method = "onUpdateSelectedSlot", at = @At("HEAD"))
+    private void projectkorra$acceptAuthoritativeSelectedSlot(UpdateSelectedSlotS2CPacket packet, CallbackInfo ci) {
+        if (MinecraftClient.getInstance().isOnThread()) {
+            PredictionClient.acceptAuthoritativeSelectedSlot(packet.slot());
         }
     }
 

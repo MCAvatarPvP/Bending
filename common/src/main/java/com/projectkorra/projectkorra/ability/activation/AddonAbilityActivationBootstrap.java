@@ -70,6 +70,10 @@ final class AddonAbilityActivationBootstrap {
 
     private static void registerHyperion() {
         Hyperion.enable();
+        // registerJedCore() runs earlier during every activation reload. Put
+        // Hyperion back on top of the duplicate public Combustion name so the
+        // bound ability, config, activation handler, and runtime class agree.
+        CoreAbility.registerPluginAbilities(Hyperion.getPlugin(), "me.moros.hyperion.abilities");
 
         register("Evade", ClickType.LEFT_CLICK, context -> created(new me.moros.hyperion.abilities.airbending.Evade(context.getPlayer())));
         register("Smokescreen", ClickType.LEFT_CLICK, context -> created(new Smokescreen(context.getPlayer())));
@@ -95,6 +99,12 @@ final class AddonAbilityActivationBootstrap {
 
         register("Bolt", ClickType.SHIFT_DOWN, context -> created(new Bolt(context.getPlayer())));
         register("FlameRush", ClickType.SHIFT_DOWN, context -> created(new FlameRush(context.getPlayer())));
+        register("Combustion", ClickType.SHIFT_DOWN, context -> created(
+                new me.moros.hyperion.abilities.firebending.Combustion(context.getPlayer())));
+        register("Combustion", ClickType.LEFT_CLICK, context -> {
+            me.moros.hyperion.abilities.firebending.Combustion.attemptExplode(context.getPlayer());
+            return true;
+        });
 
         register("IceBreath", ClickType.SHIFT_DOWN, context -> created(new IceBreath(context.getPlayer())));
         register("IceCrawl", ClickType.SHIFT_DOWN, context -> created(new IceCrawl(context.getPlayer())));
@@ -224,11 +234,6 @@ final class AddonAbilityActivationBootstrap {
             return true;
         });
 
-        register("Combustion", ClickType.SHIFT_DOWN, context -> created(new Combustion(context.getPlayer())));
-        register("Combustion", ClickType.LEFT_CLICK, context -> {
-            Combustion.combust(context.getPlayer());
-            return true;
-        });
         register("Discharge", ClickType.LEFT_CLICK, context -> created(new Discharge(context.getPlayer())));
         register("FireBall", ClickType.LEFT_CLICK, context -> created(new FireBall(context.getPlayer())));
         register("FireBreath", ClickType.SHIFT_DOWN, context -> created(new FireBreath(context.getPlayer())));

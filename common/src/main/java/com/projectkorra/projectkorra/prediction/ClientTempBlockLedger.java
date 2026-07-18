@@ -8,9 +8,14 @@ import java.util.UUID;
 
 /**
  * Loader-neutral ledger for server TempBlock metadata received by a predicting
- * client. The ledger deliberately contains no world mutation API: metadata can
- * decide whether vanilla server block traffic is hidden, but the client's real
- * {@code TempBlock} instances remain the only source of visual block changes.
+ * client. The ledger deliberately contains no world mutation API. The Fabric
+ * server endpoint emits an owner only for an authenticated exact client that
+ * supports the layer's ability. The runtime can therefore use owner identity
+ * as the concealment fence even after the originating input action has aged
+ * out. Semantic pairing may deliberately span different coordinates and
+ * remains available for lifecycle bookkeeping, but a layer-count mismatch
+ * cannot make an owned server TempBlock visible. This ledger supplies ordered
+ * physical/underlay states for each coordinate.
  *
  * @param <K> coordinate key type
  * @param <S> client block-state type
@@ -28,6 +33,17 @@ public final class ClientTempBlockLedger<K, S> {
     public boolean apply(final K key, final TempBlockSync.Operation operation,
                          final long layerId, final long revision, final UUID ownerId,
                          final S physicalState, final S viewerState) {
+        return apply(key, operation, 0L, layerId, revision, ownerId, physicalState, viewerState);
+    }
+
+    /**
+     * Applies one ordered lifecycle operation and retains the input action
+     * which produced the layer. Client and server layer ids are process-local,
+     * so action + coordinate is the stable cross-process confirmation key.
+     */
+    public boolean apply(final K key, final TempBlockSync.Operation operation,
+                         final long actionSequence, final long layerId, final long revision,
+                         final UUID ownerId, final S physicalState, final S viewerState) {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(operation, "operation");
 
@@ -57,11 +73,16 @@ public final class ClientTempBlockLedger<K, S> {
 
         final Layer<S> previous = coordinate.layers.get(layerId);
         final S state = physicalState != null ? physicalState : previous == null ? null : previous.state;
-        coordinate.layers.put(layerId, new Layer<>(ownerId, state));
+        final long effectiveAction = actionSequence > 0L
+                ? actionSequence : previous == null ? 0L : previous.actionSequence;
+        coordinate.layers.put(layerId, new Layer<>(ownerId, effectiveAction, state));
         return true;
     }
 
-    /** Returns whether this coordinate contains any physical layer owned by the viewer. */
+    /**
+     * Returns whether this coordinate contains a physical layer attributed to
+     * the viewer. The caller still validates the action/session before hiding it.
+     */
     public boolean hidesServerWorld(final K key, final UUID viewerId) {
         if (viewerId == null) return false;
         final Coordinate<S> coordinate = this.coordinates.get(key);
@@ -72,10 +93,39 @@ public final class ClientTempBlockLedger<K, S> {
         return false;
     }
 
+    /**
+     * Returns whether authority confirmed that this viewer's prediction for
+     * one input produced a physical layer at this exact coordinate.
+     */
+    public boolean hasOwnedLayerForAction(final K key, final UUID viewerId,
+                                          final long actionSequence) {
+        if (viewerId == null || actionSequence <= 0L) return false;
+        final Coordinate<S> coordinate = this.coordinates.get(key);
+        if (coordinate == null) return false;
+        for (Layer<S> layer : coordinate.layers.values()) {
+            if (viewerId.equals(layer.ownerId) && layer.actionSequence == actionSequence) return true;
+        }
+        return false;
+    }
+
     /** Last server-computed state visible beneath layers hidden from this client. */
     public Optional<S> viewerState(final K key) {
         final Coordinate<S> coordinate = this.coordinates.get(key);
         return coordinate == null ? Optional.empty() : Optional.ofNullable(coordinate.viewerState);
+    }
+
+    /** Physical state of the newest active authoritative layer at a coordinate. */
+    public Optional<S> physicalState(final K key) {
+        final Coordinate<S> coordinate = this.coordinates.get(key);
+        if (coordinate == null || coordinate.layers.isEmpty()) return Optional.empty();
+        final Layer<S> top = coordinate.layers.values().stream()
+                .reduce((first, second) -> second).orElse(null);
+        return top == null ? Optional.empty() : Optional.ofNullable(top.state);
+    }
+
+    public boolean containsLayer(final K key, final long layerId) {
+        final Coordinate<S> coordinate = this.coordinates.get(key);
+        return coordinate != null && coordinate.layers.containsKey(layerId);
     }
 
     /**
@@ -131,6 +181,6 @@ public final class ClientTempBlockLedger<K, S> {
     private record LayerKey<K>(K coordinate, long layerId) {
     }
 
-    private record Layer<S>(UUID ownerId, S state) {
+    private record Layer<S>(UUID ownerId, long actionSequence, S state) {
     }
 }

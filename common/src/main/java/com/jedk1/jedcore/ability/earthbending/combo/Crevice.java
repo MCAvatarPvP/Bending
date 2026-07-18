@@ -14,6 +14,7 @@ import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.Sound;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
@@ -26,7 +27,7 @@ import java.util.*;
 public class Crevice extends EarthAbility implements AddonAbility, ComboAbility {
 
     private final List<List<TempBlock>> columns = new ArrayList<>();
-    private final Random rand = new Random();
+    private final Random rand;
     @Attribute(Attribute.RANGE)
     private double range;
     private long regenDelay;
@@ -46,6 +47,7 @@ public class Crevice extends EarthAbility implements AddonAbility, ComboAbility 
 
     public Crevice(Player player) {
         super(player);
+        this.rand = PredictionDeterminism.random(player == null ? null : player.getUniqueId(), getClass().getName());
         if (!bPlayer.canBendIgnoreBinds(this)) {
             return;
         }

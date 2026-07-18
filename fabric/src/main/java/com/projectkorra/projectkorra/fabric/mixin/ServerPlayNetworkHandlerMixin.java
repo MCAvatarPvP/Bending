@@ -21,7 +21,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 abstract class ServerPlayNetworkHandlerMixin {
     @Inject(method = "onHandSwing", at = @At("HEAD"), cancellable = true, require = 0)
     private void projectKorra$onHandSwing(HandSwingC2SPacket packet, CallbackInfo callback) {
-        if (packet.getHand() == Hand.MAIN_HAND && FabricGameplayBridge.onMainHandSwing(((ServerPlayNetworkHandler) (Object) this).player)) {
+        if (FabricGameplayBridge.onArmSwing(((ServerPlayNetworkHandler) (Object) this).player)) {
             callback.cancel();
         }
     }
@@ -39,7 +39,8 @@ abstract class ServerPlayNetworkHandlerMixin {
 
     @Inject(method = "onPlayerInput", at = @At("HEAD"), require = 0)
     private void projectKorra$onPlayerInput(PlayerInputC2SPacket packet, CallbackInfo callback) {
-        FabricGameplayBridge.onPlayerInput(((ServerPlayNetworkHandler) (Object) this).player, packet.input().sneak());
+        FabricGameplayBridge.onPlayerInput(
+                ((ServerPlayNetworkHandler) (Object) this).player, packet.input().sneak());
     }
 
     @Inject(method = "onPlayerAction", at = @At("HEAD"), cancellable = true, require = 0)
@@ -73,7 +74,7 @@ abstract class ServerPlayNetworkHandlerMixin {
         packet.handle(new PlayerInteractEntityC2SPacket.Handler() {
             @Override
             public void interact(Hand hand) {
-                cancel[0] = FabricGameplayBridge.onRightClickEntity(handler.player, hand);
+                // Match PKListener's PlayerInteractAtEntityEvent exactly.
             }
 
             @Override

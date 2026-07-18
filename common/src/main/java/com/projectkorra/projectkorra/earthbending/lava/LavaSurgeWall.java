@@ -123,6 +123,12 @@ public class LavaSurgeWall extends LavaAbility {
         return WALL_BLOCKS;
     }
 
+    /** Drops old-world wall ownership without restoring blocks. */
+    public static void discardAllTracking() {
+        AFFECTED_BLOCKS.clear();
+        WALL_BLOCKS.clear();
+    }
+
     public boolean prepare() {
         this.cancelPrevious();
         final Block block = BlockSource.getSourceBlock(this.player, this.range, BlockSourceType.LAVA, ClickType.LEFT_CLICK);

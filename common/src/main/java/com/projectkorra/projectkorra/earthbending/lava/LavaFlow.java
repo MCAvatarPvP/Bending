@@ -13,6 +13,7 @@ import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.scheduler.BukkitRunnable;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.util.*;
 
 import java.util.ArrayList;
@@ -67,6 +68,7 @@ public class LavaFlow extends LavaAbility {
     private Location origin;
     private ArrayList<TempBlock> affectedBlocks;
     private ArrayList<BukkitRunnable> tasks;
+    private final Random gameplayRandom;
     private Material revertMaterial;
     private World world;
     /**
@@ -80,6 +82,8 @@ public class LavaFlow extends LavaAbility {
      */
     public LavaFlow(final Player player, final AbilityType type) {
         super(player);
+        this.gameplayRandom = PredictionDeterminism.random(player == null ? null : player.getUniqueId(),
+                getClass().getName() + ":block-conversion");
         if (!this.bPlayer.canLavabend()) {
             return;
         }
@@ -257,6 +261,13 @@ public class LavaFlow extends LavaAbility {
         return TEMP_LAVA_BLOCKS;
     }
 
+    /** Drops all old-world LavaFlow ownership without restoring blocks. */
+    public static void discardAllTracking() {
+        TEMP_LAVA_BLOCKS.clear();
+        TEMP_LAND_BLOCKS.clear();
+        TEMP_AIR_BLOCKS.clear();
+    }
+
     /**
      * Progresses LavaFlow by 1 tick. This is the heart of the ability, it
      * determines whether or not the LavaFlow type is Click/Sneaking, and it
@@ -273,8 +284,6 @@ public class LavaFlow extends LavaAbility {
             this.removeSlowly();
             return;
         }
-
-        final Random random = new Random();
 
         if (this.type == AbilityType.SHIFT) {
             if (System.currentTimeMillis() - this.time > this.shiftRemoveDelay) {
@@ -338,14 +347,14 @@ public class LavaFlow extends LavaAbility {
                                     }
                                 }
                             }
-                        } else if (Math.random() < this.particleDensity && dSquared < Math.pow(this.currentRadius + this.particleDensity, 2) && this.currentRadius + this.particleDensity < this.shiftMaxRadius && random.nextInt(3) == 0) {
+                        } else if (Math.random() < this.particleDensity && dSquared < Math.pow(this.currentRadius + this.particleDensity, 2) && this.currentRadius + this.particleDensity < this.shiftMaxRadius && Math.random() < (1D / 3D)) {
                             ParticleEffect.LAVA.display(loc, 1, Math.random(), Math.random(), Math.random());
                         }
                     }
                 }
 
                 if (!this.shiftIsFinished) {
-                    if (random.nextInt(10) == 0) {
+                    if (Math.random() < 0.1D) {
                         ParticleEffect.LAVA.display(this.player.getLocation(), 1, Math.random(), Math.random(), Math.random());
                     }
                 }
@@ -385,7 +394,7 @@ public class LavaFlow extends LavaAbility {
                         final Block tempBlock = GeneralMethods.getTopBlock(loc, this.upwardFlow, this.downwardFlow);
                         if (!isWater(tempBlock)) {
                             if (tempBlock != null && !isLava(tempBlock) && Math.random() < this.particleDensity && tempBlock.getLocation().distanceSquared(this.origin) <= Math.pow(this.clickLavaRadius, 2)) {
-                                if (random.nextInt(5) == 0) {
+                                if (Math.random() < 0.2D) {
                                     ParticleEffect.LAVA.display(loc, 1, Math.random(), Math.random(), Math.random());
                                 }
                             }
@@ -413,7 +422,7 @@ public class LavaFlow extends LavaAbility {
                         if (dSquared < Math.pow(radius, 2) && !GeneralMethods.isRegionProtectedFromBuild(this, loc)) {
                             if (this.makeLava && !isLava(tempBlock)) {
                                 this.clickIsFinished = false;
-                                if (Math.random() < this.lavaCreateSpeed) {
+                                if (this.gameplayRandom.nextDouble() < this.lavaCreateSpeed) {
                                     if (!isLava(tempBlock) || isSnow(tempBlock)) {
                                         if (isPlant(tempBlock) || isSnow(tempBlock)) {
                                             final Block lower = tempBlock.getRelative(BlockFace.DOWN);
@@ -437,7 +446,7 @@ public class LavaFlow extends LavaAbility {
                                         }
                                     }
                                 } else {
-                                    if (random.nextInt(4) == 0) {
+                                    if (Math.random() < 0.25D) {
                                         final Block block = loc.getBlock();
                                         final Block above = block.getRelative(BlockFace.UP);
 
@@ -448,7 +457,7 @@ public class LavaFlow extends LavaAbility {
                                 }
                             } else if (!this.makeLava && isLava(tempBlock)) {
                                 this.clickIsFinished = false;
-                                if (Math.random() < this.landCreateSpeed) {
+                                if (this.gameplayRandom.nextDouble() < this.landCreateSpeed) {
                                     this.removeLava(tempBlock);
                                 }
                             }

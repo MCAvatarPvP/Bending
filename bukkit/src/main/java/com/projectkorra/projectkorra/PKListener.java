@@ -84,7 +84,6 @@ public class PKListener implements Listener {
     private static final HashMap<UUID, Ability> BENDING_ENTITY_DEATH = new HashMap<>(); // Entities killed by Bending.
     private static final HashMap<Player, String> BENDING_PLAYER_DEATH = new HashMap<>(); // Player killed by Bending.
     private static final Set<UUID> RIGHT_CLICK_INTERACT = new HashSet<>(); // Player right click block.
-    private static final Set<UUID> LEFT_CLICK_INTERACT = new HashSet<>(); // Player left click block.
     @Deprecated
     private static final ArrayList<UUID> TOGGLED_OUT = new ArrayList<>(); // Stands for toggled = false while logging out.
     private static final Set<UUID> PLAYER_DROPPED_ITEM = new HashSet<>(); // Player dropped an item.
@@ -1040,7 +1039,7 @@ public class PKListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.LOWEST)
+    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onFall(EntityDamageEvent event) {
         if (event.getCause() != DamageCause.FALL || !(event.getEntity() instanceof org.bukkit.entity.Player nativePlayer))
             return;
@@ -1251,7 +1250,7 @@ public class PKListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.LOWEST)
+    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onPlayerInteraction(final PlayerInteractEvent event) {
         final var player = BukkitMC.player(event.getPlayer());
         final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
@@ -1265,28 +1264,11 @@ public class PKListener implements Listener {
             }
         }
 
-        if ((event.getAction() == Action.LEFT_CLICK_BLOCK || event.getAction() == Action.LEFT_CLICK_AIR) && event.getHand() == EquipmentSlot.HAND) {
-            final UUID uuid = player.getUniqueId();
-            LEFT_CLICK_INTERACT.add(uuid);
-            Platform.scheduler().runLater(() -> LEFT_CLICK_INTERACT.remove(uuid), 1L);
-
-            if (PaperPredictionServer.consumeLeftClick(event.getPlayer())) {
-                return;
-            }
-
-            final CommonInputHandler.InputResult result = CommonInputHandler.handleSwing(player, RIGHT_CLICK_INTERACT, PLAYER_DROPPED_ITEM);
-            if (result.cancelEvent()) {
-                event.setCancelled(true);
-            }
-        }
-
-        if ((event.getAction() == Action.RIGHT_CLICK_BLOCK || event.getAction() == Action.RIGHT_CLICK_AIR) && event.getHand() == EquipmentSlot.HAND && !event.isCancelled()) {
-            if (PaperPredictionServer.consumeRightClick(
-                    event.getPlayer(), event.getAction() == Action.RIGHT_CLICK_BLOCK)) {
-                return;
-            }
+        if ((event.getAction() == Action.RIGHT_CLICK_BLOCK || event.getAction() == Action.RIGHT_CLICK_AIR) && event.getHand() == EquipmentSlot.HAND) {
             final ClickType clickType = event.getAction() == Action.RIGHT_CLICK_BLOCK ? ClickType.RIGHT_CLICK_BLOCK : ClickType.RIGHT_CLICK;
-            final CommonInputHandler.InputResult result = CommonInputHandler.handleRightClick(player, clickType);
+            final CommonInputHandler.InputResult result = PaperPredictionServer.handleRightClick(event.getPlayer(),
+                    event.getAction() == Action.RIGHT_CLICK_BLOCK,
+                    () -> CommonInputHandler.handleRightClick(player, clickType));
             if (result.cancelEvent()) {
                 event.setCancelled(true);
             }
@@ -1296,22 +1278,40 @@ public class PKListener implements Listener {
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onPlayerInteractEntity(final PlayerInteractAtEntityEvent event) {
         final var player = BukkitMC.player(event.getPlayer());
-        if (event.getRightClicked().hasMetadata("earthgrab:trap")) {
-            final EarthGrab eg = (EarthGrab) event.getRightClicked().getMetadata("earthgrab:trap").get(0).value();
-            eg.damageTrap();
-            event.setCancelled(true);
-            return;
-        }
-
-        if (event.getRightClicked().hasMetadata("temparmorstand")) {
-            event.setCancelled(true);
-            return;
-        }
-
-        if (event.getHand().equals(EquipmentSlot.HAND)
-                && !PaperPredictionServer.consumeRightClickEntity(event.getPlayer())) {
-            final CommonInputHandler.InputResult result = CommonInputHandler.handleRightClickEntity(player);
+        if (event.getHand().equals(EquipmentSlot.HAND)) {
+            final CommonInputHandler.InputResult result = PaperPredictionServer.handleRightClickEntity(event.getPlayer(),
+                    () -> {
+                        CommonInputHandler.prepareRightClickEntity(player);
+                        // These are still native PlayerInteractAtEntityEvent
+                        // inputs. Keep them inside the receipt boundary even
+                        // when legacy handling consumes them before a bound
+                        // ability, otherwise one trap click offsets every
+                        // later client/server action ordinal.
+                        if (event.getRightClicked().hasMetadata("earthgrab:trap")) {
+                            final EarthGrab eg = (EarthGrab) event.getRightClicked()
+                                    .getMetadata("earthgrab:trap").get(0).value();
+                            eg.damageTrap();
+                            return CommonInputHandler.InputResult.cancel();
+                        }
+                        if (event.getRightClicked().hasMetadata("temparmorstand")) {
+                            return CommonInputHandler.InputResult.cancel();
+                        }
+                        return CommonInputHandler.handlePreparedRightClickEntity(player);
+                    });
             if (result.cancelEvent()) {
+                event.setCancelled(true);
+                return;
+            }
+        } else {
+            CommonInputHandler.prepareRightClickEntity(player);
+            if (event.getRightClicked().hasMetadata("earthgrab:trap")) {
+                final EarthGrab eg = (EarthGrab) event.getRightClicked()
+                        .getMetadata("earthgrab:trap").get(0).value();
+                eg.damageTrap();
+                event.setCancelled(true);
+                return;
+            }
+            if (event.getRightClicked().hasMetadata("temparmorstand")) {
                 event.setCancelled(true);
                 return;
             }
@@ -1376,6 +1376,7 @@ public class PKListener implements Listener {
     @EventHandler
     public void onPlayerChangeWorld(final PlayerChangedWorldEvent event) {
         CommonPlayerListenerCore.handleWorldChange(BukkitMC.player(event.getPlayer()));
+        PaperPredictionServer.synchronizeWorld(event.getPlayer());
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
@@ -1484,11 +1485,8 @@ public class PKListener implements Listener {
         final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
         AbilityTimingDebugger.recordInput(player, event.isSneaking() ? "SNEAK_DOWN" : "SNEAK_UP", bPlayer != null ? bPlayer.getBoundAbilityName() : null);
 
-        if (PaperPredictionServer.consumeSneak(event.getPlayer(), event.isSneaking())) {
-            return;
-        }
-
-        final CommonInputHandler.InputResult result = CommonInputHandler.handleSneak(player, !event.isSneaking());
+        final CommonInputHandler.InputResult result = PaperPredictionServer.handleSneak(event.getPlayer(),
+                event.isSneaking(), () -> CommonInputHandler.handleSneak(player, !event.isSneaking()));
         if (result.cancelEvent()) {
             event.setCancelled(true);
         }
@@ -1508,7 +1506,9 @@ public class PKListener implements Listener {
         final var player = BukkitMC.player(event.getPlayer());
         final ItemStack main = event.getMainHandItem();
         final ItemStack off = event.getOffHandItem();
-        CommonInputHandler.handleSwapHands(player, main.getType() == Material.AIR, off == null || off.getType() == Material.AIR);
+        PaperPredictionServer.handleSwapHands(event.getPlayer(),
+                () -> CommonInputHandler.handleSwapHands(player, main.getType() == Material.AIR,
+                        off == null || off.getType() == Material.AIR));
     }
 
     @EventHandler(priority = EventPriority.NORMAL)
@@ -1516,13 +1516,6 @@ public class PKListener implements Listener {
         final var player = BukkitMC.player(event.getPlayer());
         final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
         AbilityTimingDebugger.recordInput(player, "SWING_" + event.getAnimationType().name(), bPlayer != null ? bPlayer.getBoundAbilityName() : null);
-        if (LEFT_CLICK_INTERACT.contains(player.getUniqueId())) {
-            return;
-        }
-        if (PaperPredictionServer.consumeLeftClick(event.getPlayer())) {
-            return;
-        }
-
 //		if (event.getHand() != EquipmentSlot.HAND) {
 //			return;
 //		}
@@ -1532,7 +1525,8 @@ public class PKListener implements Listener {
 //		if (event.getAction() == Action.LEFT_CLICK_BLOCK && event.isCancelled()) {
 //			return;
 //		}
-        final CommonInputHandler.InputResult result = CommonInputHandler.handleSwing(player, RIGHT_CLICK_INTERACT, PLAYER_DROPPED_ITEM);
+        final CommonInputHandler.InputResult result = PaperPredictionServer.handleLeftClick(event.getPlayer(),
+                () -> CommonInputHandler.handleSwing(player, RIGHT_CLICK_INTERACT, PLAYER_DROPPED_ITEM));
         if (result.cancelEvent()) {
             event.setCancelled(true);
         }

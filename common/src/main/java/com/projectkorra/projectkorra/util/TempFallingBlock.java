@@ -36,6 +36,7 @@ public class TempFallingBlock {
         if (EarthCosmetic.canReplace(cosmetic, data.getMaterial()) && ability.getElement() == Element.EARTH) {
             blockData = cosmetic.getMaterial().createBlockData();
         }
+        final int predictionOrdinal = TempFallingBlockSync.prepare(ability, location, blockData);
         this.fallingblock = location.getWorld().spawnFallingBlock(location, blockData.clone());
         this.fallingblock.setVelocity(velocity);
         this.fallingblock.setDropItem(false);
@@ -45,7 +46,7 @@ public class TempFallingBlock {
         this.creation = System.currentTimeMillis();
         this.expire = expire;
         instances.put(fallingblock, this);
-        TempFallingBlockSync.publish(ability, fallingblock);
+        TempFallingBlockSync.publish(ability, fallingblock, predictionOrdinal);
     }
 
     public static void manage() {
@@ -95,6 +96,11 @@ public class TempFallingBlock {
             fallingblock.remove();
             instances.remove(fallingblock);
         }
+    }
+
+    /** Drops old-world wrappers after normal entity cleanup has been attempted. */
+    public static void discardAll() {
+        instances.clear();
     }
 
     public static List<TempFallingBlock> getFromAbility(CoreAbility ability) {

@@ -106,4 +106,11 @@ public class FireDamageTimer {
     public static Map<Entity, Player> getInstances() {
         return INSTANCES;
     }
+
+    /** Drops outgoing-world entity references without applying damage. */
+    public static void discardAllTracking() {
+        INSTANCES.clear();
+        TIMES.clear();
+        ability = null;
+    }
 }

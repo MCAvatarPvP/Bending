@@ -38,6 +38,7 @@ import com.projectkorra.projectkorra.platform.mc.potion.PotionEffect;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionEffectType;
 import com.projectkorra.projectkorra.platform.mc.util.NumberConversions;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.MovementHandler;
@@ -51,7 +52,7 @@ import me.moros.hyperion.util.BendingFallingBlock;
 import me.moros.hyperion.util.TempArmorStand;
 
 import java.util.Collections;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Random;
 
 public class IceCrawl extends IceAbility implements AddonAbility {
     private Location location;
@@ -75,9 +76,12 @@ public class IceCrawl extends IceAbility implements AddonAbility {
 
     private boolean launched;
     private boolean locked;
+    private final Random visualRandom;
 
     public IceCrawl(Player player) {
         super(player);
+        this.visualRandom = PredictionDeterminism.random(player == null ? null : player.getUniqueId(),
+                getClass().getName() + ":visuals");
 
         if (!bPlayer.canBend(this)) {
             return;
@@ -136,7 +140,7 @@ public class IceCrawl extends IceAbility implements AddonAbility {
             }
             advanceLocation();
             checkDamage();
-            if (ThreadLocalRandom.current().nextInt(5) == 0) playIcebendingSound(location);
+            if (this.visualRandom.nextInt(5) == 0) playIcebendingSound(location);
         } else {
             if (!bPlayer.canBendIgnoreCooldowns(this) || sourceBlock.getLocation().distanceSquared(player.getLocation()) > Math.pow(selectRange + 5, 2)) {
                 remove();
@@ -158,8 +162,8 @@ public class IceCrawl extends IceAbility implements AddonAbility {
 
         if (isWater(location.getBlock().getRelative(BlockFace.DOWN)))
             PhaseChange.getFrozenBlocksMap().put(new TempBlock(location.getBlock().getRelative(BlockFace.DOWN), Material.ICE.createBlockData(), iceDuration), player);
-        double x = ThreadLocalRandom.current().nextDouble(-0.125, 0.125);
-        double z = ThreadLocalRandom.current().nextDouble(-0.125, 0.125);
+        double x = this.visualRandom.nextDouble(-0.125, 0.125);
+        double z = this.visualRandom.nextDouble(-0.125, 0.125);
         new TempArmorStand(this, location.clone().add(x, -2, z), Material.PACKED_ICE, 1400);
 
         location.add(direction.clone().multiply(0.7));

@@ -95,4 +95,20 @@ class ClientTempBlockLedgerTest {
         assertFalse(ledger.apply("p", TempBlockSync.Operation.CREATE,
                 4L, 20L, viewer, "ice", "water"));
     }
+
+    @Test
+    void confirmsOwnershipByActionAndCoordinateInsteadOfProcessLocalLayerId() {
+        ClientTempBlockLedger<String, String> ledger = new ClientTempBlockLedger<>();
+        ledger.apply("p", TempBlockSync.Operation.CREATE,
+                42L, 9001L, 1L, viewer, "ice", "water");
+
+        assertTrue(ledger.hasOwnedLayerForAction("p", viewer, 42L));
+        assertFalse(ledger.hasOwnedLayerForAction("p", viewer, 41L));
+        assertFalse(ledger.hasOwnedLayerForAction("other", viewer, 42L));
+        assertFalse(ledger.hasOwnedLayerForAction("p", other, 42L));
+
+        ledger.apply("p", TempBlockSync.Operation.REVERT,
+                42L, 9001L, 2L, viewer, "water", "water");
+        assertFalse(ledger.hasOwnedLayerForAction("p", viewer, 42L));
+    }
 }

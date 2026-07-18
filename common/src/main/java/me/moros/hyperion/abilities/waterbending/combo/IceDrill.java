@@ -29,6 +29,7 @@ import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.platform.mc.util.BlockIterator;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.region.RegionProtection;
@@ -43,7 +44,6 @@ import me.moros.hyperion.methods.CoreMethods;
 import me.moros.hyperion.util.MaterialCheck;
 
 import java.util.*;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 public class IceDrill extends IceAbility implements AddonAbility, ComboAbility {
@@ -64,9 +64,11 @@ public class IceDrill extends IceAbility implements AddonAbility, ComboAbility {
     private long regenDelay;
 
     private boolean started;
+    private final Random gameplayRandom;
 
     public IceDrill(Player player) {
         super(player);
+        this.gameplayRandom = PredictionDeterminism.random(player == null ? null : player.getUniqueId(), getClass().getName());
 
         if (hasAbility(player, IceDrill.class) || !bPlayer.canBendIgnoreBinds(this) || !bPlayer.canIcebend()) {
             return;
@@ -110,7 +112,7 @@ public class IceDrill extends IceAbility implements AddonAbility, ComboAbility {
         if (started) {
             ListIterator<BlockIterator> iterator = lines.listIterator();
             while (iterator.hasNext()) {
-                if (ThreadLocalRandom.current().nextInt(1 + lines.size()) == 0) continue;
+                if (this.gameplayRandom.nextInt(1 + lines.size()) == 0) continue;
                 BlockIterator blockLine = iterator.next();
                 if (blockLine.hasNext()) {
                     formIce(blockLine.next());

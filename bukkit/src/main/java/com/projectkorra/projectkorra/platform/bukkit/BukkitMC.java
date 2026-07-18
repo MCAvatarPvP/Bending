@@ -36,10 +36,11 @@ import com.projectkorra.projectkorra.platform.mc.util.RayTraceResult;
 import com.projectkorra.projectkorra.platform.mc.util.Transformation;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
+import com.projectkorra.projectkorra.prediction.AbilityStateSync;
 import com.projectkorra.projectkorra.prediction.CapturedInputPose;
-import com.projectkorra.projectkorra.prediction.HitResolutionSync;
 import com.projectkorra.projectkorra.prediction.PaperPredictionServer;
 import com.projectkorra.projectkorra.prediction.TempBlockSync;
+import com.projectkorra.projectkorra.prediction.DirectBlockSync;
 import com.projectkorra.projectkorra.prediction.VelocitySync;
 import com.projectkorra.projectkorra.util.TempBlock;
 import net.md_5.bungee.api.chat.TextComponent;
@@ -71,27 +72,16 @@ public final class BukkitMC {
     private static final Map<UUID, Entity> ENTITIES = new ConcurrentHashMap<>();
     private static final Map<UUID, OfflinePlayer> OFFLINE_PLAYERS = new ConcurrentHashMap<>();
     private static final Map<UUID, World> WORLDS = new ConcurrentHashMap<>();
-    private static final Map<UUID, Boolean> SNEAK_OVERRIDES = new ConcurrentHashMap<>();
-    private static final Map<UUID, CapturedInputPose> VIEW_OVERRIDES = new ConcurrentHashMap<>();
 
     private BukkitMC() {
     }
 
     private static void applyHitStatus(final Entity target, final Runnable commit) {
-        if (!HitResolutionSync.defer(HitResolutionSync.Effect.STATUS,
-                AbilityExecutionContext.current(), target, commit)) {
-            commit.run();
-        }
+        commit.run();
     }
 
     private static boolean applyHitStatus(final Entity target, final java.util.function.BooleanSupplier commit) {
-        final boolean[] result = {true};
-        final Runnable action = () -> result[0] = commit.getAsBoolean();
-        if (!HitResolutionSync.defer(HitResolutionSync.Effect.STATUS,
-                AbilityExecutionContext.current(), target, action)) {
-            action.run();
-        }
-        return result[0];
+        return commit.getAsBoolean();
     }
 
     private static void setScoreboard(org.bukkit.entity.Player player, Scoreboard board) {
@@ -178,42 +168,11 @@ public final class BukkitMC {
         }
         NATIVE_SCOREBOARDS.remove(uuid);
         ENTITIES.remove(uuid);
-        SNEAK_OVERRIDES.remove(uuid);
-        VIEW_OVERRIDES.remove(uuid);
-    }
-
-    public static void setSneakOverride(org.bukkit.entity.Player player, Boolean sneaking) {
-        if (player == null) return;
-        if (sneaking == null) SNEAK_OVERRIDES.remove(player.getUniqueId());
-        else SNEAK_OVERRIDES.put(player.getUniqueId(), sneaking);
-    }
-
-    public static void setViewOverride(org.bukkit.entity.Player player, Double eyeX, Double eyeY, Double eyeZ,
-                                       Float yaw, Float pitch) {
-        if (player == null) return;
-        if (eyeX == null || eyeY == null || eyeZ == null || yaw == null || pitch == null) {
-            VIEW_OVERRIDES.remove(player.getUniqueId());
-        } else {
-            VIEW_OVERRIDES.put(player.getUniqueId(), new CapturedInputPose(eyeX, eyeY, eyeZ, yaw, pitch));
-        }
     }
 
     private static org.bukkit.Location viewLocation(org.bukkit.entity.Player player, org.bukkit.Location location,
                                                     boolean eyeLocation) {
-        CapturedInputPose override = VIEW_OVERRIDES.get(player.getUniqueId());
-        if (override == null) {
-            override = PaperPredictionServer.capturedEffectPose(player);
-        }
-        if (override == null) {
-            org.bukkit.Location claimed = PaperPredictionServer.claimedEffectLocation(player);
-            if (claimed == null) return location;
-            if (eyeLocation) claimed.add(0, player.getEyeHeight(), 0);
-            claimed.setYaw(location.getYaw());
-            claimed.setPitch(location.getPitch());
-            return claimed;
-        }
-        return applyViewOverride(location, override.eyeX(), override.eyeY(), override.eyeZ(),
-                override.yaw(), override.pitch(), eyeLocation);
+        return location;
     }
 
     static org.bukkit.Location applyViewOverride(org.bukkit.Location location,
@@ -279,6 +238,7 @@ public final class BukkitMC {
         if (value instanceof org.bukkit.entity.LivingEntity living) return living(living);
         if (value instanceof org.bukkit.entity.FallingBlock falling) return falling(falling);
         if (value instanceof org.bukkit.entity.ShulkerBullet bullet) return shulkerBullet(bullet);
+        if (value instanceof org.bukkit.entity.Snowball snowball) return snowball(snowball);
         if (value instanceof org.bukkit.entity.Arrow arrow) return arrow(arrow);
         if (value instanceof org.bukkit.entity.Item item) return itemEntity(item);
         return value == null ? null : ENTITIES.computeIfAbsent(value.getUniqueId(), ignored -> new EntityView(value));
@@ -294,6 +254,11 @@ public final class BukkitMC {
 
     private static ShulkerBullet shulkerBullet(final org.bukkit.entity.ShulkerBullet value) {
         return value == null ? null : (ShulkerBullet) ENTITIES.computeIfAbsent(value.getUniqueId(), ignored -> new ShulkerBulletView(value));
+    }
+
+    private static Snowball snowball(final org.bukkit.entity.Snowball value) {
+        return value == null ? null : (Snowball) ENTITIES.computeIfAbsent(
+                value.getUniqueId(), ignored -> new SnowballView(value));
     }
 
     private static Item itemEntity(final org.bukkit.entity.Item value) {
@@ -714,7 +679,10 @@ public final class BukkitMC {
 
         @Override
         public int hashCode() {
-            return Objects.hash(value.getWorld().getUID(), value.getX(), value.getY(), value.getZ(), value.getYaw(), value.getPitch());
+            // World UUIDs do not exist in the remote ClientWorld. A constant
+            // world component makes hash-backed ability iteration reproduce
+            // Fabric's order while equals still enforces world identity.
+            return Objects.hash(0, value.getX(), value.getY(), value.getZ(), value.getYaw(), value.getPitch());
         }
     }
 
@@ -826,8 +794,6 @@ public final class BukkitMC {
             Map<UUID, Entity> result = new LinkedHashMap<>();
             value.getNearbyEntities(nativeBox).stream().map(BukkitMC::entity).filter(Objects::nonNull)
                     .filter(entity -> filter == null || filter.test(entity)).forEach(entity -> result.put(entity.getUniqueId(), entity));
-            PaperPredictionServer.augmentNearbyPlayers(value, nativeBox,
-                    AbilityExecutionContext.current(), result);
             return result.values();
         }
 
@@ -855,6 +821,11 @@ public final class BukkitMC {
             if (type == ShulkerBullet.class) {
                 org.bukkit.entity.ShulkerBullet bullet = value.spawn(locationHandle(location), org.bukkit.entity.ShulkerBullet.class);
                 return (T) shulkerBullet(bullet);
+            }
+            if (type == Snowball.class) {
+                org.bukkit.entity.Snowball snowball = value.spawn(
+                        locationHandle(location), org.bukkit.entity.Snowball.class);
+                return (T) snowball(snowball);
             }
             if (type == ArmorStand.class) {
                 org.bukkit.entity.ArmorStand armorStand = value.spawn(locationHandle(location), org.bukkit.entity.ArmorStand.class);
@@ -958,7 +929,7 @@ public final class BukkitMC {
 
         @Override
         public int hashCode() {
-            return value.getUID().hashCode();
+            return 0;
         }
     }
 
@@ -976,13 +947,13 @@ public final class BukkitMC {
 
         @Override
         public void setType(Material type) {
-            prepareExternalWrite();
+            prepareExternalWrite(type.createBlockData());
             value.setType(material(type));
         }
 
         @Override
         public void setType(Material type, boolean physics) {
-            prepareExternalWrite();
+            prepareExternalWrite(type.createBlockData());
             value.setType(material(type), physics);
         }
 
@@ -993,20 +964,20 @@ public final class BukkitMC {
 
         @Override
         public void setBlockData(BlockData data) {
-            prepareExternalWrite();
+            prepareExternalWrite(data);
             value.setBlockData(blockDataHandle(data));
         }
 
         @Override
         public void setBlockData(BlockData data, boolean physics) {
-            prepareExternalWrite();
+            prepareExternalWrite(data);
             value.setBlockData(blockDataHandle(data), physics);
         }
 
-        private void prepareExternalWrite() {
-            if (TempBlockSync.currentWorldMutation() == null && TempBlock.isTempBlock(this)) {
-                TempBlock.removeBlock(this);
-            }
+        private void prepareExternalWrite(final BlockData replacementData) {
+            if (TempBlockSync.currentWorldMutation() != null) return;
+            if (TempBlock.isTempBlock(this)) TempBlock.removeBlockBeforeWrite(this, replacementData);
+            DirectBlockSync.beforeWorldChange(this, replacementData);
         }
 
         @Override
@@ -1081,11 +1052,13 @@ public final class BukkitMC {
 
         @Override
         public boolean breakNaturally() {
+            prepareExternalWrite(Material.AIR.createBlockData());
             return value.breakNaturally();
         }
 
         @Override
         public boolean breakNaturally(ItemStack item) {
+            prepareExternalWrite(Material.AIR.createBlockData());
             return value.breakNaturally(itemHandle(item));
         }
 
@@ -1138,7 +1111,7 @@ public final class BukkitMC {
 
         @Override
         public int hashCode() {
-            return Objects.hash(value.getWorld().getUID(), value.getX(), value.getY(), value.getZ());
+            return Objects.hash(value.getX(), value.getY(), value.getZ());
         }
     }
 
@@ -1173,8 +1146,9 @@ public final class BukkitMC {
         public boolean update(boolean force, boolean physics) {
             final Block block = getBlock();
             if (TempBlockSync.currentWorldMutation() == null && TempBlock.isTempBlock(block)) {
-                TempBlock.removeBlock(block);
+                TempBlock.removeBlockBeforeWrite(block, getBlockData());
             }
+            DirectBlockSync.beforeWorldChange(block, getBlockData());
             return value.update(force, physics);
         }
 
@@ -1203,8 +1177,7 @@ public final class BukkitMC {
 
         @Override
         public Location getLocation() {
-            org.bukkit.Location claimed = PaperPredictionServer.claimedEffectLocation(value);
-            return location(claimed == null ? value.getLocation() : claimed);
+            return location(value.getLocation());
         }
 
         @Override
@@ -1334,8 +1307,7 @@ public final class BukkitMC {
 
         @Override
         public Location getLocation() {
-            org.bukkit.Location claimed = PaperPredictionServer.claimedEffectLocation(value);
-            return location(claimed == null ? value.getLocation() : claimed);
+            return location(value.getLocation());
         }
 
         @Override
@@ -2117,7 +2089,7 @@ public final class BukkitMC {
 
         @Override
         public boolean isSneaking() {
-            return SNEAK_OVERRIDES.getOrDefault(value.getUniqueId(), value.isSneaking());
+            return value.isSneaking();
         }
 
         @Override
@@ -2142,7 +2114,10 @@ public final class BukkitMC {
 
         @Override
         public void setFlying(boolean state) {
-            value.setFlying(state);
+            if (value.isFlying() == state) return;
+            AbilityStateSync.apply(AbilityExecutionContext.current(), this,
+                    new AbilityStateSync.FlightState(state, value.getAllowFlight(), value.getFlySpeed()),
+                    () -> value.setFlying(state));
         }
 
         @Override
@@ -2152,7 +2127,10 @@ public final class BukkitMC {
 
         @Override
         public void setAllowFlight(boolean state) {
-            value.setAllowFlight(state);
+            if (value.getAllowFlight() == state) return;
+            AbilityStateSync.apply(AbilityExecutionContext.current(), this,
+                    new AbilityStateSync.FlightState(value.isFlying(), state, value.getFlySpeed()),
+                    () -> value.setAllowFlight(state));
         }
 
         @Override
@@ -2162,7 +2140,10 @@ public final class BukkitMC {
 
         @Override
         public void setFlySpeed(float speed) {
-            value.setFlySpeed(speed);
+            if (Float.compare(value.getFlySpeed(), speed) == 0) return;
+            AbilityStateSync.apply(AbilityExecutionContext.current(), this,
+                    new AbilityStateSync.FlightState(value.isFlying(), value.getAllowFlight(), speed),
+                    () -> value.setFlySpeed(speed));
         }
 
         @Override
@@ -2290,8 +2271,10 @@ public final class BukkitMC {
             if (type == Arrow.class) {
                 return (T) arrow(value.launchProjectile(org.bukkit.entity.Arrow.class));
             }
-            org.bukkit.entity.Projectile projectile = value.launchProjectile(org.bukkit.entity.Projectile.class);
-            return (T) entity(projectile);
+            if (type == Snowball.class) {
+                return (T) snowball(value.launchProjectile(org.bukkit.entity.Snowball.class));
+            }
+            throw new IllegalArgumentException("Unsupported projectile type " + type.getName());
         }
 
         @Override
@@ -3150,6 +3133,60 @@ public final class BukkitMC {
         @Override
         public void addCustomEffect(PotionEffect effect, boolean overwrite) {
             value.addCustomEffect(potionEffectHandle(effect), overwrite);
+        }
+    }
+
+    private static final class SnowballView extends Snowball {
+        private final org.bukkit.entity.Snowball value;
+
+        private SnowballView(org.bukkit.entity.Snowball value) {
+            this.value = value;
+        }
+
+        @Override public Object handle() { return value; }
+        @Override public UUID getUniqueId() { return value.getUniqueId(); }
+        @Override public Location getLocation() { return location(value.getLocation()); }
+        @Override public World getWorld() { return world(value.getWorld()); }
+        @Override public Vector getVelocity() { return vector(value.getVelocity()); }
+        @Override public void setVelocity(Vector velocity) { value.setVelocity(vector(velocity)); }
+        @Override public boolean isDead() { return value.isDead(); }
+        @Override public boolean isValid() { return value.isValid(); }
+        @Override public void remove() { value.remove(); }
+        @Override public boolean teleport(Location target) { return value.teleport(locationHandle(target)); }
+        @Override public int getEntityId() { return value.getEntityId(); }
+        @Override public String getName() { return value.getName(); }
+        @Override public int getFireTicks() { return value.getFireTicks(); }
+        @Override public void setFireTicks(int ticks) { value.setFireTicks(ticks); }
+        @Override public float getFallDistance() { return value.getFallDistance(); }
+        @Override public void setFallDistance(float distance) { value.setFallDistance(distance); }
+        @Override public boolean isOnGround() { return value.isOnGround(); }
+        @Override public void setSilent(boolean silent) { value.setSilent(silent); }
+        @Override public void setInvulnerable(boolean invulnerable) { value.setInvulnerable(invulnerable); }
+        @Override public void setGravity(boolean gravity) { value.setGravity(gravity); }
+        @Override public void setPersistent(boolean persistent) { value.setPersistent(persistent); }
+        @Override public void setShooter(Object shooter) {
+            if (shooter instanceof ProjectileSource source) {
+                value.setShooter(source);
+            } else if (shooter instanceof Entity entity && entity.handle() instanceof ProjectileSource source) {
+                value.setShooter(source);
+            }
+        }
+        @Override public void setMetadata(String key, MetadataValue metadata) {
+            value.setMetadata(key, new org.bukkit.metadata.FixedMetadataValue(
+                    Platform.pluginHandle(Plugin.class), metadata.value()));
+        }
+        @Override public boolean hasMetadata(String key) { return value.hasMetadata(key); }
+        @Override public List<MetadataValue> getMetadata(String key) {
+            return value.getMetadata(key).stream().map(NativeMetadata::new)
+                    .map(metadata -> (MetadataValue) metadata).toList();
+        }
+        @Override public void removeMetadata(String key, Object owner) {
+            value.removeMetadata(key, JavaPlugin.getPlugin(BukkitProjectKorraPlugin.class));
+        }
+        @Override public BoundingBox getBoundingBox() {
+            org.bukkit.util.BoundingBox box = value.getBoundingBox();
+            return new BoundingBox(new Vector(box.getMinX(), box.getMinY(), box.getMinZ()),
+                    new Vector(box.getMaxX(), box.getMaxY(), box.getMaxZ()));
         }
     }
 

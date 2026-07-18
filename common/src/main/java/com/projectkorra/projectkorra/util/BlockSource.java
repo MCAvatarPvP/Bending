@@ -124,6 +124,11 @@ public class BlockSource {
         playerSources.get(player).get(sourceType).put(clickType, null);
     }
 
+    /** Drops every cached world-scoped source without mutating a block. */
+    public static void clearAll() {
+        playerSources.clear();
+    }
+
     /**
      * Access a block's source information, depending on a
      * {@link BlockSourceType} and {@link ClickType}.

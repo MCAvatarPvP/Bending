@@ -9,12 +9,14 @@ import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.util.ActionBar;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import me.simplicitee.project.addons.ProjectAddons;
 import me.simplicitee.project.addons.Util;
 
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Random;
 import java.util.Set;
 
@@ -36,9 +38,12 @@ public class ChargeBolt extends LightningAbility implements AddonAbility {
     private int dischargeBolts;
 
     private Set<Bolt> bolts;
+    private final Random dischargeRandom;
+    private int nextBoltOrdinal;
 
     public ChargeBolt(Player player) {
         super(player);
+        this.dischargeRandom = PredictionDeterminism.random(player.getUniqueId(), getClass().getName() + ":discharge");
 
         if (bPlayer.isOnCooldown(this)) {
             return;
@@ -51,7 +56,7 @@ public class ChargeBolt extends LightningAbility implements AddonAbility {
         speed = ProjectAddons.instance.getConfig(bPlayer).getInt("Abilities.Fire.ChargeBolt.Speed");
         cooldown = ProjectAddons.instance.getConfig(bPlayer).getLong("Abilities.Fire.ChargeBolt.Cooldown");
         dischargeBolts = ProjectAddons.instance.getConfig(bPlayer).getInt("Abilities.Fire.ChargeBolt.DischargeBoltCount");
-        bolts = new HashSet<>(dischargeBolts);
+        bolts = new LinkedHashSet<>(dischargeBolts);
 
         start();
     }
@@ -101,11 +106,9 @@ public class ChargeBolt extends LightningAbility implements AddonAbility {
         bPlayer.addCooldown(this);
 
         Location loc = player.getLocation().add(0, 1, 0);
-        Random rand = new Random();
-
         for (int i = 0; i < dischargeBolts; i++) {
-            float yaw = player.getEyeLocation().getYaw() + rand.nextInt(60) - 30;
-            float pitch = player.getEyeLocation().getPitch() + rand.nextInt(46) - 23;
+            float yaw = player.getEyeLocation().getYaw() + this.dischargeRandom.nextInt(60) - 30;
+            float pitch = player.getEyeLocation().getPitch() + this.dischargeRandom.nextInt(46) - 23;
 
             loc.setYaw(yaw);
             loc.setPitch(pitch);
@@ -197,14 +200,17 @@ public class ChargeBolt extends LightningAbility implements AddonAbility {
     private class Bolt {
         private Location loc, start;
         private double range;
-        private Random rand;
+        private final Random rand;
 
         private Bolt(Location start, double range, double speed) {
             this.start = start.clone();
             this.loc = start.clone();
             this.loc.getDirection().normalize();
             this.range = range * range;
-            this.rand = new Random();
+            this.rand = PredictionDeterminism.random(
+                    player.getUniqueId(),
+                    ChargeBolt.this.getClass().getName() + ":bolt:" + ChargeBolt.this.nextBoltOrdinal++,
+                    ChargeBolt.this.getPredictionDeterministicSeed());
         }
 
         private boolean advance() {

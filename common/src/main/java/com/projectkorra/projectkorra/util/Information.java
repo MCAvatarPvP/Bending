@@ -6,6 +6,8 @@ import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.block.BlockState;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 
+import java.util.UUID;
+
 public class Information {
 
     private static int ID = Integer.MIN_VALUE;
@@ -21,6 +23,10 @@ public class Information {
     private Location location;
     private Material type;
     private Player player;
+    /** Causal identity retained by long-lived moved-earth registries. */
+    private UUID predictionOwner;
+    private String predictionAbility;
+    private long predictionActionSequence;
 
     public Information() {
         this.id = ID++;
@@ -111,5 +117,29 @@ public class Information {
 
     public void setType(final Material type) {
         this.type = type;
+    }
+
+    public UUID getPredictionOwner() {
+        return this.predictionOwner;
+    }
+
+    public void setPredictionOwner(final UUID predictionOwner) {
+        this.predictionOwner = predictionOwner;
+    }
+
+    public String getPredictionAbility() {
+        return this.predictionAbility;
+    }
+
+    public void setPredictionAbility(final String predictionAbility) {
+        this.predictionAbility = predictionAbility;
+    }
+
+    public long getPredictionActionSequence() {
+        return this.predictionActionSequence;
+    }
+
+    public void setPredictionActionSequence(final long predictionActionSequence) {
+        this.predictionActionSequence = predictionActionSequence;
     }
 }

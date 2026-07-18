@@ -9,10 +9,12 @@ import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Random;
 import java.util.Set;
 
 public class OldEarthGrab extends EarthAbility {
@@ -30,8 +32,11 @@ public class OldEarthGrab extends EarthAbility {
     private double maxRange;
     private Location loc;
     private LivingEntity target;
+    private final Random random;
+
     public OldEarthGrab(Player player, Type type) {
         super(player);
+        this.random = PredictionDeterminism.random(player == null ? null : player.getUniqueId(), getClass().getName());
 
         if (!this.bPlayer.canBend(this)) {
             return;
@@ -129,8 +134,8 @@ public class OldEarthGrab extends EarthAbility {
         final List<Location> result = new ArrayList<>();
         interval = Math.toRadians(Math.abs(interval));
         for (double theta = 0; theta < 2 * Math.PI; theta += interval) {
-            final double x = Math.cos(theta) * (radius + (Math.random() / 3.1));
-            final double z = Math.sin(theta) * (radius + (Math.random() / 3.1));
+            final double x = Math.cos(theta) * (radius + (this.random.nextDouble() / 3.1));
+            final double z = Math.sin(theta) * (radius + (this.random.nextDouble() / 3.1));
             result.add(center.clone().add(x, 0, z));
         }
         return result;

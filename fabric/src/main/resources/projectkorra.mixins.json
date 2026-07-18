@@ -9,6 +9,7 @@
   ],
   "client": [
     "client.AreaEffectCloudEntityAccessor",
+    "client.ClientConnectionMovementMixin",
     "client.ClientPlayNetworkHandlerMovementMixin",
     "client.ClientPlayNetworkHandlerPredictionMixin",
     "client.ClientWorldPredictionAliasMixin"

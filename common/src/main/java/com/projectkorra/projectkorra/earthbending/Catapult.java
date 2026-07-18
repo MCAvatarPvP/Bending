@@ -72,6 +72,11 @@ public class Catapult extends EarthAbility {
         return AWAITING_LANDING.contains(player.getUniqueId());
     }
 
+    /** Drops delayed landing ownership from an outgoing logical world. */
+    public static void discardAllTracking() {
+        AWAITING_LANDING.clear();
+    }
+
     private void setFields() {
         this.stageTimeMult = getConfig().getDouble("Abilities.Earth.Catapult.StageTimeMult");
         this.cooldown = getConfig().getLong("Abilities.Earth.Catapult.Cooldown");

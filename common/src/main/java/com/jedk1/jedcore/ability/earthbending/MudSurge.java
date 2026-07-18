@@ -25,6 +25,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionEffect;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionEffectType;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.TempBlock;
@@ -42,7 +43,7 @@ public class MudSurge extends EarthAbility implements AddonAbility {
     private final List<Player> blind = new ArrayList<>();
     private final List<Entity> affectedEntities = new ArrayList<>();
     private final List<TempFallingBlock> fallingBlocks = new ArrayList<>();
-    private final Random rand = new Random();
+    private final Random rand;
     public boolean started = false;
     private int prepareRange;
     private int blindChance;
@@ -67,6 +68,7 @@ public class MudSurge extends EarthAbility implements AddonAbility {
 
     public MudSurge(Player player) {
         super(player);
+        this.rand = PredictionDeterminism.random(player == null ? null : player.getUniqueId(), getClass().getName());
 
         if (!bPlayer.canBend(this)) {
             return;
@@ -297,7 +299,7 @@ public class MudSurge extends EarthAbility implements AddonAbility {
             }
         }
 
-        Collections.shuffle(mudArea);
+        Collections.shuffle(mudArea, this.rand);
         mudAreaItr = mudArea.listIterator();
     }
 

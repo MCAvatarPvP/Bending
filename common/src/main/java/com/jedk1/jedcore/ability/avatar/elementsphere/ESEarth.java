@@ -16,6 +16,7 @@ import com.projectkorra.projectkorra.platform.mc.Sound;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.entity.*;
+import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
@@ -26,7 +27,7 @@ import java.util.Random;
 
 public class ESEarth extends AvatarAbility implements AddonAbility {
 
-    static Random rand = new Random();
+    private final Random rand;
     static Material[] unbreakables = {Material.BEDROCK, Material.BARRIER, Material.NETHER_PORTAL, Material.END_PORTAL,
             Material.END_PORTAL_FRAME, Material.ENDER_CHEST, Material.CHEST, Material.TRAPPED_CHEST};
     private long revertDelay;
@@ -40,6 +41,7 @@ public class ESEarth extends AvatarAbility implements AddonAbility {
 
     public ESEarth(Player player) {
         super(player);
+        this.rand = PredictionDeterminism.random(player == null ? null : player.getUniqueId(), getClass().getName());
         if (!hasAbility(player, ElementSphere.class)) {
             return;
         }
@@ -79,12 +81,12 @@ public class ESEarth extends AvatarAbility implements AddonAbility {
             if (isBreakable(l.getBlock()) && !RegionProtection.isRegionProtected(player, l, "ElementSphere") && EarthAbility.isEarthbendable(player, l.getBlock())) {
                 ParticleEffect.SMOKE_LARGE.display(l, 0, 0, 0, 0.1F, 2);
                 //new RegenTempBlock(l.getBlock(), Material.AIR, (byte) 0, (long) rand.nextInt((int) es.revertDelay - (int) (es.revertDelay - 1000)) + (es.revertDelay - 1000));
-                new RegenTempBlock(l.getBlock(), Material.AIR, Material.AIR.createBlockData(), (long) rand.nextInt((int) es.revertDelay - (int) (es.revertDelay - 1000)) + (es.revertDelay - 1000), false);
+                new RegenTempBlock(l.getBlock(), Material.AIR, Material.AIR.createBlockData(), (long) es.rand.nextInt((int) es.revertDelay - (int) (es.revertDelay - 1000)) + (es.revertDelay - 1000), false);
             }
 
-            if (GeneralMethods.isSolid(l.getBlock().getRelative(BlockFace.DOWN)) && isBreakable(l.getBlock()) && ElementalAbility.isAir(l.getBlock().getType()) && rand.nextInt(20) == 0 && EarthAbility.isEarthbendable(player, l.getBlock().getRelative(BlockFace.DOWN))) {
+            if (GeneralMethods.isSolid(l.getBlock().getRelative(BlockFace.DOWN)) && isBreakable(l.getBlock()) && ElementalAbility.isAir(l.getBlock().getType()) && es.rand.nextInt(20) == 0 && EarthAbility.isEarthbendable(player, l.getBlock().getRelative(BlockFace.DOWN))) {
                 Material type = l.getBlock().getRelative(BlockFace.DOWN).getType();
-                new RegenTempBlock(l.getBlock(), type, type.createBlockData(), (long) rand.nextInt((int) es.revertDelay - (int) (es.revertDelay - 1000)) + (es.revertDelay - 1000));
+                new RegenTempBlock(l.getBlock(), type, type.createBlockData(), (long) es.rand.nextInt((int) es.revertDelay - (int) (es.revertDelay - 1000)) + (es.revertDelay - 1000));
             }
         }
 
