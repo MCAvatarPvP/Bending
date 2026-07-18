@@ -613,7 +613,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         if (!packetExpected) return;
         send(owner, PaperPredictionProtocol.DIRECT_BLOCK,
                 PaperPredictionProtocol.directBlock(tick, actionSequence, ordinal, ownerId,
-                        abilityName, block.getWorld().getName(), block.getX(), block.getY(), block.getZ(),
+                        abilityName, worldKey(block.getWorld()), block.getX(), block.getY(), block.getZ(),
                         TempBlockSync.encode(replacement), lifecycle != null && lifecycle.valid()));
     }
 
@@ -758,7 +758,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         final int ordinal = ++action.tempFallingBlockOrdinal;
         send(nativeOwner, PaperPredictionProtocol.TEMP_FALLING_BLOCK_PREPARE,
                 PaperPredictionProtocol.tempFallingBlockPrepare(tick, action.sequence, ordinal, ownerId,
-                        ability.getName(), location.getWorld().getName(), location.getX(), location.getY(),
+                        ability.getName(), worldKey(location.getWorld()), location.getX(), location.getY(),
                         location.getZ(), TempBlockSync.encode(blockData)));
         return ordinal;
     }

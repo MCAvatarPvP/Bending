@@ -24,6 +24,7 @@ abstract class AbstractAirFlow extends AirAbility {
     private Location flowLocation;
     private Vector flowDirection;
     private State state = State.CHARGING;
+    private boolean draining;
 
     protected AbstractAirFlow(final Player player) {
         super(player);
@@ -70,15 +71,17 @@ abstract class AbstractAirFlow extends AirAbility {
             }
             return;
         }
-        tickParticles();
+        tickParticles(true);
         if (Math.random() < 0.05)
             this.player.getWorld().playSound(this.flowLocation, Sound.valueOf("ITEM_ELYTRA_FLYING"), 0.05F, 1);
     }
 
-    private void tickParticles() {
-        for (int i = 0; i < this.particlePerTick; i++) {
-            this.particles.add(this.flowLocation.clone().add(rotate(new Vector(Math.random() * this.particleSpawnAreaSize - this.particleSpawnAreaSize / 2,
-                    Math.random() * this.particleSpawnAreaSize - this.particleSpawnAreaSize / 2, 0))));
+    private void tickParticles(final boolean emitParticles) {
+        if (emitParticles) {
+            for (int i = 0; i < this.particlePerTick; i++) {
+                this.particles.add(this.flowLocation.clone().add(rotate(new Vector(Math.random() * this.particleSpawnAreaSize - this.particleSpawnAreaSize / 2,
+                        Math.random() * this.particleSpawnAreaSize - this.particleSpawnAreaSize / 2, 0))));
+            }
         }
         this.affectedEntities.clear();
         for (int i = this.particles.size() - 1; i >= 0; i--) {
@@ -109,8 +112,10 @@ abstract class AbstractAirFlow extends AirAbility {
     @Override
     public void remove() {
         super.remove();
-        if (this.player == null || this.flowLocation == null || this.flowDirection == null || this.particles.isEmpty())
+        if (this.draining || this.player == null || this.flowLocation == null
+                || this.flowDirection == null || this.particles.isEmpty())
             return;
+        this.draining = true;
         new BukkitRunnable() {
             @Override
             public void run() {
@@ -118,7 +123,7 @@ abstract class AbstractAirFlow extends AirAbility {
                     cancel();
                     return;
                 }
-                tickParticles();
+                tickParticles(false);
             }
         }.runTaskTimer(ProjectKorra.plugin, 0, 1);
     }

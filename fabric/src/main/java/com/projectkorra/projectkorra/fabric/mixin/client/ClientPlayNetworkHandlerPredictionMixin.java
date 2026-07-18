@@ -12,6 +12,7 @@ import net.minecraft.network.packet.s2c.play.ChunkDataS2CPacket;
 import net.minecraft.network.packet.s2c.play.EntityVelocityUpdateS2CPacket;
 import net.minecraft.network.packet.s2c.play.EntitySpawnS2CPacket;
 import net.minecraft.network.packet.s2c.play.EntityTrackerUpdateS2CPacket;
+import net.minecraft.network.packet.s2c.play.EntitiesDestroyS2CPacket;
 import net.minecraft.network.packet.s2c.play.BlockBreakingProgressS2CPacket;
 import net.minecraft.network.packet.s2c.play.EntityPositionS2CPacket;
 import net.minecraft.network.packet.s2c.play.EntityPositionSyncS2CPacket;
@@ -100,6 +101,18 @@ public abstract class ClientPlayNetworkHandlerPredictionMixin {
     private void projectkorra$reconcileSpawn(EntitySpawnS2CPacket packet, CallbackInfo ci) {
         if (!MinecraftClient.getInstance().isOnThread()) return;
         if (ExactPredictionRuntime.reconcileSpawn(packet)) ci.cancel();
+    }
+
+    @Inject(method = "onEntitiesDestroy", at = @At("HEAD"), cancellable = true)
+    private void projectkorra$closeHiddenPredictedEntities(EntitiesDestroyS2CPacket packet, CallbackInfo ci) {
+        if (!MinecraftClient.getInstance().isOnThread()) return;
+        for (int index = packet.getEntityIds().size() - 1; index >= 0; index--) {
+            final int id = packet.getEntityIds().getInt(index);
+            if (ExactPredictionRuntime.removeHiddenEntity(id)) {
+                packet.getEntityIds().removeInt(index);
+            }
+        }
+        if (packet.getEntityIds().isEmpty()) ci.cancel();
     }
 
     @Inject(method = "onEntityTrackerUpdate", at = @At("HEAD"), cancellable = true)

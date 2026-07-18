@@ -87,6 +87,7 @@ import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.decoration.DisplayEntity;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.network.packet.s2c.play.EntitySpawnS2CPacket;
@@ -191,6 +192,12 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
     private final Set<Integer> tempFallingEntityAliases = new HashSet<>();
     /** Owner-only Paper falling entities which have no exact local alias. */
     private final Set<Integer> hiddenTempFallingEntities = new HashSet<>();
+    /**
+     * Paper displays whose spawn is suppressed in favor of a client-owned
+     * display. Keep the pairing only to prevent one local model part from
+     * consuming several server spawns; never expose it through getEntityById.
+     */
+    private final Map<Integer, Entity> hiddenPredictedDisplayEntities = new HashMap<>();
     private final Map<Entity, Vec3d> predictedSpawnOrigins = new IdentityHashMap<>();
     private final Map<TempFallingBlockKey, PredictedTempFallingBlock> predictedTempFallingBlocks = new HashMap<>();
     private final Map<TempFallingBlockKey, ServerTempFallingPrepare> serverTempFallingPrepares = new LinkedHashMap<>();
@@ -504,7 +511,8 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
     }
     public static boolean suppressAuthoritativeEntityData(int entityId) {
         return INSTANCE.ready && (INSTANCE.authoritativeEntityAliases.containsKey(entityId)
-                || INSTANCE.hiddenTempFallingEntities.contains(entityId));
+                || INSTANCE.hiddenTempFallingEntities.contains(entityId)
+                || INSTANCE.hiddenPredictedDisplayEntities.containsKey(entityId));
     }
     public static boolean suppressAuthoritativeBreakAnimation(ClientWorld world, BlockPos pos) {
         BlockMutation mutation = INSTANCE.blocks.get(new BlockKey(world, pos.toImmutable()));
@@ -529,9 +537,13 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
     }
     public static boolean hasEntityAlias(int serverEntityId) {
         return INSTANCE.authoritativeEntityAliases.containsKey(serverEntityId)
-                || INSTANCE.hiddenTempFallingEntities.contains(serverEntityId);
+                || INSTANCE.hiddenTempFallingEntities.contains(serverEntityId)
+                || INSTANCE.hiddenPredictedDisplayEntities.containsKey(serverEntityId);
     }
     public static boolean tracksVelocityEntity(int entityId) { return INSTANCE.tracksVelocityEntity0(entityId); }
+    public static boolean removeHiddenEntity(int serverEntityId) {
+        return INSTANCE.removeHiddenEntity0(serverEntityId);
+    }
     public static boolean removeAliasedEntity(int serverEntityId) { return INSTANCE.removeAliasedEntity0(serverEntityId); }
     public static boolean toggleServerTempBlockDebug() {
         INSTANCE.showServerTempBlocks = !INSTANCE.showServerTempBlocks;
@@ -1556,6 +1568,7 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
             abilityStates.clear(); abilityStateReceipts.clear(); experiences.clear(); authoritativeEntityAliases.clear();
             tempFallingEntityAliases.clear();
             hiddenTempFallingEntities.clear();
+            hiddenPredictedDisplayEntities.clear();
             predictedSpawnOrigins.clear();
             predictedTempFallingBlocks.clear();
             serverTempFallingPrepares.clear();
@@ -3459,7 +3472,8 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
             if (tick - action.createdTick > ACTION_RETENTION_TICKS && action.abilities.isEmpty()) continue;
             for (Entity candidate : action.spawned) {
                 if (candidate == null || candidate.getType() != packet.getEntityType()
-                        || authoritativeEntityAliases.containsValue(candidate)) continue;
+                        || authoritativeEntityAliases.containsValue(candidate)
+                        || hiddenPredictedDisplayEntities.containsValue(candidate)) continue;
                 // Match the authoritative spawn to where the predicted entity
                 // was created, not where it has moved during the round trip.
                 // Removed candidates remain tombstones so a short-lived shard
@@ -3471,6 +3485,14 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
             }
         }
         if (best == null) return false;
+        if (best instanceof DisplayEntity) {
+            // Displays are fully simulated by the common client ability. The
+            // server ID is a hidden lifecycle tombstone, not an alias: no
+            // Paper movement, tracker, or destruction path may ever resolve
+            // that ID to the client-owned display.
+            hiddenPredictedDisplayEntities.put(packet.getEntityId(), best);
+            return true;
+        }
         // Keep the local UUID: ClientWorld indexed this entity under that UUID
         // when prediction spawned it. Paper's numeric ID is translated by the
         // alias mixin without corrupting that client-side UUID index.
@@ -3478,8 +3500,13 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
         return true;
     }
 
+    private boolean removeHiddenEntity0(int serverEntityId) {
+        final boolean display = hiddenPredictedDisplayEntities.remove(serverEntityId) != null;
+        return hiddenTempFallingEntities.remove(serverEntityId) || display;
+    }
+
     private boolean removeAliasedEntity0(int serverEntityId) {
-        final boolean hidden = hiddenTempFallingEntities.remove(serverEntityId);
+        final boolean hidden = removeHiddenEntity0(serverEntityId);
         Entity entity = authoritativeEntityAliases.remove(serverEntityId);
         if (entity == null) return hidden;
         final boolean clientOwnedFallingBlock = tempFallingEntityAliases.remove(serverEntityId);

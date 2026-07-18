@@ -25,6 +25,28 @@ class TempBlockWorldIdentityBoundaryTest {
                 "multiple NORMAL worlds cannot all be serialized as minecraft:overworld");
     }
 
+    @Test
+    void directEarthReceiptsUseTheSameNamespacedWorldKeyAsTempBlocks() throws IOException {
+        String server = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
+        String directEarth = between(server,
+                "public void beforeChange(final CoreAbility ability, final Block block,",
+                "private void scheduleTicker()");
+
+        assertTrue(directEarth.contains("worldKey(block.getWorld())"),
+                "moved Earth must carry minecraft:neptune_arenas so Fabric can conceal Paper after a world switch");
+        assertFalse(directEarth.contains("block.getWorld().getName()"),
+                "a bare Bukkit world name is rejected by Fabric outside the overworld");
+
+        String fallingEarth = between(server,
+                "public int beforeSpawn(final CoreAbility ability,",
+                "public void onSpawn(final CoreAbility ability,");
+        assertTrue(fallingEarth.contains("worldKey(location.getWorld())"),
+                "falling Earth prepares must use the same destination-world identity");
+        assertFalse(fallingEarth.contains("location.getWorld().getName()"),
+                "falling Earth cannot fall back to a bare Bukkit world name after a transfer");
+    }
+
     private static String between(String source, String start, String end) {
         int from = source.indexOf(start);
         int to = source.indexOf(end, Math.max(0, from));

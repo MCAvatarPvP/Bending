@@ -184,20 +184,35 @@ public final class CommonPlayerListenerCore {
             return false;
         }
 
-        final Vector horizontal = to.toVector().subtract(from.toVector()).setY(0);
+        final Vector movement = to.toVector().subtract(from.toVector());
+        final Vector horizontal = movement.clone().setY(0);
         final var config = bPlayer != null ? ConfigManager.getConfig(bPlayer) : ConfigManager.defaultConfig.get();
         double maxSpeed = Double.MAX_VALUE;
+        double airMaxSpeed = Double.MAX_VALUE;
         if (hasWaterSpout) {
             maxSpeed = Math.min(maxSpeed, Math.max(0, config.getDouble("Abilities.Water.WaterSpout.FlightSpeed", 0.2)));
         }
         if (hasAirSpout) {
-            maxSpeed = Math.min(maxSpeed, Math.max(0, config.getDouble("Abilities.Air.AirSpout.FlightSpeed", 0.2)));
+            airMaxSpeed = Math.max(0, config.getDouble("Abilities.Air.AirSpout.FlightSpeed", 0.2));
+            maxSpeed = Math.min(maxSpeed, airMaxSpeed);
         }
 
         final double upperMaxSpeed = maxSpeed + 0.01;
-        if (horizontal.lengthSquared() > upperMaxSpeed * upperMaxSpeed) {
-            horizontal.normalize().multiply(maxSpeed);
-            horizontal.setY(player.getVelocity().getY());
+        final Vector cappedVelocity = player.getVelocity();
+        final Vector horizontalVelocity = cappedVelocity.clone().setY(0);
+        final boolean capHorizontal = horizontal.lengthSquared() > upperMaxSpeed * upperMaxSpeed
+                && horizontalVelocity.lengthSquared() > upperMaxSpeed * upperMaxSpeed;
+        final boolean capVertical = hasAirSpout
+                && Math.abs(movement.getY()) > airMaxSpeed + 0.01
+                && Math.abs(cappedVelocity.getY()) > airMaxSpeed + 0.01;
+        if (capHorizontal || capVertical) {
+            if (capHorizontal) {
+                horizontalVelocity.normalize().multiply(maxSpeed);
+                cappedVelocity.setX(horizontalVelocity.getX()).setZ(horizontalVelocity.getZ());
+            }
+            if (capVertical) {
+                cappedVelocity.setY(Math.copySign(airMaxSpeed, cappedVelocity.getY()));
+            }
             final CoreAbility owner = hasAirSpout
                     ? CoreAbility.getAbility(player, AirSpout.class)
                     : CoreAbility.getAbility(player, WaterSpout.class);
@@ -206,9 +221,9 @@ public final class CommonPlayerListenerCore {
                 // the owning ability context so the prediction side records
                 // the same action and impulse ordinal as the server metadata.
                 AbilityExecutionContext.run(owner,
-                        () -> GeneralMethods.setVelocity(owner, player, horizontal));
+                        () -> GeneralMethods.setVelocity(owner, player, cappedVelocity));
             } else {
-                player.setVelocity(horizontal);
+                player.setVelocity(cappedVelocity);
             }
         }
         return true;
