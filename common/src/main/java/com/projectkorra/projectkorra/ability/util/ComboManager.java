@@ -26,6 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class ComboManager {
     private static final long CLEANUP_DELAY = 20 * 60;
+    private static final long COMBO_HISTORY_RETENTION_MILLIS = CLEANUP_DELAY * 50L;
     private static final int MAX_COMBO_HELP_VISIBLE_LENGTH = 72;
     private static final Map<String, ArrayList<AbilityInformation>> RECENTLY_USED = new ConcurrentHashMap<>();
     private static final HashMap<String, ComboAbilityInfo> COMBO_ABILITIES = new HashMap<>();
@@ -86,6 +87,15 @@ public class ComboManager {
             return;
         }
 
+        createComboAbility(player, comboAbil);
+    }
+
+    public static CoreAbility createComboAbility(final Player player, final String abilityName) {
+        final ComboAbilityInfo combo = getComboAbility(abilityName);
+        return combo == null ? null : createComboAbility(player, combo);
+    }
+
+    private static CoreAbility createComboAbility(final Player player, final ComboAbilityInfo comboAbil) {
         Object created = null;
         if (comboAbil.getComboType() instanceof Class) {
             final Class<?> clazz = (Class<?>) comboAbil.getComboType();
@@ -107,7 +117,9 @@ public class ComboManager {
         // an unrelated/unhandled input and immediately remove it.
         if (created instanceof CoreAbility ability && ability.isStarted() && !ability.isRemoved()) {
             AbilityActivationManager.markHandled();
+            return ability;
         }
+        return null;
     }
 
     /**
@@ -126,6 +138,7 @@ public class ComboManager {
             list = new ArrayList<AbilityInformation>();
         }
 
+        pruneExpired(list, System.currentTimeMillis());
         list.add(info);
         RECENTLY_USED.put(name, list);
     }
@@ -147,6 +160,18 @@ public class ComboManager {
                 }
             }
         }
+    }
+
+    public static void removeRecentAbility(final Player player, final AbilityInformation input) {
+        if (player == null || input == null) return;
+        final ArrayList<AbilityInformation> history = RECENTLY_USED.get(player.getName());
+        if (history == null) return;
+        for (int index = history.size() - 1; index >= 0; index--) {
+            if (history.get(index) != input) continue;
+            history.remove(index);
+            break;
+        }
+        if (history.isEmpty()) RECENTLY_USED.remove(player.getName(), history);
     }
 
     /**
@@ -191,7 +216,20 @@ public class ComboManager {
     }
 
     public static void cleanupOldCombos() {
-        RECENTLY_USED.clear();
+        final long now = System.currentTimeMillis();
+        RECENTLY_USED.entrySet().removeIf(entry -> {
+            final ArrayList<AbilityInformation> history = entry.getValue();
+            pruneExpired(history, now);
+            return history.isEmpty();
+        });
+    }
+
+    static void pruneExpired(final List<AbilityInformation> history, final long now) {
+        if (history == null || history.isEmpty()) {
+            return;
+        }
+        final long cutoff = now - COMBO_HISTORY_RETENTION_MILLIS;
+        history.removeIf(info -> info != null && info.getTime() > 0L && info.getTime() < cutoff);
     }
 
     /**
@@ -210,6 +248,11 @@ public class ComboManager {
         }
 
         final ArrayList<AbilityInformation> list = RECENTLY_USED.get(name);
+        pruneExpired(list, System.currentTimeMillis());
+        if (list.isEmpty()) {
+            RECENTLY_USED.remove(name, list);
+            return new ArrayList<AbilityInformation>();
+        }
         if (list.size() < amount) {
             return new ArrayList<AbilityInformation>(list);
         }

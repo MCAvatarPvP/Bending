@@ -14,6 +14,33 @@ import static org.junit.jupiter.api.Assertions.*;
 class PaperPredictionProtocolTest {
 
     @Test
+    void reconcileCarriesTheAuthoritativeInputAndComboOutcome() {
+        UUID session = UUID.randomUUID();
+        PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(
+                PaperPredictionProtocol.reconcile(session, 41L, true, "accepted", 90L,
+                        12_000L, "AirBlast", 1.25, 64.0, -3.5, 0L,
+                        true, true, List.of("AirBlast", "AirSweep")));
+
+        assertEquals(session, reader.uuid());
+        assertEquals(41L, reader.varLong());
+        assertTrue(reader.bool());
+        assertEquals("accepted", reader.string(128));
+        assertEquals(90L, reader.i64());
+        assertEquals(12_000L, reader.i64());
+        assertEquals("AirBlast", reader.string(128));
+        assertEquals(1.25, reader.f64());
+        assertEquals(64.0, reader.f64());
+        assertEquals(-3.5, reader.f64());
+        assertEquals(0L, reader.i64());
+        assertTrue(reader.bool());
+        assertTrue(reader.bool());
+        assertEquals(2, reader.varInt());
+        assertEquals("AirBlast", reader.string(128));
+        assertEquals("AirSweep", reader.string(128));
+        reader.finished();
+    }
+
+    @Test
     void worldStateCarriesOpaqueBukkitWorldIdentity() {
         UUID session = UUID.randomUUID();
         UUID world = UUID.randomUUID();
@@ -28,7 +55,7 @@ class PaperPredictionProtocolTest {
 
     @Test
     void protocolIncludesExactAbilityStateOwnershipFence() {
-        assertEquals(41, PaperPredictionProtocol.VERSION);
+        assertEquals(43, PaperPredictionProtocol.VERSION);
         assertEquals("projectkorra:ability_state_owner", PaperPredictionProtocol.ABILITY_STATE_OWNER);
         UUID owner = UUID.randomUUID();
         UUID target = UUID.randomUUID();
@@ -101,6 +128,36 @@ class PaperPredictionProtocolTest {
         assertEquals(41L, veto.sequence());
         assertEquals(PaperPredictionProtocol.InputKind.LEFT_CLICK, veto.kind());
         assertEquals("AirBurst", veto.ability());
+    }
+
+    @Test
+    void actionTagAndHitClaimDecodeTheClientEvidenceEnvelope() {
+        UUID session = UUID.randomUUID();
+        UUID target = UUID.randomUUID();
+        byte[] tagPayload = new PaperPredictionProtocol.Writer().uuid(session).varLong(17L)
+                .enumeration(PaperPredictionProtocol.InputKind.LEFT_CLICK)
+                .varInt(2).string("AirBlast", 128).bytes();
+        PaperPredictionProtocol.ActionTag tag = PaperPredictionProtocol.readActionTag(tagPayload);
+        assertEquals(session, tag.session());
+        assertEquals(17L, tag.clientSequence());
+        assertEquals(PaperPredictionProtocol.InputKind.LEFT_CLICK, tag.kind());
+        assertEquals(2, tag.selectedSlot());
+        assertEquals("AirBlast", tag.ability());
+
+        byte[] hitPayload = new PaperPredictionProtocol.Writer().uuid(session)
+                .varLong(17L).varLong(16L).i64(400L).uuid(target).varInt(91)
+                .string("AirBlast", 128).f64(1.25).f64(64.9).f64(-3.5).bytes();
+        PaperPredictionProtocol.HitClaim hit = PaperPredictionProtocol.readHitClaim(hitPayload);
+        assertEquals(session, hit.session());
+        assertEquals(17L, hit.clientSequence());
+        assertEquals(16L, hit.serverSequence());
+        assertEquals(400L, hit.clientTick());
+        assertEquals(target, hit.target());
+        assertEquals(91, hit.entityId());
+        assertEquals("AirBlast", hit.ability());
+        assertEquals(1.25, hit.x());
+        assertEquals(64.9, hit.y());
+        assertEquals(-3.5, hit.z());
     }
 
     @Test

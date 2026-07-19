@@ -1033,6 +1033,8 @@ public final class FabricMC {
                     entities.put(nativePlayer.getId(), wrapped);
                 }
             }
+            PredictionServer.augmentNearbyPlayers(value, nativeBox,
+                    AbilityExecutionContext.current(), filter, entities);
             return entities.values();
         }
 

@@ -16,7 +16,7 @@ import java.util.UUID;
 
 /** Wire contract used by the Fabric client and the Paper/Fabric server endpoints. */
 public final class PredictionPayloads {
-    public static final int PROTOCOL_VERSION = 41;
+    public static final int PROTOCOL_VERSION = 43;
     public static final int MAX_BLOCK_STATE_CHARACTERS = 512;
     public static final int MAX_CONFIG_ENTRIES = 16_384;
     public static final int MAX_PROFILES = 2_048;
@@ -135,6 +135,47 @@ public final class PredictionPayloads {
             buf.writeEnumConstant(kind); buf.writeString(ability, 128);
         }
         @Override public Id<InputVeto> getId() { return ID; }
+    }
+
+    /**
+     * Correlates one already-sent vanilla input with the local prediction id.
+     * This metadata cannot schedule or authorize an ability.
+     */
+    public record ActionTag(UUID sessionId, long clientActionSequence, InputKind kind,
+                            int selectedSlot, String ability) implements CustomPayload {
+        public static final Id<ActionTag> ID = id("action_tag");
+        public static final PacketCodec<RegistryByteBuf, ActionTag> CODEC =
+                PacketCodec.of(ActionTag::write, ActionTag::new);
+        private ActionTag(RegistryByteBuf buf) {
+            this(buf.readUuid(), buf.readVarLong(), buf.readEnumConstant(InputKind.class),
+                    buf.readVarInt(), buf.readString(128));
+        }
+        private void write(RegistryByteBuf buf) {
+            buf.writeUuid(sessionId); buf.writeVarLong(clientActionSequence);
+            buf.writeEnumConstant(kind); buf.writeVarInt(selectedSlot); buf.writeString(ability, 128);
+        }
+        @Override public Id<ActionTag> getId() { return ID; }
+    }
+
+    /** Client-observed contact evidence; the server still owns hit resolution. */
+    public record HitClaim(UUID sessionId, long clientActionSequence, long serverActionSequence,
+                           long clientTick, UUID targetUuid, int targetEntityId, String ability,
+                           double contactX, double contactY, double contactZ) implements CustomPayload {
+        public static final Id<HitClaim> ID = id("hit_claim");
+        public static final PacketCodec<RegistryByteBuf, HitClaim> CODEC =
+                PacketCodec.of(HitClaim::write, HitClaim::new);
+        private HitClaim(RegistryByteBuf buf) {
+            this(buf.readUuid(), buf.readVarLong(), buf.readVarLong(), buf.readLong(),
+                    buf.readUuid(), buf.readVarInt(), buf.readString(128),
+                    buf.readDouble(), buf.readDouble(), buf.readDouble());
+        }
+        private void write(RegistryByteBuf buf) {
+            buf.writeUuid(sessionId); buf.writeVarLong(clientActionSequence);
+            buf.writeVarLong(serverActionSequence); buf.writeLong(clientTick);
+            buf.writeUuid(targetUuid); buf.writeVarInt(targetEntityId); buf.writeString(ability, 128);
+            buf.writeDouble(contactX); buf.writeDouble(contactY); buf.writeDouble(contactZ);
+        }
+        @Override public Id<HitClaim> getId() { return ID; }
     }
 
     public record ServerSnapshot(int protocolVersion, UUID sessionId, long serverTick, long serverNowMillis, long configEpoch,
@@ -327,17 +368,21 @@ public final class PredictionPayloads {
 
     public record Reconcile(UUID sessionId, long sequence, boolean accepted, String reason, long serverTick, long serverNowMillis,
                             String ability, double originX, double originY, double originZ,
-                            long cooldownUntil) implements CustomPayload {
+                            long cooldownUntil, boolean inputHandled, boolean comboRecorded,
+                            List<String> createdAbilities) implements CustomPayload {
         public static final Id<Reconcile> ID = id("reconcile");
         public static final PacketCodec<RegistryByteBuf, Reconcile> CODEC = PacketCodec.of(Reconcile::write, Reconcile::new);
         private Reconcile(RegistryByteBuf buf) {
             this(buf.readUuid(), buf.readVarLong(), buf.readBoolean(), buf.readString(128), buf.readLong(), buf.readLong(),
-                    buf.readString(128), buf.readDouble(), buf.readDouble(), buf.readDouble(), buf.readLong());
+                    buf.readString(128), buf.readDouble(), buf.readDouble(), buf.readDouble(), buf.readLong(),
+                    buf.readBoolean(), buf.readBoolean(), readStrings(buf, 64));
         }
         private void write(RegistryByteBuf buf) {
             buf.writeUuid(sessionId); buf.writeVarLong(sequence); buf.writeBoolean(accepted); buf.writeString(reason, 128);
             buf.writeLong(serverTick); buf.writeLong(serverNowMillis); buf.writeString(ability, 128); buf.writeDouble(originX); buf.writeDouble(originY);
-            buf.writeDouble(originZ); buf.writeLong(cooldownUntil);
+            buf.writeDouble(originZ); buf.writeLong(cooldownUntil); buf.writeBoolean(inputHandled);
+            buf.writeBoolean(comboRecorded);
+            writeStrings(buf, createdAbilities);
         }
         @Override public Id<Reconcile> getId() { return ID; }
     }
@@ -523,6 +568,8 @@ public final class PredictionPayloads {
         PayloadTypeRegistry.playC2S().register(ClientHello.ID, ClientHello.CODEC);
         PayloadTypeRegistry.playC2S().register(ClientReady.ID, ClientReady.CODEC);
         PayloadTypeRegistry.playC2S().register(InputVeto.ID, InputVeto.CODEC);
+        PayloadTypeRegistry.playC2S().register(ActionTag.ID, ActionTag.CODEC);
+        PayloadTypeRegistry.playC2S().register(HitClaim.ID, HitClaim.CODEC);
         PayloadTypeRegistry.playS2C().register(ServerWorldState.ID, ServerWorldState.CODEC);
         PayloadTypeRegistry.playS2C().registerLarge(ServerSnapshot.ID, ServerSnapshot.CODEC, 2 * 1024 * 1024);
         PayloadTypeRegistry.playS2C().register(NativeAction.ID, NativeAction.CODEC);

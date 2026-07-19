@@ -5,6 +5,7 @@ import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.ability.Ability;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.activation.AbilityActivationManager;
+import com.projectkorra.projectkorra.ability.util.ComboManager;
 import com.projectkorra.projectkorra.ability.util.MultiAbilityManager;
 import com.projectkorra.projectkorra.ability.util.PassiveManager;
 import com.projectkorra.projectkorra.firebending.FireBlastCharged;
@@ -31,6 +32,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
@@ -44,6 +46,10 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     private static final int CAPABILITY_EXACT = 8;
     private static final int TEMP_BLOCK_OPS_PER_PACKET = 4;
     private static final int MAX_PREDICTION_PERMISSIONS = 512;
+    private static final int CLAIMS_PER_SECOND = 48;
+    private static final double CLAIM_CONTACT_TOLERANCE = 0.75;
+    private static final double CLAIM_QUERY_TOLERANCE = 1.0;
+    private static final double MAX_CLAIM_DISTANCE_SQUARED = 160.0 * 160.0;
     private static final ThreadLocal<UUID> EFFECT_OWNER = new ThreadLocal<>();
     private static final ThreadLocal<Boolean> EFFECT_PREDICTED = new ThreadLocal<>();
     private static final ThreadLocal<Long> INPUT_SEQUENCE = new ThreadLocal<>();
@@ -51,6 +57,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
 
     private final JavaPlugin plugin;
     private final Map<UUID, Session> sessions = new ConcurrentHashMap<>();
+    private final Map<UUID, Deque<EntityFrame>> playerHistory = new HashMap<>();
     private final Map<CoreAbility, Action> abilityActions = Collections.synchronizedMap(new IdentityHashMap<>());
     private final Map<CoreAbility, Action> abilityCreationActions = Collections.synchronizedMap(new IdentityHashMap<>());
     private final Map<Long, Action> tempLayerActions = new HashMap<>();
@@ -146,6 +153,36 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         // server-confirmed hit sound uses ConfirmedHitEffects to opt back into
         // the broadcast without granting the client contact authority.
         return predictedEffectOwner();
+    }
+
+    /** Adds only server-validated historical player boxes to a real ability query. */
+    public static void augmentNearbyPlayers(
+            final World world, final org.bukkit.util.BoundingBox query,
+            final CoreAbility ability,
+            final Predicate<com.projectkorra.projectkorra.platform.mc.entity.Entity> filter,
+            final Map<UUID, com.projectkorra.projectkorra.platform.mc.entity.Entity> result) {
+        final PaperPredictionServer server = active;
+        if (server == null || world == null || query == null || result == null) return;
+        final Action action = ability == null ? null : server.actionForEffect(ability);
+        if (action == null) return;
+        final Iterator<Claim> claims = action.claims.values().iterator();
+        while (claims.hasNext()) {
+            final Claim claim = claims.next();
+            if (claim.expiresTick < server.tick) {
+                claims.remove();
+                continue;
+            }
+            final Player target = Bukkit.getPlayer(claim.target);
+            if (target == null || target.isDead() || target.getWorld() != world) continue;
+            if (!query.clone().expand(CLAIM_QUERY_TOLERANCE).overlaps(claim.rewoundBox)) continue;
+            final com.projectkorra.projectkorra.platform.mc.entity.Entity wrapped = BukkitMC.entity(target);
+            if (wrapped == null || filter != null && !filter.test(wrapped)) continue;
+            result.put(target.getUniqueId(), wrapped);
+            // A claim may extend one real query, once. Consuming it here keeps
+            // abilities with several entity scans in one progress pass from
+            // applying the same damage/velocity impulse repeatedly.
+            claims.remove();
+        }
     }
 
     public static Runnable contextual(Runnable task) {
@@ -362,6 +399,8 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.HELLO, this);
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.READY, this);
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.INPUT_VETO, this);
+        Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.ACTION_TAG, this);
+        Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.HIT_CLAIM, this);
         Bukkit.getMessenger().unregisterOutgoingPluginChannel(plugin);
         sessions.clear();
         abilityActions.clear();
@@ -371,6 +410,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         serverOwnedTempLayers.clear();
         pendingTempBlocks.clear();
         pendingAbilityRemovals.clear();
+        playerHistory.clear();
         TempBlockSync.clear(this);
         DirectBlockSync.clear(this);
         TempFallingBlockSync.clear(this);
@@ -386,6 +426,8 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.HELLO, this);
         messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.READY, this);
         messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.INPUT_VETO, this);
+        messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.ACTION_TAG, this);
+        messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.HIT_CLAIM, this);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.SNAPSHOT);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.WORLD_STATE);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.NATIVE_ACTION);
@@ -473,6 +515,10 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                     case PaperPredictionProtocol.READY -> onReady(player, PaperPredictionProtocol.readReady(message));
                     case PaperPredictionProtocol.INPUT_VETO -> onInputVeto(player,
                             PaperPredictionProtocol.readInputVeto(message));
+                    case PaperPredictionProtocol.ACTION_TAG -> onActionTag(player,
+                            PaperPredictionProtocol.readActionTag(message));
+                    case PaperPredictionProtocol.HIT_CLAIM -> onHitClaim(player,
+                            PaperPredictionProtocol.readHitClaim(message));
                     default -> {
                     }
                 }
@@ -487,6 +533,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     @Override
     public void run() {
         tick++;
+        recordPlayerHistory();
         uncorrelatedExternalVelocityOrdinals.clear();
         flushTempBlocks();
         flushAbilityRemovals();
@@ -907,7 +954,8 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
 
     private void onHello(Player player, PaperPredictionProtocol.Hello hello) {
         if (hello.version() != PaperPredictionProtocol.VERSION) return;
-        Session session = new Session(player.getUniqueId(), UUID.randomUUID(), hello.capabilities());
+        Session session = new Session(player.getUniqueId(), UUID.randomUUID(), hello.capabilities(),
+                hello.clientTick(), tick);
         sessions.put(player.getUniqueId(), session);
         if (snapshotReady) sendSnapshot(session);
         else requestSnapshotRebuild(false);
@@ -928,6 +976,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             // at zero here; no per-cast client packet participates in casting.
             session.actions.clear();
             session.inputVetoes.clear();
+            session.actionTags.clear();
             synchronized (session.directBlockOrdinals) {
                 session.directBlockOrdinals.clear();
             }
@@ -950,6 +999,127 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         // input packet on the same ordered connection. The loaders do not
         // share raw native ordinals, so consume it as a one-shot stream item.
         session.inputVetoes.addLast(veto);
+    }
+
+    private void onActionTag(final Player player, final PaperPredictionProtocol.ActionTag tag) {
+        final Session session = valid(player, tag.session());
+        if (session == null || !session.ready || tag.clientSequence() <= 0L
+                || tag.kind() == null || tag.selectedSlot() < 0 || tag.selectedSlot() > 8
+                || tag.ability() == null || tag.ability().isBlank()) return;
+        if (!attachActionTag(session, tag) && session.actionTags.size() < 128) {
+            session.actionTags.addLast(tag);
+        }
+    }
+
+    private boolean attachActionTag(final Session session,
+                                    final PaperPredictionProtocol.ActionTag tag) {
+        final List<Action> actions = new ArrayList<>(session.actions.values());
+        for (int index = actions.size() - 1; index >= 0; index--) {
+            final Action action = actions.get(index);
+            if (action.clientSequence == 0L && tick - action.acceptedTick <= 4L
+                    && action.kind == tag.kind() && action.selectedSlot == tag.selectedSlot()
+                    && action.ability.equalsIgnoreCase(tag.ability())) {
+                action.clientSequence = tag.clientSequence();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void attachPendingActionTag(final Session session, final Action action) {
+        final Iterator<PaperPredictionProtocol.ActionTag> tags = session.actionTags.iterator();
+        while (tags.hasNext()) {
+            final PaperPredictionProtocol.ActionTag tag = tags.next();
+            if (tag.kind() != action.kind || tag.selectedSlot() != action.selectedSlot
+                    || !action.ability.equalsIgnoreCase(tag.ability())) continue;
+            action.clientSequence = tag.clientSequence();
+            tags.remove();
+            return;
+        }
+    }
+
+    private void onHitClaim(final Player player, final PaperPredictionProtocol.HitClaim hit) {
+        final Session session = valid(player, hit.session());
+        if (session == null || !session.ready
+                || !session.claimLimiter.allow(tick, CLAIMS_PER_SECOND)
+                || hit.clientSequence() <= 0L || hit.clientTick() < 0L
+                || hit.target() == null || hit.ability() == null || hit.ability().isBlank()
+                || !finite(hit.x(), hit.y(), hit.z())) return;
+        final Action action = findClaimAction(session, hit);
+        if (action == null || !action.locallyPredicted
+                || tick - action.acceptedTick > 200L
+                || action.claims.containsKey(hit.target())) return;
+        final Player target = Bukkit.getPlayer(hit.target());
+        if (target == null || target == player || target.isDead()
+                || target.getEntityId() != hit.entityId()
+                || target.getGameMode() == org.bukkit.GameMode.SPECTATOR
+                || target.getWorld() != player.getWorld()) return;
+
+        final int defenderPing = target.getPing();
+        final long rewindTick = session.mapClientTick(hit.clientTick(), tick,
+                player.getPing(), defenderPing);
+        final EntityFrame frame = frameAt(target.getUniqueId(), rewindTick);
+        if (frame == null || !frame.world.equals(target.getWorld().getUID())) return;
+        final Vector contact = new Vector(hit.x(), hit.y(), hit.z());
+        if (!frame.box.clone().expand(CLAIM_CONTACT_TOLERANCE).contains(contact)
+                || contact.distanceSquared(new Vector(action.eyeX, action.eyeY, action.eyeZ))
+                > MAX_CLAIM_DISTANCE_SQUARED) return;
+        final int rewindTicks = HitRewind.combinedRewindTicks(
+                player.getPing(), defenderPing, MAX_REWIND_TICKS);
+        action.claims.put(target.getUniqueId(), new Claim(target.getUniqueId(), rewindTick,
+                tick + Math.max(4, rewindTicks), contact, frame.box.clone()));
+    }
+
+    private Action findClaimAction(final Session session,
+                                   final PaperPredictionProtocol.HitClaim hit) {
+        if (hit.serverSequence() > 0L) {
+            final Action exact = session.actions.get(hit.serverSequence());
+            if (matchesClaimAction(exact, hit)) return exact;
+        }
+        final List<Action> actions = new ArrayList<>(session.actions.values());
+        for (int index = actions.size() - 1; index >= 0; index--) {
+            final Action candidate = actions.get(index);
+            if (candidate.clientSequence == hit.clientSequence()
+                    && matchesClaimAction(candidate, hit)) return candidate;
+        }
+        for (int index = actions.size() - 1; index >= 0; index--) {
+            final Action candidate = actions.get(index);
+            if (tick - candidate.acceptedTick <= 4L && matchesClaimAction(candidate, hit)) return candidate;
+        }
+        return null;
+    }
+
+    private static boolean matchesClaimAction(final Action action,
+                                              final PaperPredictionProtocol.HitClaim hit) {
+        return action != null && hit != null && action.ability.equalsIgnoreCase(hit.ability());
+    }
+
+    private void recordPlayerHistory() {
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            final Deque<EntityFrame> frames = playerHistory.computeIfAbsent(
+                    player.getUniqueId(), ignored -> new ArrayDeque<>());
+            frames.addLast(new EntityFrame(tick, player.getWorld().getUID(), player.getBoundingBox()));
+            while (!frames.isEmpty()
+                    && tick - frames.getFirst().serverTick > MAX_REWIND_TICKS + 4L) {
+                frames.removeFirst();
+            }
+        }
+        playerHistory.keySet().removeIf(uuid -> Bukkit.getPlayer(uuid) == null);
+    }
+
+    private EntityFrame frameAt(final UUID playerId, final long wantedTick) {
+        final Deque<EntityFrame> frames = playerHistory.get(playerId);
+        if (frames == null || frames.isEmpty()) return null;
+        EntityFrame best = frames.getFirst();
+        long bestDistance = Math.abs(best.serverTick - wantedTick);
+        for (EntityFrame frame : frames) {
+            final long distance = Math.abs(frame.serverTick - wantedTick);
+            if (distance < bestDistance) {
+                best = frame;
+                bestDistance = distance;
+            }
+        }
+        return best;
     }
 
     private CommonInputHandler.InputResult processInput(
@@ -981,11 +1151,13 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         if (!predictable) return nativeInput.get();
 
         final Action action = new Action(player.getUniqueId(), sequence, tick,
-                abilityName, origin.getX(), origin.getY(), origin.getZ(), origin.getYaw(), origin.getPitch(),
+                kind, selectedSlot, abilityName, origin.getX(), origin.getY(), origin.getZ(), origin.getYaw(), origin.getPitch(),
                 PredictionActionSeed.from(kind.name(), selectedSlot, abilityName,
                         origin.getX(), origin.getY(), origin.getZ(), origin.getYaw(), origin.getPitch()), true);
         session.actions.put(sequence, action);
+        attachPendingActionTag(session, action);
         Set<CoreAbility> before = identitySet(CoreAbility.getAbilitiesByInstances());
+        final ComboManager.AbilityInformation comboBefore = latestComboInput(commonPlayer);
         boolean hadExistingMatchingAbility = before.stream().anyMatch(candidate -> candidate.getPlayer() != null
                 && candidate.getPlayer().getUniqueId().equals(player.getUniqueId())
                 && matchesInputAbility(candidate, abilityName));
@@ -1006,14 +1178,17 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             if (previousSequence == null) INPUT_SEQUENCE.remove();
             else INPUT_SEQUENCE.set(previousSequence);
         }
+        final boolean comboRecorded = latestComboInput(commonPlayer) != comboBefore;
         while (session.actions.size() > 128) session.actions.remove(session.actions.keySet().iterator().next());
         boolean createdAnyAbility = false;
         boolean createdMatchingAbility = false;
+        final List<String> createdAbilities = new ArrayList<>();
         for (CoreAbility candidate : CoreAbility.getAbilitiesByInstances()) {
             if (candidate.getPlayer() == null || !candidate.getPlayer().getUniqueId().equals(player.getUniqueId()))
                 continue;
             if (!before.contains(candidate)) {
                 createdAnyAbility = true;
+                createdAbilities.add(candidate.getName());
                 abilityCreationActions.putIfAbsent(candidate, action);
                 abilityActions.put(candidate, action);
                 if (matchesInputAbility(candidate, abilityName)) createdMatchingAbility = true;
@@ -1052,7 +1227,9 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         final String reason = locallyRejectedOnCooldown
                 ? action.locallyPredicted ? "accepted_combo" : "client_cooldown"
                 : "accepted";
-        reconcile(player, session, sequence, accepted, reason, abilityName, origin, 0L);
+        createdAbilities.sort(String.CASE_INSENSITIVE_ORDER);
+        reconcile(player, session, sequence, accepted, reason, abilityName, origin, 0L,
+                trackingResult.handled(), comboRecorded, List.copyOf(createdAbilities));
         return nativeResult.get();
     }
 
@@ -1426,9 +1603,11 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     }
 
     private void reconcile(Player player, Session session, long sequence, boolean accepted, String reason,
-                           String ability, Location origin, long cooldown) {
+                           String ability, Location origin, long cooldown, boolean inputHandled,
+                           boolean comboRecorded, List<String> createdAbilities) {
         send(player, PaperPredictionProtocol.RECONCILE, PaperPredictionProtocol.reconcile(session.session, sequence, accepted,
-                reason, tick, System.currentTimeMillis(), ability, origin.getX(), origin.getY(), origin.getZ(), cooldown));
+                reason, tick, System.currentTimeMillis(), ability, origin.getX(), origin.getY(), origin.getZ(), cooldown,
+                inputHandled, comboRecorded, createdAbilities));
         if (isPersistentFlightAbility(ability)) sendState(player, session, true);
     }
 
@@ -1438,6 +1617,13 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                 || ability.equalsIgnoreCase("WaterSpout")
                 || ability.equalsIgnoreCase("FireJet")
                 || ability.equalsIgnoreCase("Flight"));
+    }
+
+    private static ComboManager.AbilityInformation latestComboInput(
+            final com.projectkorra.projectkorra.platform.mc.entity.Player player) {
+        if (player == null) return null;
+        final List<ComboManager.AbilityInformation> recent = ComboManager.getRecentlyUsedAbilities(player, 1);
+        return recent.isEmpty() ? null : recent.get(recent.size() - 1);
     }
 
     private void send(Player player, String channel, byte[] payload) {
@@ -1473,8 +1659,11 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     private static final class Session {
         final UUID player, session;
         final int capabilities;
+        final long helloClientTick, helloServerTick;
         final LinkedHashMap<Long, Action> actions = new LinkedHashMap<>();
         final ArrayDeque<PaperPredictionProtocol.InputVeto> inputVetoes = new ArrayDeque<>();
+        final ArrayDeque<PaperPredictionProtocol.ActionTag> actionTags = new ArrayDeque<>();
+        final RateLimiter claimLimiter = new RateLimiter();
         final LinkedHashMap<DirectBlockCause, Integer> directBlockOrdinals = new LinkedHashMap<>();
         final Set<String> predictedCooldowns = new HashSet<>();
         final TempBlockDeliveryTracker tempLayers = new TempBlockDeliveryTracker();
@@ -1489,10 +1678,19 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                 RegionProtectionAuthority.Snapshot.empty();
         boolean ready;
 
-        Session(UUID player, UUID session, int capabilities) {
+        Session(UUID player, UUID session, int capabilities,
+                long helloClientTick, long helloServerTick) {
             this.player = player;
             this.session = session;
             this.capabilities = capabilities;
+            this.helloClientTick = helloClientTick;
+            this.helloServerTick = helloServerTick;
+        }
+
+        long mapClientTick(final long clientTick, final long currentServerTick,
+                           final int attackerPing, final int defenderPing) {
+            return HitRewind.mapClientTick(helloClientTick, helloServerTick, clientTick,
+                    currentServerTick, attackerPing, defenderPing, MAX_REWIND_TICKS);
         }
     }
 
@@ -1502,6 +1700,8 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     private static final class Action {
         final UUID owner;
         final long sequence, acceptedTick;
+        final PaperPredictionProtocol.InputKind kind;
+        final int selectedSlot;
         final String ability;
         final double eyeX, eyeY, eyeZ;
         final float yaw, pitch;
@@ -1509,16 +1709,21 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         final Map<UUID, Integer> velocityOrdinals = new HashMap<>();
         final Map<UUID, Integer> abilityStateOrdinals = new HashMap<>();
         final Map<String, Integer> directBlockOrdinals = new HashMap<>();
+        final Map<UUID, Claim> claims = new HashMap<>();
+        long clientSequence;
         int tempFallingBlockOrdinal;
         int tempBlockOrdinal;
         boolean locallyPredicted;
 
-        Action(UUID owner, long sequence, long acceptedTick, String ability,
+        Action(UUID owner, long sequence, long acceptedTick,
+               PaperPredictionProtocol.InputKind kind, int selectedSlot, String ability,
                double eyeX, double eyeY, double eyeZ, float yaw, float pitch,
                long deterministicSeed, boolean locallyPredicted) {
             this.owner = owner;
             this.sequence = sequence;
             this.acceptedTick = acceptedTick;
+            this.kind = kind;
+            this.selectedSlot = selectedSlot;
             this.ability = ability;
             this.eyeX = eyeX;
             this.eyeY = eyeY;
@@ -1527,6 +1732,39 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             this.pitch = pitch;
             this.deterministicSeed = deterministicSeed;
             this.locallyPredicted = locallyPredicted;
+        }
+    }
+
+    private static final class Claim {
+        final UUID target;
+        final long rewindTick, expiresTick;
+        final Vector contact;
+        final org.bukkit.util.BoundingBox rewoundBox;
+
+        Claim(UUID target, long rewindTick, long expiresTick, Vector contact,
+              org.bukkit.util.BoundingBox rewoundBox) {
+            this.target = target;
+            this.rewindTick = rewindTick;
+            this.expiresTick = expiresTick;
+            this.contact = contact;
+            this.rewoundBox = rewoundBox;
+        }
+    }
+
+    private record EntityFrame(long serverTick, UUID world,
+                               org.bukkit.util.BoundingBox box) {
+    }
+
+    private static final class RateLimiter {
+        long windowStart;
+        int count;
+
+        boolean allow(final long currentTick, final int maximum) {
+            if (currentTick - windowStart >= 20L) {
+                windowStart = currentTick;
+                count = 0;
+            }
+            return ++count <= maximum;
         }
     }
 

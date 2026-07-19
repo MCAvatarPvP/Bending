@@ -35,6 +35,7 @@ import java.util.UUID;
 /** Network/session owner for exact ProjectKorra client prediction. */
 public final class PredictionClient {
     private static final ThreadLocal<Boolean> INPUT_SNEAK_OVERRIDE = new ThreadLocal<>();
+    private static final ThreadLocal<Integer> INPUT_SLOT_OVERRIDE = new ThreadLocal<>();
     private static final int CAPABILITIES = 1 | 2 | 4 | 8;
     private static final int RUNTIME_RETRY_TICKS = 20;
     private static final int WORLD_TRANSITION_HISTORY_LIMIT = 24;
@@ -56,6 +57,7 @@ public final class PredictionClient {
     private long serverTimeOffsetMillis;
     private long estimatedOneWayLatencyMillis = 0;
     private long lastAuthorityTick = -1;
+    private int maxRewindTicks;
     private double airBlastDecay;
     private boolean chiBlocked;
     private RegionProtectionAuthority.Snapshot regionProtection =
@@ -91,6 +93,10 @@ public final class PredictionClient {
     private final Map<String, Long> cooldowns = new LinkedHashMap<>();
     /** Local start times used only to estimate receipt latency. */
     private final Map<Long, Long> actionStartedAtMillis = new LinkedHashMap<>();
+    private final List<PendingHitClaim> pendingHitClaims = new ArrayList<>();
+    private Packet<?> currentNativeInputPacket;
+    private Packet<?> pendingTaggedPacket;
+    private PendingActionTag pendingActionTag;
     private List<String> elements = List.of();
     private List<String> subElements = List.of();
     private List<String> permissions = List.of();
@@ -175,8 +181,24 @@ public final class PredictionClient {
         if (packet instanceof PlayerMoveC2SPacket movement) recordMovementPacket(client, movement);
     }
 
+    /** Runs after the outer vanilla input packet has entered the connection. */
+    public static void acceptedNativeInputPacket(MinecraftClient client, Packet<?> packet) {
+        INSTANCE.acceptedNativeInputPacket0(packet);
+    }
+
     public static void beforeVanillaPacket(MinecraftClient client, Packet<?> packet) {
         PredictionClient owner = INSTANCE;
+        if (isNativeAbilityInputPacket(packet)) {
+            if (owner.currentNativeInputPacket != null && owner.currentNativeInputPacket != packet) {
+                // The preceding outer packet never reached sendImmediately
+                // (for example, another networking mixin cancelled it). Its
+                // metadata cannot be attached to this later vanilla action.
+                owner.pendingHitClaims.clear();
+                owner.pendingTaggedPacket = null;
+                owner.pendingActionTag = null;
+            }
+            owner.currentNativeInputPacket = packet;
+        }
         if (packet instanceof UpdateSelectedSlotC2SPacket selectedSlot) {
             owner.recordServerVisibleSelectedSlot(client, selectedSlot.getSelectedSlot());
             return;
@@ -253,6 +275,73 @@ public final class PredictionClient {
             });
             return;
         }
+    }
+
+    static void queueExactHitClaim(final long clientActionSequence,
+                                   final long serverActionSequence,
+                                   final String ability,
+                                   final UUID targetUuid,
+                                   final int targetEntityId,
+                                   final double contactX,
+                                   final double contactY,
+                                   final double contactZ) {
+        final PredictionClient owner = INSTANCE;
+        if (!owner.active || owner.sessionId == null || clientActionSequence <= 0L
+                || targetUuid == null || ability == null || ability.isBlank()
+                || !finite(contactX, contactY, contactZ)) return;
+        final PendingHitClaim claim = new PendingHitClaim(clientActionSequence,
+                Math.max(0L, serverActionSequence), owner.clientTick, targetUuid,
+                targetEntityId, ability, contactX, contactY, contactZ);
+        if (owner.currentNativeInputPacket != null) {
+            owner.pendingHitClaims.add(claim);
+        } else {
+            owner.sendHitClaim(claim);
+        }
+    }
+
+    private void acceptedNativeInputPacket0(final Packet<?> packet) {
+        if (packet == null || packet != currentNativeInputPacket) return;
+        currentNativeInputPacket = null;
+        if (packet == pendingTaggedPacket) {
+            final PendingActionTag tag = pendingActionTag;
+            pendingTaggedPacket = null;
+            pendingActionTag = null;
+            if (tag != null && active && sessionId != null
+                    && ClientPlayNetworking.canSend(PredictionPayloads.ActionTag.ID)) {
+                ClientPlayNetworking.send(new PredictionPayloads.ActionTag(sessionId,
+                        tag.clientActionSequence(), tag.kind(), tag.selectedSlot(), tag.ability()));
+            }
+        }
+        flushPendingHitClaims();
+    }
+
+    private void flushPendingHitClaims() {
+        if (pendingHitClaims.isEmpty()) return;
+        final int retention = Math.max(1, maxRewindTicks + 2);
+        final List<PendingHitClaim> claims = List.copyOf(pendingHitClaims);
+        pendingHitClaims.clear();
+        for (PendingHitClaim claim : claims) {
+            if (clientTick - claim.clientTick() <= retention) sendHitClaim(claim);
+        }
+    }
+
+    private void sendHitClaim(final PendingHitClaim claim) {
+        if (claim == null || !active || sessionId == null
+                || !ClientPlayNetworking.canSend(PredictionPayloads.HitClaim.ID)) return;
+        ClientPlayNetworking.send(new PredictionPayloads.HitClaim(sessionId,
+                claim.clientActionSequence(), claim.serverActionSequence(), claim.clientTick(),
+                claim.targetUuid(), claim.targetEntityId(), claim.ability(),
+                claim.contactX(), claim.contactY(), claim.contactZ()));
+    }
+
+    private static boolean isNativeAbilityInputPacket(final Packet<?> packet) {
+        return packet instanceof HandSwingC2SPacket
+                || packet instanceof PlayerActionC2SPacket
+                || packet instanceof ClientCommandC2SPacket
+                || packet instanceof PlayerInputC2SPacket
+                || packet instanceof PlayerInteractBlockC2SPacket
+                || packet instanceof PlayerInteractItemC2SPacket
+                || packet instanceof PlayerInteractEntityC2SPacket;
     }
 
     private void captureSneakState(MinecraftClient client, boolean sneaking) {
@@ -348,7 +437,20 @@ public final class PredictionClient {
         }
     }
 
+    static void withInputSelectedSlot(final int selectedSlot, final Runnable action) {
+        final Integer previous = INPUT_SLOT_OVERRIDE.get();
+        INPUT_SLOT_OVERRIDE.set(selectedSlot);
+        try {
+            action.run();
+        } finally {
+            if (previous == null) INPUT_SLOT_OVERRIDE.remove();
+            else INPUT_SLOT_OVERRIDE.set(previous);
+        }
+    }
+
     public static int serverVisibleSelectedSlot(MinecraftClient client) {
+        final Integer inputSlot = INPUT_SLOT_OVERRIDE.get();
+        if (inputSlot != null && inputSlot >= 0 && inputSlot < 9) return inputSlot;
         int slot = INSTANCE.serverSelectedSlot;
         if (slot >= 0 && slot < 9) return slot;
         return client != null && client.player != null ? client.player.getInventory().getSelectedSlot() : 0;
@@ -436,6 +538,10 @@ public final class PredictionClient {
             nextSequence = 0L;
             readySent = false;
             actionStartedAtMillis.clear();
+            pendingHitClaims.clear();
+            currentNativeInputPacket = null;
+            pendingTaggedPacket = null;
+            pendingActionTag = null;
             serverWorldIdentity = null;
             serverWorldGeneration = -1L;
             clientWorldBoundaryAwaitingIdentity = false;
@@ -443,6 +549,7 @@ public final class PredictionClient {
         sessionId = snapshot.sessionId();
         updateServerClock(snapshot.serverNowMillis());
         lastAuthorityTick = snapshot.serverTick();
+        maxRewindTicks = Math.max(0, snapshot.maxRewindTicks());
         binds.clear(); binds.putAll(snapshot.binds());
         // Prediction still starts every new cooldown immediately. Importing an
         // already-active Paper cooldown here only closes reconnect/world-change
@@ -560,9 +667,13 @@ public final class PredictionClient {
         }
         ExactPredictionRuntime.reconcile(reconcile.sequence(),
                 new Vec3d(reconcile.originX(), reconcile.originY(), reconcile.originZ()),
-                reconcile.ability(), clientCooldownUntil);
+                reconcile.ability(), clientCooldownUntil, reconcile.inputHandled(),
+                reconcile.comboRecorded(), reconcile.createdAbilities());
         debug("reconcile sequence=" + reconcile.sequence() + " accepted=" + reconcile.accepted()
                 + " ability=" + reconcile.ability() + " cooldownUntil=" + reconcile.cooldownUntil()
+                + " handled=" + reconcile.inputHandled()
+                + " comboRecorded=" + reconcile.comboRecorded()
+                + " created=" + reconcile.createdAbilities()
                 + " localCooldownSource=exact-runtime"
                 + " clockOffsetMs=" + serverTimeOffsetMillis
                 + " oneWayMs=" + estimatedOneWayLatencyMillis);
@@ -843,11 +954,6 @@ public final class PredictionClient {
         long sequence = ++nextSequence;
         int selectedSlot = serverVisibleSelectedSlot(client);
         int localSlot = client.player.getInventory().getSelectedSlot();
-        if (suppressInput) {
-            debug("capture native-only sequence=" + sequence + " kind=" + kind + " slot=" + (selectedSlot + 1)
-                    + " localSlot=" + (localSlot + 1) + " reason=legacy-swing-suppression");
-            return;
-        }
         String ability = ExactPredictionRuntime.inputAbilityName(selectedSlot, binds.get(selectedSlot + 1), kind);
         if (ability == null || ability.isBlank()) {
             debug("capture native-only sequence=" + sequence + " kind=" + kind + " slot=" + (selectedSlot + 1)
@@ -869,11 +975,26 @@ public final class PredictionClient {
                 client.player.getYaw(), client.player.getPitch(), client.player.getEyeY() - client.player.getY());
         ServerPose pose = poseForInput(serverPose, localPose);
         Vec3d origin = pose.eyePos();
+        if (suppressInput) {
+            // Preserve the semantic action without executing it. Paper's
+            // post-input receipt decides whether its legacy suppression gate
+            // agreed. If Paper accepted the swing, reconciliation replays this
+            // exact packet-time input through the common runtime client-side.
+            ExactPredictionRuntime.recordNativeOnlyInput(sequence, kind, selectedSlot, pose, ability);
+            actionStartedAtMillis.put(sequence, System.currentTimeMillis());
+            actionStartedAtMillis.entrySet().removeIf(entry -> nextSequence - entry.getKey() > 128);
+            debug("capture native-only sequence=" + sequence + " kind=" + kind + " ability=" + ability
+                    + " slot=" + (selectedSlot + 1) + " localSlot=" + (localSlot + 1)
+                    + " reason=legacy-swing-suppression");
+            return;
+        }
         // Execute first in the same client frame. Networking is independent of
         // the local simulation and never gates its particles or movement.
         final boolean cooldownActiveAtInput = ExactPredictionRuntime.isInputCooldownActive(ability, kind);
         boolean locallyPredicted = ExactPredictionRuntime.shouldPredictInput(ability, kind)
                 && ExactPredictionRuntime.input(sequence, kind, selectedSlot, pose);
+        pendingTaggedPacket = currentNativeInputPacket;
+        pendingActionTag = new PendingActionTag(sequence, kind, selectedSlot, ability);
         // A vanilla input carries no client timestamp. Without this narrow
         // negative gate, an input rejected locally at t=0 can arrive after a
         // short cooldown expires and be replayed by Paper at t=RTT/2. Send the
@@ -938,9 +1059,14 @@ public final class PredictionClient {
         serverTimeOffsetMillis = 0;
         estimatedOneWayLatencyMillis = 0;
         lastAuthorityTick = -1;
+        maxRewindTicks = 0;
         airBlastDecay = 0.0;
         chiBlocked = false;
         regionProtection = RegionProtectionAuthority.Snapshot.empty();
+        pendingHitClaims.clear();
+        currentNativeInputPacket = null;
+        pendingTaggedPacket = null;
+        pendingActionTag = null;
         rightClickBlockUntilTick = -1;
         droppedItem = false;
         previousSneaking = client.player != null && client.player.isSneaking();
@@ -1119,8 +1245,23 @@ public final class PredictionClient {
         return serverCooldownUntil + serverTimeOffsetMillis - estimatedOneWayLatencyMillis;
     }
 
+    private static boolean finite(final double... values) {
+        for (double value : values) if (!Double.isFinite(value)) return false;
+        return true;
+    }
+
     private static void debug(String message) {
         if (DEBUG) System.out.println("[ProjectKorraPrediction] " + message);
+    }
+
+    private record PendingActionTag(long clientActionSequence, PredictionPayloads.InputKind kind,
+                                    int selectedSlot, String ability) {
+    }
+
+    private record PendingHitClaim(long clientActionSequence, long serverActionSequence,
+                                   long clientTick, UUID targetUuid, int targetEntityId,
+                                   String ability, double contactX, double contactY,
+                                   double contactZ) {
     }
 
     public record ServerPose(double x, double y, double z, float yaw, float pitch, double eyeHeight) {

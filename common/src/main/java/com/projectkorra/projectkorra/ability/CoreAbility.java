@@ -154,6 +154,14 @@ public abstract class CoreAbility implements Ability {
      */
     public static void progressAll() {
         for (final CoreAbility abil : orderedInstances(INSTANCES)) {
+                // orderedInstances is a snapshot. Another ability may remove
+                // this instance earlier in the same pass (for example,
+                // FireSpin cancelling AirScooter or FireJet before applying
+                // knockback). Never let that retired locomotion instance run
+                // once more and overwrite the accepted hit velocity.
+                if (abil.isRemoved()) {
+                    continue;
+                }
                 if (abil instanceof PassiveAbility) {
                     if (!((PassiveAbility) abil).isProgressable()) {
                         continue;

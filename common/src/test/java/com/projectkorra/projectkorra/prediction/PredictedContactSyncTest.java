@@ -16,6 +16,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PredictedContactSyncTest {
+    private final AtomicBoolean contactReported = new AtomicBoolean();
+    private final PredictedContactSync.Listener contactSide =
+            (ability, target) -> contactReported.set(true);
     private final CooldownSync.Listener predictionSide = new CooldownSync.Listener() {
         @Override public boolean isAuthoritative() { return false; }
         @Override public void onAdded(CoreAbility source, BendingPlayer player, String ability, long expiresAtMillis) { }
@@ -25,11 +28,13 @@ class PredictedContactSyncTest {
     @AfterEach
     void cleanUp() {
         CooldownSync.clear(predictionSide);
+        PredictedContactSync.clear(contactSide);
     }
 
     @Test
-    void remoteStateIsSuppressedWithoutCreatingAClientHitClaim() {
+    void remoteStateIsSuppressedWhileReportingContactEvidence() {
         CooldownSync.install(predictionSide);
+        PredictedContactSync.install(contactSide);
         DummyAbility ability = new DummyAbility(new FakePlayer(new UUID(1L, 2L)));
         Entity remote = new FakeEntity(new UUID(3L, 4L));
         AtomicBoolean continued = new AtomicBoolean();
@@ -40,6 +45,7 @@ class PredictedContactSyncTest {
         });
 
         assertTrue(continued.get(), "a remote contact must not abandon later TempBlock/visual work");
+        assertTrue(contactReported.get(), "the server-validation path must receive the contact evidence");
         assertFalse(ability.isRemoved(), "suppressing remote state does not itself remove the ability");
     }
 

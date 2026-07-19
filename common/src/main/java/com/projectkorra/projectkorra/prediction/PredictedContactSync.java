@@ -10,6 +10,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Entity;
  */
 public final class PredictedContactSync {
     private static final ThreadLocal<CoreAbility> FORCED_REMOVAL = new ThreadLocal<>();
+    private static volatile Listener listener;
 
     private PredictedContactSync() {
     }
@@ -19,10 +20,9 @@ public final class PredictedContactSync {
      * entity. The caller must suppress that mutation and continue its local
      * visual/world pass.
      *
-     * <p>This boundary intentionally has no callback. Client contacts are not
-     * evidence, are never sent to the server, and cannot add an entity to an
-     * authoritative collision query. Paper/Fabric's server simulation is the
-     * only hit-registration source.</p>
+     * <p>The optional listener may report the contact as evidence. It never
+     * grants damage, velocity, or lifecycle authority; the server must rewind
+     * and validate it through the real ability query.</p>
      */
     public static boolean mark(final Ability ability, final Entity target) {
         if (CooldownSync.isAuthoritative() || !(ability instanceof CoreAbility coreAbility)
@@ -37,7 +37,23 @@ public final class PredictedContactSync {
         // effects. The client's normal range/duration/removal rules remain the
         // lifecycle authority; retaining a permanent "awaiting server" flag
         // made terminal AirBurst rays and other projectiles immortal.
+        final Listener current = listener;
+        if (current != null) {
+            try {
+                current.onPredictedContact(coreAbility, target);
+            } catch (final RuntimeException ignored) {
+                // Evidence transport must never interrupt the visual/world pass.
+            }
+        }
         return true;
+    }
+
+    public static void install(final Listener next) {
+        listener = next;
+    }
+
+    public static void clear(final Listener expected) {
+        if (listener == expected) listener = null;
     }
 
     /** Runs explicit local cleanup or server reconciliation. */
@@ -56,5 +72,10 @@ public final class PredictedContactSync {
 
     public static boolean isForcedRemoval(final CoreAbility ability) {
         return ability != null && FORCED_REMOVAL.get() == ability;
+    }
+
+    @FunctionalInterface
+    public interface Listener {
+        void onPredictedContact(CoreAbility ability, Entity target);
     }
 }

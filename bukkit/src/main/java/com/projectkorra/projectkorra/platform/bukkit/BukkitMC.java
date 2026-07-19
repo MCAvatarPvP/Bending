@@ -794,6 +794,8 @@ public final class BukkitMC {
             Map<UUID, Entity> result = new LinkedHashMap<>();
             value.getNearbyEntities(nativeBox).stream().map(BukkitMC::entity).filter(Objects::nonNull)
                     .filter(entity -> filter == null || filter.test(entity)).forEach(entity -> result.put(entity.getUniqueId(), entity));
+            PaperPredictionServer.augmentNearbyPlayers(value, nativeBox,
+                    AbilityExecutionContext.current(), filter, result);
             return result.values();
         }
 

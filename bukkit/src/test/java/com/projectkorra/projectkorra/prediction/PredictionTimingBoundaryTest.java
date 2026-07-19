@@ -271,7 +271,9 @@ class PredictionTimingBoundaryTest {
         assertFalse(cooldownReconcile.contains("cooldownAuthority.reconcile")
                         || cooldownReconcile.contains("bendingPlayer.removeCooldown"),
                 "periodic Paper snapshots must neither extend nor prematurely retire a locally timed cooldown");
-        assertTrue(client.contains("reconcile.ability(), clientCooldownUntil)"));
+        assertTrue(client.contains("reconcile.ability(), clientCooldownUntil, reconcile.inputHandled(),")
+                        && client.contains("reconcile.comboRecorded(), reconcile.createdAbilities())"),
+                "reconciliation must carry Paper's actual post-input outcome into the client runtime");
         assertTrue(client.contains("rememberAuthoritativeCooldowns(convertCooldowns(snapshot.cooldowns()))"),
                 "a reconnect or world change must retain already-active Paper cooldowns");
         String capture = client.substring(client.indexOf("private void capture(MinecraftClient client"),

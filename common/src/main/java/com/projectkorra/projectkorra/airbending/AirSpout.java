@@ -139,6 +139,9 @@ public class AirSpout extends AirAbility {
 
         this.flightHandler.createInstance(player, this.getName());
         this.start();
+        if (this.isStarted() && !this.isRemoved()) {
+            this.allowFlight();
+        }
     }
 
     /**

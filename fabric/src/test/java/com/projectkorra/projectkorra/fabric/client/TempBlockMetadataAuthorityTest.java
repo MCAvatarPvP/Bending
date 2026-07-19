@@ -45,7 +45,7 @@ class TempBlockMetadataAuthorityTest {
     }
 
     @Test
-    void reconciliationIsBookkeepingOnlyAndCannotRollBackTheClientLifecycle() throws IOException {
+    void reconciliationCannotRejectTheWholeLifecycleOrRollBackTempBlocks() throws IOException {
         Path source = Path.of("src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
         if (!Files.exists(source)) source = Path.of("fabric").resolve(source);
         assertTrue(Files.exists(source), "ExactPredictionRuntime source must be available to the invariant test");
@@ -60,8 +60,13 @@ class TempBlockMetadataAuthorityTest {
         assertTrue(reconciliation.contains("action.reconciled = true")
                         && reconciliation.contains("action.previousAbilityActions.clear()"),
                 "reconciliation must be bookkeeping-only");
-        assertFalse(reconciliation.contains("accepted"),
-                "server metadata must not expose a rejection branch to the local lifecycle");
+        String signature = reconciliation.substring(0, reconciliation.indexOf('{'));
+        assertFalse(signature.contains("boolean accepted")
+                        || reconciliation.contains("if (!accepted")
+                        || reconciliation.contains("if (accepted"),
+                "server metadata must not expose a whole-action rejection branch to the local lifecycle");
+        assertTrue(reconciliation.contains("reconcileCreatedAbilities(action, authoritativeCreated)"),
+                "exact post-input ability outcomes may converge without rolling back unrelated lifecycle state");
         assertFalse(reconciliation.contains("ability::remove")
                         || reconciliation.contains("discardLocalTempBlock")
                         || reconciliation.contains("world.setBlockState"),

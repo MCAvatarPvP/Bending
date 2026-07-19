@@ -106,13 +106,25 @@ public final class CommonPlayerListenerCore {
     public static MovementResult handleMove(final Player player, final Location from, final Location to,
                                             final boolean blockChanged, final boolean jumpDetected,
                                             final double jumpDelta) {
+        return handleMove(player, from, to, blockChanged, jumpDetected, jumpDelta, false);
+    }
+
+    public static MovementResult handlePredictedMove(final Player player, final Location from, final Location to,
+                                                     final boolean blockChanged, final boolean jumpDetected,
+                                                     final double jumpDelta) {
+        return handleMove(player, from, to, blockChanged, jumpDetected, jumpDelta, true);
+    }
+
+    private static MovementResult handleMove(final Player player, final Location from, final Location to,
+                                             final boolean blockChanged, final boolean jumpDetected,
+                                             final double jumpDelta, final boolean locallySimulated) {
         if (from == null || to == null) {
             return MovementResult.pass();
         }
 
         final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
 
-        if (handleSpoutMovement(player, bPlayer, from, to)) {
+        if (handleSpoutMovement(player, bPlayer, from, to, locallySimulated)) {
             return MovementResult.pass();
         }
 
@@ -177,7 +189,8 @@ public final class CommonPlayerListenerCore {
     }
 
     private static boolean handleSpoutMovement(final Player player, final BendingPlayer bPlayer,
-                                               final Location from, final Location to) {
+                                               final Location from, final Location to,
+                                               final boolean locallySimulated) {
         final boolean hasWaterSpout = CoreAbility.hasAbility(player, WaterSpout.class);
         final boolean hasAirSpout = CoreAbility.hasAbility(player, AirSpout.class);
         if (!hasWaterSpout && !hasAirSpout) {
@@ -198,7 +211,12 @@ public final class CommonPlayerListenerCore {
         }
 
         final double upperMaxSpeed = maxSpeed + 0.01;
-        final Vector cappedVelocity = player.getVelocity();
+        // Vanilla flight reaches the server as position updates; Paper and a
+        // dedicated Fabric server do not mirror that self-propelled movement
+        // into Entity#getVelocity. Use the observed per-packet displacement on
+        // the authoritative side so the unchanged cap calculation can reach
+        // its velocity write. Exact client prediction has a real local velocity.
+        final Vector cappedVelocity = locallySimulated ? player.getVelocity() : movement.clone();
         final Vector horizontalVelocity = cappedVelocity.clone().setY(0);
         final boolean capHorizontal = horizontal.lengthSquared() > upperMaxSpeed * upperMaxSpeed
                 && horizontalVelocity.lengthSquared() > upperMaxSpeed * upperMaxSpeed;

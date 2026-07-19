@@ -168,8 +168,8 @@ the ability produces in local play.
   If client and Paper ordinals diverge inside an otherwise known Earth lifecycle, the ordered
   Paper write remains hidden; exact matching is diagnostic bookkeeping, not permission for a
   server-side Earth trail to render.
-- A suppressed remote-player mutation sends no network message and keeps health, velocity,
-  flight, status, and hit registration server-owned, but it does not abort the rest of the common ability
+- A suppressed remote-player mutation keeps health, velocity, flight, and status server-owned.
+  It emits only bounded contact evidence and does not abort the rest of the common ability
   pass. Torrent rings, WaterFlow trails, Discharge branches, and other visuals can finish their
   current world pass when another player intersects them. A contact also cannot make removal
   wait permanently for authority: AirBurst rays and other terminal streams still end through
@@ -213,20 +213,26 @@ the ability produces in local play.
 
 ## Hit registration and trust boundary
 
-Client damage calls do not change health and do not send contact coordinates,
-target IDs, or hit claims. Client contact can only suppress a remote mutation
-while allowing the local visual/world pass to finish. Paper/Fabric's real
-server ability tick and its native entity query are the only sources that can
-register a hit. The server does not advertise or accept a client hit channel,
-does not inject client-selected entities into collision queries, and does not
-rewind a defender from client-provided contact data.
+Client damage calls do not change health. When the real common client ability
+touches a remote player, the client sends one claim for that action and target.
+The claim carries contact evidence only—never damage, velocity, cooldown, or
+lifecycle state. It is queued behind the vanilla input packet and correlated to
+the server action without scheduling an ability itself.
 
-Once the native server collision query finds contact, damage, velocity, impact
-sounds, status effects, and contact rewards commit immediately in normal server
-order. There is no reaction window, defender recheck, ping compensation, or
-deferred effect bundle. This behavior is identical whether either player is
-modded or unmodded. Direct addon damage and `Entity#setVelocity` writes remain
-server authoritative and never become client hit claims.
+Paper/Fabric rate-limit and session-check each claim, require the same player
+UUID and entity ID, and rewind a bounded player-box history. The rewind age is
+the combined one-way latency derived from both attacker and defender RTT, plus
+one scheduling tick, capped at 12 ticks. The claimed point must be inside that
+historical box. An accepted box is exposed only when the real authoritative
+ability query intersects it; the ability still owns range, obstacles, regions,
+damage, knockback, removal, and every other gameplay decision.
+
+Once that real query finds contact, damage, velocity, impact sounds, status
+effects, and contact rewards commit immediately in normal server order. There
+is no delayed reaction window or deferred effect bundle, so hit registration
+cannot reorder or erase knockback. Vanilla attackers continue to use the
+unchanged server-only collision path. Direct addon mutations remain server
+authoritative unless they pass through the common contact boundary.
 
 The server never accepts client health, positive cooldown authorization, block, element, bind,
 source, input schedule, eye pose, or final origin state as authority. A negative cooldown veto

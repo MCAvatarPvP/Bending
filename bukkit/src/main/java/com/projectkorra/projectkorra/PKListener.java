@@ -811,7 +811,7 @@ public class PKListener implements Listener {
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     private void onAbilityVelocity(AbilityVelocityAffectEntityEvent event) {
         var entity = event.getAffected();
         if (entity instanceof FallingBlock fb) {
@@ -824,6 +824,10 @@ public class PKListener implements Listener {
                     event.setCancelled(true);
                 }
             }
+        }
+
+        if (entity instanceof com.projectkorra.projectkorra.platform.mc.entity.Player target) {
+            cancelAirScooterOnHit(target, event.getAbility());
         }
     }
 
@@ -1773,22 +1777,31 @@ public class PKListener implements Listener {
         }
 
         if (event.getEntity() instanceof com.projectkorra.projectkorra.platform.mc.entity.Player target) {
-            BendingPlayer targetBPlayer = BendingPlayer.getBendingPlayer(target);
-            if (targetBPlayer != null) {
-                String abilityName = event.getAbility().getName();
+            cancelAirScooterOnHit(target, event.getAbility());
+        }
+    }
 
-                AirScooter scooter = CoreAbility.getAbility(target, AirScooter.class);
-                if (scooter != null) {
-                    String scooterSettings = scooter.isUsingOldScooter() ? "AirScooter" : "AirSurf";
-                    List<String> scooterCancelList = ConfigManager.getConfig(targetBPlayer).getStringList("Abilities.Air." + scooterSettings + ".CancelOnHit");
-                    for (String cancelAbility : scooterCancelList) {
-                        if (cancelAbility.equalsIgnoreCase(abilityName)) {
-                            scooter.stunned = true;
-                            scooter.remove();
-                            break;
-                        }
-                    }
-                }
+    private void cancelAirScooterOnHit(
+            final com.projectkorra.projectkorra.platform.mc.entity.Player target,
+            final Ability ability) {
+        if (target == null || ability == null) {
+            return;
+        }
+
+        final BendingPlayer targetBPlayer = BendingPlayer.getBendingPlayer(target);
+        final AirScooter scooter = CoreAbility.getAbility(target, AirScooter.class);
+        if (targetBPlayer == null || scooter == null) {
+            return;
+        }
+
+        final String scooterSettings = scooter.isUsingOldScooter() ? "AirScooter" : "AirSurf";
+        final List<String> cancelList = ConfigManager.getConfig(targetBPlayer)
+                .getStringList("Abilities.Air." + scooterSettings + ".CancelOnHit");
+        for (final String cancelAbility : cancelList) {
+            if (cancelAbility.equalsIgnoreCase(ability.getName())) {
+                scooter.stunned = true;
+                scooter.remove();
+                return;
             }
         }
     }

@@ -26,4 +26,15 @@ abstract class ClientConnectionMovementMixin {
                                                       CallbackInfo ci) {
         PredictionClient.acceptedMovementPacket(MinecraftClient.getInstance(), packet);
     }
+
+    @Inject(method = "send(Lnet/minecraft/network/packet/Packet;Lio/netty/channel/ChannelFutureListener;Z)V",
+            at = @At(value = "INVOKE",
+                    target = "Lnet/minecraft/network/ClientConnection;sendImmediately(Lnet/minecraft/network/packet/Packet;Lio/netty/channel/ChannelFutureListener;Z)V",
+                    shift = At.Shift.AFTER))
+    private void projectkorra$flushAcceptedInputMetadata(Packet<?> packet,
+                                                          ChannelFutureListener listener,
+                                                          boolean flush,
+                                                          CallbackInfo ci) {
+        PredictionClient.acceptedNativeInputPacket(MinecraftClient.getInstance(), packet);
+    }
 }

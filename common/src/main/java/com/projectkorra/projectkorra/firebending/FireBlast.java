@@ -307,15 +307,28 @@ public class FireBlast extends FireAbility {
             if (this.verticalKnockback != 0) {
                 knockbackVelocity.setY(knockbackVelocity.getY() + this.verticalKnockback);
             }
-            GeneralMethods.setVelocity(this, entity, knockbackVelocity);
-            entity.setMetadata(NO_KNOCKBACK_METADATA, new FixedMetadataValue(ProjectKorra.plugin, System.currentTimeMillis()));
             if (entity instanceof LivingEntity) {
-                entity.setFireTicks((int) (this.fireTicks * 20));
-                DamageHandler.damageEntity(entity, this.damage, this);
+                // Cancel only Minecraft's damage knockback. Applying the
+                // configured FireBlast velocity before damage lets Paper's
+                // cancelled PlayerVelocityEvent clear that same dirty packet,
+                // especially when CancelOnHit also dismounts AirScooter.
+                entity.setMetadata(NO_KNOCKBACK_METADATA,
+                        new FixedMetadataValue(ProjectKorra.plugin, System.currentTimeMillis()));
+                try {
+                    entity.setFireTicks((int) (this.fireTicks * 20));
+                    DamageHandler.damageEntity(entity, this.damage, this);
+                } finally {
+                    entity.removeMetadata(NO_KNOCKBACK_METADATA, ProjectKorra.plugin);
+                }
+                // CancelOnHit teardown has completed; this must be the final
+                // server velocity write so both vanilla and exact clients keep it.
+                GeneralMethods.setVelocity(this, entity, knockbackVelocity);
                 //GeneralMethods.setVelocity(this, entity, entity.getVelocity().multiply(this.knockback));
                 AirAbility.breakBreathbendingHold(entity);
                 new FireDamageTimer(entity, this.player, this);
                 this.remove();
+            } else {
+                GeneralMethods.setVelocity(this, entity, knockbackVelocity);
             }
         }
     }

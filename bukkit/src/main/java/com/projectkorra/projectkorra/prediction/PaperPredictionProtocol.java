@@ -10,11 +10,13 @@ import java.util.UUID;
  * Raw Bukkit plugin-message codec matching Fabric's RegistryByteBuf layout.
  */
 final class PaperPredictionProtocol {
-    static final int VERSION = 41;
+    static final int VERSION = 43;
     static final int MAX_BLOCK_STATE_CHARACTERS = 512;
     static final String HELLO = "projectkorra:client_hello";
     static final String READY = "projectkorra:client_ready";
     static final String INPUT_VETO = "projectkorra:input_veto";
+    static final String ACTION_TAG = "projectkorra:action_tag";
+    static final String HIT_CLAIM = "projectkorra:hit_claim";
     static final String SNAPSHOT = "projectkorra:server_snapshot";
     static final String WORLD_STATE = "projectkorra:world_state";
     static final String NATIVE_ACTION = "projectkorra:native_action";
@@ -58,6 +60,23 @@ final class PaperPredictionProtocol {
         Reader reader = new Reader(data);
         InputVeto result = new InputVeto(reader.uuid(), reader.varLong(),
                 reader.enumeration(InputKind.values()), reader.string(128));
+        reader.finished();
+        return result;
+    }
+
+    static ActionTag readActionTag(byte[] data) {
+        Reader reader = new Reader(data);
+        ActionTag result = new ActionTag(reader.uuid(), reader.varLong(),
+                reader.enumeration(InputKind.values()), reader.varInt(), reader.string(128));
+        reader.finished();
+        return result;
+    }
+
+    static HitClaim readHitClaim(byte[] data) {
+        Reader reader = new Reader(data);
+        HitClaim result = new HitClaim(reader.uuid(), reader.varLong(), reader.varLong(), reader.i64(),
+                reader.uuid(), reader.varInt(), reader.string(128),
+                reader.f64(), reader.f64(), reader.f64());
         reader.finished();
         return result;
     }
@@ -129,9 +148,13 @@ final class PaperPredictionProtocol {
     }
 
     static byte[] reconcile(UUID session, long sequence, boolean accepted, String reason, long serverTick, long serverNowMillis,
-                            String ability, double x, double y, double z, long cooldown) {
-        return new Writer().uuid(session).varLong(sequence).bool(accepted).string(reason, 128).i64(serverTick)
-                .i64(serverNowMillis).string(ability, 128).f64(x).f64(y).f64(z).i64(cooldown).bytes();
+                            String ability, double x, double y, double z, long cooldown,
+                            boolean inputHandled, boolean comboRecorded, List<String> createdAbilities) {
+        final Writer out = new Writer().uuid(session).varLong(sequence).bool(accepted).string(reason, 128).i64(serverTick)
+                .i64(serverNowMillis).string(ability, 128).f64(x).f64(y).f64(z).i64(cooldown)
+                .bool(inputHandled).bool(comboRecorded);
+        writeStrings(out, createdAbilities);
+        return out.bytes();
     }
 
     static byte[] nativeAction(UUID session, long sequence, long serverTick, InputKind kind,
@@ -286,6 +309,14 @@ final class PaperPredictionProtocol {
     }
 
     record InputVeto(UUID session, long sequence, InputKind kind, String ability) {
+    }
+
+    record ActionTag(UUID session, long clientSequence, InputKind kind, int selectedSlot,
+                     String ability) {
+    }
+
+    record HitClaim(UUID session, long clientSequence, long serverSequence, long clientTick,
+                    UUID target, int entityId, String ability, double x, double y, double z) {
     }
 
     record TempBlockOp(TempOperation operation, String world, int x, int y, int z, String material,

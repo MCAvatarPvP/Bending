@@ -14,6 +14,35 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PredictionActivationBoundaryTest {
     @Test
+    void paperAcceptedSuppressedInputsAndComboOutcomesConvergeClientSide() throws IOException {
+        String client = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/PredictionClient.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/PredictionClient.java");
+        String runtime = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
+        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
+        String fabric = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java");
+        String combos = read("../common/src/main/java/com/projectkorra/projectkorra/ability/util/ComboManager.java",
+                "common/src/main/java/com/projectkorra/projectkorra/ability/util/ComboManager.java");
+
+        assertTrue(client.contains("ExactPredictionRuntime.recordNativeOnlyInput(sequence, kind, selectedSlot, pose, ability)"),
+                "a locally suppressed swing must remain available for semantic Paper association");
+        assertTrue(runtime.contains("!action.executed && (inputHandled || comboRecorded || !authoritativeCreated.isEmpty())")
+                        && runtime.contains("action = replayNativeOnlyAction(action)"),
+                "Paper accepting a missed AirBlast must execute that same input in the client common runtime");
+        assertTrue(runtime.contains("reconcileCreatedAbilities(action, authoritativeCreated)")
+                        && runtime.contains("recoverMissingCombo(action, authoritativeName)"),
+                "differing combo creation outcomes must converge to the authoritative instance set");
+        assertTrue(paper.contains("trackingResult.handled(), comboRecorded, List.copyOf(createdAbilities)")
+                        && fabric.contains("trackingResult.handled(), comboRecorded, List.copyOf(createdAbilities)"),
+                "both authoritative loaders must report the generic post-input outcome");
+        assertFalse(combos.contains("RECENTLY_USED.clear()"),
+                "independently phased cleanup tasks must never erase a fresh combo chain wholesale");
+        assertTrue(combos.contains("pruneExpired(history, now)"));
+    }
+
+    @Test
     void successfulCombosReportTheirDifferentlyNamedRuntimeAbility() throws IOException {
         String combos = read("../common/src/main/java/com/projectkorra/projectkorra/ability/util/ComboManager.java",
                 "common/src/main/java/com/projectkorra/projectkorra/ability/util/ComboManager.java");
@@ -134,17 +163,24 @@ class PredictionActivationBoundaryTest {
                 "remote contacts must not make locally terminal abilities immortal");
         assertFalse(execution.contains("PredictedContactSync.Abort") || contacts.contains("throw Abort"),
                 "suppressing remote state must not abandon the rest of an ability's visual/world pass");
-        assertFalse(contacts.contains("interface Listener") || contacts.contains("onPredictedContact"),
-                "the client contact boundary must have no network-authority callback");
-        assertFalse(predictionClient.contains("sendExactHitClaim") || predictionClient.contains("PendingHitClaim"),
-                "the exact client must not queue or transmit hit registration");
-        assertFalse(payloads.contains("record HitClaim") || payloads.contains("id(\"hit_claim\")"),
-                "the Fabric wire protocol must not expose a client hit payload");
-        assertFalse(fabricServer.contains("onHitClaim") || fabricServer.contains("augmentNearbyPlayers"),
-                "the Fabric server must register hits only from its native ability queries");
-        assertFalse(paperProtocol.contains("projectkorra:hit_claim")
-                        || paperServer.contains("onHit(") || paperServer.contains("augmentNearbyPlayers"),
-                "Paper must not advertise, accept, or inject client-selected hit targets");
+        assertTrue(contacts.contains("interface Listener") && contacts.contains("onPredictedContact"),
+                "suppressed client mutations must emit contact evidence without ending the ability pass");
+        assertTrue(predictionClient.contains("queueExactHitClaim")
+                        && predictionClient.contains("PendingHitClaim"),
+                "the exact client must queue contact evidence behind its vanilla input packet");
+        assertTrue(payloads.contains("record HitClaim") && payloads.contains("id(\"hit_claim\")"),
+                "the Fabric wire protocol must carry the bounded hit claim");
+        assertTrue(fabricServer.contains("onHitClaim") && fabricServer.contains("augmentNearbyPlayers"),
+                "Fabric must validate rewind history before augmenting a real ability query");
+        assertTrue(paperProtocol.contains("projectkorra:hit_claim")
+                        && paperServer.contains("onHitClaim(") && paperServer.contains("augmentNearbyPlayers"),
+                "Paper must decode and independently validate the same hit evidence");
+        assertFalse(paperServer.contains("consumedTick") || fabricServer.contains("consumedTick"),
+                "a successful rewind claim must be removed on its first real query, including within the same tick");
+        assertTrue(contacts.contains("CooldownSync.isAuthoritative()")
+                        && velocity.contains("VelocitySync.publish(velocityAbility, velocityTarget, committedVelocity)")
+                        && velocity.contains("velocityTarget.setVelocity(committedVelocity.clone())"),
+                "a validated rewind hit must use the ability's ordinary authoritative knockback write");
         assertTrue(fabricEntities.contains("private boolean suppressRemoteMutation()")
                 && fabricEntities.contains("!ExactPredictionRuntime.isPredictedOwned(value)"),
                 "direct addon mutations must be blocked without affecting locally spawned ability entities");
@@ -191,7 +227,7 @@ class PredictionActivationBoundaryTest {
     }
 
     @Test
-    void reactionHitRegistrationIsCompletelyAbsent() throws IOException {
+    void hitRegistrationRewindsWithoutDeferringDamageOrVelocity() throws IOException {
         String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
                 "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
         String fabric = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java",
@@ -203,6 +239,12 @@ class PredictionActivationBoundaryTest {
         String config = read("../common/src/main/java/com/projectkorra/projectkorra/configuration/ConfigManager.java",
                 "common/src/main/java/com/projectkorra/projectkorra/configuration/ConfigManager.java");
 
+        assertTrue(paper.contains("HitRewind.combinedRewindTicks")
+                && paper.contains("player.getPing(), defenderPing"));
+        assertTrue(fabric.contains("HitRewind.combinedRewindTicks")
+                && fabric.contains("player.networkHandler.getLatency(), defenderPing"));
+        assertTrue(paper.contains("frame.box.clone().expand(CLAIM_CONTACT_TOLERANCE)")
+                && fabric.contains("frame.box.expand(CLAIM_CONTACT_TOLERANCE)"));
         assertFalse(paper.contains("HitResolutionSync") || paper.contains("pendingNativeReactions"));
         assertFalse(fabric.contains("HitResolutionSync") || fabric.contains("pendingNativeReactions"));
         assertFalse(damage.contains("HitResolutionSync") || velocity.contains("HitResolutionSync"));

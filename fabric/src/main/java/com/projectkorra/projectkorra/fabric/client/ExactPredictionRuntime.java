@@ -114,7 +114,8 @@ import java.util.UUID;
  * calls all pass through the same common classes used by the server.
  */
 public final class ExactPredictionRuntime implements CooldownSync.Listener,
-        TempBlockSync.Listener, TempFallingBlockSync.Listener {
+        TempBlockSync.Listener, TempFallingBlockSync.Listener,
+        PredictedContactSync.Listener {
     private static final ExactPredictionRuntime INSTANCE = new ExactPredictionRuntime();
     private static final ThreadLocal<Long> INPUT_ACTION = new ThreadLocal<>();
     /** Captured Paper event pose; deliberately narrower than effect ownership. */
@@ -128,7 +129,7 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
     private static final int EARTH_CAUSE_RETENTION_TICKS = BLOCK_CONFIRMATION_TICKS;
     private static final Set<String> PERSISTENT_FLIGHT_ABILITIES = Set.of(
             "airscooter", "airspout", "waterspout", "firejet", "flight");
-    private static final boolean DEBUG = Boolean.parseBoolean(System.getProperty("projectkorra.prediction.debug", "true"));
+    private static final boolean DEBUG = Boolean.parseBoolean(System.getProperty("projectkorra.prediction.debug", "false"));
 
     private final Map<Long, Action> actions = new LinkedHashMap<>();
     private final Map<CoreAbility, Long> abilityActions = new IdentityHashMap<>();
@@ -357,6 +358,12 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
         return INSTANCE.input0(sequence, kind, selectedSlot, pose);
     }
 
+    public static void recordNativeOnlyInput(long sequence, PredictionPayloads.InputKind kind,
+                                             int selectedSlot, PredictionClient.ServerPose pose,
+                                             String ability) {
+        INSTANCE.recordNativeOnlyInput0(sequence, kind, selectedSlot, pose, ability);
+    }
+
     public static boolean noteNativeAction(PredictionPayloads.NativeAction action) {
         return INSTANCE.noteNativeAction0(action);
     }
@@ -395,8 +402,10 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
     }
 
     public static void reconcile(long sequence, Vec3d authoritativeOrigin,
-                                  String ability, long cooldownUntil) {
-        INSTANCE.reconcile0(sequence, authoritativeOrigin, ability, cooldownUntil);
+                                  String ability, long cooldownUntil, boolean inputHandled,
+                                  boolean comboRecorded, List<String> createdAbilities) {
+        INSTANCE.reconcile0(sequence, authoritativeOrigin, ability, cooldownUntil,
+                inputHandled, comboRecorded, createdAbilities);
     }
 
     public static BlockState blockState(ClientWorld world, BlockPos pos) {
@@ -644,6 +653,7 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
             CooldownSync.install(this);
             TempBlockSync.install(this);
             TempFallingBlockSync.install(this);
+            PredictedContactSync.install(this);
             updatePlayerState0(binds, cooldowns, elements, subElements, permissions, airBlastDecay,
                     chiBlocked, regionProtection);
             ready = true;
@@ -801,6 +811,20 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
         return (bound == null || !bound.isSneakAbility()) && PassiveManager.hasPassive(player, passive);
     }
 
+    private void recordNativeOnlyInput0(final long sequence, final PredictionPayloads.InputKind kind,
+                                        final int selectedSlot, final PredictionClient.ServerPose pose,
+                                        final String ability) {
+        if (!ready || bendingPlayer == null || pose == null || kind == null) return;
+        final String inputAbility = ability == null || ability.isBlank()
+                ? inputAbilityName0(selectedSlot, bendingPlayer.getAbilities().get(selectedSlot + 1), kind)
+                : ability;
+        final Action action = new Action(sequence, tick, pose.eyePos(), pose.yaw(), pose.pitch(),
+                pose.eyeHeight(), inputAbility, kind, selectedSlot);
+        actions.put(sequence, action);
+        debug("runtime recorded native-only input sequence=" + sequence + " kind=" + kind
+                + " ability=" + inputAbility + " slot=" + (selectedSlot + 1));
+    }
+
     private boolean input0(long sequence, PredictionPayloads.InputKind kind, int selectedSlot,
                            PredictionClient.ServerPose pose) {
         if (!ready || bendingPlayer == null) {
@@ -811,10 +835,12 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
         Set<CoreAbility> before = Collections.newSetFromMap(new IdentityHashMap<>());
         before.addAll(CoreAbility.getAbilitiesByInstances());
         Player player = bendingPlayer.getPlayer();
-        String boundName = inputAbilityName0(player.getInventory().getHeldItemSlot(), bendingPlayer.getBoundAbilityName(), kind);
+        final ComboManager.AbilityInformation comboBefore = latestComboInput(player);
+        String boundName = inputAbilityName0(selectedSlot, bendingPlayer.getAbilities().get(selectedSlot + 1), kind);
         Vec3d origin = pose.eyePos();
         Action action = new Action(sequence, tick, origin, pose.yaw(), pose.pitch(), pose.eyeHeight(),
                 boundName, kind, selectedSlot);
+        action.executed = true;
         actions.put(sequence, action);
         boolean failed = false;
         AbilityActivationManager.TrackingResult trackingResult =
@@ -826,7 +852,7 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
         INPUT_EVENT_POSE.set(sequence);
         AbilityActivationManager.beginTracking();
         try {
-            PredictionDeterminism.run(sequence, action.deterministicSeed, () -> {
+            PredictionClient.withInputSelectedSlot(selectedSlot, () -> PredictionDeterminism.run(sequence, action.deterministicSeed, () -> {
                 switch (kind) {
                     case LEFT_CLICK -> {
                         CommonInputHandler.handleSwing(player, Set.of(), new HashSet<>());
@@ -849,7 +875,7 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
                             player.getInventory().getItemInOffHand() == null
                                     || player.getInventory().getItemInOffHand().getType() == Material.AIR);
                 }
-            });
+            }));
         } catch (Throwable failure) {
             ProjectKorra.log.warning("Predicted input " + sequence + " failed: " + failure.getMessage());
             debug("runtime input failed sequence=" + sequence + " " + failure.getClass().getSimpleName() + ": " + failure.getMessage());
@@ -860,6 +886,10 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
             INPUT_ACTION.remove();
             blocks.entrySet().removeIf(entry -> entry.getValue().lastAction == sequence);
         }
+        action.inputHandled = trackingResult.handled();
+        action.comboInput = latestComboInput(player);
+        action.comboRecorded = action.comboInput != comboBefore;
+        if (!action.comboRecorded) action.comboInput = null;
         for (CoreAbility ability : CoreAbility.getAbilitiesByInstances()) {
             if (!before.contains(ability)) {
                 associateAbility(action, ability);
@@ -955,6 +985,12 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
                 || inputName.equalsIgnoreCase("FireBlastCharged") && ability instanceof FireBlastCharged);
     }
 
+    private static ComboManager.AbilityInformation latestComboInput(final Player player) {
+        if (player == null) return null;
+        final List<ComboManager.AbilityInformation> recent = ComboManager.getRecentlyUsedAbilities(player, 1);
+        return recent.isEmpty() ? null : recent.get(recent.size() - 1);
+    }
+
     private void predictMovement0(MinecraftClient client, PredictionClient.ServerPose fromPose,
                                   PredictionClient.ServerPose toPose) {
         if (!ready || bendingPlayer == null || client == null || client.player == null || client.world == null
@@ -965,7 +1001,7 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
                 new Vec3d(fromPose.x(), fromPose.y(), fromPose.z()), fromPose.yaw(), fromPose.pitch());
         Location to = FabricPredictionMC.location(client.world,
                 new Vec3d(toPose.x(), toPose.y(), toPose.z()), toPose.yaw(), toPose.pitch());
-        CommonPlayerListenerCore.MovementResult result = CommonPlayerListenerCore.handleMove(
+        CommonPlayerListenerCore.MovementResult result = CommonPlayerListenerCore.handlePredictedMove(
                 bendingPlayer.getPlayer(), from, to, false, false, 0.0);
         if (result.cancelEvent()) {
             debug("runtime movement prediction requested cancel from common listener");
@@ -1142,6 +1178,14 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
 
     private long localActionSequence(final long paperSequence) {
         return mappedActionSequence(nativeActionAliases, paperSequence);
+    }
+
+    private long paperActionSequence(final long localSequence) {
+        if (localSequence <= 0L) return 0L;
+        for (Map.Entry<Long, Long> alias : nativeActionAliases.entrySet()) {
+            if (alias.getValue() == localSequence) return alias.getKey();
+        }
+        return 0L;
     }
 
     private long localAcknowledgedSequence(final long paperSequence) {
@@ -1391,7 +1435,8 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
     }
 
     private void reconcile0(long sequence, Vec3d authoritativeOrigin,
-                            String ability, long cooldownUntil) {
+                            String ability, long cooldownUntil, boolean inputHandled,
+                            boolean comboRecorded, List<String> createdAbilities) {
         final long localSequence = localActionSequence(sequence);
         Action action = actions.get(localSequence);
         if (action == null || !action.nativeConfirmed
@@ -1400,6 +1445,24 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
                     + " localSequence=" + localSequence + " ability=" + ability);
             return;
         }
+        final List<String> authoritativeCreated = createdAbilities == null
+                ? List.of() : createdAbilities.stream()
+                .filter(name -> name != null && !name.isBlank())
+                .limit(64).toList();
+        if (!action.executed && (inputHandled || comboRecorded || !authoritativeCreated.isEmpty())) {
+            action = replayNativeOnlyAction(action);
+            if (action == null) {
+                debug("runtime failed to recover accepted native input paperSequence=" + sequence
+                        + " localSequence=" + localSequence + " ability=" + ability);
+                return;
+            }
+        }
+        if (action.comboRecorded && !comboRecorded && action.comboInput != null && bendingPlayer != null) {
+            ComboManager.removeRecentAbility(bendingPlayer.getPlayer(), action.comboInput);
+            action.comboRecorded = false;
+            action.comboInput = null;
+        }
+        reconcileCreatedAbilities(action, authoritativeCreated);
         action.reconciled = true;
         if (cooldownUntil > System.currentTimeMillis() && ability != null && !ability.isBlank()) {
             enforceLocalCooldown(ability, cooldownUntil);
@@ -1416,7 +1479,111 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
                                 + ACTION_BLOCK_CONFIRMATION_MARGIN_TICKS));
         debug("runtime reconcile confirmed paperSequence=" + sequence + " localSequence=" + localSequence
                 + " ability=" + ability
+                + " recovered=" + action.recoveredFromAuthority
+                + " handled=" + inputHandled + " comboRecorded=" + comboRecorded
+                + " created=" + authoritativeCreated
                 + " originDeltaSquared=" + authoritativeOrigin.squaredDistanceTo(action.origin));
+    }
+
+    private Action replayNativeOnlyAction(final Action recorded) {
+        if (recorded == null || recorded.executed) return recorded;
+        final long sequence = recorded.sequence;
+        final PredictionClient.ServerPose pose = new PredictionClient.ServerPose(
+                recorded.origin.x, recorded.origin.y - recorded.eyeHeight, recorded.origin.z,
+                recorded.yaw, recorded.pitch, recorded.eyeHeight);
+        actions.remove(sequence, recorded);
+        input0(sequence, recorded.kind, recorded.selectedSlot, pose);
+        final Action replayed = actions.get(sequence);
+        if (replayed == null) {
+            actions.put(sequence, recorded);
+            return null;
+        }
+        replayed.nativeConfirmed = true;
+        replayed.recoveredFromAuthority = true;
+        debug("runtime replayed Paper-accepted native input sequence=" + sequence
+                + " kind=" + replayed.kind + " ability=" + replayed.inputAbility);
+        return replayed;
+    }
+
+    private void reconcileCreatedAbilities(final Action action,
+                                           final List<String> authoritativeNames) {
+        if (action == null || bendingPlayer == null) return;
+        final Map<String, Integer> remaining = abilityNameCounts(authoritativeNames);
+        for (CoreAbility local : locallyCreatedAbilities(action.sequence)) {
+            final String key = normalizedAbilityName(local.getName());
+            final int count = remaining.getOrDefault(key, 0);
+            if (count > 0) {
+                remaining.put(key, count - 1);
+                continue;
+            }
+            debug("runtime retired client-only input outcome action=" + action.sequence
+                    + " ability=" + local.getName());
+            try {
+                forceRemoveAbility(local);
+            } catch (Throwable ignored) { }
+            abilityActions.remove(local);
+            abilityCreationActions.remove(local);
+            action.abilities.remove(local);
+        }
+
+        final Map<String, Integer> localCounts = abilityNameCounts(
+                locallyCreatedAbilities(action.sequence).stream().map(CoreAbility::getName).toList());
+        for (String authoritativeName : authoritativeNames) {
+            final String key = normalizedAbilityName(authoritativeName);
+            final int count = localCounts.getOrDefault(key, 0);
+            if (count > 0) {
+                localCounts.put(key, count - 1);
+                continue;
+            }
+            if (ComboManager.getComboAbility(authoritativeName) == null) continue;
+            recoverMissingCombo(action, authoritativeName);
+        }
+    }
+
+    private List<CoreAbility> locallyCreatedAbilities(final long sequence) {
+        return abilityCreationActions.entrySet().stream()
+                .filter(entry -> Objects.equals(entry.getValue(), sequence))
+                .map(Map.Entry::getKey)
+                .filter(ability -> ability != null && !ability.isRemoved())
+                .toList();
+    }
+
+    private void recoverMissingCombo(final Action action, final String abilityName) {
+        final Long previousAction = INPUT_ACTION.get();
+        final Long previousPose = INPUT_EVENT_POSE.get();
+        INPUT_ACTION.set(action.sequence);
+        INPUT_EVENT_POSE.set(action.sequence);
+        final CoreAbility[] recovered = {null};
+        try {
+            PredictionClient.withInputSelectedSlot(action.selectedSlot,
+                    () -> PredictionDeterminism.run(action.sequence, action.deterministicSeed,
+                            () -> recovered[0] = ComboManager.createComboAbility(
+                                    bendingPlayer.getPlayer(), abilityName)));
+        } finally {
+            if (previousAction == null) INPUT_ACTION.remove(); else INPUT_ACTION.set(previousAction);
+            if (previousPose == null) INPUT_EVENT_POSE.remove(); else INPUT_EVENT_POSE.set(previousPose);
+        }
+        final CoreAbility combo = recovered[0];
+        if (combo == null || combo.isRemoved()) return;
+        associateAbility(action, combo);
+        abilityCreationActions.put(combo, action.sequence);
+        action.recoveredFromAuthority = true;
+        debug("runtime recovered server-created combo action=" + action.sequence
+                + " ability=" + combo.getName());
+    }
+
+    private static Map<String, Integer> abilityNameCounts(final List<String> names) {
+        final Map<String, Integer> counts = new HashMap<>();
+        if (names == null) return counts;
+        for (String name : names) {
+            if (name == null || name.isBlank()) continue;
+            counts.merge(normalizedAbilityName(name), 1, Integer::sum);
+        }
+        return counts;
+    }
+
+    private static String normalizedAbilityName(final String name) {
+        return name == null ? "" : name.toLowerCase(Locale.ROOT);
     }
 
     /**
@@ -1576,6 +1743,7 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
             observedFallingBlockSpawns.clear();
             TempBlockSync.clear(this);
             TempFallingBlockSync.clear(this);
+            PredictedContactSync.clear(this);
             CooldownSync.clear(this);
             cooldownAuthority.clear();
             platform = null; bendingManager = null; bendingPlayer = null; ready = false; managersStarted = false;
@@ -2537,6 +2705,23 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
         predictedDirectBlocks.entrySet().removeIf(entry ->
                 tick - entry.getValue().createdTick
                         > blockConfirmationTicks(entry.getKey().actionSequence));
+    }
+
+    @Override
+    public void onPredictedContact(final CoreAbility ability,
+                                   final com.projectkorra.projectkorra.platform.mc.entity.Entity target) {
+        if (!ready || ability == null || !(target instanceof Player)
+                || target.isDead() || !target.isValid()) return;
+        final long sequence = abilityActions.getOrDefault(ability, currentAction());
+        final Action action = actions.get(sequence);
+        if (action == null || !action.claimedTargets.add(target.getUniqueId())) return;
+        final Vector contact = target.getBoundingBox().getCenter();
+        PredictionClient.queueExactHitClaim(sequence, paperActionSequence(sequence),
+                action.inputAbility, target.getUniqueId(), target.getEntityId(),
+                contact.getX(), contact.getY(), contact.getZ());
+        debug("runtime queued rewound hit claim action=" + sequence
+                + " paperAction=" + paperActionSequence(sequence)
+                + " ability=" + action.inputAbility + " target=" + target.getUniqueId());
     }
 
     private void setVelocity0(Entity entity, Vec3d velocity) {
@@ -3923,11 +4108,17 @@ public final class ExactPredictionRuntime implements CooldownSync.Listener,
         final Map<Integer, Integer> velocityOrdinals = new HashMap<>();
         final Map<Integer, Integer> abilityStateOrdinals = new HashMap<>();
         final Map<String, Integer> directBlockOrdinals = new HashMap<>();
+        final Set<UUID> claimedTargets = new HashSet<>();
         int tempFallingBlockOrdinal;
         int tempBlockOrdinal;
         boolean reconciled;
         boolean nativeConfirmed;
         boolean locallyPredicted;
+        boolean executed;
+        boolean inputHandled;
+        boolean comboRecorded;
+        boolean recoveredFromAuthority;
+        ComboManager.AbilityInformation comboInput;
         int blockConfirmationTicks = BLOCK_CONFIRMATION_TICKS;
         private Action(long sequence, long createdTick, Vec3d origin, float yaw, float pitch,
                        double eyeHeight, String inputAbility, PredictionPayloads.InputKind kind,
