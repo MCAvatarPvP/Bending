@@ -157,8 +157,12 @@ public final class CommonInputHandler {
             }
         }
 
-        if (coreAbility != null && !wasSneaking) {
-            final ActivationContext context = new ActivationContext(player, bPlayer, ClickType.SHIFT_DOWN);
+        if (coreAbility != null) {
+            // Dispatch both edges. Most abilities only register SHIFT_DOWN,
+            // while stateful abilities such as EarthSmash need SHIFT_UP to be
+            // an ordered transition of the existing instance. Deferring that
+            // release to progress lets a following SHIFT_DOWN overtake it.
+            final ActivationContext context = new ActivationContext(player, bPlayer, type);
             AbilityActivationManager.dispatch(context);
             finishSneakCombo(player);
             return new InputResult(context.shouldCancelEvent());

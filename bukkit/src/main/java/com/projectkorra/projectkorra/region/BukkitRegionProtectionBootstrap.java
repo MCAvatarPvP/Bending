@@ -2,7 +2,7 @@ package com.projectkorra.projectkorra.region;
 
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
-import com.projectkorra.projectkorra.prediction.RegionProtectionAuthority;
+import com.projectkorra.projectkorra.prediction.authority.RegionProtectionAuthority;
 
 import java.util.List;
 

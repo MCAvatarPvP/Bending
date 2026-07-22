@@ -25,7 +25,7 @@ import com.projectkorra.projectkorra.platform.mc.inventory.PlayerInventory;
 import com.projectkorra.projectkorra.platform.mc.inventory.meta.PotionMeta;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionType;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
-import com.projectkorra.projectkorra.prediction.EntityHitboxProvider;
+import com.projectkorra.projectkorra.prediction.hit.EntityHitboxProvider;
 import com.projectkorra.projectkorra.util.BlockSource;
 import com.projectkorra.projectkorra.util.ClickType;
 import com.projectkorra.projectkorra.util.TempBlock;

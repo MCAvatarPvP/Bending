@@ -18,7 +18,8 @@ import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
-import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
+import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
+import com.projectkorra.projectkorra.prediction.movement.SpoutMovementPolicy;
 import com.projectkorra.projectkorra.util.*;
 import com.projectkorra.projectkorra.waterbending.WaterSpout;
 import com.projectkorra.projectkorra.waterbending.blood.Bloodbending;
@@ -216,7 +217,8 @@ public final class CommonPlayerListenerCore {
         // into Entity#getVelocity. Use the observed per-packet displacement on
         // the authoritative side so the unchanged cap calculation can reach
         // its velocity write. Exact client prediction has a real local velocity.
-        final Vector cappedVelocity = locallySimulated ? player.getVelocity() : movement.clone();
+        final Vector cappedVelocity = SpoutMovementPolicy.initialVelocity(
+                hasWaterSpout, locallySimulated, movement, player.getVelocity());
         final Vector horizontalVelocity = cappedVelocity.clone().setY(0);
         final boolean capHorizontal = horizontal.lengthSquared() > upperMaxSpeed * upperMaxSpeed
                 && horizontalVelocity.lengthSquared() > upperMaxSpeed * upperMaxSpeed;

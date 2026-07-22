@@ -44,7 +44,7 @@ import com.projectkorra.projectkorra.platform.mc.damage.DamageType;
 import com.projectkorra.projectkorra.platform.mc.entity.FallingBlock;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Projectile;
-import com.projectkorra.projectkorra.prediction.PaperPredictionServer;
+import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.*;
 import com.projectkorra.projectkorra.util.FlightHandler.Flight;

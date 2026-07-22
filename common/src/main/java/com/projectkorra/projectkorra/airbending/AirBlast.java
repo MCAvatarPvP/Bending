@@ -29,10 +29,6 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.scheduler.BukkitRunnable;
 import com.projectkorra.projectkorra.platform.mc.util.BlockIterator;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
-import com.projectkorra.projectkorra.prediction.AirBlastTraceSync;
-import com.projectkorra.projectkorra.prediction.AbilityRemovalSync;
-import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
-import com.projectkorra.projectkorra.prediction.PredictedContactSync;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.AbilityLagCompensator;
 import com.projectkorra.projectkorra.util.DamageHandler;
@@ -99,13 +95,7 @@ public class AirBlast extends AirAbility {
     private double preShootStamina;
     private boolean usedStaminaThisShot;
     private boolean pushed;
-    private Location launchEye;
-    private Location launchTarget;
     private double shotStamina;
-    private int traceOrdinal;
-    private boolean selfContactTraced;
-    private boolean terminalTracePublished;
-    private long traceActionSequence;
 
     private AbilityLagCompensator lagCompensator;
 
@@ -211,7 +201,8 @@ public class AirBlast extends AirAbility {
         return removed;
     }
 
-    public static Location getTargetedLocation(final Player player, final double range, final Material... nonOpaque2) {
+    public static Location getTargetedLocation(final Player player, final double range,
+                                               final Material... nonOpaque2) {
         // Preserve the exact pre-module-split AirBlast contract. This marcher
         // returns a point on the player's view ray and backs up one 0.2-block
         // step before an obstruction. Deriving a distance from a target
@@ -268,10 +259,6 @@ public class AirBlast extends AirAbility {
         this.preShootStamina = bPlayer.getAirBlastDecay();
         this.usedStaminaThisShot = false;
         this.shotStamina = Double.NaN;
-        this.traceOrdinal = 0;
-        this.selfContactTraced = false;
-        this.terminalTracePublished = false;
-        this.traceActionSequence = 0L;
         this.lastWhirlSoundTime = 0L;
     }
 
@@ -311,8 +298,7 @@ public class AirBlast extends AirAbility {
     private void advanceLocation() {
         this.direction = this.getValidDirection(this.direction);
         if (this.direction == null) {
-            this.traceAndRemove(AirBlastTraceSync.Phase.REMOVE_INVALID_DIRECTION,
-                    this.location == null ? null : this.location.getBlock());
+            this.remove();
             return;
         }
 
@@ -330,14 +316,11 @@ public class AirBlast extends AirAbility {
         while (blocks.hasNext() && checkLocation(blocks.next())) ;
 
         this.location.add(this.direction.clone().multiply(speedFactor));
-        if (this.ticks <= 3) {
-            this.publishTrace(AirBlastTraceSync.Phase.ADVANCE, this.location, this.location.getBlock());
-        }
     }
 
     public boolean checkLocation(Block block) {
         if (GeneralMethods.checkDiagonalWall(block.getLocation(), this.direction)) {
-            this.traceAndRemove(AirBlastTraceSync.Phase.BLOCKED, block);
+            this.remove();
             return false;
         }
 
@@ -351,7 +334,7 @@ public class AirBlast extends AirAbility {
                     new TempBlock(block, Material.COBBLESTONE);
                 }
             }
-            this.traceAndRemove(AirBlastTraceSync.Phase.BLOCKED, block);
+            this.remove();
             return false;
         }
 
@@ -370,11 +353,6 @@ public class AirBlast extends AirAbility {
         }
 
         final boolean isUser = entity.getUniqueId().equals(this.player.getUniqueId());
-        if (isUser && !this.selfContactTraced) {
-            this.selfContactTraced = true;
-            this.publishTrace(AirBlastTraceSync.Phase.SELF_CONTACT, location,
-                    location == null ? null : location.getBlock());
-        }
         double knockback = this.pushFactorForOthers;
 
         if (isUser) {
@@ -504,27 +482,22 @@ public class AirBlast extends AirAbility {
     @Override
     public void progress() {
         if (this.player.isDead() || !this.player.isOnline()) {
-            this.traceAndRemove(AirBlastTraceSync.Phase.REMOVE_PLAYER_STATE,
-                    this.location == null ? null : this.location.getBlock());
+            this.remove();
             return;
         } else if (RegionProtection.isRegionProtected(this, this.location)) {
-            this.traceAndRemove(AirBlastTraceSync.Phase.REMOVE_REGION,
-                    this.location == null ? null : this.location.getBlock());
+            this.remove();
             return;
         }
 
         if (!progressing) {
             if (!origin.getWorld().equals(player.getWorld())) {
-                this.traceAndRemove(AirBlastTraceSync.Phase.REMOVE_SOURCE_WORLD,
-                        this.location == null ? null : this.location.getBlock());
+                this.remove();
                 return;
             } else if (!bPlayer.canBendIgnoreCooldowns(getAbility("AirBlast"))) {
-                this.traceAndRemove(AirBlastTraceSync.Phase.REMOVE_CANNOT_BEND,
-                        this.location == null ? null : this.location.getBlock());
+                this.remove();
                 return;
             } else if (origin.distanceSquared(player.getEyeLocation()) > getSelectRange(bPlayer) * getSelectRange(bPlayer)) {
-                this.traceAndRemove(AirBlastTraceSync.Phase.REMOVE_SOURCE_RANGE,
-                        this.location == null ? null : this.location.getBlock());
+                this.remove();
                 return;
             }
 
@@ -536,15 +509,11 @@ public class AirBlast extends AirAbility {
         this.ticks++;
 
         if (this.ticks > MAX_TICKS) {
-            this.traceAndRemove(AirBlastTraceSync.Phase.REMOVE_TICK_LIMIT,
-                    this.location == null ? null : this.location.getBlock());
+            this.remove();
             return;
         }
 
         final Block block = this.location.getBlock();
-        if (this.ticks <= 3) {
-            this.publishTrace(AirBlastTraceSync.Phase.PROGRESS, this.location, block);
-        }
 
         for (final Block testblock : GeneralMethods.getBlocksAroundPoint(this.location, this.radius)) {
             if (GeneralMethods.isRegionProtectedFromBuild(this, block.getLocation())) {
@@ -573,12 +542,12 @@ public class AirBlast extends AirAbility {
 
                         if (bf == face) {
                             if (!door.isOpen()) {
-                                this.traceAndRemove(AirBlastTraceSync.Phase.REMOVE_DOOR, testblock);
+                                this.remove();
                                 return;
                             }
                         } else if (bf.getOppositeFace() == face) {
                             if (door.isOpen()) {
-                                this.traceAndRemove(AirBlastTraceSync.Phase.REMOVE_DOOR, testblock);
+                                this.remove();
                                 return;
                             }
                         }
@@ -595,12 +564,12 @@ public class AirBlast extends AirAbility {
 
                     if (this.origin.getY() < block.getY()) {
                         if (!tDoor.isOpen()) {
-                            this.traceAndRemove(AirBlastTraceSync.Phase.REMOVE_TRAPDOOR, testblock);
+                            this.remove();
                             return;
                         }
                     } else {
                         if (tDoor.isOpen()) {
-                            this.traceAndRemove(AirBlastTraceSync.Phase.REMOVE_TRAPDOOR, testblock);
+                            this.remove();
                             return;
                         }
                     }
@@ -662,8 +631,7 @@ public class AirBlast extends AirAbility {
             dist = this.location.distance(this.origin);
         }
         if (Double.isNaN(dist) || dist > this.range) {
-            this.traceAndRemove(AirBlastTraceSync.Phase.REMOVE_RANGE,
-                    this.location == null ? null : this.location.getBlock());
+            this.remove();
             return;
         }
 
@@ -711,7 +679,6 @@ public class AirBlast extends AirAbility {
         this.speed = applyStaminaScaling(this.speed, this.shotStamina, this.speedStaminaScale);
         this.range = applyStaminaScaling(this.range, this.shotStamina, this.rangeStaminaScale);
 
-        this.launchEye = player.getEyeLocation().clone();
         Location targetedLocation = getTargetedLocation(player, this.range);
         Block block = targetedLocation.getBlock();
         if (!GeneralMethods.isSolid(block) && GeneralMethods.isSolid(block.getRelative(BlockFace.DOWN))) {
@@ -736,92 +703,9 @@ public class AirBlast extends AirAbility {
         }
 
         this.location = this.origin.clone();
-        this.launchTarget = targetedLocation.clone();
         this.progressing = true;
         this.bPlayer.addCooldown(this);
         this.lagCompensator = new AbilityLagCompensator((p, snapshot) -> affect(p, snapshot.getLocation()));
-        this.traceActionSequence = PredictionDeterminism.currentAction();
-        this.publishTrace(AirBlastTraceSync.Phase.LAUNCH, this.location, targetedLocation.getBlock());
-    }
-
-    private void traceAndRemove(final AirBlastTraceSync.Phase phase, final Block sampleBlock) {
-        if (!this.isRemoved() && !this.terminalTracePublished && this.traceOrdinal > 0 && this.source == null) {
-            this.terminalTracePublished = true;
-            this.publishTrace(phase, this.location, sampleBlock);
-        }
-        this.remove();
-    }
-
-    @Override
-    public void remove() {
-        // Collisions, reconciliation cleanup and other callers can end the
-        // instance without passing through one of progress()'s explicit
-        // branches. Preserve that terminal edge as evidence too. Publishing
-        // before super.remove() keeps the ability/action identity available
-        // and cannot affect gameplay because AirBlastTraceSync is read-only.
-        if (!this.isRemoved() && !this.terminalTracePublished && this.traceOrdinal > 0 && this.source == null) {
-            this.terminalTracePublished = true;
-            final AirBlastTraceSync.Phase phase = PredictedContactSync.isForcedRemoval(this)
-                    ? AirBlastTraceSync.Phase.REMOVE_AUTHORITATIVE
-                    : AbilityRemovalSync.isCollisionCause()
-                    ? AirBlastTraceSync.Phase.REMOVE_COLLISION
-                    : AirBlastTraceSync.Phase.REMOVE_EXTERNAL;
-            this.publishTrace(phase, this.location,
-                    this.location == null ? null : this.location.getBlock());
-        }
-        super.remove();
-    }
-
-    private void publishTrace(final AirBlastTraceSync.Phase phase, final Location sampleLocation,
-                              final Block sampleBlock) {
-        if (!AirBlastTraceSync.isEnabled()) return;
-        // AirBurst fans out many internal AirBlast instances. This probe is
-        // deliberately scoped to the ordinary staged/direct AirBlast input so
-        // one reproduction has one unambiguous action/event stream.
-        if (this.source != null) return;
-        final Location eye = this.launchEye != null ? this.launchEye : this.player.getEyeLocation();
-        final Location traceOrigin = this.origin;
-        final Location target = this.launchTarget;
-        final Location sample = sampleLocation != null ? sampleLocation : this.location;
-        final Vector traceDirection = this.direction;
-        AirBlastTraceSync.publish(this, new AirBlastTraceSync.Trace(
-                ++this.traceOrdinal, phase, this.ticks,
-                coordinate(eye, Axis.X), coordinate(eye, Axis.Y), coordinate(eye, Axis.Z),
-                eye == null ? Float.NaN : eye.getYaw(), eye == null ? Float.NaN : eye.getPitch(),
-                coordinate(traceOrigin, Axis.X), coordinate(traceOrigin, Axis.Y), coordinate(traceOrigin, Axis.Z),
-                coordinate(target, Axis.X), coordinate(target, Axis.Y), coordinate(target, Axis.Z),
-                coordinate(sample, Axis.X), coordinate(sample, Axis.Y), coordinate(sample, Axis.Z),
-                component(traceDirection, Axis.X), component(traceDirection, Axis.Y), component(traceDirection, Axis.Z),
-                this.speed, this.range, this.radius, this.preShootStamina, this.shotStamina,
-                sampleBlock == null ? Integer.MIN_VALUE : sampleBlock.getX(),
-                sampleBlock == null ? Integer.MIN_VALUE : sampleBlock.getY(),
-                sampleBlock == null ? Integer.MIN_VALUE : sampleBlock.getZ(),
-                sampleBlock == null || sampleBlock.getType() == null ? "" : sampleBlock.getType().name(),
-                this.isRemoved()));
-    }
-
-    private static double coordinate(final Location location, final Axis axis) {
-        if (location == null) return Double.NaN;
-        return switch (axis) {
-            case X -> location.getX();
-            case Y -> location.getY();
-            case Z -> location.getZ();
-        };
-    }
-
-    private static double component(final Vector vector, final Axis axis) {
-        if (vector == null) return Double.NaN;
-        return switch (axis) {
-            case X -> vector.getX();
-            case Y -> vector.getY();
-            case Z -> vector.getZ();
-        };
-    }
-
-    private enum Axis { X, Y, Z }
-
-    public long getTraceActionSequence() {
-        return this.traceActionSequence;
     }
 
     private Vector getValidDirection(final Vector direction) {

@@ -12,26 +12,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DisplayInterpolationBoundaryTest {
     @Test
     void paperDisplayLifecycleIsHiddenWithoutAliasingThePredictedDisplay() throws IOException {
-        Path runtimeSource = Path.of("src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
+        Path runtimeSource = Path.of("src/main/java/com/projectkorra/projectkorra/fabric/client/prediction/entity/ClientEntityReconciliation.java");
         if (!Files.exists(runtimeSource)) runtimeSource = Path.of("fabric").resolve(runtimeSource);
-        final String runtime = Files.readString(runtimeSource);
-        final int removalStart = runtime.indexOf("private boolean removeAliasedEntity0");
-        final int removalEnd = runtime.indexOf("private long currentAction()", removalStart);
-        assertTrue(removalStart >= 0 && removalEnd > removalStart);
-        final String removal = runtime.substring(removalStart, removalEnd);
-        final int spawnStart = runtime.indexOf("private boolean reconcileSpawn0");
-        final int spawnEnd = runtime.indexOf("private boolean removeAliasedEntity0", spawnStart);
-        assertTrue(spawnStart >= 0 && spawnEnd > spawnStart);
-        final String spawn = runtime.substring(spawnStart, spawnEnd);
+        final String entityAuthority = Files.readString(runtimeSource);
 
-        assertTrue(runtime.contains("private final Map<Integer, Entity> hiddenPredictedDisplayEntities"),
+        assertTrue(entityAuthority.contains("Map<Integer, Entity> hiddenPredictedDisplays"),
                 "Paper display IDs need a tombstone ledger that never exposes the predicted entity");
-        assertTrue(spawn.contains("best instanceof DisplayEntity")
-                        && spawn.contains("hiddenPredictedDisplayEntities.put(packet.getEntityId(), best)")
-                        && spawn.indexOf("hiddenPredictedDisplayEntities.put(packet.getEntityId(), best)")
-                        < spawn.indexOf("authoritativeEntityAliases.put(packet.getEntityId(), best)"),
+        assertTrue(entityAuthority.contains("best instanceof DisplayEntity")
+                        && entityAuthority.contains("hiddenPredictedDisplays.put(packet.getEntityId(), best)")
+                        && entityAuthority.indexOf("hiddenPredictedDisplays.put(packet.getEntityId(), best)")
+                        < entityAuthority.indexOf("authoritativeAliases.put(packet.getEntityId(), best)"),
                 "the Paper spawn must be hidden before generic aliasing can expose the local display");
-        assertTrue(removal.contains("removeHiddenEntity0(serverEntityId)"),
+        assertTrue(entityAuthority.contains("final boolean hidden = removeHidden(serverEntityId)"),
                 "Paper removal must close only its hidden ID tombstone, never the predicted display");
 
         Path packetSource = Path.of("src/main/java/com/projectkorra/projectkorra/fabric/mixin/client/ClientPlayNetworkHandlerPredictionMixin.java");

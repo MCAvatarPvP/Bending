@@ -4,7 +4,7 @@ import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.PassiveAbility;
 import com.projectkorra.projectkorra.earthbending.EarthSmash;
 import com.projectkorra.projectkorra.event.AbilityCollisionEvent;
-import com.projectkorra.projectkorra.prediction.AbilityRemovalSync;
+import com.projectkorra.projectkorra.prediction.action.AbilityRemovalSync;
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.World;

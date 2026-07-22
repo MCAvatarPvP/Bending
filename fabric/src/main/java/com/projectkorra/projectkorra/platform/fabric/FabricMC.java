@@ -1,6 +1,5 @@
 package com.projectkorra.projectkorra.platform.fabric;
 
-import com.projectkorra.projectkorra.fabric.prediction.PredictionServer;
 import com.projectkorra.projectkorra.platform.chat.ChatMessageType;
 import com.projectkorra.projectkorra.platform.mc.Color;
 import com.projectkorra.projectkorra.platform.mc.Effect;
@@ -48,11 +47,11 @@ import com.projectkorra.projectkorra.platform.mc.util.BoundingBox;
 import com.projectkorra.projectkorra.platform.mc.util.RayTraceResult;
 import com.projectkorra.projectkorra.platform.mc.util.Transformation;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
-import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
-import com.projectkorra.projectkorra.prediction.AbilityStateSync;
-import com.projectkorra.projectkorra.prediction.TempBlockSync;
-import com.projectkorra.projectkorra.prediction.DirectBlockSync;
-import com.projectkorra.projectkorra.prediction.VelocitySync;
+import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
+import com.projectkorra.projectkorra.prediction.state.AbilityStateSync;
+import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
+import com.projectkorra.projectkorra.prediction.block.DirectBlockSync;
+import com.projectkorra.projectkorra.prediction.movement.VelocitySync;
 import com.projectkorra.projectkorra.util.TempBlock;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -712,7 +711,7 @@ public final class FabricMC {
         }
     }
 
-    static BlockData blockData(BlockState state) {
+    public static BlockData blockData(BlockState state) {
         BlockData data = material(state).createBlockData();
         if (data instanceof Levelled levelled) {
             OptionalInt level = readBestLevel(state);
@@ -816,8 +815,7 @@ public final class FabricMC {
                 Identifier id = soundIdentifier(candidate);
                 if (id == null) continue;
                 SoundEvent event = SoundEvent.of(id);
-                ServerPlayerEntity excluded = PredictionServer.predictedSoundEffectOwner();
-                world.playSound(excluded, x, y, z, event, category, volume, pitch);
+                world.playSound(null, x, y, z, event, category, volume, pitch);
                 return;
             } catch (Throwable ignored) {
             }
@@ -1033,8 +1031,6 @@ public final class FabricMC {
                     entities.put(nativePlayer.getId(), wrapped);
                 }
             }
-            PredictionServer.augmentNearbyPlayers(value, nativeBox,
-                    AbilityExecutionContext.current(), filter, entities);
             return entities.values();
         }
 
@@ -1130,9 +1126,7 @@ public final class FabricMC {
             try {
                 ParticleEffect effect = FabricMC.particle(particle, data);
                 if (effect == null) return;
-                ServerPlayerEntity predictedOwner = PredictionServer.predictedEffectOwner();
                 for (ServerPlayerEntity viewer : value.getPlayers()) {
-                    if (viewer == predictedOwner) continue;
                     value.spawnParticles(viewer, effect, false, false, location.getX(), location.getY(), location.getZ(), count, ox, oy, oz, extra);
                 }
             } catch (Throwable ignored) { }
@@ -2116,20 +2110,12 @@ public final class FabricMC {
             this.value = value;
         }
 
-        private boolean suppressPredictionEcho() {
-            return value == PredictionServer.predictedEffectOwner();
-        }
-
         private void sendAbilitiesUpdate() {
-            if (!suppressPredictionEcho()) value.sendAbilitiesUpdate();
+            value.sendAbilitiesUpdate();
         }
 
         private void applyAbilityState(final AbilityStateSync.FlightState resultingState,
                                        final Runnable write) {
-            if (suppressPredictionEcho()) {
-                write.run();
-                return;
-            }
             AbilityStateSync.apply(AbilityExecutionContext.current(), this, resultingState, write);
         }
 
@@ -2208,9 +2194,7 @@ public final class FabricMC {
             VelocitySync.applyDirect(AbilityExecutionContext.current(), this, velocity, () -> {
                 value.setVelocity(vector(velocity));
                 value.velocityDirty = true;
-                if (!suppressPredictionEcho()) {
-                    value.networkHandler.sendPacket(new EntityVelocityUpdateS2CPacket(value));
-                }
+                value.networkHandler.sendPacket(new EntityVelocityUpdateS2CPacket(value));
             });
         }
 
@@ -2292,10 +2276,8 @@ public final class FabricMC {
         @Override public void setExp(float experience) {
             float clamped = Math.max(0.0F, Math.min(1.0F, experience));
             value.experienceProgress = clamped;
-            if (!suppressPredictionEcho()) {
-                value.networkHandler.sendPacket(new ExperienceBarUpdateS2CPacket(
-                        clamped, value.totalExperience, value.experienceLevel));
-            }
+            value.networkHandler.sendPacket(new ExperienceBarUpdateS2CPacket(
+                    clamped, value.totalExperience, value.experienceLevel));
         }
         @Override public boolean isGlowing() { return value.isGlowing(); }
         @Override public void setGlowing(boolean glowing) { value.setGlowing(glowing); }
@@ -2424,7 +2406,6 @@ public final class FabricMC {
         @Override
         public <T> void spawnParticle(Particle particle, Location location, int count,
                                       double ox, double oy, double oz, double extra, T data, boolean force) {
-            if (value == PredictionServer.predictedEffectOwner()) return;
             try {
                 ParticleEffect effect = FabricMC.particle(particle, data);
                 if (effect == null) return;

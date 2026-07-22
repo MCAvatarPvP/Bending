@@ -25,6 +25,10 @@ abstract class ClientConnectionMovementMixin {
                                                       boolean flush,
                                                       CallbackInfo ci) {
         PredictionClient.acceptedMovementPacket(MinecraftClient.getInstance(), packet);
+        // At this point every earlier cancellation hook has passed, but the
+        // vanilla packet has not been written yet. Send its exact action tag
+        // first so Paper never has to infer which local input it represents.
+        PredictionClient.prepareAcceptedNativeInputPacket(MinecraftClient.getInstance(), packet);
     }
 
     @Inject(method = "send(Lnet/minecraft/network/packet/Packet;Lio/netty/channel/ChannelFutureListener;Z)V",

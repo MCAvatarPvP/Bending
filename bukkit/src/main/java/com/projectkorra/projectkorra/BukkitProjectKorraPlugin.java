@@ -9,7 +9,7 @@ import com.projectkorra.projectkorra.platform.bukkit.BukkitMC;
 import com.projectkorra.projectkorra.platform.bukkit.BukkitProjectKorraPlatform;
 import com.projectkorra.projectkorra.platform.mc.command.Command;
 import com.projectkorra.projectkorra.platform.mc.command.CommandSender;
-import com.projectkorra.projectkorra.prediction.PaperPredictionServer;
+import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
 import com.projectkorra.projectkorra.region.BukkitRegionProtectionBootstrap;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;

@@ -4,7 +4,7 @@ import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.platform.model.PKBlock;
 import com.projectkorra.projectkorra.platform.model.PKLocation;
 import com.projectkorra.projectkorra.platform.model.PKWorld;
-import com.projectkorra.projectkorra.prediction.PaperPredictionServer;
+import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
 import org.bukkit.Location;
 import org.bukkit.Particle;
 import org.bukkit.Sound;

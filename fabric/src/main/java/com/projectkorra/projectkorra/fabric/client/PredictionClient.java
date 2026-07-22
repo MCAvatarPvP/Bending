@@ -1,7 +1,7 @@
 package com.projectkorra.projectkorra.fabric.client;
 
-import com.projectkorra.projectkorra.fabric.prediction.PredictionPayloads;
-import com.projectkorra.projectkorra.prediction.RegionProtectionAuthority;
+import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads;
+import com.projectkorra.projectkorra.prediction.authority.RegionProtectionAuthority;
 import java.util.ArrayList;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientWorldEvents;
@@ -137,6 +137,8 @@ public final class PredictionClient {
                 (payload, context) -> INSTANCE.onDirectBlock(context.client(), payload));
         ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.AbilityRemoved.ID,
                 (payload, context) -> INSTANCE.onAbilityRemoved(context.client(), payload));
+        ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.AbilityTransfer.ID,
+                (payload, context) -> INSTANCE.onAbilityTransfer(context.client(), payload));
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> INSTANCE.onJoin(sender, client));
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> INSTANCE.reset(client));
         ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register(INSTANCE::onClientWorldChange);
@@ -179,6 +181,14 @@ public final class PredictionClient {
      */
     public static void acceptedMovementPacket(MinecraftClient client, Packet<?> packet) {
         if (packet instanceof PlayerMoveC2SPacket movement) recordMovementPacket(client, movement);
+    }
+
+    /**
+     * Sends the exact local action identity after ClientConnection accepted
+     * the outer packet, but immediately before that vanilla input is written.
+     */
+    public static void prepareAcceptedNativeInputPacket(MinecraftClient client, Packet<?> packet) {
+        INSTANCE.prepareAcceptedNativeInputPacket0(packet);
     }
 
     /** Runs after the outer vanilla input packet has entered the connection. */
@@ -299,9 +309,8 @@ public final class PredictionClient {
         }
     }
 
-    private void acceptedNativeInputPacket0(final Packet<?> packet) {
+    private void prepareAcceptedNativeInputPacket0(final Packet<?> packet) {
         if (packet == null || packet != currentNativeInputPacket) return;
-        currentNativeInputPacket = null;
         if (packet == pendingTaggedPacket) {
             final PendingActionTag tag = pendingActionTag;
             pendingTaggedPacket = null;
@@ -311,6 +320,18 @@ public final class PredictionClient {
                 ClientPlayNetworking.send(new PredictionPayloads.ActionTag(sessionId,
                         tag.clientActionSequence(), tag.kind(), tag.selectedSlot(), tag.ability()));
             }
+        }
+    }
+
+    private void acceptedNativeInputPacket0(final Packet<?> packet) {
+        if (packet == null || packet != currentNativeInputPacket) return;
+        currentNativeInputPacket = null;
+        // The pre-send hook normally consumed this pair. Clear it defensively
+        // when a networking implementation reaches the after-send callback
+        // without supporting the custom payload.
+        if (packet == pendingTaggedPacket) {
+            pendingTaggedPacket = null;
+            pendingActionTag = null;
         }
         flushPendingHitClaims();
     }
@@ -687,6 +708,7 @@ public final class PredictionClient {
         if (confirmed && localSequence > 0L) updateLatencyEstimate(localSequence);
         debug("native action sequence=" + action.actionSequence() + " kind=" + action.kind()
                 + " ability=" + action.ability() + " predictable=" + action.predictable()
+                + " taggedLocalSequence=" + action.clientActionSequence()
                 + " confirmed=" + confirmed + " localSequence=" + localSequence);
     }
 
@@ -862,7 +884,12 @@ public final class PredictionClient {
     }
 
     private void onAbilityRemoved(MinecraftClient client, PredictionPayloads.AbilityRemoved removed) {
+        if (removed.predictionRejected()) cooldowns.remove(removed.ability());
         if (client.player != null) ExactPredictionRuntime.removeAuthoritativeAbility(client.player, removed);
+    }
+
+    private void onAbilityTransfer(MinecraftClient client, PredictionPayloads.AbilityTransfer transfer) {
+        if (client.player != null) ExactPredictionRuntime.transferAuthoritativeAbility(client.player, transfer);
     }
 
     private void tick(MinecraftClient client) {
@@ -975,6 +1002,11 @@ public final class PredictionClient {
                 client.player.getYaw(), client.player.getPitch(), client.player.getEyeY() - client.player.getY());
         ServerPose pose = poseForInput(serverPose, localPose);
         Vec3d origin = pose.eyePos();
+        // This identity is emitted from ClientConnection's accepted pre-send
+        // boundary. It therefore precedes the exact vanilla packet without
+        // surviving a cancellation by an earlier networking mixin.
+        pendingTaggedPacket = currentNativeInputPacket;
+        pendingActionTag = new PendingActionTag(sequence, kind, selectedSlot, ability);
         if (suppressInput) {
             // Preserve the semantic action without executing it. Paper's
             // post-input receipt decides whether its legacy suppression gate
@@ -993,8 +1025,6 @@ public final class PredictionClient {
         final boolean cooldownActiveAtInput = ExactPredictionRuntime.isInputCooldownActive(ability, kind);
         boolean locallyPredicted = ExactPredictionRuntime.shouldPredictInput(ability, kind)
                 && ExactPredictionRuntime.input(sequence, kind, selectedSlot, pose);
-        pendingTaggedPacket = currentNativeInputPacket;
-        pendingActionTag = new PendingActionTag(sequence, kind, selectedSlot, ability);
         // A vanilla input carries no client timestamp. Without this narrow
         // negative gate, an input rejected locally at t=0 can arrive after a
         // short cooldown expires and be replayed by Paper at t=RTT/2. Send the

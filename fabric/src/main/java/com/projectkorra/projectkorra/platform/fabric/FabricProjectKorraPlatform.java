@@ -1,6 +1,5 @@
 package com.projectkorra.projectkorra.platform.fabric;
 
-import com.projectkorra.projectkorra.fabric.prediction.PredictionServer;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.boss.BarColor;
@@ -180,21 +179,16 @@ public final class FabricProjectKorraPlatform implements ProjectKorraPlatform {
 
         private PKTask schedule(final Runnable task, final long delay, final long period) {
             int id = ids.getAndIncrement();
-            PredictionServer.EffectContext predictionContext = PredictionServer.captureEffectContext();
-            Runnable contextualTask = predictionContext == null ? task
-                    : () -> PredictionServer.runWithEffectContext(predictionContext, task);
             // Match Bukkit: equal-heartbeat tasks run by scheduler id and a
             // task scheduled with delay zero cannot re-enter this heartbeat.
-            Scheduled scheduled = new Scheduled(id, contextualTask, tick + Math.max(1, delay), period);
+            Scheduled scheduled = new Scheduled(id, task, tick + Math.max(1, delay), period);
             tasks.put(id, scheduled);
             synchronized (queueLock) { queue.add(scheduled); }
             return new FabricTask(id);
         }
 
         private Runnable contextual(final Runnable task) {
-            PredictionServer.EffectContext predictionContext = PredictionServer.captureEffectContext();
-            return predictionContext == null ? task
-                    : () -> PredictionServer.runWithEffectContext(predictionContext, task);
+            return task;
         }
 
         private void tick() {

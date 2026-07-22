@@ -1,5 +1,10 @@
 package com.projectkorra.projectkorra.prediction;
 
+import com.projectkorra.projectkorra.prediction.protocol.PaperPredictionProtocol;
+import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
+
+import com.projectkorra.projectkorra.prediction.authority.RegionProtectionAuthority;
+
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -11,14 +16,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class PredictionRegionAuthorityBoundaryTest {
     @Test
     void spatialProtectionUsesAuthoritativeServerBoxesOnTheClient() throws IOException {
-        String protocol = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionProtocol.java",
-                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionProtocol.java");
-        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
-                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
+        String protocol = read("src/main/java/com/projectkorra/projectkorra/prediction/protocol/PaperPredictionProtocol.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/protocol/PaperPredictionProtocol.java");
+        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
         String worldGuard = read("src/main/java/com/projectkorra/projectkorra/region/WorldGuard.java",
                 "bukkit/src/main/java/com/projectkorra/projectkorra/region/WorldGuard.java");
-        String payloads = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionPayloads.java",
-                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionPayloads.java");
+        String payloads = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/protocol/PredictionPayloads.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/protocol/PredictionPayloads.java");
         String client = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/PredictionClient.java",
                 "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/PredictionClient.java");
         String runtime = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
@@ -33,7 +38,7 @@ class PredictionRegionAuthorityBoundaryTest {
                 && worldGuard.contains("isRegionProtected(player, sample, ability)"));
         assertTrue(client.contains("regionProtection = snapshot.regionProtection()")
                 && client.contains("regionProtection = state.regionProtection()"));
-        assertTrue(runtime.contains("RegionProtectionAuthority.install(bendingPlayer.getPlayer(), regionProtection)"));
+        assertTrue(runtime.contains("RegionProtectionAuthority.install(this.bendingPlayer.getPlayer(), regionProtection)"));
     }
 
     private static String read(String moduleRelative, String rootRelative) throws IOException {

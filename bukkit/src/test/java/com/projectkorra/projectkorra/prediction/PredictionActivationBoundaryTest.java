@@ -1,5 +1,16 @@
 package com.projectkorra.projectkorra.prediction;
 
+import com.projectkorra.projectkorra.prediction.protocol.PaperPredictionProtocol;
+import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
+
+import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
+import com.projectkorra.projectkorra.prediction.action.AbilityRemovalSync;
+import com.projectkorra.projectkorra.prediction.action.PredictionDeterminism;
+import com.projectkorra.projectkorra.prediction.hit.HitRewind;
+import com.projectkorra.projectkorra.prediction.hit.PredictedContactSync;
+import com.projectkorra.projectkorra.prediction.movement.VelocitySync;
+import com.projectkorra.projectkorra.prediction.state.CooldownSync;
+
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -19,24 +30,21 @@ class PredictionActivationBoundaryTest {
                 "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/PredictionClient.java");
         String runtime = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
                 "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
-        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
-                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
-        String fabric = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java",
-                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java");
+        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
         String combos = read("../common/src/main/java/com/projectkorra/projectkorra/ability/util/ComboManager.java",
                 "common/src/main/java/com/projectkorra/projectkorra/ability/util/ComboManager.java");
 
         assertTrue(client.contains("ExactPredictionRuntime.recordNativeOnlyInput(sequence, kind, selectedSlot, pose, ability)"),
                 "a locally suppressed swing must remain available for semantic Paper association");
         assertTrue(runtime.contains("!action.executed && (inputHandled || comboRecorded || !authoritativeCreated.isEmpty())")
-                        && runtime.contains("action = replayNativeOnlyAction(action)"),
+                        && runtime.contains("action = this.replayNativeOnlyAction(action)"),
                 "Paper accepting a missed AirBlast must execute that same input in the client common runtime");
         assertTrue(runtime.contains("reconcileCreatedAbilities(action, authoritativeCreated)")
                         && runtime.contains("recoverMissingCombo(action, authoritativeName)"),
                 "differing combo creation outcomes must converge to the authoritative instance set");
-        assertTrue(paper.contains("trackingResult.handled(), comboRecorded, List.copyOf(createdAbilities)")
-                        && fabric.contains("trackingResult.handled(), comboRecorded, List.copyOf(createdAbilities)"),
-                "both authoritative loaders must report the generic post-input outcome");
+        assertTrue(paper.contains("trackingResult.handled(), comboRecorded, List.copyOf(createdAbilities)"),
+                "the Paper authority must report the generic post-input outcome");
         assertFalse(combos.contains("RECENTLY_USED.clear()"),
                 "independently phased cleanup tasks must never erase a fresh combo chain wholesale");
         assertTrue(combos.contains("pruneExpired(history, now)"));
@@ -75,8 +83,8 @@ class PredictionActivationBoundaryTest {
     void dischargeUsesTheSameActionSeedAndInputOriginOnBothSides() throws IOException {
         String discharge = read("../common/src/main/java/com/jedk1/jedcore/ability/firebending/Discharge.java",
                 "common/src/main/java/com/jedk1/jedcore/ability/firebending/Discharge.java");
-        String fabric = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java",
-                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java");
+        String runtime = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
 
         assertTrue(discharge.contains("PredictionDeterminism.random("));
         assertTrue(discharge.contains("location = player.getEyeLocation().clone()"));
@@ -86,7 +94,7 @@ class PredictionActivationBoundaryTest {
                 "a stale predicted entity position must not terminate Discharge");
         assertFalse(discharge.contains("hit = CollisionDetector.checkEntityCollisions"),
                 "later samples must not overwrite an earlier collision result");
-        assertTrue(fabric.contains("PredictionDeterminism.run(sequence"));
+        assertTrue(runtime.contains("PredictionDeterminism.run("));
     }
 
     @Test
@@ -130,10 +138,10 @@ class PredictionActivationBoundaryTest {
                 "common/src/main/java/com/projectkorra/projectkorra/GeneralMethods.java");
         final String ability = read("../common/src/main/java/com/projectkorra/projectkorra/ability/CoreAbility.java",
                 "common/src/main/java/com/projectkorra/projectkorra/ability/CoreAbility.java");
-        final String execution = read("../common/src/main/java/com/projectkorra/projectkorra/prediction/AbilityExecutionContext.java",
-                "common/src/main/java/com/projectkorra/projectkorra/prediction/AbilityExecutionContext.java");
-        final String contacts = read("../common/src/main/java/com/projectkorra/projectkorra/prediction/PredictedContactSync.java",
-                "common/src/main/java/com/projectkorra/projectkorra/prediction/PredictedContactSync.java");
+        final String execution = read("../common/src/main/java/com/projectkorra/projectkorra/prediction/action/AbilityExecutionContext.java",
+                "common/src/main/java/com/projectkorra/projectkorra/prediction/action/AbilityExecutionContext.java");
+        final String contacts = read("../common/src/main/java/com/projectkorra/projectkorra/prediction/hit/PredictedContactSync.java",
+                "common/src/main/java/com/projectkorra/projectkorra/prediction/hit/PredictedContactSync.java");
         final String fabricEntities = read("../fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricPredictionMC.java",
                 "fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricPredictionMC.java");
         final String runtime = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
@@ -144,14 +152,12 @@ class PredictionActivationBoundaryTest {
                 "fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricMC.java");
         final String predictionClient = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/PredictionClient.java",
                 "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/PredictionClient.java");
-        final String fabricServer = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java",
-                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java");
-        final String payloads = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionPayloads.java",
-                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionPayloads.java");
-        final String paperServer = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
-                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
-        final String paperProtocol = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionProtocol.java",
-                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionProtocol.java");
+        final String payloads = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/protocol/PredictionPayloads.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/protocol/PredictionPayloads.java");
+        final String paperServer = read("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
+        final String paperProtocol = read("src/main/java/com/projectkorra/projectkorra/prediction/protocol/PaperPredictionProtocol.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/protocol/PaperPredictionProtocol.java");
 
         assertTrue(damage.indexOf("PredictedContactSync.mark(ability, entity)")
                         < damage.indexOf("damageEntityNow(entity, source, damage"),
@@ -170,12 +176,10 @@ class PredictionActivationBoundaryTest {
                 "the exact client must queue contact evidence behind its vanilla input packet");
         assertTrue(payloads.contains("record HitClaim") && payloads.contains("id(\"hit_claim\")"),
                 "the Fabric wire protocol must carry the bounded hit claim");
-        assertTrue(fabricServer.contains("onHitClaim") && fabricServer.contains("augmentNearbyPlayers"),
-                "Fabric must validate rewind history before augmenting a real ability query");
         assertTrue(paperProtocol.contains("projectkorra:hit_claim")
                         && paperServer.contains("onHitClaim(") && paperServer.contains("augmentNearbyPlayers"),
                 "Paper must decode and independently validate the same hit evidence");
-        assertFalse(paperServer.contains("consumedTick") || fabricServer.contains("consumedTick"),
+        assertFalse(paperServer.contains("consumedTick"),
                 "a successful rewind claim must be removed on its first real query, including within the same tick");
         assertTrue(contacts.contains("CooldownSync.isAuthoritative()")
                         && velocity.contains("VelocitySync.publish(velocityAbility, velocityTarget, committedVelocity)")
@@ -228,10 +232,8 @@ class PredictionActivationBoundaryTest {
 
     @Test
     void hitRegistrationRewindsWithoutDeferringDamageOrVelocity() throws IOException {
-        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
-                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
-        String fabric = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java",
-                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java");
+        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
         String damage = read("../common/src/main/java/com/projectkorra/projectkorra/util/DamageHandler.java",
                 "common/src/main/java/com/projectkorra/projectkorra/util/DamageHandler.java");
         String velocity = read("../common/src/main/java/com/projectkorra/projectkorra/GeneralMethods.java",
@@ -241,12 +243,8 @@ class PredictionActivationBoundaryTest {
 
         assertTrue(paper.contains("HitRewind.combinedRewindTicks")
                 && paper.contains("player.getPing(), defenderPing"));
-        assertTrue(fabric.contains("HitRewind.combinedRewindTicks")
-                && fabric.contains("player.networkHandler.getLatency(), defenderPing"));
-        assertTrue(paper.contains("frame.box.clone().expand(CLAIM_CONTACT_TOLERANCE)")
-                && fabric.contains("frame.box.expand(CLAIM_CONTACT_TOLERANCE)"));
+        assertTrue(paper.contains("frame.box.clone().expand(CLAIM_CONTACT_TOLERANCE)"));
         assertFalse(paper.contains("HitResolutionSync") || paper.contains("pendingNativeReactions"));
-        assertFalse(fabric.contains("HitResolutionSync") || fabric.contains("pendingNativeReactions"));
         assertFalse(damage.contains("HitResolutionSync") || velocity.contains("HitResolutionSync"));
         assertFalse(config.contains("Properties.Prediction.Reaction"));
     }
@@ -255,39 +253,35 @@ class PredictionActivationBoundaryTest {
     void concurrentAirBlastsKeepStableInstanceRemovalOwnership() throws IOException {
         String commonInput = read("../common/src/main/java/com/projectkorra/projectkorra/listener/CommonInputHandler.java",
                 "common/src/main/java/com/projectkorra/projectkorra/listener/CommonInputHandler.java");
-        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
-                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
-        String fabric = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java",
-                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java");
+        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
         String client = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
                 "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
+        String velocityAuthority = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/prediction/movement/ClientVelocityAuthority.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/prediction/movement/ClientVelocityAuthority.java");
 
         assertTrue(commonInput.contains("AbilityActivationManager.markHandled(blast)"));
         assertTrue(paper.contains("Action action = abilityCreationActions.get(ability)"));
-        assertTrue(fabric.contains("Action action = abilityCreationActions.get(ability)"));
-        assertTrue(client.contains("Objects.equals(abilityCreationActions.get(ability), localCreationSequence)"),
+        assertTrue(client.contains("Objects.equals(this.abilityCreationActions.get(ability), localCreationSequence)"),
                 "Paper removals must resolve through the correlated local creation identity");
         assertFalse(client.contains("abilityCreationActions.get(ability), removed.actionSequence()"),
                 "raw Paper and Fabric ordinals are not directly comparable");
         assertTrue(client.contains("!removed.externallyCaused()"),
                 "collision/other-ability removals must override retained local lifecycle prediction");
-        assertTrue(client.contains("allowed self-owned velocity without retained mutation"),
+        assertTrue(velocityAuthority.contains("allowed self-owned velocity without retained mutation"),
                 "a receipt cannot suppress AirBlast unless the exact local action+ordinal impulse exists");
     }
 
     @Test
     void sameNamedAbilityImplementationsCannotRemoveEachOther() throws IOException {
-        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
-                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
-        String fabric = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java",
-                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java");
-        String payloads = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionPayloads.java",
-                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionPayloads.java");
+        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
+        String payloads = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/protocol/PredictionPayloads.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/protocol/PredictionPayloads.java");
         String client = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
                 "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
 
         assertTrue(paper.contains("AbilityRemovalSync.typeId(ability)"));
-        assertTrue(fabric.contains("AbilityRemovalSync.typeId(ability)"));
         assertTrue(payloads.contains("String abilityType, long actionSequence"));
         assertTrue(client.contains("AbilityRemovalSync.isType(ability, removed.abilityType())"),
                 "WaterSpoutWave and WaterSpout share a display name and input but require distinct lifecycles");

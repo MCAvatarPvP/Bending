@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.prediction;
 
+import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
+import com.projectkorra.projectkorra.prediction.hit.EntityHitboxProvider;
+
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -203,10 +206,10 @@ class GameplayRegressionBoundaryTest {
         String scheduler = source(
                 "../fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricClientPredictionPlatform.java",
                 "fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricClientPredictionPlatform.java");
-        String startup = method(runtime, "private boolean start0(", "private void applyConfig(");
+        String startup = method(runtime, "private boolean start0(", "private void updatePlayerState0(");
         String tick = method(runtime, "private void tick0(", "private void reconcileAuthoritativeCooldowns(");
 
-        int bending = startup.indexOf("runTimer(bendingManager, 0, 1)");
+        int bending = startup.indexOf("runTimer(this.bendingManager, 0L, 1L)");
         int water = startup.indexOf("runTimer(new WaterbendingManager", bending);
         int earth = startup.indexOf("runTimer(new EarthbendingManager", water);
         int fire = startup.indexOf("runTimer(new FirebendingManager", earth);
@@ -217,7 +220,7 @@ class GameplayRegressionBoundaryTest {
                 "Fabric must use GeneralMethods.reloadPlugin's Paper manager/addon order");
         assertTrue(startup.contains("ProjectKorra.collisionInitializer.initializeDefaultCollisions()"),
                 "client ability collisions are part of the common lifecycle");
-        assertTrue(tick.contains("platform.tick()"));
+        assertTrue(tick.contains("this.platform.tick()"));
         assertFalse(tick.contains("bendingManager.run()"),
                 "BendingManager must not run a second time outside the ordered scheduler");
         assertTrue(scheduler.contains("thenComparingInt(task -> task.id)"),

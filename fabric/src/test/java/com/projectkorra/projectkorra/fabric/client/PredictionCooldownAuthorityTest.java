@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.fabric.client;
 
+import com.projectkorra.projectkorra.fabric.client.prediction.state.PredictionCooldownAuthority;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.Set;

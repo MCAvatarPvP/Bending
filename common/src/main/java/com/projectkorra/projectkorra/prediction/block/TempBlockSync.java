@@ -1,0 +1,345 @@
+package com.projectkorra.projectkorra.prediction.block;
+
+import com.projectkorra.projectkorra.GeneralMethods;
+import com.projectkorra.projectkorra.ProjectKorra;
+import com.projectkorra.projectkorra.ability.CoreAbility;
+import com.projectkorra.projectkorra.platform.mc.Location;
+import com.projectkorra.projectkorra.platform.mc.block.Block;
+import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
+import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
+import com.projectkorra.projectkorra.platform.mc.block.data.Levelled;
+import com.projectkorra.projectkorra.platform.mc.block.data.type.Fire;
+import com.projectkorra.projectkorra.platform.mc.block.data.type.Snow;
+import com.projectkorra.projectkorra.platform.mc.entity.Player;
+import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.util.TempBlock;
+
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+
+/**
+ * Loader-neutral observation point for temporary-block ownership metadata.
+ * Every operation identifies one stable layer. This lets clients acknowledge
+ * their own predicted layer without mistaking a later overlapping layer for
+ * the same block mutation.
+ */
+public final class TempBlockSync {
+    private static volatile Listener listener;
+    private static final ThreadLocal<WorldMutation> WORLD_MUTATION = new ThreadLocal<>();
+
+    private TempBlockSync() {
+    }
+
+    public static void install(final Listener newListener) {
+        listener = newListener;
+    }
+
+    public static void clear(final Listener expected) {
+        if (listener == expected) listener = null;
+    }
+
+    public static void publish(final Operation operation, final TempBlock layer, final BlockData effectiveData) {
+        publish(operation, layer, effectiveData, false);
+    }
+
+    public static void publish(final Operation operation, final TempBlock layer, final BlockData effectiveData,
+                               final boolean packetExpected) {
+        final Listener current = listener;
+        if (current != null && layer != null && effectiveData != null) {
+            try {
+                current.onChange(change(operation, layer, effectiveData, packetExpected));
+            } catch (RuntimeException failure) {
+                ProjectKorra.log.warning("TempBlock lifecycle publication failed: " + failure.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Announces the coordinate fence before the physical world write. This is
+     * deliberately separate from {@link #publish}: metadata-only layer changes
+     * and snapshots do not imply that a vanilla packet will exist.
+     */
+    public static void beforeWorldChange(final Operation operation, final TempBlock layer,
+                                         final BlockData effectiveData) {
+        final Listener current = listener;
+        if (current != null && layer != null && effectiveData != null) {
+            try {
+                current.beforeWorldChange(change(operation, layer, effectiveData, true));
+            } catch (RuntimeException failure) {
+                ProjectKorra.log.warning("TempBlock pre-mutation publication failed: " + failure.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Marks a physical world write as belonging to a TempBlock lifecycle. The
+     * predicting Fabric adapter uses this boundary to write directly to its
+     * client TempBlock layer instead of treating it as an ordinary simulated
+     * permanent/direct world edit.
+     */
+    public static void runWorldMutation(final Operation operation, final TempBlock layer,
+                                        final BlockData effectiveData, final Runnable mutation) {
+        if (mutation == null) return;
+        final WorldMutation previous = WORLD_MUTATION.get();
+        WORLD_MUTATION.set(new WorldMutation(operation, layer == null ? 0L : layer.getLayerId(),
+                layer == null ? 0L : layer.getRevision(), effectiveData == null ? null : effectiveData.clone()));
+        try {
+            mutation.run();
+        } finally {
+            if (previous == null) WORLD_MUTATION.remove();
+            else WORLD_MUTATION.set(previous);
+        }
+    }
+
+    public static WorldMutation currentWorldMutation() {
+        return WORLD_MUTATION.get();
+    }
+
+    /**
+     * Whether the prediction transport currently exposes a server TempBlock
+     * at this coordinate without a corresponding common TempBlock handle.
+     * Paper normally answers through {@link TempBlock}; this bridge exists for
+     * remote layers observed by a predicting Fabric client.
+     */
+    public static boolean hasAuthoritativeLayer(final Block block) {
+        final Listener current = listener;
+        return current != null && block != null && current.hasAuthoritativeLayer(block);
+    }
+
+    /** True when the visible authoritative layer belongs to the named ability. */
+    public static boolean hasAuthoritativeEffect(final Block block, final String ability) {
+        if (ability == null || ability.isBlank()) return false;
+        final Listener current = listener;
+        if (current == null || block == null) return false;
+        final String visible = current.authoritativeEffectAbility(block);
+        return visible != null && visible.equalsIgnoreCase(ability);
+    }
+
+    /** True when the visible authoritative layer belongs to this ability and owner. */
+    public static boolean hasAuthoritativeEffect(final Block block, final String ability,
+                                                 final UUID ownerId) {
+        if (ability == null || ability.isBlank() || ownerId == null) return false;
+        final Listener current = listener;
+        if (current == null || block == null) return false;
+        final String visible = current.authoritativeEffectAbility(block);
+        return visible != null && visible.equalsIgnoreCase(ability)
+                && ownerId.equals(current.authoritativeOwnerId(block));
+    }
+
+    /** Compact ability lifecycle state associated with the visible server layer. */
+    public static String getAuthoritativeEffectState(final Block block) {
+        final Listener current = listener;
+        if (current == null || block == null) return "";
+        final String state = current.authoritativeEffectState(block);
+        return state == null ? "" : state;
+    }
+
+    /**
+     * Finds the closest server TempBlock effect intersected by a player's
+     * sight cylinder. A predicting client has no common ability instance for
+     * another player's moving projectile or wall, but its ordered TempBlock
+     * ledger still carries the exact semantic ability name.
+     *
+     * @param foreignOnly whether layers attributed to {@code player} must be
+     *                    ignored
+     * @return the nearest matching authoritative block, or {@code null}
+     */
+    public static Block getAuthoritativeEffectAlongRay(final Player player, final String ability,
+                                                        final double range, final double radius,
+                                                        final boolean foreignOnly) {
+        if (player == null || ability == null || ability.isBlank()
+                || !Double.isFinite(range) || range < 0
+                || !Double.isFinite(radius) || radius < 0) return null;
+        final Listener current = listener;
+        if (current == null) return null;
+        final Location eye = player.getEyeLocation();
+        if (eye == null || eye.getWorld() == null) return null;
+        final Vector direction = eye.getDirection();
+        if (direction == null || direction.lengthSquared() == 0) return null;
+        direction.normalize();
+
+        final UUID viewer = player.getUniqueId();
+        final double radiusSquared = radius * radius;
+        final double searchRadius = Math.max(1.0, radius + 1.0);
+        final Set<Block> checked = new HashSet<>();
+        Block closest = null;
+        double closestDistance = Double.MAX_VALUE;
+        for (double distance = 0; distance <= range + 1.0E-9; distance += 0.5) {
+            final Location sample = eye.clone().add(direction.clone().multiply(distance));
+            for (final Block candidate : GeneralMethods.getBlocksAroundPoint(sample, searchRadius)) {
+                if (candidate == null || !checked.add(candidate)) continue;
+                final String effect = current.authoritativeEffectAbility(candidate);
+                if (effect == null || !effect.equalsIgnoreCase(ability)) continue;
+                final UUID owner = current.authoritativeOwnerId(candidate);
+                if (foreignOnly && viewer != null && viewer.equals(owner)) continue;
+
+                final Vector toBlock = candidate.getLocation().toVector()
+                        .add(new Vector(0.5, 0.5, 0.5)).subtract(eye.toVector());
+                final double distanceAlongRay = toBlock.dot(direction);
+                if (distanceAlongRay < 0 || distanceAlongRay > range) continue;
+                final double perpendicularSquared = Math.max(0,
+                        toBlock.lengthSquared() - distanceAlongRay * distanceAlongRay);
+                if (perpendicularSquared <= radiusSquared
+                        && distanceAlongRay < closestDistance) {
+                    closest = candidate;
+                    closestDistance = distanceAlongRay;
+                }
+            }
+        }
+        return closest;
+    }
+
+    /** Finds the closest authoritative semantic layer around a point. */
+    public static Block getAuthoritativeEffectAroundPoint(final Player player, final Location center,
+                                                           final String ability, final double radius,
+                                                           final boolean foreignOnly) {
+        if (player == null || center == null || center.getWorld() == null
+                || ability == null || ability.isBlank()
+                || !Double.isFinite(radius) || radius < 0) return null;
+        final Listener current = listener;
+        if (current == null) return null;
+        final UUID viewer = player.getUniqueId();
+        Block closest = null;
+        double closestDistance = Double.MAX_VALUE;
+        for (final Block candidate : GeneralMethods.getBlocksAroundPoint(center, Math.max(1.0, radius))) {
+            if (candidate == null) continue;
+            final String effect = current.authoritativeEffectAbility(candidate);
+            if (effect == null || !effect.equalsIgnoreCase(ability)) continue;
+            final UUID owner = current.authoritativeOwnerId(candidate);
+            if (foreignOnly && viewer != null && viewer.equals(owner)) continue;
+            final double distance = candidate.getLocation().clone().add(0.5, 0.5, 0.5)
+                    .distanceSquared(center);
+            if (distance < closestDistance) {
+                closest = candidate;
+                closestDistance = distance;
+            }
+        }
+        return closest;
+    }
+
+    /**
+     * Captures the visible blocks belonging to one nearby authoritative
+     * effect. This is used to seed a client-side ownership handoff without
+     * inventing a second shape or reading another player's input.
+     */
+    public static AuthoritativeEffectCluster getAuthoritativeEffectCluster(final Block seed,
+                                                                            final String ability,
+                                                                            final double radius) {
+        if (seed == null || ability == null || ability.isBlank()
+                || !Double.isFinite(radius) || radius < 0) return null;
+        final Listener current = listener;
+        if (current == null) return null;
+        final String seedEffect = current.authoritativeEffectAbility(seed);
+        if (seedEffect == null || !seedEffect.equalsIgnoreCase(ability)) return null;
+        final UUID owner = current.authoritativeOwnerId(seed);
+        final List<AuthoritativeEffectBlock> blocks = new java.util.ArrayList<>();
+        for (final Block candidate : GeneralMethods.getBlocksAroundPoint(
+                seed.getLocation().clone().add(0.5, 0.5, 0.5), Math.max(1.0, radius))) {
+            if (candidate == null) continue;
+            final String effect = current.authoritativeEffectAbility(candidate);
+            if (effect == null || !effect.equalsIgnoreCase(ability)
+                    || !java.util.Objects.equals(owner, current.authoritativeOwnerId(candidate))) continue;
+            final BlockData data = current.authoritativeData(candidate);
+            blocks.add(new AuthoritativeEffectBlock(candidate, data == null
+                    ? candidate.getBlockData().clone() : data.clone()));
+        }
+        return blocks.isEmpty() ? null
+                : new AuthoritativeEffectCluster(seed, owner, List.copyOf(blocks));
+    }
+
+    private static Change change(final Operation operation, final TempBlock layer,
+                                 final BlockData effectiveData, final boolean packetExpected) {
+        final UUID ownerId = layer.getOwnerId().orElse(null);
+        final BlockData ownerVisible = ownerId == null
+                ? effectiveData : TempBlock.getVisibleData(layer.getBlock(), ownerId);
+        final Map<UUID, BlockData> ownerViews = new HashMap<>(
+                TempBlock.getOwnerViews(layer.getBlock(), ownerId));
+        if (ownerId != null) {
+            ownerViews.put(ownerId, ownerVisible == null ? effectiveData.clone() : ownerVisible.clone());
+        }
+        return new Change(operation, layer.getBlock(), effectiveData.clone(),
+                layer.getState().getBlockData().clone(),
+                layer.getRevertTime(), layer.getAbility().orElse(null), layer.getLayerId(),
+                layer.getRevision(), ownerId, layer.getEffectAbility(),
+                layer.getAbility().map(CoreAbility::getPredictionState).orElse(""),
+                layer.getEffectStep(), layer.getEffectOrdinal(),
+                ownerVisible == null ? effectiveData.clone() : ownerVisible.clone(),
+                Map.copyOf(ownerViews), packetExpected);
+    }
+
+    public static String encode(final BlockData data) {
+        if (data == null) return "minecraft:air";
+        if (data.getClass() == BlockData.class && data.getExactState() != null) {
+            return data.getExactState();
+        }
+        StringBuilder encoded = new StringBuilder("minecraft:")
+                .append(data.getMaterial().name().toLowerCase(Locale.ROOT));
+        if (data instanceof Levelled levelled) {
+            encoded.append(";level=").append(levelled.getLevel());
+            encoded.append(";waterlogged=").append(levelled.isWaterlogged() ? '1' : '0');
+        } else if (data instanceof Fire fire) {
+            encoded.append(";faces=");
+            boolean first = true;
+            for (BlockFace face : fire.getFaces()) {
+                if (!first) encoded.append(',');
+                encoded.append(face.name());
+                first = false;
+            }
+        } else if (data instanceof Snow snow) {
+            encoded.append(";layers=").append(snow.getLayers());
+        }
+        return encoded.toString();
+    }
+
+    public enum Operation {CREATE, UPDATE_EXPIRY, REVERT, DISCARD}
+
+    public record Change(Operation operation, Block block, BlockData data, BlockData underlayData,
+                         long revertAtMillis, CoreAbility ability, long layerId,
+                         long revision, UUID ownerId, String effectAbility,
+                         String effectState, long effectStep, int effectOrdinal, BlockData ownerVisibleData,
+                         Map<UUID, BlockData> ownerViews, boolean packetExpected) {
+    }
+
+    public record WorldMutation(Operation operation, long layerId, long revision, BlockData data) {
+    }
+
+    public record AuthoritativeEffectBlock(Block block, BlockData data) {
+    }
+
+    public record AuthoritativeEffectCluster(Block seed, UUID ownerId,
+                                             List<AuthoritativeEffectBlock> blocks) {
+    }
+
+    @FunctionalInterface
+    public interface Listener {
+        void onChange(Change change);
+
+        default void beforeWorldChange(final Change change) {
+        }
+
+        default boolean hasAuthoritativeLayer(final Block block) {
+            return false;
+        }
+
+        default String authoritativeEffectAbility(final Block block) {
+            return "";
+        }
+
+        default String authoritativeEffectState(final Block block) {
+            return "";
+        }
+
+        default UUID authoritativeOwnerId(final Block block) {
+            return null;
+        }
+
+        default BlockData authoritativeData(final Block block) {
+            return block == null ? null : block.getBlockData();
+        }
+    }
+}

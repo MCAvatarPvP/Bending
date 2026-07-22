@@ -1,5 +1,10 @@
 package com.projectkorra.projectkorra.prediction;
 
+import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
+
+import com.projectkorra.projectkorra.prediction.block.DirectBlockSync;
+import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
+
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -44,37 +49,25 @@ class TempBlockAuthorityBoundaryTest {
 
     @Test
     void longLivedTempBlocksRetainTheirExactInputAction() throws IOException {
-        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
-                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
-        String fabric = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java",
-                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java");
+        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
 
         assertTrue(paper.contains("candidate.ability.equalsIgnoreCase(ability.getName())"));
-        assertTrue(fabric.contains("candidate.abilityName.equalsIgnoreCase(ability.getName())"));
         assertTrue(paper.contains("tempLayerActions.put(change.layerId(), currentAction)")
                         && paper.contains("tempLayerActions.remove(change.layerId())"));
-        assertTrue(fabric.contains("tempLayerActions.put(change.layerId(), currentAction)")
-                        && fabric.contains("tempLayerActions.remove(change.layerId())"));
         String paperQueue = paper.substring(paper.indexOf("private PendingTempBlock queueTempBlock"),
                 paper.indexOf("private Map<UUID, BlockData> predictedOwnerViews"));
-        String fabricQueue = fabric.substring(fabric.indexOf("private void queueTempBlock"),
-                fabric.indexOf("private Map<UUID, String> predictedOwnerViews"));
         assertFalse(paperQueue.contains("currentAction.locallyPredicted"),
                 "a delayed common layer must not lose ownership because its action had no immediate first-frame block");
-        assertFalse(fabricQueue.contains("currentAction.locallyPredicted"));
         assertTrue(paper.contains("serverOwnedTempLayers.add(change.layerId())")
                         && paper.contains("predictedTempBlockOwner(change.ownerId(), action, effectAbility)"));
-        assertTrue(fabric.contains("serverOwnedTempLayers.add(change.layerId())")
-                        && fabric.contains("predictedTempBlockOwner(change.ownerId(), action, effectAbility)"));
-        for (String endpoint : new String[]{paper, fabric}) {
-            assertTrue(endpoint.contains("layer.getOwnerId().orElse(null), action, effectAbility"),
-                    "join snapshots must retain a long-lived layer's authenticated owner after its input Action retires");
-            assertTrue(endpoint.contains("TempBlock.getOwnerViews(block, closingOwner)")
-                            && endpoint.contains("TempBlock.getVisibleData(block, viewer)"),
-                    "owner views must come from the actual TempBlock stack rather than inferred action ordinals");
-            assertTrue(endpoint.contains("session.supportedAbilities.contains(abilityName.toLowerCase(Locale.ROOT))"),
-                    "only an exact client that supports the owning ability may receive owner-hide metadata");
-        }
+        assertTrue(paper.contains("layer.getOwnerId().orElse(null), action, effectAbility"),
+                "join snapshots must retain a long-lived layer's authenticated owner after its input Action retires");
+        assertTrue(paper.contains("TempBlock.getOwnerViews(block, closingOwner)")
+                        && paper.contains("TempBlock.getVisibleData(block, viewer)"),
+                "owner views must come from the actual TempBlock stack rather than inferred action ordinals");
+        assertTrue(paper.contains("session.supportedAbilities.contains(abilityName.toLowerCase(Locale.ROOT))"),
+                "only an exact client that supports the owning ability may receive owner-hide metadata");
     }
 
     @Test
@@ -85,7 +78,9 @@ class TempBlockAuthorityBoundaryTest {
                 "fabric/src/main/java/com/projectkorra/projectkorra/fabric/ProjectKorraFabricMod.java");
 
         assertTrue(paper.indexOf("GeneralMethods.stopBending()") < paper.lastIndexOf("this.prediction.stop()"));
-        assertTrue(fabric.indexOf("GeneralMethods.stopBending()") < fabric.lastIndexOf("this.prediction.stop()"));
+        assertTrue(fabric.contains("GeneralMethods.stopBending()"));
+        assertFalse(fabric.contains("PredictionServer") || fabric.contains("prediction.stop()"),
+                "Fabric must not host a prediction authority transport");
     }
 
     @Test

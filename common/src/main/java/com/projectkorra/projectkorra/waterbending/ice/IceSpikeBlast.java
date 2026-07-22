@@ -17,6 +17,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionEffect;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionEffectType;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.TempBlock;
@@ -100,7 +101,7 @@ public class IceSpikeBlast extends IceAbility {
     }
 
     public static void activate(final Player player) {
-        redirect(player);
+        final boolean redirected = redirect(player);
         boolean activate = false;
         final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
 
@@ -120,7 +121,7 @@ public class IceSpikeBlast extends IceAbility {
             }
         }
 
-        if (!activate && !getPlayers(IceSpikeBlast.class).contains(player)) {
+        if (!activate && !redirected && !getPlayers(IceSpikeBlast.class).contains(player)) {
             final IceSpikePillar spike = new IceSpikePillar(player);
             if (!spike.isStarted()) {
                 waterBottle(player);
@@ -150,7 +151,8 @@ public class IceSpikeBlast extends IceAbility {
         }
     }
 
-    private static void redirect(final Player player) {
+    private static boolean redirect(final Player player) {
+        boolean redirected = false;
         for (final IceSpikeBlast iceSpike : getAbilities(IceSpikeBlast.class)) {
             if (!iceSpike.progressing) {
                 continue;
@@ -168,6 +170,7 @@ public class IceSpikeBlast extends IceAbility {
                 }
                 location = GeneralMethods.getPointOnLine(iceSpike.location, location, iceSpike.range * 2);
                 iceSpike.redirect(location, player);
+                redirected = true;
             }
 
             final Location location = player.getEyeLocation();
@@ -186,8 +189,24 @@ public class IceSpikeBlast extends IceAbility {
                 }
                 loc = GeneralMethods.getPointOnLine(iceSpike.location, loc, iceSpike.range * 2);
                 iceSpike.redirect(loc, player);
+                redirected = true;
             }
         }
+
+        if (!redirected) {
+            final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
+            if (bPlayer != null) {
+                final var config = ConfigManager.getConfig(bPlayer);
+                final Block authoritative = TempBlockSync.getAuthoritativeEffectAlongRay(player,
+                        "IceSpike", config.getDouble("Abilities.Water.IceSpike.Blast.Range"),
+                        config.getDouble("Abilities.Water.IceSpike.Blast.DeflectRange"), true);
+                if (authoritative != null && !RegionProtection.isRegionProtected(
+                        player, authoritative.getLocation(), "IceSpike")) {
+                    redirected = true;
+                }
+            }
+        }
+        return redirected;
     }
 
     private static void waterBottle(final Player player) {

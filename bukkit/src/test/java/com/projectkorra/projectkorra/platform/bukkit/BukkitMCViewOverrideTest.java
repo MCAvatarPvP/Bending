@@ -1,6 +1,6 @@
 package com.projectkorra.projectkorra.platform.bukkit;
 
-import com.projectkorra.projectkorra.prediction.CapturedInputPose;
+import com.projectkorra.projectkorra.prediction.action.CapturedInputPose;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

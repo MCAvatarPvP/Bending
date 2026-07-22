@@ -36,19 +36,29 @@ class NativeActionCorrelationTest {
 
     @Test
     void everyOwnedGameplayReceiptUsesTheCorrelatedLocalIdentity() throws IOException {
-        Path path = Path.of("src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
-        if (!Files.exists(path)) path = Path.of(
-                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
-        final String runtime = Files.readString(path);
+        final String runtime = source(
+                "src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
+        final String tempBlocks = source(
+                "src/main/java/com/projectkorra/projectkorra/fabric/client/prediction/block/ClientTempBlockAuthority.java");
+        final String playerState = source(
+                "src/main/java/com/projectkorra/projectkorra/fabric/client/prediction/state/ClientPlayerStateAuthority.java");
 
-        assertTrue(runtime.contains("localActionSequence(operation.actionSequence())"));
+        assertTrue(tempBlocks.contains("context.localActionSequence(operation.actionSequence())"));
         assertTrue(runtime.contains("localActionSequence(receipt.actionSequence())"));
         assertTrue(runtime.contains("localActionSequence(removed.actionSequence())"));
-        assertTrue(runtime.contains("localActionSequence(owner.actionSequence())"));
+        assertTrue(runtime.contains("this::localActionSequence"));
+        assertTrue(playerState.contains("correlateAction.applyAsLong(owner.actionSequence())"));
         assertTrue(runtime.contains("localActionSequence(prepare.actionSequence())"));
         assertTrue(runtime.contains("localAcknowledgedSequence(removed.acknowledgedSequence())"));
         assertTrue(runtime.contains("localAcknowledgedSequence(acknowledgedSequence)"));
         assertFalse(runtime.contains("actions.get(removed.actionSequence())"));
         assertFalse(runtime.contains("abilityCreationActions.get(ability), removed.actionSequence()"));
+    }
+
+    private static String source(final String relative) throws IOException {
+        Path path = Path.of(relative);
+        if (!Files.exists(path)) path = Path.of("fabric").resolve(relative);
+        assertTrue(Files.exists(path), "missing source: " + path);
+        return Files.readString(path);
     }
 }

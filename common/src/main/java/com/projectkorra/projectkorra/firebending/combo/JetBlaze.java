@@ -13,7 +13,7 @@ import com.projectkorra.projectkorra.platform.mc.Sound;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
-import com.projectkorra.projectkorra.prediction.EntityHitboxProvider;
+import com.projectkorra.projectkorra.prediction.hit.EntityHitboxProvider;
 import com.projectkorra.projectkorra.util.ParticleEffect;
 
 import java.util.ArrayList;

@@ -2,7 +2,7 @@ package com.projectkorra.projectkorra.configuration;
 
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.platform.Platform;
-import com.projectkorra.projectkorra.prediction.PredictionConfigSync;
+import com.projectkorra.projectkorra.prediction.state.PredictionConfigSync;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;

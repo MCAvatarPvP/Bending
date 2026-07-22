@@ -15,8 +15,8 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionEffect;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionEffectType;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
-import com.projectkorra.projectkorra.prediction.CooldownSync;
-import com.projectkorra.projectkorra.prediction.EntityHitboxProvider;
+import com.projectkorra.projectkorra.prediction.state.CooldownSync;
+import com.projectkorra.projectkorra.prediction.hit.EntityHitboxProvider;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.colliders.Sphere;
 

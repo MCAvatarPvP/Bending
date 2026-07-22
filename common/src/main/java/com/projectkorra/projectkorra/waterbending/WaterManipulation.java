@@ -8,6 +8,7 @@ import com.projectkorra.projectkorra.ability.util.Collision;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.attribute.markers.DayNightFactor;
 import com.projectkorra.projectkorra.command.Commands;
+import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
@@ -16,6 +17,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.*;
 import com.projectkorra.projectkorra.waterbending.ice.PhaseChange;
@@ -295,6 +297,31 @@ public class WaterManipulation extends WaterAbility {
             }
         }
 
+        // Remote moving abilities deliberately have no client CoreAbility
+        // instance. Their ordered TempBlock metadata is still enough to know
+        // that Paper will redirect one, so suppress bottle/source fallback
+        // instead of creating a second client-only projectile.
+        if (!redirected) {
+            final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
+            if (bPlayer != null) {
+                final var config = ConfigManager.getConfig(bPlayer);
+                final boolean redirection = System.currentTimeMillis() - bPlayer.getLastWaterManipRedirect()
+                        > config.getLong("Abilities.Water.WaterManipulation.RedirectionDelay")
+                        || bPlayer.getCps() <= config.getInt("Abilities.Water.WaterManipulation.CpsBuffer");
+                if (redirection && config.getBoolean("Abilities.Water.WaterManipulation.OldRedirection")) {
+                    final Block authoritative = TempBlockSync.getAuthoritativeEffectAlongRay(player,
+                            "WaterManipulation",
+                            config.getDouble("Abilities.Water.WaterManipulation.SelectRange"),
+                            config.getDouble("Abilities.Water.WaterManipulation.DeflectRange"), true);
+                    if (authoritative != null && !RegionProtection.isRegionProtected(
+                            player, authoritative.getLocation(), "WaterManipulation")) {
+                        bPlayer.setLastWaterManipRedirect(System.currentTimeMillis());
+                        redirected = true;
+                    }
+                }
+            }
+        }
+
         return redirected;
     }
 
@@ -437,6 +464,14 @@ public class WaterManipulation extends WaterAbility {
                         return null;
                     }
                 }
+            }
+
+            final Block authoritative = TempBlockSync.getAuthoritativeEffectAlongRay(player,
+                    "WaterManipulation", maxDistance,
+                    Math.sqrt(Math.max(0, thresholdDistance)), true);
+            if (authoritative != null) {
+                ParticleEffect.WHITE_ASH.display(authoritative.getLocation(), 20, 0.5, 0.5, 0.5);
+                return null;
             }
         }
 

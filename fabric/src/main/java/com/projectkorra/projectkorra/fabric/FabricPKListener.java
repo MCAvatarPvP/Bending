@@ -25,7 +25,6 @@ import com.projectkorra.projectkorra.listener.CommonPlayerListenerCore;
 import com.projectkorra.projectkorra.listener.CommonInputHandler;
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.fabric.FabricMC;
-import com.projectkorra.projectkorra.fabric.prediction.PredictionServer;
 import com.projectkorra.projectkorra.platform.mc.GameMode;
 import com.projectkorra.projectkorra.platform.mc.damage.DamageSource;
 import com.projectkorra.projectkorra.platform.mc.damage.DamageType;
@@ -314,7 +313,6 @@ public final class FabricPKListener extends FabricGameplayBridge {
         String world = nativePlayer.getEntityWorld().getRegistryKey().getValue().toString();
         if (!before.world.equals(world)) {
             CommonPlayerListenerCore.handleWorldChange(player);
-            PredictionServer.synchronizeWorld(nativePlayer);
         }
         boolean spectator = nativePlayer.getGameMode() == net.minecraft.world.GameMode.SPECTATOR;
         if (spectator != before.spectator) {

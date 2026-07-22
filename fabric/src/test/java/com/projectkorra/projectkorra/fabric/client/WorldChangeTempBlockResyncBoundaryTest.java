@@ -39,47 +39,34 @@ class WorldChangeTempBlockResyncBoundaryTest {
     }
 
     @Test
-    void bothServersPushAndAnswerAWorldLedgerResync() throws IOException {
-        final String paper = source("../bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
+    void paperAuthorityPushesAndAnswersAWorldLedgerResync() throws IOException {
+        final String paper = source("../bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
         final String paperListener = source("../bukkit/src/main/java/com/projectkorra/projectkorra/PKListener.java");
-        final String fabric = source("src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java");
-        final String fabricListener = source("src/main/java/com/projectkorra/projectkorra/fabric/FabricPKListener.java");
 
         final String paperReady = method(paper, "private void onReady", "private void onInputVeto");
-        final String fabricReady = method(fabric, "private void onReady", "private void onInputVeto");
         assertTrue(paperReady.contains("if (wasReady)")
                         && paperReady.contains("sendWorldState(player, session)")
                         && paperReady.contains("sendTempBlockSnapshot(player, session)"),
                 "Paper must treat a repeated Ready as an idempotent ledger request");
-        assertTrue(fabricReady.contains("if (wasReady)")
-                        && fabricReady.contains("sendWorldState(player, session)")
-                        && fabricReady.contains("sendTempBlockSnapshot(player, session)"),
-                "the native Fabric endpoint must have the same resync semantics as Paper");
 
         assertTrue(paper.contains("public static void synchronizeWorld(final Player player)")
                         && paperListener.contains("PaperPredictionServer.synchronizeWorld(event.getPlayer())"),
                 "Paper should enqueue the destination-world ledger at its authoritative world-change event");
-        assertTrue(fabric.contains("public static void synchronizeWorld(final ServerPlayerEntity player)")
-                        && fabricListener.contains("PredictionServer.synchronizeWorld(nativePlayer)"),
-                "the native Fabric server should push the same destination-world ledger");
         final String paperSync = method(paper, "public static void synchronizeWorld(final Player player)",
                 "private static void runWithOwner");
-        final String fabricSync = method(fabric, "public static void synchronizeWorld(final ServerPlayerEntity player)",
-                "@Override\n    public void onAdded");
         final int paperWorldState = paperSync.indexOf("sendWorldState(player, session)");
         final int paperLedger = paperSync.indexOf("sendTempBlockSnapshot(player, session)");
-        final int fabricWorldState = fabricSync.indexOf("sendWorldState(player, session)");
-        final int fabricLedger = fabricSync.indexOf("sendTempBlockSnapshot(player, session)");
         assertTrue(paperWorldState >= 0 && paperLedger > paperWorldState);
-        assertTrue(fabricWorldState >= 0 && fabricLedger > fabricWorldState);
+        assertFalse(exists("src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java"),
+                "Fabric is a prediction client only; Paper is the sole authority endpoint");
     }
 
     @Test
     void paperWorldIdentityForcesABoundaryEvenWhenVanillaReusesTheClientWorld() throws IOException {
         final String client = source("src/main/java/com/projectkorra/projectkorra/fabric/client/PredictionClient.java");
-        final String payloads = source("src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionPayloads.java");
-        final String paperProtocol = source("../bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionProtocol.java");
-        final String paper = source("../bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
+        final String payloads = source("src/main/java/com/projectkorra/projectkorra/fabric/prediction/protocol/PredictionPayloads.java");
+        final String paperProtocol = source("../bukkit/src/main/java/com/projectkorra/projectkorra/prediction/protocol/PaperPredictionProtocol.java");
+        final String paper = source("../bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
 
         assertTrue(payloads.contains("record ServerWorldState(UUID sessionId, long worldGeneration")
                         && payloads.contains("playS2C().register(ServerWorldState.ID"),
@@ -101,28 +88,21 @@ class WorldChangeTempBlockResyncBoundaryTest {
 
     @Test
     void periodicLedgerSelfHealCannotLoseTheWorldBoundaryEvent() throws IOException {
-        final String paper = source("../bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
-        final String fabric = source("src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java");
+        final String paper = source("../bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
         final String paperHeartbeat = method(paper, "public void run()", "private CommonInputHandler.InputResult handleVanilla0");
-        final String fabricHeartbeat = method(fabric, "public void tick()", "Returns the modded owner");
 
         final int paperWorldState = paperHeartbeat.indexOf("sendWorldState(player, session)");
         final int paperLedger = paperHeartbeat.indexOf("sendTempBlockSnapshot(player, session)");
-        final int fabricWorldState = fabricHeartbeat.indexOf("sendWorldState(player, session)");
-        final int fabricLedger = fabricHeartbeat.indexOf("sendTempBlockSnapshot(player, session)");
         assertTrue(paperWorldState >= 0 && paperLedger > paperWorldState,
                 "Paper's periodic ledger repair must also repair a missed same-dimension world identity event");
-        assertTrue(fabricWorldState >= 0 && fabricLedger > fabricWorldState,
-                "the native endpoint must retain the same self-healing world-boundary ordering");
     }
 
     @Test
     void everyTempBlockBatchIsAtomicallyScopedToSessionAndWorldGeneration() throws IOException {
         final String client = source("src/main/java/com/projectkorra/projectkorra/fabric/client/PredictionClient.java");
-        final String payloads = source("src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionPayloads.java");
-        final String paperProtocol = source("../bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionProtocol.java");
-        final String paper = source("../bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
-        final String fabric = source("src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java");
+        final String payloads = source("src/main/java/com/projectkorra/projectkorra/fabric/prediction/protocol/PredictionPayloads.java");
+        final String paperProtocol = source("../bukkit/src/main/java/com/projectkorra/projectkorra/prediction/protocol/PaperPredictionProtocol.java");
+        final String paper = source("../bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
         final String handler = method(client, "private void onTempBlocks", "private void onVelocityOwner");
 
         assertTrue(payloads.contains("record TempBlockBatch(UUID sessionId, long worldGeneration, String worldIdentity"),
@@ -136,8 +116,7 @@ class WorldChangeTempBlockResyncBoundaryTest {
         assertTrue(handler.indexOf("acceptServerWorldState")
                         < handler.indexOf("ExactPredictionRuntime.applyTempBlockBatch"),
                 "the batch's world boundary must be accepted before any contained block is painted");
-        assertTrue(paper.contains("session.tempLayers.clear()")
-                        && fabric.contains("session.tempLayers.clear()"),
+        assertTrue(paper.contains("session.tempLayers.clear()"),
                 "leaving a world must forget its delivered layers so their later closes cannot repaint the destination");
     }
 
@@ -234,6 +213,11 @@ class WorldChangeTempBlockResyncBoundaryTest {
         if (!Files.exists(source)) source = Path.of("fabric").resolve(relative);
         assertTrue(Files.exists(source), "missing source: " + source);
         return Files.readString(source);
+    }
+
+    private static boolean exists(final String relative) {
+        final Path source = Path.of(relative);
+        return Files.exists(source) || Files.exists(Path.of("fabric").resolve(relative));
     }
 
     private static String method(final String source, final String startMarker, final String endMarker) {

@@ -10,8 +10,8 @@ import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.block.BlockState;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
-import com.projectkorra.projectkorra.prediction.TempBlockSync;
-import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
+import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
+import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -22,6 +22,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -332,6 +334,25 @@ class TempBlockLifecycleTest {
 
         assertEquals(Material.STONE, block.getType());
         assertFalse(TempBlock.isTempBlock(block));
+        assertTrue(TempBlock.getActiveLayers().isEmpty());
+    }
+
+    @Test
+    void activeLayerIdentityIndexTracksHundredsOfLayersThroughEveryClosePath() {
+        List<TempBlock> layers = new ArrayList<>();
+        for (int index = 0; index < 600; index++) {
+            TempBlock layer = new TempBlock(new FakeBlock(Material.STONE), Material.ICE);
+            layers.add(layer);
+            assertSame(layer, TempBlock.getActiveLayer(layer.getLayerId()));
+        }
+
+        for (int index = 0; index < layers.size(); index++) {
+            TempBlock layer = layers.get(index);
+            if ((index & 1) == 0) layer.revertBlock();
+            else layer.discard();
+            assertNull(TempBlock.getActiveLayer(layer.getLayerId()));
+        }
+
         assertTrue(TempBlock.getActiveLayers().isEmpty());
     }
 

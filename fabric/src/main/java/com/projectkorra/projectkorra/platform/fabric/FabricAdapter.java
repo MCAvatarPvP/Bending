@@ -1,6 +1,5 @@
 package com.projectkorra.projectkorra.platform.fabric;
 
-import com.projectkorra.projectkorra.fabric.prediction.PredictionServer;
 import com.projectkorra.projectkorra.platform.mc.Particle;
 import com.projectkorra.projectkorra.platform.model.*;
 import java.util.UUID;
@@ -84,9 +83,7 @@ public final class FabricAdapter implements PKAdapter {
         public void spawnParticle(String particle, PKLocation location, int count, double x, double y, double z, double extra) {
             if (location == null) return;
             ParticleEffect effect = FabricMC.particle(Particle.valueOf(particle), null);
-            ServerPlayerEntity predictedOwner = PredictionServer.predictedEffectOwner();
             for (ServerPlayerEntity viewer : value.getPlayers()) {
-                if (viewer == predictedOwner) continue;
                 value.spawnParticles(viewer, effect, false, false, location.x(), location.y(), location.z(), count, x, y, z, extra);
             }
         }

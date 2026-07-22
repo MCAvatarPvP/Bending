@@ -13,7 +13,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.util.ChatUtil;
 import com.projectkorra.projectkorra.util.DamageHandler;
-import com.projectkorra.projectkorra.prediction.PredictedContactSync;
+import com.projectkorra.projectkorra.prediction.hit.PredictedContactSync;
 import com.projectkorra.projectkorra.util.TempFallingBlock;
 import me.literka.abilities.StickyBomb;
 

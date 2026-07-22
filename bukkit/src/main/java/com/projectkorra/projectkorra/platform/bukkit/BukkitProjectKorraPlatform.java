@@ -8,7 +8,7 @@ import com.projectkorra.projectkorra.platform.mc.boss.BossBar;
 import com.projectkorra.projectkorra.platform.mc.event.Cancellable;
 import com.projectkorra.projectkorra.platform.mc.event.EventHandler;
 import com.projectkorra.projectkorra.platform.model.PKAdapter;
-import com.projectkorra.projectkorra.prediction.PaperPredictionServer;
+import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
 import io.papermc.lib.PaperLib;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;

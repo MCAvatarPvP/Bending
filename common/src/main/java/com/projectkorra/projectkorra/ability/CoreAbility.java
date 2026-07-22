@@ -21,11 +21,12 @@ import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.permissions.Permission;
 import com.projectkorra.projectkorra.platform.mc.plugin.java.JavaPlugin;
-import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
-import com.projectkorra.projectkorra.prediction.AbilityRemovalSync;
-import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
+import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
+import com.projectkorra.projectkorra.prediction.action.AbilityRemovalSync;
+import com.projectkorra.projectkorra.prediction.action.PredictionDeterminism;
 import com.projectkorra.projectkorra.util.AbilityTimingDebugger;
 import com.projectkorra.projectkorra.util.FlightHandler;
+import com.projectkorra.projectkorra.util.TempBlock;
 import com.projectkorra.projectkorra.util.TimeUtil;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
@@ -77,6 +78,7 @@ public abstract class CoreAbility implements Ability {
     private boolean started;
     private boolean removed;
     private boolean hidden;
+    private boolean ownershipTransferred;
     private int id;
     private final long predictionActionSequence = PredictionDeterminism.currentAction();
     private final long predictionDeterministicSeed = PredictionDeterminism.currentSeed();
@@ -1030,6 +1032,13 @@ public abstract class CoreAbility implements Ability {
             return;
         }
 
+        final UUID previousOwner = this.player == null ? null : this.player.getUniqueId();
+        final UUID nextOwner = target == null ? null : target.getUniqueId();
+        final boolean ownerChanged = !Objects.equals(previousOwner, nextOwner);
+        if (ownerChanged) {
+            this.ownershipTransferred = true;
+        }
+
         final Class<? extends CoreAbility> clazz = this.getClass();
 
         // The mapping from player UUID to a map of the player's instances.
@@ -1075,6 +1084,46 @@ public abstract class CoreAbility implements Ability {
         if (newBendingPlayer != null) {
             this.bPlayer = newBendingPlayer;
         }
+
+        if (ownerChanged) {
+            AbilityRemovalSync.ownerTransferred(this, previousOwner, nextOwner);
+            // Existing visual layers retain the owner captured at creation.
+            // Re-publish them only after the prediction endpoint has either
+            // installed an exact handoff or chosen ordinary server authority.
+            TempBlock.refreshAbilityOwnership(this);
+        }
+    }
+
+    /**
+     * Whether this running instance has ever moved to a different player.
+     * Predicting clients simulate only their own instances, so a transferred
+     * server projectile must remain server-visible to its new controller.
+     */
+    public boolean hasTransferredOwnership() {
+        return this.ownershipTransferred;
+    }
+
+    /**
+     * Whether a predicting client can reconstruct this ability at an
+     * ownership boundary and continue the same instance locally.
+     */
+    public boolean supportsPredictedOwnershipTransfer() {
+        return false;
+    }
+
+    /**
+     * Whether local TempBlock writes from this instance belong in the exact
+     * action-matching ledger. Ownership-transfer previews may render before
+     * Paper establishes the new causal boundary; those provisional writes
+     * must not consume the authoritative action's ordinals.
+     */
+    public boolean tracksPredictedTempBlocks() {
+        return true;
+    }
+
+    /** Optional compact lifecycle state attached to semantic TempBlock metadata. */
+    public String getPredictionState() {
+        return "";
     }
 
     /**

@@ -1,5 +1,9 @@
 package com.projectkorra.projectkorra.prediction;
 
+import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
+
+import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
+
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -14,7 +18,7 @@ class TempBlockPacketFilterBoundaryTest {
     @Test
     void paperAnnouncesActionOwnershipBeforeEveryPhysicalWrite() throws IOException {
         String plugin = source("src/main/java/com/projectkorra/projectkorra/BukkitProjectKorraPlugin.java");
-        String server = source("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
+        String server = source("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
 
         assertFalse(plugin.contains("TempBlockPacketFilter"));
         assertFalse(server.contains("TempBlockPacketFilter"));
@@ -40,8 +44,9 @@ class TempBlockPacketFilterBoundaryTest {
                         && tempBlock.contains("getEffectStep()")
                         && tempBlock.contains("getEffectOrdinal()"));
 
-        String server = source("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
-        assertTrue(server.contains("effectAbility, effectStep, effectOrdinal"));
+        String server = source("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
+        assertTrue(server.contains("effectAbility, change.effectState(), effectStep, effectOrdinal"),
+                "the semantic state must stay ordered with its ability identity and ordinal");
         assertTrue(server.contains("tempLayerEffects")
                         && server.contains("++action.tempBlockOrdinal"),
                 "every predicted TempBlock must receive a causal action-local semantic identity");

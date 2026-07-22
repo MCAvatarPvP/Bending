@@ -20,7 +20,8 @@ import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
-import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
+import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
+import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
 import com.projectkorra.projectkorra.util.TempBlock;
@@ -95,6 +96,14 @@ public class IceWall extends IceAbility implements AddonAbility {
                     iw.collapse(player, false);
                     return;
                 }
+            }
+
+            // A predicting client intentionally has no CoreAbility instance
+            // for another player's wall. Paper will collapse that real
+            // instance; do not reinterpret its visible packed ice as a source
+            // and construct a second client-only wall over it.
+            if (TempBlockSync.hasAuthoritativeEffect(b, this.getName())) {
+                return;
             }
 
             if (isWaterbendable(b)) {
@@ -401,6 +410,17 @@ public class IceWall extends IceAbility implements AddonAbility {
                     closestDistanceAlongRay = distanceAlongRay;
                     closestBlock = candidate;
                 }
+            }
+        }
+
+        final Block authoritative = TempBlockSync.getAuthoritativeEffectAlongRay(
+                player, this.getName(), range, breakHitbox, false);
+        if (authoritative != null) {
+            final Vector toBlock = authoritative.getLocation().toVector()
+                    .add(new Vector(0.5, 0.5, 0.5)).subtract(eyeLocation.toVector());
+            final double distanceAlongRay = toBlock.dot(direction);
+            if (distanceAlongRay < closestDistanceAlongRay) {
+                closestBlock = authoritative;
             }
         }
 

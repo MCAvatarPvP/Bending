@@ -4,6 +4,7 @@ import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.EarthAbility;
+import com.projectkorra.projectkorra.ability.activation.AbilityActivationManager;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.ability.util.Collision;
 import com.projectkorra.projectkorra.attribute.Attribute;
@@ -19,8 +20,11 @@ import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.BlockIterator;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
-import com.projectkorra.projectkorra.prediction.ConfirmedHitEffects;
-import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
+import com.projectkorra.projectkorra.prediction.action.AbilityRemovalSync;
+import com.projectkorra.projectkorra.prediction.hit.ConfirmedHitEffects;
+import com.projectkorra.projectkorra.prediction.action.PredictionDeterminism;
+import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
+import com.projectkorra.projectkorra.prediction.state.AbilityCheckpointSync;
 import com.projectkorra.projectkorra.util.ClickType;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
@@ -44,6 +48,7 @@ public class EarthSmash extends EarthAbility {
     private boolean ignoreBinds;
     private int animationCounter;
     private int progressCounter;
+    private long predictionFrame;
     private int requiredBendableBlocks;
     private int maxBlocksToPassThrough;
     private long delay;
@@ -89,6 +94,9 @@ public class EarthSmash extends EarthAbility {
     private ArrayList<Entity> affectedEntities;
     private ArrayList<BlockRepresenter> currentBlocks;
     private ArrayList<TempBlock> affectedBlocks;
+    private boolean activationHandled;
+    private boolean awaitingPredictionTransfer;
+    private boolean redrawTransferredShape;
     public EarthSmash(final Player player, final ClickType type) {
         super(player);
 
@@ -100,32 +108,77 @@ public class EarthSmash extends EarthAbility {
         this.currentBlocks = new ArrayList<>();
         this.affectedBlocks = new ArrayList<>();
 
-        if (type == ClickType.SHIFT_DOWN || type == ClickType.SHIFT_UP && !player.isSneaking()) {
+        if (type == ClickType.SHIFT_UP) {
+            // Release is an input transition, not merely an observation made
+            // by a later progress tick. Keeping it on this exact action means
+            // a rapid release/re-grab cannot overtake Paper and leave the two
+            // runtimes assigning TempBlocks to different grab generations.
+            for (final EarthSmash smash : getAbilities(player, EarthSmash.class)) {
+                if (smash.state != State.GRABBED) continue;
+                smash.transitionState(State.LIFTED);
+                smash.drawTransferredShapeIfNeeded();
+                this.markActivationHandled(smash);
+                return;
+            }
+            return;
+        }
+
+        if (type == ClickType.SHIFT_DOWN) {
             final EarthSmash flySmash = flyingInSmashCheck(player);
             if (flySmash != null) {
-                flySmash.state = State.FLYING;
-                flySmash.player = player;
-                flySmash.setFields();
+                flySmash.transitionState(State.FLYING);
                 flySmash.flightStartTime = System.currentTimeMillis();
+                flySmash.setPlayer(player);
+                flySmash.setFields();
+                this.markActivationHandled(flySmash);
+                return;
+            }
+
+            final Block authoritativeFlight = TempBlockSync.getAuthoritativeEffectAroundPoint(
+                    player, player.getLocation().clone().add(0, -1, 0), this.getName(),
+                    Math.max(2.0, this.flightDetectionRadius + 2.0), true);
+            if (authoritativeFlight != null && State.LIFTED.name().equalsIgnoreCase(
+                    TempBlockSync.getAuthoritativeEffectState(authoritativeFlight))) {
+                this.markActivationHandled(adoptAuthoritativeTransfer(player,
+                        TempBlockSync.getAuthoritativeEffectCluster(
+                                authoritativeFlight, this.getName(), 4.25), State.FLYING));
                 return;
             }
 
             EarthSmash grabbedSmash = this.aimingAtSmashCheck(player, State.LIFTED);
+            final Block authoritativeTarget = grabbedSmash == null
+                    ? TempBlockSync.getAuthoritativeEffectAlongRay(player, this.getName(),
+                    this.grabRange, this.grabDetectionRadius, true) : null;
+            final String authoritativeState = authoritativeTarget == null ? ""
+                    : TempBlockSync.getAuthoritativeEffectState(authoritativeTarget);
+            if (grabbedSmash == null && State.LIFTED.name().equalsIgnoreCase(authoritativeState)) {
+                this.markActivationHandled(adoptAuthoritativeTransfer(player,
+                        TempBlockSync.getAuthoritativeEffectCluster(
+                                authoritativeTarget, this.getName(), 4.25), State.GRABBED));
+                return;
+            }
             if (grabbedSmash == null) {
                 if (!redirectOnCd && this.bPlayer.isOnCooldown(this)) {
                     return;
                 }
                 grabbedSmash = this.aimingAtSmashCheck(player, State.SHOT);
+                if (grabbedSmash == null && State.SHOT.name().equalsIgnoreCase(authoritativeState)) {
+                    this.markActivationHandled(adoptAuthoritativeTransfer(player,
+                            TempBlockSync.getAuthoritativeEffectCluster(
+                                    authoritativeTarget, this.getName(), 4.25), State.GRABBED));
+                    return;
+                }
             }
 
             if (grabbedSmash != null) {
-                grabbedSmash.state = State.GRABBED;
+                grabbedSmash.transitionState(State.GRABBED);
                 grabbedSmash.grabbedDistance = 0;
                 if (grabbedSmash.location.getWorld().equals(player.getWorld())) {
                     grabbedSmash.grabbedDistance = grabbedSmash.location.distance(player.getEyeLocation());
                 }
-                grabbedSmash.player = player;
+                grabbedSmash.setPlayer(player);
                 grabbedSmash.setFields();
+                this.markActivationHandled(grabbedSmash);
                 return;
             }
 
@@ -133,9 +186,10 @@ public class EarthSmash extends EarthAbility {
         } else if (type == ClickType.LEFT_CLICK && player.isSneaking()) {
             for (final EarthSmash smash : getAbilities(EarthSmash.class)) {
                 if (smash.state == State.GRABBED && smash.player == player) {
-                    smash.state = State.SHOT;
+                    smash.transitionState(State.SHOT);
                     smash.destination = player.getEyeLocation().clone().add(player.getEyeLocation().getDirection().normalize().multiply(smash.shootRange));
                     playEarthbendingSound(smash.location);
+                    this.markActivationHandled(smash);
                 }
             }
             return;
@@ -143,13 +197,106 @@ public class EarthSmash extends EarthAbility {
             final EarthSmash grabbedSmash = this.aimingAtSmashCheck(player, State.GRABBED);
             if (grabbedSmash != null) {
                 player.teleport(grabbedSmash.location.clone().add(0, 2, 0));
-                grabbedSmash.state = State.FLYING;
-                grabbedSmash.player = player;
-                grabbedSmash.setFields();
+                grabbedSmash.transitionState(State.FLYING);
                 grabbedSmash.flightStartTime = System.currentTimeMillis();
+                grabbedSmash.setPlayer(player);
+                grabbedSmash.setFields();
+                this.markActivationHandled(grabbedSmash);
             }
             return;
         }
+    }
+
+    private void markActivationHandled(final EarthSmash affected) {
+        if (affected == null) return;
+        this.activationHandled = true;
+        AbilityActivationManager.markHandled(affected);
+    }
+
+    /** Whether this constructor invocation changed an already-running smash. */
+    public boolean didHandleActivation() {
+        return this.activationHandled;
+    }
+
+    /** Constructs only the local continuation of a server-owned smash. */
+    private EarthSmash(final Player player, final PredictionTransfer transfer,
+                       final boolean awaitingPredictionTransfer) {
+        super(player);
+        this.state = State.START;
+        this.requiredBendableBlocks = getConfig().getInt("Abilities.Earth.EarthSmash.RequiredBendableBlocks");
+        this.maxBlocksToPassThrough = getConfig().getInt("Abilities.Earth.EarthSmash.MaxBlocksToPassThrough");
+        this.setFields();
+        this.affectedEntities = new ArrayList<>();
+        this.currentBlocks = new ArrayList<>();
+        this.affectedBlocks = new ArrayList<>();
+        this.start();
+        this.applyPredictionTransfer(transfer);
+        this.awaitingPredictionTransfer = awaitingPredictionTransfer;
+    }
+
+    public static EarthSmash restorePredictionTransfer(final Player player,
+                                                        final PredictionTransfer transfer) {
+        return player == null || transfer == null
+                ? null : new EarthSmash(player, transfer, false);
+    }
+
+    private static EarthSmash adoptAuthoritativeTransfer(
+            final Player player, final TempBlockSync.AuthoritativeEffectCluster cluster,
+            final State resultingState) {
+        if (player == null || cluster == null || cluster.blocks().isEmpty()) return null;
+        final List<TempBlockSync.AuthoritativeEffectBlock> solid = cluster.blocks().stream()
+                .filter(entry -> entry != null && entry.block() != null && entry.data() != null
+                        && !entry.data().getMaterial().isAir())
+                .toList();
+        if (solid.isEmpty()) return null;
+
+        Block center = null;
+        int bestScore = -1;
+        double bestSeedDistance = Double.MAX_VALUE;
+        for (final TempBlockSync.AuthoritativeEffectBlock candidate : solid) {
+            int score = 0;
+            for (final TempBlockSync.AuthoritativeEffectBlock entry : solid) {
+                final int x = entry.block().getX() - candidate.block().getX();
+                final int y = entry.block().getY() - candidate.block().getY();
+                final int z = entry.block().getZ() - candidate.block().getZ();
+                if (isSmashOffset(x, y, z)) score++;
+            }
+            final double seedDistance = candidate.block().getLocation().distanceSquared(
+                    cluster.seed().getLocation());
+            if (score > bestScore || score == bestScore && seedDistance < bestSeedDistance) {
+                center = candidate.block();
+                bestScore = score;
+                bestSeedDistance = seedDistance;
+            }
+        }
+        if (center == null || bestScore < 5) return null;
+
+        final List<PredictionBlock> shape = new ArrayList<>();
+        for (final TempBlockSync.AuthoritativeEffectBlock entry : solid) {
+            final int x = entry.block().getX() - center.getX();
+            final int y = entry.block().getY() - center.getY();
+            final int z = entry.block().getZ() - center.getZ();
+            if (isSmashOffset(x, y, z)) {
+                shape.add(new PredictionBlock(x, y, z, TempBlockSync.encode(entry.data())));
+            }
+        }
+        final Location location = center.getLocation();
+        final double distance = location.getWorld() == player.getWorld()
+                ? location.distance(player.getEyeLocation()) : 0;
+        final PredictionTransfer transfer = new PredictionTransfer(location.getWorld().getName(),
+                location.getX(), location.getY(), location.getZ(), false, 0, 0, 0,
+                resultingState.name(), distance, 5, 0, 0L,
+                0, 0, 60_000, List.copyOf(shape));
+        // This preview is deliberately not entered into the exact TempBlock
+        // ledger. The visible Paper shape can be several ticks behind the
+        // server instance selected by the same grab. The ownership-transfer
+        // payload establishes the shared ordinal boundary later.
+        return new EarthSmash(player, transfer, true);
+    }
+
+    private static boolean isSmashOffset(final int x, final int y, final int z) {
+        return Math.abs(x) <= 1 && Math.abs(y) <= 1 && Math.abs(z) <= 1
+                && (Math.abs(x) + Math.abs(y) + Math.abs(z)) % 2 == 0;
     }
 
     /**
@@ -224,6 +371,13 @@ public class EarthSmash extends EarthAbility {
             this.remove();
             return;
         }
+        if (this.redrawTransferredShape && this.state == State.LIFTED) {
+            // Reconciliation runs outside ability progress. Repaint here,
+            // after the runtime has associated the exact action and layer
+            // ordinals, rather than leaving a stationary smash invisible.
+            this.drawTransferredShapeIfNeeded();
+            if (this.isRemoved()) return;
+        }
 
         if (this.state == State.START) {
             if (!this.bPlayer.canBend(this)) {
@@ -258,7 +412,13 @@ public class EarthSmash extends EarthAbility {
                     }
                     this.bPlayer.addCooldown(this);
                     this.location = this.origin.getLocation();
-                    this.state = State.LIFTING;
+                    this.transitionState(State.LIFTING);
+                    // Charge completion is evaluated during independently
+                    // scheduled client and Paper progress ticks. Confirm the
+                    // authoritative transition and source so a threshold-edge
+                    // disagreement can restore the predicted lifecycle before
+                    // Paper's first physical TempBlocks arrive.
+                    AbilityCheckpointSync.publish(this);
                     this.minDamage = applyMetalPowerFactor(this.minDamage, this.origin);
                     this.maxDamage = applyMetalPowerFactor(this.maxDamage, this.origin);
                 } else {
@@ -297,7 +457,13 @@ public class EarthSmash extends EarthAbility {
                 this.draw();
                 return;
             } else {
-                this.state = State.LIFTED;
+                this.transitionState(State.LIFTED);
+                this.drawTransferredShapeIfNeeded();
+                // Fallback for callers which change sneak state without going
+                // through CommonInputHandler. Normal player input transitions
+                // synchronously through SHIFT_UP and is checkpointed against
+                // that exact action by PaperPredictionServer.
+                AbilityCheckpointSync.publish(this);
                 return;
             }
         } else if (this.state == State.SHOT) {
@@ -471,9 +637,16 @@ public class EarthSmash extends EarthAbility {
             playEarthbendingSound(this.location);
             this.draw();
         } else {
-            this.state = State.LIFTED;
+            this.transitionState(State.LIFTED);
         }
         this.animationCounter++;
+        if (this.state == State.LIFTING && this.animationCounter == 1) {
+            // Retry once after Paper has captured the exact shape. If the
+            // early activation checkpoint reached the client after Paper's
+            // source-hole packets, this snapshot can still restore the live
+            // lift without inferring the missing materials from ghost air.
+            AbilityCheckpointSync.publish(this);
+        }
     }
 
     /**
@@ -484,16 +657,32 @@ public class EarthSmash extends EarthAbility {
             this.remove();
             return;
         }
+        final long effectFrame = ++this.predictionFrame;
         for (final BlockRepresenter blockRep : this.currentBlocks) {
             final Block block = this.location.clone().add(blockRep.getX(), blockRep.getY(), blockRep.getZ()).getBlock();
             if (block.getType().equals(Material.SAND) || block.getType().equals(Material.GRAVEL)) { // Check if block can be affected by gravity.
 
             }
             if (this.player != null && this.isVisibleTransparent(block)) {
-                this.affectedBlocks.add(new TempBlock(block, blockRep.getData(), this));
+                this.affectedBlocks.add(new TempBlock(block, blockRep.getData(), this,
+                        effectFrame, predictionShapeSlot(blockRep)));
                 getPreventEarthbendingBlocks().add(block);
             }
         }
+        if (!this.affectedBlocks.isEmpty()) this.redrawTransferredShape = false;
+    }
+
+    private void drawTransferredShapeIfNeeded() {
+        if (this.redrawTransferredShape && !this.currentBlocks.isEmpty() && !this.isRemoved()) {
+            this.draw();
+        }
+    }
+
+    private static int predictionShapeSlot(final BlockRepresenter block) {
+        // Identify the logical piece independently of physical creation order.
+        // If one runtime cannot place an earlier piece, every later piece must
+        // still retain the same identity on Paper and Fabric.
+        return (block.getX() + 1) * 9 + (block.getY() + 1) * 3 + block.getZ() + 2;
     }
 
     public void revert() {
@@ -516,8 +705,38 @@ public class EarthSmash extends EarthAbility {
     }
 
     private boolean isVisibleTransparent(final Block block) {
-        return ElementalAbility.getTransparentMaterialSet().contains(this.visibleType(block))
+        return (ElementalAbility.getTransparentMaterialSet().contains(this.visibleType(block))
+                || this.isAuthoritativeShapeBlock(block)
+                || this.isOwnAuthoritativeSmashBlock(block))
                 && !RegionProtection.isRegionProtected(this.player, block.getLocation(), this);
+    }
+
+    /** Paper's latency-delayed copy of this smash is not a terrain collision. */
+    private boolean isOwnAuthoritativeSmashBlock(final Block block) {
+        return block != null && this.player != null
+                && TempBlockSync.hasAuthoritativeEffect(block, this.getName(),
+                this.player.getUniqueId());
+    }
+
+    /**
+     * A transferred smash initially occupies the same coordinates as Paper's
+     * foreign TempBlocks. Those blocks are the source being adopted, not an
+     * obstruction to the local continuation.
+     */
+    private boolean isAuthoritativeShapeBlock(final Block block) {
+        if (block == null || this.location == null || this.currentBlocks == null
+                || !TempBlockSync.hasAuthoritativeEffect(block, this.getName())
+                || !this.awaitingPredictionTransfer
+                && !this.isOwnAuthoritativeSmashBlock(block)) return false;
+        for (final BlockRepresenter representer : this.currentBlocks) {
+            final Block expected = this.location.clone()
+                    .add(representer.getX(), representer.getY(), representer.getZ()).getBlock();
+            if (expected.getWorld().equals(block.getWorld())
+                    && expected.getX() == block.getX()
+                    && expected.getY() == block.getY()
+                    && expected.getZ() == block.getZ()) return true;
+        }
+        return false;
     }
 
     /**
@@ -548,6 +767,10 @@ public class EarthSmash extends EarthAbility {
                     }
                 }
             }
+            // During an ownership handoff Paper may conceal its physical
+            // layer before this continuation has installed the matching local
+            // TempBlock. Its semantic layer still proves the piece exists.
+            if (smashLayer == null && this.isAuthoritativeShapeBlock(block)) continue;
             final Material visible = smashLayer == null
                     ? block.getType() : smashLayer.getBlockData().getMaterial();
             // Check for grass because sometimes the dirt turns into grass.
@@ -560,8 +783,16 @@ public class EarthSmash extends EarthAbility {
 
     @Override
     public void remove() {
+        if (this.state == State.START || this.state == State.LIFTING) {
+            AbilityRemovalSync.runAuthoritativeRejection(this::removeNow);
+            return;
+        }
+        this.removeNow();
+    }
+
+    private void removeNow() {
         super.remove();
-        this.state = State.REMOVED;
+        this.transitionState(State.REMOVED);
         this.revert();
     }
 
@@ -1196,7 +1427,158 @@ public class EarthSmash extends EarthAbility {
     }
 
     public void setState(final State state) {
+        this.transitionState(state);
+    }
+
+    private void transitionState(final State state) {
+        if (state == null || this.state == state) return;
         this.state = state;
+        for (final TempBlock layer : List.copyOf(this.affectedBlocks)) {
+            if (layer != null && !layer.isReverted()) layer.refreshPredictionMetadata();
+        }
+    }
+
+    @Override
+    public String getPredictionState() {
+        return this.state == null ? "" : this.state.name();
+    }
+
+    @Override
+    public boolean supportsPredictedOwnershipTransfer() {
+        return true;
+    }
+
+    @Override
+    public boolean tracksPredictedTempBlocks() {
+        return !this.awaitingPredictionTransfer;
+    }
+
+    /** Exact state sent when Paper hands this live smash to another client. */
+    public PredictionTransfer capturePredictionTransfer() {
+        if (this.location == null || this.location.getWorld() == null) return null;
+        final long now = System.currentTimeMillis();
+        final List<PredictionBlock> shape = this.currentBlocks.stream()
+                .map(block -> new PredictionBlock(block.getX(), block.getY(), block.getZ(),
+                        TempBlockSync.encode(block.getData())))
+                .toList();
+        return new PredictionTransfer(this.location.getWorld().getName(),
+                this.location.getX(), this.location.getY(), this.location.getZ(),
+                this.destination != null,
+                this.destination == null ? 0 : this.destination.getX(),
+                this.destination == null ? 0 : this.destination.getY(),
+                this.destination == null ? 0 : this.destination.getZ(),
+                this.getPredictionState(), this.grabbedDistance,
+                this.animationCounter, this.progressCounter, this.predictionFrame,
+                Math.max(0, now - this.getStartTime()),
+                this.flightStartTime <= 0 ? 0 : Math.max(0, now - this.flightStartTime),
+                this.delay <= 0 ? 60_000 : Math.max(0, Math.min(60_000, now - this.delay)),
+                List.copyOf(shape));
+    }
+
+    /** Reconciles a provisional local handoff to Paper's exact center/state. */
+    public void applyPredictionTransfer(final PredictionTransfer transfer) {
+        if (transfer == null || this.player == null || this.player.getWorld() == null
+                || !this.player.getWorld().getName().equals(transfer.world())) return;
+        for (final TempBlock layer : List.copyOf(this.affectedBlocks)) {
+            if (layer == null) continue;
+            getPreventEarthbendingBlocks().remove(layer.getBlock());
+            if (!layer.isReverted()) layer.revertBlock();
+        }
+        this.affectedBlocks.clear();
+        this.currentBlocks.clear();
+        for (final PredictionBlock block : transfer.blocks()) {
+            if (block == null || !isSmashOffset(block.x(), block.y(), block.z())) continue;
+            final BlockData data = predictionBlockData(block.material());
+            this.currentBlocks.add(new BlockRepresenter(block.x(), block.y(), block.z(),
+                    data.getMaterial(), data));
+        }
+        this.location = new Location(this.player.getWorld(), transfer.x(), transfer.y(), transfer.z());
+        this.origin = this.location.getBlock();
+        this.destination = transfer.hasDestination()
+                ? new Location(this.player.getWorld(), transfer.destinationX(),
+                transfer.destinationY(), transfer.destinationZ()) : null;
+        try {
+            this.state = State.valueOf(transfer.state());
+        } catch (IllegalArgumentException ignored) {
+            this.state = State.GRABBED;
+        }
+        this.grabbedDistance = Math.max(0, transfer.grabbedDistance());
+        this.animationCounter = Math.max(0, transfer.animationCounter());
+        this.progressCounter = Math.max(0, transfer.progressCounter());
+        this.predictionFrame = Math.max(0L, transfer.predictionFrame());
+        final long now = System.currentTimeMillis();
+        this.flightStartTime = now - Math.max(0, Math.min(60_000, transfer.flightElapsedMillis()));
+        this.delay = now - Math.max(0, Math.min(60_000, transfer.delayElapsedMillis()));
+        final long localElapsed = Math.max(0L, now - this.getStartTime());
+        final long authoritativeElapsed = Math.max(0L, Math.min(60_000L, transfer.elapsedMillis()));
+        // Existing predictions already include their local age. Backdate only
+        // the missing portion; adding the full authoritative age a second time
+        // made transferred/checkpointed lifetimes expire too early.
+        this.alignPredictedStart(Math.max(0L, authoritativeElapsed - localElapsed));
+        this.awaitingPredictionTransfer = false;
+        // Moving states repaint on their next ordinary animation step. LIFTED
+        // has no such step, so remember that its just-retired visual must be
+        // restored if reconciliation lands on the release boundary.
+        this.redrawTransferredShape = !this.currentBlocks.isEmpty();
+    }
+
+    /** True when an activation checkpoint confirms the state already rendered locally. */
+    public boolean matchesPredictionCheckpoint(final PredictionTransfer transfer) {
+        if (transfer == null || this.origin == null || this.origin.getWorld() == null
+                || !this.origin.getWorld().getName().equals(transfer.world())) return false;
+        final State checkpointState;
+        try {
+            checkpointState = State.valueOf(transfer.state());
+        } catch (IllegalArgumentException ignored) {
+            return false;
+        }
+
+        if (checkpointState == State.LIFTING) {
+            // The source is the stable identity of a lift. The client may
+            // already have drawn more animation frames (or reached LIFTED) by
+            // the time Paper's earlier checkpoint arrives. Comparing the live
+            // center/partial shape here rewinds a correct prediction and
+            // retires its current TempBlocks as a visible trail.
+            return (this.state == State.LIFTING || this.state == State.LIFTED)
+                    && Math.abs(this.origin.getX() - transfer.x()) < 1.0E-6
+                    && Math.abs(this.origin.getY() - transfer.y()) < 1.0E-6
+                    && Math.abs(this.origin.getZ() - transfer.z()) < 1.0E-6;
+        }
+        final boolean confirmsCurrentState = this.state == checkpointState
+                // Retain compatibility with a fallback progress-driven release:
+                // its older GRABBED snapshot may cross the wire after the local
+                // client has already reached LIFTED.
+                || checkpointState == State.GRABBED && this.state == State.LIFTED;
+        if (!confirmsCurrentState || transfer.blocks().isEmpty()) return false;
+
+        // GRABBED, SHOT, and FLYING move every progress step. Their checkpoint
+        // location is necessarily behind a locally predicted continuation by
+        // roughly one network leg. Equal state plus equal logical shape proves
+        // the transition without snapping that continuation backwards.
+        if (this.currentBlocks.size() != transfer.blocks().size()) return false;
+        for (int index = 0; index < transfer.blocks().size(); index++) {
+            final PredictionBlock expected = transfer.blocks().get(index);
+            final BlockRepresenter actual = this.currentBlocks.get(index);
+            if (expected.x() != actual.getX() || expected.y() != actual.getY()
+                    || expected.z() != actual.getZ()
+                    || !expected.material().equals(TempBlockSync.encode(actual.getData()))) return false;
+        }
+        return true;
+    }
+
+    private static BlockData predictionBlockData(final String serialized) {
+        final String value = serialized == null ? "" : serialized.trim();
+        int start = value.indexOf(':');
+        start = start < 0 ? 0 : start + 1;
+        int end = value.length();
+        final int bracket = value.indexOf('[', start);
+        final int semicolon = value.indexOf(';', start);
+        if (bracket >= 0) end = Math.min(end, bracket);
+        if (semicolon >= 0) end = Math.min(end, semicolon);
+        final Material material = Material.getMaterial(value.substring(start, end));
+        final BlockData data = new BlockData(material == null ? Material.STONE : material);
+        if (!value.isBlank()) data.setExactState(value);
+        return data;
     }
 
     public Block getOrigin() {
@@ -1225,6 +1607,27 @@ public class EarthSmash extends EarthAbility {
 
     public ArrayList<TempBlock> getAffectedBlocks() {
         return this.affectedBlocks;
+    }
+
+    public record PredictionTransfer(String world, double x, double y, double z,
+                                     boolean hasDestination, double destinationX,
+                                     double destinationY, double destinationZ,
+                                     String state, double grabbedDistance,
+                                     int animationCounter, int progressCounter,
+                                     long predictionFrame,
+                                     long elapsedMillis, long flightElapsedMillis,
+                                     long delayElapsedMillis, List<PredictionBlock> blocks) {
+        public PredictionTransfer {
+            world = world == null ? "" : world;
+            state = state == null ? "" : state;
+            blocks = blocks == null ? List.of() : List.copyOf(blocks);
+        }
+    }
+
+    public record PredictionBlock(int x, int y, int z, String material) {
+        public PredictionBlock {
+            material = material == null ? "minecraft:stone" : material;
+        }
     }
 
     public static enum State {

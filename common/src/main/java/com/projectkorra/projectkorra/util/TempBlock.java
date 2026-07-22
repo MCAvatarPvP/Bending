@@ -14,10 +14,10 @@ import com.projectkorra.projectkorra.platform.mc.block.BlockState;
 import com.projectkorra.projectkorra.platform.mc.block.data.Bisected;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.block.data.Snowable;
-import com.projectkorra.projectkorra.prediction.AbilityExecutionContext;
-import com.projectkorra.projectkorra.prediction.PredictionTiming;
-import com.projectkorra.projectkorra.prediction.TempBlockOwnershipPolicy;
-import com.projectkorra.projectkorra.prediction.TempBlockSync;
+import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
+import com.projectkorra.projectkorra.prediction.action.PredictionTiming;
+import com.projectkorra.projectkorra.prediction.block.TempBlockOwnershipPolicy;
+import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -50,6 +50,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public class TempBlock {
     private static final Object MUTATION_LOCK = new Object();
     private static final Map<Block, LinkedList<TempBlock>> LAYERS = new HashMap<>();
+    private static final Map<Long, TempBlock> LAYERS_BY_ID = new HashMap<>();
     private static final PriorityQueue<TempBlock> EXPIRATIONS = new PriorityQueue<>(128,
             (first, second) -> {
                 int time = Long.compare(first.revertTime, second.revertTime);
@@ -89,39 +90,53 @@ public class TempBlock {
     private boolean suffocate;
 
     public TempBlock(final Block block, final Material newType) {
-        this(block, requireMaterial(newType).createBlockData(), 0L, null, true);
+        this(block, requireMaterial(newType).createBlockData(), 0L, null, null);
     }
 
     /** @deprecated {@code newType} is redundant; the supplied data is used. */
     @Deprecated
     public TempBlock(final Block block, final Material newType, final BlockData newData) {
-        this(block, newData, 0L, null, true);
+        this(block, newData, 0L, null, null);
     }
 
     public TempBlock(final Block block, final BlockData newData) {
-        this(block, newData, 0L, null, true);
+        this(block, newData, 0L, null, null);
     }
 
     public TempBlock(final Block block, final BlockData newData, final long revertTime,
                      final CoreAbility ability) {
-        this(block, newData, revertTime, ability, true);
+        this(block, newData, revertTime, ability, null);
     }
 
     public TempBlock(final Block block, final BlockData newData, final CoreAbility ability) {
-        this(block, newData, 0L, ability, true);
+        this(block, newData, 0L, ability, null);
+    }
+
+    /**
+     * Creates a layer with a deterministic ability-owned effect identity.
+     * This is intended for predicted structures whose two simulations can
+     * legitimately omit different physical blocks while still drawing the
+     * same logical shape slot.
+     */
+    public TempBlock(final Block block, final BlockData newData, final CoreAbility ability,
+                     final long effectStep, final int effectOrdinal) {
+        this(block, newData, 0L, ability,
+                new EffectIdentity(ability == null ? "" : ability.getName(),
+                        effectStep, effectOrdinal));
     }
 
     public TempBlock(final Block block, final BlockData newData, final long revertTime) {
-        this(block, newData, revertTime, null, true);
+        this(block, newData, revertTime, null, null);
     }
 
     private TempBlock(final Block block, BlockData newData, final long duration,
-                      final CoreAbility explicitAbility, final boolean ignored) {
+                      final CoreAbility explicitAbility, final EffectIdentity explicitIdentity) {
         this.block = Objects.requireNonNull(block, "block");
         Objects.requireNonNull(newData, "newData");
         final CoreAbility resolvedAbility = explicitAbility != null
                 ? explicitAbility : AbilityExecutionContext.current();
-        final EffectIdentity effectIdentity = nextEffectIdentity(resolvedAbility);
+        final EffectIdentity effectIdentity = explicitIdentity == null
+                ? nextEffectIdentity(resolvedAbility) : explicitIdentity;
         this.effectAbility = effectIdentity.ability();
         this.effectStep = effectIdentity.step();
         this.effectOrdinal = effectIdentity.ordinal();
@@ -148,6 +163,7 @@ public class TempBlock {
                 LAYERS.put(block, stack);
             }
             stack.addLast(this);
+            LAYERS_BY_ID.put(this.layerId, this);
             refreshViewsLocked(block);
             try {
                 scheduleLocked(duration);
@@ -158,6 +174,7 @@ public class TempBlock {
             } catch (RuntimeException | Error failure) {
                 unscheduleLocked(this);
                 stack.remove(this);
+                LAYERS_BY_ID.remove(this.layerId);
                 this.reverted = true;
                 if (stack.isEmpty()) LAYERS.remove(block);
                 refreshViewsLocked(block);
@@ -212,6 +229,41 @@ public class TempBlock {
         }
     }
 
+    /** Constant-time identity lookup used by the prediction lifecycle. */
+    public static TempBlock getActiveLayer(final long layerId) {
+        synchronized (MUTATION_LOCK) {
+            final TempBlock layer = LAYERS_BY_ID.get(layerId);
+            return layer == null || layer.reverted ? null : layer;
+        }
+    }
+
+    /**
+     * Updates every live layer belonging to an ability after redirection. The
+     * block itself is unchanged; only the authenticated prediction owner and
+     * lifecycle revision are republished.
+     */
+    public static void refreshAbilityOwnership(final CoreAbility ability) {
+        if (ability == null) return;
+        synchronized (MUTATION_LOCK) {
+            final UUID nextOwner = ownerId(ability);
+            final List<TempBlock> owned = new ArrayList<>();
+            final Set<Block> changedCoordinates = new HashSet<>();
+            for (TempBlock layer : LAYERS_BY_ID.values()) {
+                if (layer.reverted || layer.ability.orElse(null) != ability
+                        || Objects.equals(layer.ownerId, nextOwner)) continue;
+                layer.ownerId = nextOwner;
+                owned.add(layer);
+                changedCoordinates.add(layer.block);
+            }
+            for (Block block : changedCoordinates) refreshViewsLocked(block);
+            for (TempBlock layer : owned) {
+                layer.advanceRevisionLocked();
+                layer.publishLocked(TempBlockSync.Operation.UPDATE_EXPIRY,
+                        layer.newData, false);
+            }
+        }
+    }
+
     public static boolean isTempBlock(final Block block) {
         synchronized (MUTATION_LOCK) {
             final LinkedList<TempBlock> stack = LAYERS.get(block);
@@ -245,6 +297,7 @@ public class TempBlock {
         } finally {
             synchronized (MUTATION_LOCK) {
                 EXPIRATIONS.clear();
+                if (LAYERS.isEmpty()) LAYERS_BY_ID.clear();
             }
         }
     }
@@ -260,6 +313,7 @@ public class TempBlock {
                 invalidateStackLocked(block, null, false);
             }
             EXPIRATIONS.clear();
+            LAYERS_BY_ID.clear();
         }
     }
 
@@ -324,6 +378,7 @@ public class TempBlock {
         final List<TempBlock> removed = new ArrayList<>(stack.size());
         for (TempBlock layer : stack) {
             unscheduleLocked(layer);
+            LAYERS_BY_ID.remove(layer.layerId);
             if (layer.reverted) continue;
             layer.reverted = true;
             if (publish && effectiveData != null) {
@@ -587,6 +642,15 @@ public class TempBlock {
         }
     }
 
+    /** Re-publishes semantic ability metadata without changing this layer's expiry. */
+    public void refreshPredictionMetadata() {
+        synchronized (MUTATION_LOCK) {
+            if (this.reverted) return;
+            advanceRevisionLocked();
+            publishLocked(TempBlockSync.Operation.UPDATE_EXPIRY, this.newData, false);
+        }
+    }
+
     public void revertBlock() {
         revertBlock(true);
     }
@@ -603,10 +667,12 @@ public class TempBlock {
             final LinkedList<TempBlock> stack = LAYERS.get(this.block);
             if (stack == null || !stack.contains(this)) {
                 this.reverted = true;
+                LAYERS_BY_ID.remove(this.layerId);
                 unscheduleLocked(this);
                 return;
             }
             stack.remove(this);
+            LAYERS_BY_ID.remove(this.layerId);
             this.reverted = true;
             unscheduleLocked(this);
             if (stack.isEmpty()) LAYERS.remove(this.block);
@@ -626,12 +692,14 @@ public class TempBlock {
             final LinkedList<TempBlock> stack = LAYERS.get(this.block);
             if (stack == null || !stack.contains(this)) {
                 this.reverted = true;
+                LAYERS_BY_ID.remove(this.layerId);
                 if (removeFromQueue) unscheduleLocked(this);
                 return;
             }
 
             final boolean wasTop = stack.getLast() == this;
             stack.remove(this);
+            LAYERS_BY_ID.remove(this.layerId);
             this.reverted = true;
             if (removeFromQueue) unscheduleLocked(this);
             else this.scheduled = false;
@@ -740,6 +808,7 @@ public class TempBlock {
             final LinkedList<TempBlock> stack = LAYERS.get(this.block);
             if (stack == null || !stack.contains(this)) {
                 this.reverted = true;
+                LAYERS_BY_ID.remove(this.layerId);
                 return;
             }
             final BlockData previousData = this.newData;

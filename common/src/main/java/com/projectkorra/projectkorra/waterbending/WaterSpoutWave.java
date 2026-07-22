@@ -23,8 +23,8 @@ import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.TempBlock;
 import com.projectkorra.projectkorra.waterbending.combo.IceWave;
 import com.projectkorra.projectkorra.waterbending.plant.PlantRegrowth;
-import com.projectkorra.projectkorra.prediction.PredictionDeterminism;
-import com.projectkorra.projectkorra.prediction.TempBlockSync;
+import com.projectkorra.projectkorra.prediction.action.PredictionDeterminism;
+import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
 
 import java.util.ArrayList;
 import java.util.Enumeration;

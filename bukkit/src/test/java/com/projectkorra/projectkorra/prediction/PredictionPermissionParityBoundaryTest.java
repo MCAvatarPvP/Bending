@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.prediction;
 
+import com.projectkorra.projectkorra.prediction.protocol.PaperPredictionProtocol;
+import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
+
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -13,12 +16,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class PredictionPermissionParityBoundaryTest {
     @Test
     void paperPermissionDecisionsReachTheClientBeforeAbilityConstruction() throws IOException {
-        String protocol = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionProtocol.java",
-                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionProtocol.java");
-        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
-                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
-        String payloads = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionPayloads.java",
-                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionPayloads.java");
+        String protocol = read("src/main/java/com/projectkorra/projectkorra/prediction/protocol/PaperPredictionProtocol.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/protocol/PaperPredictionProtocol.java");
+        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
+        String payloads = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/protocol/PredictionPayloads.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/protocol/PredictionPayloads.java");
         String client = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/PredictionClient.java",
                 "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/PredictionClient.java");
         String runtime = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
@@ -26,8 +29,8 @@ class PredictionPermissionParityBoundaryTest {
         String wrapper = read("../fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricPredictionMC.java",
                 "fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricPredictionMC.java");
 
-        assertTrue(protocol.contains("static final int VERSION = 43"));
-        assertTrue(payloads.contains("public static final int PROTOCOL_VERSION = 43"));
+        assertTrue(protocol.contains("static final int VERSION = 47"));
+        assertTrue(payloads.contains("public static final int PROTOCOL_VERSION = 47"));
         assertTrue(protocol.contains("List<String> permissions, double airBlastDecay")
                         && protocol.contains("writeStrings(out, permissions)"));
         assertTrue(payloads.contains("List<String> permissions, double airBlastDecay")
@@ -53,11 +56,11 @@ class PredictionPermissionParityBoundaryTest {
                         && client.contains("permissions = state.permissions()")
                         && client.contains("elements, subElements, permissions, airBlastDecay, chiBlocked, regionProtection)"));
 
-        int seed = runtime.indexOf("grantedPermissions = normalizePermissions(permissions);");
-        int playerConstruction = runtime.indexOf("bendingPlayer = new BendingPlayer(player);");
+        int seed = runtime.indexOf("this.grantedPermissions = ClientPredictionConfig.normalizePermissions(permissions);");
+        int playerConstruction = runtime.indexOf("this.bendingPlayer = new BendingPlayer(player);");
         assertTrue(seed >= 0 && playerConstruction > seed,
                 "constructor-time canBend/permission checks must see Paper's snapshot, not a permissive default");
-        assertTrue(runtime.contains("public static boolean hasPermission(final String permission)")
+        assertTrue(runtime.contains("public static boolean hasPermission(String permission)")
                         && runtime.contains("granted.endsWith(\".*\")"));
         String clientPermission = between(wrapper,
                 "@Override public boolean hasPermission(String permission)",

@@ -149,7 +149,10 @@ final class CoreAbilityActivationBootstrap {
         register("Tremorsense", ClickType.SHIFT_DOWN, CoreAbilityActivationBootstrap::toggleTremorsense);
         register("Extraction", ClickType.SHIFT_DOWN, context -> created(new Extraction(context.getPlayer())));
         register("LavaFlow", ClickType.SHIFT_DOWN, context -> created(new LavaFlow(context.getPlayer(), LavaFlow.AbilityType.SHIFT)));
-        register("EarthSmash", ClickType.SHIFT_DOWN, context -> created(new EarthSmash(context.getPlayer(), ClickType.SHIFT_DOWN)));
+        register("EarthSmash", ClickType.SHIFT_DOWN,
+                context -> activateEarthSmash(context, ClickType.SHIFT_DOWN));
+        register("EarthSmash", ClickType.SHIFT_UP,
+                context -> activateEarthSmash(context, ClickType.SHIFT_UP));
         register("MetalClips", ClickType.SHIFT_DOWN, CoreAbilityActivationBootstrap::shiftMetalClips);
         register("EarthGrab", ClickType.SHIFT_DOWN, context -> created(new EarthGrab(context.getPlayer(), EarthGrab.GrabMode.DRAG)));
 
@@ -171,9 +174,11 @@ final class CoreAbilityActivationBootstrap {
         register("MetalClips", ClickType.LEFT_CLICK, CoreAbilityActivationBootstrap::clickMetalClips);
         register("LavaSurge", ClickType.LEFT_CLICK, CoreAbilityActivationBootstrap::clickLavaSurge);
         register("LavaFlow", ClickType.LEFT_CLICK, context -> created(new LavaFlow(context.getPlayer(), LavaFlow.AbilityType.CLICK)));
-        register("EarthSmash", ClickType.LEFT_CLICK, context -> created(new EarthSmash(context.getPlayer(), ClickType.LEFT_CLICK)));
+        register("EarthSmash", ClickType.LEFT_CLICK,
+                context -> activateEarthSmash(context, ClickType.LEFT_CLICK));
         register("EarthGrab", ClickType.LEFT_CLICK, context -> created(new EarthGrab(context.getPlayer(), EarthGrab.GrabMode.PROJECTING)));
-        register("EarthSmash", ClickType.RIGHT_CLICK_BLOCK, context -> created(new EarthSmash(context.getPlayer(), ClickType.RIGHT_CLICK)));
+        register("EarthSmash", ClickType.RIGHT_CLICK_BLOCK,
+                context -> activateEarthSmash(context, ClickType.RIGHT_CLICK));
     }
 
     private static void registerFire() {
@@ -249,6 +254,17 @@ final class CoreAbilityActivationBootstrap {
         // Removing an existing spout is a complete state transition even
         // though the constructor correctly does not start a replacement.
         return removingExisting || created(result);
+    }
+
+    private static boolean activateEarthSmash(final ActivationContext context,
+                                              final ClickType type) {
+        final EarthSmash activation = new EarthSmash(context.getPlayer(), type);
+        // EarthSmash uses a short-lived constructor object to manipulate an
+        // existing smash. Do not report a failed state-sensitive grab as a
+        // generic handled input merely because that helper was not removed.
+        return activation != null
+                && (activation.isStarted() && !activation.isRemoved()
+                || activation.didHandleActivation());
     }
 
     private static void registerMultiAbilities() {

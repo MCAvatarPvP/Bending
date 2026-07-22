@@ -4,7 +4,6 @@ import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
-import com.projectkorra.projectkorra.fabric.prediction.PredictionServer;
 import com.projectkorra.projectkorra.listener.CommonInputHandler;
 import com.projectkorra.projectkorra.listener.CommonPlayerListenerCore;
 import com.projectkorra.projectkorra.platform.fabric.FabricMC;
@@ -19,7 +18,6 @@ import net.minecraft.network.packet.s2c.play.UpdateSelectedSlotS2CPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.util.Hand;
-import com.projectkorra.projectkorra.fabric.prediction.PredictionPayloads;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -31,7 +29,6 @@ public class FabricGameplayBridge {
     private final Map<UUID, Boolean> sneaking = new HashMap<>();
     private final Map<UUID, Long> rightClickBlockUntilTick = new HashMap<>();
     private final Set<UUID> droppedItem = new HashSet<>();
-    private static final boolean DEBUG = Boolean.parseBoolean(System.getProperty("projectkorra.prediction.debug", "false"));
     private long inputTick;
     private boolean registered;
 
@@ -73,8 +70,7 @@ public class FabricGameplayBridge {
     public static boolean onArmSwing(ServerPlayerEntity player) {
         FabricGameplayBridge bridge = active;
         if (bridge == null) return false;
-        return PredictionServer.handleVanillaInput(player, PredictionPayloads.InputKind.LEFT_CLICK,
-                () -> bridge.onSwing(player));
+        return bridge.onSwing(player);
     }
 
     public static boolean onRightClickBlock(ServerPlayerEntity player, Hand hand) {
@@ -85,16 +81,14 @@ public class FabricGameplayBridge {
         // swing without becoming a bending action of its own.
         bridge.rightClickBlockUntilTick.put(player.getUuid(), bridge.inputTick + 2);
         if (hand != Hand.MAIN_HAND) return false;
-        return PredictionServer.handleVanillaInput(player, PredictionPayloads.InputKind.RIGHT_CLICK_BLOCK,
-                () -> bridge.onRightClick(player, ClickType.RIGHT_CLICK_BLOCK));
+        return bridge.onRightClick(player, ClickType.RIGHT_CLICK_BLOCK);
     }
 
     public static boolean onRightClickItem(ServerPlayerEntity player, Hand hand) {
         FabricGameplayBridge bridge = active;
         if (bridge == null || hand != Hand.MAIN_HAND) return false;
         if (bridge.rightClickBlockUntilTick.getOrDefault(player.getUuid(), -1L) >= bridge.inputTick) return false;
-        return PredictionServer.handleVanillaInput(player, PredictionPayloads.InputKind.RIGHT_CLICK,
-                () -> bridge.onRightClick(player, ClickType.RIGHT_CLICK));
+        return bridge.onRightClick(player, ClickType.RIGHT_CLICK);
     }
 
     public static boolean onRightClickEntity(ServerPlayerEntity player, Hand hand) {
@@ -104,8 +98,7 @@ public class FabricGameplayBridge {
             CommonInputHandler.prepareRightClickEntity(FabricMC.player(player));
             return false;
         }
-        return PredictionServer.handleVanillaInput(player, PredictionPayloads.InputKind.RIGHT_CLICK_ENTITY,
-                () -> bridge.onRightClickEntity(player));
+        return bridge.onRightClickEntity(player);
     }
 
     public static boolean onPlayerAction(ServerPlayerEntity player, PlayerActionC2SPacket.Action action) {
@@ -117,11 +110,8 @@ public class FabricGameplayBridge {
                 yield false;
             }
             case SWAP_ITEM_WITH_OFFHAND -> {
-                yield PredictionServer.handleVanillaInput(player, PredictionPayloads.InputKind.SWAP_HANDS,
-                        () -> {
-                            onSwapHands(player);
-                            return false;
-                        });
+                onSwapHands(player);
+                yield false;
             }
             // Legacy Bukkit bends from PlayerAnimationEvent (arm swing), not
             // the earlier block-destroy packet.
@@ -139,11 +129,7 @@ public class FabricGameplayBridge {
         if (bridge == null) return;
         final Boolean previous = bridge.sneaking.get(player.getUuid());
         if (previous != null && previous == sneakingNow) return;
-        PredictionPayloads.InputKind kind = sneakingNow ? PredictionPayloads.InputKind.SNEAK_START : PredictionPayloads.InputKind.SNEAK_STOP;
-        PredictionServer.handleVanillaInput(player, kind, () -> {
-            bridge.onSneakPacket(player, sneakingNow);
-            return false;
-        });
+        bridge.onSneakPacket(player, sneakingNow);
     }
 
     public static void onDropItem(ServerPlayerEntity nativePlayer) {
@@ -226,10 +212,6 @@ public class FabricGameplayBridge {
         Player player = FabricMC.player(nativePlayer);
         if (rightClickBlockUntilTick.getOrDefault(nativePlayer.getUuid(), -1L) >= inputTick) return false;
         return CommonInputHandler.handleSwing(player, rightClickBlockUntilTick.keySet(), droppedItem).cancelEvent();
-    }
-
-    private static void debug(String message) {
-        if (DEBUG) System.out.println("[ProjectKorraPrediction] [FabricGameplay] " + message);
     }
 
 }

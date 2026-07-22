@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.prediction;
 
+import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
+
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -13,8 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TempBlockWorldIdentityBoundaryTest {
     @Test
     void tempBlockOperationsUseTheActualBukkitWorldKey() throws IOException {
-        String server = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
-                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
+        String server = read("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
         String worldKey = between(server,
                 "private static String worldKey(com.projectkorra.projectkorra.platform.mc.World world)",
                 "private static boolean finite");
@@ -27,8 +29,8 @@ class TempBlockWorldIdentityBoundaryTest {
 
     @Test
     void directEarthReceiptsUseTheSameNamespacedWorldKeyAsTempBlocks() throws IOException {
-        String server = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
-                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
+        String server = read("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
         String directEarth = between(server,
                 "public void beforeChange(final CoreAbility ability, final Block block,",
                 "private void scheduleTicker()");

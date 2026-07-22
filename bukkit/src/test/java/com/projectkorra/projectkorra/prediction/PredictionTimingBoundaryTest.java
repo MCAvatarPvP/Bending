@@ -1,5 +1,16 @@
 package com.projectkorra.projectkorra.prediction;
 
+import com.projectkorra.projectkorra.prediction.protocol.PaperPredictionProtocol;
+import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
+
+import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
+import com.projectkorra.projectkorra.prediction.action.PredictionDeterminism;
+import com.projectkorra.projectkorra.prediction.action.PredictionTiming;
+import com.projectkorra.projectkorra.prediction.movement.VelocitySync;
+import com.projectkorra.projectkorra.prediction.state.AbilityStateSync;
+import com.projectkorra.projectkorra.prediction.state.CooldownSync;
+import com.projectkorra.projectkorra.prediction.state.PredictionStateOrdering;
+
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -13,12 +24,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class PredictionTimingBoundaryTest {
     @Test
     void predictionMetadataNeverReordersOrSynthesizesAuthoritativeInput() throws IOException {
-        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
-                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
+        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
         String listener = read("src/main/java/com/projectkorra/projectkorra/PKListener.java",
                 "bukkit/src/main/java/com/projectkorra/projectkorra/PKListener.java");
-        String fabric = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java",
-                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java");
         String bridge = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/FabricGameplayBridge.java",
                 "fabric/src/main/java/com/projectkorra/projectkorra/fabric/FabricGameplayBridge.java");
         String client = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/PredictionClient.java",
@@ -33,7 +42,6 @@ class PredictionTimingBoundaryTest {
                 "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
 
         assertFalse(paper.contains("PendingNativeInput"));
-        assertFalse(fabric.contains("PendingNativeInput"));
         assertFalse(client.contains("InputFrame"));
         assertFalse(client.contains("ActionPrepare"));
         assertTrue(client.contains("new PredictionPayloads.ClientReady"));
@@ -41,9 +49,11 @@ class PredictionTimingBoundaryTest {
         assertTrue(listener.contains("PaperPredictionServer.handleLeftClick")
                 && listener.contains("PaperPredictionServer.handleSneak")
                 && listener.contains("PaperPredictionServer.handleSwapHands"));
-        assertTrue(bridge.contains("PredictionServer.handleVanillaInput"));
+        assertTrue(bridge.contains("CommonInputHandler.handleSwing")
+                        && bridge.contains("CommonInputHandler.handleSneak"));
         assertTrue(client.contains("PredictionPayloads.InputKind.SWAP_HANDS")
-                        && runtime.contains("case SWAP_HANDS -> CommonInputHandler.handleSwapHands"),
+                        && runtime.contains("case SWAP_HANDS:")
+                        && runtime.contains("CommonInputHandler.handleSwapHands("),
                 "off-hand combo triggers must use their vanilla Paper event instead of an unowned side path");
         assertTrue(bridge.contains("case START_DESTROY_BLOCK -> false"));
         assertTrue(listener.matches("(?s).*@EventHandler\\(priority = EventPriority\\.NORMAL, ignoreCancelled = true\\)\\R"
@@ -116,38 +126,31 @@ class PredictionTimingBoundaryTest {
         assertFalse(entityPoseCommit.contains("EntityPose.CROUCHING") || entityPoseCommit.contains("EntityPose.STANDING"),
                 "the post-scheduler pose must follow vanilla swimming/gliding/collision constraints, not a two-pose guess");
         assertTrue(runtime.contains("private static final ThreadLocal<Long> INPUT_EVENT_POSE")
-                        && runtime.contains("final Long eventAction = INPUT_EVENT_POSE.get()"));
-        String executionPose = runtime.substring(runtime.indexOf("private PredictionClient.ServerPose executionPose0()"),
-                runtime.indexOf("private static boolean finite", runtime.indexOf("private PredictionClient.ServerPose executionPose0()")));
+                        && runtime.contains("Long eventAction = INPUT_EVENT_POSE.get()"));
+        String executionPose = runtime.substring(
+                runtime.indexOf("private com.projectkorra.projectkorra.fabric.client.PredictionClient.ServerPose executionPose0()"),
+                runtime.indexOf("private static boolean finite",
+                        runtime.indexOf("private com.projectkorra.projectkorra.fabric.client.PredictionClient.ServerPose executionPose0()")));
         assertFalse(executionPose.contains("tick - action.createdTick") || executionPose.contains("currentAction()"),
                 "Paper's packet pose ends with the event; progress must return to the separately scheduled server-visible pose");
         assertTrue(paper.contains(": nativeInput.get())"));
-        assertTrue(fabric.contains(": nativeInput.getAsBoolean())"));
-        assertTrue(paper.contains("CooldownSync.runInputVeto")
-                        && fabric.contains("CooldownSync.runInputVeto"),
+        assertTrue(paper.contains("CooldownSync.runInputVeto"),
                 "a delayed cooldown rejection must still execute the native handler for combo ordering");
         assertFalse(paper.contains("PredictionTiming.alignStart"));
-        assertFalse(fabric.contains("PredictionTiming.alignStart"));
-        assertFalse(fabric.contains("gameplay.handlePredictedInput"));
-        assertFalse(fabric.contains("gameplay.applyPredictedSlot"));
-        assertFalse(fabric.contains("FabricMC.setSneakOverride"));
+        assertFalse(bridge.contains("gameplay.handlePredictedInput"));
+        assertFalse(bridge.contains("gameplay.applyPredictedSlot"));
+        assertFalse(bridge.contains("FabricMC.setSneakOverride"));
     }
 
     @Test
     void predictionNeverBackdatesServerAbilityOrTempBlockLifetime() throws IOException {
-        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
-                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
-        String fabric = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java",
-                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java");
+        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
 
         assertFalse(paper.contains("PredictionTiming.install"));
-        assertFalse(fabric.contains("PredictionTiming.install"));
         assertFalse(paper.contains("latencyCompensationMillis"));
-        assertFalse(fabric.contains("latencyCompensationMillis"));
         assertFalse(paper.contains("PredictionCooldownTimeline.alignNewCooldown"));
-        assertFalse(fabric.contains("PredictionCooldownTimeline.alignNewCooldown"));
         assertFalse(paper.contains("locallyBlockedByCooldown() &&"));
-        assertFalse(fabric.contains("locallyBlockedByCooldown() &&"));
     }
 
     @Test
@@ -155,25 +158,27 @@ class PredictionTimingBoundaryTest {
         String runtime = read(
                 "../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
                 "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
+        String velocityAuthority = read(
+                "../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/prediction/movement/ClientVelocityAuthority.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/prediction/movement/ClientVelocityAuthority.java");
         String velocitySync = read(
-                "../common/src/main/java/com/projectkorra/projectkorra/prediction/VelocitySync.java",
-                "common/src/main/java/com/projectkorra/projectkorra/prediction/VelocitySync.java");
-        int start = runtime.indexOf(
-                "private void noteVelocityOwner0(Entity localPlayer, long serverTick");
-        int end = runtime.indexOf("private void removeAuthoritativeAbility0", start);
+                "../common/src/main/java/com/projectkorra/projectkorra/prediction/movement/VelocitySync.java",
+                "common/src/main/java/com/projectkorra/projectkorra/prediction/movement/VelocitySync.java");
+        int start = velocityAuthority.indexOf("private void recordOwner(");
+        int end = velocityAuthority.indexOf("private boolean stageUnowned", start);
         assertTrue(start >= 0 && end > start);
-        String velocityReceipt = runtime.substring(start, end);
+        String velocityReceipt = velocityAuthority.substring(start, end);
         assertFalse(velocityReceipt.contains("action == null || !action.locallyPredicted"),
                 "an authoritative ownership receipt must survive local Action retirement");
         assertFalse(velocityReceipt.contains("nativeConfirmed"),
                 "the exact authoritative velocity receipt must not be dropped while NativeAction is in flight");
-        assertFalse(runtime.contains("closeNetworkVelocity"),
+        assertFalse(velocityAuthority.contains("closeNetworkVelocity"),
                 "velocity ownership must follow receipt/packet order, never vector similarity");
         assertTrue(velocitySync.indexOf("publish(ability, target, velocity);")
                         < velocitySync.indexOf("commit(write);"),
                 "every direct ability velocity must publish ownership before vanilla can echo it back");
-        assertTrue(runtime.contains("allowed self-owned velocity without retained mutation")
-                        && !runtime.contains("suppressed self-owned velocity without retained mutation"),
+        assertTrue(velocityAuthority.contains("allowed self-owned velocity without retained mutation")
+                        && !velocityAuthority.contains("suppressed self-owned velocity without retained mutation"),
                 "a self-owned receipt without an exact local action+ordinal mutation is the only AirBlast push and must pass");
     }
 
@@ -182,14 +187,15 @@ class PredictionTimingBoundaryTest {
         String runtime = read(
                 "../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
                 "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
-        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
-                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
-        String fabric = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java",
-                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java");
+        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
         String wrapper = read("src/main/java/com/projectkorra/projectkorra/platform/bukkit/BukkitMC.java",
                 "bukkit/src/main/java/com/projectkorra/projectkorra/platform/bukkit/BukkitMC.java");
-        String sync = read("../common/src/main/java/com/projectkorra/projectkorra/prediction/AbilityStateSync.java",
-                "common/src/main/java/com/projectkorra/projectkorra/prediction/AbilityStateSync.java");
+        String sync = read("../common/src/main/java/com/projectkorra/projectkorra/prediction/state/AbilityStateSync.java",
+                "common/src/main/java/com/projectkorra/projectkorra/prediction/state/AbilityStateSync.java");
+        String playerState = read(
+                "../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/prediction/state/ClientPlayerStateAuthority.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/prediction/state/ClientPlayerStateAuthority.java");
         String scooter = read("../common/src/main/java/com/projectkorra/projectkorra/airbending/AirScooter.java",
                 "common/src/main/java/com/projectkorra/projectkorra/airbending/AirScooter.java");
 
@@ -201,42 +207,40 @@ class PredictionTimingBoundaryTest {
         assertTrue(scooter.indexOf("player.setAllowFlight(true)") < scooter.indexOf("this.start()")
                         && scooter.indexOf("player.setFlying(true)") < scooter.indexOf("this.start()"),
                 "AirScooter's two initial packets exercise the constructor-time ownership path");
-        for (String endpoint : new String[]{paper, fabric}) {
-            String beforeWrite = endpoint.substring(endpoint.indexOf("public void beforeWrite"),
-                    endpoint.indexOf("public void onRemoved(CoreAbility", endpoint.indexOf("public void beforeWrite")));
-            assertTrue(beforeWrite.indexOf("currentInputAction(ownerId)")
-                            < beforeWrite.indexOf("abilityActions.get(ability)"),
-                    "native input ownership must precede the narrower ability-progress lookup");
-            assertTrue(beforeWrite.contains("ability == null ? action."),
-                    "constructor flight receipts must retain the native action's logical ability name");
-        }
+        String beforeWrite = paper.substring(paper.indexOf("public void beforeWrite"),
+                paper.indexOf("public void onRemoved(CoreAbility", paper.indexOf("public void beforeWrite")));
+        assertTrue(beforeWrite.indexOf("currentInputAction(ownerId)")
+                        < beforeWrite.indexOf("abilityActions.get(ability)"),
+                "native input ownership must precede the narrower ability-progress lookup");
+        assertTrue(beforeWrite.contains("ability == null ? action."),
+                "constructor flight receipts must retain the native action's logical ability name");
         assertTrue(paper.contains("PaperPredictionProtocol.ABILITY_STATE_OWNER")
                         && paper.contains("action.abilityStateOrdinals.merge"));
-        String suppression = runtime.substring(runtime.indexOf("private boolean suppressAuthoritativeAbilityState0"),
-                runtime.indexOf("private void reconcileActiveFlightAbilities0"));
-        assertTrue(suppression.contains("abilityStateReceipts.remove(receiptIndex)")
+        String suppression = playerState.substring(playerState.indexOf("public boolean suppressAbilityPacket"),
+                playerState.indexOf("public boolean suppressExperiencePacket"));
+        assertTrue(suppression.contains("abilityReceipts.remove(receiptIndex)")
                         && suppression.contains("player.getUuid().equals(receipt.abilityOwner)"));
-        assertTrue(suppression.contains("matchesAbilityStatePacket(candidate, packet)"),
+        assertTrue(suppression.contains("matches(candidate, packet)"),
                 "a causal receipt may suppress only the exact flight projection it announced");
-        assertTrue(suppression.contains("hasLocalFlightLease()")
-                        && suppression.contains("hasRecentLocalAbilityState()")
+        assertTrue(suppression.contains("hasFlightLease")
+                        && suppression.contains("hasRecentAbilityMutation")
                         && suppression.contains("abilities.setFlySpeed(packet.getFlySpeed())")
                         && suppression.contains("abilities.setWalkSpeed(packet.getWalkSpeed())"),
                 "a live or just-closed predicted flight lifecycle must preserve only its flight bits, not unrelated vanilla state");
         assertFalse(suppression.contains("hasUnconfirmedLocalAction"),
                 "acknowledging the input must not hand a still-active WaterSpout back to delayed Paper flight packets");
-        String receipt = runtime.substring(runtime.indexOf("private void noteAbilityStateOwner0"),
-                runtime.indexOf("private void notePredictedExperience0"));
+        String receipt = playerState.substring(playerState.indexOf("public void recordAbilityOwner"),
+                playerState.indexOf("public void predictExperience"));
         assertTrue(receipt.contains("candidate.serverTick == owner.serverTick()")
                         && receipt.contains("candidate.target.equals(owner.target())")
-                        && receipt.contains("abilityStateReceipts.set(replacement, receipt)"),
+                        && receipt.contains("abilityReceipts.set(replacement, receipt)"),
                 "coalesced flying/allowFlying writes must leave only the final ownership receipt for a server tick");
         String snapshot = runtime.substring(runtime.indexOf("private void reconcileActiveFlightAbilities0"),
                 runtime.indexOf("private boolean suppressAuthoritativeExperience0"));
         assertTrue(snapshot.contains("PredictionStateOrdering.snapshotCoversLatestInput")
                         && snapshot.contains("authoritativeFlightSequence = acknowledgedSequence"),
                 "Paper flight presence diagnostics may be accepted only after the latest native input");
-        assertTrue(snapshot.contains("diagnostics, not lifecycle authority")
+        assertTrue(snapshot.contains("this.authoritativeFlightAbilities = Set.copyOf(next)")
                         && !runtime.contains("reconcilePersistentFlightPresence()")
                         && !runtime.contains("restorePersistentFlight("),
                 "a delayed Paper presence set must never reconstruct or remove the client-owned spout lifecycle");
@@ -251,23 +255,23 @@ class PredictionTimingBoundaryTest {
         String runtime = read(
                 "../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
                 "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
-        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
-                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
+        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
 
         assertFalse(runtime.contains("private void expireCooldowns()"),
                 "Fabric must not remove an expired entry before Paper's matching BendingManager heartbeat");
         String tick = runtime.substring(runtime.indexOf("private void tick0"),
                 runtime.indexOf("private void reconcileAuthoritativeCooldowns"));
-        assertTrue(tick.indexOf("platform.tick()")
-                        < tick.indexOf("cooldownAuthority.retainLocallyActive"),
+        assertTrue(tick.indexOf("this.platform.tick()")
+                        < tick.indexOf("this.cooldownAuthority.retainLocallyActive"),
                 "the common manager must progress abilities and retire cooldowns before authority bookkeeping");
-        assertTrue(runtime.contains("cooldownAuthority.onLocalAdded(ability, expiresAtMillis)"),
+        assertTrue(runtime.contains("this.cooldownAuthority.onLocalAdded(ability, expiresAtMillis)"),
                 "new cooldowns must still begin immediately in the client simulation");
         assertTrue(runtime.contains("new Cooldown(clientUntilMillis"),
                 "join-time and external server cooldowns must still import into the common runtime");
         String cooldownReconcile = runtime.substring(runtime.indexOf("private void reconcileAuthoritativeCooldowns"),
                 runtime.indexOf("private boolean noteNativeAction0"));
-        assertTrue(cooldownReconcile.contains("initializing || !ready"));
+        assertTrue(cooldownReconcile.contains("this.initializing || !this.ready"));
         assertFalse(cooldownReconcile.contains("cooldownAuthority.reconcile")
                         || cooldownReconcile.contains("bendingPlayer.removeCooldown"),
                 "periodic Paper snapshots must neither extend nor prematurely retire a locally timed cooldown");
@@ -311,21 +315,16 @@ class PredictionTimingBoundaryTest {
     void allExistingAbilityTransitionsUseOneGenericNativeAssociation() throws IOException {
         String runtime = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
                 "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
-        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
-                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
-        String fabric = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java",
-                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java");
+        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
 
         assertTrue(runtime.contains("trackingResult.handled() && hasMatchingExistingAbility && !createdMatchingAbility"));
         assertFalse(runtime.contains("earthSmashExistingTransition"));
         assertFalse(paper.contains("earthSmashExistingTransition"));
-        assertFalse(fabric.contains("earthSmashExistingTransition"));
         assertFalse(runtime.contains("handoffEarthSmashToAuthority"),
                 "reconciliation must never delete every EarthSmash to roll back one input");
         assertFalse(paper.contains("cooldownAfter <= cooldownBefore"),
                 "a real Bukkit event must never be rejected by an ability-shape heuristic");
-        assertFalse(fabric.contains("cooldownAfter <= cooldownBefore"),
-                "a real Fabric event must never be rejected by an ability-shape heuristic");
         assertFalse(runtime.contains("rollback(action, true)"),
                 "metadata rejection must not revert an already-running common lifecycle");
         assertTrue(runtime.contains("System.getProperty(\"projectkorra.prediction.debug\", \"false\")"),
@@ -333,7 +332,6 @@ class PredictionTimingBoundaryTest {
         assertFalse(runtime.contains("correctLocations(activeAbility"),
                 "reconciliation must not reflectively shift arbitrary ability state");
         assertTrue(paper.contains("boolean implicitExistingTransition = trackingResult.handled() && hadExistingMatchingAbility"));
-        assertTrue(fabric.contains("final boolean implicitExistingTransition = trackingResult.handled() && hadExistingMatchingAbility"));
 
         String input = read("../common/src/main/java/com/projectkorra/projectkorra/listener/CommonInputHandler.java",
                 "common/src/main/java/com/projectkorra/projectkorra/listener/CommonInputHandler.java");
@@ -347,6 +345,45 @@ class PredictionTimingBoundaryTest {
         int activate = input.indexOf("AbilityActivationManager.dispatch(context)", cache);
         assertTrue(cache >= 0 && activate > cache,
                 "Paper's native SHIFT_DOWN source cache must remain authoritative");
+    }
+
+    @Test
+    void earthSmashChargeDisagreementUsesAnExactLifecycleCheckpoint() throws IOException {
+        String smash = read("../common/src/main/java/com/projectkorra/projectkorra/earthbending/EarthSmash.java",
+                "common/src/main/java/com/projectkorra/projectkorra/earthbending/EarthSmash.java");
+        String checkpoint = read("../common/src/main/java/com/projectkorra/projectkorra/prediction/state/AbilityCheckpointSync.java",
+                "common/src/main/java/com/projectkorra/projectkorra/prediction/state/AbilityCheckpointSync.java");
+        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
+        String payloads = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/protocol/PredictionPayloads.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/protocol/PredictionPayloads.java");
+        String runtime = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
+
+        int lifting = smash.indexOf("this.transitionState(State.LIFTING)");
+        int publish = smash.indexOf("AbilityCheckpointSync.publish(this)", lifting);
+        assertTrue(lifting >= 0 && publish > lifting,
+                "Paper must checkpoint only after its normal charge and source validation succeeds");
+        assertTrue(checkpoint.contains("This is a correction boundary, not an alternate activation path"));
+        assertTrue(paper.contains("AbilityCheckpointSync.install(server)")
+                        && paper.contains("public void onCheckpoint(final CoreAbility ability)"));
+        assertTrue(paper.contains("sendEarthSmashState(player, smash, checkpointAction, checkpoint, false)"),
+                "the activation checkpoint must use the action owning the current transition and remain distinct from an ownership transfer");
+        assertTrue(paper.contains("sendDirective(bending, \"\", ability.getName(), cooldownUntil"),
+                "a restored activation must receive the exact Paper cooldown expiry");
+        assertTrue(payloads.contains("boolean ownershipTransfer"));
+        assertTrue(runtime.contains("selected.matchesPredictionCheckpoint(state)")
+                        && runtime.contains("recoveredFromCheckpoint")
+                        && runtime.contains("transfer.tempBlockOrdinal()"),
+                "a missing client instance must be restored while a matching live prediction stays uninterrupted");
+        assertTrue(smash.contains("authoritativeElapsed - localElapsed"),
+                "checkpoint timing must not add the complete authoritative age twice");
+        assertTrue(smash.contains("AbilityRemovalSync.runAuthoritativeRejection(this::removeNow)"),
+                "the opposite disagreement must retire a client-only START/LIFTING lifecycle");
+        assertTrue(payloads.contains("boolean predictionRejected")
+                        && runtime.contains("if (removed.predictionRejected())")
+                        && runtime.contains("cooldownAuthority.onLocalRemoved(removed.ability())"),
+                "a rejected server activation must also clear the cooldown created by the optimistic client transition");
     }
 
     private static String read(String moduleRelative, String rootRelative) throws IOException {

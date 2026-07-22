@@ -10,7 +10,7 @@ import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.entity.FallingBlock;
 import com.projectkorra.projectkorra.platform.mc.metadata.FixedMetadataValue;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
-import com.projectkorra.projectkorra.prediction.TempFallingBlockSync;
+import com.projectkorra.projectkorra.prediction.block.TempFallingBlockSync;
 
 import java.util.ArrayList;
 import java.util.List;

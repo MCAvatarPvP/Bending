@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.prediction;
 
+import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
+
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;

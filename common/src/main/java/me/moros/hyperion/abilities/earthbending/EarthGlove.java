@@ -28,27 +28,49 @@ import com.projectkorra.projectkorra.command.Commands;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.entity.*;
-import com.projectkorra.projectkorra.platform.mc.inventory.ItemStack;
-import com.projectkorra.projectkorra.platform.mc.metadata.FixedMetadataValue;
+import com.projectkorra.projectkorra.platform.mc.util.Transformation;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
 import me.moros.hyperion.Hyperion;
 import me.moros.hyperion.configuration.ConfigManager;
-import me.moros.hyperion.methods.CoreMethods;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class EarthGlove extends EarthAbility implements AddonAbility {
     private static final Map<UUID, Side> lastUsedSide = new ConcurrentHashMap<>();
+    private static final Map<UUID, EarthGlove> ACTIVE_GLOVE_PARTS = new ConcurrentHashMap<>();
+    private static final List<GlovePart> GLOVE_MODEL = List.of(
+            new GlovePart("palm", 0.0F, 0.0F, 0.0F,
+                    0.52F, 0.46F, 0.34F, 0.0F),
+            new GlovePart("cuff", 0.0F, -0.03F, -0.30F,
+                    0.38F, 0.34F, 0.26F, 0.0F),
+            new GlovePart("index", -0.225F, 0.17F, 0.22F,
+                    0.14F, 0.20F, 0.24F, 0.0F),
+            new GlovePart("middle", -0.075F, 0.19F, 0.23F,
+                    0.14F, 0.22F, 0.25F, 0.0F),
+            new GlovePart("ring", 0.075F, 0.18F, 0.225F,
+                    0.14F, 0.21F, 0.245F, 0.0F),
+            new GlovePart("little", 0.225F, 0.15F, 0.21F,
+                    0.14F, 0.18F, 0.23F, 0.0F),
+            new GlovePart("thumb", -0.32F, -0.04F, 0.09F,
+                    0.18F, 0.29F, 0.21F, (float) Math.toRadians(-28.0D))
+    );
+    private static final double COLLISION_SAMPLE_DISTANCE = 0.2D;
     public boolean returning;
     public boolean grabbed;
     private LivingEntity grabbedTarget;
     private Vector lastVelocity;
-    private Item glove;
+    private BlockDisplay glove;
+    private Location gloveLocation;
+    private final List<BlockDisplay> gloveParts = new ArrayList<>(GLOVE_MODEL.size());
     @Attribute(Attribute.DAMAGE)
     private double damage;
     @Attribute(Attribute.COOLDOWN)
@@ -79,8 +101,8 @@ public class EarthGlove extends EarthAbility implements AddonAbility {
 
     public static void attemptDestroy(final Player player) {
         for (Entity targetedEntity : GeneralMethods.getEntitiesAroundPoint(player.getEyeLocation(), 8)) {
-            if (targetedEntity instanceof Item && player.hasLineOfSight(targetedEntity) && targetedEntity.hasMetadata(CoreMethods.GLOVE_KEY)) {
-                EarthGlove ability = (EarthGlove) targetedEntity.getMetadata(CoreMethods.GLOVE_KEY).get(0).value();
+            if (targetedEntity instanceof BlockDisplay && player.hasLineOfSight(targetedEntity)) {
+                final EarthGlove ability = ACTIVE_GLOVE_PARTS.get(targetedEntity.getUniqueId());
                 if (ability != null && !player.equals(ability.getPlayer())) {
                     ability.shatterGlove();
                     return;
@@ -102,22 +124,26 @@ public class EarthGlove extends EarthAbility implements AddonAbility {
             remove();
             return;
         }
-        if (!glove.getWorld().equals(player.getWorld()) || glove.getLocation().distanceSquared(player.getLocation()) > Math.pow(range + 5, 2)) {
+        if (this.gloveLocation == null || this.gloveLocation.getWorld() != player.getWorld()
+                || this.gloveLocation.distanceSquared(player.getLocation()) > Math.pow(range + 5, 2)) {
             remove();
             return;
         }
-        if (glove.getLocation().distanceSquared(player.getLocation()) > range * range) {
+        if (this.gloveLocation.distanceSquared(player.getLocation()) > range * range) {
             returning = true;
         }
 
-        Vector vector = lastVelocity.clone(); // Record velocity
+        if (!this.grabbed && this.advanceGlove()) {
+            shatterGlove();
+            return;
+        }
         if (returning) {
             if (!player.isSneaking()) {
                 shatterGlove();
                 return;
             }
             Location returnLocation = player.getEyeLocation().add(player.getEyeLocation().getDirection().multiply(1.5));
-            if (glove.getLocation().distanceSquared(returnLocation) < 1) {
+            if (this.gloveLocation.distanceSquared(returnLocation) < 1) {
                 if (grabbed && grabbedTarget != null) grabbedTarget.setVelocity(new Vector());
                 remove();
                 return;
@@ -128,26 +154,21 @@ public class EarthGlove extends EarthAbility implements AddonAbility {
                     return;
                 }
                 grabbedTarget.setVelocity(GeneralMethods.getDirection(grabbedTarget.getLocation(), returnLocation).normalize().multiply(grabSpeed));
-                glove.teleport(grabbedTarget.getEyeLocation().subtract(0, grabbedTarget.getHeight() / 2, 0));
+                teleportGlove(grabbedTarget.getEyeLocation().subtract(0, grabbedTarget.getHeight() / 2, 0));
                 return;
             } else {
-                setGloveVelocity(GeneralMethods.getDirection(glove.getLocation(), returnLocation).normalize().multiply(speed));
+                setGloveVelocity(GeneralMethods.getDirection(this.gloveLocation, returnLocation).normalize().multiply(speed));
             }
         } else {
             setGloveVelocity(lastVelocity.clone().normalize().multiply(speed));
             checkDamage();
             if (grabbed) {
                 Location returnLocation = player.getEyeLocation().add(player.getEyeLocation().getDirection().multiply(1.5));
-                final Vector returnVector = GeneralMethods.getDirection(glove.getLocation(), returnLocation).normalize();
+                final Vector returnVector = GeneralMethods.getDirection(this.gloveLocation, returnLocation).normalize();
                 grabbedTarget.setVelocity(returnVector.clone().multiply(grabSpeed));
                 setGloveVelocity(returnVector.clone().multiply(grabSpeed));
                 return;
             }
-        }
-
-        double velocityLimit = (grabbed ? grabSpeed : speed) - 0.2;
-        if (glove.isOnGround() || vector.angle(glove.getVelocity()) > Math.PI / 4 || glove.getVelocity().length() < velocityLimit) {
-            shatterGlove();
         }
     }
 
@@ -177,13 +198,85 @@ public class EarthGlove extends EarthAbility implements AddonAbility {
         return true;
     }
 
-    private Item buildGlove(Location spawnLocation) {
-        final Item item = spawnLocation.getWorld().dropItem(spawnLocation, new ItemStack(Material.STONE, 1));
-        item.setGravity(false);
-        item.setInvulnerable(true);
-        item.setMetadata(CoreMethods.NO_PICKUP_KEY, new FixedMetadataValue(Hyperion.getPlugin(), ""));
-        item.setMetadata(CoreMethods.GLOVE_KEY, new FixedMetadataValue(Hyperion.getPlugin(), this));
-        return item;
+    private BlockDisplay buildGlove(final Location spawnLocation) {
+        this.gloveLocation = spawnLocation.clone();
+        final var stone = Material.STONE.createBlockData();
+        for (final GlovePart ignored : GLOVE_MODEL) {
+            final BlockDisplay display = spawnLocation.getWorld().spawn(spawnLocation, BlockDisplay.class);
+            display.setBlock(stone);
+            display.setPersistent(false);
+            display.setInvulnerable(true);
+            display.setGravity(false);
+            display.setSilent(true);
+            display.setBillboard(Display.Billboard.FIXED);
+            display.setShadowRadius(0.16F);
+            display.setShadowStrength(0.75F);
+            display.setInterpolationDelay(0);
+            display.setInterpolationDuration(1);
+            display.setTeleportDuration(1);
+            display.setViewRange(32.0F);
+            this.gloveParts.add(display);
+            ACTIVE_GLOVE_PARTS.put(display.getUniqueId(), this);
+        }
+        final BlockDisplay anchor = this.gloveParts.get(0);
+        this.updateGloveModel();
+        return anchor;
+    }
+
+    private boolean advanceGlove() {
+        if (this.gloveLocation == null || this.lastVelocity == null
+                || this.lastVelocity.lengthSquared() == 0.0D) return false;
+        final int samples = Math.max(1, (int) Math.ceil(
+                this.lastVelocity.length() / COLLISION_SAMPLE_DISTANCE));
+        for (int sample = 1; sample <= samples; sample++) {
+            final Location point = this.gloveLocation.clone().add(
+                    this.lastVelocity.clone().multiply((double) sample / samples));
+            if (!point.getBlock().isPassable()) return true;
+        }
+        this.gloveLocation.add(this.lastVelocity);
+        this.updateGloveModel();
+        return false;
+    }
+
+    private void teleportGlove(final Location location) {
+        if (location == null || location.getWorld() == null) return;
+        this.gloveLocation = location.clone();
+        this.updateGloveModel();
+    }
+
+    private void updateGloveModel() {
+        if (this.gloveLocation == null || this.gloveParts.size() != GLOVE_MODEL.size()) return;
+        Vector facing = this.lastVelocity == null ? new Vector() : this.lastVelocity.clone();
+        if (facing.lengthSquared() < 1.0E-6D) facing = this.player.getEyeLocation().getDirection();
+        if (facing.lengthSquared() < 1.0E-6D) facing = new Vector(0.0D, 0.0D, 1.0D);
+        facing.normalize();
+        final float yaw = (float) Math.atan2(facing.getX(), facing.getZ());
+        final float pitch = (float) -Math.asin(Math.max(-1.0D, Math.min(1.0D, facing.getY())));
+        final Quaternionf modelRotation = new Quaternionf().rotateY(yaw).rotateX(pitch);
+
+        for (int index = 0; index < GLOVE_MODEL.size(); index++) {
+            final BlockDisplay display = this.gloveParts.get(index);
+            if (display == null || !display.isValid()) continue;
+            final GlovePart part = GLOVE_MODEL.get(index);
+            final Vector3f offset = new Vector3f(part.offsetX(), part.offsetY(), part.offsetZ());
+            modelRotation.transform(offset);
+            final Location partLocation = this.gloveLocation.clone().add(offset.x, offset.y, offset.z);
+            partLocation.setYaw(0.0F);
+            partLocation.setPitch(0.0F);
+            display.setTransformation(glovePartTransformation(part, modelRotation));
+            display.teleport(partLocation);
+        }
+    }
+
+    private static Transformation glovePartTransformation(final GlovePart part,
+                                                           final Quaternionf modelRotation) {
+        final Quaternionf rotation = new Quaternionf(modelRotation).rotateZ(part.roll());
+        final Vector3f translation = new Vector3f(
+                part.width() * 0.5F, part.height() * 0.5F, part.depth() * 0.5F);
+        rotation.transform(translation);
+        translation.negate();
+        return new Transformation(translation, rotation,
+                new Vector3f(part.width(), part.height(), part.depth()), new Quaternionf());
     }
 
     public void grabTarget(final LivingEntity entity) {
@@ -193,7 +286,7 @@ public class EarthGlove extends EarthAbility implements AddonAbility {
         returning = true;
         grabbed = true;
         grabbedTarget = entity;
-        glove.teleport(grabbedTarget.getEyeLocation().subtract(0, grabbedTarget.getHeight() / 2, 0));
+        teleportGlove(grabbedTarget.getEyeLocation().subtract(0, grabbedTarget.getHeight() / 2, 0));
     }
 
     public void checkDamage() {
@@ -217,8 +310,9 @@ public class EarthGlove extends EarthAbility implements AddonAbility {
     }
 
     public void setGloveVelocity(final Vector velocity) {
-        glove.setVelocity(velocity.clone());
+        if (velocity == null) return;
         lastVelocity = velocity.clone();
+        this.updateGloveModel();
     }
 
     @Override
@@ -263,7 +357,7 @@ public class EarthGlove extends EarthAbility implements AddonAbility {
 
     @Override
     public Location getLocation() {
-        return (glove == null) ? player.getLocation() : glove.getLocation();
+        return this.gloveLocation == null ? player.getLocation() : this.gloveLocation.clone();
     }
 
     @Override
@@ -292,23 +386,29 @@ public class EarthGlove extends EarthAbility implements AddonAbility {
 
     @Override
     public void remove() {
-        if (glove.hasMetadata(CoreMethods.GLOVE_KEY)) {
-            EarthGlove ability = (EarthGlove) glove.getMetadata(CoreMethods.GLOVE_KEY).get(0).value();
-            if (ability != null && player.equals(ability.getPlayer())) {
-                glove.remove();
-            }
+        for (final BlockDisplay part : List.copyOf(this.gloveParts)) {
+            if (part == null) continue;
+            ACTIVE_GLOVE_PARTS.remove(part.getUniqueId(), this);
+            if (part.isValid()) part.remove();
         }
+        this.gloveParts.clear();
+        this.glove = null;
         super.remove();
     }
 
     public void shatterGlove() {
-        if (!glove.isValid()) {
+        if (this.glove == null || !this.glove.isValid()) {
+            remove();
             return;
         }
-        ParticleEffect.BLOCK_CRACK.display(glove.getLocation(), 3, 0, 0, 0, Material.STONE.createBlockData());
-        ParticleEffect.BLOCK_DUST.display(glove.getLocation(), 2, 0, 0, 0, Material.STONE.createBlockData());
-        glove.remove();
+        final Location location = this.getLocation();
+        ParticleEffect.BLOCK_CRACK.display(location, 7, 0.18, 0.18, 0.18, Material.STONE.createBlockData());
+        ParticleEffect.BLOCK_DUST.display(location, 5, 0.12, 0.12, 0.12, Material.STONE.createBlockData());
         remove();
+    }
+
+    private record GlovePart(String name, float offsetX, float offsetY, float offsetZ,
+                             float width, float height, float depth, float roll) {
     }
 
     public enum Side {RIGHT, LEFT}

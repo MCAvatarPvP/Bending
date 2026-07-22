@@ -1,10 +1,18 @@
 package com.projectkorra.projectkorra.prediction;
 
+import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
+
+import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
+import com.projectkorra.projectkorra.prediction.action.AbilityRemovalSync;
+import com.projectkorra.projectkorra.prediction.action.PredictionDeterminism;
+import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
+
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -122,14 +130,10 @@ class TempBlockAbilityLifecycleBoundaryTest {
         assertTrue(bootstrap.contains("AbilityActivationManager.markHandled(phaseChange)"),
                 "an existing PhaseChange instance must be identified exactly");
 
-        String paper = source("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
-                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
-        String fabric = source("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java",
-                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java");
+        String paper = source("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
         assertCurrentInputPrecedesCachedAbility(paper);
-        assertCurrentInputPrecedesCachedAbility(fabric);
         assertCurrentInputOwnsSynchronousEffects(paper);
-        assertCurrentInputOwnsSynchronousEffects(fabric);
     }
 
     @Test
@@ -144,25 +148,23 @@ class TempBlockAbilityLifecycleBoundaryTest {
                 "a throw/release/redirect must transfer lifecycle ownership off the older action");
         assertTrue(association.contains("action.abilities.add(ability)"),
                 "the newest action must remain retained while a staged ability can still create effects");
-        assertTrue(runtime.contains("tick - action.createdTick > ACTION_RETENTION_TICKS && action.abilities.isEmpty()"),
+        assertTrue(runtime.contains("this.tick - action.createdTick > 160L && action.abilities.isEmpty()"),
                 "only actions with no live ability owner may age out");
     }
 
     @Test
-    void delayedChildAbilitiesInheritTheExactParentInputOnPaperAndFabric() throws IOException {
+    void delayedChildAbilitiesInheritTheExactParentInputOnPaperAndClient() throws IOException {
         String core = common("com/projectkorra/projectkorra/ability/CoreAbility.java");
         String runtime = source(
                 "../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
                 "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
-        String paper = source("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
-                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
-        String fabricServer = source(
-                "../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java",
-                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java");
+        String paper = source("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
 
         assertTrue(core.contains("predictionActionSequence = PredictionDeterminism.currentAction()"),
                 "a child constructed by RaiseEarthWall or Shockwave must capture its parent's native input");
-        String clientAction = method(runtime, "private long currentAction()", "private PredictionClient.ServerPose executionPose0()");
+        String clientAction = method(runtime, "private long currentAction()",
+                "private com.projectkorra.projectkorra.fabric.client.PredictionClient.ServerPose executionPose0()");
         assertTrue(clientAction.contains("ability.getPredictionActionSequence()")
                         && clientAction.contains("actions.get(inherited)")
                         && clientAction.contains("action.abilities.add(ability)"),
@@ -172,17 +174,12 @@ class TempBlockAbilityLifecycleBoundaryTest {
         int nameFallback = paperAction.indexOf("List<Action> recent");
         assertTrue(inherited >= 0 && nameFallback > inherited,
                 "Paper must resolve the exact inherited input before any ability-name fallback");
-        String fabricAction = method(fabricServer, "private Action actionForEffect", "private Action currentInputAction");
-        int fabricInherited = fabricAction.indexOf("ability.getPredictionActionSequence()");
-        int fabricNameFallback = fabricAction.indexOf("List<Action> recent");
-        assertTrue(fabricInherited >= 0 && fabricNameFallback > fabricInherited,
-                "the Fabric authority must use the same inherited child identity as Paper and its client");
     }
 
     @Test
-    void delayedEffectsKeepTheExactNativeActionOnEveryServerLoader() throws IOException {
-        String paper = source("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
-                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
+    void delayedEffectsKeepTheExactNativeActionOnPaper() throws IOException {
+        String paper = source("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
         assertTrue(paper.contains("Long sequence = contextualActionSequence(server, uuid)"));
         assertTrue(paper.contains("runWithOwnerAndSequence(uuid, sequence, task)"));
         String paperContext = method(paper, "private static void runWithOwnerAndSequence",
@@ -190,18 +187,6 @@ class TempBlockAbilityLifecycleBoundaryTest {
         assertTrue(paperContext.contains("INPUT_SEQUENCE.set(sequence)")
                         && paperContext.contains("INPUT_SEQUENCE.set(previousSequence)"),
                 "Paper callbacks must retain and restore the input ordinal, not merely the player UUID");
-
-        String fabric = source("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java",
-                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java");
-        String scheduler = source("../fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricProjectKorraPlatform.java",
-                "fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricProjectKorraPlatform.java");
-        assertTrue(fabric.contains("record EffectContext(UUID owner, long actionSequence, long deterministicSeed)"));
-        assertTrue(fabric.contains("INPUT_SEQUENCE.set(context.actionSequence)"));
-        assertTrue(fabric.contains("context.deterministicSeed"),
-                "delayed callbacks must retain the semantic random seed independently of loader ordinals");
-        assertTrue(scheduler.contains("PredictionServer.captureEffectContext()")
-                        && scheduler.contains("PredictionServer.runWithEffectContext(predictionContext, task)"),
-                "Fabric-server callbacks must carry the same owner + action context as Paper and the predicting client");
     }
 
     @Test
@@ -222,6 +207,149 @@ class TempBlockAbilityLifecycleBoundaryTest {
     }
 
     @Test
+    void remoteRedirectsAndIceWallsUseAuthoritativeTempBlockIdentity() throws IOException {
+        String waterManipulation = common(
+                "com/projectkorra/projectkorra/waterbending/WaterManipulation.java");
+        String iceSpike = common(
+                "com/projectkorra/projectkorra/waterbending/ice/IceSpikeBlast.java");
+        String iceWall = common("com/jedk1/jedcore/ability/waterbending/IceWall.java");
+        String core = common("com/projectkorra/projectkorra/ability/CoreAbility.java");
+        String sync = common("com/projectkorra/projectkorra/prediction/block/TempBlockSync.java");
+        String paper = source("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
+        String runtime = source(
+                "../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
+        String tempAuthority = source(
+                "../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/prediction/block/ClientTempBlockAuthority.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/prediction/block/ClientTempBlockAuthority.java");
+
+        assertTrue(sync.contains("getAuthoritativeEffectAlongRay")
+                        && sync.contains("authoritativeOwnerId"),
+                "remote semantic layers must be targetable without fabricating common ability instances");
+        assertTrue(waterManipulation.contains("getAuthoritativeEffectAlongRay(player,")
+                        && waterManipulation.contains("\"WaterManipulation\""),
+                "both click and shift redirection must suppress a client-only fallback for a remote stream");
+        assertTrue(iceSpike.contains("final boolean redirected = redirect(player)")
+                        && iceSpike.contains("!activate && !redirected")
+                        && iceSpike.contains("getAuthoritativeEffectAlongRay(player,"),
+                "redirecting a remote spike must not also start IceSpikePillar or bottle ice locally");
+        assertTrue(iceWall.contains("TempBlockSync.hasAuthoritativeEffect(b, this.getName())")
+                        && iceWall.contains("getAuthoritativeEffectAlongRay("),
+                "another player's rendered IceWall must be selected as a wall, never as ordinary source ice");
+        assertTrue(core.contains("this.ownershipTransferred = true")
+                        && core.contains("public boolean hasTransferredOwnership()"),
+                "ownership transfer must remain explicit even when the original caster has no prediction session");
+        assertTrue(paper.contains("final boolean unpredictedOwnershipTransfer")
+                        && paper.contains("unpredictedOwnershipTransfer\n                || ownershipBridgeTempLayers.contains(change.layerId())")
+                        && paper.contains("? null : predictedTempBlockOwner"));
+        assertTrue(tempAuthority.contains("public UUID authoritativeOwnerId"));
+    }
+
+    @Test
+    void earthSmashOwnershipHandoffRetainsPredictionWithExactServerState() throws IOException {
+        String core = common("com/projectkorra/projectkorra/ability/CoreAbility.java");
+        String tempBlock = common("com/projectkorra/projectkorra/util/TempBlock.java");
+        String smash = common("com/projectkorra/projectkorra/earthbending/EarthSmash.java");
+        String paper = source("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
+        String runtime = source(
+                "../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
+
+        assertTrue(core.contains("AbilityRemovalSync.ownerTransferred(this, previousOwner, nextOwner)")
+                        && core.contains("TempBlock.refreshAbilityOwnership(this)"),
+                "the endpoint must choose transfer authority before existing layers publish their new owner");
+        assertTrue(tempBlock.contains("public static void refreshAbilityOwnership")
+                        && tempBlock.contains("layer.ownerId = nextOwner")
+                        && tempBlock.contains("UPDATE_EXPIRY"));
+        assertTrue(tempBlock.contains("final long effectStep, final int effectOrdinal")
+                        && tempBlock.contains("explicitIdentity == null"),
+                "a predicted structure must be able to provide a stable logical layer identity");
+        assertTrue(smash.contains("public boolean supportsPredictedOwnershipTransfer()")
+                        && smash.contains("capturePredictionTransfer()")
+                        && smash.contains("applyPredictionTransfer(final PredictionTransfer transfer)")
+                        && smash.contains("restorePredictionTransfer"));
+        assertTrue(smash.contains("final long effectFrame = ++this.predictionFrame")
+                        && smash.contains("effectFrame, predictionShapeSlot(blockRep)")
+                        && smash.contains("transfer.predictionFrame()"),
+                "EarthSmash must retain an exact logical frame and shape slot across handoff");
+        String remaining = method(smash, "public void checkRemainingBlocks()", "public void remove()");
+        assertTrue(smash.contains("private boolean isAuthoritativeShapeBlock(final Block block)")
+                        && remaining.contains("this.isAuthoritativeShapeBlock(block)"),
+                "a concealed authoritative handoff must not make EarthSmash prune its restored shape");
+        assertTrue(paper.contains("predictedOwnershipTransfers.add(ability)")
+                        && paper.contains("tempLayerActions.remove(layer.getLayerId())")
+                        && paper.contains("tempLayerEffects.remove(layer.getLayerId())")
+                        && paper.contains("serverOwnedTempLayers.add(layer.getLayerId())")
+                        && paper.contains("ownershipBridgeTempLayers.add(layer.getLayerId())"),
+                "pre-transfer layers must remain visible and outside the redirect action until their ordinary close");
+        assertTrue(paper.contains("final boolean stableEarthSmashSlot")
+                        && paper.contains("change.effectStep(),")
+                        && paper.contains("change.effectOrdinal()")
+                        && paper.contains("new TempEffectIdentity(semanticAbility, 0L, ++action.tempBlockOrdinal)"),
+                "Paper must preserve EarthSmash's exact slot while other abilities retain generic action ordinals");
+        assertTrue(paper.contains("worldKey(smash.getLocation().getWorld())"),
+                "Paper world names must be normalized to the registry key used by the Fabric client");
+        String tempAuthority = source(
+                "../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/prediction/block/ClientTempBlockAuthority.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/prediction/block/ClientTempBlockAuthority.java");
+        assertTrue(runtime.contains("transferAuthoritativeAbility")
+                        && runtime.contains("authoritativelyEstablishedAbilities.add")
+                        && !runtime.contains("resetAbilityLayerIdentity(selected)")
+                        && tempAuthority.contains("viewerId.equals(operation.ownerId())"),
+                "the new client must restore the exact smash and each ownership revision must update visibility");
+        assertTrue(tempAuthority.contains("!change.ability().tracksPredictedTempBlocks()")
+                        && !tempAuthority.contains("public void resetAbilityLayerIdentity")
+                        && tempAuthority.contains("stableEarthSmashSlot")
+                        && !tempAuthority.contains("closestUnpairedEarthSmash"),
+                "a foreign preview must stay outside the ledger while confirmed frames pair only by exact slot identity");
+        assertTrue(smash.contains("new EarthSmash(player, transfer, true)")
+                        && !smash.contains("nearestOwnedPrediction"),
+                "the input action owns one explicit provisional continuation and never selects one by coordinate proximity");
+        String activation = common("com/projectkorra/projectkorra/ability/activation/CoreAbilityActivationBootstrap.java");
+        assertTrue(activation.contains("activateEarthSmash(context, ClickType.SHIFT_DOWN)")
+                        && activation.contains("activateEarthSmash(context, ClickType.SHIFT_UP)")
+                        && activation.contains("activation.didHandleActivation()")
+                        && smash.contains("AbilityActivationManager.markHandled(affected)"),
+                "only the exact EarthSmash instance whose state changed may move to the new action");
+        assertTrue(paper.contains("hadExistingMatchingAbility && abilityName.equalsIgnoreCase(\"EarthSmash\")")
+                        && paper.contains("onCheckpoint(candidate)"),
+                "Paper must checkpoint every input-dispatched EarthSmash transition, including release");
+        String checkpoint = method(smash, "public boolean matchesPredictionCheckpoint",
+                "private static BlockData predictionBlockData");
+        assertTrue(checkpoint.contains("this.origin.getX()") && !checkpoint.contains("this.location.getX()"),
+                "a delayed lift checkpoint compares the stable source and must not rewind an already-rising smash");
+        assertTrue(checkpoint.contains("checkpointState == State.GRABBED && this.state == State.LIFTED"),
+                "a delayed grab checkpoint must confirm, rather than erase, an already-released smash");
+    }
+
+    @Test
+    void tempBlockHotPathsUseIdentityAndCoordinateIndexes() throws IOException {
+        String tempBlock = common("com/projectkorra/projectkorra/util/TempBlock.java");
+        String authority = source(
+                "../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/prediction/block/ClientTempBlockAuthority.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/prediction/block/ClientTempBlockAuthority.java");
+        String lookup = method(authority, "private static TempBlock findActiveLayer",
+                "private static boolean matchesWorld");
+        String expiry = method(authority, "private void expireUnconfirmedLayers",
+                "private boolean preserveLocalAuthority");
+        String authoritativeTop = method(authority, "private ServerLayer topAuthoritative",
+                "private boolean hidesServerLayer");
+
+        assertTrue(tempBlock.contains("private static final Map<Long, TempBlock> LAYERS_BY_ID")
+                        && tempBlock.contains("public static TempBlock getActiveLayer"));
+        assertTrue(lookup.contains("TempBlock.getActiveLayer(layerId)"));
+        assertFalse(lookup.contains("TempBlock.getActiveLayers()"),
+                "each of hundreds of PhaseChange layers must not rescan the complete registry every tick");
+        assertFalse(expiry.contains("List.copyOf(localLayers.entrySet())"),
+                "the steady 600-layer tick must not allocate a complete entry snapshot");
+        assertTrue(authority.contains("authoritativeByCoordinate")
+                        && authority.contains("localLayersByCoordinate"));
+        assertTrue(authoritativeTop.contains("authoritativeByCoordinate.get(key)"));
+    }
+
+    @Test
     void regenTempBlocksCannotRestoreASecondStaleSnapshot() throws IOException {
         String regen = common("com/jedk1/jedcore/util/RegenTempBlock.java");
         String gimbal = common("com/jedk1/jedcore/ability/waterbending/combo/WaterGimbal.java");
@@ -239,12 +367,9 @@ class TempBlockAbilityLifecycleBoundaryTest {
 
     @Test
     void tempBlockClosuresAreDeliveredBeforeAbilityRemoval() throws IOException {
-        String paper = source("src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java",
-                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/PaperPredictionServer.java");
-        String fabric = source("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java",
-                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/PredictionServer.java");
+        String paper = source("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
         assertRemovalIsQueued(paper, "public void run()");
-        assertRemovalIsQueued(fabric, "public void tick()");
     }
 
     private static void assertCurrentInputPrecedesCachedAbility(final String source) {

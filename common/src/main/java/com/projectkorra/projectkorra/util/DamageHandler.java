@@ -17,7 +17,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageByEntityEvent;
 import com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent;
 import com.projectkorra.projectkorra.platform.mc.metadata.FixedMetadataValue;
-import com.projectkorra.projectkorra.prediction.PredictedContactSync;
+import com.projectkorra.projectkorra.prediction.hit.PredictedContactSync;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.HashMap;
