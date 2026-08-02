@@ -41,6 +41,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class WaterFlow extends WaterAbility implements AddonAbility, ComboAbility {
 
     private final ConcurrentHashMap<Block, Location> directions = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Block, TempBlock> waterLayers = new ConcurrentHashMap<>();
     private final List<Block> blocks = new ArrayList<>();
     private final Random rand;
     @Attribute(Attribute.SELECT_RANGE)
@@ -316,12 +317,10 @@ public class WaterFlow extends WaterAbility implements AddonAbility, ComboAbilit
             if (!MaterialUtil.isTransparent(block) || RegionProtection.isRegionProtected(player, block.getLocation(), "Torrent")) {
                 blocks.remove(block);
                 directions.remove(block);
-                if (TempBlock.isTempBlock(block)) {
-                    TempBlock.revertBlock(block, Material.AIR);
-                }
+                retireWaterLayer(block);
             } else {
                 if (!isWater(block)) {
-                    new TempBlock(block, Material.WATER.createBlockData(bd -> ((Levelled) bd).setLevel(0)));
+                    createWaterLayer(block);
                 }
             }
             pos++;
@@ -336,9 +335,7 @@ public class WaterFlow extends WaterAbility implements AddonAbility, ComboAbilit
             Block block = blocks.get(i);
             blocks.remove(block);
             directions.remove(block);
-            if (TempBlock.isTempBlock(block)) {
-                TempBlock.revertBlock(block, Material.AIR);
-            }
+            retireWaterLayer(block);
         }
         tempList.clear();
     }
@@ -362,23 +359,41 @@ public class WaterFlow extends WaterAbility implements AddonAbility, ComboAbilit
     }
 
     private void removeBlocks() {
-        for (Block block : directions.keySet()) {
-            if (TempBlock.isTempBlock(block)) {
-                TempBlock.revertBlock(block, Material.AIR);
-            }
+        for (Block block : new ArrayList<>(waterLayers.keySet())) {
+            retireWaterLayer(block);
         }
     }
 
     private void freeze() {
         frozen = true;
-        for (Block block : directions.keySet()) {
-            if (TempBlock.isTempBlock(block)) {
-                if (rand.nextInt(5) == 0) {
-                    playIcebendingSound(block.getLocation());
-                }
-                new RegenTempBlock(block, getIceMaterial(), getIceData(), randInt((int) meltDelay - 250, (int) meltDelay + 250));
+        for (var entry : new ArrayList<>(waterLayers.entrySet())) {
+            final Block block = entry.getKey();
+            final TempBlock waterLayer = entry.getValue();
+            if (!waterLayers.remove(block, waterLayer)
+                    || waterLayer == null || waterLayer.isReverted()) continue;
+            if (rand.nextInt(5) == 0) {
+                playIcebendingSound(block.getLocation());
             }
+            new RegenTempBlock(block, getIceMaterial(), getIceData(),
+                    randInt((int) meltDelay - 250, (int) meltDelay + 250),
+                    this, waterLayer);
         }
+    }
+
+    private void createWaterLayer(final Block block) {
+        final TempBlock previous = waterLayers.get(block);
+        if (previous != null && !previous.isReverted()) return;
+        if (previous != null) waterLayers.remove(block, previous);
+
+        final TempBlock layer = new TempBlock(block,
+                Material.WATER.createBlockData(bd -> ((Levelled) bd).setLevel(0)), this);
+        layer.setRevertTask(() -> waterLayers.remove(block, layer));
+        waterLayers.put(block, layer);
+    }
+
+    private void retireWaterLayer(final Block block) {
+        final TempBlock layer = waterLayers.remove(block);
+        if (layer != null && !layer.isReverted()) layer.revertBlock();
     }
 
     public int randInt(int min, int max) {

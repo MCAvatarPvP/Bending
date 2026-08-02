@@ -4,6 +4,7 @@ import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
+import com.projectkorra.projectkorra.platform.mc.FluidCollisionMode;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Particle;
 import com.projectkorra.projectkorra.platform.mc.Sound;
@@ -14,7 +15,9 @@ import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.entity.ShulkerBullet;
 import com.projectkorra.projectkorra.platform.mc.metadata.FixedMetadataValue;
+import com.projectkorra.projectkorra.platform.mc.util.RayTraceResult;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.state.CooldownSync;
 import com.projectkorra.projectkorra.util.FallHandler;
 import com.projectkorra.projectkorra.util.colliders.AABB;
 import com.projectkorra.projectkorra.util.colliders.Ray;
@@ -26,6 +29,8 @@ import me.literka.util.Utils;
 import java.util.*;
 
 public class StickyBomb extends ModernChiAbility implements AddonAbility {
+
+    private static final double SHULKER_BULLET_GRAVITY = 0.04;
 
     public static Map<Player, List<Long>> cooldowns = new HashMap<>();
     public static Map<Player, Long> throwTime = new HashMap<>();
@@ -77,6 +82,11 @@ public class StickyBomb extends ModernChiAbility implements AddonAbility {
 
         location = player.getEyeLocation();
         Vector direction = location.getDirection().multiply(speed);
+        if (!CooldownSync.isAuthoritative()) {
+            // ShulkerBulletEntity applies gravity only in the server branch of
+            // its tick. Seed the first predicted tick with the same impulse.
+            direction.setY(direction.getY() - SHULKER_BULLET_GRAVITY);
+        }
 
         shulkerBullet = location.getWorld().spawn(location, ShulkerBullet.class, sb -> {
             sb.setGravity(true);
@@ -117,9 +127,48 @@ public class StickyBomb extends ModernChiAbility implements AddonAbility {
 
         prevLocation = location.clone();
         location = shulkerBullet.getLocation();
+        final boolean predicting = !CooldownSync.isAuthoritative();
+        if (predicting && findPredictedContact(prevLocation, location)) {
+            return;
+        }
         if (shulkerBullet.isDead()) {
             remove();
+            return;
         }
+        if (predicting) {
+            final Vector velocity = shulkerBullet.getVelocity();
+            velocity.setY(velocity.getY() - SHULKER_BULLET_GRAVITY);
+            shulkerBullet.setVelocity(velocity);
+        }
+    }
+
+    /**
+     * Vanilla shulker bullets only calculate collisions on the server. Sweep
+     * the locally predicted flight segment so the client enters the same stuck
+     * state without waiting for the authoritative projectile removal.
+     */
+    private boolean findPredictedContact(final Location from, final Location to) {
+        if (from == null || to == null || from.getWorld() == null || from.getWorld() != to.getWorld()) {
+            return false;
+        }
+        final Vector movement = to.toVector().subtract(from.toVector());
+        final double distance = movement.length();
+        if (distance < 1.0E-6) return false;
+
+        final RayTraceResult hit = from.getWorld().rayTrace(
+                from, movement, distance, FluidCollisionMode.NEVER, true, 0.3125,
+                candidate -> candidate instanceof LivingEntity
+                        && !candidate.isDead()
+                        && !candidate.getUniqueId().equals(player.getUniqueId()));
+        if (hit == null || hit.getHitPosition() == null) return false;
+
+        final Vector hitPosition = hit.getHitPosition();
+        final Location hitLocation = new Location(
+                from.getWorld(), hitPosition.getX(), hitPosition.getY(), hitPosition.getZ());
+        if (hit.getHitEntity() instanceof LivingEntity living) {
+            return stickEntity(living, hitLocation);
+        }
+        return stickBlock(hitLocation.getBlock(), hitLocation);
     }
 
     public boolean stickEntity(LivingEntity e, Location hitLocation) {
@@ -176,7 +225,7 @@ public class StickyBomb extends ModernChiAbility implements AddonAbility {
 
                 Utils.damage(le, dmg, this);
                 Vector vel = le.getEyeLocation().toVector().subtract(location.toVector()).normalize().multiply(explodePush);
-                if (vel.lengthSquared() != 0) GeneralMethods.setVelocity(this, le, vel);
+                if (vel.lengthSquared() != 0) GeneralMethods.setPredictedVelocity(this, le, vel);
                 if (le instanceof Player p && !fallDmg) FallHandler.stopFall(p);
             }
         }

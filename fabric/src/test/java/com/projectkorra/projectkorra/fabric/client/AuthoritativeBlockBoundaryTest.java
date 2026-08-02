@@ -9,7 +9,7 @@ import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Guards the no-rollback authority boundary after prediction was modularized. */
+/** Guards block ownership and reconciliation after prediction was modularized. */
 class AuthoritativeBlockBoundaryTest {
     @Test
     void ordinaryWritesUseCausalDirectBlockAuthority() throws IOException {
@@ -23,15 +23,24 @@ class AuthoritativeBlockBoundaryTest {
         assertTrue(direct.contains("predictedWrites.put(effect")
                 && direct.contains("world.setBlockState(pos, state, 19)"));
         assertTrue(direct.contains("DirectBlockAuthorityPolicy.mayConceal(")
-                && direct.contains("local != null, receipt.movedEarthLifecycle(), knownCause"));
+                && direct.contains("normalized, local != null, receipt.movedEarthLifecycle(), knownCause"));
         assertTrue(direct.contains("concealed unmatched moved-earth")
                         && direct.contains("concealed divergent causal write"),
                 "latency-offset moved-earth writes must preserve the common client's complete visual transaction");
-        assertFalse(direct.contains("releaseUnconfirmed("),
-                "an authoritative receipt must not erase a divergent RaiseEarth or EarthSmash visual");
-        assertTrue(direct.contains("Expiry is bookkeeping only")
-                        && direct.contains("predictedWrites.remove(entry.getKey(), entry.getValue())"),
-                "unconfirmed identity records may expire, but expiry must never repaint the saved before-state");
+        final String inferred = method(direct, "private void retireConvergedTransactions",
+                "private static boolean requiresAuthoritativeHandoff");
+        final String explicit = method(direct, "public int completeAuthoritativeFrames",
+                "public int mutationCount()");
+        assertTrue(direct.contains("retireConvergedTransactions(tick)")
+                        && inferred.contains("serverState.equals(")
+                        && !inferred.contains("setBlockState("),
+                "elapsed-time convergence may release equal masks but must never repaint a delayed Paper frame");
+        assertTrue(explicit.contains("key.world.setBlockState(key.pos, mask.serverState, 19)")
+                        && explicit.contains("state.authoritativeFrameComplete = true"),
+                "only the ordered final RaiseEarth receipt may install Paper's complete frame");
+        assertTrue(direct.contains("lastReceiptTick = context.tick()")
+                        && direct.contains("tick - lastActivity <= convergenceDelay"),
+                "convergence must wait for both local progress and delayed Paper receipts to become quiet");
         assertTrue(direct.contains("action != 0L && action == mutation.lastAction"));
         assertTrue(common.contains("final boolean packetExpected")
                 && common.indexOf("final boolean packetExpected")
@@ -108,6 +117,8 @@ class AuthoritativeBlockBoundaryTest {
         assertFalse(method(temp, "public void onChange", "public void beforeWorldChange")
                 .contains("teardownFences.arm"));
         assertTrue(temp.contains("teardownFences.arm(key, lifecycle.staleStates"));
+        assertTrue(temp.contains("if (local == null && lifecycle != null"),
+                "a teardown fence must not pin a surviving or overlapping local TempBlock");
         assertTrue(runtime.contains("tempBlockAuthority.removeAbility"));
         assertTrue(runtime.contains("tempBlockAuthority.afterLocalProgress(client.world)"));
         assertTrue(temp.contains("teardownFences.expireBefore(tick - ACTION_RETENTION_TICKS)"));
@@ -158,14 +169,40 @@ class AuthoritativeBlockBoundaryTest {
                 "both the rising wall and temporary source air must retain their causal Earth transaction");
         assertTrue(smash.contains("addTempAirBlock(block)"),
                 "EarthSmash's sampled shape depends on the same protected source-hole lifecycle");
-        assertTrue(direct.contains("local != null, receipt.movedEarthLifecycle(), knownCause")
+        assertTrue(direct.contains("normalized, local != null, receipt.movedEarthLifecycle(), knownCause")
                         && direct.contains("concealed divergent causal write")
                         && direct.contains("concealed unmatched moved-earth physical write"),
                 "Paper's delayed coordinates and ordinals must fence packets without replacing the local visual");
         final String expiry = method(direct, "public void expire", "public void rollbackAction");
-        assertFalse(expiry.contains("world.setBlockState")
-                        || expiry.contains("releaseUnconfirmed"),
-                "identity expiry must not turn a raised wall or sampled smash back into air");
+        assertTrue(expiry.contains("retireConvergedTransactions(tick)"),
+                "RaiseEarth reconciliation must run before durable mask expiry");
+        assertTrue(direct.contains("requiresAuthoritativeHandoff(cause.ability)")
+                        && direct.contains("context.hasActiveAbility(cause.actionSequence, cause.ability)")
+                        && direct.contains("entry.getValue().authoritative")
+                        && direct.contains("entry.getValue().serverState"),
+                "the responsive wall must remain intact until both simulations independently converge");
+        assertTrue(direct.contains("hasActiveCause(entry.getValue().ownerId, cause)")
+                        && direct.contains("serverMasks.remove(entry.getKey(), entry.getValue())"),
+                "convergence must wait for the complete moved-earth lifecycle and only retire bookkeeping");
+        assertTrue(direct.contains("existingMask.cause.actionSequence > cause.actionSequence")
+                        && direct.contains("? existingMask.cause : cause"),
+                "an older delayed receipt may not take an overlapping coordinate back from the newer wall transaction");
+        assertTrue(direct.contains("PACKET mask coalesced")
+                        && direct.contains("awaitsAuthoritativeFrame(mask.cause)"),
+                "a coalesced multi-write packet must remain hidden until the explicit frame fence");
+        final String pendingFrame = method(direct,
+                "private boolean awaitsAuthoritativeFrame", "private BlockState clientBaseState");
+        assertTrue(pendingFrame.contains("\"raiseearth\".equals(cause.ability)"),
+                "the final-removal fence is specific to RaiseEarth; EarthSmash keeps its independent convergence path");
+        final String runtime = runtime();
+        assertTrue(runtime.contains("completesRaiseEarthFrame(")
+                        && runtime.contains("removed.abilityType(), removed.remainingTypeInstances())")
+                        && runtime.contains("completeAuthoritativeFrames("),
+                "the final concrete RaiseEarth removal must drive the ordered frame completion");
+        assertTrue(runtime.indexOf("completeAuthoritativeFrames(")
+                        < runtime.indexOf("removalReceiptMayResolve(", runtime.indexOf(
+                        "private void removeAuthoritativeAbility0")),
+                "the ordered frame must still complete after the initiating action ages out");
     }
 
     @Test

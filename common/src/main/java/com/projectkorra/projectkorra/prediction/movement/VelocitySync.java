@@ -13,6 +13,7 @@ import com.projectkorra.projectkorra.platform.mc.util.Vector;
 public final class VelocitySync {
     private static volatile Listener listener;
     private static final ThreadLocal<Integer> COMMIT_DEPTH = ThreadLocal.withInitial(() -> 0);
+    private static final ThreadLocal<Entity> PREDICTED_REMOTE_TARGET = new ThreadLocal<>();
 
     private VelocitySync() {
     }
@@ -25,6 +26,7 @@ public final class VelocitySync {
         if (listener == expected) {
             listener = null;
             COMMIT_DEPTH.remove();
+            PREDICTED_REMOTE_TARGET.remove();
         }
     }
 
@@ -46,6 +48,32 @@ public final class VelocitySync {
             if (previous == 0) COMMIT_DEPTH.remove();
             else COMMIT_DEPTH.set(previous);
         }
+    }
+
+    /**
+     * Scopes an explicitly opted-in remote velocity write. Fabric's prediction
+     * wrappers use this target identity to allow only the synchronous velocity
+     * mutation; damage and all other remote state remain server-authoritative.
+     */
+    public static void commitPredictedRemote(final Entity target, final Runnable write) {
+        if (write == null) return;
+        final Entity previous = PREDICTED_REMOTE_TARGET.get();
+        if (target == null) PREDICTED_REMOTE_TARGET.remove();
+        else PREDICTED_REMOTE_TARGET.set(target);
+        try {
+            commit(write);
+        } finally {
+            if (previous == null) PREDICTED_REMOTE_TARGET.remove();
+            else PREDICTED_REMOTE_TARGET.set(previous);
+        }
+    }
+
+    public static boolean isPredictedRemoteTarget(final Entity target) {
+        final Entity expected = PREDICTED_REMOTE_TARGET.get();
+        if (expected == null || target == null) return false;
+        if (expected == target) return true;
+        return expected.getUniqueId() != null
+                && expected.getUniqueId().equals(target.getUniqueId());
     }
 
     /** Captures legacy/addon velocity writes which bypass GeneralMethods. */

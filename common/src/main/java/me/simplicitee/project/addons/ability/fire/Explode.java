@@ -13,6 +13,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.RayTraceResult;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.hit.HitRegistrationPolicy;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
 import me.simplicitee.project.addons.ProjectAddons;
@@ -55,7 +56,11 @@ public class Explode extends CombustionAbility implements AddonAbility {
             this.center = GeneralMethods.getTargetedLocation(player, range, ElementalAbility.getTransparentMaterials());
 
             Location loc = player.getEyeLocation();
-            RayTraceResult ray = player.getWorld().rayTrace(loc, loc.getDirection(), range, FluidCollisionMode.NEVER, true, 0, entity -> entity instanceof LivingEntity && entity.getEntityId() != player.getEntityId());
+            RayTraceResult ray = HitRegistrationPolicy.targetAcquisition(() ->
+                    player.getWorld().rayTrace(loc, loc.getDirection(), range,
+                            FluidCollisionMode.NEVER, true, 0,
+                            entity -> entity instanceof LivingEntity
+                                    && entity.getEntityId() != player.getEntityId()));
             if (ray != null) {
                 if (ray.getHitEntity() != null) center = ray.getHitEntity().getLocation();
             }

@@ -174,8 +174,10 @@ class PredictionTimingBoundaryTest {
                 "the exact authoritative velocity receipt must not be dropped while NativeAction is in flight");
         assertFalse(velocityAuthority.contains("closeNetworkVelocity"),
                 "velocity ownership must follow receipt/packet order, never vector similarity");
-        assertTrue(velocitySync.indexOf("publish(ability, target, velocity);")
-                        < velocitySync.indexOf("commit(write);"),
+        int directStart = velocitySync.indexOf("public static void applyDirect");
+        String directVelocity = directStart < 0 ? "" : velocitySync.substring(directStart);
+        assertTrue(directVelocity.indexOf("publish(ability, target, velocity);")
+                        < directVelocity.indexOf("commit(write);"),
                 "every direct ability velocity must publish ownership before vanilla can echo it back");
         assertTrue(velocityAuthority.contains("allowed self-owned velocity without retained mutation")
                         && !velocityAuthority.contains("suppressed self-owned velocity without retained mutation"),

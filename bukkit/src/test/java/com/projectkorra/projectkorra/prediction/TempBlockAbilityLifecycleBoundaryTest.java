@@ -241,7 +241,7 @@ class TempBlockAbilityLifecycleBoundaryTest {
                         && core.contains("public boolean hasTransferredOwnership()"),
                 "ownership transfer must remain explicit even when the original caster has no prediction session");
         assertTrue(paper.contains("final boolean unpredictedOwnershipTransfer")
-                        && paper.contains("unpredictedOwnershipTransfer\n                || ownershipBridgeTempLayers.contains(change.layerId())")
+                        && paper.contains("final UUID predictedOwner = unpredictedOwnershipTransfer")
                         && paper.contains("? null : predictedTempBlockOwner"));
         assertTrue(tempAuthority.contains("public UUID authoritativeOwnerId"));
     }
@@ -282,8 +282,8 @@ class TempBlockAbilityLifecycleBoundaryTest {
                         && paper.contains("tempLayerActions.remove(layer.getLayerId())")
                         && paper.contains("tempLayerEffects.remove(layer.getLayerId())")
                         && paper.contains("serverOwnedTempLayers.add(layer.getLayerId())")
-                        && paper.contains("ownershipBridgeTempLayers.add(layer.getLayerId())"),
-                "pre-transfer layers must remain visible and outside the redirect action until their ordinary close");
+                        && !paper.contains("ownershipBridgeTempLayers"),
+                "pre-transfer layers must stay outside the redirect ordinal namespace while their owner refresh makes the old bridge concealable");
         assertTrue(paper.contains("final boolean stableEarthSmashSlot")
                         && paper.contains("change.effectStep(),")
                         && paper.contains("change.effectOrdinal()")
@@ -363,6 +363,27 @@ class TempBlockAbilityLifecycleBoundaryTest {
         assertTrue(manage.contains("BlockState bs = states.remove(b)"));
         assertFalse(regen.contains("states.put(block, block.getState());\n                createTempBlock"),
                 "TempBlock mode must not also retain a stale BlockState that overwrites later overlaps");
+    }
+
+    @Test
+    void delayedIceWaveAndWaterFlowKeepExactOwnedLifecycles() throws IOException {
+        String wave = common("com/projectkorra/projectkorra/waterbending/WaterSpoutWave.java");
+        String flow = common("com/jedk1/jedcore/ability/waterbending/combo/WaterFlow.java");
+        String regen = common("com/jedk1/jedcore/util/RegenTempBlock.java");
+
+        assertTrue(wave.contains("this.trailRevertTime, this"),
+                "the delayed IceWave task must retain WaterSpoutWave ownership");
+        assertTrue(flow.contains("ConcurrentHashMap<Block, TempBlock> waterLayers")
+                        && flow.contains("waterLayers.remove(block)")
+                        && flow.contains("layer.revertBlock()"),
+                "WaterFlow cleanup must retire only its own exact water handle");
+        assertFalse(flow.contains("TempBlock.revertBlock(block, Material.AIR)"),
+                "WaterFlow must never flatten every overlapping TempBlock at a coordinate");
+        assertTrue(flow.contains("this, waterLayer")
+                        && regen.contains("CoreAbility ability, TempBlock replacedLayer"),
+                "frozen WaterFlow ice must inherit the ability and replace its exact water layer");
+        assertFalse(regen.contains("TempBlock.get(block)"),
+                "generic regeneration must not consume whichever unrelated layer is currently on top");
     }
 
     @Test

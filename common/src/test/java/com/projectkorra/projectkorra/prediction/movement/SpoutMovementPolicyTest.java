@@ -10,19 +10,7 @@ class SpoutMovementPolicyTest {
     private static final double EPSILON = 1.0E-9;
 
     @Test
-    void waterSpoutUsesObservedMovementDuringLocalPrediction() {
-        final Vector movement = new Vector(0.18, 0.31, -0.12);
-        final Vector velocity = new Vector(0.04, -0.08, 0.02);
-
-        final Vector selected = SpoutMovementPolicy.initialVelocity(
-                true, true, movement, velocity);
-
-        assertVector(movement, selected);
-        assertNotSame(movement, selected);
-    }
-
-    @Test
-    void localAirSpoutUsesItsLiveVelocity() {
+    void localWaterSpoutUsesItsLiveVelocity() {
         final Vector movement = new Vector(0.18, 0.31, -0.12);
         final Vector velocity = new Vector(0.04, -0.08, 0.02);
 
@@ -34,12 +22,40 @@ class SpoutMovementPolicyTest {
     }
 
     @Test
-    void paperUsesObservedMovementForAirSpout() {
+    void localAirSpoutUsesItsLiveVelocity() {
         final Vector movement = new Vector(0.18, 0.31, -0.12);
         final Vector velocity = new Vector(0.04, -0.08, 0.02);
 
-        assertVector(movement, SpoutMovementPolicy.initialVelocity(
-                false, false, movement, velocity));
+        final Vector selected = SpoutMovementPolicy.initialVelocity(
+                true, true, movement, velocity);
+
+        assertVector(velocity, selected);
+        assertNotSame(velocity, selected);
+    }
+
+    @Test
+    void authoritativeWaterSpoutUsesObservedHorizontalAndLiveVerticalVelocity() {
+        final Vector movement = new Vector(0.18, 0.31, -0.12);
+        final Vector velocity = new Vector(0.04, -0.08, 0.02);
+
+        final Vector selected = SpoutMovementPolicy.initialVelocity(
+                false, false, movement, velocity);
+
+        assertVector(new Vector(0.18, -0.08, -0.12), selected);
+        assertNotSame(movement, selected);
+        assertNotSame(velocity, selected);
+    }
+
+    @Test
+    void authoritativeAirSpoutUsesObservedMovement() {
+        final Vector movement = new Vector(0.18, 0.31, -0.12);
+        final Vector velocity = new Vector(0.04, -0.08, 0.02);
+
+        final Vector selected = SpoutMovementPolicy.initialVelocity(
+                true, false, movement, velocity);
+
+        assertVector(movement, selected);
+        assertNotSame(movement, selected);
     }
 
     private static void assertVector(final Vector expected, final Vector actual) {

@@ -1,11 +1,23 @@
 package com.projectkorra.projectkorra.fabric.client;
 
+import com.projectkorra.projectkorra.earthbending.RaiseEarth;
+import com.projectkorra.projectkorra.prediction.hit.HitRegistrationPolicy;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AbilityRemovalReceiptPolicyTest {
+    @Test
+    void paperAlwaysClosesReactiveClientLifecycles() {
+        assertFalse(ExactPredictionRuntime.retainsAcceptedPredictedLifecycle(
+                HitRegistrationPolicy.SERVER_CURRENT, false, true, true));
+        assertTrue(ExactPredictionRuntime.retainsAcceptedPredictedLifecycle(
+                HitRegistrationPolicy.REWIND_ASSISTED, false, true, true));
+        assertFalse(ExactPredictionRuntime.retainsAcceptedPredictedLifecycle(
+                HitRegistrationPolicy.REWIND_ASSISTED, true, true, true));
+    }
+
     @Test
     void collisionRemovalSurvivesRetiredCreationAction() {
         assertTrue(ExactPredictionRuntime.removalReceiptMayResolve(true, false, false));
@@ -38,5 +50,16 @@ class AbilityRemovalReceiptPolicyTest {
         assertFalse(ExactPredictionRuntime.authoritativeEmptyTypeFenceCoversCandidate(
                 true, 0, 0L, 77L),
                 "a raw Paper acknowledgement must be correlated before it fences local input");
+    }
+
+    @Test
+    void finalConcreteRaiseEarthRemovalCompletesTheDirectFrame() {
+        final String raiseType = RaiseEarth.class.getName();
+        assertTrue(ExactPredictionRuntime.completesRaiseEarthFrame(
+                raiseType, 0));
+        assertFalse(ExactPredictionRuntime.completesRaiseEarthFrame(
+                raiseType, 1));
+        assertFalse(ExactPredictionRuntime.completesRaiseEarthFrame(
+                "com.example.RaiseEarthWall", 0));
     }
 }

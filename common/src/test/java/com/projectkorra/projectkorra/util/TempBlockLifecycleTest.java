@@ -42,9 +42,10 @@ class TempBlockLifecycleTest {
         FakeBlock block = new FakeBlock(Material.STONE);
         TempBlock movingWater = new TempBlock(block, Material.WATER);
 
-        final var replacement = RegenTempBlock.class.getDeclaredMethod("retireReplacedLayer", Block.class);
+        final var replacement = RegenTempBlock.class.getDeclaredMethod(
+                "retireReplacedLayer", TempBlock.class);
         replacement.setAccessible(true);
-        replacement.invoke(null, block);
+        replacement.invoke(null, movingWater);
         TempBlock timedIce = new TempBlock(block, Material.ICE);
 
         assertTrue(movingWater.isReverted(),
@@ -57,6 +58,27 @@ class TempBlockLifecycleTest {
         assertEquals(Material.STONE, block.getType());
         assertFalse(TempBlock.isTempBlock(block),
                 "the expired ice must not uncover a never-expiring water layer");
+    }
+
+    @Test
+    void regenReplacementRetiresOnlyTheSuppliedLayer() throws ReflectiveOperationException {
+        FakeBlock block = new FakeBlock(Material.STONE);
+        TempBlock movingWater = new TempBlock(block, Material.WATER);
+        TempBlock overlappingIce = new TempBlock(block, Material.ICE);
+
+        final var replacement = RegenTempBlock.class.getDeclaredMethod(
+                "retireReplacedLayer", TempBlock.class);
+        replacement.setAccessible(true);
+        replacement.invoke(null, movingWater);
+
+        assertTrue(movingWater.isReverted());
+        assertFalse(overlappingIce.isReverted(),
+                "freezing WaterFlow must not retire an unrelated overlapping layer");
+        assertSame(overlappingIce, TempBlock.get(block));
+        assertEquals(Material.ICE, block.getType());
+
+        overlappingIce.revertBlock();
+        assertEquals(Material.STONE, block.getType());
     }
 
     @Test

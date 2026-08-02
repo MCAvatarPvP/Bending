@@ -17,6 +17,7 @@ import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
 import com.projectkorra.projectkorra.prediction.block.TempFallingBlockSync;
 import com.projectkorra.projectkorra.prediction.hit.ConfirmedHitEffects;
 import com.projectkorra.projectkorra.prediction.hit.HitRewind;
+import com.projectkorra.projectkorra.prediction.hit.HitRegistrationPolicy;
 import com.projectkorra.projectkorra.prediction.movement.VelocitySync;
 import com.projectkorra.projectkorra.prediction.state.AbilityCheckpointSync;
 import com.projectkorra.projectkorra.prediction.state.AbilityStateSync;
@@ -88,7 +89,6 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     private final Map<Long, Action> tempLayerActions = new HashMap<>();
     private final Map<Long, TempEffectIdentity> tempLayerEffects = new HashMap<>();
     private final Set<Long> serverOwnedTempLayers = new HashSet<>();
-    private final Set<Long> ownershipBridgeTempLayers = new HashSet<>();
     private final List<PendingTempBlock> pendingTempBlocks = new ArrayList<>();
     private final List<PendingAbilityRemoval> pendingAbilityRemovals = new ArrayList<>();
     private final Map<UUID, Integer> uncorrelatedExternalVelocityOrdinals = new HashMap<>();
@@ -192,6 +192,13 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         if (server == null || world == null || query == null || result == null) return;
         final Action action = ability == null ? null : server.actionForEffect(ability);
         if (action == null) return;
+        if (HitRegistrationPolicy.forAbility(ability)
+                == HitRegistrationPolicy.SERVER_CURRENT) {
+            // Never inject historical player boxes into reactive ability
+            // queries. The normal Bukkit query above is their sole hit source.
+            action.claims.clear();
+            return;
+        }
         final Iterator<Claim> claims = action.claims.values().iterator();
         while (claims.hasNext()) {
             final Claim claim = claims.next();
@@ -436,7 +443,6 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         tempLayerActions.clear();
         tempLayerEffects.clear();
         serverOwnedTempLayers.clear();
-        ownershipBridgeTempLayers.clear();
         pendingTempBlocks.clear();
         pendingAbilityRemovals.clear();
         playerHistory.clear();
@@ -779,12 +785,12 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         // delayed earth frequently did not. Mark every layer from an ability
         // the owner's client advertised as supported, while leaving unknown
         // server-only addons fully vanilla-visible.
-        // Redirection can transfer a server ability that never existed in the
-        // new owner's client runtime. Its cached creation action still belongs
-        // to the old owner; advertising the new layers as client-predicted
-        // would hide Paper's only copy and leave an invisible/ghost trail.
+        // A supported ownership transfer has already sent the exact ability
+        // payload before TempBlock.refreshAbilityOwnership republishes these
+        // layers. Attribute that refresh to the new owner so their client can
+        // conceal the old stationary bridge as its continuation moves. Truly
+        // unsupported transfers remain wholly server-visible.
         final UUID predictedOwner = unpredictedOwnershipTransfer
-                || ownershipBridgeTempLayers.contains(change.layerId())
                 ? null : predictedTempBlockOwner(change.ownerId(), action, effectAbility);
         final Map<UUID, BlockData> ownerViews = predictedOwnerViews(block, predictedOwner, change.data());
         final PendingTempBlock pending = new PendingTempBlock(worldId,
@@ -803,7 +809,6 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             tempLayerActions.remove(change.layerId());
             tempLayerEffects.remove(change.layerId());
             serverOwnedTempLayers.remove(change.layerId());
-            ownershipBridgeTempLayers.remove(change.layerId());
         }
         return pending;
     }
@@ -1019,7 +1024,6 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                         tempLayerActions.remove(layer.getLayerId());
                         tempLayerEffects.remove(layer.getLayerId());
                         serverOwnedTempLayers.add(layer.getLayerId());
-                        ownershipBridgeTempLayers.add(layer.getLayerId());
                     }
                 }
                 sendEarthSmashState(player, smash, transferAction, transfer, true);
@@ -1163,6 +1167,9 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         if (action == null || !action.locallyPredicted
                 || tick - action.acceptedTick > 200L
                 || action.claims.containsKey(hit.target())) return;
+        final CoreAbility claimedAbility = CoreAbility.getAbility(action.ability);
+        if (claimedAbility != null && HitRegistrationPolicy.forAbility(claimedAbility)
+                == HitRegistrationPolicy.SERVER_CURRENT) return;
         final Player target = Bukkit.getPlayer(hit.target());
         if (target == null || target == player || target.isDead()
                 || target.getEntityId() != hit.entityId()
@@ -1665,8 +1672,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             final Action action = tempLayerActions.get(layer.getLayerId());
             final String effectAbility = tempLayerEffects.containsKey(layer.getLayerId())
                     ? tempLayerEffects.get(layer.getLayerId()).ability : layer.getEffectAbility();
-            final UUID predictedOwner = ownershipBridgeTempLayers.contains(layer.getLayerId())
-                    ? null : predictedTempBlockOwner(
+            final UUID predictedOwner = predictedTempBlockOwner(
                     layer.getOwnerId().orElse(null), action, effectAbility);
             final BlockData viewerData = predictedViewerData(block, session.player, block.getBlockData());
             operations.add(new PaperPredictionProtocol.TempBlockOp(

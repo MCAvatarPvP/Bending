@@ -3,6 +3,7 @@ package com.projectkorra.projectkorra.platform.fabric;
 import com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime;
 import com.projectkorra.projectkorra.fabric.client.PredictionClient;
 import com.projectkorra.projectkorra.fabric.mixin.client.AreaEffectCloudEntityAccessor;
+import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.platform.mc.Color;
 import com.projectkorra.projectkorra.platform.mc.Difficulty;
 import com.projectkorra.projectkorra.platform.mc.Effect;
@@ -45,8 +46,10 @@ import com.projectkorra.projectkorra.platform.mc.util.RayTraceResult;
 import com.projectkorra.projectkorra.platform.mc.util.Transformation;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
+import com.projectkorra.projectkorra.prediction.hit.HitRegistrationPolicy;
 import com.projectkorra.projectkorra.prediction.hit.PredictedContactSync;
 import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
+import com.projectkorra.projectkorra.prediction.movement.VelocitySync;
 import com.projectkorra.projectkorra.platform.model.PKAdapter;
 import com.projectkorra.projectkorra.platform.model.PKBlock;
 import com.projectkorra.projectkorra.platform.model.PKEntity;
@@ -215,7 +218,14 @@ public final class FabricPredictionMC {
         }
         @Override public List<Entity> getEntities() {
             List<Entity> result = new ArrayList<>();
-            for (net.minecraft.entity.Entity nativeEntity : value.getEntities()) result.add(FabricPredictionMC.entity(nativeEntity));
+            final CoreAbility ability = AbilityExecutionContext.current();
+            for (net.minecraft.entity.Entity nativeEntity : value.getEntities()) {
+                final Entity wrapped = FabricPredictionMC.entity(nativeEntity);
+                if (wrapped != null
+                        && HitRegistrationPolicy.includePredictedEntity(ability, wrapped)) {
+                    result.add(wrapped);
+                }
+            }
             return result;
         }
 
@@ -223,20 +233,30 @@ public final class FabricPredictionMC {
         public Collection<Entity> getNearbyEntities(BoundingBox box, Predicate<Entity> filter) {
             Box nativeBox = new Box(box.getMinX(), box.getMinY(), box.getMinZ(), box.getMaxX(), box.getMaxY(), box.getMaxZ());
             List<Entity> result = new ArrayList<>();
+            final CoreAbility ability = AbilityExecutionContext.current();
             for (net.minecraft.entity.Entity nativeEntity : value.getOtherEntities(null, nativeBox, ignored -> true)) {
                 Entity wrapped = FabricPredictionMC.entity(nativeEntity);
-                if (wrapped != null && (filter == null || filter.test(wrapped))) result.add(wrapped);
+                if (wrapped != null
+                        && HitRegistrationPolicy.includePredictedEntity(ability, wrapped)
+                        && (filter == null || filter.test(wrapped))) result.add(wrapped);
             }
             ClientPlayerEntity local = MinecraftClient.getInstance().player;
             if (local != null && nativeBox.intersects(local.getBoundingBox())) {
                 Entity wrapped = player(local);
-                if ((filter == null || filter.test(wrapped)) && result.stream().noneMatch(entity -> entity.getUniqueId().equals(wrapped.getUniqueId()))) result.add(wrapped);
+                if (HitRegistrationPolicy.includePredictedEntity(ability, wrapped)
+                        && (filter == null || filter.test(wrapped))
+                        && result.stream().noneMatch(entity -> entity.getUniqueId().equals(wrapped.getUniqueId()))) result.add(wrapped);
             }
             return result;
         }
 
         @Override
         public <T> void spawnParticle(Particle particle, Location location, int count, double ox, double oy, double oz, double extra, T data) {
+            spawnParticle(particle, location, count, ox, oy, oz, extra, data, false);
+        }
+
+        private <T> void spawnParticle(Particle particle, Location location, int count, double ox, double oy, double oz,
+                                       double extra, T data, boolean force) {
             ParticleEffect effect = FabricMC.particle(particle, data);
             if (effect == null) return;
             int samples = count == 0 ? 1 : Math.max(1, count);
@@ -247,7 +267,7 @@ public final class FabricPredictionMC {
                 double vx = count == 0 ? ox * extra : value.random.nextGaussian() * extra;
                 double vy = count == 0 ? oy * extra : value.random.nextGaussian() * extra;
                 double vz = count == 0 ? oz * extra : value.random.nextGaussian() * extra;
-                value.addParticleClient(effect, x, y, z, vx, vy, vz);
+                value.addParticleClient(effect, force, false, x, y, z, vx, vy, vz);
             }
         }
         @Override public void spawnParticle(Particle particle, Location location, int count, double ox, double oy, double oz, double extra) { spawnParticle(particle, location, count, ox, oy, oz, extra, null); }
@@ -297,7 +317,10 @@ public final class FabricPredictionMC {
             EntityHitResult entityHit = ProjectileUtil.raycast(except, start, end, search,
                     nativeEntity -> {
                         Entity wrapped = FabricPredictionMC.entity(nativeEntity);
-                        return wrapped != null && (filter == null || filter.test(wrapped));
+                        return wrapped != null
+                                && HitRegistrationPolicy.includePredictedEntity(
+                                AbilityExecutionContext.current(), wrapped)
+                                && (filter == null || filter.test(wrapped));
                     }, range * range);
             RayTraceResult blockHit = rayTraceBlocks(origin, direction, range, mode, ignorePassable);
             if (entityHit == null) return blockHit;
@@ -515,7 +538,11 @@ public final class FabricPredictionMC {
             return !ExactPredictionRuntime.isPredictedOwned(value)
                     && PredictedContactSync.mark(AbilityExecutionContext.current(), this);
         }
-        @Override public void setVelocity(Vector velocity) { if (!suppressRemoteMutation()) ExactPredictionRuntime.setPredictedVelocity(value, nativeVector(velocity)); }
+        @Override public void setVelocity(Vector velocity) {
+            if (VelocitySync.isPredictedRemoteTarget(this) || !suppressRemoteMutation()) {
+                ExactPredictionRuntime.setPredictedVelocity(value, nativeVector(velocity));
+            }
+        }
         @Override public boolean isDead() { return !value.isAlive(); }
         @Override public boolean isValid() { return !value.isRemoved(); }
         @Override public int getEntityId() { return value.getId(); }
@@ -587,7 +614,11 @@ public final class FabricPredictionMC {
         }
         @Override public World getWorld() { return world((ClientWorld) value.getEntityWorld()); }
         @Override public Vector getVelocity() { return commonVector(value.getVelocity()); }
-        @Override public void setVelocity(Vector velocity) { if (!suppressRemoteMutation()) ExactPredictionRuntime.setPredictedVelocity(value, nativeVector(velocity)); }
+        @Override public void setVelocity(Vector velocity) {
+            if (VelocitySync.isPredictedRemoteTarget(this) || !suppressRemoteMutation()) {
+                ExactPredictionRuntime.setPredictedVelocity(value, nativeVector(velocity));
+            }
+        }
         @Override public PlayerInventory getInventory() { return inventory; }
         @Override public GameMode getGameMode() { return value.isSpectator() ? GameMode.SPECTATOR : GameMode.valueOf(value.isCreative() ? "CREATIVE" : "SURVIVAL"); }
         @Override public boolean isDead() { return !value.isAlive(); }
@@ -726,7 +757,10 @@ public final class FabricPredictionMC {
         }
         @Override
         public <T> void spawnParticle(Particle particle, Location location, int count, double ox, double oy, double oz, double extra, T data, boolean force) {
-            if (isLocalReceiver()) getWorld().spawnParticle(particle, location, count, ox, oy, oz, extra, data);
+            if (isLocalReceiver()) {
+                world((ClientWorld) value.getEntityWorld())
+                        .spawnParticle(particle, location, count, ox, oy, oz, extra, data, force);
+            }
         }
         @Override
         public void spawnParticle(Particle particle, Location location, int count, double ox, double oy, double oz) {
@@ -1092,7 +1126,11 @@ public final class FabricPredictionMC {
         @Override public Location getEyeLocation() { return location((ClientWorld) value.getEntityWorld(), value.getEyePos(), value.getYaw(), value.getPitch()); }
         @Override public World getWorld() { return world((ClientWorld) value.getEntityWorld()); }
         @Override public Vector getVelocity() { return commonVector(value.getVelocity()); }
-        @Override public void setVelocity(Vector velocity) { if (!suppressRemoteMutation()) ExactPredictionRuntime.setPredictedVelocity(value, nativeVector(velocity)); }
+        @Override public void setVelocity(Vector velocity) {
+            if (VelocitySync.isPredictedRemoteTarget(this) || !suppressRemoteMutation()) {
+                ExactPredictionRuntime.setPredictedVelocity(value, nativeVector(velocity));
+            }
+        }
         @Override public void setSize(int size) { value.setSize(size, true); }
         @Override public void addPotionEffect(PotionEffect effect) {
             if (!suppressRemoteMutation()) {

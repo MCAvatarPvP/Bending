@@ -67,6 +67,8 @@ public final class ClientDirectBlockAuthority {
     private long concealedReceiptCount;
     private long maskedPacketCount;
     private long releasedMaskCount;
+    private long convergedMaskCount;
+    private long completedFrameCount;
 
     public ClientDirectBlockAuthority(final Context context,
                                       final Function<String, BlockState> blockStateDecoder,
@@ -91,6 +93,7 @@ public final class ClientDirectBlockAuthority {
         final ClientPlayerEntity localPlayer = MinecraftClient.getInstance().player;
         EffectKey effect = null;
         CauseKey cause = null;
+        boolean authoritativeFrameComplete = false;
         if (causalSequence > 0L && DirectBlockSync.isPredictable(ability, abilityName)
                 && (lifecycle == null || !lifecycle.valid() || localPlayer != null
                 && localPlayer.getUuid().equals(lifecycle.ownerId()))) {
@@ -104,6 +107,16 @@ public final class ClientDirectBlockAuthority {
             causeState.lastTick = context.tick();
             context.markMutation(causalSequence, normalized, ordinal);
             effect = new EffectKey(causalSequence, normalized, ordinal);
+            authoritativeFrameComplete = causeState.authoritativeFrameComplete;
+        }
+
+        if (effect != null && authoritativeFrameComplete) {
+            // The final Paper RaiseEarth frame now owns this cause. Continue
+            // consuming the common lifecycle and its ordinals, but never let a
+            // later local RevertChecker/animation write replace that frame.
+            record("tick=" + context.tick() + " LOCAL suppress completed-frame effect="
+                    + effect + " pos=" + pos + " state=" + state);
+            return;
         }
 
         if (effect != null) {
@@ -143,8 +156,13 @@ public final class ClientDirectBlockAuthority {
     }
 
     public boolean suppressBreakAnimation(final ClientWorld world, final BlockPos pos) {
-        final BlockMutation mutation = mutations.get(new BlockKey(world, pos.toImmutable()));
-        return mutation != null && mutation.locallyPredicted;
+        if (world == null || pos == null) return false;
+        final BlockKey key = new BlockKey(world, pos.toImmutable());
+        final BlockMutation mutation = mutations.get(key);
+        if (mutation != null && mutation.locallyPredicted) return true;
+        final DirectMask mask = serverMasks.get(key);
+        return mask != null && (DirectBlockAuthorityPolicy.requiresAuthoritativeHandoff(
+                mask.cause.ability) || hasActiveCause(mask.ownerId, mask.cause));
     }
 
     public void noteReceipt(final Entity localPlayer,
@@ -166,7 +184,7 @@ public final class ClientDirectBlockAuthority {
         final boolean knownCause = predictedCauses.containsKey(cause);
         receiptCount++;
         if (!DirectBlockAuthorityPolicy.mayConceal(
-                local != null, receipt.movedEarthLifecycle(), knownCause)) {
+                normalized, local != null, receipt.movedEarthLifecycle(), knownCause)) {
             record("tick=" + context.tick() + " RECEIPT allow effect=" + effect
                     + " paperAction=" + receipt.actionSequence()
                     + " pos=(" + receipt.x() + "," + receipt.y() + "," + receipt.z() + ")"
@@ -175,6 +193,20 @@ public final class ClientDirectBlockAuthority {
                     + " knownCause=" + knownCause);
             debug.accept("runtime allowed authoritative direct write without exact local effect="
                     + effect);
+            return;
+        }
+        final PredictedCause causeState = predictedCauses.computeIfAbsent(cause,
+                ignored -> new PredictedCause());
+        causeState.lastReceiptTick = context.tick();
+        causeState.lastTick = Math.max(causeState.lastTick, context.tick());
+        if (causeState.authoritativeFrameComplete) {
+            // A completion receipt is ordered after the final rising frame.
+            // Anything from this cause after it is a later server-owned
+            // lifecycle transition (normally the eventual earth restore).
+            record("tick=" + context.tick() + " RECEIPT allow completed-frame effect="
+                    + effect + " paperAction=" + receipt.actionSequence()
+                    + " pos=(" + receipt.x() + "," + receipt.y() + "," + receipt.z() + ")"
+                    + " state=" + receipt.material());
             return;
         }
 
@@ -189,8 +221,14 @@ public final class ClientDirectBlockAuthority {
         final DirectMask existingMask = serverMasks.get(serverKey);
         final BlockState viewerState = existingMask == null
                 ? clientBaseState(serverKey, serverUnderlay) : existingMask.viewerState;
+        // A delayed receipt from an older overlapping cast may update the
+        // physical comparison state, but it must not steal the coordinate
+        // transaction from a newer local RaiseEarth lifecycle.
+        final CauseKey maskCause = existingMask != null
+                && existingMask.cause.actionSequence > cause.actionSequence
+                ? existingMask.cause : cause;
         serverMasks.put(serverKey, new DirectMask(serverState, viewerState,
-                cause, localPlayer.getUuid(), context.tick()));
+                maskCause, localPlayer.getUuid(), true, context.tick()));
         concealedReceiptCount++;
         record("tick=" + context.tick() + " RECEIPT conceal effect=" + effect
                 + " paperAction=" + receipt.actionSequence()
@@ -229,13 +267,10 @@ public final class ClientDirectBlockAuthority {
         final DirectMask existing = serverMasks.get(key);
         if (existing == null) return;
         serverMasks.put(key, new DirectMask(existing.serverState, viewerState,
-                existing.cause, existing.ownerId, context.tick()));
+                existing.cause, existing.ownerId, existing.authoritative, context.tick()));
     }
 
-    /**
-     * Returns a durable owner mask only for the physical state it owns. A
-     * different unlayered state is external authority and releases the mask.
-     */
+    /** Returns the durable owner view for an incoming physical block state. */
     public DirectView maskForIncoming(final ClientWorld world, final BlockPos pos,
                                       final BlockState incoming) {
         final BlockKey key = key(world, pos);
@@ -246,6 +281,18 @@ public final class ClientDirectBlockAuthority {
             record("tick=" + context.tick() + " PACKET mask pos=" + key.pos
                     + " server=" + incoming + " viewer=" + mask.viewerState
                     + " cause=" + mask.cause);
+            return new DirectView(mask.viewerState);
+        }
+        if (awaitsAuthoritativeFrame(mask.cause)) {
+            // A RaiseEarth coordinate is written more than once in one server
+            // tick. Minecraft may coalesce those writes into only the final
+            // chunk-delta entry, so inequality with the last receipt is not
+            // evidence of an external edit. The ordered completion fence will
+            // install the complete final frame.
+            maskedPacketCount++;
+            record("tick=" + context.tick() + " PACKET mask coalesced pos=" + key.pos
+                    + " expected=" + mask.serverState + " incoming=" + incoming
+                    + " viewer=" + mask.viewerState + " cause=" + mask.cause);
             return new DirectView(mask.viewerState);
         }
         serverMasks.remove(key, mask);
@@ -313,6 +360,13 @@ public final class ClientDirectBlockAuthority {
             final BlockState chunkState = world.getBlockState(key.pos);
             if (isTempPhysical != null && isTempPhysical.test(key.pos, chunkState)) continue;
             if (!mask.serverState.equals(chunkState)) {
+                if (awaitsAuthoritativeFrame(mask.cause)) {
+                    if (!chunkState.equals(mask.viewerState)) {
+                        world.setBlockState(key.pos, mask.viewerState, 19);
+                    }
+                    preserved.add(key.pos);
+                    continue;
+                }
                 serverMasks.remove(key, mask);
                 debug.accept("runtime released owned earth view for external chunk state pos="
                         + key.pos + " expected=" + mask.serverState + " received=" + chunkState);
@@ -349,6 +403,7 @@ public final class ClientDirectBlockAuthority {
                        final int earthCauseRetentionTicks) {
         final long tick = context.tick();
         confirmedPackets.removeIf(packet -> tick - packet.receivedTick > 4L);
+        retireConvergedTransactions(tick);
         serverMasks.entrySet().removeIf(entry -> {
             final DirectMask mask = entry.getValue();
             return mask.serverState.equals(mask.viewerState)
@@ -365,10 +420,14 @@ public final class ClientDirectBlockAuthority {
             predictedWrites.remove(entry.getKey(), entry.getValue());
         }
         final Set<CauseKey> activeEarthCauses = activeEarthCauses(localPlayer);
-        predictedCauses.entrySet().removeIf(entry ->
-                tick - entry.getValue().lastTick > earthCauseRetentionTicks
+        predictedCauses.entrySet().removeIf(entry -> {
+            final int retention = entry.getValue().authoritativeFrameComplete
+                    ? Math.max(actionRetentionTicks, earthCauseRetentionTicks)
+                    : earthCauseRetentionTicks;
+            return tick - entry.getValue().lastTick > retention
                         && !context.hasAction(entry.getKey().actionSequence)
-                        && !activeEarthCauses.contains(entry.getKey()));
+                        && !activeEarthCauses.contains(entry.getKey());
+        });
         recentVisuals.entrySet().removeIf(entry ->
                 tick - entry.getValue().createdTick > earthCauseRetentionTicks);
         while (predictedCauses.size() > 4_096) {
@@ -385,6 +444,64 @@ public final class ClientDirectBlockAuthority {
 
     public void rollbackAction(final long actionSequence) {
         mutations.entrySet().removeIf(entry -> entry.getValue().lastAction == actionSequence);
+    }
+
+    /**
+     * Installs Paper's complete final rising frame for every acknowledged
+     * transaction of one ability. This is called from the ordered final
+     * RaiseEarth removal receipt, after all direct writes for the pillars have
+     * been emitted.
+     */
+    public int completeAuthoritativeFrames(final String ability,
+                                           final long acknowledgedSequence) {
+        if (ability == null || ability.isBlank() || acknowledgedSequence <= 0L) return 0;
+        final String normalized = ability.toLowerCase(Locale.ROOT);
+        int completed = 0;
+        for (Map.Entry<CauseKey, PredictedCause> causeEntry
+                : List.copyOf(predictedCauses.entrySet())) {
+            final CauseKey cause = causeEntry.getKey();
+            final PredictedCause state = causeEntry.getValue();
+            if (!cause.ability.equals(normalized)
+                    || cause.actionSequence > acknowledgedSequence
+                    || state.authoritativeFrameComplete) continue;
+
+            state.authoritativeFrameComplete = true;
+            state.lastTick = context.tick();
+            final List<Map.Entry<BlockKey, DirectMask>> transaction = serverMasks.entrySet()
+                    .stream()
+                    .filter(entry -> cause.equals(entry.getValue().cause))
+                    .toList();
+            for (Map.Entry<BlockKey, DirectMask> entry : transaction) {
+                final BlockKey key = entry.getKey();
+                final DirectMask mask = entry.getValue();
+                final BlockState current = key.world.getBlockState(key.pos);
+                final TempBlock tempLayer =
+                        TempBlock.get(FabricPredictionMC.block(key.world, key.pos));
+                if (tempLayer != null) {
+                    final com.projectkorra.projectkorra.platform.mc.block.BlockState snapshot =
+                            FabricPredictionMC.blockStateSnapshot(
+                                    key.world, key.pos, mask.serverState);
+                    if (snapshot != null) tempLayer.setState(snapshot);
+                } else if (current.equals(mask.viewerState)
+                        || current.equals(mask.serverState)) {
+                    key.world.setBlockState(key.pos, mask.serverState, 19);
+                }
+                if (serverMasks.remove(key, mask)) {
+                    mutations.remove(key);
+                    completed++;
+                }
+            }
+            predictedWrites.entrySet().removeIf(entry ->
+                    entry.getKey().actionSequence == cause.actionSequence
+                            && entry.getKey().ability.equals(cause.ability));
+            recentVisuals.entrySet().removeIf(entry ->
+                    entry.getValue().effect.actionSequence == cause.actionSequence
+                            && entry.getValue().effect.ability.equals(cause.ability));
+            record("tick=" + context.tick() + " FRAME complete cause=" + cause
+                    + " coordinates=" + transaction.size());
+            completedFrameCount++;
+        }
+        return completed;
     }
 
     public int mutationCount() {
@@ -404,7 +521,9 @@ public final class ClientDirectBlockAuthority {
                 + ",receipts=" + receiptCount
                 + ",concealed=" + concealedReceiptCount
                 + ",maskedPackets=" + maskedPacketCount
-                + ",releasedMasks=" + releasedMaskCount + "}");
+                + ",releasedMasks=" + releasedMaskCount
+                + ",convergedMasks=" + convergedMaskCount
+                + ",completedFrames=" + completedFrameCount + "}");
         if (history.isEmpty()) {
             report.add("DirectBlock history: no causal world write was recorded");
         } else {
@@ -428,6 +547,8 @@ public final class ClientDirectBlockAuthority {
         concealedReceiptCount = 0L;
         maskedPacketCount = 0L;
         releasedMaskCount = 0L;
+        convergedMaskCount = 0L;
+        completedFrameCount = 0L;
     }
 
     private void record(final String entry) {
@@ -444,7 +565,68 @@ public final class ClientDirectBlockAuthority {
         final DirectMask existing = serverMasks.get(key);
         serverMasks.put(key, new DirectMask(
                 existing == null ? before : existing.serverState,
-                viewerState, cause, ownerId, context.tick()));
+                viewerState, cause, ownerId,
+                existing != null && existing.authoritative, context.tick()));
+    }
+
+    /**
+     * Releases a completed transaction only after Paper and the common client
+     * independently reached the same state at every coordinate.
+     *
+     * <p>This is deliberately a bookkeeping transition, not a world repaint.
+     * An inferred period of inactivity is not an ordering guarantee and may
+     * occur between delayed pillar updates. Only the explicit final concrete
+     * RaiseEarth removal is allowed to install Paper's final rising frame.</p>
+     */
+    private void retireConvergedTransactions(final long tick) {
+        for (Map.Entry<CauseKey, PredictedCause> causeEntry
+                : List.copyOf(predictedCauses.entrySet())) {
+            final CauseKey cause = causeEntry.getKey();
+            final PredictedCause state = causeEntry.getValue();
+            if (state.authoritativeFrameComplete
+                    || !requiresAuthoritativeHandoff(cause.ability)
+                    || context.hasActiveAbility(cause.actionSequence, cause.ability)) continue;
+
+            final long lastActivity = Math.max(state.lastTick, state.lastReceiptTick);
+            final int convergenceDelay = Math.max(4,
+                    context.confirmationTicks(cause.actionSequence));
+            if (tick - lastActivity <= convergenceDelay) continue;
+
+            final List<Map.Entry<BlockKey, DirectMask>> transaction = serverMasks.entrySet()
+                    .stream()
+                    .filter(entry -> cause.equals(entry.getValue().cause))
+                    .toList();
+            if (transaction.isEmpty()) continue;
+
+            if (transaction.stream().anyMatch(entry ->
+                    hasActiveCause(entry.getValue().ownerId, cause)
+                            || !entry.getValue().serverState.equals(
+                            entry.getValue().viewerState))) continue;
+
+            for (Map.Entry<BlockKey, DirectMask> entry : transaction) {
+                if (!serverMasks.remove(entry.getKey(), entry.getValue())) continue;
+                convergedMaskCount++;
+                record("tick=" + tick + " CONVERGED pos=" + entry.getKey().pos
+                        + " authoritative=" + entry.getValue().authoritative
+                        + " state=" + entry.getValue().viewerState + " cause=" + cause);
+            }
+            predictedWrites.entrySet().removeIf(entry ->
+                    entry.getKey().actionSequence == cause.actionSequence
+                            && entry.getKey().ability.equals(cause.ability));
+            recentVisuals.entrySet().removeIf(entry ->
+                    entry.getValue().effect.actionSequence == cause.actionSequence
+                            && entry.getValue().effect.ability.equals(cause.ability));
+        }
+    }
+
+    private static boolean requiresAuthoritativeHandoff(final String ability) {
+        return DirectBlockAuthorityPolicy.requiresAuthoritativeHandoff(ability);
+    }
+
+    private boolean awaitsAuthoritativeFrame(final CauseKey cause) {
+        if (cause == null || !"raiseearth".equals(cause.ability)) return false;
+        final PredictedCause state = predictedCauses.get(cause);
+        return state != null && !state.authoritativeFrameComplete;
     }
 
     private BlockState clientBaseState(final BlockKey key, final BlockState fallback) {
@@ -567,6 +749,8 @@ public final class ClientDirectBlockAuthority {
     private static final class PredictedCause {
         private int lastOrdinal;
         private long lastTick;
+        private long lastReceiptTick;
+        private boolean authoritativeFrameComplete;
     }
     private static final class PredictedWrite {
         private final BlockKey key;
@@ -589,7 +773,8 @@ public final class ClientDirectBlockAuthority {
     private record RecentVisual(EffectKey effect, BlockState state,
                                 long createdTick, long revision) { }
     private record DirectMask(BlockState serverState, BlockState viewerState,
-                              CauseKey cause, UUID ownerId, long updatedTick) { }
+                              CauseKey cause, UUID ownerId, boolean authoritative,
+                              long updatedTick) { }
     private static final class BlockMutation {
         private final ClientWorld world;
         private final BlockPos pos;

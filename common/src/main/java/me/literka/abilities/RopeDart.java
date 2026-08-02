@@ -147,7 +147,7 @@ public class RopeDart extends ChiAbility implements AddonAbility {
         }
 
         if (isTargetAlive && loc1.distanceSquared(loc2) <= minRangeRemove * minRangeRemove) {
-            GeneralMethods.setVelocity(this,
+            GeneralMethods.setPredictedVelocity(this,
                     pullYourselfToEnemy ? player : target, new Vector(0, 0, 0));
             removeWithCooldown();
             return;
@@ -174,7 +174,7 @@ public class RopeDart extends ChiAbility implements AddonAbility {
     }
 
     private void pullTarget(final Vector velocity) {
-        GeneralMethods.setVelocity(this,
+        GeneralMethods.setPredictedVelocity(this,
                 pullYourselfToEnemy ? player : target, velocity.clone());
     }
 

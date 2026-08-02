@@ -11,6 +11,9 @@ import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.util.BlockSource;
 import com.projectkorra.projectkorra.util.ClickType;
 
+import java.util.HashSet;
+import java.util.Set;
+
 public class RaiseEarthWall extends EarthAbility {
 
     @Attribute(Attribute.SELECT_RANGE)
@@ -23,6 +26,7 @@ public class RaiseEarthWall extends EarthAbility {
     @Attribute(Attribute.COOLDOWN)
     private long cooldown;
     private Location location;
+    private Vector wallDirection;
 
     public RaiseEarthWall(final Player player) {
         super(player);
@@ -36,7 +40,35 @@ public class RaiseEarthWall extends EarthAbility {
             return;
         }
 
+        if (!this.captureWall()) {
+            return;
+        }
         this.start();
+    }
+
+    /**
+     * Captures the wall geometry on the input frame. Reading the player's
+     * source and eye direction from the later progress tick makes Paper use a
+     * latency-shifted pose and can produce a different set of wall columns.
+     */
+    private boolean captureWall() {
+        final Vector direction = this.player.getEyeLocation().getDirection().normalize();
+        direction.setY(0);
+
+        Vector orthogonal = new Vector(-direction.getZ(), 0, direction.getX());
+        orthogonal = getDegreeRoundedVector(orthogonal.normalize(), 0.25);
+
+        final Block selected = BlockSource.getEarthSourceBlock(
+                this.player, this.selectRange, ClickType.SHIFT_DOWN);
+        final Block source = selected == null
+                ? this.getTargetEarthBlock(this.selectRange) : selected;
+        if (source == null || orthogonal == null) {
+            return false;
+        }
+
+        this.location = source.getLocation();
+        this.wallDirection = orthogonal;
+        return true;
     }
 
     private static Vector getDegreeRoundedVector(Vector vec, final double degreeIncrement) {
@@ -70,27 +102,15 @@ public class RaiseEarthWall extends EarthAbility {
 
     @Override
     public void progress() {
-        final Vector direction = this.player.getEyeLocation().getDirection().normalize();
-        double ox, oy, oz;
-        direction.setY(0);
-        ox = -direction.getZ();
-        oy = 0;
-        oz = direction.getX();
-
-        Vector orth = new Vector(ox, oy, oz);
-        orth = orth.normalize();
-        orth = getDegreeRoundedVector(orth, 0.25);
-
-        final Block sblock = BlockSource.getEarthSourceBlock(this.player, this.selectRange, ClickType.SHIFT_DOWN);
-
-        if (sblock == null) {
-            this.location = this.getTargetEarthBlock(this.selectRange).getLocation();
-        } else {
-            this.location = sblock.getLocation();
+        if (this.location == null || this.wallDirection == null) {
+            this.remove();
+            return;
         }
 
         final World world = this.location.getWorld();
+        final Vector orth = this.wallDirection.clone();
         boolean shouldAddCooldown = false;
+        final Set<Block> startedSources = new HashSet<>();
 
         for (int i = 0; i < this.width; i++) {
             final double adjustedI = i - this.width / 2.0;
@@ -100,10 +120,12 @@ public class RaiseEarthWall extends EarthAbility {
                 for (int j = 1; j < this.height; j++) {
                     block = block.getRelative(BlockFace.DOWN);
                     if (this.isEarthbendable(block)) {
-                        shouldAddCooldown = true;
-                        RaiseEarth raiseEarth = new RaiseEarth(this.player, block.getLocation(), this.height, this.speed);
-                        raiseEarth.setRaisedByWall(true);
-                        raiseEarth.setNoiseReduction(this.width / 2);
+                        shouldAddCooldown |= this.raiseColumn(block, startedSources);
+                        // This is a surface search for one wall column. Without
+                        // stopping here, every bendable block below the first
+                        // surface starts another overlapping RaiseEarth pillar,
+                        // multiplying source-air writes and leaving ghost holes.
+                        break;
                     } else if (!this.isTransparent(block)) {
                         break;
                     }
@@ -112,19 +134,17 @@ public class RaiseEarthWall extends EarthAbility {
                 for (int j = 1; j < this.height; j++) {
                     block = block.getRelative(BlockFace.UP);
                     if (this.isTransparent(block)) {
-                        shouldAddCooldown = true;
-                        RaiseEarth raiseEarth = new RaiseEarth(this.player, block.getRelative(BlockFace.DOWN).getLocation(), this.height, this.speed);
-                        raiseEarth.setRaisedByWall(true);
-                        raiseEarth.setNoiseReduction(this.width / 2);
+                        shouldAddCooldown |= this.raiseColumn(
+                                block.getRelative(BlockFace.DOWN), startedSources);
+                        // Only the first air block above the surface identifies
+                        // this column's source.
+                        break;
                     } else if (!this.isEarthbendable(block)) {
                         break;
                     }
                 }
             } else if (this.isEarthbendable(block)) {
-                shouldAddCooldown = true;
-                RaiseEarth raiseEarth = new RaiseEarth(this.player, block.getLocation(), this.height, this.speed);
-                raiseEarth.setRaisedByWall(true);
-                raiseEarth.setNoiseReduction(this.width / 2);
+                shouldAddCooldown |= this.raiseColumn(block, startedSources);
             }
         }
 
@@ -132,6 +152,17 @@ public class RaiseEarthWall extends EarthAbility {
             this.bPlayer.addCooldown("RaiseEarthWall", this.cooldown);
         }
         this.remove();
+    }
+
+    private boolean raiseColumn(final Block source, final Set<Block> startedSources) {
+        if (source == null || startedSources == null || !startedSources.add(source)) {
+            return false;
+        }
+        final RaiseEarth raiseEarth = new RaiseEarth(
+                this.player, source.getLocation(), this.height, this.speed);
+        raiseEarth.setRaisedByWall(true);
+        raiseEarth.setNoiseReduction(this.width / 2);
+        return true;
     }
 
     @Override

@@ -250,6 +250,33 @@ class PredictionActivationBoundaryTest {
     }
 
     @Test
+    void reactiveElementsUseOnlyCurrentPaperPlayerPositions() throws IOException {
+        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
+        String runtime = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
+        String fabricWorld = read("../fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricPredictionMC.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricPredictionMC.java");
+        String targeting = read("../common/src/main/java/com/projectkorra/projectkorra/GeneralMethods.java",
+                "common/src/main/java/com/projectkorra/projectkorra/GeneralMethods.java");
+
+        assertTrue(paper.contains("HitRegistrationPolicy.forAbility(ability)")
+                        && paper.contains("== HitRegistrationPolicy.SERVER_CURRENT")
+                        && paper.contains("action.claims.clear()"),
+                "Paper must never augment a Fire/Air query with a historical player box");
+        assertTrue(paper.contains("CoreAbility.getAbility(action.ability)")
+                        && paper.contains("HitRegistrationPolicy.forAbility(claimedAbility)"),
+                "known reactive claims should be rejected before history lookup");
+        assertTrue(runtime.contains("== HitRegistrationPolicy.REWIND_ASSISTED")
+                        && runtime.contains("retainsAcceptedPredictedLifecycle("),
+                "reactive contacts must not emit claims and Paper removal must win their lifecycle");
+        assertTrue(fabricWorld.contains("HitRegistrationPolicy.includePredictedEntity"),
+                "the prediction world must hide delayed remote-player collision candidates");
+        assertTrue(targeting.contains("HitRegistrationPolicy.targetAcquisition("),
+                "aiming queries must retain remote players even though contact queries hide them");
+    }
+
+    @Test
     void concurrentAirBlastsKeepStableInstanceRemovalOwnership() throws IOException {
         String commonInput = read("../common/src/main/java/com/projectkorra/projectkorra/listener/CommonInputHandler.java",
                 "common/src/main/java/com/projectkorra/projectkorra/listener/CommonInputHandler.java");
@@ -266,7 +293,8 @@ class PredictionActivationBoundaryTest {
                 "Paper removals must resolve through the correlated local creation identity");
         assertFalse(client.contains("abilityCreationActions.get(ability), removed.actionSequence()"),
                 "raw Paper and Fabric ordinals are not directly comparable");
-        assertTrue(client.contains("!removed.externallyCaused()"),
+        assertTrue(client.contains("removed.externallyCaused(),")
+                        && client.contains("return !externallyCaused && reconciled && locallyPredicted"),
                 "collision/other-ability removals must override retained local lifecycle prediction");
         assertTrue(velocityAuthority.contains("allowed self-owned velocity without retained mutation"),
                 "a receipt cannot suppress AirBlast unless the exact local action+ordinal impulse exists");
@@ -288,13 +316,28 @@ class PredictionActivationBoundaryTest {
     }
 
     @Test
-    void ropeDartAppliesItsAuthoritativePullImmediately() throws IOException {
+    void ropeDartAndStickyBombPredictOnlyTheirVelocityFeedback() throws IOException {
         String ropeDart = read("../common/src/main/java/me/literka/abilities/RopeDart.java",
                 "common/src/main/java/me/literka/abilities/RopeDart.java");
+        String stickyBomb = read("../common/src/main/java/me/literka/abilities/StickyBomb.java",
+                "common/src/main/java/me/literka/abilities/StickyBomb.java");
         String generalMethods = read("../common/src/main/java/com/projectkorra/projectkorra/GeneralMethods.java",
                 "common/src/main/java/com/projectkorra/projectkorra/GeneralMethods.java");
+        String fabricEntities = read("../fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricPredictionMC.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricPredictionMC.java");
 
-        assertTrue(ropeDart.contains("GeneralMethods.setVelocity(this"));
+        assertTrue(ropeDart.contains("GeneralMethods.setPredictedVelocity(this"),
+                "RopeDart's target pull must begin on the casting client");
+        assertTrue(stickyBomb.contains("GeneralMethods.setPredictedVelocity(this"),
+                "StickyBomb's explosion push must begin on the casting client");
+        assertTrue(stickyBomb.contains("final boolean predicting = !CooldownSync.isAuthoritative();")
+                        && stickyBomb.contains("predicting && findPredictedContact")
+                        && stickyBomb.contains("from.getWorld().rayTrace(")
+                        && stickyBomb.contains("velocity.getY() - SHULKER_BULLET_GRAVITY"),
+                "the predicted shulker bullet must reproduce its server-only gravity and impact transition");
+        assertTrue(generalMethods.contains("VelocitySync.commitPredictedRemote(velocityTarget, write)")
+                        && fabricEntities.contains("VelocitySync.isPredictedRemoteTarget(this)"),
+                "the opt-in must reach the client entity wrapper as a velocity-only permit");
         assertFalse(ropeDart.contains("setVelocityAfterConfirmedHit"));
         assertFalse(ropeDart.contains("HitResolutionSync") || generalMethods.contains("HitResolutionSync"));
     }

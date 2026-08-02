@@ -83,6 +83,7 @@ import com.projectkorra.projectkorra.prediction.authority.RegionProtectionAuthor
 import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
 import com.projectkorra.projectkorra.prediction.block.TempFallingBlockSync;
 import com.projectkorra.projectkorra.prediction.hit.PredictedContactSync;
+import com.projectkorra.projectkorra.prediction.hit.HitRegistrationPolicy;
 import com.projectkorra.projectkorra.prediction.state.CooldownSync;
 import com.projectkorra.projectkorra.prediction.state.PredictionStateOrdering;
 import com.projectkorra.projectkorra.prediction.state.CooldownSync.Listener;
@@ -141,6 +142,7 @@ public final class ExactPredictionRuntime
     private final Map<Long, com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime.Action> actions = new LinkedHashMap<>();
     private final Map<CoreAbility, Long> abilityActions = new IdentityHashMap<>();
     private final Map<CoreAbility, Long> abilityCreationActions = new IdentityHashMap<>();
+    private final Map<CoreAbility, Set<Long>> abilityTransitionActions = new IdentityHashMap<>();
     private final Set<CoreAbility> authoritativelyEstablishedAbilities = Collections.newSetFromMap(new IdentityHashMap<>());
     private final List<String> abilityRemovalHistory = new ArrayList<>();
     private final ClientNativeActionCorrelation nativeActions = new ClientNativeActionCorrelation();
@@ -258,6 +260,26 @@ public final class ExactPredictionRuntime
                     @Override
                     public long localActionSequence(long paperSequence) {
                         return ExactPredictionRuntime.this.localActionSequence(paperSequence);
+                    }
+
+                    @Override
+                    public boolean hasActiveAbility(String abilityName) {
+                        if (abilityName == null || abilityName.isBlank()
+                                || ExactPredictionRuntime.this.bendingPlayer == null
+                                || ExactPredictionRuntime.this.bendingPlayer.getPlayer() == null) {
+                            return false;
+                        }
+                        final UUID playerId = ExactPredictionRuntime.this.bendingPlayer
+                                .getPlayer().getUniqueId();
+                        for (CoreAbility ability : CoreAbility.getAbilitiesByInstances()) {
+                            if (ability != null && !ability.isRemoved()
+                                    && ability.getPlayer() != null
+                                    && playerId.equals(ability.getPlayer().getUniqueId())
+                                    && ability.getName().equalsIgnoreCase(abilityName)) {
+                                return true;
+                            }
+                        }
+                        return false;
                     }
                 },
                 this.directBlockAuthority,
@@ -576,6 +598,12 @@ public final class ExactPredictionRuntime
                 && localAcknowledgedSequence > 0L
                 && candidateLatestSequence != null
                 && candidateLatestSequence <= localAcknowledgedSequence;
+    }
+
+    static boolean completesRaiseEarthFrame(final String abilityType,
+                                            final int remainingTypeInstances) {
+        return RaiseEarth.class.getName().equals(abilityType)
+                && remainingTypeInstances == 0;
     }
 
     public static boolean authoritativeVelocity(int entityId, Vec3d velocity) {
@@ -1093,6 +1121,8 @@ public final class ExactPredictionRuntime
             }
 
             this.abilityActions.put(ability, action.sequence);
+            this.abilityTransitionActions.computeIfAbsent(ability,
+                    ignored -> new HashSet<>()).add(action.sequence);
             action.abilities.add(ability);
         }
     }
@@ -1168,6 +1198,7 @@ public final class ExactPredictionRuntime
             live.addAll(CoreAbility.getAbilitiesByInstances());
             this.abilityActions.keySet().removeIf(ability -> !live.contains(ability));
             this.abilityCreationActions.keySet().removeIf(ability -> !live.contains(ability));
+            this.abilityTransitionActions.keySet().removeIf(ability -> !live.contains(ability));
             this.authoritativelyEstablishedAbilities.removeIf(ability -> !live.contains(ability));
             this.velocityAuthority.expire(this.tick, 160, 40);
             this.tempBlockAuthority.expire();
@@ -1626,6 +1657,7 @@ public final class ExactPredictionRuntime
                 this.actions.clear();
                 this.abilityActions.clear();
                 this.abilityCreationActions.clear();
+                this.abilityTransitionActions.clear();
                 this.authoritativelyEstablishedAbilities.clear();
                 this.abilityRemovalHistory.clear();
                 this.nativeActions.clear();
@@ -1687,7 +1719,10 @@ public final class ExactPredictionRuntime
     }
 
     public void onPredictedContact(CoreAbility ability, com.projectkorra.projectkorra.platform.mc.entity.Entity target) {
-        if (this.ready && ability != null && target instanceof Player && !target.isDead() && target.isValid()) {
+        if (this.ready && ability != null
+                && HitRegistrationPolicy.forAbility(ability)
+                == HitRegistrationPolicy.REWIND_ASSISTED
+                && target instanceof Player && !target.isDead() && target.isValid()) {
             long sequence = this.abilityActions.getOrDefault(ability, this.currentAction());
             com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime.Action action = this.actions.get(sequence);
             if (action != null && action.claimedTargets.add(target.getUniqueId())) {
@@ -1714,6 +1749,17 @@ public final class ExactPredictionRuntime
                 );
             }
         }
+    }
+
+    @Override
+    public boolean isLocallyOwned(
+            final com.projectkorra.projectkorra.platform.mc.entity.Entity target) {
+        if (!this.ready || target == null) {
+            return false;
+        }
+        final Object handle = target.handle();
+        return handle instanceof Entity nativeTarget
+                && this.entityReconciliation.isPredictedOwned(nativeTarget);
     }
 
     private void setVelocity0(Entity entity, Vec3d velocity) {
@@ -1813,6 +1859,22 @@ public final class ExactPredictionRuntime
         if (this.ready && localPlayer != null && removed != null && localPlayer.getUuid().equals(removed.player())) {
             long localCreationSequence = this.localActionSequence(removed.actionSequence());
             long localAcknowledgement = this.localAcknowledgedSequence(removed.acknowledgedSequence());
+            if (completesRaiseEarthFrame(
+                    removed.abilityType(), removed.remainingTypeInstances())) {
+                /*
+                 * AbilityRemoved is emitted after the server tick's direct
+                 * block writes. Complete this frame even when its originating
+                 * action has aged out, or when the removal is external/a
+                 * rejection: the authority only touches already-known local
+                 * causes through the acknowledged sequence.
+                 */
+                final long completionSequence =
+                        Math.max(localCreationSequence, localAcknowledgement);
+                final int completed = this.directBlockAuthority.completeAuthoritativeFrames(
+                        removed.ability(), completionSequence);
+                debug("runtime completed authoritative RaiseEarth frame ack="
+                        + completionSequence + " coordinates=" + completed);
+            }
             if (removed.actionSequence() > 0L) {
                 com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime.Action action = this.actions.get(localCreationSequence);
                 if (!removalReceiptMayResolve(removed.externallyCaused(), action != null, action != null && action.nativeConfirmed)) {
@@ -1886,7 +1948,11 @@ public final class ExactPredictionRuntime
                     com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime.Action predictedAction = creationSequence == null
                             ? null
                             : this.actions.get(creationSequence);
-                    if (!removed.externallyCaused() && predictedAction != null && predictedAction.reconciled && predictedAction.locallyPredicted) {
+                    if (retainsAcceptedPredictedLifecycle(
+                            HitRegistrationPolicy.forAbility(selected),
+                            removed.externallyCaused(),
+                            predictedAction != null && predictedAction.reconciled,
+                            predictedAction != null && predictedAction.locallyPredicted)) {
                         debug(
                                 "runtime retained accepted client ability lifecycle after server close ability="
                                         + removed.ability()
@@ -1935,6 +2001,15 @@ public final class ExactPredictionRuntime
         }
     }
 
+    static boolean retainsAcceptedPredictedLifecycle(
+            final HitRegistrationPolicy policy,
+            final boolean externallyCaused,
+            final boolean reconciled,
+            final boolean locallyPredicted) {
+        return !externallyCaused && reconciled && locallyPredicted
+                && policy != HitRegistrationPolicy.SERVER_CURRENT;
+    }
+
     private void transferAuthoritativeAbility0(Entity localPlayer, AbilityTransfer transfer) {
         if (this.ready
                 && localPlayer != null
@@ -1978,9 +2053,8 @@ public final class ExactPredictionRuntime
                                 && !smash.isRemoved()
                                 && smash.getPlayer() != null
                                 && smash.getPlayer().getUniqueId().equals(transfer.player())
-                                && (action.abilities.contains(candidate)
-                                || action.previousAbilityActions.containsKey(candidate)
-                                || Objects.equals(this.abilityCreationActions.get(candidate), localSequence))) {
+                                && this.ownsEarthSmashTransition(
+                                candidate, action, localSequence)) {
                             selected = smash;
                             break;
                         }
@@ -2070,6 +2144,24 @@ public final class ExactPredictionRuntime
                 }
             }
         }
+    }
+
+    /**
+     * Action reconciliation clears its temporary rollback map, but delayed
+     * EarthSmash checkpoints can arrive after several more sneak/aim
+     * transitions. Keep a live-instance transition history so an old
+     * checkpoint updates (or is superseded on) that same smash instead of
+     * restoring a second client-only instance at Paper's older position.
+     */
+    private boolean ownsEarthSmashTransition(final CoreAbility candidate,
+                                             final Action action,
+                                             final long localSequence) {
+        if (candidate == null || action == null || localSequence <= 0L) return false;
+        return action.abilities.contains(candidate)
+                || action.previousAbilityActions.containsKey(candidate)
+                || Objects.equals(this.abilityCreationActions.get(candidate), localSequence)
+                || this.abilityTransitionActions.getOrDefault(candidate, Set.of())
+                .contains(localSequence);
     }
 
     private void recordAbilityRemoval(AbilityRemoved removed, String resolution, List<CoreAbility> matching) {
@@ -2291,6 +2383,7 @@ public final class ExactPredictionRuntime
             } finally {
                 this.abilityActions.remove(ability);
                 this.abilityCreationActions.remove(ability);
+                this.abilityTransitionActions.remove(ability);
                 this.authoritativelyEstablishedAbilities.remove(ability);
             }
         }
@@ -2436,6 +2529,8 @@ public final class ExactPredictionRuntime
 
         this.abilityActions.put(ability, inherited);
         this.abilityCreationActions.putIfAbsent(ability, inherited);
+        this.abilityTransitionActions.computeIfAbsent(ability,
+                ignored -> new HashSet<>()).add(inherited);
         action.abilities.add(ability);
         debug("runtime inherited child action=" + inherited + " ability=" + ability.getName() + " instance=" + System.identityHashCode(ability));
         return inherited;

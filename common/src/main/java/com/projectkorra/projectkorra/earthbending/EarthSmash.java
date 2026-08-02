@@ -32,13 +32,17 @@ import com.projectkorra.projectkorra.util.TempBlock;
 import com.projectkorra.projectkorra.util.colliders.AABB;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
+import java.util.UUID;
 
 import static com.projectkorra.projectkorra.util.DisplayBlockUtils.randomHorizontalVector;
 import static com.projectkorra.projectkorra.util.DisplayBlockUtils.spawnEarthFragment;
 
 public class EarthSmash extends EarthAbility {
+    private static final long AUTHORITATIVE_BRIDGE_GRACE_MILLIS = 5_000L;
 
     @Attribute("AllowGrab")
     private boolean allowGrab;
@@ -97,6 +101,9 @@ public class EarthSmash extends EarthAbility {
     private boolean activationHandled;
     private boolean awaitingPredictionTransfer;
     private boolean redrawTransferredShape;
+    private UUID authoritativeBridgeOwner;
+    private final Set<BridgeCoordinate> authoritativeBridgeBlocks = new HashSet<>();
+    private long authoritativeBridgeExpiresAt;
     public EarthSmash(final Player player, final ClickType type) {
         super(player);
 
@@ -180,6 +187,16 @@ public class EarthSmash extends EarthAbility {
                 grabbedSmash.setFields();
                 this.markActivationHandled(grabbedSmash);
                 return;
+            }
+
+            // A second press cannot start another smash while this player's
+            // first one is still charging or drawing its lift. Treat it as a
+            // no-op (and do not mark the existing instance as affected), so
+            // the new input cannot steal the in-flight TempBlock transaction.
+            for (final EarthSmash smash : getAbilities(player, EarthSmash.class)) {
+                if (smash.state == State.START || smash.state == State.LIFTING) {
+                    return;
+                }
             }
 
             this.start();
@@ -291,7 +308,9 @@ public class EarthSmash extends EarthAbility {
         // ledger. The visible Paper shape can be several ticks behind the
         // server instance selected by the same grab. The ownership-transfer
         // payload establishes the shared ordinal boundary later.
-        return new EarthSmash(player, transfer, true);
+        final EarthSmash preview = new EarthSmash(player, transfer, true);
+        preview.rememberAuthoritativeBridge(cluster.ownerId(), solid);
+        return preview;
     }
 
     private static boolean isSmashOffset(final int x, final int y, final int z) {
@@ -726,8 +745,8 @@ public class EarthSmash extends EarthAbility {
     private boolean isAuthoritativeShapeBlock(final Block block) {
         if (block == null || this.location == null || this.currentBlocks == null
                 || !TempBlockSync.hasAuthoritativeEffect(block, this.getName())
-                || !this.awaitingPredictionTransfer
-                && !this.isOwnAuthoritativeSmashBlock(block)) return false;
+                || (!this.isOwnAuthoritativeSmashBlock(block)
+                && !this.isProvisionalAuthoritativeBridgeBlock(block))) return false;
         for (final BlockRepresenter representer : this.currentBlocks) {
             final Block expected = this.location.clone()
                     .add(representer.getX(), representer.getY(), representer.getZ()).getBlock();
@@ -737,6 +756,41 @@ public class EarthSmash extends EarthAbility {
                     && expected.getZ() == block.getZ()) return true;
         }
         return false;
+    }
+
+    /**
+     * The exact transfer payload is sent immediately before Paper republishes
+     * the old TempBlocks under their new owner. During that short ordering gap,
+     * authenticate the originally adopted coordinates and owner so the first
+     * moved frame cannot collide with its own still-foreign bridge.
+     */
+    private void rememberAuthoritativeBridge(
+            final UUID owner,
+            final List<TempBlockSync.AuthoritativeEffectBlock> blocks) {
+        if (blocks == null || blocks.isEmpty()) return;
+        this.authoritativeBridgeOwner = owner;
+        this.authoritativeBridgeExpiresAt =
+                System.currentTimeMillis() + AUTHORITATIVE_BRIDGE_GRACE_MILLIS;
+        this.authoritativeBridgeBlocks.clear();
+        for (TempBlockSync.AuthoritativeEffectBlock entry : blocks) {
+            if (entry != null && entry.block() != null) {
+                this.authoritativeBridgeBlocks.add(BridgeCoordinate.of(entry.block()));
+            }
+        }
+    }
+
+    private boolean isProvisionalAuthoritativeBridgeBlock(final Block block) {
+        if (block == null || this.authoritativeBridgeBlocks.isEmpty()
+                || System.currentTimeMillis() > this.authoritativeBridgeExpiresAt) {
+            this.authoritativeBridgeBlocks.clear();
+            this.authoritativeBridgeOwner = null;
+            return false;
+        }
+        if (!this.authoritativeBridgeBlocks.contains(BridgeCoordinate.of(block))) return false;
+        return this.authoritativeBridgeOwner == null
+                ? TempBlockSync.hasAuthoritativeEffect(block, this.getName())
+                : TempBlockSync.hasAuthoritativeEffect(
+                block, this.getName(), this.authoritativeBridgeOwner);
     }
 
     /**
@@ -794,6 +848,8 @@ public class EarthSmash extends EarthAbility {
         super.remove();
         this.transitionState(State.REMOVED);
         this.revert();
+        this.authoritativeBridgeBlocks.clear();
+        this.authoritativeBridgeOwner = null;
     }
 
     /**
@@ -1627,6 +1683,13 @@ public class EarthSmash extends EarthAbility {
     public record PredictionBlock(int x, int y, int z, String material) {
         public PredictionBlock {
             material = material == null ? "minecraft:stone" : material;
+        }
+    }
+
+    private record BridgeCoordinate(String world, int x, int y, int z) {
+        private static BridgeCoordinate of(final Block block) {
+            return new BridgeCoordinate(block.getWorld().getName(),
+                    block.getX(), block.getY(), block.getZ());
         }
     }
 

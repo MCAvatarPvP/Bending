@@ -449,7 +449,11 @@ public class WaterSpoutWave extends WaterAbility {
         if (this.affectedBlocks.containsKey(block)) {
             this.affectedBlocks.get(block).revertBlock();
         }
-        TempBlock tb = new TempBlock(block, mat.createBlockData(), this.trailRevertTime);
+        // Delayed IceWave tasks run outside the input execution context. Keep
+        // the owner explicit so Paper's delayed physical layer remains hidden
+        // behind this client's matching timed lifecycle.
+        TempBlock tb = new TempBlock(block, mat.createBlockData(),
+                this.trailRevertTime, this);
         tb.setRevertTask(() -> this.affectedBlocks.remove(block));
         this.affectedBlocks.put(block, tb);
     }

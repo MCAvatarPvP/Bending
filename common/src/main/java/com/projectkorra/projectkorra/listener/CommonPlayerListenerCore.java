@@ -214,11 +214,12 @@ public final class CommonPlayerListenerCore {
         final double upperMaxSpeed = maxSpeed + 0.01;
         // Vanilla flight reaches the server as position updates; Paper and a
         // dedicated Fabric server do not mirror that self-propelled movement
-        // into Entity#getVelocity. Use the observed per-packet displacement on
-        // the authoritative side so the unchanged cap calculation can reach
-        // its velocity write. Exact client prediction has a real local velocity.
+        // into Entity#getVelocity. Use observed displacement there only for
+        // axes the active spout controls. In particular, a WaterSpout
+        // horizontal correction must not feed observed ascent back into Y.
+        // Exact client prediction has a real local velocity on every axis.
         final Vector cappedVelocity = SpoutMovementPolicy.initialVelocity(
-                hasWaterSpout, locallySimulated, movement, player.getVelocity());
+                hasAirSpout, locallySimulated, movement, player.getVelocity());
         final Vector horizontalVelocity = cappedVelocity.clone().setY(0);
         final boolean capHorizontal = horizontal.lengthSquared() > upperMaxSpeed * upperMaxSpeed
                 && horizontalVelocity.lengthSquared() > upperMaxSpeed * upperMaxSpeed;

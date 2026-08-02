@@ -150,8 +150,10 @@ public class IceSpikePillar extends IceAbility {
     public static boolean revertBlock(final Block block) {
         for (final IceSpikePillar iceSpike : getAbilities(IceSpikePillar.class)) {
             if (iceSpike.ice_blocks.containsKey(block)) {
-                iceSpike.ice_blocks.get(block).revertBlock();
-                iceSpike.ice_blocks.remove(block);
+                final TempBlock layer = iceSpike.ice_blocks.remove(block);
+                if (layer != null && !layer.isReverted()) {
+                    layer.revertBlock();
+                }
                 return true;
             }
         }
@@ -237,7 +239,8 @@ public class IceSpikePillar extends IceAbility {
             }
         }
 
-        final TempBlock b = new TempBlock(affectedBlock, getIceMaterial());
+        final TempBlock b = new TempBlock(
+                affectedBlock, getIceMaterial().createBlockData(), this);
         this.ice_blocks.put(affectedBlock, b);
 
         if (!this.inField || new Random().nextInt((int) ((this.height + 1) * 1.5)) == 0) {
@@ -272,16 +275,28 @@ public class IceSpikePillar extends IceAbility {
      */
     public boolean sinkPillar() {
         final Vector direction = this.direction.clone().multiply(-1);
-        if (this.ice_blocks.containsKey(this.location.getBlock())) {
-            this.ice_blocks.get(this.location.getBlock()).revertBlock();
-            this.ice_blocks.remove(this.location.getBlock());
-            this.location.add(direction);
+        final TempBlock layer = this.ice_blocks.remove(this.location.getBlock());
+        if (layer != null && !layer.isReverted()) {
+            layer.revertBlock();
+        }
+        // A layer can already be absent after an overlap or an external
+        // reversion. Always advance through that gap; otherwise the sink gets
+        // stuck forever above the remaining lower layers.
+        this.location.add(direction);
+        return !this.source_block.equals(this.location.getBlock());
+    }
 
-            if (this.source_block.equals(this.location.getBlock())) {
-                return false;
+    @Override
+    public void remove() {
+        // Publish the ability removal first. Paper batches these TempBlock
+        // closes ahead of the removal receipt, preserving teardown ordering.
+        super.remove();
+        for (final TempBlock layer : new ArrayList<>(this.ice_blocks.values())) {
+            if (layer != null && !layer.isReverted()) {
+                layer.revertBlock();
             }
         }
-        return true;
+        this.ice_blocks.clear();
     }
 
     @Override

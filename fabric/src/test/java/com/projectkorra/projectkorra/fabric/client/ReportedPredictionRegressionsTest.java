@@ -45,8 +45,10 @@ class ReportedPredictionRegressionsTest {
                 "public boolean matchesPredictionCheckpoint",
                 "private static BlockData predictionBlockData");
 
-        assertTrue(transfer.contains("action.previousAbilityActions.containsKey(candidate)"),
-                "a checkpoint must find the exact smash even after a newer local transition moved it out of the older action");
+        assertTrue(transfer.contains("action.previousAbilityActions.containsKey(candidate)")
+                        && transfer.contains("abilityTransitionActions.getOrDefault(candidate, Set.of())")
+                        && transfer.contains(".contains(localSequence)"),
+                "a checkpoint must find the exact smash even after reconciliation cleared a newer transition's rollback map");
         assertTrue(transfer.contains("latestTransition > localSequence")
                         && transfer.contains("if (!checkpointSuperseded)")
                         && transfer.contains("this.associateAbility(action, selected)"),
@@ -109,6 +111,10 @@ class ReportedPredictionRegressionsTest {
         assertTrue(transparent.contains("this.isOwnAuthoritativeSmashBlock(block)")
                         && transparent.contains("this.player.getUniqueId()"),
                 "a local smash may pass its delayed server footprint without passing another player's smash");
+        assertTrue(smash.contains("rememberAuthoritativeBridge(cluster.ownerId(), solid)")
+                        && smash.contains("this.authoritativeBridgeBlocks.contains")
+                        && smash.contains("this.authoritativeBridgeOwner"),
+                "the brief transfer ordering gap may ignore only the exact foreign bridge that this preview adopted");
     }
 
     @Test
@@ -167,6 +173,92 @@ class ReportedPredictionRegressionsTest {
     }
 
     @Test
+    void raiseEarthWallGeometryIsCapturedByTheShiftAction() throws IOException {
+        final String wall = source(
+                "../common/src/main/java/com/projectkorra/projectkorra/earthbending/RaiseEarthWall.java");
+        final String constructor = method(wall, "public RaiseEarthWall(final Player player)",
+                "private boolean captureWall()");
+        final String capture = method(wall, "private boolean captureWall()",
+                "private static Vector getDegreeRoundedVector");
+        final String progress = method(wall, "public void progress()", "public Location getLocation()");
+
+        assertTrue(constructor.indexOf("this.captureWall()") < constructor.indexOf("this.start()"),
+                "the source and wall basis must be fixed while the exact input pose is current");
+        assertTrue(capture.contains("this.player.getEyeLocation().getDirection()")
+                        && capture.contains("BlockSource.getEarthSourceBlock(")
+                        && capture.contains("this.wallDirection = orthogonal"),
+                "the input frame must retain both source selection and horizontal wall direction");
+        assertFalse(progress.contains("getEyeLocation()")
+                        || progress.contains("BlockSource.getEarthSourceBlock("),
+                "a latency-shifted progress tick must never resample player aim or source");
+    }
+
+    @Test
+    void raiseEarthWallStartsOnlyOnePillarPerSurfaceColumn() throws IOException {
+        final String wall = source(
+                "../common/src/main/java/com/projectkorra/projectkorra/earthbending/RaiseEarthWall.java");
+        final String progress = method(wall, "public void progress()", "public Location getLocation()");
+        final String normalized = progress.replace("\r\n", "\n");
+
+        assertTrue(progress.contains("final Set<Block> startedSources = new HashSet<>()")
+                        && count(progress, "this.raiseColumn(") == 3,
+                "all terrain branches must share one source-coordinate deduplication set");
+        final int firstSurface = normalized.indexOf("this.raiseColumn(block, startedSources)");
+        final int firstBranchEnd = normalized.indexOf(
+                "} else if (!this.isTransparent(block))", firstSurface);
+        final int raisedSurface = normalized.indexOf(
+                "block.getRelative(BlockFace.DOWN), startedSources");
+        final int raisedBranchEnd = normalized.indexOf(
+                "} else if (!this.isEarthbendable(block))", raisedSurface);
+        final int firstBreak = normalized.indexOf("break;", firstSurface);
+        final int raisedBreak = normalized.indexOf("break;", raisedSurface);
+        assertTrue(firstSurface >= 0 && firstBreak > firstSurface
+                        && firstBreak < firstBranchEnd
+                        && raisedSurface >= 0 && raisedBreak > raisedSurface
+                        && raisedBreak < raisedBranchEnd,
+                "surface searches must stop after their first usable source instead of stacking overlapping pillars");
+        assertTrue(progress.contains("!startedSources.add(source)")
+                        && count(progress, "new RaiseEarth(") == 1,
+                "rounded wall samples that resolve to the same block must start only one pillar");
+    }
+
+    @Test
+    void earthSmashCannotStartASecondTransactionDuringItsLift() throws IOException {
+        final String smash = source(
+                "../common/src/main/java/com/projectkorra/projectkorra/earthbending/EarthSmash.java");
+        final String constructor = method(smash,
+                "public EarthSmash(final Player player, final ClickType type)",
+                "private void markActivationHandled");
+        final int guard = constructor.indexOf(
+                "smash.state == State.START || smash.state == State.LIFTING");
+        final int start = constructor.indexOf("this.start();", guard);
+
+        assertTrue(guard >= 0 && start > guard,
+                "another shift-down must be consumed before a second EarthSmash can start");
+        final String guardBody = constructor.substring(guard, start);
+        assertFalse(guardBody.contains("markActivationHandled"),
+                "a no-op press must not rebind the rising smash to a newer action sequence");
+    }
+
+    @Test
+    void iceSpikeAlwaysClosesItsExactLayers() throws IOException {
+        final String spike = source(
+                "../common/src/main/java/com/projectkorra/projectkorra/waterbending/ice/IceSpikePillar.java");
+        final String sink = method(spike, "public boolean sinkPillar()", "public String getName()");
+
+        assertTrue(spike.contains("getIceMaterial().createBlockData(), this"),
+                "field-created spikes must advertise their explicit IceSpike TempBlock owner");
+        assertTrue(sink.contains("this.ice_blocks.remove(this.location.getBlock())")
+                        && sink.contains("this.location.add(direction)"),
+                "an overlap-created gap must not stall the sinking cursor forever");
+        assertTrue(sink.contains("public void remove()")
+                        && sink.contains("new ArrayList<>(this.ice_blocks.values())")
+                        && sink.contains("layer.revertBlock()")
+                        && sink.contains("this.ice_blocks.clear()"),
+                "forced rejection/removal must close every remaining exact layer");
+    }
+
+    @Test
     void earthSmashOwnershipTransferIsolatesSpeculativeLayerOrdinals() throws IOException {
         final String runtime = runtime();
         final String transfer = method(runtime, "private void transferAuthoritativeAbility0",
@@ -191,12 +283,16 @@ class ReportedPredictionRegressionsTest {
                 "the ledger must isolate previews and pair confirmed EarthSmash pieces without frame guessing");
         assertTrue(handoff.contains("tempLayerActions.remove(layer.getLayerId())")
                         && handoff.contains("tempLayerEffects.remove(layer.getLayerId())")
-                        && handoff.contains("ownershipBridgeTempLayers.add(layer.getLayerId())")
                         && !handoff.contains("tempLayerActions.put(layer.getLayerId(), transferAction)"),
-                "Paper's pre-transfer shape must remain a visible bridge outside the new action namespace");
-        assertTrue(paper.contains("ownershipBridgeTempLayers.contains(change.layerId())")
-                        && paper.contains("? null : predictedTempBlockOwner"),
-                "re-owning a live server layer must not conceal it before the exact continuation begins");
+                "Paper's pre-transfer shape must remain outside the new action ordinal namespace");
+        assertTrue(paper.contains("final UUID predictedOwner = unpredictedOwnershipTransfer")
+                        && paper.contains("? null : predictedTempBlockOwner")
+                        && !paper.contains("ownershipBridgeTempLayers"),
+                "after the exact transfer is sent, the ownership refresh must make the old bridge concealable instead of leaving two visible smashes");
+        assertTrue(tempBlocks.contains("previous.hiddenForLocalViewer")
+                        && tempBlocks.contains("viewerId.equals(operation.ownerId())")
+                        && tempBlocks.contains("context.hasActiveAbility(operation.effectAbility())"),
+                "an authenticated ownership refresh may hide a foreign bridge only after the exact local continuation exists");
     }
 
     @Test
@@ -281,5 +377,15 @@ class ReportedPredictionRegressionsTest {
         assertTrue(start >= 0 && end > start,
                 () -> "missing method boundary " + startMarker + " -> " + endMarker);
         return source.substring(start, end);
+    }
+
+    private static int count(final String source, final String needle) {
+        int count = 0;
+        int from = 0;
+        while ((from = source.indexOf(needle, from)) >= 0) {
+            count++;
+            from += needle.length();
+        }
+        return count;
     }
 }

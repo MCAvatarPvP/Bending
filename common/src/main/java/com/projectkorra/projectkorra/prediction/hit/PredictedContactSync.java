@@ -31,6 +31,20 @@ public final class PredictedContactSync {
                 || target.getUniqueId().equals(coreAbility.getPlayer().getUniqueId())) {
             return false;
         }
+        final Listener current = listener;
+        if (current != null) {
+            try {
+                // Ability-owned projectiles and displays have UUIDs distinct
+                // from their caster, but remain part of the local prediction.
+                // Let their normal wrappers apply velocity and other state.
+                if (current.isLocallyOwned(target)) {
+                    return false;
+                }
+            } catch (final RuntimeException ignored) {
+                // A failed ownership lookup must retain the safe remote-state
+                // default below.
+            }
+        }
         // The mutation itself is suppressed by the caller, but the ability's
         // world/visual pass must finish. Throwing here used to abandon loops in
         // Torrent, WaterFlow and Discharge as soon as another player entered a
@@ -38,7 +52,6 @@ public final class PredictedContactSync {
         // effects. The client's normal range/duration/removal rules remain the
         // lifecycle authority; retaining a permanent "awaiting server" flag
         // made terminal AirBurst rays and other projectiles immortal.
-        final Listener current = listener;
         if (current != null) {
             try {
                 current.onPredictedContact(coreAbility, target);
@@ -78,5 +91,13 @@ public final class PredictedContactSync {
     @FunctionalInterface
     public interface Listener {
         void onPredictedContact(CoreAbility ability, Entity target);
+
+        /**
+         * Returns whether a non-player target belongs to the current local
+         * prediction action rather than to authoritative world state.
+         */
+        default boolean isLocallyOwned(final Entity target) {
+            return false;
+        }
     }
 }

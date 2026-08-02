@@ -1,5 +1,6 @@
 package com.jedk1.jedcore.util;
 
+import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.earthbending.passive.DensityShift;
 import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
@@ -27,7 +28,7 @@ public class RegenTempBlock {
      * @param delay    Delay until block regens.
      */
     public RegenTempBlock(Block block, Material material, BlockData data, long delay) {
-        this(block, material, data, delay, true);
+        this(block, material, data, delay, true, null, null, null);
     }
 
     /**
@@ -41,10 +42,25 @@ public class RegenTempBlock {
      */
     @SuppressWarnings("deprecation")
     public RegenTempBlock(Block block, Material material, BlockData data, long delay, boolean temp) {
-        this(block, material, data, delay, temp, null);
+        this(block, material, data, delay, temp, null, null, null);
     }
 
     public RegenTempBlock(Block block, Material material, BlockData data, long delay, boolean temp, RegenCallback callback) {
+        this(block, material, data, delay, temp, callback, null, null);
+    }
+
+    /**
+     * Replaces one exact ability-owned layer with a timed layer. Other
+     * TempBlocks at the coordinate remain in their normal stack order.
+     */
+    public RegenTempBlock(Block block, Material material, BlockData data, long delay,
+                          CoreAbility ability, TempBlock replacedLayer) {
+        this(block, material, data, delay, true, null, ability, replacedLayer);
+    }
+
+    private RegenTempBlock(Block block, Material material, BlockData data, long delay,
+                           boolean temp, RegenCallback callback, CoreAbility ability,
+                           TempBlock replacedLayer) {
         if (DensityShift.isPassiveSand(block)) {
             DensityShift.revertSand(block);
         }
@@ -56,7 +72,8 @@ public class RegenTempBlock {
             if (temp) {
                 final BlockState directState = states.remove(block);
                 if (directState != null) directState.update(true);
-                refreshTempBlock(block, data);
+                retireReplacedLayer(replacedLayer);
+                refreshTempBlock(block, data, ability);
             } else {
                 final TempBlock tracked = temps.remove(block);
                 if (tracked != null && !tracked.isReverted()) tracked.revertBlock();
@@ -65,15 +82,12 @@ public class RegenTempBlock {
             }
         } else {
             blocks.put(block, new RegenBlockData(System.currentTimeMillis() + delay, callback));
-            // RegenTempBlock is a replacement lifecycle, not an overlapping
-            // TempBlock layer.  WaterFlow relies on this when it freezes its
-            // moving WATER: the water handle is consumed before the timed ICE
-            // handle captures the real world state.  Keeping the water buried
-            // under the ice makes it reappear after the ice expires and leaves
-            // an unowned, never-expiring water trail.
-            retireReplacedLayer(block);
+            // Callers that replace a moving layer must provide its exact
+            // handle. Retiring the coordinate's current top here would destroy
+            // an unrelated overlapping ability merely because it is on top.
+            retireReplacedLayer(replacedLayer);
             if (temp) {
-                createTempBlock(block, data);
+                createTempBlock(block, data, ability);
             } else {
                 states.put(block, block.getState());
                 if (material != null) {
@@ -193,26 +207,28 @@ public class RegenTempBlock {
         return false;
     }
 
-    private static void refreshTempBlock(Block block, BlockData data) {
+    private static void refreshTempBlock(Block block, BlockData data, CoreAbility ability) {
         TempBlock trackedTemp = temps.get(block);
 
-        if (trackedTemp != null && !trackedTemp.isReverted() && TempBlock.isTempBlock(block)) {
+        if (trackedTemp != null && !trackedTemp.isReverted()
+                && TempBlock.isTempBlock(block)
+                && (ability == null || trackedTemp.getAbility().orElse(null) == ability)) {
             trackedTemp.setType(data.clone());
             return;
         }
 
+        if (trackedTemp != null && !trackedTemp.isReverted()) trackedTemp.revertBlock();
         temps.remove(block);
-        createTempBlock(block, data);
+        createTempBlock(block, data, ability);
     }
 
-    private static void createTempBlock(Block block, BlockData data) {
-        TempBlock tb = new TempBlock(block, data.clone());
+    private static void createTempBlock(Block block, BlockData data, CoreAbility ability) {
+        TempBlock tb = new TempBlock(block, data.clone(), ability);
         temps.put(block, tb);
     }
 
-    private static void retireReplacedLayer(final Block block) {
-        final TempBlock replaced = TempBlock.get(block);
-        if (replaced != null) replaced.revertBlock();
+    private static void retireReplacedLayer(final TempBlock replaced) {
+        if (replaced != null && !replaced.isReverted()) replaced.revertBlock();
     }
 
     public interface RegenCallback {

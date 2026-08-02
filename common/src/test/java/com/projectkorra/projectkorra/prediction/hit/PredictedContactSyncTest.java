@@ -15,14 +15,25 @@ import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PredictedContactSyncTest {
     private final AtomicBoolean contactReported = new AtomicBoolean();
-    private final PredictedContactSync.Listener contactSide =
-            (ability, target) -> contactReported.set(true);
+    private final AtomicReference<Entity> locallyOwned = new AtomicReference<>();
+    private final PredictedContactSync.Listener contactSide = new PredictedContactSync.Listener() {
+        @Override
+        public void onPredictedContact(final CoreAbility ability, final Entity target) {
+            contactReported.set(true);
+        }
+
+        @Override
+        public boolean isLocallyOwned(final Entity target) {
+            return locallyOwned.get() == target;
+        }
+    };
     private final CooldownSync.Listener predictionSide = new CooldownSync.Listener() {
         @Override public boolean isAuthoritative() { return false; }
         @Override public void onAdded(CoreAbility source, BendingPlayer player, String ability, long expiresAtMillis) { }
@@ -51,6 +62,20 @@ class PredictedContactSyncTest {
         assertTrue(continued.get(), "a remote contact must not abandon later TempBlock/visual work");
         assertTrue(contactReported.get(), "the server-validation path must receive the contact evidence");
         assertFalse(ability.isRemoved(), "suppressing remote state does not itself remove the ability");
+    }
+
+    @Test
+    void locallyPredictedAbilityEntityIsNotMisclassifiedAsRemoteContact() {
+        CooldownSync.install(predictionSide);
+        PredictedContactSync.install(contactSide);
+        DummyAbility ability = new DummyAbility(new FakePlayer(new UUID(1L, 2L)));
+        Entity projectile = new FakeEntity(new UUID(3L, 4L));
+        locallyOwned.set(projectile);
+
+        assertFalse(PredictedContactSync.mark(ability, projectile),
+                "a locally spawned StickyBomb or RopeDart projectile must receive its launch velocity");
+        assertFalse(contactReported.get(),
+                "an owned projectile mutation is not remote hit evidence");
     }
 
     private static final class FakePlayer extends Player {

@@ -56,6 +56,7 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
         String inputAbility(long actionSequence);
         int nextTempBlockOrdinal(long actionSequence);
         long localActionSequence(long paperSequence);
+        boolean hasActiveAbility(String ability);
     }
 
     private final Context context;
@@ -664,13 +665,20 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
             final EffectKey effect = effectKey(causalSequence, operation.effectAbility(),
                     operation.effectStep(), operation.effectOrdinal());
             final ServerLayer previous = authoritativeLayers.get(operation.layerId());
-            // Keep the visibility decision for the complete server lifecycle.
-            // In particular, ownership-transfer bridge layers deliberately
-            // begin visible (ownerId=null) and must not become concealed when
-            // a later expiry refresh is delivered.
-            final boolean hiddenForLocalViewer = previous != null
-                    ? previous.hiddenForLocalViewer
-                    : viewerId != null && viewerId.equals(operation.ownerId());
+            // Once hidden, a layer remains hidden for its full lifecycle. An
+            // ownership refresh may also move a previously foreign
+            // EarthSmash bridge under this client: allow that authenticated
+            // update to flip visibility so the old stationary copy does not
+            // remain beside the locally moved continuation.
+            final boolean ownsOperation = viewerId != null
+                    && viewerId.equals(operation.ownerId());
+            final boolean safeOwnershipRefresh = (previous != null
+                    && previous.hiddenForLocalViewer)
+                    || !"EarthSmash".equalsIgnoreCase(operation.effectAbility())
+                    || context.hasActiveAbility(operation.effectAbility());
+            final boolean hiddenForLocalViewer = (previous != null
+                    && previous.hiddenForLocalViewer)
+                    || ownsOperation && safeOwnershipRefresh;
             if (previous != null && (!Objects.equals(previous.effect, effect)
                     || previous.hiddenForLocalViewer != hiddenForLocalViewer)) {
                 if (previous.effect != null) {
@@ -870,7 +878,12 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
                 key.world.setBlockState(key.pos, selected, 19);
                 repainted++;
             }
-            if (lifecycle != null && selected != null && !lifecycle.staleStates.isEmpty()) {
+            // An active local layer already owns this coordinate. A durable
+            // teardown fence would outlive that layer and could mistake its
+            // legitimate WATER/AIR restore for a late packet, pinning an
+            // overlapping ice layer until the full action-retention timeout.
+            if (local == null && lifecycle != null && selected != null
+                    && !lifecycle.staleStates.isEmpty()) {
                 teardownFences.arm(key, lifecycle.staleStates, selected, context.tick());
                 armed++;
             }
@@ -944,8 +957,7 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
         // which advertised this ability. Hide that owner's complete physical
         // lifecycle immediately; waiting for an exact ordinal pair exposes the
         // latency-delayed Paper frame beside moving client TempBlocks (most
-        // visibly RaiseEarth). EarthSmash ownership bridges carry no ownerId,
-        // so they remain visible until the confirmed continuation takes over.
+        // visibly RaiseEarth and redirected EarthSmash).
         final NavigableMap<Long, ServerLayer> atCoordinate = authoritativeByCoordinate.get(key);
         if (atCoordinate != null) {
             for (final Map.Entry<Long, ServerLayer> entry

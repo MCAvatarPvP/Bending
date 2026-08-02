@@ -42,6 +42,7 @@ import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.movement.VelocitySync;
 import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
 import com.projectkorra.projectkorra.prediction.hit.PredictedContactSync;
+import com.projectkorra.projectkorra.prediction.hit.HitRegistrationPolicy;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.storage.DBConnection;
 import com.projectkorra.projectkorra.util.*;
@@ -935,6 +936,12 @@ public class GeneralMethods {
     }
 
     public static Entity getTargetedEntity(final Player player, final double range, final List<Entity> avoid) {
+        return HitRegistrationPolicy.targetAcquisition(
+                () -> getTargetedEntityNow(player, range, avoid));
+    }
+
+    private static Entity getTargetedEntityNow(final Player player, final double range,
+                                               final List<Entity> avoid) {
         double longestr = range + 1;
         Entity target = null;
         final Location origin = player.getEyeLocation();
@@ -1938,9 +1945,26 @@ public class GeneralMethods {
     }
 
     public static void setVelocity(Ability ability, Entity entity, Vector vector) {
-        // Remote knockback is confirmed by the server. Marking first also
-        // prevents stale client contacts from ending the predicted move.
-        if (PredictedContactSync.mark(ability, entity)) {
+        setVelocity(ability, entity, vector, false);
+    }
+
+    /**
+     * Applies an immediate client-side velocity prediction to a remote target
+     * while retaining the normal server contact validation and velocity
+     * ownership receipt. Use this only when delayed target movement is part of
+     * an ability's primary visual feedback.
+     */
+    public static void setPredictedVelocity(Ability ability, Entity entity, Vector vector) {
+        setVelocity(ability, entity, vector, true);
+    }
+
+    private static void setVelocity(Ability ability, Entity entity, Vector vector,
+                                    boolean predictRemoteTarget) {
+        // Remote contact remains server-validated. Standard velocity writers
+        // stop here; explicitly opted-in visual prediction continues under a
+        // target-scoped permit below.
+        final boolean remoteTarget = PredictedContactSync.mark(ability, entity);
+        if (remoteTarget && !predictRemoteTarget) {
             return;
         }
         final AbilityVelocityAffectEntityEvent event = new AbilityVelocityAffectEntityEvent(ability, entity, vector);
@@ -2004,7 +2028,12 @@ public class GeneralMethods {
         final Vector committedVelocity = velocity.clone();
         final Runnable commitVelocity = () -> {
             VelocitySync.publish(velocityAbility, velocityTarget, committedVelocity);
-            VelocitySync.commit(() -> velocityTarget.setVelocity(committedVelocity.clone()));
+            final Runnable write = () -> velocityTarget.setVelocity(committedVelocity.clone());
+            if (remoteTarget) {
+                VelocitySync.commitPredictedRemote(velocityTarget, write);
+            } else {
+                VelocitySync.commit(write);
+            }
         };
         commitVelocity.run();
     }

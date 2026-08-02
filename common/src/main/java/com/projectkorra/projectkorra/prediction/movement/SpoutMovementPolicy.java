@@ -10,16 +10,31 @@ public final class SpoutMovementPolicy {
     }
 
     /**
-     * WaterSpout is driven by observed flight displacement on both endpoints.
-     * AirSpout retains the predicting client's live velocity because its
-     * vertical cap operates on that local velocity.
+     * The predicting client has a real flight velocity, so corrections must
+     * preserve it on every axis. An authoritative server instead observes
+     * vanilla flight through position updates and needs that displacement to
+     * enforce the controlled axes.
+     *
+     * <p>WaterSpout controls only horizontal speed. Its vertical component
+     * must therefore remain the entity's live velocity; feeding observed
+     * ascent back through a horizontal velocity correction compounds the
+     * ascent on every movement packet. AirSpout also controls vertical speed,
+     * so its authoritative correction may use the observed Y displacement.</p>
      */
-    public static Vector initialVelocity(final boolean hasWaterSpout,
+    public static Vector initialVelocity(final boolean hasAirSpout,
                                          final boolean locallySimulated,
                                          final Vector movement,
                                          final Vector currentVelocity) {
         Objects.requireNonNull(movement, "movement");
         Objects.requireNonNull(currentVelocity, "currentVelocity");
-        return (hasWaterSpout || !locallySimulated ? movement : currentVelocity).clone();
+        if (locallySimulated) {
+            return currentVelocity.clone();
+        }
+
+        final Vector selected = movement.clone();
+        if (!hasAirSpout) {
+            selected.setY(currentVelocity.getY());
+        }
+        return selected;
     }
 }
