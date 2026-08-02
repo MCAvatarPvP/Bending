@@ -4,11 +4,13 @@ import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
 
 import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
+import com.projectkorra.projectkorra.platform.mc.block.data.Snowable;
 import com.projectkorra.projectkorra.platform.mc.block.data.type.Snow;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TempBlockSyncCodecTest {
     @Test
@@ -31,5 +33,19 @@ class TempBlockSyncCodecTest {
         assertEquals(Material.SNOW, clone.getMaterial());
         assertEquals(6, clone.getLayers());
         assertEquals("minecraft:snow;layers=6", TempBlockSync.encode(clone));
+    }
+
+    @Test
+    void snowyGroundKeepsItsMaterialPropertyAndCloneAcrossTheLifecycleBoundary() {
+        for (Material material : new Material[]{Material.GRASS_BLOCK, Material.PODZOL, Material.MYCELIUM}) {
+            Snowable data = assertInstanceOf(Snowable.class, material.createBlockData());
+            data.setSnowy(true);
+
+            Snowable clone = assertInstanceOf(Snowable.class, data.clone());
+            assertEquals(material, clone.getMaterial());
+            assertTrue(clone.isSnowy());
+            assertEquals("minecraft:" + material.name().toLowerCase() + ";snowy=1",
+                    TempBlockSync.encode(clone));
+        }
     }
 }

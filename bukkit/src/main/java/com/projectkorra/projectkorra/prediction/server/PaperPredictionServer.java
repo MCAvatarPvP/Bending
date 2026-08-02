@@ -1445,6 +1445,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         List<String> permissions = predictionPermissions(player);
         double airBlastDecay = bending == null ? 1.0 : bending.getAirBlastDecay();
         boolean chiBlocked = bending != null && bending.isChiBlocked();
+        PaperPredictionProtocol.PlayerCosmetics cosmetics = playerCosmetics(bending);
         RegionProtectionAuthority.Snapshot regionProtection =
                 regionProtectionSnapshot(player, bending, binds, session);
         List<String> activeFlights = activeFlightAbilities(player.getUniqueId());
@@ -1454,6 +1455,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         digest = 31 * digest + permissions.hashCode();
         digest = 31 * digest + Double.hashCode(airBlastDecay);
         digest = 31 * digest + Boolean.hashCode(chiBlocked);
+        digest = 31 * digest + cosmetics.hashCode();
         digest = 31 * digest + regionProtection.hashCode();
         digest = 31 * digest + activeFlights.hashCode();
         digest = 31 * digest + Long.hashCode(session.lastSequence);
@@ -1461,7 +1463,17 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         session.stateDigest = digest;
         send(player, PaperPredictionProtocol.STATE, PaperPredictionProtocol.state(session.session, tick,
                 System.currentTimeMillis(), session.lastSequence, binds, cooldowns, elements, subs,
-                permissions, airBlastDecay, chiBlocked, regionProtection, activeFlights));
+                permissions, airBlastDecay, chiBlocked, cosmetics, regionProtection, activeFlights));
+    }
+
+    private static PaperPredictionProtocol.PlayerCosmetics playerCosmetics(final BendingPlayer bending) {
+        if (bending == null) return PaperPredictionProtocol.PlayerCosmetics.empty();
+        return new PaperPredictionProtocol.PlayerCosmetics(
+                bending.getFireColor() == null ? "" : bending.getFireColor().getName(),
+                bending.getAirColor() == null ? "" : bending.getAirColor().getName(),
+                bending.getWaterCosmetic() == null ? "" : bending.getWaterCosmetic().getName(),
+                bending.getEarthCosmetic() == null ? "" : bending.getEarthCosmetic().getName(),
+                bending.isSprinkleEnabled());
     }
 
     private RegionProtectionAuthority.Snapshot regionProtectionSnapshot(
@@ -1529,12 +1541,17 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         List<String> permissions = predictionPermissions(player);
         double airBlastDecay = bending == null ? 1.0 : bending.getAirBlastDecay();
         boolean chiBlocked = bending != null && bending.isChiBlocked();
+        PaperPredictionProtocol.PlayerCosmetics cosmetics = playerCosmetics(bending);
         RegionProtectionAuthority.Snapshot regionProtection =
                 regionProtectionSnapshot(player, bending, binds, session);
-        session.stateDigest = 31 * (31 * (31 * (31 * (31 * (31 * (31 * binds.hashCode()
-                + cooldowns.hashCode()) + elements.hashCode()) + subs.hashCode())
-                + permissions.hashCode()) + Double.hashCode(airBlastDecay))
-                + Boolean.hashCode(chiBlocked)) + regionProtection.hashCode();
+        int digest = 31 * binds.hashCode() + cooldowns.hashCode();
+        digest = 31 * digest + elements.hashCode();
+        digest = 31 * digest + subs.hashCode();
+        digest = 31 * digest + permissions.hashCode();
+        digest = 31 * digest + Double.hashCode(airBlastDecay);
+        digest = 31 * digest + Boolean.hashCode(chiBlocked);
+        digest = 31 * digest + cosmetics.hashCode();
+        session.stateDigest = 31 * digest + regionProtection.hashCode();
         List<PaperPredictionProtocol.ConfigEntry> config = publicConfig;
         List<PaperPredictionProtocol.AbilityProfile> profileSnapshot = profiles;
         long epoch = configEpoch;
@@ -1544,7 +1561,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             List<OutboundPayload> outbound = new ArrayList<>();
             byte[] payload = PaperPredictionProtocol.snapshot(session.session, serverTick, serverNow, epoch,
                     MAX_REWIND_TICKS, config, profileSnapshot, binds, cooldowns, elements, subs,
-                    permissions, airBlastDecay, chiBlocked, regionProtection);
+                    permissions, airBlastDecay, chiBlocked, cosmetics, regionProtection);
             if (payload.length > Messenger.MAX_MESSAGE_SIZE) {
                 List<List<PaperPredictionProtocol.ConfigEntry>> chunks = configChunks(config, Messenger.MAX_MESSAGE_SIZE - 128);
                 for (int i = 0; i < chunks.size(); i++) {
@@ -1553,7 +1570,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                 }
                 payload = PaperPredictionProtocol.snapshot(session.session, serverTick, serverNow, epoch,
                         MAX_REWIND_TICKS, List.of(), profileSnapshot, binds, cooldowns, elements, subs,
-                        permissions, airBlastDecay, chiBlocked, regionProtection);
+                        permissions, airBlastDecay, chiBlocked, cosmetics, regionProtection);
             }
             if (payload.length > Messenger.MAX_MESSAGE_SIZE) {
                 int keep = profileSnapshot.size();
@@ -1561,7 +1578,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                     keep /= 2;
                     payload = PaperPredictionProtocol.snapshot(session.session, serverTick, serverNow, epoch,
                             MAX_REWIND_TICKS, List.of(), profileSnapshot.subList(0, keep), binds, cooldowns,
-                            elements, subs, permissions, airBlastDecay, chiBlocked, regionProtection);
+                            elements, subs, permissions, airBlastDecay, chiBlocked, cosmetics, regionProtection);
                 }
             }
             outbound.add(new OutboundPayload(PaperPredictionProtocol.SNAPSHOT, payload));

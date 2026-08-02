@@ -18,6 +18,7 @@ import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.block.data.Levelled;
+import com.projectkorra.projectkorra.platform.mc.block.data.Snowable;
 import com.projectkorra.projectkorra.platform.mc.block.data.type.Fire;
 import com.projectkorra.projectkorra.platform.mc.block.data.type.Snow;
 import com.projectkorra.projectkorra.platform.mc.command.CommandSender;
@@ -652,6 +653,8 @@ public final class FabricMC {
             if (state.contains(Properties.WATERLOGGED)) {
                 state = state.with(Properties.WATERLOGGED, levelled.isWaterlogged());
             }
+        } else if (data instanceof Snowable snowable && state.contains(Properties.SNOWY)) {
+            state = state.with(Properties.SNOWY, snowable.isSnowy());
         } else if (data instanceof Fire fire) {
             state = withFireFaces(state, fire);
         } else if (data instanceof Snow snow && state.contains(Properties.LAYERS)) {
@@ -719,6 +722,8 @@ public final class FabricMC {
             if (state.contains(Properties.WATERLOGGED)) {
                 levelled.setWaterlogged(state.get(Properties.WATERLOGGED));
             }
+        } else if (data instanceof Snowable snowable && state.contains(Properties.SNOWY)) {
+            snowable.setSnowy(state.get(Properties.SNOWY));
         } else if (data instanceof Fire fire) {
             readFireFaces(state, fire);
         } else if (data instanceof Snow snow && state.contains(Properties.LAYERS)) {

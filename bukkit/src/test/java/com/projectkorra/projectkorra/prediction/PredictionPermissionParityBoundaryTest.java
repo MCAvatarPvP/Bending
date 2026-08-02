@@ -29,8 +29,8 @@ class PredictionPermissionParityBoundaryTest {
         String wrapper = read("../fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricPredictionMC.java",
                 "fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricPredictionMC.java");
 
-        assertTrue(protocol.contains("static final int VERSION = 47"));
-        assertTrue(payloads.contains("public static final int PROTOCOL_VERSION = 47"));
+        assertTrue(protocol.contains("static final int VERSION = 48"));
+        assertTrue(payloads.contains("public static final int PROTOCOL_VERSION = 48"));
         assertTrue(protocol.contains("List<String> permissions, double airBlastDecay")
                         && protocol.contains("writeStrings(out, permissions)"));
         assertTrue(payloads.contains("List<String> permissions, double airBlastDecay")
@@ -49,12 +49,12 @@ class PredictionPermissionParityBoundaryTest {
         assertTrue(decisions.contains("candidates.add(\"bending.ability.WaterSpout.Wave\")"),
                 "the Wave child permission must remain discoverable when Bukkit omits plugin.yml children");
         assertTrue(paper.contains("permissions.hashCode()")
-                        && paper.contains("permissions, airBlastDecay, chiBlocked, regionProtection, activeFlights")
-                        && paper.contains("permissions, airBlastDecay, chiBlocked, regionProtection);"),
+                        && paper.contains("permissions, airBlastDecay, chiBlocked, cosmetics, regionProtection, activeFlights")
+                        && paper.contains("permissions, airBlastDecay, chiBlocked, cosmetics, regionProtection);"),
                 "permission changes must invalidate both live state and initial snapshots");
         assertTrue(client.contains("permissions = snapshot.permissions()")
                         && client.contains("permissions = state.permissions()")
-                        && client.contains("elements, subElements, permissions, airBlastDecay, chiBlocked, regionProtection)"));
+                        && client.contains("elements, subElements, permissions, airBlastDecay, chiBlocked, cosmetics, regionProtection)"));
 
         int seed = runtime.indexOf("this.grantedPermissions = ClientPredictionConfig.normalizePermissions(permissions);");
         int playerConstruction = runtime.indexOf("this.bendingPlayer = new BendingPlayer(player);");

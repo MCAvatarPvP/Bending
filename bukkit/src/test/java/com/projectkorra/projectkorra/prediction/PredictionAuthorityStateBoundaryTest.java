@@ -26,8 +26,8 @@ class PredictionAuthorityStateBoundaryTest {
         String runtime = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
                 "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
 
-        assertTrue(protocol.contains("static final int VERSION = 47"));
-        assertTrue(payloads.contains("public static final int PROTOCOL_VERSION = 47"));
+        assertTrue(protocol.contains("static final int VERSION = 48"));
+        assertTrue(payloads.contains("public static final int PROTOCOL_VERSION = 48"));
         assertTrue(protocol.contains("double airBlastDecay, boolean chiBlocked")
                         && protocol.contains("out.f64(airBlastDecay).bool(chiBlocked)"));
         assertTrue(payloads.contains("double airBlastDecay, boolean chiBlocked")
@@ -36,7 +36,7 @@ class PredictionAuthorityStateBoundaryTest {
                         && paper.contains("Boolean.hashCode(chiBlocked)"));
         assertTrue(client.contains("chiBlocked = snapshot.chiBlocked()")
                         && client.contains("chiBlocked = state.chiBlocked()")
-                        && client.contains("permissions, airBlastDecay, chiBlocked, regionProtection)"));
+                        && client.contains("permissions, airBlastDecay, chiBlocked, cosmetics, regionProtection)"));
         assertTrue(runtime.contains("if (chiBlocked) {")
                         && runtime.contains("this.bendingPlayer.blockChi();")
                         && runtime.contains("this.bendingPlayer.unblockChi();"));

@@ -48,6 +48,7 @@ import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloa
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.DirectBlockReceipt;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.InputKind;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.NativeAction;
+import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.PlayerCosmetics;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.TempBlockBatch;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.TempFallingBlockPrepare;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.TempFallingBlockReceipt;
@@ -59,6 +60,9 @@ import com.projectkorra.projectkorra.listener.CommonInputHandler;
 import com.projectkorra.projectkorra.listener.CommonPlayerListenerCore;
 import com.projectkorra.projectkorra.listener.CommonInputHandler.SlotResult;
 import com.projectkorra.projectkorra.listener.CommonPlayerListenerCore.MovementResult;
+import com.projectkorra.projectkorra.object.CosmeticColor;
+import com.projectkorra.projectkorra.object.EarthCosmetic;
+import com.projectkorra.projectkorra.object.WaterCosmetic;
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.fabric.FabricClientPredictionPlatform;
 import com.projectkorra.projectkorra.platform.fabric.FabricMC;
@@ -68,6 +72,7 @@ import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.block.data.Levelled;
+import com.projectkorra.projectkorra.platform.mc.block.data.Snowable;
 import com.projectkorra.projectkorra.platform.mc.block.data.type.Fire;
 import com.projectkorra.projectkorra.platform.mc.block.data.type.Snow;
 import com.projectkorra.projectkorra.platform.mc.entity.FallingBlock;
@@ -298,9 +303,11 @@ public final class ExactPredictionRuntime
             List<String> permissions,
             double airBlastDecay,
             boolean chiBlocked,
+            PlayerCosmetics cosmetics,
             Snapshot regionProtection
     ) {
-        return INSTANCE.start0(client, config, binds, cooldowns, elements, subElements, permissions, airBlastDecay, chiBlocked, regionProtection);
+        return INSTANCE.start0(client, config, binds, cooldowns, elements, subElements, permissions,
+                airBlastDecay, chiBlocked, cosmetics, regionProtection);
     }
 
     public static void updatePlayerState(
@@ -311,9 +318,11 @@ public final class ExactPredictionRuntime
             List<String> permissions,
             double airBlastDecay,
             boolean chiBlocked,
+            PlayerCosmetics cosmetics,
             Snapshot regionProtection
     ) {
-        INSTANCE.updatePlayerState0(binds, cooldowns, elements, subElements, permissions, airBlastDecay, chiBlocked, regionProtection);
+        INSTANCE.updatePlayerState0(binds, cooldowns, elements, subElements, permissions,
+                airBlastDecay, chiBlocked, cosmetics, regionProtection);
     }
 
     public static boolean hasPermission(String permission) {
@@ -720,6 +729,7 @@ public final class ExactPredictionRuntime
             List<String> permissions,
             double airBlastDecay,
             boolean chiBlocked,
+            PlayerCosmetics cosmetics,
             Snapshot regionProtection
     ) {
         debug(
@@ -740,7 +750,8 @@ public final class ExactPredictionRuntime
         );
         if (this.ready) {
             ClientPredictionConfig.apply(entries);
-            this.updatePlayerState0(binds, cooldowns, elements, subElements, permissions, airBlastDecay, chiBlocked, regionProtection);
+            this.updatePlayerState0(binds, cooldowns, elements, subElements, permissions,
+                    airBlastDecay, chiBlocked, cosmetics, regionProtection);
             debug("runtime already ready; state refreshed");
             return true;
         }
@@ -795,7 +806,8 @@ public final class ExactPredictionRuntime
                 TempBlockSync.install(this.tempBlockAuthority);
                 TempFallingBlockSync.install(this);
                 PredictedContactSync.install(this);
-                this.updatePlayerState0(binds, cooldowns, elements, subElements, permissions, airBlastDecay, chiBlocked, regionProtection);
+                this.updatePlayerState0(binds, cooldowns, elements, subElements, permissions,
+                        airBlastDecay, chiBlocked, cosmetics, regionProtection);
                 this.ready = true;
                 this.lastStartFailure = "";
                 ProjectKorra.log.info("Exact client prediction enabled with " + CoreAbility.getAbilities().size() + " local abilities");
@@ -844,6 +856,7 @@ public final class ExactPredictionRuntime
             List<String> permissions,
             double airBlastDecay,
             boolean chiBlocked,
+            PlayerCosmetics cosmetics,
             Snapshot regionProtection
     ) {
         this.grantedPermissions = ClientPredictionConfig.normalizePermissions(permissions);
@@ -876,6 +889,14 @@ public final class ExactPredictionRuntime
                 this.bendingPlayer.unblockChi();
             }
 
+            final PlayerCosmetics safeCosmetics = cosmetics == null ? PlayerCosmetics.empty() : cosmetics;
+            this.bendingPlayer.applyCosmeticState(
+                    safeCosmetics.fireColor().isBlank() ? null : CosmeticColor.getFireColor(safeCosmetics.fireColor()),
+                    safeCosmetics.airColor().isBlank() ? null : CosmeticColor.getAirColor(safeCosmetics.airColor()),
+                    safeCosmetics.waterCosmetic().isBlank() ? null : WaterCosmetic.getCosmetic(safeCosmetics.waterCosmetic()),
+                    safeCosmetics.earthCosmetic().isBlank() ? null : EarthCosmetic.getCosmetic(safeCosmetics.earthCosmetic()),
+                    safeCosmetics.sprinkle());
+
             RegionProtectionAuthority.install(this.bendingPlayer.getPlayer(), regionProtection);
             PassiveManager.registerPassives(this.bendingPlayer.getPlayer());
             this.reconcileAuthoritativeCooldowns(cooldowns);
@@ -890,6 +911,8 @@ public final class ExactPredictionRuntime
                             + this.bendingPlayer.getElements()
                             + " subElements="
                             + this.bendingPlayer.getSubElements()
+                            + " cosmetics="
+                            + safeCosmetics
                             + " cooldowns="
                             + this.bendingPlayer.getCooldowns().keySet()
                             + " airBlastStamina="
@@ -2591,6 +2614,8 @@ public final class ExactPredictionRuntime
                         }
                     } else if (data instanceof Snow snow && name.equals("layers")) {
                         snow.setLayers(Math.max(1, Math.min(8, Integer.parseInt(value))));
+                    } else if (data instanceof Snowable snowable && name.equals("snowy")) {
+                        snowable.setSnowy(value.equals("1"));
                     }
                 } catch (IllegalArgumentException var16) {
                 }

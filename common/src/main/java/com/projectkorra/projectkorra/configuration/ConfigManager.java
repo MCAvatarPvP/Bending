@@ -11,6 +11,32 @@ import java.util.*;
 
 public class ConfigManager {
 
+    static final List<String> DEFAULT_WATER_COSMETICS = List.of(
+            "white, WHITE_STAINED_GLASS",
+            "orange, ORANGE_STAINED_GLASS",
+            "magenta, MAGENTA_STAINED_GLASS",
+            "light_blue, LIGHT_BLUE_STAINED_GLASS",
+            "yellow, YELLOW_STAINED_GLASS",
+            "lime, LIME_STAINED_GLASS",
+            "pink, PINK_STAINED_GLASS",
+            "gray, GRAY_STAINED_GLASS",
+            "light_gray, LIGHT_GRAY_STAINED_GLASS",
+            "cyan, CYAN_STAINED_GLASS",
+            "purple, PURPLE_STAINED_GLASS",
+            "blue, BLUE_STAINED_GLASS",
+            "brown, BROWN_STAINED_GLASS",
+            "green, GREEN_STAINED_GLASS",
+            "red, RED_STAINED_GLASS",
+            "black, BLACK_STAINED_GLASS"
+    );
+    private static final List<String> LEGACY_DEFAULT_WATER_COSMETICS = List.of(
+            "lightblue, LIGHT_BLUE_STAINED_GLASS",
+            "blue, BLUE_STAINED_GLASS",
+            "cyan, CYAN_STAINED_GLASS",
+            "white, WHITE_STAINED_GLASS",
+            "gray, LIGHT_GRAY_STAINED_GLASS"
+    );
+
     public static Config presetConfig;
     public static Config defaultConfig;
     public static Config languageConfig;
@@ -108,13 +134,10 @@ public class ConfigManager {
             airColorsConfig.save();
         } else if (type == ConfigType.WATERCOSMETICS) {
             config = waterCosmeticsConfig.get();
-            config.addDefault("WaterCosmetics", List.of(
-                    "lightblue, LIGHT_BLUE_STAINED_GLASS",
-                    "blue, BLUE_STAINED_GLASS",
-                    "cyan, CYAN_STAINED_GLASS",
-                    "white, WHITE_STAINED_GLASS",
-                    "gray, LIGHT_GRAY_STAINED_GLASS"
-            ));
+            config.addDefault("WaterCosmetics", DEFAULT_WATER_COSMETICS);
+            if (config.getStringList("WaterCosmetics").equals(LEGACY_DEFAULT_WATER_COSMETICS)) {
+                config.set("WaterCosmetics", DEFAULT_WATER_COSMETICS);
+            }
             waterCosmeticsConfig.save();
         } else if (type == ConfigType.EARTHCOSMETICS) {
             config = earthCosmeticsConfig.get();

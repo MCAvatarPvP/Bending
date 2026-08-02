@@ -62,7 +62,7 @@ class PaperPredictionProtocolTest {
 
     @Test
     void protocolIncludesExactAbilityStateOwnershipFence() {
-        assertEquals(47, PaperPredictionProtocol.VERSION);
+        assertEquals(48, PaperPredictionProtocol.VERSION);
         assertEquals("projectkorra:ability_state_owner", PaperPredictionProtocol.ABILITY_STATE_OWNER);
         UUID owner = UUID.randomUUID();
         UUID target = UUID.randomUUID();
@@ -352,6 +352,8 @@ class PaperPredictionProtocolTest {
         byte[] payload = PaperPredictionProtocol.state(session, 90, 10_000, 44,
                 Map.of(), Map.of(), List.of(), List.of(),
                 List.of("bending.ability.waterspout.wave"), 1.0, true,
+                new PaperPredictionProtocol.PlayerCosmetics(
+                        "greenfire", "dust", "blue", "obsidian", true),
                 RegionProtectionAuthority.Snapshot.empty(), List.of("waterspout"));
         PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(payload);
         assertEquals(session, reader.uuid());
@@ -365,6 +367,11 @@ class PaperPredictionProtocolTest {
         assertEquals(1, reader.varInt());
         assertEquals("bending.ability.waterspout.wave", reader.string(128));
         assertEquals(1.0, reader.f64());
+        assertTrue(reader.bool());
+        assertEquals("greenfire", reader.string(128));
+        assertEquals("dust", reader.string(128));
+        assertEquals("blue", reader.string(128));
+        assertEquals("obsidian", reader.string(128));
         assertTrue(reader.bool());
         assertEquals("", reader.string(256));
         assertEquals(9, reader.varInt());

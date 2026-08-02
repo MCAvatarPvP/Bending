@@ -22,7 +22,9 @@ class ExactBlockStateCodecTest {
         assertTrue(adapter.contains("data.setExactState(serializeBlockState(state))"));
         assertTrue(adapter.contains("property.parse(value)"));
         assertTrue(adapter.contains("state.with(property, parsed.get())"));
+        assertTrue(adapter.contains("data instanceof Snowable snowable && state.contains(Properties.SNOWY)"));
         assertTrue(runtime.contains("!materialName.contains(\";\")"));
         assertTrue(runtime.contains("return FabricMC.blockState(materialName)"));
+        assertTrue(runtime.contains("data instanceof Snowable snowable && name.equals(\"snowy\")"));
     }
 }

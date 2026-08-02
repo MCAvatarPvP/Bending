@@ -3,6 +3,9 @@ package com.projectkorra.projectkorra.fabric.client.prediction.config;
 import com.projectkorra.projectkorra.configuration.Config;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads;
+import com.projectkorra.projectkorra.object.CosmeticColor;
+import com.projectkorra.projectkorra.object.EarthCosmetic;
+import com.projectkorra.projectkorra.object.WaterCosmetic;
 import com.projectkorra.projectkorra.prediction.state.PredictionConfigSync;
 
 import java.util.HashMap;
@@ -33,6 +36,15 @@ public final class ClientPredictionConfig {
         apply(ConfigManager.airColorsConfig, namespaces.get("air_colors"));
         apply(ConfigManager.waterCosmeticsConfig, namespaces.get("water_cosmetics"));
         apply(ConfigManager.earthCosmeticsConfig, namespaces.get("earth_cosmetics"));
+        if (namespaces.containsKey("fire_colors") || namespaces.containsKey("air_colors")) {
+            CosmeticColor.reloadColors();
+        }
+        if (namespaces.containsKey("water_cosmetics")) {
+            WaterCosmetic.reloadCosmetics();
+        }
+        if (namespaces.containsKey("earth_cosmetics")) {
+            EarthCosmetic.reloadCosmetics();
+        }
         apply(ConfigManager.fallDamageConfig, namespaces.get("fall_damage"));
         if (ConfigManager.styleConfigs != null) {
             for (int index = 0; index < ConfigManager.styleConfigs.size(); index++) {

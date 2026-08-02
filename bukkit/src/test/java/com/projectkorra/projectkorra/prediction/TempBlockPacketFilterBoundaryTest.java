@@ -38,8 +38,12 @@ class TempBlockPacketFilterBoundaryTest {
         int publishIntent = tempBlock.indexOf(
                 "TempBlockSync.beforeWorldChange(operation, this, effectiveData)", writeMethod);
         int worldMutation = tempBlock.indexOf(
-                "TempBlockSync.runWorldMutation(operation, this, effectiveData, worldWrite)", writeMethod);
+                "TempBlockSync.runWorldMutation(operation, this, effectiveData, () -> {", writeMethod);
         assertTrue(writeMethod >= 0 && publishIntent > writeMethod && worldMutation > publishIntent);
+        int physicalWrite = tempBlock.indexOf("worldWrite.run()", worldMutation);
+        int snowableSupport = tempBlock.indexOf("updateSnowableBlock(", physicalWrite);
+        assertTrue(physicalWrite > worldMutation && snowableSupport > physicalWrite,
+                "the visible block and its snowy support must share the ordered mutation boundary");
         assertTrue(tempBlock.contains("getEffectAbility()")
                         && tempBlock.contains("getEffectStep()")
                         && tempBlock.contains("getEffectOrdinal()"));

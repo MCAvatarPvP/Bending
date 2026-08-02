@@ -1322,6 +1322,21 @@ public class OfflineBendingPlayer {
         return waterCosmetic;
     }
 
+    /**
+     * Applies an authoritative cosmetic snapshot without writing it back to
+     * storage. Client prediction mirrors use this path because the server owns
+     * the persisted player profile.
+     */
+    public void applyCosmeticState(final CosmeticColor fireColor, final CosmeticColor airColor,
+                                   final WaterCosmetic waterCosmetic, final EarthCosmetic earthCosmetic,
+                                   final boolean sprinkle) {
+        this.fireCosmeticColor = fireColor;
+        this.airCosmeticColor = airColor;
+        this.waterCosmetic = waterCosmetic;
+        this.earthCosmetic = earthCosmetic;
+        this.sprinkle = sprinkle;
+    }
+
     public void setWaterCosmetic(final WaterCosmetic waterCosmetic) {
         this.waterCosmetic = waterCosmetic;
         final String name = waterCosmetic != null ? waterCosmetic.getName() : null;

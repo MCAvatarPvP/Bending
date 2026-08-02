@@ -14,7 +14,7 @@ import java.util.UUID;
  * Raw Bukkit plugin-message codec matching Fabric's RegistryByteBuf layout.
  */
 public final class PaperPredictionProtocol {
-    public static final int VERSION = 47;
+    public static final int VERSION = 48;
     public static final int MAX_BLOCK_STATE_CHARACTERS = 512;
     public static final String HELLO = "projectkorra:client_hello";
     public static final String READY = "projectkorra:client_ready";
@@ -90,6 +90,7 @@ public final class PaperPredictionProtocol {
                            Map<Integer, String> binds, Map<String, Long> cooldowns,
                            List<String> elements, List<String> subElements,
                            List<String> permissions, double airBlastDecay, boolean chiBlocked,
+                           PlayerCosmetics cosmetics,
                            RegionProtectionAuthority.Snapshot regionProtection) {
         Writer out = new Writer();
         out.varInt(VERSION).uuid(session).i64(serverTick).i64(serverNowMillis).i64(epoch).varInt(rewindTicks);
@@ -107,6 +108,7 @@ public final class PaperPredictionProtocol {
         writeStrings(out, subElements);
         writeStrings(out, permissions);
         out.f64(airBlastDecay).bool(chiBlocked);
+        writePlayerCosmetics(out, cosmetics);
         writeRegionProtection(out, regionProtection);
         return out.bytes();
     }
@@ -114,6 +116,7 @@ public final class PaperPredictionProtocol {
     public static byte[] state(UUID session, long serverTick, long serverNowMillis, long acknowledgedSequence, Map<Integer, String> binds,
                         Map<String, Long> cooldowns, List<String> elements, List<String> subElements,
                         List<String> permissions, double airBlastDecay, boolean chiBlocked,
+                        PlayerCosmetics cosmetics,
                         RegionProtectionAuthority.Snapshot regionProtection,
                         List<String> activeFlightAbilities) {
         Writer out = new Writer();
@@ -124,6 +127,7 @@ public final class PaperPredictionProtocol {
         writeStrings(out, subElements);
         writeStrings(out, permissions);
         out.f64(airBlastDecay).bool(chiBlocked);
+        writePlayerCosmetics(out, cosmetics);
         writeRegionProtection(out, regionProtection);
         writeStrings(out, activeFlightAbilities);
         return out.bytes();
@@ -149,6 +153,15 @@ public final class PaperPredictionProtocol {
     private static void writeConfigEntry(Writer out, ConfigEntry entry) {
         out.string(entry.path(), 512).enumeration(entry.type()).varInt(entry.values().size());
         for (String value : entry.values()) out.string(value, 8_192);
+    }
+
+    private static void writePlayerCosmetics(final Writer out, final PlayerCosmetics cosmetics) {
+        final PlayerCosmetics safe = cosmetics == null ? PlayerCosmetics.empty() : cosmetics;
+        out.string(safe.fireColor(), 128)
+                .string(safe.airColor(), 128)
+                .string(safe.waterCosmetic(), 128)
+                .string(safe.earthCosmetic(), 128)
+                .bool(safe.sprinkle());
     }
 
     public static byte[] reconcile(UUID session, long sequence, boolean accepted, String reason, long serverTick, long serverNowMillis,
@@ -316,6 +329,20 @@ public final class PaperPredictionProtocol {
 
     public record AbilityProfile(String name, String element, VisualKind kind, double speed, double range, double radius,
                           long charge, long cooldown, String material, boolean harmless, boolean sneak) {
+    }
+
+    public record PlayerCosmetics(String fireColor, String airColor, String waterCosmetic,
+                                  String earthCosmetic, boolean sprinkle) {
+        public PlayerCosmetics {
+            fireColor = fireColor == null ? "" : fireColor;
+            airColor = airColor == null ? "" : airColor;
+            waterCosmetic = waterCosmetic == null ? "" : waterCosmetic;
+            earthCosmetic = earthCosmetic == null ? "" : earthCosmetic;
+        }
+
+        public static PlayerCosmetics empty() {
+            return new PlayerCosmetics("", "", "", "", false);
+        }
     }
 
     public record Hello(int version, long clientTick, int capabilities) {

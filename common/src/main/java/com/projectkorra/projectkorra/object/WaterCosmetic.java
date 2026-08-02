@@ -60,11 +60,13 @@ public class WaterCosmetic {
     }
 
     public static boolean hasCosmetic(final String name) {
-        return waterCosmetics.containsKey(name);
+        return getCosmetic(name) != null;
     }
 
     public static WaterCosmetic getCosmetic(final String name) {
-        return waterCosmetics.get(name);
+        final WaterCosmetic cosmetic = waterCosmetics.get(name);
+        if (cosmetic != null || !"lightblue".equalsIgnoreCase(name)) return cosmetic;
+        return waterCosmetics.get("light_blue");
     }
 
     public static List<String> getCosmeticNames() {

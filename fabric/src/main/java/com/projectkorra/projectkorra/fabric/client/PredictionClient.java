@@ -60,6 +60,7 @@ public final class PredictionClient {
     private int maxRewindTicks;
     private double airBlastDecay;
     private boolean chiBlocked;
+    private PredictionPayloads.PlayerCosmetics cosmetics = PredictionPayloads.PlayerCosmetics.empty();
     private RegionProtectionAuthority.Snapshot regionProtection =
             RegionProtectionAuthority.Snapshot.empty();
     private ServerPose serverPose;
@@ -581,6 +582,7 @@ public final class PredictionClient {
         permissions = snapshot.permissions();
         airBlastDecay = snapshot.airBlastDecay();
         chiBlocked = snapshot.chiBlocked();
+        cosmetics = snapshot.cosmetics();
         regionProtection = snapshot.regionProtection();
         startRuntime(client, "snapshot");
         sendReady();
@@ -631,6 +633,7 @@ public final class PredictionClient {
         permissions = state.permissions();
         airBlastDecay = state.airBlastDecay();
         chiBlocked = state.chiBlocked();
+        cosmetics = state.cosmetics();
         regionProtection = state.regionProtection();
         if (!active) {
             MinecraftClient client = MinecraftClient.getInstance();
@@ -643,7 +646,7 @@ public final class PredictionClient {
         final Map<String, Long> authoritativeCooldowns = convertCooldowns(state.cooldowns());
         rememberAuthoritativeCooldowns(authoritativeCooldowns);
         ExactPredictionRuntime.updatePlayerState(binds, authoritativeCooldowns, elements, subElements,
-                permissions, airBlastDecay, chiBlocked, regionProtection);
+                permissions, airBlastDecay, chiBlocked, cosmetics, regionProtection);
         ExactPredictionRuntime.reconcileActiveFlightAbilities(state.activeFlightAbilities(), state.acknowledgedSequence());
         debug("player state applied binds=" + binds + " cooldowns=" + authoritativeCooldowns.keySet()
                 + " elements=" + elements + " subElements=" + subElements);
@@ -1092,6 +1095,7 @@ public final class PredictionClient {
         maxRewindTicks = 0;
         airBlastDecay = 0.0;
         chiBlocked = false;
+        cosmetics = PredictionPayloads.PlayerCosmetics.empty();
         regionProtection = RegionProtectionAuthority.Snapshot.empty();
         pendingHitClaims.clear();
         currentNativeInputPacket = null;
@@ -1164,7 +1168,7 @@ public final class PredictionClient {
             return false;
         }
         active = ExactPredictionRuntime.start(client, List.copyOf(config.values()), binds, cooldowns,
-                elements, subElements, permissions, airBlastDecay, chiBlocked, regionProtection);
+                elements, subElements, permissions, airBlastDecay, chiBlocked, cosmetics, regionProtection);
         if (active) consecutiveRuntimeStartFailures = 0;
         else consecutiveRuntimeStartFailures++;
         rememberRuntimeIdentity(client);

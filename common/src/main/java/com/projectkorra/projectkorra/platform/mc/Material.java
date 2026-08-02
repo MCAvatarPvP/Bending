@@ -2,6 +2,7 @@ package com.projectkorra.projectkorra.platform.mc;
 
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.block.data.Levelled;
+import com.projectkorra.projectkorra.platform.mc.block.data.Snowable;
 import com.projectkorra.projectkorra.platform.mc.block.data.type.Fire;
 
 import java.util.Locale;
@@ -26,9 +27,12 @@ public enum Material {
     BIRCH_BUTTON,
     BIRCH_DOOR,
     BIRCH_TRAPDOOR,
+    BLACK_STAINED_GLASS,
     BLACKSTONE,
     BLAST_FURNACE,
+    BLUE_STAINED_GLASS,
     BOW,
+    BROWN_STAINED_GLASS,
     BUCKET,
     BUBBLE_COLUMN,
     CARROTS,
@@ -60,6 +64,7 @@ public enum Material {
     COOKED_RABBIT,
     COOKED_SALMON,
     CROSSBOW,
+    CYAN_STAINED_GLASS,
     DARK_OAK_BUTTON,
     DARK_OAK_DOOR,
     DARK_OAK_TRAPDOOR,
@@ -98,6 +103,8 @@ public enum Material {
     GOLDEN_SWORD,
     GRASS_BLOCK,
     GRAVEL,
+    GRAY_STAINED_GLASS,
+    GREEN_STAINED_GLASS,
     HEAVY_WEIGHTED_PRESSURE_PLATE,
     HOPPER,
     ICE,
@@ -131,7 +138,10 @@ public enum Material {
     LEATHER_LEGGINGS,
     LEVER,
     LIGHT_BLUE_STAINED_GLASS,
+    LIGHT_GRAY_STAINED_GLASS,
+    LIME_STAINED_GLASS,
     MAGMA_BLOCK,
+    MAGENTA_STAINED_GLASS,
     MELON,
     MUD,
     MUTTON,
@@ -152,12 +162,14 @@ public enum Material {
     OBSIDIAN,
     ORANGE_STAINED_GLASS,
     PACKED_ICE,
+    PINK_STAINED_GLASS,
     POPPED_CHORUS_FRUIT,
     PORKCHOP,
     POTATO,
     POTATOES,
     POTION,
     PUMPKIN,
+    PURPLE_STAINED_GLASS,
     QUARTZ,
     RABBIT,
     RED_SAND,
@@ -202,6 +214,7 @@ public enum Material {
     WOODEN_PICKAXE,
     WOODEN_SHOVEL,
     WOODEN_SWORD,
+    YELLOW_STAINED_GLASS,
     ACACIA_WOOD, AMETHYST_BLOCK, ANCIENT_DEBRIS, ANDESITE, ANDESITE_SLAB, ANDESITE_STAIRS,
     BASALT, BIG_DRIPLEAF, BLACK_CONCRETE, BLACK_CONCRETE_POWDER, BLACK_WOOL, BLOCK_RAW_GOLD,
     BLUE_GLAZED_TERRACOTTA, BLUE_ICE, BLUE_ORCHID, BLUE_TERRACOTTA, BLUE_WOOL, BONE_BLOCK,
@@ -280,6 +293,7 @@ public enum Material {
     public BlockData createBlockData() {
         if (this == FIRE || this == SOUL_FIRE) return new Fire(this);
         if (this == SNOW) return new com.projectkorra.projectkorra.platform.mc.block.data.type.Snow();
+        if (this == GRASS_BLOCK || this == MYCELIUM || this == PODZOL) return new Snowable(this);
         return (this == WATER || this == LAVA || this == LIGHT || name().contains("CAULDRON")) ? new Levelled(this) : new BlockData(this);
     }
 

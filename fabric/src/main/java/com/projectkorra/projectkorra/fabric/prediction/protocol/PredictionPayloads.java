@@ -15,7 +15,7 @@ import java.util.UUID;
 
 /** Wire contract used by the Fabric client and the Paper/Fabric server endpoints. */
 public final class PredictionPayloads {
-    public static final int PROTOCOL_VERSION = 47;
+    public static final int PROTOCOL_VERSION = 48;
     public static final int MAX_BLOCK_STATE_CHARACTERS = 512;
     public static final int MAX_CONFIG_ENTRIES = 16_384;
     public static final int MAX_PROFILES = 2_048;
@@ -69,6 +69,33 @@ public final class PredictionPayloads {
             buf.writeString(tempMaterial, 128);
             buf.writeBoolean(harmless);
             buf.writeBoolean(sneakAbility);
+        }
+    }
+
+    public record PlayerCosmetics(String fireColor, String airColor, String waterCosmetic,
+                                  String earthCosmetic, boolean sprinkle) {
+        private PlayerCosmetics(RegistryByteBuf buf) {
+            this(buf.readString(128), buf.readString(128), buf.readString(128),
+                    buf.readString(128), buf.readBoolean());
+        }
+
+        private void write(RegistryByteBuf buf) {
+            buf.writeString(fireColor, 128);
+            buf.writeString(airColor, 128);
+            buf.writeString(waterCosmetic, 128);
+            buf.writeString(earthCosmetic, 128);
+            buf.writeBoolean(sprinkle);
+        }
+
+        public PlayerCosmetics {
+            fireColor = fireColor == null ? "" : fireColor;
+            airColor = airColor == null ? "" : airColor;
+            waterCosmetic = waterCosmetic == null ? "" : waterCosmetic;
+            earthCosmetic = earthCosmetic == null ? "" : earthCosmetic;
+        }
+
+        public static PlayerCosmetics empty() {
+            return new PlayerCosmetics("", "", "", "", false);
         }
     }
 
@@ -183,6 +210,7 @@ public final class PredictionPayloads {
                                  Map<Integer, String> binds, Map<String, Long> cooldowns,
                                  List<String> elements, List<String> subElements,
                                  List<String> permissions, double airBlastDecay, boolean chiBlocked,
+                                 PlayerCosmetics cosmetics,
                                  RegionProtectionAuthority.Snapshot regionProtection) implements CustomPayload {
         public static final Id<ServerSnapshot> ID = id("server_snapshot");
         public static final PacketCodec<RegistryByteBuf, ServerSnapshot> CODEC = PacketCodec.of(ServerSnapshot::write, ServerSnapshot::new);
@@ -190,7 +218,7 @@ public final class PredictionPayloads {
         private ServerSnapshot(RegistryByteBuf buf) {
             this(buf.readVarInt(), buf.readUuid(), buf.readLong(), buf.readLong(), buf.readLong(), buf.readVarInt(),
                     readConfig(buf), readProfiles(buf), readBinds(buf), readCooldowns(buf), readStrings(buf, 64), readStrings(buf, 128),
-                    readStrings(buf, 2_048), buf.readDouble(), buf.readBoolean(), readRegionProtection(buf));
+                    readStrings(buf, 2_048), buf.readDouble(), buf.readBoolean(), new PlayerCosmetics(buf), readRegionProtection(buf));
         }
 
         private void write(RegistryByteBuf buf) {
@@ -212,6 +240,7 @@ public final class PredictionPayloads {
             writeStrings(buf, subElements);
             writeStrings(buf, permissions);
             buf.writeDouble(airBlastDecay); buf.writeBoolean(chiBlocked);
+            (cosmetics == null ? PlayerCosmetics.empty() : cosmetics).write(buf);
             writeRegionProtection(buf, regionProtection);
         }
 
@@ -221,11 +250,12 @@ public final class PredictionPayloads {
     public record PlayerState(UUID sessionId, long serverTick, long serverNowMillis, long acknowledgedSequence, Map<Integer, String> binds,
                               Map<String, Long> cooldowns, List<String> elements,
                               List<String> subElements, List<String> permissions, double airBlastDecay,
-                              boolean chiBlocked, RegionProtectionAuthority.Snapshot regionProtection,
+                              boolean chiBlocked, PlayerCosmetics cosmetics,
+                              RegionProtectionAuthority.Snapshot regionProtection,
                               List<String> activeFlightAbilities) implements CustomPayload {
         public static final Id<PlayerState> ID = id("player_state");
         public static final PacketCodec<RegistryByteBuf, PlayerState> CODEC = PacketCodec.of(PlayerState::write, PlayerState::new);
-        private PlayerState(RegistryByteBuf buf) { this(buf.readUuid(), buf.readLong(), buf.readLong(), buf.readVarLong(), readBinds(buf), readCooldowns(buf), readStrings(buf, 64), readStrings(buf, 128), readStrings(buf, 2_048), buf.readDouble(), buf.readBoolean(), readRegionProtection(buf), readStrings(buf, 32)); }
+        private PlayerState(RegistryByteBuf buf) { this(buf.readUuid(), buf.readLong(), buf.readLong(), buf.readVarLong(), readBinds(buf), readCooldowns(buf), readStrings(buf, 64), readStrings(buf, 128), readStrings(buf, 2_048), buf.readDouble(), buf.readBoolean(), new PlayerCosmetics(buf), readRegionProtection(buf), readStrings(buf, 32)); }
         private void write(RegistryByteBuf buf) {
             buf.writeUuid(sessionId); buf.writeLong(serverTick); buf.writeLong(serverNowMillis); buf.writeVarLong(acknowledgedSequence);
             buf.writeVarInt(binds.size());
@@ -236,6 +266,7 @@ public final class PredictionPayloads {
             writeStrings(buf, subElements);
             writeStrings(buf, permissions);
             buf.writeDouble(airBlastDecay); buf.writeBoolean(chiBlocked);
+            (cosmetics == null ? PlayerCosmetics.empty() : cosmetics).write(buf);
             writeRegionProtection(buf, regionProtection);
             writeStrings(buf, activeFlightAbilities);
         }

@@ -441,7 +441,11 @@ public class TempBlock {
     private void writeTopLocked(final TempBlockSync.Operation operation, final BlockData effectiveData,
                                 final Runnable worldWrite) {
         TempBlockSync.beforeWorldChange(operation, this, effectiveData);
-        TempBlockSync.runWorldMutation(operation, this, effectiveData, worldWrite);
+        TempBlockSync.runWorldMutation(operation, this, effectiveData, () -> {
+            worldWrite.run();
+            updateSnowableBlock(this.block.getRelative(BlockFace.DOWN),
+                    isSnowCover(effectiveData.getMaterial()));
+        });
     }
 
     private void publishLocked(final TempBlockSync.Operation operation, final BlockData effectiveData,
@@ -837,10 +841,24 @@ public class TempBlock {
     }
 
     public void updateSnowableBlock(final Block block, final boolean snowy) {
-        if (block != null && block.getBlockData() instanceof Snowable snowable) {
+        if (block == null) return;
+        synchronized (MUTATION_LOCK) {
+            final LinkedList<TempBlock> stack = LAYERS.get(block);
+            final TempBlock top = stack == null || stack.isEmpty() ? null : stack.getLast();
+            final BlockData currentData = top == null ? block.getBlockData() : top.newData.clone();
+            if (!(currentData instanceof Snowable snowable)) return;
+            if (snowable.isSnowy() == snowy) return;
             snowable.setSnowy(snowy);
-            block.setBlockData(snowable);
+            if (top != null && top != this) {
+                top.setType(snowable);
+                return;
+            }
+            block.setBlockData(snowable, false);
         }
+    }
+
+    private static boolean isSnowCover(final Material material) {
+        return material == Material.SNOW || material == Material.SNOW_BLOCK;
     }
 
     @Override

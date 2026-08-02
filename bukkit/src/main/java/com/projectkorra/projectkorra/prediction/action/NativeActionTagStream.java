@@ -5,7 +5,7 @@ import com.projectkorra.projectkorra.prediction.protocol.PaperPredictionProtocol
 /**
  * One-shot identity metadata for the next native input callback.
  *
- * <p>Protocol v47 sends a tag immediately before its vanilla packet on the
+ * <p>Protocol v48 sends a tag immediately before its vanilla packet on the
  * same ordered connection. A second tag therefore supersedes an unconsumed
  * one, and every callback consumes the pending value even when its semantics
  * disagree. Those rules prevent stale metadata from crossing into a later,

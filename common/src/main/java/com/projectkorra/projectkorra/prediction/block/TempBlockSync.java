@@ -8,6 +8,7 @@ import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.block.data.Levelled;
+import com.projectkorra.projectkorra.platform.mc.block.data.Snowable;
 import com.projectkorra.projectkorra.platform.mc.block.data.type.Fire;
 import com.projectkorra.projectkorra.platform.mc.block.data.type.Snow;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
@@ -292,6 +293,8 @@ public final class TempBlockSync {
             }
         } else if (data instanceof Snow snow) {
             encoded.append(";layers=").append(snow.getLayers());
+        } else if (data instanceof Snowable snowable) {
+            encoded.append(";snowy=").append(snowable.isSnowy() ? '1' : '0');
         }
         return encoded.toString();
     }

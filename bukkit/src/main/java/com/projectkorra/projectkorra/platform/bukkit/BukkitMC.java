@@ -10,6 +10,7 @@ import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.block.BlockState;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.block.data.Levelled;
+import com.projectkorra.projectkorra.platform.mc.block.data.Snowable;
 import com.projectkorra.projectkorra.platform.mc.block.data.type.Fire;
 import com.projectkorra.projectkorra.platform.mc.block.data.type.Snow;
 import com.projectkorra.projectkorra.platform.mc.command.CommandSender;
@@ -377,6 +378,9 @@ public final class BukkitMC {
             if (nativeData instanceof Waterlogged waterlogged) {
                 waterlogged.setWaterlogged(levelled.isWaterlogged());
             }
+        } else if (value instanceof Snowable snowable
+                && nativeData instanceof org.bukkit.block.data.Snowable nativeSnowable) {
+            nativeSnowable.setSnowy(snowable.isSnowy());
         } else if (value instanceof Snow snow
                 && nativeData instanceof org.bukkit.block.data.type.Snow nativeSnow) {
             nativeSnow.setLayers(Math.max(nativeSnow.getMinimumLayers(),
@@ -402,6 +406,9 @@ public final class BukkitMC {
             if (value instanceof Waterlogged waterlogged) {
                 levelled.setWaterlogged(waterlogged.isWaterlogged());
             }
+        } else if (data instanceof Snowable snowable
+                && value instanceof org.bukkit.block.data.Snowable nativeSnowable) {
+            snowable.setSnowy(nativeSnowable.isSnowy());
         } else if (data instanceof Snow snow
                 && value instanceof org.bukkit.block.data.type.Snow nativeSnow) {
             snow.setLayers(nativeSnow.getLayers());

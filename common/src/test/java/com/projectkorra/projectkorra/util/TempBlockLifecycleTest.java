@@ -10,6 +10,7 @@ import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.block.BlockState;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
+import com.projectkorra.projectkorra.platform.mc.block.data.Snowable;
 import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
 import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
 import org.junit.jupiter.api.AfterEach;
@@ -21,6 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -404,6 +406,63 @@ class TempBlockLifecycleTest {
         assertFalse(TempBlock.isTempBlock(block));
     }
 
+    @Test
+    void visibleSnowCoverTracksOverlappingTempBlockLayers() {
+        FakeBlock support = new FakeBlock(Material.GRASS_BLOCK);
+        FakeBlock cover = new FakeBlock(Material.AIR, support);
+
+        TempBlock snow = new TempBlock(cover, Material.SNOW);
+        assertTrue(snowy(support));
+
+        TempBlock ice = new TempBlock(cover, Material.ICE);
+        assertFalse(snowy(support));
+
+        ice.revertBlock();
+        assertTrue(snowy(support));
+
+        snow.revertBlock();
+        assertFalse(snowy(support));
+    }
+
+    @Test
+    void replacingAndRestoringNaturalSnowUpdatesItsSupportBlock() {
+        FakeBlock support = new FakeBlock(Material.PODZOL);
+        Snowable initialSupport = assertInstanceOf(Snowable.class, support.getBlockData());
+        initialSupport.setSnowy(true);
+        support.externalSet(initialSupport);
+        FakeBlock cover = new FakeBlock(Material.SNOW, support);
+
+        TempBlock air = new TempBlock(cover, Material.AIR);
+        assertFalse(snowy(support));
+
+        air.revertBlock();
+        assertTrue(snowy(support));
+    }
+
+    @Test
+    void snowCoverUpdatesTheVisibleSupportTempBlockLayer() {
+        FakeBlock foundation = new FakeBlock(Material.STONE);
+        FakeBlock support = new FakeBlock(Material.DIRT, foundation);
+        TempBlock supportLayer = new TempBlock(support, Material.MYCELIUM);
+        FakeBlock cover = new FakeBlock(Material.AIR, support);
+
+        TempBlock snow = new TempBlock(cover, Material.SNOW);
+        assertTrue(snowy(support));
+        assertTrue(assertInstanceOf(Snowable.class, supportLayer.getBlockData()).isSnowy(),
+                "the support layer ledger must match its physical snowy state");
+
+        snow.revertBlock();
+        assertFalse(snowy(support));
+        assertFalse(assertInstanceOf(Snowable.class, supportLayer.getBlockData()).isSnowy());
+
+        supportLayer.revertBlock();
+        assertEquals(Material.DIRT, support.getType());
+    }
+
+    private static boolean snowy(final FakeBlock block) {
+        return assertInstanceOf(Snowable.class, block.getBlockData()).isSnowy();
+    }
+
     private final class RecordingListener implements TempBlockSync.Listener {
         private final List<String> events = new ArrayList<>();
         private final List<Material> underlays = new ArrayList<>();
@@ -422,15 +481,25 @@ class TempBlockLifecycleTest {
 
     private final class FakeBlock extends Block {
         private final FakeWorld world = new FakeWorld();
+        private final Block below;
         private BlockData data;
         private boolean failNextWrite;
 
         private FakeBlock(Material material) {
+            this(material, null);
+        }
+
+        private FakeBlock(Material material, Block below) {
             this.data = material.createBlockData();
+            this.below = below;
         }
 
         private void externalSet(Material material) {
             this.data = material.createBlockData();
+        }
+
+        private void externalSet(BlockData data) {
+            this.data = data.clone();
         }
 
         private void failNextWrite() {
@@ -496,7 +565,7 @@ class TempBlockLifecycleTest {
 
         @Override
         public Block getRelative(BlockFace face) {
-            return this;
+            return face == BlockFace.DOWN && below != null ? below : this;
         }
     }
 
