@@ -211,7 +211,7 @@ public final class CommonPlayerListenerCore {
             maxSpeed = Math.min(maxSpeed, airMaxSpeed);
         }
 
-        final double upperMaxSpeed = maxSpeed + 0.01;
+        final double upperMaxSpeed = maxSpeed + 0.05;
         // Vanilla flight reaches the server as position updates; Paper and a
         // dedicated Fabric server do not mirror that self-propelled movement
         // into Entity#getVelocity. Use observed displacement there only for
