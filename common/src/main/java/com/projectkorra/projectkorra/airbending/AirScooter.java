@@ -22,6 +22,12 @@ import java.util.Random;
 
 public class AirScooter extends AirAbility {
 
+    private static final int TERRAIN_PROFILE_SAMPLES = 5;
+    private static final int TERRAIN_STEP_RANGE = 1;
+    private static final double TERRAIN_LOOK_AHEAD_TICKS = 3.0;
+    private static final double MIN_TERRAIN_LOOK_AHEAD = 1.25;
+    private static final double MAX_TERRAIN_LOOK_AHEAD = 3.0;
+
     public boolean stunned;
     private long stunCooldown;
     @Attribute(Attribute.SPEED)
@@ -268,7 +274,8 @@ public class AirScooter extends AirAbility {
          * Checks for how far the ground is away from the player it elevates or
          * lowers the player based on their distance from the ground.
          */
-        final double distance = this.player.getLocation().getY() - this.floorblock.getY();
+        final double playerY = this.player.getLocation().getY();
+        final double distance = playerY - this.floorblock.getY();
         if (this.oldScooter) {
             final double dx = Math.abs(distance - this.midHeight);
             if (distance > this.maxHeight) {
@@ -278,17 +285,11 @@ public class AirScooter extends AirAbility {
             } else {
                 velocity.setY(0);
             }
+            this.applyLegacyTerrainImpulse(velocity);
         } else {
-            final double delta = this.midHeight - distance;
-            velocity.setY(GeneralMethods.clamp(this.strength * delta, -1, 0.5));
-        }
-
-        final Vector v = velocity.clone().setY(0);
-        final Block b = this.floorblock.getLocation().clone().add(v.multiply(1.2)).getBlock();
-        if (!GeneralMethods.isSolid(b) && !ElementalAbility.isWater(b)) {
-            velocity.add(new Vector(0, -0.1, 0));
-        } else if (GeneralMethods.isSolid(b.getRelative(BlockFace.UP)) || ElementalAbility.isWater(b.getRelative(BlockFace.UP))) {
-            velocity.add(new Vector(0, 0.7, 0));
+            final double smoothedFloorY = this.getSmoothedTerrainHeight(velocity);
+            velocity.setY(AirScooterTerrain.verticalVelocity(
+                    playerY, smoothedFloorY, this.midHeight, this.strength));
         }
 
         final Location loc = this.player.getLocation();
@@ -309,6 +310,65 @@ public class AirScooter extends AirAbility {
         if (this.random.nextInt(4) == 0) {
             playAirbendingSound(this.player.getLocation());
         }
+    }
+
+    /** Keeps the original step impulses exclusive to legacy AirScooter mode. */
+    private void applyLegacyTerrainImpulse(final Vector velocity) {
+        final Vector horizontal = velocity.clone().setY(0);
+        final Block ahead = this.floorblock.getLocation().clone().add(horizontal.multiply(1.2)).getBlock();
+        if (!isScooterFloor(ahead)) {
+            velocity.add(new Vector(0, -0.1, 0));
+        } else if (isScooterFloor(ahead.getRelative(BlockFace.UP))) {
+            velocity.add(new Vector(0, 0.7, 0));
+        }
+    }
+
+    /**
+     * Samples a short strip of terrain in front of modern AirScooter. Averaging
+     * the surface heights turns a one-block edge into a gradual virtual ramp,
+     * which the existing proportional spring can follow without a fixed jolt.
+     */
+    private double getSmoothedTerrainHeight(final Vector horizontalVelocity) {
+        final double currentFloorY = this.floorblock.getY();
+        final double[] profile = new double[TERRAIN_PROFILE_SAMPLES];
+        profile[0] = currentFloorY;
+
+        final Vector direction = horizontalVelocity.clone().setY(0);
+        final double horizontalSpeed = direction.length();
+        if (horizontalSpeed <= 1.0E-9) return currentFloorY;
+        direction.normalize();
+
+        final double lookAhead = GeneralMethods.clamp(
+                horizontalSpeed * TERRAIN_LOOK_AHEAD_TICKS,
+                MIN_TERRAIN_LOOK_AHEAD,
+                MAX_TERRAIN_LOOK_AHEAD);
+        final Location sampleOrigin = this.player.getLocation().clone();
+        sampleOrigin.setY(currentFloorY);
+
+        for (int index = 1; index < TERRAIN_PROFILE_SAMPLES; index++) {
+            final double distance = lookAhead * index / (TERRAIN_PROFILE_SAMPLES - 1.0);
+            final Block column = sampleOrigin.clone().add(direction.clone().multiply(distance)).getBlock();
+            final Block surface = this.findNearbySurface(column);
+            profile[index] = surface == null ? currentFloorY : surface.getY();
+        }
+        return AirScooterTerrain.averageHeight(profile);
+    }
+
+    private Block findNearbySurface(final Block column) {
+        for (int offset = TERRAIN_STEP_RANGE; offset >= -TERRAIN_STEP_RANGE; offset--) {
+            final Block candidate = offset > 0
+                    ? column.getRelative(BlockFace.UP, offset)
+                    : offset < 0 ? column.getRelative(BlockFace.DOWN, -offset) : column;
+            if (isScooterFloor(candidate)
+                    && !isScooterFloor(candidate.getRelative(BlockFace.UP))) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private static boolean isScooterFloor(final Block block) {
+        return block != null && (GeneralMethods.isSolid(block) || ElementalAbility.isWater(block));
     }
 
     private boolean consumeStamina() {
