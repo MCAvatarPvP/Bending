@@ -34,7 +34,7 @@ public class JetBlaze extends FireAbility implements ComboAbility, EntityHitboxP
     private double fireTicks;
     private Vector direction;
     private ArrayList<LivingEntity> affectedEntities;
-    private ArrayList<FireComboStream> tasks;
+    private ArrayList<ParticleStream> tasks;
     @Attribute(Attribute.DURATION)
     private long duration;
     private int firstParticleAmount, secondParticleAmount;
@@ -96,7 +96,7 @@ public class JetBlaze extends FireAbility implements ComboAbility, EntityHitboxP
             fj.setDuration(this.duration);
             fj.setParticleAmount(firstParticleAmount);
 
-            final FireComboStream fs = new FireComboStream(this.player, this, this.direction, this.player.getLocation(), 5, 1);
+            final ParticleStream fs = new ParticleStream(this.player, this, this.direction, this.player.getLocation(), 5, 1);
             fs.setDensity(secondParticleAmount);
             fs.setSpread(1.0F);
             fs.setUseNewParticles(true);
@@ -114,7 +114,7 @@ public class JetBlaze extends FireAbility implements ComboAbility, EntityHitboxP
 
     @Override
     public void remove() {
-        for (final FireComboStream task : this.tasks) {
+        for (final ParticleStream task : this.tasks) {
             task.remove();
         }
         super.remove();
@@ -144,7 +144,7 @@ public class JetBlaze extends FireAbility implements ComboAbility, EntityHitboxP
     @Override
     public List<Location> getEntityHitLocations() {
         final List<Location> locations = new ArrayList<>();
-        for (final FireComboStream task : this.tasks) {
+        for (final ParticleStream task : this.tasks) {
             if (!task.isCancelled() && task.getLocation() != null) {
                 locations.add(task.getLocation().clone());
             }

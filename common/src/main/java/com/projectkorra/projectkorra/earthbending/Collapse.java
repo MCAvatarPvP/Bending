@@ -44,7 +44,7 @@ public class Collapse extends EarthAbility {
         if (this.block == null) {
             return;
         }
-        if (!RaiseEarth.blockInWallAffectedBlocks(this.block)) {
+        if (!RaiseEarth.blockInRaisedAffectedBlocks(this.block)) {
             return;
         }
 
@@ -68,7 +68,7 @@ public class Collapse extends EarthAbility {
         this.origin = origin;
         this.player = player;
         this.block = origin.getBlock();
-        if (!RaiseEarth.blockInWallAffectedBlocks(this.block)) {
+        if (!RaiseEarth.blockInRaisedAffectedBlocks(this.block)) {
             return;
         }
         this.location = origin.clone();
@@ -117,7 +117,7 @@ public class Collapse extends EarthAbility {
             if (RaiseEarth.blockInAllAffectedBlocks(thisBlock)) {
                 RaiseEarth.revertAffectedBlock(thisBlock);
             }
-            RaiseEarth.revertWallAffectedBlock(thisBlock);
+            RaiseEarth.revertRaisedAffectedBlock(thisBlock);
         }
     }
 

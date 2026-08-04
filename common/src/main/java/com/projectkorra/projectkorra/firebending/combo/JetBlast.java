@@ -27,7 +27,7 @@ public class JetBlast extends FireAbility implements ComboAbility {
     @Attribute(Attribute.SPEED)
     @DayNightFactor
     private double speed;
-    private ArrayList<FireComboStream> tasks;
+    private ArrayList<ParticleStream> tasks;
     @Attribute(Attribute.DURATION)
     @DayNightFactor
     private long duration;
@@ -76,7 +76,7 @@ public class JetBlast extends FireAbility implements ComboAbility {
         }
 
         Vector streamDir = this.player.getVelocity().multiply(-1);
-        final FireComboStream fs = new FireComboStream(this.player, this, streamDir, this.player.getLocation(), 3, 0.5);
+        final ParticleStream fs = new ParticleStream(this.player, this, streamDir, this.player.getLocation(), 3, 0.5);
         fs.setDensity(1);
         fs.setSpread(0.9F);
         fs.setUseNewParticles(true);
@@ -91,7 +91,7 @@ public class JetBlast extends FireAbility implements ComboAbility {
             this.fireJet.remove();
         }
 
-        for (final FireComboStream task : this.tasks) {
+        for (final ParticleStream task : this.tasks) {
             task.remove();
         }
         super.remove();

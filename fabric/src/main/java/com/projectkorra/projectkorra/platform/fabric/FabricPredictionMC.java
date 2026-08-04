@@ -30,6 +30,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.EntityType;
 import com.projectkorra.projectkorra.platform.mc.entity.FallingBlock;
 import com.projectkorra.projectkorra.platform.mc.entity.Fireball;
 import com.projectkorra.projectkorra.platform.mc.entity.Item;
+import com.projectkorra.projectkorra.platform.mc.entity.ItemDisplay;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.entity.Projectile;
@@ -80,6 +81,7 @@ import net.minecraft.entity.projectile.ShulkerBulletEntity;
 import net.minecraft.entity.projectile.SmallFireballEntity;
 import net.minecraft.entity.projectile.thrown.SnowballEntity;
 import net.minecraft.item.Items;
+import net.minecraft.item.ItemDisplayContext;
 import net.minecraft.particle.ParticleEffect;
 import net.minecraft.particle.ParticleTypes;
 import net.minecraft.particle.TintedParticleEffect;
@@ -145,6 +147,7 @@ public final class FabricPredictionMC {
         if (entity instanceof ItemEntity item) return new ClientItem(item);
         if (entity instanceof ArmorStandEntity stand) return new ClientArmorStand(stand);
         if (entity instanceof DisplayEntity.BlockDisplayEntity display) return new ClientBlockDisplay(display);
+        if (entity instanceof DisplayEntity.ItemDisplayEntity display) return new ClientItemDisplay(display);
         if (entity instanceof ShulkerBulletEntity bullet) return new ClientShulkerBullet(bullet);
         if (entity instanceof SmallFireballEntity fireball) return new ClientFireball(fireball);
         if (entity instanceof SnowballEntity snowball) return new ClientSnowball(snowball);
@@ -366,6 +369,14 @@ public final class FabricPredictionMC {
                 value.addEntity(entity);
                 ExactPredictionRuntime.trackSpawn(entity);
                 return type.cast(new ClientBlockDisplay(entity));
+            }
+            if (type == ItemDisplay.class) {
+                DisplayEntity.ItemDisplayEntity entity = new DisplayEntity.ItemDisplayEntity(
+                        net.minecraft.entity.EntityType.ITEM_DISPLAY, value);
+                entity.refreshPositionAndAngles(location.getX(), location.getY(), location.getZ(), location.getYaw(), location.getPitch());
+                value.addEntity(entity);
+                ExactPredictionRuntime.trackSpawn(entity);
+                return type.cast(new ClientItemDisplay(entity));
             }
             if (type == ShulkerBullet.class) {
                 ShulkerBulletEntity entity = new ShulkerBulletEntity(
@@ -925,6 +936,7 @@ public final class FabricPredictionMC {
         }
         @Override public void setGravity(boolean gravity) { value.setNoGravity(!gravity); }
         @Override public void setSilent(boolean silent) { value.setSilent(silent); }
+        @Override public void setInvulnerable(boolean invulnerable) { value.setInvulnerable(invulnerable); }
         @Override public void setBrightness(Display.Brightness brightness) {
             value.setBrightness(brightness == null ? null : new net.minecraft.entity.decoration.Brightness(brightness.blockLight(), brightness.skyLight()));
         }
@@ -942,6 +954,70 @@ public final class FabricPredictionMC {
         @Override public void setInterpolationDuration(int duration) { value.setInterpolationDuration(duration); }
         @Override public void setTeleportDuration(int duration) { value.setTeleportDuration(duration); }
         @Override public void setViewRange(float range) { value.setViewRange(range); }
+        @Override public Object handle() { return value; }
+        @Override public Object nativeHandle() { return value; }
+    }
+
+    private static final class ClientItemDisplay extends ItemDisplay implements ClientBacked {
+        private final DisplayEntity.ItemDisplayEntity value;
+
+        private ClientItemDisplay(DisplayEntity.ItemDisplayEntity value) {
+            this.value = value;
+        }
+
+        @Override public UUID getUniqueId() { return value.getUuid(); }
+        @Override public Location getLocation() { return location((ClientWorld) value.getEntityWorld(), value.getEntityPos(), value.getYaw(), value.getPitch()); }
+        @Override public World getWorld() { return world((ClientWorld) value.getEntityWorld()); }
+        @Override public Vector getVelocity() { return commonVector(value.getVelocity()); }
+        @Override public void setVelocity(Vector velocity) { ExactPredictionRuntime.setPredictedVelocity(value, nativeVector(velocity)); }
+        @Override public void remove() { value.discard(); }
+        @Override public boolean isDead() { return !value.isAlive(); }
+        @Override public boolean isValid() { return !value.isRemoved(); }
+        @Override public int getEntityId() { return value.getId(); }
+        @Override public boolean teleport(Location location) {
+            if (location == null || location.getWorld() == null
+                    || location.getWorld().handle() != value.getEntityWorld()) return false;
+            if (value.getTeleportDuration() > 0) {
+                value.getInterpolator().setLerpDuration(value.getTeleportDuration());
+                value.getInterpolator().refreshPositionAndAngles(
+                        new Vec3d(location.getX(), location.getY(), location.getZ()),
+                        location.getYaw(), location.getPitch());
+            } else {
+                value.refreshPositionAndAngles(location.getX(), location.getY(), location.getZ(),
+                        location.getYaw(), location.getPitch());
+            }
+            return true;
+        }
+        @Override public void setGravity(boolean gravity) { value.setNoGravity(!gravity); }
+        @Override public void setSilent(boolean silent) { value.setSilent(silent); }
+        @Override public void setInvulnerable(boolean invulnerable) { value.setInvulnerable(invulnerable); }
+        @Override public void setBrightness(Display.Brightness brightness) {
+            value.setBrightness(brightness == null ? null : new net.minecraft.entity.decoration.Brightness(brightness.blockLight(), brightness.skyLight()));
+        }
+        @Override public void setTransformation(Transformation transformation) {
+            value.setTransformation(new AffineTransformation(transformation.translation(),
+                    transformation.leftRotation(), transformation.scale(), transformation.rightRotation()));
+        }
+        @Override public void setBillboard(Display.Billboard billboard) {
+            value.setBillboardMode(DisplayEntity.BillboardMode.valueOf(billboard.name()));
+        }
+        @Override public void setShadowRadius(float radius) { value.setShadowRadius(radius); }
+        @Override public void setShadowStrength(float strength) { value.setShadowStrength(strength); }
+        @Override public void setInterpolationDelay(int delay) { value.setStartInterpolation(delay); }
+        @Override public void setInterpolationDuration(int duration) { value.setInterpolationDuration(duration); }
+        @Override public void setTeleportDuration(int duration) { value.setTeleportDuration(duration); }
+        @Override public void setViewRange(float range) { value.setViewRange(range); }
+        @Override public ItemStack getItemStack() { return new ItemStack(Material.PLAYER_HEAD); }
+        @Override public void setItemStack(ItemStack item) { value.setItemStack(FabricMC.itemStack(item)); }
+        @Override public void setItemDisplayTransform(ItemDisplayTransform transform) {
+            value.setItemDisplayContext(switch (transform) {
+                case THIRDPERSON_LEFTHAND -> ItemDisplayContext.THIRD_PERSON_LEFT_HAND;
+                case THIRDPERSON_RIGHTHAND -> ItemDisplayContext.THIRD_PERSON_RIGHT_HAND;
+                case FIRSTPERSON_LEFTHAND -> ItemDisplayContext.FIRST_PERSON_LEFT_HAND;
+                case FIRSTPERSON_RIGHTHAND -> ItemDisplayContext.FIRST_PERSON_RIGHT_HAND;
+                default -> ItemDisplayContext.valueOf(transform.name());
+            });
+        }
         @Override public Object handle() { return value; }
         @Override public Object nativeHandle() { return value; }
     }

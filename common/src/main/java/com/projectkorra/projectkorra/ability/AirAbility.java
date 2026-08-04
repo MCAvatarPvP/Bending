@@ -165,6 +165,19 @@ public abstract class AirAbility extends ElementalAbility {
         playAirbendingSound(loc, pitch);
     }
 
+    /**
+     * Plays the Airbending Sound at a location if enabled in the config. But it's the faster version!
+     *
+     * @param loc The location to play the sound at
+     */
+    public static void playFastAirbendingSound(final Location loc) {
+        playAirbendingSound(loc, 1.5f);
+    }
+
+    public static void playCompressedAir(final Location loc) {
+        loc.getWorld().playSound(loc, Sound.ENTITY_BREEZE_LAND, 1f, 1f);
+    }
+
     public static void playAirbendingSound(final Location loc, float pitch) {
         if (ConfigManager.getConfig().getBoolean("Properties.Air.PlaySound")) {
             final float volume = (float) ConfigManager.getConfig().getDouble("Properties.Air.Sound.Volume");

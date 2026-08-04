@@ -4,6 +4,7 @@ import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.inventory.meta.ItemMeta;
 import com.projectkorra.projectkorra.platform.mc.inventory.meta.LeatherArmorMeta;
 import com.projectkorra.projectkorra.platform.mc.inventory.meta.PotionMeta;
+import com.projectkorra.projectkorra.platform.mc.inventory.meta.SkullMeta;
 
 public class ItemStack implements Cloneable {
     private Material type;
@@ -54,7 +55,9 @@ public class ItemStack implements Cloneable {
 
     public ItemMeta getItemMeta() {
         if (meta == null) {
-            meta = type == Material.POTION ? new PotionMeta() : new LeatherArmorMeta();
+            meta = type == Material.POTION
+                    ? new PotionMeta()
+                    : type == Material.PLAYER_HEAD ? new SkullMeta() : new LeatherArmorMeta();
         }
         return meta;
     }

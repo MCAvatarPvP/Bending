@@ -367,7 +367,7 @@ public abstract class EarthAbility extends ElementalAbility {
     }
 
     private static Information retireMovedEarth(final Block block) {
-        RaiseEarth.revertWallAffectedBlock(block);
+        RaiseEarth.revertRaisedAffectedBlock(block);
         return MOVED_EARTH.remove(block);
     }
 
@@ -484,7 +484,7 @@ public abstract class EarthAbility extends ElementalAbility {
         if (isEarthRevertOn()) {
             removeAllEarthbendedBlocks();
         }
-        RaiseEarth.clearWallBlocks();
+        RaiseEarth.clearPersistentBlocks();
     }
 
     /**
@@ -712,11 +712,11 @@ public abstract class EarthAbility extends ElementalAbility {
     public void moveEarthBlock(final Block source, final Block target) {
         Information info;
 
-        // Moving a registered RaiseEarthWall coordinate consumes that exact
-        // wall position. RaiseEarth itself re-registers the newly raised
+        // Moving a registered RaiseEarth coordinate consumes that exact
+        // structure position. RaiseEarth itself re-registers its current
         // coordinates after each movement step; other moves intentionally
         // invalidate Collapse eligibility for the altered coordinate.
-        RaiseEarth.revertWallAffectedBlock(source);
+        RaiseEarth.revertRaisedAffectedBlock(source);
         if (MOVED_EARTH.containsKey(source)) {
             info = MOVED_EARTH.get(source);
             MOVED_EARTH.remove(source);

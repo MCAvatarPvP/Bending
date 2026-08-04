@@ -547,7 +547,7 @@ public abstract class CoreAbility implements Ability {
                     addon.load();
                 }
 
-                ABILITIES_BY_NAME.put(name.toLowerCase(), coreAbil);
+                indexAbilityName(name, coreAbil);
                 ABILITIES_BY_CLASS_NAME.put(coreAbil.getClass().getSimpleName(), coreAbil);
                 ABILITIES_BY_CLASS.put(coreAbil.getClass(), coreAbil);
 
@@ -647,7 +647,7 @@ public abstract class CoreAbility implements Ability {
 
             try {
                 addon.load();
-                ABILITIES_BY_NAME.put(name.toLowerCase(), coreAbil);
+                indexAbilityName(name, coreAbil);
                 ABILITIES_BY_CLASS_NAME.put(coreAbil.getClass().getSimpleName(), coreAbil);
                 ABILITIES_BY_CLASS.put(coreAbil.getClass(), coreAbil);
 
@@ -709,6 +709,22 @@ public abstract class CoreAbility implements Ability {
 
     public static long getCurrentTick() {
         return currentTick;
+    }
+
+    /**
+     * Indexes an ability by its public bind name.
+     *
+     * <p>Bundled and external addons are allowed to replace a same-named core
+     * ability, but a later core package scan must not replace that override.
+     * This matters for names such as LavaSurge, whose old core implementation
+     * remains hidden while the bundled ProjectAddons implementation is the
+     * public, bindable ability.</p>
+     */
+    private static void indexAbilityName(final String name, final CoreAbility ability) {
+        ABILITIES_BY_NAME.compute(name.toLowerCase(), (ignored, existing) ->
+                existing instanceof AddonAbility && !(ability instanceof AddonAbility)
+                        ? existing
+                        : ability);
     }
 
     /**

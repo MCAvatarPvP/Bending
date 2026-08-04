@@ -216,7 +216,7 @@ public class EarthShot extends EarthAbility implements AddonAbility {
             }
         }
         projectile = new BendingFallingBlock(block.getLocation().add(0.5, 0, 0.5), data, new Vector(0, 0.65, 0), this, false);
-        if (!isLava(block)) source = new TempBlock(block, Material.AIR);
+        if (!isLava(block)) source = new TempBlock(block, Material.AIR.createBlockData(), this);
         location = block.getLocation();
         return true;
     }
@@ -249,7 +249,8 @@ public class EarthShot extends EarthAbility implements AddonAbility {
     public void handleSource() {
         if (ready) return;
         if (projectile.getFallingBlock().getLocation().getBlockY() >= origin.getBlockY() + 2) {
-            readySource = new TempBlock(projectile.getFallingBlock().getLocation().getBlock(), projectile.getFallingBlock().getBlockData());
+            readySource = new TempBlock(projectile.getFallingBlock().getLocation().getBlock(),
+                    projectile.getFallingBlock().getBlockData(), this);
             projectile.remove();
             getPreventEarthbendingBlocks().add(readySource.getBlock());
             location = readySource.getLocation();

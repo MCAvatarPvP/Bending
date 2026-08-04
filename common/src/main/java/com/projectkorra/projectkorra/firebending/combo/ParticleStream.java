@@ -36,8 +36,20 @@ import java.util.Random;
  * stream for all their progress methods. If someone else was reliant on that,
  * they can use this ability instead.
  */
-@Deprecated
-public class FireComboStream extends BukkitRunnable {
+public class ParticleStream extends BukkitRunnable {
+    /**
+     * Maximum distance, in blocks, between particles when dynamic subdivision
+     * is enabled. At 0.20, a stream moving 4 blocks per tick creates 20
+     * interpolated segments for that tick.
+     */
+    private static final double DEFAULT_DYNAMIC_SUB_LOCATION_SPACING = 0.55;
+
+    /**
+     * Prevents extreme configured speeds from producing an excessive number
+     * of particles in one tick.
+     */
+    private static final int DEFAULT_MAX_DYNAMIC_SUB_LOCATIONS = 16;
+
     private final double speed;
     private final double distance;
     private final Player player;
@@ -58,14 +70,18 @@ public class FireComboStream extends BukkitRunnable {
     private int checkCollisionCounter;
     private float spread;
     private double collisionRadius;
-    private boolean wasUpdated;
     private int subLocations;
     private double damage;
     private double fireTicks;
     private double knockback;
     private final Random gameplayRandom;
+    private boolean dynamicSubLocation;
+    private double dynamicSubLocationSpacing;
+    private int maxDynamicSubLocations;
+    private boolean emittedInitialParticle;
+    private boolean reachedRange;
 
-    public FireComboStream(final Player player, final CoreAbility coreAbility, final Vector direction, final Location location, final double distance, final double speed) {
+    public ParticleStream(final Player player, final CoreAbility coreAbility, final Vector direction, final Location location, final double distance, final double speed) {
         this.useNewParticles = false;
         this.cancelled = false;
         this.collides = true;
@@ -78,6 +94,11 @@ public class FireComboStream extends BukkitRunnable {
         this.spread = 0;
         this.collisionRadius = 2;
         this.subLocations = 0;
+        this.dynamicSubLocation = false;
+        this.dynamicSubLocationSpacing = DEFAULT_DYNAMIC_SUB_LOCATION_SPACING;
+        this.maxDynamicSubLocations = DEFAULT_MAX_DYNAMIC_SUB_LOCATIONS;
+        this.emittedInitialParticle = false;
+        this.reachedRange = false;
         this.player = player;
         this.bPlayer = BendingPlayer.getBendingPlayer(player);
         this.particleEffect = bPlayer.canUseSubElement(SubElement.BLUE_FIRE) ? ParticleEffect.SOUL_FIRE_FLAME : ParticleEffect.FLAME;
@@ -95,76 +116,276 @@ public class FireComboStream extends BukkitRunnable {
 
     @Override
     public void run() {
+        /*
+         * Keep the stream alive for one scheduler interval after placing its
+         * final point. This lets owning abilities such as AirSweep observe and
+         * collision-check the exact final segment before the task disappears.
+         */
+        if (this.reachedRange) {
+            this.remove();
+            return;
+        }
+
+        if (!Double.isFinite(this.distance)
+                || this.distance < 0
+                || !Double.isFinite(this.speed)
+                || !Double.isFinite(this.collisionRadius)) {
+            this.remove();
+            return;
+        }
+
         final Block block = this.location.getBlock();
 
-        if (RegionProtection.isRegionProtected(this.player, this.location, coreAbility)) {
+        if (RegionProtection.isRegionProtected(
+                this.player,
+                this.location,
+                this.coreAbility
+        )) {
             this.remove();
             return;
         }
 
-        if ((goThroughWater && ElementalAbility.isWater(block) && !FireAbility.canPassThroughWater(block)) && !ElementalAbility.isAir(block.getRelative(BlockFace.UP).getType()) && !ElementalAbility.isPlant(block)) {
+        if ((this.goThroughWater
+                && ElementalAbility.isWater(block)
+                && !FireAbility.canPassThroughWater(block))
+                && !ElementalAbility.isAir(
+                block.getRelative(BlockFace.UP).getType()
+        )
+                && !ElementalAbility.isPlant(block)) {
             this.remove();
             return;
-        }
-
-        Location loc = location.clone();
-        int subLocations = wasUpdated ? this.subLocations : 0;
-        Vector subLocationDir = direction.clone().normalize().multiply(speed / subLocations);
-        final boolean displayParticles = this.particlesVisible;
-        for (int step = 0; step < subLocations + 1; step++) {
-            if (displayParticles) {
-                if (this.useNewParticles) {
-                    if (coreAbility instanceof FireAbility && (particleEffect == ParticleEffect.FLAME || particleEffect == ParticleEffect.SOUL_FIRE_FLAME)) {
-                        FireAbility fa = (FireAbility) coreAbility;
-                        fa.playFirebendingParticles(loc, this.density, this.spread, this.spread, this.spread);
-                    } else if (coreAbility instanceof AirAbility && (particleEffect == ParticleEffect.SPELL)) {
-                        AirAbility aa = (AirAbility) coreAbility;
-                        aa.playAirbendingParticles(loc, this.density, this.spread, this.spread, this.spread);
-                    } else {
-                        this.particleEffect.display(loc, this.density, this.spread, this.spread, this.spread);
-                    }
-                } else {
-                    for (int i = 0; i < this.density; i++) {
-                        loc.getWorld().playEffect(loc, Effect.MOBSPAWNER_FLAMES, 0, 15);
-                    }
-                }
-            }
-            loc.subtract(subLocationDir);
         }
 
         if (this.coreAbility.getElement() == Element.FIRE) {
-            emitFirebendingLight(this.location);
+            this.emitFirebendingLight(this.location);
         }
 
-        if (GeneralMethods.checkDiagonalWall(this.location, this.direction)) {
+        if (GeneralMethods.checkDiagonalWall(
+                this.location,
+                this.direction
+        )) {
             this.remove();
             return;
         }
 
         final Location previousLocation = this.location.clone();
-        this.location.add(this.direction.normalize().multiply(this.speed));
-        this.wasUpdated = true;
+
+        /*
+         * The old implementation always moved by the complete speed and only
+         * checked the range afterward. Therefore the final rendered segment
+         * could extend beyond the configured range by almost one full tick of
+         * movement.
+         */
+        final double travelledDistance =
+                this.initialLocation.distance(previousLocation);
+        final double remainingDistance =
+                this.distance - travelledDistance;
+
+        if (remainingDistance <= 1.0E-9) {
+            this.reachedRange = true;
+            return;
+        }
+
+        final double configuredStepDistance = Math.abs(this.speed);
+
+        if (configuredStepDistance <= 1.0E-9) {
+            this.remove();
+            return;
+        }
+
+        /*
+         * Clamp the last tick to the exact amount of range remaining.
+         */
+        final double movementDistance = Math.min(
+                configuredStepDistance,
+                remainingDistance
+        );
+
+        final Vector movement = this.direction.clone()
+                .normalize()
+                .multiply(movementDistance);
+
+        final Location nextLocation =
+                previousLocation.clone().add(movement);
 
         try {
-            this.location.checkFinite();
+            nextLocation.checkFinite();
         } catch (IllegalArgumentException e) {
             this.remove();
             return;
         }
 
-        if (this.initialLocation.distanceSquared(this.location) > this.distance * this.distance || !Double.isFinite(this.collisionRadius)) {
-            this.remove();
-            return;
-        } else if (this.collides && this.checkCollisionCounter % this.checkCollisionDelay == 0) {
+        /*
+         * Only the clamped segment is displayed, so no interpolated particle
+         * anchor can be farther than distance blocks from initialLocation.
+         */
+        this.displayParticleSegment(
+                previousLocation,
+                nextLocation
+        );
+
+        this.location.add(movement);
+
+        /*
+         * Do collision work at the exact clamped endpoint before marking the
+         * stream for removal on its next scheduler run.
+         */
+        if (this.collides
+                && this.checkCollisionCounter
+                % this.checkCollisionDelay == 0) {
             this.checkEntityCollisions(previousLocation);
-            for (Block b : GeneralMethods.getBlocksAroundPoint(this.location, this.collisionRadius)) {
-                FireAbility.dryWetBlocks(b, this.coreAbility, this.gameplayRandom.nextInt(5) == 0);
+
+            for (final Block nearbyBlock
+                    : GeneralMethods.getBlocksAroundPoint(
+                    this.location,
+                    this.collisionRadius
+            )) {
+                FireAbility.dryWetBlocks(
+                        nearbyBlock,
+                        this.coreAbility,
+                        this.gameplayRandom.nextInt(5) == 0
+                );
             }
         }
 
         this.checkCollisionCounter++;
+
+        this.reachedRange =
+                movementDistance >= remainingDistance - 1.0E-9;
+
         if (this.singlePoint) {
             this.remove();
+        }
+    }
+
+    /**
+     * Renders particles over the complete movement segment for the current
+     * tick.
+     *
+     * In fixed mode, {@link #subLocations} is used directly.
+     *
+     * In dynamic mode, the subdivision count is calculated from:
+     *
+     *     ceil(distanceTravelled / dynamicSubLocationSpacing)
+     *
+     * This makes the particle spacing independent of stream speed.
+     */
+    private void displayParticleSegment(
+            final Location start,
+            final Location end
+    ) {
+        if (!this.particlesVisible) {
+            return;
+        }
+
+        final Vector displacement = end.toVector().subtract(start.toVector());
+        final double segmentLength = displacement.length();
+        final int subdivisions = this.resolveSubLocations(segmentLength);
+
+        if (segmentLength <= 1.0E-9) {
+            this.displayParticle(start);
+            this.emittedInitialParticle = true;
+            return;
+        }
+
+        /*
+         * Preserve legacy behavior: zero fixed subdivisions means one visible
+         * particle at the stream's new position every tick.
+         */
+        if (subdivisions <= 0) {
+            this.displayParticle(end);
+            this.emittedInitialParticle = true;
+            return;
+        }
+
+        final Vector step = displacement.multiply(1.0 / subdivisions);
+        final Location particleLocation = start.clone();
+
+        /*
+         * The previous tick already emitted this segment's starting endpoint.
+         * Skip that duplicate after the first segment. This lowers the particle
+         * count without creating a visual gap between ticks.
+         */
+        final int firstIndex = this.emittedInitialParticle ? 1 : 0;
+        if (firstIndex == 1) {
+            particleLocation.add(step);
+        }
+
+        for (int index = firstIndex; index <= subdivisions; index++) {
+            this.displayParticle(particleLocation);
+            particleLocation.add(step);
+        }
+
+        this.emittedInitialParticle = true;
+    }
+
+    /**
+     * Resolves how many particle subdivisions should be used for one movement
+     * segment.
+     */
+    private int resolveSubLocations(final double segmentLength) {
+        if (!this.dynamicSubLocation) {
+            return Math.max(0, this.subLocations);
+        }
+
+        if (!Double.isFinite(segmentLength) || segmentLength <= 1.0E-9) {
+            return 0;
+        }
+
+        final int calculated = (int) Math.ceil(
+                segmentLength / this.dynamicSubLocationSpacing
+        );
+
+        return Math.min(
+                this.maxDynamicSubLocations,
+                Math.max(1, calculated)
+        );
+    }
+
+    /**
+     * Emits this stream's configured particle at one interpolated location.
+     */
+    private void displayParticle(final Location location) {
+        if (this.useNewParticles) {
+            if (this.coreAbility instanceof FireAbility
+                    && (this.particleEffect == ParticleEffect.FLAME
+                    || this.particleEffect == ParticleEffect.SOUL_FIRE_FLAME)) {
+                final FireAbility fireAbility = (FireAbility) this.coreAbility;
+                fireAbility.playFirebendingParticles(
+                        location,
+                        this.density,
+                        this.spread,
+                        this.spread,
+                        this.spread
+                );
+            } else if (this.coreAbility instanceof AirAbility
+                    && this.particleEffect == ParticleEffect.SPELL) {
+                final AirAbility airAbility = (AirAbility) this.coreAbility;
+                airAbility.playAirbendingParticles(
+                        location,
+                        this.density,
+                        this.spread,
+                        this.spread,
+                        this.spread
+                );
+            } else {
+                this.particleEffect.display(
+                        location,
+                        this.density,
+                        this.spread,
+                        this.spread,
+                        this.spread
+                );
+            }
+        } else {
+            for (int index = 0; index < this.density; index++) {
+                location.getWorld().playEffect(
+                        location,
+                        Effect.MOBSPAWNER_FLAMES,
+                        0,
+                        15
+                );
+            }
         }
     }
 
@@ -272,8 +493,32 @@ public class FireComboStream extends BukkitRunnable {
         this.collisionRadius = radius;
     }
 
-    public void setSubLocations(int subLocations) {
-        this.subLocations = subLocations;
+    public void setSubLocations(final int subLocations) {
+        this.subLocations = Math.max(0, subLocations);
+    }
+
+    public void setDynamicSubLocation(final boolean dynamicSubLocation) {
+        if (this.dynamicSubLocation != dynamicSubLocation) {
+            this.emittedInitialParticle = false;
+        }
+        this.dynamicSubLocation = dynamicSubLocation;
+    }
+
+    /**
+     * Sets the maximum physical distance between interpolated particles while
+     * dynamic subdivision is enabled. Larger values emit fewer particles.
+     */
+    public void setDynamicSubLocationSpacing(final double spacing) {
+        if (!Double.isFinite(spacing) || spacing <= 0) {
+            throw new IllegalArgumentException(
+                    "Dynamic sub-location spacing must be finite and greater than zero."
+            );
+        }
+        this.dynamicSubLocationSpacing = spacing;
+    }
+
+    public void setMaxDynamicSubLocations(final int maximum) {
+        this.maxDynamicSubLocations = Math.max(1, maximum);
     }
 
     public void setDensity(final int density) {

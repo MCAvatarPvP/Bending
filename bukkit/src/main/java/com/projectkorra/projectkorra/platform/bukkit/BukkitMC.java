@@ -22,6 +22,7 @@ import com.projectkorra.projectkorra.platform.mc.inventory.PlayerInventory;
 import com.projectkorra.projectkorra.platform.mc.inventory.meta.ItemMeta;
 import com.projectkorra.projectkorra.platform.mc.inventory.meta.LeatherArmorMeta;
 import com.projectkorra.projectkorra.platform.mc.inventory.meta.PotionMeta;
+import com.projectkorra.projectkorra.platform.mc.inventory.meta.SkullMeta;
 import com.projectkorra.projectkorra.platform.mc.metadata.FixedMetadataValue;
 import com.projectkorra.projectkorra.platform.mc.metadata.MetadataValue;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionData;
@@ -55,6 +56,9 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.projectiles.ProjectileSource;
 import org.bukkit.scoreboard.Score;
 
+import java.net.MalformedURLException;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
@@ -241,6 +245,9 @@ public final class BukkitMC {
         if (value instanceof org.bukkit.entity.ShulkerBullet bullet) return shulkerBullet(bullet);
         if (value instanceof org.bukkit.entity.Snowball snowball) return snowball(snowball);
         if (value instanceof org.bukkit.entity.Arrow arrow) return arrow(arrow);
+        if (value instanceof org.bukkit.entity.BlockDisplay display) return new BlockDisplayView(display);
+        if (value instanceof org.bukkit.entity.ItemDisplay display) return new ItemDisplayView(display);
+        if (value instanceof org.bukkit.entity.Display display) return new DisplayView(display);
         if (value instanceof org.bukkit.entity.Item item) return itemEntity(item);
         return value == null ? null : ENTITIES.computeIfAbsent(value.getUniqueId(), ignored -> new EntityView(value));
     }
@@ -323,6 +330,22 @@ public final class BukkitMC {
                     potionMeta.getBasePotionData().getType())) {
                 nativePotion.setBasePotionType(org.bukkit.potion.PotionType.WATER);
                 stack.setItemMeta(nativePotion);
+            } else if (commonMeta instanceof SkullMeta skullMeta
+                    && nativeMeta instanceof org.bukkit.inventory.meta.SkullMeta nativeSkull
+                    && !skullMeta.getTextureUrl().isBlank()) {
+                final UUID profileId = skullMeta.getProfileId() != null
+                        ? skullMeta.getProfileId()
+                        : UUID.nameUUIDFromBytes(skullMeta.getTexture().getBytes(StandardCharsets.UTF_8));
+                final org.bukkit.profile.PlayerProfile profile = org.bukkit.Bukkit.createPlayerProfile(profileId);
+                final org.bukkit.profile.PlayerTextures textures = profile.getTextures();
+                try {
+                    textures.setSkin(URI.create(skullMeta.getTextureUrl()).toURL());
+                    profile.setTextures(textures);
+                    nativeSkull.setOwnerProfile(profile);
+                    stack.setItemMeta(nativeSkull);
+                } catch (MalformedURLException | IllegalArgumentException ignored) {
+                    // Keep the plain player head if a caller supplied an invalid texture URL.
+                }
             }
         }
         return stack;
@@ -822,6 +845,10 @@ public final class BukkitMC {
             if (type == BlockDisplay.class) {
                 org.bukkit.entity.BlockDisplay display = value.spawn(locationHandle(location), org.bukkit.entity.BlockDisplay.class);
                 return (T) new BlockDisplayView(display);
+            }
+            if (type == ItemDisplay.class) {
+                org.bukkit.entity.ItemDisplay display = value.spawn(locationHandle(location), org.bukkit.entity.ItemDisplay.class);
+                return (T) new ItemDisplayView(display);
             }
             if (type == AreaEffectCloud.class) {
                 org.bukkit.entity.AreaEffectCloud cloud = value.spawn(locationHandle(location), org.bukkit.entity.AreaEffectCloud.class);
@@ -2861,6 +2888,11 @@ public final class BukkitMC {
         }
 
         @Override
+        public void setInvulnerable(boolean invulnerable) {
+            value.setInvulnerable(invulnerable);
+        }
+
+        @Override
         public void setBrightness(Display.Brightness brightness) {
             value.setBrightness(brightness == null ? null : new org.bukkit.entity.Display.Brightness(brightness.blockLight(), brightness.skyLight()));
         }
@@ -2877,6 +2909,36 @@ public final class BukkitMC {
         @Override
         public void setBillboard(Display.Billboard billboard) {
             value.setBillboard(org.bukkit.entity.Display.Billboard.valueOf(billboard.name()));
+        }
+
+        @Override
+        public void setShadowRadius(float shadowRadius) {
+            value.setShadowRadius(shadowRadius);
+        }
+
+        @Override
+        public void setShadowStrength(float shadowStrength) {
+            value.setShadowStrength(shadowStrength);
+        }
+
+        @Override
+        public void setInterpolationDelay(int delay) {
+            value.setInterpolationDelay(delay);
+        }
+
+        @Override
+        public void setInterpolationDuration(int duration) {
+            value.setInterpolationDuration(duration);
+        }
+
+        @Override
+        public void setTeleportDuration(int duration) {
+            value.setTeleportDuration(duration);
+        }
+
+        @Override
+        public void setViewRange(float range) {
+            value.setViewRange(range);
         }
 
         @Override
@@ -2980,6 +3042,11 @@ public final class BukkitMC {
         }
 
         @Override
+        public void setInvulnerable(boolean invulnerable) {
+            display.setInvulnerable(invulnerable);
+        }
+
+        @Override
         public void setBrightness(Display.Brightness brightness) {
             display.setBrightness(brightness);
         }
@@ -3038,6 +3105,52 @@ public final class BukkitMC {
         public int hashCode() {
             return value.getUniqueId().hashCode();
         }
+    }
+
+    private static final class ItemDisplayView extends ItemDisplay {
+        private final org.bukkit.entity.ItemDisplay value;
+        private final DisplayView display;
+
+        private ItemDisplayView(org.bukkit.entity.ItemDisplay value) {
+            this.value = value;
+            this.display = new DisplayView(value);
+        }
+
+        @Override public Object handle() { return value; }
+        @Override public UUID getUniqueId() { return display.getUniqueId(); }
+        @Override public Location getLocation() { return display.getLocation(); }
+        @Override public World getWorld() { return display.getWorld(); }
+        @Override public Vector getVelocity() { return display.getVelocity(); }
+        @Override public void setVelocity(Vector velocity) { display.setVelocity(velocity); }
+        @Override public boolean isDead() { return display.isDead(); }
+        @Override public boolean isValid() { return display.isValid(); }
+        @Override public void remove() { display.remove(); }
+        @Override public boolean teleport(Location target) { return display.teleport(target); }
+        @Override public int getEntityId() { return display.getEntityId(); }
+        @Override public String getName() { return display.getName(); }
+        @Override public boolean isOnGround() { return display.isOnGround(); }
+        @Override public void setSilent(boolean silent) { display.setSilent(silent); }
+        @Override public void setGravity(boolean gravity) { display.setGravity(gravity); }
+        @Override public void setPersistent(boolean persistent) { display.setPersistent(persistent); }
+        @Override public void setInvulnerable(boolean invulnerable) { display.setInvulnerable(invulnerable); }
+        @Override public void setBrightness(Display.Brightness brightness) { display.setBrightness(brightness); }
+        @Override public void setTransformation(Transformation transformation) { display.setTransformation(transformation); }
+        @Override public void setBillboard(Display.Billboard billboard) { display.setBillboard(billboard); }
+        @Override public void setShadowRadius(float radius) { display.setShadowRadius(radius); }
+        @Override public void setShadowStrength(float strength) { display.setShadowStrength(strength); }
+        @Override public void setInterpolationDelay(int delay) { display.setInterpolationDelay(delay); }
+        @Override public void setInterpolationDuration(int duration) { display.setInterpolationDuration(duration); }
+        @Override public void setTeleportDuration(int duration) { display.setTeleportDuration(duration); }
+        @Override public void setViewRange(float range) { display.setViewRange(range); }
+        @Override public ItemStack getItemStack() { return item(value.getItemStack()); }
+        @Override public void setItemStack(ItemStack item) { value.setItemStack(itemHandle(item)); }
+        @Override public void setItemDisplayTransform(ItemDisplayTransform transform) {
+            value.setItemDisplayTransform(org.bukkit.entity.ItemDisplay.ItemDisplayTransform.valueOf(transform.name()));
+        }
+        @Override public boolean equals(Object other) {
+            return other instanceof ItemDisplayView view && value.getUniqueId().equals(view.value.getUniqueId());
+        }
+        @Override public int hashCode() { return value.getUniqueId().hashCode(); }
     }
 
     private static final class AreaEffectCloudView extends AreaEffectCloud {

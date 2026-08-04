@@ -30,6 +30,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.FallingBlock;
 import com.projectkorra.projectkorra.platform.mc.entity.Fireball;
 import com.projectkorra.projectkorra.platform.mc.entity.Item;
+import com.projectkorra.projectkorra.platform.mc.entity.ItemDisplay;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.entity.Projectile;
@@ -37,6 +38,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.ShulkerBullet;
 import com.projectkorra.projectkorra.platform.mc.inventory.EntityEquipment;
 import com.projectkorra.projectkorra.platform.mc.inventory.ItemStack;
 import com.projectkorra.projectkorra.platform.mc.inventory.PlayerInventory;
+import com.projectkorra.projectkorra.platform.mc.inventory.meta.SkullMeta;
 import com.projectkorra.projectkorra.platform.mc.metadata.MetadataValue;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionEffect;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionEffectType;
@@ -71,7 +73,10 @@ import java.util.OptionalInt;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Predicate;
+import com.mojang.authlib.GameProfile;
 import net.minecraft.block.BlockState;
+import net.minecraft.component.DataComponentTypes;
+import net.minecraft.component.type.ProfileComponent;
 import net.minecraft.block.ShapeContext;
 import net.minecraft.command.permission.Permission;
 import net.minecraft.command.permission.PermissionLevel;
@@ -93,6 +98,7 @@ import net.minecraft.entity.projectile.ShulkerBulletEntity;
 import net.minecraft.entity.projectile.SmallFireballEntity;
 import net.minecraft.fluid.FluidState;
 import net.minecraft.item.Items;
+import net.minecraft.item.ItemDisplayContext;
 import net.minecraft.network.packet.s2c.play.BlockUpdateS2CPacket;
 import net.minecraft.network.packet.s2c.play.EntityVelocityUpdateS2CPacket;
 import net.minecraft.network.packet.s2c.play.ExperienceBarUpdateS2CPacket;
@@ -203,6 +209,7 @@ public final class FabricMC {
         if (value instanceof net.minecraft.entity.LivingEntity living) return living(living);
         if (value instanceof FallingBlockEntity falling) return new FallingBlockView(falling);
         if (value instanceof DisplayEntity.BlockDisplayEntity display) return new BlockDisplayView(display);
+        if (value instanceof DisplayEntity.ItemDisplayEntity display) return new ItemDisplayView(display);
         if (value instanceof DisplayEntity display) return new DisplayView(display);
         if (value instanceof ArrowEntity arrow) return new ArrowView(arrow);
         if (value instanceof ShulkerBulletEntity bullet) return new ShulkerBulletView(bullet);
@@ -917,6 +924,16 @@ public final class FabricMC {
         net.minecraft.item.Item item = Registries.ITEM.get(Identifier.ofVanilla(value.getType().name().toLowerCase(Locale.ROOT)));
         net.minecraft.item.ItemStack nativeStack = new net.minecraft.item.ItemStack(item, value.getAmount());
         if (value.getDurability() > 0 && nativeStack.isDamageable()) nativeStack.setDamage(value.getDurability());
+        if (value.hasItemMeta() && value.getItemMeta() instanceof SkullMeta skullMeta
+                && !skullMeta.getTexture().isBlank()) {
+            UUID profileId = skullMeta.getProfileId() != null
+                    ? skullMeta.getProfileId()
+                    : UUID.nameUUIDFromBytes(skullMeta.getTexture().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            GameProfile profile = new GameProfile(profileId, "");
+            profile.properties().put("textures", new com.mojang.authlib.properties.Property(
+                    "textures", skullMeta.getTexture()));
+            nativeStack.set(DataComponentTypes.PROFILE, ProfileComponent.ofStatic(profile));
+        }
         return nativeStack;
     }
 
@@ -1169,6 +1186,13 @@ public final class FabricMC {
                 display.refreshPositionAndAngles(location.getX(), location.getY(), location.getZ(), location.getYaw(), location.getPitch());
                 value.spawnEntity(display);
                 return (T) new BlockDisplayView(display);
+            }
+            if (type == ItemDisplay.class) {
+                DisplayEntity.ItemDisplayEntity display =
+                        new DisplayEntity.ItemDisplayEntity(EntityType.ITEM_DISPLAY, value);
+                display.refreshPositionAndAngles(location.getX(), location.getY(), location.getZ(), location.getYaw(), location.getPitch());
+                value.spawnEntity(display);
+                return (T) new ItemDisplayView(display);
             }
             if (type == ShulkerBullet.class) {
                 ShulkerBulletEntity bullet =
@@ -2052,6 +2076,7 @@ public final class FabricMC {
         @Override public void removeMetadata(String key, Object owner) { FabricMC.removeMetadata(value.getUuid(), key); }
         @Override public void setSilent(boolean silent) { value.setSilent(silent); }
         @Override public void setGravity(boolean gravity) { value.setNoGravity(!gravity); }
+        @Override public void setInvulnerable(boolean invulnerable) { value.setInvulnerable(invulnerable); }
         @Override public void setBrightness(Display.Brightness brightness) {
             value.setBrightness(brightness == null ? null : new net.minecraft.entity.decoration.Brightness(brightness.blockLight(), brightness.skyLight()));
         }
@@ -2065,6 +2090,12 @@ public final class FabricMC {
         @Override public void setBillboard(Display.Billboard billboard) {
             value.setBillboardMode(DisplayEntity.BillboardMode.valueOf(billboard.name()));
         }
+        @Override public void setShadowRadius(float shadowRadius) { value.setShadowRadius(shadowRadius); }
+        @Override public void setShadowStrength(float shadowStrength) { value.setShadowStrength(shadowStrength); }
+        @Override public void setInterpolationDelay(int delay) { value.setStartInterpolation(delay); }
+        @Override public void setInterpolationDuration(int duration) { value.setInterpolationDuration(duration); }
+        @Override public void setTeleportDuration(int duration) { value.setTeleportDuration(duration); }
+        @Override public void setViewRange(float range) { value.setViewRange(range); }
         @Override public Object handle() { return value; }
         @Override public boolean equals(Object other) { return other instanceof DisplayView view && value.getUuid().equals(view.value.getUuid()); }
         @Override public int hashCode() { return value.getUuid().hashCode(); }
@@ -2093,6 +2124,7 @@ public final class FabricMC {
         @Override public boolean isOnGround() { return display.isOnGround(); }
         @Override public void setSilent(boolean silent) { display.setSilent(silent); }
         @Override public void setGravity(boolean gravity) { display.setGravity(gravity); }
+        @Override public void setInvulnerable(boolean invulnerable) { display.setInvulnerable(invulnerable); }
         @Override public void setBrightness(Display.Brightness brightness) { display.setBrightness(brightness); }
         @Override public void setTransformation(Transformation transformation) { display.setTransformation(transformation); }
         @Override public void setBillboard(Display.Billboard billboard) { display.setBillboard(billboard); }
@@ -2105,6 +2137,57 @@ public final class FabricMC {
         @Override public void setViewRange(float range) { value.setViewRange(range); }
         @Override public Object handle() { return value; }
         @Override public boolean equals(Object other) { return other instanceof BlockDisplayView view && value.getUuid().equals(view.value.getUuid()); }
+        @Override public int hashCode() { return value.getUuid().hashCode(); }
+    }
+
+    private static final class ItemDisplayView extends ItemDisplay {
+        private final DisplayEntity.ItemDisplayEntity value;
+        private final DisplayView display;
+
+        private ItemDisplayView(DisplayEntity.ItemDisplayEntity value) {
+            this.value = value;
+            this.display = new DisplayView(value);
+        }
+
+        @Override public UUID getUniqueId() { return display.getUniqueId(); }
+        @Override public Location getLocation() { return display.getLocation(); }
+        @Override public World getWorld() { return display.getWorld(); }
+        @Override public Vector getVelocity() { return display.getVelocity(); }
+        @Override public void setVelocity(Vector velocity) { display.setVelocity(velocity); }
+        @Override public boolean isDead() { return display.isDead(); }
+        @Override public boolean isValid() { return display.isValid(); }
+        @Override public void remove() { display.remove(); }
+        @Override public boolean teleport(Location target) { return display.teleport(target); }
+        @Override public int getEntityId() { return display.getEntityId(); }
+        @Override public String getName() { return display.getName(); }
+        @Override public boolean isOnGround() { return display.isOnGround(); }
+        @Override public void setSilent(boolean silent) { display.setSilent(silent); }
+        @Override public void setGravity(boolean gravity) { display.setGravity(gravity); }
+        @Override public void setInvulnerable(boolean invulnerable) { display.setInvulnerable(invulnerable); }
+        @Override public void setBrightness(Display.Brightness brightness) { display.setBrightness(brightness); }
+        @Override public void setTransformation(Transformation transformation) { display.setTransformation(transformation); }
+        @Override public void setBillboard(Display.Billboard billboard) { display.setBillboard(billboard); }
+        @Override public void setShadowRadius(float radius) { display.setShadowRadius(radius); }
+        @Override public void setShadowStrength(float strength) { display.setShadowStrength(strength); }
+        @Override public void setInterpolationDelay(int delay) { display.setInterpolationDelay(delay); }
+        @Override public void setInterpolationDuration(int duration) { display.setInterpolationDuration(duration); }
+        @Override public void setTeleportDuration(int duration) { display.setTeleportDuration(duration); }
+        @Override public void setViewRange(float range) { display.setViewRange(range); }
+        @Override public ItemStack getItemStack() { return itemStack(value.getItemStack()); }
+        @Override public void setItemStack(ItemStack item) { value.setItemStack(FabricMC.itemStack(item)); }
+        @Override public void setItemDisplayTransform(ItemDisplayTransform transform) {
+            value.setItemDisplayContext(switch (transform) {
+                case THIRDPERSON_LEFTHAND -> ItemDisplayContext.THIRD_PERSON_LEFT_HAND;
+                case THIRDPERSON_RIGHTHAND -> ItemDisplayContext.THIRD_PERSON_RIGHT_HAND;
+                case FIRSTPERSON_LEFTHAND -> ItemDisplayContext.FIRST_PERSON_LEFT_HAND;
+                case FIRSTPERSON_RIGHTHAND -> ItemDisplayContext.FIRST_PERSON_RIGHT_HAND;
+                default -> ItemDisplayContext.valueOf(transform.name());
+            });
+        }
+        @Override public Object handle() { return value; }
+        @Override public boolean equals(Object other) {
+            return other instanceof ItemDisplayView view && value.getUuid().equals(view.value.getUuid());
+        }
         @Override public int hashCode() { return value.getUuid().hashCode(); }
     }
 

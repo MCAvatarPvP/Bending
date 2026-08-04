@@ -12,7 +12,7 @@ import com.projectkorra.projectkorra.ability.util.ComboUtil;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.command.Commands;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
-import com.projectkorra.projectkorra.firebending.combo.FireComboStream;
+import com.projectkorra.projectkorra.firebending.combo.ParticleStream;
 import com.projectkorra.projectkorra.object.HorizontalVelocityTracker;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Sound;
@@ -35,6 +35,26 @@ import java.util.List;
 import java.util.Map;
 
 public class AirSweep extends AirAbility implements ComboAbility {
+
+    /*
+     * Every fan stream is visible. Particle count is controlled by using fewer
+     * evenly spaced streams and wider dynamic interpolation spacing, rather
+     * than deleting arbitrary streams and leaving holes in the fan.
+     */
+    private static final int MIN_FAN_STREAMS = 10;
+    private static final int MAX_FAN_STREAMS = 50;
+    private static final double FAN_ENDPOINT_SPACING = 0.85;
+    private static final double FAN_WIDTH_MULTIPLIER = 1.15;
+    private static final float FAN_PARTICLE_SPREAD = 0.08F;
+    private static final double FAN_PARTICLE_SPACING = 0.60;
+    private static final int FAN_MAX_SUB_LOCATIONS = 12;
+
+    /*
+     * Time taken for the emission point to sweep from the first edge of the
+     * fan to the opposite edge. Streams remain evenly distributed spatially,
+     * but are activated in order to preserve the swiping animation.
+     */
+    private static final int FAN_SWEEP_DURATION_TICKS = 8;
 
     private int progressCounter;
     private int activationDelayTicks;
@@ -59,7 +79,7 @@ public class AirSweep extends AirAbility implements ComboAbility {
     private Vector direction;
     private ArrayList<Entity> affectedEntities;
     private ArrayList<BukkitRunnable> tasks;
-    private Map<FireComboStream, Location> previousStreamLocations;
+    private Map<ParticleStream, Location> previousStreamLocations;
     private double radius;
     private double regenAmount;
 
@@ -122,8 +142,8 @@ public class AirSweep extends AirAbility implements ComboAbility {
     public List<Location> getLocations() {
         final ArrayList<Location> locations = new ArrayList<>();
         for (final BukkitRunnable task : this.getTasks()) {
-            if (task instanceof FireComboStream) {
-                final FireComboStream stream = (FireComboStream) task;
+            if (task instanceof ParticleStream) {
+                final ParticleStream stream = (ParticleStream) task;
                 locations.add(stream.getLocation());
             }
         }
@@ -159,34 +179,130 @@ public class AirSweep extends AirAbility implements ComboAbility {
 
             playSound(hand, Sound.ENTITY_BREEZE_IDLE_GROUND, 1.0f, 1.6f);
 
-            final Vector origToDest = GeneralMethods.getDirection(this.origin, this.destination);
-            final int streamCount = Math.max(30, (int) Math.ceil(origToDest.length() / Math.max(this.radius * 0.35, 0.2)));
-            for (int i = 0; i < streamCount; i++) {
-                final Location endLoc = this.origin.clone().add(origToDest.clone().multiply((double) i / streamCount));
-                if (GeneralMethods.locationEqualsIgnoreDirection(hand, endLoc)) {
-                    continue;
-                }
-                final Vector vec = GeneralMethods.getDirection(hand, endLoc);
+            final Vector startDirection =
+                    GeneralMethods.getDirection(hand, this.origin).normalize();
+            final Vector endDirection =
+                    GeneralMethods.getDirection(hand, this.destination).normalize();
 
-                final FireComboStream fs = new FireComboStream(this.player, this, vec, hand, this.range, this.speed);
-                fs.setDensity(1);
-                fs.setParticlesVisible(i % 5 != 1 && i % 5 != 3);
-                fs.setSpread(0F);
-                fs.setSubLocations(2);
-                fs.setUseNewParticles(true);
-                fs.setGoThroughWater(goThroughWater);
-                fs.setParticleEffect(getAirbendingParticles());
-                fs.setCollides(false);
-                fs.runTaskTimer(ProjectKorra.plugin, (long) (i / Math.max(streamCount / 12.0, 1.0)), 1L);
-                this.tasks.add(fs);
+            final int streamCount = this.calculateFanStreamCount(
+                    hand,
+                    startDirection,
+                    endDirection
+            );
+
+            for (int i = 0; i < streamCount; i++) {
+                final double progress = streamCount == 1
+                        ? 0.5
+                        : (double) i / (streamCount - 1.0);
+
+                final Vector streamDirection = this.interpolateFanDirection(
+                        startDirection,
+                        endDirection,
+                        progress
+                );
+
+                final ParticleStream stream = new ParticleStream(
+                        this.player,
+                        this,
+                        streamDirection,
+                        hand,
+                        this.range,
+                        this.speed
+                );
+
+                stream.setDensity(1);
+                stream.setParticlesVisible(true);
+                stream.setSpread(FAN_PARTICLE_SPREAD);
+
+                stream.setDynamicSubLocation(true);
+                stream.setDynamicSubLocationSpacing(FAN_PARTICLE_SPACING);
+                stream.setMaxDynamicSubLocations(FAN_MAX_SUB_LOCATIONS);
+
+                stream.setUseNewParticles(true);
+                stream.setGoThroughWater(this.goThroughWater);
+                stream.setParticleEffect(getAirbendingParticles());
+                stream.setCollides(false);
+
+                final long launchDelay = Math.round(
+                        progress * FAN_SWEEP_DURATION_TICKS
+                );
+
+                stream.runTaskTimer(
+                        ProjectKorra.plugin,
+                        launchDelay,
+                        1L
+                );
+                this.tasks.add(stream);
             }
         }
         this.manageAirVectors();
     }
 
+    /**
+     * Selects a modest number of streams from the physical arc length of the
+     * captured sweep. The result is clamped so narrow sweeps still read as a
+     * fan and wide sweeps do not create excessive particle traffic.
+     */
+    private int calculateFanStreamCount(
+            final Location hand,
+            final Vector startDirection,
+            final Vector endDirection
+    ) {
+        final double directionChord = startDirection.clone()
+                .subtract(endDirection)
+                .length();
+
+        final double angle = 2.0 * Math.asin(
+                Math.min(1.0, directionChord * 0.5)
+        );
+
+        final double startRadius = hand.distance(this.origin);
+        final double endRadius = hand.distance(this.destination);
+        final double fanRadius = Math.max(
+                1.0,
+                (startRadius + endRadius) * 0.5
+        );
+
+        final double arcLength =
+                angle * fanRadius * FAN_WIDTH_MULTIPLIER;
+
+        final int calculated = (int) Math.ceil(
+                arcLength / FAN_ENDPOINT_SPACING
+        ) + 1;
+
+        return Math.max(
+                MIN_FAN_STREAMS,
+                Math.min(MAX_FAN_STREAMS, calculated)
+        );
+    }
+
+    /**
+     * Normalized interpolation produces stable, ordered directions between
+     * the two captured sweep edges. Slight extrapolation around the midpoint
+     * widens the visual fan without adding more streams.
+     */
+    private Vector interpolateFanDirection(
+            final Vector startDirection,
+            final Vector endDirection,
+            final double progress
+    ) {
+        final double widenedProgress = 0.5
+                + (progress - 0.5) * FAN_WIDTH_MULTIPLIER;
+
+        final Vector result = startDirection.clone()
+                .multiply(1.0 - widenedProgress)
+                .add(endDirection.clone().multiply(widenedProgress));
+
+        if (result.length() <= 1.0E-9) {
+            return startDirection.clone();
+        }
+
+        return result.normalize();
+    }
+
     public void manageAirVectors() {
         for (int i = 0; i < this.tasks.size(); i++) {
-            final FireComboStream stream = (FireComboStream) this.tasks.get(i);
+            final ParticleStream stream = (ParticleStream) this.tasks.get(i);
             if (stream.isCancelled()) {
                 this.previousStreamLocations.remove(stream);
                 this.tasks.remove(i);
@@ -198,7 +314,7 @@ public class AirSweep extends AirAbility implements ComboAbility {
             return;
         }
         for (int i = 0; i < this.tasks.size(); i++) {
-            final FireComboStream fstream = (FireComboStream) this.tasks.get(i);
+            final ParticleStream fstream = (ParticleStream) this.tasks.get(i);
             final Location loc = fstream.getLocation();
             final Location previousLoc = this.previousStreamLocations.getOrDefault(fstream, loc).clone();
 
@@ -276,7 +392,7 @@ public class AirSweep extends AirAbility implements ComboAbility {
                 && !(entity instanceof Player && Commands.invincible.contains(((Player) entity).getName()));
     }
 
-    private boolean hitEntity(final Entity entity, final FireComboStream stream) {
+    private boolean hitEntity(final Entity entity, final ParticleStream stream) {
         if (!this.canHitEntity(entity)) {
             return false;
         }

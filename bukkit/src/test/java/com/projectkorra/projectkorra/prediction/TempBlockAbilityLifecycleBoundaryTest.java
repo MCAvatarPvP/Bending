@@ -20,6 +20,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** Regression boundaries for the two abilities that exposed the lifecycle defects. */
 class TempBlockAbilityLifecycleBoundaryTest {
     @Test
+    void hyperionFallingBlocksUseExactOwnerReconciliation() throws IOException {
+        String source = common("me/moros/hyperion/util/BendingFallingBlock.java");
+        String earthShot = common("me/moros/hyperion/abilities/earthbending/EarthShot.java");
+        int prepare = source.indexOf("TempFallingBlockSync.prepare(abilityInstance, location, blockData)");
+        int spawn = source.indexOf("location.getWorld().spawnFallingBlock(location, blockData)", prepare);
+        int publish = source.indexOf("TempFallingBlockSync.publish(abilityInstance, fallingBlock, predictionOrdinal)", spawn);
+
+        assertTrue(prepare >= 0 && spawn > prepare && publish > spawn,
+                "EarthShot must reserve ownership before spawn and publish its entity id afterward");
+        assertTrue(earthShot.contains("new TempBlock(block, Material.AIR.createBlockData(), this)"),
+                "the source AIR layer must retain EarthShot ownership outside progress context");
+        assertTrue(earthShot.contains("projectile.getFallingBlock().getBlockData(), this)"),
+                "the raised source layer must share the same owned lifecycle");
+    }
+
+    @Test
     void earthSmashUsesItsRegisteredLayersInsteadOfLeakedWorldState() throws IOException {
         String source = common("com/projectkorra/projectkorra/earthbending/EarthSmash.java");
         String revert = method(source, "public void revert()", "private BlockData visibleData");

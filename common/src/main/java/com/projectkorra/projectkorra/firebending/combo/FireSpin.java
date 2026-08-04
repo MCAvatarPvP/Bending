@@ -93,8 +93,8 @@ public class FireSpin extends FireAbility implements ComboAbility {
     public void progress() {
         for (int i = 0; i < this.tasks.size(); i++) {
             final BukkitRunnable br = this.tasks.get(i);
-            if (br instanceof FireComboStream) {
-                final FireComboStream fs = (FireComboStream) br;
+            if (br instanceof ParticleStream) {
+                final ParticleStream fs = (ParticleStream) br;
                 if (fs.isCancelled()) {
                     this.tasks.remove(fs);
                     i--;
@@ -122,7 +122,7 @@ public class FireSpin extends FireAbility implements ComboAbility {
                 vec = GeneralMethods.rotateXZ(vec, i - 180);
                 vec.setY(0);
 
-                final FireComboStream fs = new FireComboStream(this.player, this, vec, this.origin.clone(), this.range, this.speed);
+                final ParticleStream fs = new ParticleStream(this.player, this, vec, this.origin.clone(), this.range, this.speed);
                 fs.setSpread(0.1F);
                 fs.setDensity(1);
                 fs.setUseNewParticles(true);
@@ -159,8 +159,8 @@ public class FireSpin extends FireAbility implements ComboAbility {
             // Remove all of the streams that are by this specific ourLocation.
             // Don't just do a single stream at a time or this algorithm becomes O(n^2) with Collision's detection algorithm.
             for (final BukkitRunnable task : this.getTasks()) {
-                if (task instanceof FireComboStream) {
-                    final FireComboStream stream = (FireComboStream) task;
+                if (task instanceof ParticleStream) {
+                    final ParticleStream stream = (ParticleStream) task;
                     if (stream.getLocation().distanceSquared(collision.getLocationSecond()) > collisionDistanceSquared) {
                         newTasks.add(stream);
                     } else {
@@ -178,8 +178,8 @@ public class FireSpin extends FireAbility implements ComboAbility {
     public List<Location> getLocations() {
         final ArrayList<Location> locations = new ArrayList<>();
         for (final BukkitRunnable task : this.getTasks()) {
-            if (task instanceof FireComboStream) {
-                final FireComboStream stream = (FireComboStream) task;
+            if (task instanceof ParticleStream) {
+                final ParticleStream stream = (ParticleStream) task;
                 locations.add(stream.getLocation());
             }
         }
@@ -270,11 +270,11 @@ public class FireSpin extends FireAbility implements ComboAbility {
             return;
         }
 
-        final ArrayList<FireComboStream> activeStreams = new ArrayList<>(this.tasks.size());
+        final ArrayList<ParticleStream> activeStreams = new ArrayList<>(this.tasks.size());
         double furthestStreamDistanceSquared = 0;
         for (final BukkitRunnable task : this.tasks) {
-            if (task instanceof FireComboStream) {
-                final FireComboStream stream = (FireComboStream) task;
+            if (task instanceof ParticleStream) {
+                final ParticleStream stream = (ParticleStream) task;
                 if (!stream.isCancelled()) {
                     activeStreams.add(stream);
                     furthestStreamDistanceSquared = Math.max(furthestStreamDistanceSquared, this.origin.distanceSquared(stream.getLocation()));
@@ -301,7 +301,7 @@ public class FireSpin extends FireAbility implements ComboAbility {
                 continue;
             }
 
-            for (final FireComboStream stream : activeStreams) {
+            for (final ParticleStream stream : activeStreams) {
                 final Location streamLocation = stream.getLocation();
                 final double deltaX = distanceToInterval(streamLocation.getX(), bounds.getMinX(), bounds.getMaxX());
                 final double deltaZ = distanceToInterval(streamLocation.getZ(), bounds.getMinZ(), bounds.getMaxZ());

@@ -27,6 +27,7 @@ import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.FallingBlock;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.block.TempFallingBlockSync;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -49,6 +50,10 @@ public class BendingFallingBlock {
         if (EarthCosmetic.canReplace(cosmetic, data.getMaterial()) && abilityInstance.getElement() == Element.EARTH) {
             blockData = cosmetic.getMaterial().createBlockData();
         }
+        // Reserve the action-local identity before Paper emits the vanilla
+        // spawn packet. The predicting client uses the matching identity to
+        // hide Paper's copy and retain its continuously simulated projectile.
+        final int predictionOrdinal = TempFallingBlockSync.prepare(abilityInstance, location, blockData);
         fallingBlock = location.getWorld().spawnFallingBlock(location, blockData);
         fallingBlock.setVelocity(velocity);
         fallingBlock.setGravity(gravity);
@@ -58,6 +63,7 @@ public class BendingFallingBlock {
         ability = abilityInstance;
         instances.put(fallingBlock, this);
         bfbQueue.add(this);
+        TempFallingBlockSync.publish(abilityInstance, fallingBlock, predictionOrdinal);
     }
 
     public static boolean isBendingFallingBlock(FallingBlock fb) {

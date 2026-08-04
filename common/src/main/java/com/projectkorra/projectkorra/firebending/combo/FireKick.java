@@ -76,8 +76,8 @@ public class FireKick extends FireAbility implements ComboAbility {
     public void progress() {
         for (int i = 0; i < this.tasks.size(); i++) {
             final BukkitRunnable br = this.tasks.get(i);
-            if (br instanceof FireComboStream) {
-                final FireComboStream fs = (FireComboStream) br;
+            if (br instanceof ParticleStream) {
+                final ParticleStream fs = (ParticleStream) br;
                 if (fs.isCancelled()) {
                     this.tasks.remove(fs);
                 }
@@ -105,7 +105,7 @@ public class FireKick extends FireAbility implements ComboAbility {
                 Vector vec = GeneralMethods.getDirection(this.player.getLocation(), this.destination.clone());
                 vec = GeneralMethods.rotateXZ(vec, i);
 
-                final FireComboStream fs = new FireComboStream(this.player, this, vec, this.player.getLocation(), this.range, this.speed);
+                final ParticleStream fs = new ParticleStream(this.player, this, vec, this.player.getLocation(), this.range, this.speed);
                 fs.setSpread(0.2F);
                 fs.setDensity(5);
                 fs.setUseNewParticles(true);
@@ -137,8 +137,8 @@ public class FireKick extends FireAbility implements ComboAbility {
             // Remove all of the streams that are by this specific ourLocation.
             // Don't just do a single stream at a time or this algorithm becomes O(n^2) with Collision's detection algorithm.
             for (final BukkitRunnable task : this.getTasks()) {
-                if (task instanceof FireComboStream) {
-                    final FireComboStream stream = (FireComboStream) task;
+                if (task instanceof ParticleStream) {
+                    final ParticleStream stream = (ParticleStream) task;
                     if (stream.getLocation().distanceSquared(collision.getLocationSecond()) > collisionDistanceSquared) {
                         newTasks.add(stream);
                     } else {
@@ -156,8 +156,8 @@ public class FireKick extends FireAbility implements ComboAbility {
     public List<Location> getLocations() {
         final ArrayList<Location> locations = new ArrayList<>();
         for (final BukkitRunnable task : this.getTasks()) {
-            if (task instanceof FireComboStream) {
-                final FireComboStream stream = (FireComboStream) task;
+            if (task instanceof ParticleStream) {
+                final ParticleStream stream = (ParticleStream) task;
                 locations.add(stream.getLocation());
             }
         }

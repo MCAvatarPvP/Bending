@@ -10,6 +10,7 @@ import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSy
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
+import com.projectkorra.projectkorra.platform.bukkit.BukkitMC;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.util.ActionBarStatusManager;
 import com.projectkorra.projectkorra.util.ChatUtil;
@@ -60,7 +61,11 @@ public final class ExternalActionBarHook extends PacketListenerAbstract {
         }
 
         final Object recipient = event.getPlayer();
-        if (!(recipient instanceof Player player) || BendingPlayer.getBendingPlayer(player) == null
+        if (!(recipient instanceof org.bukkit.entity.Player nativePlayer)) {
+            return;
+        }
+        final Player player = BukkitMC.player(nativePlayer);
+        if (BendingPlayer.getBendingPlayer(player) == null
                 || !ConfigManager.defaultConfig.get().getBoolean("Properties.BendingPreview")) {
             return;
         }
@@ -92,9 +97,12 @@ public final class ExternalActionBarHook extends PacketListenerAbstract {
     }
 
     private void sendInternal(final Player player, final String message) {
+        if (!(player.handle() instanceof org.bukkit.entity.Player nativePlayer)) {
+            return;
+        }
         final WrapperPlayServerActionBar packet = new WrapperPlayServerActionBar(
                 AdventureSerializer.fromLegacyFormat(message));
-        PacketEvents.getAPI().getPlayerManager().sendPacketSilently(player, packet);
+        PacketEvents.getAPI().getPlayerManager().sendPacketSilently(nativePlayer, packet);
     }
 
     private record CapturedStatus(String text, long expiresAt) {

@@ -7,7 +7,7 @@ import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.util.Collision;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.command.Commands;
-import com.projectkorra.projectkorra.firebending.combo.FireComboStream;
+import com.projectkorra.projectkorra.firebending.combo.ParticleStream;
 import com.projectkorra.projectkorra.object.HorizontalVelocityTracker;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
@@ -105,8 +105,8 @@ public class AirSlash extends AirAbility {
             final ArrayList<BukkitRunnable> newTasks = new ArrayList<>();
             final double collisionDistanceSquared = Math.pow(this.getCollisionRadius() + collision.getAbilitySecond().getCollisionRadius(), 2);
             for (final BukkitRunnable task : this.getTasks()) {
-                if (task instanceof FireComboStream) {
-                    final FireComboStream stream = (FireComboStream) task;
+                if (task instanceof ParticleStream) {
+                    final ParticleStream stream = (ParticleStream) task;
                     if (stream.getLocation().distanceSquared(collision.getLocationSecond()) > collisionDistanceSquared) {
                         newTasks.add(stream);
                     } else {
@@ -124,8 +124,8 @@ public class AirSlash extends AirAbility {
     public List<Location> getLocations() {
         final ArrayList<Location> locations = new ArrayList<>();
         for (final BukkitRunnable task : this.getTasks()) {
-            if (task instanceof FireComboStream) {
-                locations.add(((FireComboStream) task).getLocation());
+            if (task instanceof ParticleStream) {
+                locations.add(((ParticleStream) task).getLocation());
             }
         }
         return locations;
@@ -197,7 +197,7 @@ public class AirSlash extends AirAbility {
             }
             final Vector streamDirection = GeneralMethods.getDirection(this.hand, endLoc);
 
-            final FireComboStream stream = new FireComboStream(this.player, this, streamDirection, this.hand.clone(), this.range, this.speed);
+            final ParticleStream stream = new ParticleStream(this.player, this, streamDirection, this.hand.clone(), this.range, this.speed);
             stream.setDensity(1);
             stream.setSpread(0F);
             stream.setSubLocations(2);
@@ -212,7 +212,7 @@ public class AirSlash extends AirAbility {
 
     private void manageBladeStreams() {
         for (int i = 0; i < this.tasks.size(); i++) {
-            if (((FireComboStream) this.tasks.get(i)).isCancelled()) {
+            if (((ParticleStream) this.tasks.get(i)).isCancelled()) {
                 this.tasks.remove(i);
                 i--;
             }
@@ -224,7 +224,7 @@ public class AirSlash extends AirAbility {
         }
 
         for (int i = 0; i < this.tasks.size(); i++) {
-            final FireComboStream stream = (FireComboStream) this.tasks.get(i);
+            final ParticleStream stream = (ParticleStream) this.tasks.get(i);
             final Location loc = stream.getLocation();
 
             if (GeneralMethods.isRegionProtectedFromBuild(this, loc)) {

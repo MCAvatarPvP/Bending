@@ -48,7 +48,7 @@ class GameplayRegressionBoundaryTest {
     }
 
     @Test
-    void completedRaiseEarthWallsRemainCollapsibleUntilMovedEarthRetires() throws IOException {
+    void completedRaiseEarthWallsAndColumnsRemainCollapsibleUntilMovedEarthRetires() throws IOException {
         String raise = common("com/projectkorra/projectkorra/earthbending/RaiseEarth.java");
         String earth = common("com/projectkorra/projectkorra/ability/EarthAbility.java");
         String collapse = common("com/projectkorra/projectkorra/earthbending/Collapse.java");
@@ -56,18 +56,35 @@ class GameplayRegressionBoundaryTest {
         String remove = method(raise, "public void remove()", "public boolean isRaisedByWall()");
 
         assertTrue(progress.indexOf("this.completed = true") < progress.indexOf("this.remove()"));
-        assertTrue(remove.contains("if (this.raisedByWall && this.completed)"));
-        assertTrue(remove.contains("this.wallBlocks.clear()"));
-        assertTrue(remove.contains("else") && remove.contains("this.clearTrackedWallBlocks()"),
-                "cancelled and incomplete raises must not leak wall identity");
-        assertTrue(raise.contains("ConcurrentHashMap<WallKey, Integer> WALL_BLOCKS")
-                        && raise.contains("WALL_BLOCKS.merge(wallKey(affected), 1, Integer::sum)")
-                        && raise.contains("WALL_BLOCKS.computeIfPresent(wallKey(wallBlock)"),
-                "overlapping raises must share value-based, reference-counted wall ownership");
-        assertTrue(earth.contains("RaiseEarth.revertWallAffectedBlock(block)"));
-        assertTrue(earth.contains("RaiseEarth.clearWallBlocks()"));
-        assertTrue(collapse.contains("RaiseEarth.blockInWallAffectedBlocks(this.block)"));
-        assertTrue(collapse.contains("RaiseEarth.revertWallAffectedBlock(thisBlock)"));
+        assertTrue(remove.contains("if (this.completed)")
+                        && remove.contains("this.wallBlocks.clear()")
+                        && remove.contains("this.columnBlocks.clear()"),
+                "completed walls and columns must detach locally without losing persistent identity");
+        assertTrue(remove.contains("this.clearTrackedWallBlocks()")
+                        && remove.contains("this.clearTrackedColumnBlocks()"),
+                "cancelled and incomplete raises must not leak persistent identity");
+        assertTrue(raise.contains("ConcurrentHashMap<BlockKey, Integer> WALL_BLOCKS")
+                        && raise.contains("ConcurrentHashMap<BlockKey, Integer> COLUMN_BLOCKS")
+                        && raise.contains("WALL_BLOCKS.merge(blockKey(affected), 1, Integer::sum)")
+                        && raise.contains("COLUMN_BLOCKS.merge(blockKey(affected), 1, Integer::sum)")
+                        && raise.contains("references > 1 ? references - 1 : null"),
+                "overlapping raises must share coordinate-based, reference-counted ownership");
+        assertTrue(raise.contains("if (!getMovedEarth().containsKey(affected))"),
+                "source holes and untouched natural terrain must never become Collapse-eligible");
+        String failed = method(raise, "private void discardUnstartedBlocks()", "private void trackWallBlocks()");
+        assertTrue(failed.contains("this.discardAffectedBlocks()")
+                        && failed.contains("this.clearTrackedWallBlocks()")
+                        && failed.contains("this.clearTrackedColumnBlocks()"),
+                "a RaiseEarth constructor that cannot start must not leak structure identity");
+        assertTrue(raise.contains("blockInRaisedAffectedBlocks(final Block block)")
+                        && raise.contains("blockInWallAffectedBlocks(block) || blockInColumnAffectedBlocks(block)"));
+        assertTrue(earth.contains("RaiseEarth.revertRaisedAffectedBlock(block)")
+                        && earth.contains("RaiseEarth.revertRaisedAffectedBlock(source)"));
+        assertTrue(earth.contains("RaiseEarth.clearPersistentBlocks()"));
+        assertTrue(collapse.contains("RaiseEarth.blockInRaisedAffectedBlocks(this.block)"));
+        assertFalse(collapse.contains("if (!RaiseEarth.blockInWallAffectedBlocks(this.block))"),
+                "left-click Collapse must not reject a normal RaiseEarth column");
+        assertTrue(collapse.contains("RaiseEarth.revertRaisedAffectedBlock(thisBlock)"));
     }
 
     @Test

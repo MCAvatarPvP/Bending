@@ -12,6 +12,7 @@ import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.object.HorizontalVelocityTracker;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Material;
+import com.projectkorra.projectkorra.platform.mc.Sound;
 import com.projectkorra.projectkorra.platform.mc.entity.BlockDisplay;
 import com.projectkorra.projectkorra.platform.mc.entity.Display;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
@@ -26,6 +27,7 @@ import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 /**
  * Launches a translucent BlockDisplay model of the caster. Its speed, recoil,
@@ -71,6 +73,7 @@ public class SummonSelf extends AirAbility implements ComboAbility {
     private double projectileSpeed;
     private float modelYaw;
     private final ArrayList<BlockDisplay> modelDisplays = new ArrayList<>(MODEL_PARTS.size());
+    private static final Random random = new Random();
 
     public SummonSelf(final Player player) {
         super(player);
@@ -114,6 +117,7 @@ public class SummonSelf extends AirAbility implements ComboAbility {
         final Vector recoil = this.velocity.clone().normalize().multiply(-strength);
         GeneralMethods.setVelocity(this, this.player, recoil);
         this.player.setFallDistance(0);
+        player.playSound(player.getLocation(), Sound.ENTITY_BREEZE_SHOOT, 0.5f, 1.2f);
     }
 
     @Override
@@ -121,6 +125,16 @@ public class SummonSelf extends AirAbility implements ComboAbility {
         if (this.location.getWorld() != this.player.getWorld()) {
             this.remove();
             return;
+        }
+
+        if (random.nextInt(4) == 0) {
+            final double midPoint = maximumSpeed - minimumSpeed;
+
+            if (projectileSpeed > midPoint) {
+                playFastAirbendingSound(this.location);
+            } else {
+                playAirbendingSound(this.location);
+            }
         }
 
         final int subSteps = Math.max(1, (int) Math.ceil(this.velocity.length() / 0.35));

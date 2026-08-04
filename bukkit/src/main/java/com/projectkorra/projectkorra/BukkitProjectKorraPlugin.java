@@ -3,6 +3,7 @@ package com.projectkorra.projectkorra;
 import com.projectkorra.projectkorra.command.BendingTabComplete;
 import com.projectkorra.projectkorra.command.Commands;
 import com.projectkorra.projectkorra.hooks.BetonQuestHook;
+import com.projectkorra.projectkorra.hooks.ExternalActionBarHook;
 import com.projectkorra.projectkorra.hooks.WorldGuardFlag;
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.bukkit.BukkitMC;
@@ -13,6 +14,7 @@ import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
 import com.projectkorra.projectkorra.region.BukkitRegionProtectionBootstrap;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /**
@@ -20,6 +22,7 @@ import org.bukkit.plugin.java.JavaPlugin;
  */
 public final class BukkitProjectKorraPlugin extends JavaPlugin {
     private PaperPredictionServer prediction;
+    private ExternalActionBarHook externalActionBarHook;
 
     private static CommandSender wrapSender(final org.bukkit.command.CommandSender sender) {
         if (sender instanceof Player player) {
@@ -45,7 +48,8 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
         GeneralMethods.reloadPlugin(new BukkitConsoleSender(getServer().getConsoleSender()));
         registerCommands();
         Platform.events().registerListener(new PKListener(this));
-        BetonQuestHook.register(this);
+        registerBetonQuestHook();
+        registerExternalActionBarHook();
         try {
             this.prediction = PaperPredictionServer.start(this);
             // Lifecycle metadata precedes every physical TempBlock write. A
@@ -61,12 +65,46 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
         }
     }
 
+    private void registerBetonQuestHook() {
+        Plugin betonQuest = getServer().getPluginManager().getPlugin("BetonQuest");
+        if (betonQuest == null || !betonQuest.isEnabled()) return;
+
+        try {
+            BetonQuestHook.register(this);
+        } catch (LinkageError | RuntimeException failure) {
+            // BetonQuest is optional and its API is not stable across major
+            // versions. An incompatible installation must not disable PK.
+            getLogger().warning("Could not enable the BetonQuest integration; continuing without it. "
+                    + "Install a BetonQuest version compatible with its 3.1 API. Cause: " + failure);
+        }
+    }
+
+    private void registerExternalActionBarHook() {
+        Plugin packetEvents = getServer().getPluginManager().getPlugin("packetevents");
+        if (packetEvents == null) {
+            packetEvents = getServer().getPluginManager().getPlugin("PacketEvents");
+        }
+        if (packetEvents == null || !packetEvents.isEnabled()) return;
+
+        try {
+            this.externalActionBarHook = ExternalActionBarHook.register(ProjectKorra.plugin);
+        } catch (LinkageError | RuntimeException failure) {
+            this.externalActionBarHook = null;
+            getLogger().warning("Could not enable external action-bar merging; continuing without it. Cause: "
+                    + failure);
+        }
+    }
+
     @Override
     public void onDisable() {
         // Keep lifecycle publication and coordinate filtering alive while
         // abilities restore their server state. Exact clients can then finish
         // their own ordered TempBlock lifecycles during a reload.
         GeneralMethods.stopBending();
+        if (this.externalActionBarHook != null) {
+            this.externalActionBarHook.stop();
+            this.externalActionBarHook = null;
+        }
         if (this.prediction != null) {
             this.prediction.stop();
             this.prediction = null;
