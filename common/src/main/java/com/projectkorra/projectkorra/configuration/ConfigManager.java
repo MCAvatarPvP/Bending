@@ -1116,6 +1116,7 @@ public class ConfigManager {
             config.addDefault("Abilities.Air.AirBlast.MinimumAirBlastTime", 700);
             config.addDefault("Abilities.Air.AirBlast.SlidingConsumesStamina", true);
             config.addDefault("Abilities.Air.AirBlast.SlidingActivationDelay", 200);
+            config.addDefault("Abilities.Air.AirBlast.SlideStaminaScale", 0.5);
 
             config.addDefault("Abilities.Air.AirBurst.Enabled", true);
             config.addDefault("Abilities.Air.AirBurst.FallThreshold", 10);

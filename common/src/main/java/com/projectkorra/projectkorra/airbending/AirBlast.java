@@ -73,6 +73,7 @@ public class AirBlast extends AirAbility {
     private double decayMinimum;
     private double speedStaminaScale;
     private double rangeStaminaScale;
+    private double staminaSlideScale;
     private long minimumAirBlastTime;
     private long slidingActivationDelay;
     private boolean requireSourceTouchingBlock;
@@ -242,6 +243,7 @@ public class AirBlast extends AirAbility {
         this.decayMinimum = getConfig().getDouble("Abilities.Air.AirBlast.DecayMinimum");
         this.speedStaminaScale = getConfig().getDouble("Abilities.Air.AirBlast.SpeedStaminaScale", 1.0);
         this.rangeStaminaScale = getConfig().getDouble("Abilities.Air.AirBlast.RangeStaminaScale", 1.0);
+        this.staminaSlideScale = getConfig().getDouble("Abilities.Air.AirBlast.SlideStaminaScale", 0.5);
         this.minimumAirBlastTime = getConfig().getLong("Abilities.Air.AirBlast.MinimumAirBlastTime");
         this.slidingActivationDelay = getConfig().getLong("Abilities.Air.AirBlast.SlidingActivationDelay", 200L);
         this.requireSourceTouchingBlock = getConfig().getBoolean("Abilities.Air.AirBlast.RequireSourceTouchingBlock");
@@ -373,7 +375,7 @@ public class AirBlast extends AirAbility {
 
         if (consumeStamina) {
             this.usedStaminaThisShot = false;
-            this.bPlayer.increaseAirBlastDecay(this.decayAmount, this.decayMinimum);
+            this.bPlayer.increaseAirBlastDecay(sliding ? this.decayAmount * staminaSlideScale : this.decayAmount, this.decayMinimum);
             this.pushFactor *= this.bPlayer.getAirBlastDecay();
         }
 
@@ -416,33 +418,6 @@ public class AirBlast extends AirAbility {
             knockback *= this.slideSpeed + speed;
         }
 
-        /*
-         * Rigorous push model:
-         *
-         * Let d be the final push axis and v be the entity's current velocity.
-         * Decompose v into:
-         *
-         *     v_parallel = (v · d) d
-         *     v_perp     = v - v_parallel
-         *
-         * The blast should guarantee a target velocity component along d, not add
-         * a different amount depending on how many lag-compensated snapshots hit.
-         *
-         * So:
-         *
-         *     target = knockback
-         *     current = v · d
-         *     delta = max(0, target - current)
-         *     v' = v + delta d
-         *
-         * After this:
-         *
-         *     v' · d = max(current, target)
-         *
-         * This is idempotent. Applying the same blast again during the same
-         * overlap does not keep stacking velocity, which makes high-ping and
-         * low-ping hits much more consistent.
-         */
         double comp = velocity.dot(push.clone().normalize());
         if (comp > knockback) {
             velocity.multiply(.5);
