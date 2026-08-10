@@ -146,8 +146,6 @@ public class GeneralMethods {
                 hasBlocked = WaterSpout.removeSpouts(loc, radius, player) || hasBlocked;
             } else if (ability.equalsIgnoreCase("AirSpout")) {
                 hasBlocked = AirSpout.removeSpouts(loc, radius, player) || hasBlocked;
-            } else if (ability.equalsIgnoreCase("Twister")) {
-                // hasBlocked = AirCombo.removeAroundPoint(player, "Twister", loc, radius) || hasBlocked;
             } else if (ability.equalsIgnoreCase("AirStream")) {
                 // hasBlocked = AirCombo.removeAroundPoint(player, "AirStream", loc, radius) || hasBlocked;
             } else if (ability.equalsIgnoreCase("AirSweep")) {
@@ -1387,6 +1385,7 @@ public class GeneralMethods {
         ElementalAbility.setupBendableMaterials();
         // WaterAbility.setupWaterTransformableBlocks();
         EarthTunnel.clearBendableMaterials();
+        BlockSource.reload();
 
         Platform.scheduler().cancelAll();
         Platform.scheduler().runTimer(new BendingManager(), 0, 1);
@@ -1879,17 +1878,28 @@ public class GeneralMethods {
     }
 
     public static void stopBending() {
-        CoreAbility.removeAll();
-        EarthAbility.stopBending();
-        WaterAbility.stopBending();
-        FireAbility.stopBending();
+        TempBlock.runShutdownCleanup(() -> {
+            CoreAbility.removeAll();
+            // /pk reload cancels every ProjectKorra-owned task. Mark bundled
+            // addons disabled so enable() below actually recreates their temp
+            // block managers, tickers and listeners after cancellation.
+            EmbeddedAddonBootstrap.disable();
+            EarthAbility.stopBending();
+            WaterAbility.stopBending();
+            FireAbility.stopBending();
 
-        TempBlock.removeAll();
-        TempArmor.revertAll();
-        TempArmorStand.removeAll();
-        MovementHandler.resetAll();
-        MultiAbilityManager.removeAll();
-        TempFallingBlock.removeAllFallingBlocks();
+            TempBlock.removeAll();
+            TempArmor.revertAll();
+            TempArmorStand.removeAll();
+            MovementHandler.resetAll();
+            MultiAbilityManager.removeAll();
+            TempFallingBlock.removeAllFallingBlocks();
+            BlockSource.clearAll();
+            HorizontalVelocityTracker.clearAll();
+            PassiveHandler.clearAll();
+            ComboManager.clearRuntimeState();
+            RegionProtection.clearCache();
+        });
     }
 
     public static void stopPlugin() {

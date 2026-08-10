@@ -51,6 +51,12 @@ public class ComboManager {
         startCleanupTask();
     }
 
+    /** Drops pending one-tick activations and help sessions tied to the previous registry. */
+    public static void clearRuntimeState() {
+        SCHEDULED_COMBO_ABILITY.clear();
+        COMBO_HELP_SESSIONS.clear();
+    }
+
     public static void scheduleComboAbility(final Player player, final ClickType type) {
         SCHEDULED_COMBO_ABILITY.computeIfAbsent(player.getUniqueId(), uuid -> new HashSet<>()).add(type);
     }

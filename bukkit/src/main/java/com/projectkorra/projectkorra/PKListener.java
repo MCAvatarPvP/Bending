@@ -1254,6 +1254,25 @@ public class PKListener implements Listener {
         }
     }
 
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onCancelledTornadoAirInteraction(final PlayerInteractEvent event) {
+        if (!event.isCancelled() || event.getAction() != Action.RIGHT_CLICK_AIR
+                || event.getHand() != EquipmentSlot.HAND) {
+            return;
+        }
+
+        final var player = BukkitMC.player(event.getPlayer());
+        if (!CoreAbility.hasAbility(player, Tornado.class)) {
+            return;
+        }
+
+        final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
+        AbilityTimingDebugger.recordInput(player, "INTERACT_RIGHT_CLICK_AIR",
+                bPlayer != null ? bPlayer.getBoundAbilityName() : null);
+        PaperPredictionServer.handleRightClick(event.getPlayer(), false,
+                () -> CommonInputHandler.handleRightClick(player, ClickType.RIGHT_CLICK));
+    }
+
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onPlayerInteraction(final PlayerInteractEvent event) {
         final var player = BukkitMC.player(event.getPlayer());

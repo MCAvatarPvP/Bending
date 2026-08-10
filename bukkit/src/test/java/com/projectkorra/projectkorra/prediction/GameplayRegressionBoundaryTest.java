@@ -255,6 +255,37 @@ class GameplayRegressionBoundaryTest {
                 "the dedicated Fabric scheduler must retain Bukkit heartbeat and insertion ordering too");
     }
 
+    @Test
+    void reloadRestartsBundledTempBlockManagersBehindATeardownFence() throws IOException {
+        final String general = common("com/projectkorra/projectkorra/GeneralMethods.java");
+        final String tempBlock = common("com/projectkorra/projectkorra/util/TempBlock.java");
+        final String handlerList = common("com/projectkorra/projectkorra/platform/mc/event/HandlerList.java");
+        final String bukkitEvents = source(
+                "src/main/java/com/projectkorra/projectkorra/platform/bukkit/BukkitProjectKorraPlatform.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/platform/bukkit/BukkitProjectKorraPlatform.java");
+        final String fabricEvents = source(
+                "../fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricProjectKorraPlatform.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricProjectKorraPlatform.java");
+        final String reload = method(general, "public static void reloadPlugin(",
+                "public static void reloadAddonPlugins(");
+        final String stop = method(general, "public static void stopBending()",
+                "public static void stopPlugin()");
+
+        assertTrue(stop.contains("TempBlock.runShutdownCleanup"));
+        assertTrue(stop.contains("EmbeddedAddonBootstrap.disable()"),
+                "cancelled bundled-addon tickers must be marked stopped before reload startup");
+        assertTrue(reload.indexOf("Platform.scheduler().cancelAll()")
+                        < reload.indexOf("EmbeddedAddonBootstrap.enable()"),
+                "bundled temp-block managers must restart after the old task set is cancelled");
+        assertTrue(tempBlock.contains("if (shutdownCleanupDepth > 0)"));
+        assertTrue(tempBlock.contains("if (shutdownCleanupDepth > 0) return;"),
+                "teardown must reject new layers and suppress callbacks that recreate them");
+        assertTrue(handlerList.contains("Platform.events().unregisterAll(o)"));
+        assertTrue(bukkitEvents.contains("registration.owner() == target")
+                        && fabricEvents.contains("handler.owner()==target"),
+                "listener teardown must honor plugin ownership on both server platforms");
+    }
+
     private static String common(String relative) throws IOException {
         Path path = Path.of("../common/src/main/java").resolve(relative);
         if (!Files.exists(path)) path = Path.of("common/src/main/java").resolve(relative);

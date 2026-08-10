@@ -38,6 +38,8 @@ final class CoreAbilityActivationBootstrap {
     }
 
     static void registerDefaults() {
+        registerGlobal(ClickType.RIGHT_CLICK, CoreAbilityActivationBootstrap::rightClickTornado);
+        registerGlobal(ClickType.RIGHT_CLICK_BLOCK, CoreAbilityActivationBootstrap::rightClickTornado);
         registerGlobal(ClickType.LEFT_CLICK, CoreAbilityActivationBootstrap::leftClickIceBullet);
         registerGlobal(ClickType.RIGHT_CLICK, CoreAbilityActivationBootstrap::rightClickIceBullet);
         registerGlobal(ClickType.RIGHT_CLICK_BLOCK, CoreAbilityActivationBootstrap::rightClickIceBullet);
@@ -278,6 +280,18 @@ final class CoreAbilityActivationBootstrap {
             return true;
         }
         return false;
+    }
+
+    private static boolean rightClickTornado(final ActivationContext context) {
+        final Tornado tornado = CoreAbility.getAbility(context.getPlayer(), Tornado.class);
+        if (tornado == null || !tornado.tryStartRiding()) {
+            return false;
+        }
+
+        AbilityActivationManager.markHandled(tornado);
+        context.cancelEvent();
+        context.stopProcessing();
+        return true;
     }
 
     private static boolean rightClickIceBullet(final ActivationContext context) {

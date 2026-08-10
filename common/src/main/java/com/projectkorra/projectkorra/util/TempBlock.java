@@ -66,6 +66,7 @@ public class TempBlock {
      * ended ability cannot be retained by prediction bookkeeping.
      */
     private static final Map<CoreAbility, EffectCounter> EFFECT_COUNTERS = new WeakHashMap<>();
+    private static int shutdownCleanupDepth;
 
     /** Compatibility view containing the current top layer at each coordinate. */
     @Deprecated
@@ -153,6 +154,13 @@ public class TempBlock {
         synchronized (MUTATION_LOCK) {
             LinkedList<TempBlock> stack = LAYERS.get(block);
             this.state = stack == null || stack.isEmpty() ? block.getState() : stack.getFirst().state;
+            // Ability removal can run arbitrary addon callbacks. During a full
+            // teardown, a replacement layer would miss the removal snapshot and
+            // retain a cancelled expiry task after /pk reload.
+            if (shutdownCleanupDepth > 0) {
+                this.reverted = true;
+                return;
+            }
             if (this.state.hasBlockEntity() || this.state.getType() == Material.JUKEBOX) {
                 this.reverted = true;
                 return;
@@ -283,6 +291,25 @@ public class TempBlock {
         }
     }
 
+    /**
+     * Fences a complete plugin teardown. Existing layers may still restore
+     * their captured world state, but callbacks and newly constructed layers
+     * cannot repopulate registries whose scheduler is about to be cancelled.
+     */
+    public static void runShutdownCleanup(final Runnable cleanup) {
+        Objects.requireNonNull(cleanup, "cleanup");
+        synchronized (MUTATION_LOCK) {
+            shutdownCleanupDepth++;
+        }
+        try {
+            cleanup.run();
+        } finally {
+            synchronized (MUTATION_LOCK) {
+                shutdownCleanupDepth--;
+            }
+        }
+    }
+
     public static void removeAll() {
         final List<TempBlock> snapshot = getActiveLayers();
         try {
@@ -297,7 +324,21 @@ public class TempBlock {
         } finally {
             synchronized (MUTATION_LOCK) {
                 EXPIRATIONS.clear();
-                if (LAYERS.isEmpty()) LAYERS_BY_ID.clear();
+                if (shutdownCleanupDepth > 0) {
+                    for (LinkedList<TempBlock> stack : LAYERS.values()) {
+                        for (TempBlock layer : stack) {
+                            layer.reverted = true;
+                            layer.scheduled = false;
+                        }
+                    }
+                    LAYERS.clear();
+                    LAYERS_BY_ID.clear();
+                    instances.clear();
+                    VISIBILITY.clear();
+                    EFFECT_COUNTERS.clear();
+                } else if (LAYERS.isEmpty()) {
+                    LAYERS_BY_ID.clear();
+                }
             }
         }
     }
@@ -395,6 +436,9 @@ public class TempBlock {
     }
 
     private static void finishLayer(final TempBlock layer) {
+        synchronized (MUTATION_LOCK) {
+            if (shutdownCleanupDepth > 0) return;
+        }
         final Runnable completion = () -> {
             if (layer.revertTask != null) {
                 try {

@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -60,6 +61,37 @@ class TempBlockLifecycleTest {
         assertEquals(Material.STONE, block.getType());
         assertFalse(TempBlock.isTempBlock(block),
                 "the expired ice must not uncover a never-expiring water layer");
+    }
+
+    @Test
+    void shutdownCleanupRestoresBlocksWithoutRunningReplacementCallbacks() {
+        final FakeBlock block = new FakeBlock(Material.STONE);
+        final TempBlock layer = new TempBlock(block, Material.ICE);
+        final AtomicBoolean callback = new AtomicBoolean();
+        layer.setRevertTask(() -> {
+            callback.set(true);
+            new TempBlock(block, Material.WATER.createBlockData(), 5_000L);
+        });
+
+        TempBlock.runShutdownCleanup(TempBlock::removeAll);
+
+        assertEquals(Material.STONE, block.getType());
+        assertFalse(callback.get(), "reload teardown must not recreate a layer from a revert callback");
+        assertTrue(TempBlock.getActiveLayers().isEmpty());
+        assertFalse(TempBlock.isTempBlock(block));
+    }
+
+    @Test
+    void shutdownCleanupRejectsLayersCreatedByAbilityRemoval() {
+        final FakeBlock block = new FakeBlock(Material.STONE);
+        final AtomicReference<TempBlock> attempted = new AtomicReference<>();
+
+        TempBlock.runShutdownCleanup(() -> attempted.set(new TempBlock(block, Material.ICE)));
+
+        assertNotNull(attempted.get());
+        assertTrue(attempted.get().isReverted());
+        assertEquals(Material.STONE, block.getType());
+        assertFalse(TempBlock.isTempBlock(block));
     }
 
     @Test

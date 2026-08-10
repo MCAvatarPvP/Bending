@@ -160,6 +160,11 @@ public class RegionProtection {
         if (player != null && player.getName() != null) BLOCK_CACHE.remove(player.getName());
     }
 
+    /** Clears decisions that may reference pre-reload ability instances or hook configuration. */
+    public static void clearCache() {
+        BLOCK_CACHE.clear();
+    }
+
     private static boolean checkAll(Player player, Location location, CoreAbility ability) {
         for (RegionProtectionHook protection : RegionProtection.getActiveProtections().values()) {
             try {

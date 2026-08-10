@@ -97,6 +97,10 @@ public class LivingEntity extends Entity implements Damageable {
         return 300;
     }
 
+    public int getMaximumAir() {
+        return 300;
+    }
+
     public void setRemainingAir(int ticks) {
     }
 }

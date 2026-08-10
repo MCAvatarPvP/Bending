@@ -3,6 +3,7 @@ package com.projectkorra.projectkorra.ability.util;
 import com.jedk1.jedcore.JedCore;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
+import com.projectkorra.projectkorra.platform.Platform;
 import me.literka.ChiRework;
 import me.moros.hyperion.Hyperion;
 import me.simplicitee.project.addons.ProjectAddons;
@@ -48,6 +49,13 @@ public final class EmbeddedAddonBootstrap {
         tryEnable("ProjectAddons shutdown", projectAddons::onDisable);
         tryEnable("ChiRework shutdown", chiRework::onDisable);
         tryEnable("Hyperion shutdown", Hyperion::disable);
+        // The common event bridge owns registrations by the embedded plugin
+        // object. Some upstream onDisable implementations never unregister
+        // their listeners, so enforce that lifecycle here before restart.
+        tryEnable("JedCore listener shutdown", () -> Platform.events().unregisterAll(jedCore));
+        tryEnable("ProjectAddons listener shutdown", () -> Platform.events().unregisterAll(projectAddons));
+        tryEnable("ChiRework listener shutdown", () -> Platform.events().unregisterAll(chiRework));
+        tryEnable("Hyperion listener shutdown", () -> Platform.events().unregisterAll(Hyperion.getPlugin()));
         jedCore = null;
         projectAddons = null;
         chiRework = null;

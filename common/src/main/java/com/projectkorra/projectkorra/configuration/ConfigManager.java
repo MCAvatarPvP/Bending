@@ -11,6 +11,9 @@ import java.util.*;
 
 public class ConfigManager {
 
+    private static final String TORNADO_DESCRIPTION = "Create a particle cyclone that travels along the ground and pulls in nearby entities. Aim at your own Tornado and right-click to ride it.";
+    private static final String TORNADO_INSTRUCTIONS = "Hold sneak to charge and deploy Tornado. Once it forms, aim at the funnel and right-click in the air or on a block to ride; sneak to dismount.";
+
     static final List<String> DEFAULT_WATER_COSMETICS = List.of(
             "white, WHITE_STAINED_GLASS",
             "orange, ORANGE_STAINED_GLASS",
@@ -73,6 +76,8 @@ public class ConfigManager {
         // defaults like AirSwipe range 24, and those can be serialized as normal
         // ability config values if the Styles directory does not exist yet.
         avatarStateConfig = new Config(avatarStateFile);
+        migrateLegacyTornadoConfig();
+        migrateAirStaminaBarConfig();
         repairMisplacedAvatarStateConfig();
 
         configCheck(ConfigType.DEFAULT);
@@ -526,8 +531,8 @@ public class ConfigManager {
             config.addDefault("Abilities.Air.AirBurst.HorizontalVelocityDeath", "{victim} experienced a fatal collision by {attacker}'s {ability}");
             config.addDefault("Abilities.Air.AirScooter.Description", "AirScooter is a fast means of transportation. It can be used to escape from enemies or confuse them by using air scooter around them.");
             config.addDefault("Abilities.Air.AirScooter.Instructions", "Sprint, jump, and left click while in the air to activate air scooter. You will then move forward in the direction you're looking.");
-            config.addDefault("Abilities.Air.Tornado.Description", "Tornado is one of the most powerful and advanced abilities that an Airbender knows. If the tornado meets a player or mob, it will push them around. Tornado can also be used to push back projectiles and used for mobility. Use a tornado directly under you to propel yourself upwards.");
-            config.addDefault("Abilities.Air.Tornado.Instructions", "Hold sneak and a tornado will form gradually wherever you look.");
+            config.addDefault("Abilities.Air.Tornado.Description", TORNADO_DESCRIPTION);
+            config.addDefault("Abilities.Air.Tornado.Instructions", TORNADO_INSTRUCTIONS);
             config.addDefault("Abilities.Air.AirShield.Description", "AirShield is one of the most powerful defensive techniques in existence. This ability is mainly used when you are low health and need protection. It's also useful when you're surrounded by mobs.");
             config.addDefault("Abilities.Air.AirShield.Instructions", "Hold sneak and a shield of air will form around you, blocking projectiles and pushing entities back.");
             config.addDefault("Abilities.Air.AirSpout.Description", "This ability gives the airbender limited sustained levitation. It allows an airbender to gain a height advantage to escape from mobs, players or just to dodge from attacks. This ability is also useful for building as it allows you to reach great heights.");
@@ -543,8 +548,6 @@ public class ConfigManager {
             config.addDefault("Abilities.Air.Suffocate.Description", "This ability launches a controllable air projectile that latches onto a target and begins suffocating them once it connects.");
             config.addDefault("Abilities.Air.Suffocate.Instructions", "Hold sneak to charge and steer the projectile. Once it latches, keep holding sneak to maintain it. Releasing sneak, taking damage, or losing the target cancels the ability.");
             config.addDefault("Abilities.Air.Suffocate.DeathMessage", "{victim} was asphyxiated by {attacker}'s {ability}");
-            config.addDefault("Abilities.Air.Combo.Twister.Description", "Create a cyclone of air that travels along the ground grabbing nearby entities.");
-            config.addDefault("Abilities.Air.Combo.Twister.Instructions", "AirShield (Tap Shift) > Tornado (Hold Shift) > AirBlast (Left Click)");
             config.addDefault("Abilities.Air.Combo.AirStream.Description", "Control a large stream of air that grabs onto enemies allowing you to direct them temporarily.");
             config.addDefault("Abilities.Air.Combo.AirStream.Instructions", "AirShield (Hold Shift) > AirSuction (Left Click) > AirBlast (Left Click)");
             config.addDefault("Abilities.Air.Combo.SummonSelf.Description", "Launch a flying copy of yourself. Moving faster creates a faster projectile with stronger recoil and impact knockback.");
@@ -1106,8 +1109,8 @@ public class ConfigManager {
             config.addDefault("Abilities.Air.AirBlast.DecayAmount", 0.20);
             config.addDefault("Abilities.Air.AirBlast.DecayMinimum", 0.20);
             config.addDefault("Abilities.Air.AirBlast.RegenRate", 0.25);
-            config.addDefault("Abilities.Air.AirBlast.ShowStaminaOnXPBar", true);
-            config.addDefault("Abilities.Air.AirBlast.XPBarInterpolationRate", 3.0);
+            config.addDefault("Abilities.Air.AirBlast.ShowStaminaOnAirBar", true);
+            config.addDefault("Abilities.Air.AirBlast.AirBarInterpolationRate", 3.0);
             config.addDefault("Abilities.Air.AirBlast.SpeedStaminaScale", 1.0);
             config.addDefault("Abilities.Air.AirBlast.RangeStaminaScale", 1.0);
             config.addDefault("Abilities.Air.AirBlast.MinimumAirBlastTime", 700);
@@ -1263,33 +1266,29 @@ public class ConfigManager {
             config.addDefault("Abilities.Air.Suffocate.ProjectileSteerStrength", 0.35);
 
             config.addDefault("Abilities.Air.Tornado.Enabled", true);
-            config.addDefault("Abilities.Air.Tornado.Cooldown", 0);
-            config.addDefault("Abilities.Air.Tornado.Duration", 0);
-            config.addDefault("Abilities.Air.Tornado.Radius", 10);
-            config.addDefault("Abilities.Air.Tornado.Height", 20);
-            config.addDefault("Abilities.Air.Tornado.Range", 25);
-            config.addDefault("Abilities.Air.Tornado.Speed", 1);
-            config.addDefault("Abilities.Air.Tornado.NpcPushFactor", 1);
-            config.addDefault("Abilities.Air.Tornado.PlayerPushFactor", 1);
-
-            config.addDefault("Abilities.Air.Twister.Enabled", true);
-            config.addDefault("Abilities.Air.Twister.Speed", 0.35);
-            config.addDefault("Abilities.Air.Twister.Range", 16);
-            config.addDefault("Abilities.Air.Twister.Height", 8);
-            config.addDefault("Abilities.Air.Twister.Radius", 3.5);
-            config.addDefault("Abilities.Air.Twister.ChargeTime", 750);
-            config.addDefault("Abilities.Air.Twister.Damage", 0);
-            config.addDefault("Abilities.Air.Twister.DamageInterval", 500);
-            config.addDefault("Abilities.Air.Twister.MaxPullDuration", 0);
-            config.addDefault("Abilities.Air.Twister.PullZoneRadius", 5.25);
-            config.addDefault("Abilities.Air.Twister.PullVelocity", 0.315);
-            config.addDefault("Abilities.Air.Twister.SpinPlayers", false);
-            config.addDefault("Abilities.Air.Twister.TrappedAbilityCooldown", 1500);
-            config.addDefault("Abilities.Air.Twister.RemoveDelay", 1500);
-            config.addDefault("Abilities.Air.Twister.Cooldown", 10000);
-            config.addDefault("Abilities.Air.Twister.DegreesPerParticle", 7);
-            config.addDefault("Abilities.Air.Twister.HeightPerParticle", 1.25);
-            config.addDefault("Abilities.Air.Twister.Combination", Arrays.asList("AirShield:SNEAK_DOWN", "AirShield:SNEAK_UP", "Tornado:SNEAK_DOWN", "AirBlast:LEFT_CLICK"));
+            config.addDefault("Abilities.Air.Tornado.Speed", 0.35);
+            config.addDefault("Abilities.Air.Tornado.Range", 16);
+            config.addDefault("Abilities.Air.Tornado.Height", 8);
+            config.addDefault("Abilities.Air.Tornado.Radius", 3.5);
+            config.addDefault("Abilities.Air.Tornado.ChargeTime", 750);
+            config.addDefault("Abilities.Air.Tornado.Damage", 0);
+            config.addDefault("Abilities.Air.Tornado.DamageInterval", 500);
+            config.addDefault("Abilities.Air.Tornado.MaxPullDuration", 0);
+            config.addDefault("Abilities.Air.Tornado.PullZoneRadius", 5.25);
+            config.addDefault("Abilities.Air.Tornado.PullVelocity", 0.315);
+            config.addDefault("Abilities.Air.Tornado.SpinPlayers", false);
+            config.addDefault("Abilities.Air.Tornado.TrappedAbilityCooldown", 1500);
+            config.addDefault("Abilities.Air.Tornado.RemoveDelay", 1500);
+            config.addDefault("Abilities.Air.Tornado.Cooldown", 10000);
+            config.addDefault("Abilities.Air.Tornado.DegreesPerParticle", 7);
+            config.addDefault("Abilities.Air.Tornado.HeightPerParticle", 1.25);
+            config.addDefault("Abilities.Air.Tornado.Ride.Enabled", true);
+            config.addDefault("Abilities.Air.Tornado.Ride.Duration", 8000);
+            config.addDefault("Abilities.Air.Tornado.Ride.Speed", 0.8);
+            config.addDefault("Abilities.Air.Tornado.Ride.HeightPercentage", 0.62);
+            config.addDefault("Abilities.Air.Tornado.Ride.VerticalSmoothing", 0.16);
+            config.addDefault("Abilities.Air.Tornado.Ride.MaxVerticalSpeed", 0.55);
+            config.addDefault("Abilities.Air.Tornado.Ride.TargetingRange", 12.0);
 
             config.addDefault("Abilities.Air.AirStream.Enabled", true);
             config.addDefault("Abilities.Air.AirStream.Speed", 0.5);
@@ -2229,9 +2228,9 @@ public class ConfigManager {
             config.addDefault("Abilities.Air.AirSweep.Cooldown", 0);
             config.addDefault("Abilities.Air.AirSweep.Range", 21);
             config.addDefault("Abilities.Air.AirSweep.Knockback", 4);
-            config.addDefault("Abilities.Air.Twister.Range", "x1.5");
-            config.addDefault("Abilities.Air.Twister.Height", "+6");
-            config.addDefault("Abilities.Air.Twister.Cooldown", 0);
+            config.addDefault("Abilities.Air.Tornado.Range", "x1.5");
+            config.addDefault("Abilities.Air.Tornado.Height", "+6");
+            config.addDefault("Abilities.Air.Tornado.Cooldown", 0);
 
             config.addDefault("Abilities.Earth._All.Width", "x4.0");
             config.addDefault("Abilities.Earth._All.Height", "x2.0");
@@ -2419,6 +2418,83 @@ public class ConfigManager {
             }
         }
         from.removeTree(sectionName);
+        return true;
+    }
+
+    /** Promotes existing combo settings when upgrading to the bound Tornado ability. */
+    private static void migrateLegacyTornadoConfig() {
+        final boolean configMigrated = moveSection(defaultConfig,
+                "Abilities.Air.Twister", "Abilities.Air.Tornado", Set.of("Combination"));
+        final boolean languageMigrated = languageConfig.getConfigurationSection("Abilities.Air.Combo.Twister") != null;
+        if (languageMigrated) {
+            languageConfig.removeTree("Abilities.Air.Combo.Twister");
+            languageConfig.set("Abilities.Air.Tornado.Description", TORNADO_DESCRIPTION);
+            languageConfig.set("Abilities.Air.Tornado.Instructions", TORNADO_INSTRUCTIONS);
+        }
+        final boolean avatarStateMigrated = moveSection(avatarStateConfig,
+                "Abilities.Air.Twister", "Abilities.Air.Tornado", Set.of());
+
+        if (configMigrated) {
+            defaultConfig.save();
+        }
+        if (languageMigrated) {
+            languageConfig.save();
+        }
+        if (avatarStateMigrated) {
+            avatarStateConfig.save();
+        }
+        if (configMigrated || languageMigrated || avatarStateMigrated) {
+            Platform.logger().info("Migrated legacy Twister settings into Tornado.");
+        }
+    }
+
+    /** Renames the old XP-meter settings without discarding server overrides. */
+    private static void migrateAirStaminaBarConfig() {
+        final String oldToggle = "Abilities.Air.AirBlast.ShowStaminaOnXPBar";
+        final String oldRate = "Abilities.Air.AirBlast.XPBarInterpolationRate";
+        final String newToggle = "Abilities.Air.AirBlast.ShowStaminaOnAirBar";
+        final String newRate = "Abilities.Air.AirBlast.AirBarInterpolationRate";
+        boolean migrated = false;
+
+        if (defaultConfig.contains(oldToggle)) {
+            if (!defaultConfig.contains(newToggle)) {
+                defaultConfig.set(newToggle, defaultConfig.get(oldToggle));
+            }
+            defaultConfig.set(oldToggle, null);
+            migrated = true;
+        }
+        if (defaultConfig.contains(oldRate)) {
+            if (!defaultConfig.contains(newRate)) {
+                defaultConfig.set(newRate, defaultConfig.get(oldRate));
+            }
+            defaultConfig.set(oldRate, null);
+            migrated = true;
+        }
+
+        if (migrated) {
+            defaultConfig.save();
+            Platform.logger().info("Migrated AirBlast stamina display settings from the XP bar to the air bar.");
+        }
+    }
+
+    private static boolean moveSection(final Config config, final String sourcePath,
+                                       final String targetPath, final Set<String> excludedKeys) {
+        final PKConfigurationSection section = config.getConfigurationSection(sourcePath);
+        if (section == null) {
+            return false;
+        }
+
+        final Map<String, Object> migratedValues = new LinkedHashMap<>();
+        for (final String key : section.getKeys(true)) {
+            final Object value = section.get(key);
+            if (value instanceof PKConfigurationSection || excludedKeys.contains(key)) {
+                continue;
+            }
+            migratedValues.put(key, value);
+        }
+        config.removeTree(sourcePath);
+        config.removeTree(targetPath);
+        migratedValues.forEach((key, value) -> config.set(targetPath + "." + key, value));
         return true;
     }
 

@@ -91,9 +91,9 @@ public final class ActionBarStatusManager {
 
         final int baseSegmentCount = segments.size();
         addProviderStatuses(segments, player, bPlayer);
-        final boolean staminaOnXPBar = ConfigManager.defaultConfig.get().getBoolean(
-                "Abilities.Air.AirBlast.ShowStaminaOnXPBar", true);
-        if (!staminaOnXPBar && bPlayer.shouldDisplayChangingAirStamina(STAMINA_DISPLAY_DURATION_MILLIS)) {
+        final boolean staminaOnAirBar = ConfigManager.defaultConfig.get().getBoolean(
+                "Abilities.Air.AirBlast.ShowStaminaOnAirBar", true);
+        if (!staminaOnAirBar && bPlayer.shouldDisplayChangingAirStamina(STAMINA_DISPLAY_DURATION_MILLIS)) {
             addBuiltInStaminaStatus(segments, bPlayer);
         }
 
@@ -105,7 +105,7 @@ public final class ActionBarStatusManager {
             return;
         }
 
-        if (staminaOnXPBar) {
+        if (staminaOnAirBar) {
             addBuiltInStaminaStatus(segments, bPlayer);
         }
         addOtherCooldowns(segments, bPlayer, selectedAbility);

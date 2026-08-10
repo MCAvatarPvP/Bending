@@ -242,16 +242,19 @@ public final class FabricProjectKorraPlatform implements ProjectKorraPlatform {
             this.handlers.stream().filter(handler->handler.type().isInstance(commonEvent)).sorted(Comparator.comparingInt(Handler::priority)).forEach(handler->handler.invoke(commonEvent));
         }
         @Override public void registerListener(final Object listener) {
+            registerListener(listener, listener);
+        }
+        @Override public void registerListener(final Object listener, final Object owner) {
             for (Method method:listener.getClass().getMethods()) {
                 if(method.getParameterCount()!=1)continue;
                 var annotation=method.getAnnotation(EventHandler.class);
                 if(annotation==null||!Event.class.isAssignableFrom(method.getParameterTypes()[0]))continue;
                 method.trySetAccessible();
-                this.handlers.add(new Handler(listener,method,method.getParameterTypes()[0],annotation.priority().ordinal(),annotation.ignoreCancelled()));
+                this.handlers.add(new Handler(listener,owner,method,method.getParameterTypes()[0],annotation.priority().ordinal(),annotation.ignoreCancelled()));
             }
         }
-        @Override public void unregisterAll(final Object listener) { this.handlers.removeIf(handler->handler.listener()==listener); }
-        private record Handler(Object listener,Method method,Class<?> type,int priority,boolean ignoreCancelled){
+        @Override public void unregisterAll(final Object target) { this.handlers.removeIf(handler->handler.listener()==target||handler.owner()==target); }
+        private record Handler(Object listener,Object owner,Method method,Class<?> type,int priority,boolean ignoreCancelled){
             void invoke(Event event){
                 if(ignoreCancelled&&event instanceof Cancellable cancellable&&cancellable.isCancelled())return;
                 try{method.invoke(listener,event);}catch(ReflectiveOperationException exception){throw new RuntimeException("Failed to dispatch "+event.getClass().getName(),exception);}

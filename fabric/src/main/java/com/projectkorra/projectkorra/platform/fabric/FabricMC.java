@@ -1877,6 +1877,7 @@ public final class FabricMC {
         @Override public boolean addPotionEffect(PotionEffect effect, boolean force) { addPotionEffect(effect); return true; }
         @Override public void removePotionEffect(PotionEffectType type) { applyHitStatus(this, () -> value.removeStatusEffect(status(type))); }
         @Override public int getRemainingAir() { return value.getAir(); }
+        @Override public int getMaximumAir() { return value.getMaxAir(); }
         @Override public void setRemainingAir(int ticks) { applyHitStatus(this, () -> value.setAir(ticks)); }
         @Override public EntityEquipment getEquipment() { return new EquipmentView(value); }
         @Override public void setAI(boolean enabled) {
@@ -2392,6 +2393,7 @@ public final class FabricMC {
         @Override public boolean addPotionEffect(PotionEffect effect, boolean force) { addPotionEffect(effect); return true; }
         @Override public void removePotionEffect(PotionEffectType type) { applyHitStatus(this, () -> value.removeStatusEffect(status(type))); }
         @Override public int getRemainingAir() { return value.getAir(); }
+        @Override public int getMaximumAir() { return value.getMaxAir(); }
         @Override public void setRemainingAir(int ticks) { applyHitStatus(this, () -> value.setAir(ticks)); }
         @Override public Block getTargetBlockExact(int range) {
             Location eye = getEyeLocation();

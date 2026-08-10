@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.airbending.passive;
 
 import com.projectkorra.projectkorra.ability.AirAbility;
+import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.ability.PassiveAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.platform.mc.Location;
@@ -22,11 +23,12 @@ public class AirAgility extends AirAbility implements PassiveAbility {
     private long minimumAirBlastTime;
     private double maxStamina;
     private double regenRate;
-    private boolean showStaminaOnXPBar;
-    private double xpBarInterpolationRate;
+    private boolean showStaminaOnAirBar;
+    private double airBarInterpolationRate;
     private long lastAirBlastRegenTime;
     private long lastAirBlastBarUpdateTime;
     private float displayedAirBlastBar = -1.0f;
+    private final AirStaminaBar staminaBar = new AirStaminaBar();
 
     public AirAgility(final Player player) {
         super(player);
@@ -43,8 +45,8 @@ public class AirAgility extends AirAbility implements PassiveAbility {
         this.minimumAirBlastTime = getConfig().getLong("Abilities.Air.AirBlast.MinimumAirBlastTime");
         this.maxStamina = getConfig().getDouble("Abilities.Air.AirBlast.MaxStamina", 1.2);
         this.regenRate = getConfig().getDouble("Abilities.Air.AirBlast.RegenRate", 0.25);
-        this.showStaminaOnXPBar = getConfig().getBoolean("Abilities.Air.AirBlast.ShowStaminaOnXPBar", true);
-        this.xpBarInterpolationRate = getConfig().getDouble("Abilities.Air.AirBlast.XPBarInterpolationRate", 3.0);
+        this.showStaminaOnAirBar = getConfig().getBoolean("Abilities.Air.AirBlast.ShowStaminaOnAirBar", true);
+        this.airBarInterpolationRate = getConfig().getDouble("Abilities.Air.AirBlast.AirBarInterpolationRate", 3.0);
     }
 
     @Override
@@ -62,14 +64,14 @@ public class AirAgility extends AirAbility implements PassiveAbility {
             this.lastAirBlastRegenTime = now;
         }
 
-        if (this.showStaminaOnXPBar) {
+        if (this.showStaminaOnAirBar && !ElementalAbility.isWater(this.player.getEyeLocation().getBlock())) {
             float decay = (float) bPlayer.getAirBlastDecay();
             float staminaRange = (float) Math.max(0.01, this.maxStamina - this.decayMinimum);
             float normalized = (decay - (float) decayMinimum) / staminaRange;
             float val = this.interpolateAirBlastBar(Math.max(0f, Math.min(1f, normalized)), now);
-            if (val != player.getExp()) {
-                player.setExp(val);
-            }
+            this.staminaBar.display(this.player, val);
+        } else {
+            this.restoreVanillaAirBar();
         }
 
         if (this.requiresSprinting && !this.player.isSprinting() || !this.bPlayer.canUsePassive(this) || !this.bPlayer.canBendPassive(this)) {
@@ -97,7 +99,7 @@ public class AirAgility extends AirAbility implements PassiveAbility {
         this.lastAirBlastBarUpdateTime = now;
 
         final float difference = target - this.displayedAirBlastBar;
-        final float maxStep = (float) (Math.max(0.01, this.xpBarInterpolationRate) * elapsedSeconds);
+        final float maxStep = (float) (Math.max(0.01, this.airBarInterpolationRate) * elapsedSeconds);
         if (Math.abs(difference) <= maxStep) {
             this.displayedAirBlastBar = target;
         } else {
@@ -105,6 +107,18 @@ public class AirAgility extends AirAbility implements PassiveAbility {
         }
 
         return Math.max(0f, Math.min(1f, this.displayedAirBlastBar));
+    }
+
+    private void restoreVanillaAirBar() {
+        this.staminaBar.release(this.player);
+        this.displayedAirBlastBar = -1.0F;
+        this.lastAirBlastBarUpdateTime = 0L;
+    }
+
+    @Override
+    public void remove() {
+        this.restoreVanillaAirBar();
+        super.remove();
     }
 
     @Override

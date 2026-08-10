@@ -511,6 +511,7 @@ public final class BukkitProjectKorraPlatform implements ProjectKorraPlatform {
 
     private final class BukkitEventBusFacade implements PKEventBus {
         private final CopyOnWriteArrayList<NeutralHandler> neutralHandlers = new CopyOnWriteArrayList<>();
+        private final CopyOnWriteArrayList<OwnedListener> nativeListeners = new CopyOnWriteArrayList<>();
 
         @Override
         public void call(final Object event) {
@@ -529,6 +530,11 @@ public final class BukkitProjectKorraPlatform implements ProjectKorraPlatform {
 
         @Override
         public void registerListener(final Object listener) {
+            registerListener(listener, listener);
+        }
+
+        @Override
+        public void registerListener(final Object listener, final Object owner) {
             for (final Method method : listener.getClass().getMethods()) {
                 if (method.getParameterCount() != 1) continue;
                 final Class<?> eventType = method.getParameterTypes()[0];
@@ -542,20 +548,30 @@ public final class BukkitProjectKorraPlatform implements ProjectKorraPlatform {
                                     invoke(method, listener, event);
                                 }
                             }, plugin, bukkitAnnotation.ignoreCancelled());
+                    this.nativeListeners.add(new OwnedListener(listener, owner));
                 } else if (com.projectkorra.projectkorra.platform.mc.event.Event.class.isAssignableFrom(eventType) && (bukkitAnnotation != null || commonAnnotation != null)) {
                     final int priority = commonAnnotation != null ? commonAnnotation.priority().ordinal() : bukkitAnnotation.priority().ordinal();
                     final boolean ignoreCancelled = commonAnnotation != null ? commonAnnotation.ignoreCancelled() : bukkitAnnotation.ignoreCancelled();
-                    this.neutralHandlers.add(new NeutralHandler(listener, method, eventType, priority, ignoreCancelled));
+                    this.neutralHandlers.add(new NeutralHandler(listener, owner, method, eventType, priority, ignoreCancelled));
                 }
             }
         }
 
         @Override
-        public void unregisterAll(final Object listener) {
-            if (listener instanceof Listener bukkitListener) {
-                HandlerList.unregisterAll(bukkitListener);
+        public void unregisterAll(final Object target) {
+            final Set<Object> listeners = Collections.newSetFromMap(new IdentityHashMap<>());
+            for (OwnedListener registration : this.nativeListeners) {
+                if (registration.listener() == target || registration.owner() == target) {
+                    listeners.add(registration.listener());
+                }
             }
-            this.neutralHandlers.removeIf(handler -> handler.listener() == listener);
+            if (target instanceof Listener) listeners.add(target);
+            for (Object listener : listeners) {
+                HandlerList.unregisterAll((Listener) listener);
+            }
+            this.nativeListeners.removeIf(registration -> listeners.contains(registration.listener()));
+            this.neutralHandlers.removeIf(handler ->
+                    handler.listener() == target || handler.owner() == target);
         }
 
         private void invoke(final Method method, final Object listener, final Object event) {
@@ -566,7 +582,10 @@ public final class BukkitProjectKorraPlatform implements ProjectKorraPlatform {
             }
         }
 
-        private record NeutralHandler(Object listener, Method method, Class<?> eventType, int priority,
+        private record OwnedListener(Object listener, Object owner) {
+        }
+
+        private record NeutralHandler(Object listener, Object owner, Method method, Class<?> eventType, int priority,
                                       boolean ignoreCancelled) {
             private void invoke(final com.projectkorra.projectkorra.platform.mc.event.Event event) {
                 if (ignoreCancelled && event instanceof Cancellable cancellable && cancellable.isCancelled()) return;

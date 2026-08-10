@@ -15,6 +15,10 @@ import java.util.concurrent.ConcurrentHashMap;
 public class PassiveHandler {
     private static final Map<Player, Float> FOOD = new ConcurrentHashMap<>();
 
+    public static void clearAll() {
+        FOOD.clear();
+    }
+
     public static float getExhaustion(final Player player, float level, final double factor) {
         if (!FOOD.keySet().contains(player)) {
             FOOD.put(player, level);

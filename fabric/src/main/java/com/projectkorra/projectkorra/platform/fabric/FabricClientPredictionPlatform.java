@@ -448,22 +448,27 @@ public final class FabricClientPredictionPlatform implements ProjectKorraPlatfor
 
         @Override
         public void registerListener(Object listener) {
+            registerListener(listener, listener);
+        }
+
+        @Override
+        public void registerListener(Object listener, Object owner) {
             for (Method method : listener.getClass().getMethods()) {
                 if (method.getParameterCount() != 1) continue;
                 EventHandler annotation = method.getAnnotation(EventHandler.class);
                 if (annotation == null || !Event.class.isAssignableFrom(method.getParameterTypes()[0]))
                     continue;
                 method.trySetAccessible();
-                handlers.add(new Handler(listener, method, method.getParameterTypes()[0], annotation.priority().ordinal(), annotation.ignoreCancelled()));
+                handlers.add(new Handler(listener, owner, method, method.getParameterTypes()[0], annotation.priority().ordinal(), annotation.ignoreCancelled()));
             }
         }
 
         @Override
-        public void unregisterAll(Object listener) {
-            handlers.removeIf(handler -> handler.listener == listener);
+        public void unregisterAll(Object target) {
+            handlers.removeIf(handler -> handler.listener == target || handler.owner == target);
         }
 
-        private record Handler(Object listener, Method method, Class<?> type, int priority,
+        private record Handler(Object listener, Object owner, Method method, Class<?> type, int priority,
                                boolean ignoreCancelled) {
             void invoke(Event event) {
                 if (ignoreCancelled && event instanceof Cancellable cancellable && cancellable.isCancelled())

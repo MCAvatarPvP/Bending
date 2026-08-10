@@ -1542,6 +1542,11 @@ public final class BukkitMC {
         }
 
         @Override
+        public int getMaximumAir() {
+            return value.getMaximumAir();
+        }
+
+        @Override
         public void setRemainingAir(int ticks) {
             applyHitStatus(this, () -> value.setRemainingAir(ticks));
         }
@@ -2409,6 +2414,11 @@ public final class BukkitMC {
         @Override
         public int getRemainingAir() {
             return value.getRemainingAir();
+        }
+
+        @Override
+        public int getMaximumAir() {
+            return value.getMaximumAir();
         }
 
         @Override

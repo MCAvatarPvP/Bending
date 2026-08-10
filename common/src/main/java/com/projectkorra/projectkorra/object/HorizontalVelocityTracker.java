@@ -76,6 +76,11 @@ public class HorizontalVelocityTracker {
         instances.remove(e);
     }
 
+    /** Drops trackers that still reference ability instances from before a reload. */
+    public static void clearAll() {
+        instances.clear();
+    }
+
     public static boolean hasBeenDamagedByHorizontalVelocity(final Entity e) {
         if (instances.containsKey(e)) {
             return instances.get(e).hasBeenDamaged;

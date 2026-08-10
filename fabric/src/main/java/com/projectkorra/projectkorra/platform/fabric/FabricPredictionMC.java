@@ -577,6 +577,7 @@ public final class FabricPredictionMC {
         @Override public int getNoDamageTicks() { return value.timeUntilRegen; }
         @Override public void setNoDamageTicks(int ticks) { if (!suppressRemoteMutation()) value.timeUntilRegen = ticks; }
         @Override public int getRemainingAir() { return value.getAir(); }
+        @Override public int getMaximumAir() { return value.getMaxAir(); }
         @Override public void setRemainingAir(int ticks) { if (!suppressRemoteMutation()) value.setAir(ticks); }
         @Override public void setMetadata(String key, MetadataValue metadata) { METADATA.computeIfAbsent(getUniqueId(), ignored -> new HashMap<>()).computeIfAbsent(key, ignored -> new ArrayList<>()).add(metadata); }
         @Override public boolean hasMetadata(String key) { return METADATA.getOrDefault(getUniqueId(), Map.of()).containsKey(key); }
@@ -677,6 +678,7 @@ public final class FabricPredictionMC {
         @Override public int getNoDamageTicks() { return value.timeUntilRegen; }
         @Override public void setNoDamageTicks(int ticks) { if (!suppressRemoteMutation()) value.timeUntilRegen = ticks; }
         @Override public int getRemainingAir() { return value.getAir(); }
+        @Override public int getMaximumAir() { return value.getMaxAir(); }
         @Override public void setRemainingAir(int ticks) { if (!suppressRemoteMutation()) value.setAir(ticks); }
         @Override public int getPing() {
             return 0;

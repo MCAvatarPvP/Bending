@@ -129,6 +129,13 @@ public class BlockSource {
         playerSources.clear();
     }
 
+    /** Reloads the cached selection range after config.yml changes. */
+    public static void reload() {
+        clearAll();
+        config = ConfigManager.defaultConfig.get();
+        MAX_RANGE = config.getDouble("Abilities.Water.WaterManipulation.SelectRange");
+    }
+
     /**
      * Access a block's source information, depending on a
      * {@link BlockSourceType} and {@link ClickType}.

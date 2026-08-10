@@ -25,6 +25,7 @@ public class MultiAbilityManager {
     public static ArrayList<MultiAbilityInfo> multiAbilityList = new ArrayList<MultiAbilityInfo>();
 
     public MultiAbilityManager() {
+        multiAbilityList.clear();
         final ArrayList<MultiAbilityInfoSub> waterArms = new ArrayList<MultiAbilityInfoSub>();
         waterArms.add(new MultiAbilityInfoSub("Pull", Element.WATER));
         waterArms.add(new MultiAbilityInfoSub("Punch", Element.WATER));
