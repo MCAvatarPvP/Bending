@@ -4,6 +4,7 @@ import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.ChiAbility;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Particle;
+import com.projectkorra.projectkorra.platform.mc.Sound;
 import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
@@ -42,6 +43,22 @@ public class HighJump extends ChiAbility implements AddonAbility {
 
         new ParticleEffect().type(Particle.CRIT).location(location).count(20).offset(0.5, 1, 0.5).speed(0.5).spawn();
         new ParticleEffect().type(Particle.CLOUD).location(location).count(30).offset(0.5, 1, 0.5).speed(0.002).spawn();
+
+        Location loc = player.getLocation();
+
+        loc.getWorld().playSound(
+                loc,
+                Sound.ENTITY_PLAYER_ATTACK_SWEEP,
+                0.65F,
+                0.7F
+        );
+
+        loc.getWorld().playSound(
+                loc,
+                Sound.ITEM_TRIDENT_THROW,
+                0.35F,
+                1.4F
+        );
 
         bPlayer.addCooldown(this);
     }

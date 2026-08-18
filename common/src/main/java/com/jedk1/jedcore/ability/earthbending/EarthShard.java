@@ -156,63 +156,137 @@ public class EarthShard extends EarthAbility implements AddonAbility, EntityHitb
         raiseEarthBlock(getEarthSourceBlock(range));
     }
 
-    public void raiseEarthBlock(Block block) {
+    public void raiseEarthBlock(final Block block) {
         if (block == null) {
             return;
         }
 
-        // A rapidly repeated selection can ray trace the raised grass/dirt from
-        // this (or another) shard before its authoritative revert arrives. That
-        // temporary display block must never become a new earth source: doing so
-        // stacks TempBlocks with different originals and can restore grass in air.
+        // Never use an existing temporary layer as another shard source.
         if (TempBlock.isTempBlock(block)) {
             return;
         }
 
-        if (tblockTracker.size() >= maxShards) {
+        if (this.tblockTracker.size() >= maxShards) {
             return;
         }
 
-        Vector blockVector = block.getLocation().toVector().toBlockVector().setY(0);
-
-        // Don't select from locations that already have an EarthShard block.
-        for (TempBlock tempBlock : tblockTracker) {
-            if (tempBlock.getLocation().getWorld() != block.getWorld()) {
-                continue;
-            }
-
-            Vector tempBlockVector = tempBlock.getLocation().toVector().toBlockVector().setY(0);
-
-            if (tempBlockVector.equals(blockVector)) {
-                return;
-            }
+        // A column may contain only one prepared/rising EarthShard.
+        if (hasShardInColumn(block)) {
+            return;
         }
 
+        // EarthShard requires clear space above the selected source.
         for (int i = 1; i < 4; i++) {
             if (!isTransparent(block.getRelative(BlockFace.UP, i))) {
                 return;
             }
         }
 
-        if (isEarthbendable(block)) {
-            if (isMetal(block)) {
-                playMetalbendingSound(block.getLocation());
-            } else {
-                ParticleEffect.BLOCK_CRACK.display(block.getLocation().add(0, 1, 0), 20, 0.0, 0.0, 0.0, 0.0, block.getBlockData());
-                playEarthbendingSound(block.getLocation());
-            }
-
-            Material material = getCorrectType(block);
-
-            if (DensityShift.isPassiveSand(block)) {
-                DensityShift.revertSand(block);
-            }
-
-            Location loc = block.getLocation().add(0.5, 0, 0.5);
-            new TempFallingBlock(loc, material.createBlockData(), new Vector(0, animationSpeed, 0), this);
-            TempBlock tb = new TempBlock(block, Material.AIR.createBlockData(), this);
-            tblockTracker.add(tb);
+        if (!isEarthbendable(block)) {
+            return;
         }
+
+        if (isMetal(block)) {
+            playMetalbendingSound(block.getLocation());
+        } else {
+            ParticleEffect.BLOCK_CRACK.display(
+                    block.getLocation().add(0, 1, 0),
+                    20,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    block.getBlockData()
+            );
+
+            playEarthbendingSound(block.getLocation());
+        }
+
+        final Material material = getCorrectType(block);
+
+        if (DensityShift.isPassiveSand(block)) {
+            DensityShift.revertSand(block);
+        }
+
+        final Location spawn = block.getLocation().add(0.5, 0, 0.5);
+
+        new TempFallingBlock(
+                spawn,
+                material.createBlockData(),
+                new Vector(0, this.animationSpeed, 0),
+                this
+        );
+
+        this.tblockTracker.add(
+                new TempBlock(
+                        block,
+                        Material.AIR.createBlockData(),
+                        this
+                )
+        );
+    }
+
+    private boolean hasShardInColumn(final Block block) {
+        if (block == null) {
+            return false;
+        }
+
+        // Original/source blocks.
+        for (final TempBlock tempBlock : this.tblockTracker) {
+            if (tempBlock == null || tempBlock.isReverted()) {
+                continue;
+            }
+
+            if (sameColumn(tempBlock.getLocation(), block)) {
+                return true;
+            }
+        }
+
+        // Shards that have finished rising and are waiting to be fired.
+        for (final TempBlock tempBlock : this.readyBlocksTracker) {
+            if (tempBlock == null || tempBlock.isReverted()) {
+                continue;
+            }
+
+            if (sameColumn(tempBlock.getLocation(), block)) {
+                return true;
+            }
+        }
+
+        // Shards that are currently moving upward.
+        for (final TempFallingBlock tempFallingBlock :
+                TempFallingBlock.getFromAbility(this)) {
+
+            if (tempFallingBlock == null) {
+                continue;
+            }
+
+            final FallingBlock fallingBlock =
+                    tempFallingBlock.getFallingBlock();
+
+            if (fallingBlock == null || fallingBlock.isDead()) {
+                continue;
+            }
+
+            if (sameColumn(fallingBlock.getLocation(), block)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static boolean sameColumn(
+            final Location location,
+            final Block block) {
+
+        if (location == null || block == null) {
+            return false;
+        }
+
+        return location.getWorld() == block.getWorld()
+                && location.getBlockX() == block.getX()
+                && location.getBlockZ() == block.getZ();
     }
 
     public Material getCorrectType(Block block) {
@@ -255,12 +329,51 @@ public class EarthShard extends EarthAbility implements AddonAbility, EntityHitb
                 return;
             }
 
-            for (TempFallingBlock tfb : TempFallingBlock.getFromAbility(this)) {
-                FallingBlock fb = tfb.getFallingBlock();
+            final int targetY = this.origin.getBlockY() + 2;
 
-                if (fb.isDead() || fb.getLocation().getBlockY() == origin.getBlockY() + 2) {
-                    TempBlock tb = new TempBlock(fb.getLocation().getBlock(), fb.getBlockData(), this);
-                    readyBlocksTracker.add(tb);
+            for (final TempFallingBlock tfb :
+                    TempFallingBlock.getFromAbility(this)) {
+
+                final FallingBlock fb = tfb.getFallingBlock();
+
+                if (fb == null) {
+                    tfb.remove();
+                    continue;
+                }
+
+                /*
+                 * Never rely on:
+                 *
+                 *     fb.getLocation().getBlockY() == targetY
+                 *
+                 * With a sufficiently large AnimationSpeed, the falling block can
+                 * cross the target plane between two progress calls and permanently
+                 * miss that equality.
+                 *
+                 * Instead, crossing the target Y means the rise has completed.
+                 */
+                if (fb.isDead() || fb.getLocation().getY() >= targetY) {
+
+                    /*
+                     * Clamp the shard to its intended fixed Y.
+                     *
+                     * Do NOT use fb.getLocation().getBlock() here. By the time this
+                     * executes, the entity may already be slightly above targetY.
+                     */
+                    final Location destination = new Location(
+                            this.origin.getWorld(),
+                            fb.getLocation().getBlockX(),
+                            targetY,
+                            fb.getLocation().getBlockZ()
+                    );
+
+                    final TempBlock readyBlock = new TempBlock(
+                            destination.getBlock(),
+                            fb.getBlockData(),
+                            this
+                    );
+
+                    this.readyBlocksTracker.add(readyBlock);
                     tfb.remove();
                 }
             }
@@ -271,17 +384,41 @@ public class EarthShard extends EarthAbility implements AddonAbility, EntityHitb
         } else {
             for (TempFallingBlock tfb : TempFallingBlock.getFromAbility(this)) {
                 FallingBlock fb = tfb.getFallingBlock();
-                if (maxDistance != 0 && origin.distance(fb.getLocation()) > maxDistance) {
+
+                if (maxDistance != 0
+                        && origin.distance(fb.getLocation()) > maxDistance) {
                     tfb.remove();
                 }
 
-                AABB collider = BlockUtil.getFallingBlockBoundsFull(fb, entityCollisionRadius);
+                AABB collider =
+                        BlockUtil.getFallingBlockBoundsFull(
+                                fb,
+                                entityCollisionRadius
+                        );
 
                 CollisionDetector.checkEntityCollisions(player, collider, (e) -> {
                     if (!CooldownSync.isAuthoritative()) return true;
-                    DamageHandler.damageEntity(e, isMetal(fb.getBlockData().getMaterial()) ? metalDmg : normalDmg, this);
+
+                    DamageHandler.damageEntity(
+                            e,
+                            isMetal(fb.getBlockData().getMaterial())
+                                    ? metalDmg
+                                    : normalDmg,
+                            this
+                    );
+
                     ((LivingEntity) e).setNoDamageTicks(0);
-                    ParticleEffect.BLOCK_CRACK.display(fb.getLocation(), 20, 0, 0, 0, 0, fb.getBlockData());
+
+                    ParticleEffect.BLOCK_CRACK.display(
+                            fb.getLocation(),
+                            20,
+                            0,
+                            0,
+                            0,
+                            0,
+                            fb.getBlockData()
+                    );
+
                     tfb.remove();
                     return false;
                 });

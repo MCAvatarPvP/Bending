@@ -38,12 +38,12 @@ import com.projectkorra.projectkorra.platform.mc.util.RayTraceResult;
 import com.projectkorra.projectkorra.platform.mc.util.Transformation;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
-import com.projectkorra.projectkorra.prediction.state.AbilityStateSync;
 import com.projectkorra.projectkorra.prediction.action.CapturedInputPose;
-import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
-import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
 import com.projectkorra.projectkorra.prediction.block.DirectBlockSync;
+import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
 import com.projectkorra.projectkorra.prediction.movement.VelocitySync;
+import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
+import com.projectkorra.projectkorra.prediction.state.AbilityStateSync;
 import com.projectkorra.projectkorra.util.TempBlock;
 import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.Bukkit;
@@ -136,7 +136,13 @@ public final class BukkitMC {
             else if (!nativeObjective.getDisplayName().equals(objective.getTitle()))
                 nativeObjective.setDisplayName(objective.getTitle());
             if (objective.getDisplaySlot() == DisplaySlot.SIDEBAR) {
-                nativeObjective.setDisplaySlot(org.bukkit.scoreboard.DisplaySlot.SIDEBAR);
+                if (nativeObjective.getDisplaySlot()
+                        != org.bukkit.scoreboard.DisplaySlot.SIDEBAR) {
+
+                    nativeObjective.setDisplaySlot(
+                            org.bukkit.scoreboard.DisplaySlot.SIDEBAR
+                    );
+                }
             } else if (nativeObjective.getDisplaySlot() != null) {
                 nativeObjective.setDisplaySlot(null);
             }
@@ -392,7 +398,8 @@ public final class BukkitMC {
             try {
                 final org.bukkit.block.data.BlockData exact = Bukkit.createBlockData(value.getExactState());
                 if (exact.getMaterial() == material) return exact;
-            } catch (IllegalArgumentException ignored) { }
+            } catch (IllegalArgumentException ignored) {
+            }
         }
         if (value instanceof Levelled levelled) {
             if (nativeData instanceof org.bukkit.block.data.Levelled nativeLevelled) {
@@ -414,7 +421,8 @@ public final class BukkitMC {
                 try {
                     org.bukkit.block.BlockFace nativeFace = org.bukkit.block.BlockFace.valueOf(face.name());
                     if (nativeFire.getAllowedFaces().contains(nativeFace)) nativeFire.setFace(nativeFace, true);
-                } catch (IllegalArgumentException ignored) { }
+                } catch (IllegalArgumentException ignored) {
+                }
             }
         }
         return nativeData;
@@ -440,7 +448,8 @@ public final class BukkitMC {
             for (org.bukkit.block.BlockFace nativeFace : nativeFire.getFaces()) {
                 try {
                     fire.setFace(BlockFace.valueOf(nativeFace.name()), true);
-                } catch (IllegalArgumentException ignored) { }
+                } catch (IllegalArgumentException ignored) {
+                }
             }
         } else if (data.getClass() == BlockData.class) {
             data.setExactState(value.getAsString());
@@ -3126,41 +3135,160 @@ public final class BukkitMC {
             this.display = new DisplayView(value);
         }
 
-        @Override public Object handle() { return value; }
-        @Override public UUID getUniqueId() { return display.getUniqueId(); }
-        @Override public Location getLocation() { return display.getLocation(); }
-        @Override public World getWorld() { return display.getWorld(); }
-        @Override public Vector getVelocity() { return display.getVelocity(); }
-        @Override public void setVelocity(Vector velocity) { display.setVelocity(velocity); }
-        @Override public boolean isDead() { return display.isDead(); }
-        @Override public boolean isValid() { return display.isValid(); }
-        @Override public void remove() { display.remove(); }
-        @Override public boolean teleport(Location target) { return display.teleport(target); }
-        @Override public int getEntityId() { return display.getEntityId(); }
-        @Override public String getName() { return display.getName(); }
-        @Override public boolean isOnGround() { return display.isOnGround(); }
-        @Override public void setSilent(boolean silent) { display.setSilent(silent); }
-        @Override public void setGravity(boolean gravity) { display.setGravity(gravity); }
-        @Override public void setPersistent(boolean persistent) { display.setPersistent(persistent); }
-        @Override public void setInvulnerable(boolean invulnerable) { display.setInvulnerable(invulnerable); }
-        @Override public void setBrightness(Display.Brightness brightness) { display.setBrightness(brightness); }
-        @Override public void setTransformation(Transformation transformation) { display.setTransformation(transformation); }
-        @Override public void setBillboard(Display.Billboard billboard) { display.setBillboard(billboard); }
-        @Override public void setShadowRadius(float radius) { display.setShadowRadius(radius); }
-        @Override public void setShadowStrength(float strength) { display.setShadowStrength(strength); }
-        @Override public void setInterpolationDelay(int delay) { display.setInterpolationDelay(delay); }
-        @Override public void setInterpolationDuration(int duration) { display.setInterpolationDuration(duration); }
-        @Override public void setTeleportDuration(int duration) { display.setTeleportDuration(duration); }
-        @Override public void setViewRange(float range) { display.setViewRange(range); }
-        @Override public ItemStack getItemStack() { return item(value.getItemStack()); }
-        @Override public void setItemStack(ItemStack item) { value.setItemStack(itemHandle(item)); }
-        @Override public void setItemDisplayTransform(ItemDisplayTransform transform) {
+        @Override
+        public Object handle() {
+            return value;
+        }
+
+        @Override
+        public UUID getUniqueId() {
+            return display.getUniqueId();
+        }
+
+        @Override
+        public Location getLocation() {
+            return display.getLocation();
+        }
+
+        @Override
+        public World getWorld() {
+            return display.getWorld();
+        }
+
+        @Override
+        public Vector getVelocity() {
+            return display.getVelocity();
+        }
+
+        @Override
+        public void setVelocity(Vector velocity) {
+            display.setVelocity(velocity);
+        }
+
+        @Override
+        public boolean isDead() {
+            return display.isDead();
+        }
+
+        @Override
+        public boolean isValid() {
+            return display.isValid();
+        }
+
+        @Override
+        public void remove() {
+            display.remove();
+        }
+
+        @Override
+        public boolean teleport(Location target) {
+            return display.teleport(target);
+        }
+
+        @Override
+        public int getEntityId() {
+            return display.getEntityId();
+        }
+
+        @Override
+        public String getName() {
+            return display.getName();
+        }
+
+        @Override
+        public boolean isOnGround() {
+            return display.isOnGround();
+        }
+
+        @Override
+        public void setSilent(boolean silent) {
+            display.setSilent(silent);
+        }
+
+        @Override
+        public void setGravity(boolean gravity) {
+            display.setGravity(gravity);
+        }
+
+        @Override
+        public void setPersistent(boolean persistent) {
+            display.setPersistent(persistent);
+        }
+
+        @Override
+        public void setInvulnerable(boolean invulnerable) {
+            display.setInvulnerable(invulnerable);
+        }
+
+        @Override
+        public void setBrightness(Display.Brightness brightness) {
+            display.setBrightness(brightness);
+        }
+
+        @Override
+        public void setTransformation(Transformation transformation) {
+            display.setTransformation(transformation);
+        }
+
+        @Override
+        public void setBillboard(Display.Billboard billboard) {
+            display.setBillboard(billboard);
+        }
+
+        @Override
+        public void setShadowRadius(float radius) {
+            display.setShadowRadius(radius);
+        }
+
+        @Override
+        public void setShadowStrength(float strength) {
+            display.setShadowStrength(strength);
+        }
+
+        @Override
+        public void setInterpolationDelay(int delay) {
+            display.setInterpolationDelay(delay);
+        }
+
+        @Override
+        public void setInterpolationDuration(int duration) {
+            display.setInterpolationDuration(duration);
+        }
+
+        @Override
+        public void setTeleportDuration(int duration) {
+            display.setTeleportDuration(duration);
+        }
+
+        @Override
+        public void setViewRange(float range) {
+            display.setViewRange(range);
+        }
+
+        @Override
+        public ItemStack getItemStack() {
+            return item(value.getItemStack());
+        }
+
+        @Override
+        public void setItemStack(ItemStack item) {
+            value.setItemStack(itemHandle(item));
+        }
+
+        @Override
+        public void setItemDisplayTransform(ItemDisplayTransform transform) {
             value.setItemDisplayTransform(org.bukkit.entity.ItemDisplay.ItemDisplayTransform.valueOf(transform.name()));
         }
-        @Override public boolean equals(Object other) {
+
+        @Override
+        public boolean equals(Object other) {
             return other instanceof ItemDisplayView view && value.getUniqueId().equals(view.value.getUniqueId());
         }
-        @Override public int hashCode() { return value.getUniqueId().hashCode(); }
+
+        @Override
+        public int hashCode() {
+            return value.getUniqueId().hashCode();
+        }
     }
 
     private static final class AreaEffectCloudView extends AreaEffectCloud {
@@ -3275,47 +3403,144 @@ public final class BukkitMC {
             this.value = value;
         }
 
-        @Override public Object handle() { return value; }
-        @Override public UUID getUniqueId() { return value.getUniqueId(); }
-        @Override public Location getLocation() { return location(value.getLocation()); }
-        @Override public World getWorld() { return world(value.getWorld()); }
-        @Override public Vector getVelocity() { return vector(value.getVelocity()); }
-        @Override public void setVelocity(Vector velocity) { value.setVelocity(vector(velocity)); }
-        @Override public boolean isDead() { return value.isDead(); }
-        @Override public boolean isValid() { return value.isValid(); }
-        @Override public void remove() { value.remove(); }
-        @Override public boolean teleport(Location target) { return value.teleport(locationHandle(target)); }
-        @Override public int getEntityId() { return value.getEntityId(); }
-        @Override public String getName() { return value.getName(); }
-        @Override public int getFireTicks() { return value.getFireTicks(); }
-        @Override public void setFireTicks(int ticks) { value.setFireTicks(ticks); }
-        @Override public float getFallDistance() { return value.getFallDistance(); }
-        @Override public void setFallDistance(float distance) { value.setFallDistance(distance); }
-        @Override public boolean isOnGround() { return value.isOnGround(); }
-        @Override public void setSilent(boolean silent) { value.setSilent(silent); }
-        @Override public void setInvulnerable(boolean invulnerable) { value.setInvulnerable(invulnerable); }
-        @Override public void setGravity(boolean gravity) { value.setGravity(gravity); }
-        @Override public void setPersistent(boolean persistent) { value.setPersistent(persistent); }
-        @Override public void setShooter(Object shooter) {
+        @Override
+        public Object handle() {
+            return value;
+        }
+
+        @Override
+        public UUID getUniqueId() {
+            return value.getUniqueId();
+        }
+
+        @Override
+        public Location getLocation() {
+            return location(value.getLocation());
+        }
+
+        @Override
+        public World getWorld() {
+            return world(value.getWorld());
+        }
+
+        @Override
+        public Vector getVelocity() {
+            return vector(value.getVelocity());
+        }
+
+        @Override
+        public void setVelocity(Vector velocity) {
+            value.setVelocity(vector(velocity));
+        }
+
+        @Override
+        public boolean isDead() {
+            return value.isDead();
+        }
+
+        @Override
+        public boolean isValid() {
+            return value.isValid();
+        }
+
+        @Override
+        public void remove() {
+            value.remove();
+        }
+
+        @Override
+        public boolean teleport(Location target) {
+            return value.teleport(locationHandle(target));
+        }
+
+        @Override
+        public int getEntityId() {
+            return value.getEntityId();
+        }
+
+        @Override
+        public String getName() {
+            return value.getName();
+        }
+
+        @Override
+        public int getFireTicks() {
+            return value.getFireTicks();
+        }
+
+        @Override
+        public void setFireTicks(int ticks) {
+            value.setFireTicks(ticks);
+        }
+
+        @Override
+        public float getFallDistance() {
+            return value.getFallDistance();
+        }
+
+        @Override
+        public void setFallDistance(float distance) {
+            value.setFallDistance(distance);
+        }
+
+        @Override
+        public boolean isOnGround() {
+            return value.isOnGround();
+        }
+
+        @Override
+        public void setSilent(boolean silent) {
+            value.setSilent(silent);
+        }
+
+        @Override
+        public void setInvulnerable(boolean invulnerable) {
+            value.setInvulnerable(invulnerable);
+        }
+
+        @Override
+        public void setGravity(boolean gravity) {
+            value.setGravity(gravity);
+        }
+
+        @Override
+        public void setPersistent(boolean persistent) {
+            value.setPersistent(persistent);
+        }
+
+        @Override
+        public void setShooter(Object shooter) {
             if (shooter instanceof ProjectileSource source) {
                 value.setShooter(source);
             } else if (shooter instanceof Entity entity && entity.handle() instanceof ProjectileSource source) {
                 value.setShooter(source);
             }
         }
-        @Override public void setMetadata(String key, MetadataValue metadata) {
+
+        @Override
+        public void setMetadata(String key, MetadataValue metadata) {
             value.setMetadata(key, new org.bukkit.metadata.FixedMetadataValue(
                     Platform.pluginHandle(Plugin.class), metadata.value()));
         }
-        @Override public boolean hasMetadata(String key) { return value.hasMetadata(key); }
-        @Override public List<MetadataValue> getMetadata(String key) {
+
+        @Override
+        public boolean hasMetadata(String key) {
+            return value.hasMetadata(key);
+        }
+
+        @Override
+        public List<MetadataValue> getMetadata(String key) {
             return value.getMetadata(key).stream().map(NativeMetadata::new)
                     .map(metadata -> (MetadataValue) metadata).toList();
         }
-        @Override public void removeMetadata(String key, Object owner) {
+
+        @Override
+        public void removeMetadata(String key, Object owner) {
             value.removeMetadata(key, JavaPlugin.getPlugin(BukkitProjectKorraPlugin.class));
         }
-        @Override public BoundingBox getBoundingBox() {
+
+        @Override
+        public BoundingBox getBoundingBox() {
             org.bukkit.util.BoundingBox box = value.getBoundingBox();
             return new BoundingBox(new Vector(box.getMinX(), box.getMinY(), box.getMinZ()),
                     new Vector(box.getMaxX(), box.getMaxY(), box.getMaxZ()));

@@ -62,6 +62,20 @@ public class Bola extends ModernChiAbility implements AddonAbility {
         l.setPitch(l.getPitch() + 90);
         spinAxis = l.getDirection();
 
+        location.getWorld().playSound(
+                location,
+                Sound.ITEM_TRIDENT_THROW,
+                0.5F,
+                1.8F
+        );
+
+        location.getWorld().playSound(
+                location,
+                Sound.ENTITY_BREEZE_CHARGE,
+                0.25F,
+                1.4F
+        );
+
         start();
     }
 
@@ -92,6 +106,7 @@ public class Bola extends ModernChiAbility implements AddonAbility {
             }
 
             Utils.damage((LivingEntity) e, 0.01, this);
+            GeneralMethods.setVelocity(this, e, new Vector());
 
             Location loc = e.getLocation();
             loc.getWorld().playSound(loc, Sound.ENTITY_PLAYER_ATTACK_CRIT, 1f, 1.2f);

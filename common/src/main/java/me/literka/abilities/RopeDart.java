@@ -7,6 +7,7 @@ import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.platform.mc.GameMode;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Particle;
+import com.projectkorra.projectkorra.platform.mc.Sound;
 import com.projectkorra.projectkorra.platform.mc.entity.Arrow;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
@@ -85,6 +86,7 @@ public class RopeDart extends ChiAbility implements AddonAbility {
 
         target = null;
 
+        origin.getWorld().playSound(origin, Sound.ITEM_TRIDENT_THROW, 1, 2);
         start();
     }
 

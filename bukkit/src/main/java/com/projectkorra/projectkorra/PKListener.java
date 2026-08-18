@@ -53,6 +53,7 @@ import com.projectkorra.projectkorra.waterbending.blood.Bloodbending;
 import com.projectkorra.projectkorra.waterbending.ice.PhaseChange;
 import com.projectkorra.projectkorra.waterbending.multiabilities.WaterArms;
 import com.projectkorra.projectkorra.waterbending.passive.HydroSink;
+import me.moros.hyperion.util.BendingFallingBlock;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.Server;
@@ -478,6 +479,12 @@ public class PKListener implements Listener {
                 tfb.remove();
                 event.setCancelled(true);
             }
+
+            if (BendingFallingBlock.isBendingFallingBlock(fb)) {
+                BendingFallingBlock bfb = BendingFallingBlock.get(fb);
+                bfb.remove();
+                event.setCancelled(true);
+            }
         }
 
     }
@@ -812,7 +819,7 @@ public class PKListener implements Listener {
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    private void onAbilityVelocity(AbilityVelocityAffectEntityEvent event) {
+    public void onAbilityVelocity(AbilityVelocityAffectEntityEvent event) {
         var entity = event.getAffected();
         if (entity instanceof FallingBlock fb) {
             for (String s : ConfigManager.collisionConfig.get().getStringList("FallingBlockCollisions")) {
@@ -1776,26 +1783,57 @@ public class PKListener implements Listener {
     }
 
     @EventHandler
-    public void onAbilityStart(AbilityDamageEntityEvent event) {
-        var source = event.getSource();
+    public void onAbilityDamage(final AbilityDamageEntityEvent event) {
+        final var source = event.getSource();
+
         if (source != null) {
-            BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(source);
-            if (event.getEntity() instanceof LivingEntity && !(event.getEntity() instanceof com.projectkorra.projectkorra.platform.mc.entity.Player)) {
-                double multiplier = ConfigManager.getConfig(bPlayer).getDouble("Properties.MobDamageMultiplier");
+            final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(source);
+
+            if (event.getEntity() instanceof LivingEntity
+                    && !(event.getEntity()
+                    instanceof com.projectkorra.projectkorra.platform.mc.entity.Player)) {
+
+                final double multiplier = ConfigManager.getConfig(bPlayer)
+                        .getDouble("Properties.MobDamageMultiplier");
+
                 event.setDamage(event.getDamage() * multiplier);
             }
 
-            if (event.getEntity() instanceof LivingEntity le && event.getAbility().getName().equalsIgnoreCase("FlyingKick")) {
-                final boolean canFusion = ConfigManager.getConfig(bPlayer).getBoolean("Abilities.Chi.Paralyze.AllowFlyingKickFusion");
-                final CoreAbility ability = bPlayer.getBoundAbility();
-                if (canFusion && bPlayer.canCurrentlyBendWithWeapons() && bPlayer.isElementToggled(Element.CHI) &&
-                        ability instanceof Paralyze && !bPlayer.isOnCooldown(ability) && bPlayer.canBendPassive(ability)) {
-                    new Paralyze(source, le);
+            if (event.getEntity() instanceof LivingEntity target
+                    && event.getAbility().getName().equalsIgnoreCase("FlyingKick")) {
+
+                final CoreAbility boundAbility = bPlayer.getBoundAbility();
+
+                if (boundAbility != null
+                        && bPlayer.canCurrentlyBendWithWeapons()
+                        && bPlayer.canBend(boundAbility)) {
+
+                    /*
+                     * FlyingKick + Paralyze
+                     */
+                    if (boundAbility instanceof Paralyze) {
+                        final boolean allowFusion = ConfigManager.getConfig(bPlayer)
+                                .getBoolean(
+                                        "Abilities.Chi.Paralyze.AllowFlyingKickFusion"
+                                );
+
+                        if (allowFusion) {
+                            new Paralyze(source, target);
+                        }
+                    }
+
+                    /*
+                     * FlyingKick + RapidPunch
+                     */
+                    else if (boundAbility instanceof me.literka.abilities.RapidPunch) {
+                        new me.literka.abilities.RapidPunch(source, target);
+                    }
                 }
             }
         }
 
-        if (event.getEntity() instanceof com.projectkorra.projectkorra.platform.mc.entity.Player target) {
+        if (event.getEntity()
+                instanceof com.projectkorra.projectkorra.platform.mc.entity.Player target) {
             cancelAirScooterOnHit(target, event.getAbility());
         }
     }

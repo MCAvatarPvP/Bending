@@ -28,6 +28,7 @@ public class Sound {
     public static final Sound BLOCK_SNOW_BREAK = new Sound("BLOCK_SNOW_BREAK");
     public static final Sound BLOCK_STONE_BREAK = new Sound("BLOCK_STONE_BREAK");
     public static final Sound BLOCK_WATER_AMBIENT = new Sound("BLOCK_WATER_AMBIENT");
+    public static final Sound ENTITY_PLAYER_ATTACK_SWEEP = new Sound("ENTITY_PLAYER_ATTACK_SWEEP");
     public static final Sound BLOCK_WET_GRASS_STEP = new Sound("BLOCK_WET_GRASS_STEP");
     public static final Sound BLOCK_WOODEN_BUTTON_CLICK_OFF = new Sound("BLOCK_WOODEN_BUTTON_CLICK_OFF");
     public static final Sound BLOCK_WOODEN_BUTTON_CLICK_ON = new Sound("BLOCK_WOODEN_BUTTON_CLICK_ON");
@@ -66,9 +67,11 @@ public class Sound {
     public static final Sound ENTITY_WITHER_AMBIENT = new Sound("ENTITY_WITHER_AMBIENT");
     public static final Sound ITEM_FIRECHARGE_USE = new Sound("ITEM_FIRECHARGE_USE");
     public static final Sound ITEM_FLINTANDSTEEL_USE = new Sound("ITEM_FLINTANDSTEEL_USE");
+    public static final Sound ENTITY_BREEZE_CHARGE = new Sound("ENTITY_BREEZE_CHARGE");
     public static final Sound ITEM_MACE_SMASH_GROUND = new Sound("ITEM_MACE_SMASH_GROUND");
     public static final Sound ITEM_TOTEM_USE = new Sound("ITEM_TOTEM_USE");
     public static final Sound ITEM_TRIDENT_THROW = new Sound("ITEM_TRIDENT_THROW");
+    public static final Sound ITEM_TRIDENT_RIPTIDE_1 = new Sound("ITEM_TRIDENT_RIPTIDE_1");
     public static final Sound ENTITY_GENERIC_BIG_FALL = new Sound("ENTITY_GENERIC_BIG_FALL");
     public static final Sound BLOCK_HONEY_BLOCK_STEP = new Sound("BLOCK_HONEY_BLOCK_STEP");
     public static final Sound ENTITY_ITEM_FRAME_ADD_ITEM = new Sound("ENTITY_ITEM_FRAME_ADD_ITEM");

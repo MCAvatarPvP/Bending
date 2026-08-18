@@ -77,7 +77,7 @@ public class MetalCable extends MetalAbility implements AddonAbility {
             return;
         }
 
-        if (!hasRequiredInv() || !bPlayer.canBend(this)) {
+        if (!bPlayer.canBend(this)) {
             return;
         }
 

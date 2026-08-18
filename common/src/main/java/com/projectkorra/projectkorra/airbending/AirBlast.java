@@ -226,6 +226,31 @@ public class AirBlast extends AirAbility {
         return ConfigManager.getConfig(bPlayer).getDouble("Abilities.Air.AirBlast.SelectRange");
     }
 
+    private static Material[] getSourceTransparentMaterials() {
+        return Arrays.stream(getTransparentMaterials())
+                .filter(material -> !isWater(material))
+                .toArray(Material[]::new);
+    }
+
+    /** Keeps water's solid-like behavior local to staged AirBlast sourcing. */
+    private static boolean isSourceSolid(final Block block) {
+        return GeneralMethods.isSolid(block) || isWater(block.getType());
+    }
+
+    private static Block getSourceGroundBlock(final Location location, final double maxDistance) {
+        if (maxDistance > 1) {
+            for (int i = 0; i <= (int) maxDistance; i++) {
+                final Block block = location.clone().subtract(0, i, 0).getBlock();
+                if (isSourceSolid(block)) {
+                    return block;
+                }
+            }
+        }
+
+        final Block block = location.clone().subtract(0, maxDistance, 0).getBlock();
+        return isSourceSolid(block) ? block : null;
+    }
+
     private void setFields() {
         this.particles = getConfig().getInt("Abilities.Air.AirBlast.Particles");
         this.cooldown = getConfig().getLong("Abilities.Air.AirBlast.Cooldown");
@@ -266,18 +291,18 @@ public class AirBlast extends AirAbility {
 
     public void selectOrigin() {
         final double maxSelectGroundDistance = ConfigManager.getConfig(bPlayer).getDouble("Abilities.Air.AirBlast.MaxSelectGroundDistance");
-        final Location candidate = getTargetedLocation(player, getSelectRange(bPlayer), getTransparentMaterials());
-        if (candidate.getBlock().isLiquid() || GeneralMethods.isSolid(candidate.getBlock())) {
+        final Location candidate = getTargetedLocation(player, getSelectRange(bPlayer), getSourceTransparentMaterials());
+        if (candidate.getBlock().isLiquid() || isSourceSolid(candidate.getBlock())) {
             return;
         } else if (RegionProtection.isRegionProtected(player, candidate, "AirBlast")) {
             return;
-        } else if (maxSelectGroundDistance != 0 && GeneralMethods.getGroundBlock(candidate, maxSelectGroundDistance) == null) {
+        } else if (maxSelectGroundDistance != 0 && getSourceGroundBlock(candidate, maxSelectGroundDistance) == null) {
             return;
         } else if (this.requireSourceTouchingBlock && !this.isTouchingSourceBlock(candidate)) {
             return;
         }
 
-        if (GeneralMethods.isSolid(candidate.getBlock().getRelative(BlockFace.DOWN))) {
+        if (isSourceSolid(candidate.getBlock().getRelative(BlockFace.DOWN))) {
             double y = ConfigManager.getConfig(bPlayer).getDouble("Abilities.Air.AirBlast.SourceYOffset");
             candidate.add(0, y, 0);
         }
@@ -289,7 +314,7 @@ public class AirBlast extends AirAbility {
         final BlockFace[] faces = {BlockFace.UP, BlockFace.DOWN, BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST};
 
         for (final BlockFace face : faces) {
-            if (GeneralMethods.isSolid(block.getRelative(face))) {
+            if (isSourceSolid(block.getRelative(face))) {
                 return true;
             }
         }

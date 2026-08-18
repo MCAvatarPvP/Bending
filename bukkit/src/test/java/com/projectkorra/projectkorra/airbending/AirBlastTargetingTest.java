@@ -67,12 +67,42 @@ class AirBlastTargetingTest {
         assertEquals(origin.getZ() + 9.9, clamped.getZ(), 1.0E-12);
     }
 
+    @Test
+    void sourceRayStopsAboveWaterInsteadOfPassingThroughIt() {
+        final FlatWorld world = new FlatWorld(Material.WATER);
+        final Location source = target(world, 0.5, 0.5);
+
+        assertEquals(1.02, source.getY(), 1.0E-12);
+        assertEquals(Material.AIR, source.getBlock().getType());
+        assertEquals(Material.WATER, source.getBlock().getRelative(BlockFace.DOWN).getType());
+    }
+
+    @Test
+    void waterIsSolidOnlyForAirBlastSourceChecks() throws IOException {
+        Path source = Path.of("../common/src/main/java/com/projectkorra/projectkorra/airbending/AirBlast.java");
+        if (!Files.exists(source)) {
+            source = Path.of("common/src/main/java/com/projectkorra/projectkorra/airbending/AirBlast.java");
+        }
+        final String airBlast = Files.readString(source);
+
+        assertFalse(Material.WATER.isSolid(), "water must remain non-solid globally");
+        assertTrue(airBlast.contains(".filter(material -> !isWater(material))"));
+        assertTrue(airBlast.contains("GeneralMethods.isSolid(block) || isWater(block.getType())"));
+        assertTrue(airBlast.contains("getTargetedLocation(player, getSelectRange(bPlayer), getSourceTransparentMaterials())"));
+        assertTrue(airBlast.contains("getSourceGroundBlock(candidate, maxSelectGroundDistance)"));
+    }
+
     private static Location target(final World world, final double x, final double z) {
+        return target(world, x, z, new Material[0]);
+    }
+
+    private static Location target(final World world, final double x, final double z,
+                                   final Material... transparent) {
         final Location eye = new Location(world, x, 1.62, z);
         eye.setYaw(0.0F);
         eye.setPitch(90.0F);
         return GeneralMethods.getTargetedLocation(new TestPlayer(eye), 10.0,
-                false, false);
+                false, false, transparent);
     }
 
     private static final class TestPlayer extends Player {
@@ -94,6 +124,16 @@ class AirBlastTargetingTest {
     }
 
     private static final class FlatWorld extends World {
+        private final Material surface;
+
+        private FlatWorld() {
+            this(Material.STONE);
+        }
+
+        private FlatWorld(final Material surface) {
+            this.surface = surface;
+        }
+
         @Override
         public Block getBlockAt(final int x, final int y, final int z) {
             return new FlatBlock(this, x, y, z);
@@ -115,7 +155,7 @@ class AirBlastTargetingTest {
 
         @Override
         public Material getType() {
-            return this.y <= 0 ? Material.STONE : Material.AIR;
+            return this.y <= 0 ? this.world.surface : Material.AIR;
         }
 
         @Override
@@ -139,6 +179,11 @@ class AirBlastTargetingTest {
                 case WEST -> this.world.getBlockAt(this.x - 1, this.y, this.z);
                 default -> this;
             };
+        }
+
+        @Override
+        public boolean isLiquid() {
+            return this.getType() == Material.WATER || this.getType() == Material.LAVA;
         }
     }
 }
