@@ -2106,6 +2106,11 @@ public final class BukkitMC {
         }
 
         @Override
+        public int getPing() {
+            return value.getPing();
+        }
+
+        @Override
         public CommandSender.Spigot spigot() {
             return new CommandSender.Spigot((type, message) -> {
                 if (type == ChatMessageType.ACTION_BAR) {
