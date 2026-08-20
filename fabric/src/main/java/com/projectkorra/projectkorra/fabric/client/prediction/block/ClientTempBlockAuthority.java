@@ -105,8 +105,7 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
             final LocalLayer local = localLayers.get(change.layerId());
             if (local != null) {
                 if (local.serverClosed) {
-                    final BlockState fallback = decode(TempBlockSync.encode(change.data()));
-                    final BlockState finalState = postLocalState(local.key, local, fallback);
+                    final BlockState finalState = decode(TempBlockSync.encode(change.data()));
                     updateCompletedRestores(change.layerId(), local.key, finalState);
                     detachLocalLayer(change.layerId());
                     return;
@@ -116,8 +115,7 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
                 local.closed = true;
                 local.closedTick = context.tick();
                 local.closedRevision = change.revision();
-                final BlockState fallback = decode(TempBlockSync.encode(change.data()));
-                local.closedState = postLocalState(local.key, local, fallback);
+                local.closedState = decode(TempBlockSync.encode(change.data()));
                 updateCompletedRestores(change.layerId(), local.key, local.closedState);
                 log("runtime retained predicted TempBlock close layer=" + change.layerId()
                         + " effect=" + local.effect + " pos=" + local.key.pos);
@@ -187,18 +185,15 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
         local.closed = true;
         local.closedTick = context.tick();
         local.closedRevision = change.revision();
-        // DISCARD is the pre-write handoff used when an ordinary world write
-        // invalidates the local TempBlock. change.data() is that replacement;
-        // the captured TempBlock base is only a last-resort fallback.
-        final BlockState replacement = decode(TempBlockSync.encode(change.data()));
         final BlockState capturedUnderlay = change.underlayData() == null
                 ? null : decode(TempBlockSync.encode(change.underlayData()));
-        final BlockState fallback = replacement != null ? replacement
+        local.closedState = local.authoritativeUnderlay != null
+                ? local.authoritativeUnderlay
                 : capturedUnderlay != null ? capturedUnderlay : local.initialUnderlay;
-        local.closedState = postLocalState(local.key, local, fallback);
         updateCompletedRestores(change.layerId(), local.key, local.closedState);
-        // Do not write closedState here. The ordinary replacement write follows
-        // synchronously; an extra intermediate write can itself flash/dirty a mesh.
+        if (local.closedState != null) {
+            local.key.world.setBlockState(local.key.pos, local.closedState, 19);
+        }
         log("runtime closed external TempBlock handoff layer=" + change.layerId()
                 + " clientPos=" + local.key.pos);
     }
@@ -248,15 +243,11 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
         final BlockKey key = new BlockKey(world, pos.toImmutable());
         directBlocks.removeMutation(world, pos);
         final TempBlockSync.WorldMutation mutation = TempBlockSync.currentWorldMutation();
-        BlockState visibleState = state;
         if (mutation != null && mutation.operation() == TempBlockSync.Operation.REVERT
                 && clientState(world, pos) == null) {
-            // TempBlock.state is a restoration snapshot for the local lifecycle.
-            // It may be older than Paper's current composed viewer state, so
-            // select the post-local view here without mutating that snapshot.
-            final LocalLayer closing = localLayers.get(mutation.layerId());
-            visibleState = postLocalState(key, closing, state);
+            directBlocks.updateServerViewer(world, pos, state);
         }
+        BlockState visibleState = state;
         if (showServerLayers) {
             visibleState = serverLayers.physicalState(key).orElse(visibleState);
         }
@@ -349,7 +340,7 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
         if (preserveLocalAuthority(key, directViewer == null ? state : directViewer)) {
             directBlocks.takeConfirmed(world, pos, state);
             directBlocks.removeMutation(world, pos);
-            log("runtime deferred hidden client TempBlock viewer-underlay pos=" + pos
+            log("runtime rebased hidden client TempBlock underlay pos=" + pos
                     + " serverState=" + state + " viewerState="
                     + (directViewer == null ? state : directViewer));
             return true;
@@ -503,7 +494,7 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
             final BlockPos pos = new BlockPos(block.getX(), block.getY(), block.getZ()).toImmutable();
             if (!localCoordinates.add(pos)) continue;
             final BlockKey key = new BlockKey(world, pos);
-            if (!hidesServerLayer(key)) rememberViewerUnderlay(key, world.getBlockState(pos));
+            if (!hidesServerLayer(key)) rebaseUnderlay(key, world.getBlockState(pos));
             preserved.add(pos);
             final BlockState desired = desiredState(key);
             if (desired != null) world.setBlockState(pos, desired, 19);
@@ -1066,11 +1057,11 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
         local.serverLayerId = serverLayerId;
         pairedCoordinates.computeIfAbsent(server.key, ignored -> new HashSet<>()).add(serverLayerId);
         // Metadata can arrive before local progress. Once the exact pair is
-        // established, retain Paper's viewer-underlay separately from the
-        // TempBlock restoration snapshot and remove the duplicate visual.
+        // established, rebase an equal-coordinate local layer to Paper's true
+        // viewer underlay and immediately remove Paper's duplicate visual.
         if (server.key.equals(local.key)) {
             serverLayers.viewerState(server.key).ifPresent(viewer ->
-                    rememberViewerUnderlay(local.key, viewer));
+                    rebaseUnderlay(local.key, viewer));
         }
         repaint(server.key, serverLayers.viewerState(server.key).orElse(server.physicalState));
         log("runtime paired semantic TempBlock effect=" + server.effect
@@ -1163,55 +1154,29 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
                                            final BlockState authoritativeState) {
         if (key == null || key.world == null || key.pos == null) return false;
         if (clientState(key.world, key.pos) == null) return false;
-        rememberViewerUnderlay(key, authoritativeState);
+        rebaseUnderlay(key, authoritativeState);
         directBlocks.removeMutation(key.world, key.pos);
         return true;
     }
 
-    /**
-     * Remembers the state Paper expects the local viewer to see below the
-     * predicted layer. This must never call TempBlock.setState: that method
-     * replaces the permanent restoration snapshot for the entire local stack.
-     */
-    private void rememberViewerUnderlay(final BlockKey key, final BlockState viewerState) {
-        if (key == null || viewerState == null) return;
+    private void rebaseUnderlay(final BlockKey key, final BlockState authoritativeState) {
+        if (key == null || authoritativeState == null) return;
+        final com.projectkorra.projectkorra.platform.mc.block.Block block =
+                FabricPredictionMC.block(key.world, key.pos);
+        final TempBlock layer = TempBlock.get(block);
+        if (layer == null) return;
+        final com.projectkorra.projectkorra.platform.mc.block.BlockState snapshot =
+                FabricPredictionMC.blockStateSnapshot(key.world, key.pos, authoritativeState);
+        if (snapshot == null) return;
+        layer.setState(snapshot);
         final Set<Long> localAtCoordinate = localLayersByCoordinate.get(key);
         if (localAtCoordinate == null) return;
         for (long layerId : List.copyOf(localAtCoordinate)) {
             final LocalLayer local = localLayers.get(layerId);
-            if (local != null && !local.closed) local.authoritativeUnderlay = viewerState;
+            if (local != null && !local.closed) local.authoritativeUnderlay = authoritativeState;
         }
     }
 
-    /** Composes the first state that may be exposed after one local layer closes. */
-    private BlockState postLocalState(final BlockKey key, final LocalLayer closing,
-                                      final BlockState fallback) {
-        if (key == null || key.world == null || key.pos == null) return fallback;
-        if (showServerLayers) {
-            final Optional<BlockState> physical = serverLayers.physicalState(key);
-            if (physical.isPresent()) return physical.get();
-        }
-        final ClientPlayerEntity player = MinecraftClient.getInstance().player;
-        if (!showServerLayers && player != null && hidesServerLayer(key)) {
-            final Optional<BlockState> overlay =
-                    serverLayers.overlayState(key, player.getUuid());
-            if (overlay.isPresent()) return overlay.get();
-        }
-        if (hidesServerLayer(key)) {
-            final Optional<BlockState> viewer = serverLayers.viewerState(key);
-            if (viewer.isPresent()) return viewer.get();
-        }
-        final Optional<BlockState> physical = serverLayers.physicalState(key);
-        if (physical.isPresent()) return physical.get();
-        final Optional<BlockState> serverViewer = serverLayers.viewerState(key);
-        if (serverViewer.isPresent()) return serverViewer.get();
-        final BlockState directViewer = directBlocks.viewerState(key.world, key.pos);
-        if (directViewer != null) return directViewer;
-        if (closing != null && closing.authoritativeUnderlay != null) {
-            return closing.authoritativeUnderlay;
-        }
-        return fallback;
-    }
     private LocalLayer newestClosedLocal(final BlockKey key) {
         long newestRevision = Long.MIN_VALUE;
         long newestTick = Long.MIN_VALUE;
