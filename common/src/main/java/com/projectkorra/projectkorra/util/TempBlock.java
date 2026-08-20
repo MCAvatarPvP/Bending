@@ -609,6 +609,12 @@ public class TempBlock {
         return this.state;
     }
 
+    /**
+     * Replaces the permanent restoration snapshot shared by this coordinate's
+     * local TempBlock stack. Do not call this for a transient server TempBlock,
+     * moved-earth write, source-hole AIR packet, or client viewer mask. Those
+     * states belong in the prediction authority's composed/deferred ledger.
+     */
     public void setState(final BlockState newState) {
         if (newState == null) return;
         synchronized (MUTATION_LOCK) {

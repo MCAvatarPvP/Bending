@@ -56,12 +56,19 @@ class AuthoritativeBlockBoundaryTest {
 
         assertTrue(runtime.contains("TempBlockSync.currentWorldMutation() != null")
                 && runtime.contains("tempBlockAuthority.predict"));
+
         assertTrue(temp.contains("directBlocks.removeMutation(world, pos)"));
         assertTrue(temp.contains("world.setBlockState(pos, visibleState, 19)"));
         assertFalse(temp.contains("mutations.computeIfAbsent"));
+
         assertTrue(temp.contains("pendingUnderlays")
                 && temp.contains("change.underlayData()")
-                && temp.contains("local.authoritativeUnderlay = authoritativeState"));
+                && temp.contains("rememberViewerUnderlay(")
+                && temp.contains("local.authoritativeUnderlay = viewerState"));
+
+        assertFalse(temp.contains("layer.setState(snapshot)"),
+                "server viewer-underlay must not poison the local TempBlock restoration snapshot");
+
         assertTrue(runtime.contains("discardingWorldState")
                 && runtime.contains("TempFallingBlock.discardAll()")
                 && runtime.contains("CoreAbility.discardAllInstances()"));

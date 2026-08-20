@@ -408,7 +408,8 @@ public final class ClientDirectBlockAuthority {
             final DirectMask mask = entry.getValue();
             return mask.serverState.equals(mask.viewerState)
                     && tick - mask.updatedTick > actionRetentionTicks
-                    && !hasActiveCause(mask.ownerId, mask.cause);
+                    && !hasActiveCause(mask.ownerId, mask.cause)
+                    && !hasClientTempBlock(entry.getKey());
         });
         for (Map.Entry<EffectKey, PredictedWrite> entry
                 : List.copyOf(predictedWrites.entrySet())) {
@@ -478,12 +479,19 @@ public final class ClientDirectBlockAuthority {
                 final TempBlock tempLayer =
                         TempBlock.get(FabricPredictionMC.block(key.world, key.pos));
                 if (tempLayer != null) {
-                    final com.projectkorra.projectkorra.platform.mc.block.BlockState snapshot =
-                            FabricPredictionMC.blockStateSnapshot(
-                                    key.world, key.pos, mask.serverState);
-                    if (snapshot != null) tempLayer.setState(snapshot);
-                } else if (current.equals(mask.viewerState)
-                        || current.equals(mask.serverState)) {
+                    // The final Paper state is a direct-authority layer, not the
+                    // permanent base of the overlapping client TempBlock. Keep it
+                    // as the deferred viewer state until that TempBlock closes.
+                    final DirectMask completedMask = new DirectMask(
+                            mask.serverState, mask.serverState, mask.cause,
+                            mask.ownerId, mask.authoritative, context.tick());
+                    if (serverMasks.replace(key, mask, completedMask)) {
+                        mutations.remove(key);
+                        completed++;
+                    }
+                    continue;
+                }
+                if (current.equals(mask.viewerState) || current.equals(mask.serverState)) {
                     key.world.setBlockState(key.pos, mask.serverState, 19);
                 }
                 if (serverMasks.remove(key, mask)) {
@@ -627,6 +635,11 @@ public final class ClientDirectBlockAuthority {
         if (cause == null || !"raiseearth".equals(cause.ability)) return false;
         final PredictedCause state = predictedCauses.get(cause);
         return state != null && !state.authoritativeFrameComplete;
+    }
+
+    private static boolean hasClientTempBlock(final BlockKey key) {
+        return key != null && key.world != null && key.pos != null
+                && TempBlock.get(FabricPredictionMC.block(key.world, key.pos)) != null;
     }
 
     private BlockState clientBaseState(final BlockKey key, final BlockState fallback) {

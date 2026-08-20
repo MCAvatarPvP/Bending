@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.firebending;
 
+import com.projectkorra.projectkorra.BendingPlayer;
+import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.FireAbility;
@@ -13,8 +15,8 @@ import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.BoundingBox;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
-import com.projectkorra.projectkorra.prediction.hit.EntityHitboxProvider;
 import com.projectkorra.projectkorra.prediction.action.PredictionDeterminism;
+import com.projectkorra.projectkorra.prediction.hit.EntityHitboxProvider;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.TempBlock;
 
@@ -126,7 +128,14 @@ public class WallOfFire extends FireAbility implements EntityHitboxProvider {
 
     private void affect(final Entity entity) {
         if (affected.containsKey(entity)) return;
-        final boolean noStop = entity.getVelocity().lengthSquared() > 0.3;
+        boolean air = false;
+
+        if (entity instanceof Player p) {
+            BendingPlayer bendingPlayer = BendingPlayer.getBendingPlayer(p);
+            air = bendingPlayer != null && bendingPlayer.isElementToggled(Element.AIR);
+        }
+
+        final boolean noStop = entity.getVelocity().lengthSquared() > 0.3 && !air;
 
         if (!noStop) {
             GeneralMethods.setVelocity(this, entity, new Vector(0, 0, 0));
@@ -447,5 +456,4 @@ public class WallOfFire extends FireAbility implements EntityHitboxProvider {
     public List<Block> getBlocks() {
         return this.blocks;
     }
-
 }
