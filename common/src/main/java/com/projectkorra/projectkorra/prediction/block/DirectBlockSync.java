@@ -86,8 +86,15 @@ public final class DirectBlockSync {
         return EARTH_LIFECYCLE.get();
     }
 
-    /** All EarthAbility subclasses, including addons, share the same policy. */
+    /**
+     * Most EarthAbility subclasses share direct terrain prediction. High-fanout
+     * terrain effects remain server-authoritative until the protocol can group
+     * their writes into identified atomic frames.
+     */
     public static boolean isPredictable(final CoreAbility ability, final String fallbackAbilityName) {
+        final String abilityName = ability == null
+                ? fallbackAbilityName : ability.getName();
+        if ("Shockwave".equalsIgnoreCase(abilityName)) return false;
         if (ability instanceof EarthAbility) return true;
         if (fallbackAbilityName == null || fallbackAbilityName.isBlank()) return false;
         return CoreAbility.getAbility(fallbackAbilityName) instanceof EarthAbility;

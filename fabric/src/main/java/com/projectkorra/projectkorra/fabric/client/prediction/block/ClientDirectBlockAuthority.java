@@ -7,7 +7,6 @@ import com.projectkorra.projectkorra.platform.fabric.FabricPredictionMC;
 import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
 import com.projectkorra.projectkorra.prediction.block.DirectBlockAuthorityPolicy;
 import com.projectkorra.projectkorra.prediction.block.DirectBlockSync;
-import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
 import com.projectkorra.projectkorra.util.Information;
 import com.projectkorra.projectkorra.util.TempBlock;
 import net.minecraft.block.BlockState;
@@ -219,8 +218,29 @@ public final class ClientDirectBlockAuthority {
         final RecentVisual observedVisual = recentVisuals.get(serverKey);
         final long observedRevision = observedVisual == null ? 0L : observedVisual.revision;
         final DirectMask existingMask = serverMasks.get(serverKey);
-        final BlockState viewerState = existingMask == null
-                ? clientBaseState(serverKey, serverUnderlay) : existingMask.viewerState;
+        final BlockState viewerState;
+        if (existingMask != null) {
+            viewerState = existingMask.viewerState;
+        } else if (hasClientTempBlock(serverKey)) {
+            /*
+             * A client TempBlock is the visible top of this coordinate. The
+             * direct mask must describe what becomes visible after that local
+             * layer closes. TempBlock.state is the permanent restoration base
+             * and is therefore not a valid direct/viewer underlay.
+             *
+             * Preserve a same-or-newer local direct write when it demonstrably
+             * owns this coordinate. Otherwise Paper's newly received state is
+             * the only authoritative post-TempBlock value.
+             */
+            final boolean recentOwnsCoordinate = observedVisual != null
+                    && (observedVisual.effect.actionSequence > effect.actionSequence
+                    || observedVisual.effect.actionSequence == effect.actionSequence
+                    && observedVisual.effect.ability.equals(effect.ability)
+                    && observedVisual.effect.mutationOrdinal >= effect.mutationOrdinal);
+            viewerState = recentOwnsCoordinate ? observedVisual.state : serverState;
+        } else {
+            viewerState = serverUnderlay;
+        }
         // A delayed receipt from an older overlapping cast may update the
         // physical comparison state, but it must not steal the coordinate
         // transaction from a newer local RaiseEarth lifecycle.
@@ -283,18 +303,12 @@ public final class ClientDirectBlockAuthority {
                     + " cause=" + mask.cause);
             return new DirectView(mask.viewerState);
         }
-        if (awaitsAuthoritativeFrame(mask.cause)) {
-            // A RaiseEarth coordinate is written more than once in one server
-            // tick. Minecraft may coalesce those writes into only the final
-            // chunk-delta entry, so inequality with the last receipt is not
-            // evidence of an external edit. The ordered completion fence will
-            // install the complete final frame.
-            maskedPacketCount++;
-            record("tick=" + context.tick() + " PACKET mask coalesced pos=" + key.pos
-                    + " expected=" + mask.serverState + " incoming=" + incoming
-                    + " viewer=" + mask.viewerState + " cause=" + mask.cause);
-            return new DirectView(mask.viewerState);
-        }
+        /*
+         * A DirectMask carries no packet generation or frame id. Once the
+         * incoming state differs from the exact receipt state, this authority
+         * can no longer prove that the packet belongs to the same transaction.
+         * Fail open to Paper instead of hiding an unrelated or delayed write.
+         */
         serverMasks.remove(key, mask);
         releasedMaskCount++;
         record("tick=" + context.tick() + " PACKET release pos=" + key.pos
@@ -360,14 +374,12 @@ public final class ClientDirectBlockAuthority {
             final BlockState chunkState = world.getBlockState(key.pos);
             if (isTempPhysical != null && isTempPhysical.test(key.pos, chunkState)) continue;
             if (!mask.serverState.equals(chunkState)) {
-                if (awaitsAuthoritativeFrame(mask.cause)) {
-                    if (!chunkState.equals(mask.viewerState)) {
-                        world.setBlockState(key.pos, mask.viewerState, 19);
-                    }
-                    preserved.add(key.pos);
-                    continue;
-                }
-                serverMasks.remove(key, mask);
+                /*
+                 * A chunk snapshot is authoritative. Without a generation/frame
+                 * identity, a mismatching direct mask cannot be retained or
+                 * painted back over the chunk.
+                 */
+                if (serverMasks.remove(key, mask)) releasedMaskCount++;
                 debug.accept("runtime released owned earth view for external chunk state pos="
                         + key.pos + " expected=" + mask.serverState + " received=" + chunkState);
                 continue;
@@ -631,24 +643,12 @@ public final class ClientDirectBlockAuthority {
         return DirectBlockAuthorityPolicy.requiresAuthoritativeHandoff(ability);
     }
 
-    private boolean awaitsAuthoritativeFrame(final CauseKey cause) {
-        if (cause == null || !"raiseearth".equals(cause.ability)) return false;
-        final PredictedCause state = predictedCauses.get(cause);
-        return state != null && !state.authoritativeFrameComplete;
-    }
 
     private static boolean hasClientTempBlock(final BlockKey key) {
         return key != null && key.world != null && key.pos != null
                 && TempBlock.get(FabricPredictionMC.block(key.world, key.pos)) != null;
     }
 
-    private BlockState clientBaseState(final BlockKey key, final BlockState fallback) {
-        if (key == null || key.world == null || key.pos == null) return fallback;
-        final TempBlock layer = TempBlock.get(FabricPredictionMC.block(key.world, key.pos));
-        if (layer == null || layer.getState() == null
-                || layer.getState().getBlockData() == null) return fallback;
-        return blockStateDecoder.apply(TempBlockSync.encode(layer.getState().getBlockData()));
-    }
 
     private boolean hasActiveCause(final UUID ownerId, final CauseKey cause) {
         if (ownerId == null || cause == null) return false;

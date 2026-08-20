@@ -194,13 +194,21 @@ class AuthoritativeBlockBoundaryTest {
         assertTrue(direct.contains("existingMask.cause.actionSequence > cause.actionSequence")
                         && direct.contains("? existingMask.cause : cause"),
                 "an older delayed receipt may not take an overlapping coordinate back from the newer wall transaction");
-        assertTrue(direct.contains("PACKET mask coalesced")
-                        && direct.contains("awaitsAuthoritativeFrame(mask.cause)"),
-                "a coalesced multi-write packet must remain hidden until the explicit frame fence");
-        final String pendingFrame = method(direct,
-                "private boolean awaitsAuthoritativeFrame", "private BlockState clientBaseState");
-        assertTrue(pendingFrame.contains("\"raiseearth\".equals(cause.ability)"),
-                "the final-removal fence is specific to RaiseEarth; EarthSmash keeps its independent convergence path");
+        final String packetMask = method(direct,
+                "public DirectView maskForIncoming", "public BlockState viewerState");
+        assertTrue(packetMask.contains("mask.serverState.equals(incoming)")
+                        && packetMask.contains("serverMasks.remove(key, mask)")
+                        && packetMask.contains("return null"),
+                "only the exact Paper receipt state may be concealed by a direct mask");
+        assertTrue(!packetMask.contains("PACKET mask coalesced")
+                        && !packetMask.contains("awaitsAuthoritativeFrame"),
+                "without a packet generation/frame id, a mismatch must fail open to Paper");
+
+        final String chunkRestore = method(direct,
+                "public Set<BlockPos> restoreChunk", "public void clearTransientReads");
+        assertTrue(chunkRestore.contains("serverMasks.remove(key, mask)")
+                        && !chunkRestore.contains("awaitsAuthoritativeFrame"),
+                "a mismatching authoritative chunk state must release the stale mask");
         final String runtime = runtime();
         assertTrue(runtime.contains("completesRaiseEarthFrame(")
                         && runtime.contains("removed.abilityType(), removed.remainingTypeInstances())")
