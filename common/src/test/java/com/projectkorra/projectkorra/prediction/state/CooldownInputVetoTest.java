@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -35,5 +36,25 @@ class CooldownInputVetoTest {
             assertFalse(CooldownSync.isInputVetoed(player, "PhaseChangeFreeze"));
             return null;
         });
+    }
+
+    @Test
+    void leniencyIsScopedToTheExactPlayerAndCooldownNames() {
+        final UUID player = UUID.randomUUID();
+        final UUID other = UUID.randomUUID();
+        final long now = 10_000L;
+
+        assertEquals(now, CooldownSync.effectiveInputTime(player, "AirSwipe", now));
+        CooldownSync.runInputLeniency(player, List.of("AirSwipe"),
+                CooldownSync.INPUT_LENIENCY_MILLIS, () -> {
+                    final long effective = CooldownSync.effectiveInputTime(player, "airswipe", now);
+                    assertEquals(now + 100L, effective);
+                    assertFalse(effective < now + 100L, "exactly 100 ms remaining must be accepted");
+                    assertTrue(effective < now + 101L, "more than 100 ms remaining must stay on cooldown");
+                    assertEquals(now, CooldownSync.effectiveInputTime(player, "AirSweep", now));
+                    assertEquals(now, CooldownSync.effectiveInputTime(other, "AirSwipe", now));
+                    return null;
+                });
+        assertEquals(now, CooldownSync.effectiveInputTime(player, "AirSwipe", now));
     }
 }

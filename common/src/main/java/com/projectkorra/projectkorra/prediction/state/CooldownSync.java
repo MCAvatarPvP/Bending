@@ -17,8 +17,11 @@ import java.util.function.Supplier;
  * Loader-neutral observation point for cooldowns created by exact prediction.
  */
 public final class CooldownSync {
+    public static final long INPUT_LENIENCY_MILLIS = 100L;
+
     private static volatile Listener listener;
     private static final ThreadLocal<InputVeto> INPUT_VETO = new ThreadLocal<>();
+    private static final ThreadLocal<InputLeniency> INPUT_LENIENCY = new ThreadLocal<>();
 
     private CooldownSync() {
     }
@@ -96,6 +99,46 @@ public final class CooldownSync {
                 && ability != null && veto.abilities.contains(ability.toLowerCase(Locale.ROOT));
     }
 
+    /**
+     * Runs one trusted prediction input with a small cooldown-boundary grace.
+     * The allowance applies only to the named cooldowns for this exact player
+     * and disappears as soon as the native input callback returns.
+     */
+    public static <T> T runInputLeniency(final UUID playerId, final Collection<String> abilities,
+                                         final long leniencyMillis, final Supplier<T> input) {
+        if (input == null) return null;
+        if (playerId == null || abilities == null || abilities.isEmpty() || leniencyMillis <= 0L) {
+            return input.get();
+        }
+        final Set<String> normalized = new HashSet<>();
+        for (String ability : abilities) {
+            if (ability != null && !ability.isBlank()) {
+                normalized.add(ability.toLowerCase(Locale.ROOT));
+            }
+        }
+        if (normalized.isEmpty()) return input.get();
+        final InputLeniency previous = INPUT_LENIENCY.get();
+        INPUT_LENIENCY.set(new InputLeniency(playerId, Set.copyOf(normalized), leniencyMillis));
+        try {
+            return input.get();
+        } finally {
+            if (previous == null) INPUT_LENIENCY.remove();
+            else INPUT_LENIENCY.set(previous);
+        }
+    }
+
+    /** Returns the comparison time for a cooldown check in the current input. */
+    public static long effectiveInputTime(final UUID playerId, final String ability,
+                                          final long currentTimeMillis) {
+        final InputLeniency leniency = INPUT_LENIENCY.get();
+        if (leniency == null || playerId == null || !playerId.equals(leniency.playerId)
+                || ability == null || !leniency.abilities.contains(ability.toLowerCase(Locale.ROOT))) {
+            return currentTimeMillis;
+        }
+        if (currentTimeMillis > Long.MAX_VALUE - leniency.millis) return Long.MAX_VALUE;
+        return currentTimeMillis + leniency.millis;
+    }
+
     /** Awards hit regeneration immediately from the authoritative server contact. */
     public static void regenerateAirBlastOnConfirmedHit(final Ability ability, final Entity target,
                                                         final BendingPlayer player, final double amount,
@@ -126,5 +169,8 @@ public final class CooldownSync {
     }
 
     private record InputVeto(UUID playerId, Set<String> abilities) {
+    }
+
+    private record InputLeniency(UUID playerId, Set<String> abilities, long millis) {
     }
 }

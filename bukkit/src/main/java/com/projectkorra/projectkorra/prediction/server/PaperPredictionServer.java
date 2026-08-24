@@ -1158,6 +1158,18 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         session.inputVetoes.addLast(veto);
     }
 
+    private static PaperPredictionProtocol.InputVeto consumeInputVeto(final Session session,
+                                                                       final long clientSequence) {
+        if (session == null || clientSequence <= 0L) return null;
+        while (!session.inputVetoes.isEmpty()) {
+            final PaperPredictionProtocol.InputVeto veto = session.inputVetoes.peekFirst();
+            if (veto.sequence() > clientSequence) return null;
+            session.inputVetoes.removeFirst();
+            if (veto.sequence() == clientSequence) return veto;
+        }
+        return null;
+    }
+
     private void onActionTag(final Player player, final PaperPredictionProtocol.ActionTag tag) {
         final Session session = valid(player, tag.session());
         if (session == null || !session.ready || tag.clientSequence() <= 0L
@@ -1293,9 +1305,13 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                         abilityName, origin.getX(), origin.getY(), origin.getZ(), origin.getYaw(),
                         origin.getPitch(), predictable));
 
-        final PaperPredictionProtocol.InputVeto veto = session.inputVetoes.pollFirst();
-        final boolean locallyRejectedOnCooldown = predictable && veto != null
+        final PaperPredictionProtocol.InputVeto veto = consumeInputVeto(session, clientActionSequence);
+        final boolean locallyRejectedOnCooldown = predictable && clientActionSequence > 0L
+                && veto != null && veto.sequence() == clientActionSequence
                 && veto.kind() == kind && abilityName.equalsIgnoreCase(veto.ability());
+        final boolean locallyAcceptedCooldown = predictable && clientActionSequence > 0L
+                && veto == null;
+        final List<String> inputCooldowns = inputVetoCooldowns(abilityName, kind);
         // Unknown/server-only addons follow unmodified legacy Paper behavior.
         // They still consume an ordinal so the next supported native event has
         // the same deterministic id on both endpoints.
@@ -1315,7 +1331,10 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                     runWithOwner(player.getUniqueId(), true,
                             () -> nativeResult.set(locallyRejectedOnCooldown
                                     ? CooldownSync.runInputVeto(player.getUniqueId(),
-                                    inputVetoCooldowns(abilityName, kind), nativeInput)
+                                    inputCooldowns, nativeInput)
+                                    : locallyAcceptedCooldown
+                                    ? CooldownSync.runInputLeniency(player.getUniqueId(), inputCooldowns,
+                                    CooldownSync.INPUT_LENIENCY_MILLIS, nativeInput)
                                     : nativeInput.get())));
         } finally {
             trackingResult = AbilityActivationManager.finishTrackingResult();

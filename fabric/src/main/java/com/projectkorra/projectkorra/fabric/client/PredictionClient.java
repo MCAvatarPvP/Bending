@@ -1080,8 +1080,9 @@ public final class PredictionClient {
         // negative gate, an input rejected locally at t=0 can arrive after a
         // short cooldown expires and be replayed by Paper at t=RTT/2. Send the
         // veto from this sendPacket hook, before the outer vanilla packet, so
-        // both travel in the same ordered connection. It never authorizes a
-        // cast: absence of a veto simply leaves normal server validation intact.
+        // both travel in the same ordered connection. A matching veto rejects
+        // the cast; a matching action tag without a veto lets Paper use the same
+        // narrow 100 ms cooldown-boundary allowance as this client runtime.
         final boolean cooldownVeto = cooldownActiveAtInput && !locallyPredicted;
         if (cooldownVeto && ClientPlayNetworking.canSend(PredictionPayloads.InputVeto.ID)) {
             ClientPlayNetworking.send(new PredictionPayloads.InputVeto(sessionId, sequence, kind, ability));

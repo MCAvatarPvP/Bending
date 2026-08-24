@@ -251,7 +251,7 @@ class PredictionTimingBoundaryTest {
     }
 
     @Test
-    void cooldownPredictionKeepsLocalExpiryAndVetoesDelayedNativeReplay() throws IOException {
+    void cooldownPredictionTrustsCorrelatedClientDecisionAtTheBoundary() throws IOException {
         String client = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/PredictionClient.java",
                 "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/PredictionClient.java");
         String runtime = read(
@@ -292,10 +292,22 @@ class PredictionTimingBoundaryTest {
                 paper.indexOf("private void flushTempBlocks", paper.indexOf("private CommonInputHandler.InputResult processInput")));
         assertTrue(process.indexOf("locallyRejectedOnCooldown") < process.indexOf("PredictionDeterminism.run"),
                 "Paper must consume a matching veto before invoking ProjectKorra for that native event");
+        assertTrue(process.contains("consumeInputVeto(session, clientActionSequence)"),
+                "untagged inputs must not consume a veto belonging to a later tagged input");
+        assertTrue(process.contains("veto.sequence() == clientActionSequence"),
+                "a stale cooldown veto must never reject a later native input");
         assertTrue(process.contains("CooldownSync.runInputVeto")
-                        && process.contains("inputVetoCooldowns(abilityName, kind), nativeInput")
+                        && process.contains("inputCooldowns, nativeInput")
                         && process.contains("action.locallyPredicted ? \"accepted_combo\" : \"client_cooldown\""),
                 "a veto must preserve native combo bookkeeping while rejecting only the delayed bound cast");
+        assertTrue(process.contains("CooldownSync.runInputLeniency")
+                        && process.contains("CooldownSync.INPUT_LENIENCY_MILLIS")
+                        && process.contains("clientActionSequence > 0L")
+                        && process.contains("veto == null"),
+                "a tagged client-approved input must receive only the shared cooldown-boundary allowance");
+        assertTrue(runtime.contains("CooldownSync.runInputLeniency")
+                        && runtime.contains("CooldownSync.INPUT_LENIENCY_MILLIS"),
+                "Fabric and Paper must apply the same cooldown-boundary allowance");
         assertFalse(process.contains("return CommonInputHandler.InputResult.pass()"),
                 "skipping the complete callback loses cooldown-valid combo steps such as AirSweep's second AirSwipe click");
         String serverAdded = paper.substring(paper.indexOf("public void onAdded(CoreAbility source"),

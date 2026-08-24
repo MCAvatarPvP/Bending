@@ -336,7 +336,10 @@ public class BendingPlayer extends OfflineBendingPlayer {
         }
 
         if (!ignoreCooldowns && this.cooldowns.containsKey(ability.getName())) {
-            if (this.cooldowns.get(ability.getName()).getCooldown() + getConfig().getLong("Properties.GlobalCooldown") >= System.currentTimeMillis()) {
+            final long inputTime = CooldownSync.effectiveInputTime(this.player.getUniqueId(),
+                    ability.getName(), System.currentTimeMillis());
+            if (this.cooldowns.get(ability.getName()).getCooldown()
+                    + getConfig().getLong("Properties.GlobalCooldown") > inputTime) {
                 return false;
             }
 
@@ -604,7 +607,8 @@ public class BendingPlayer extends OfflineBendingPlayer {
             return true;
         }
         if (this.cooldowns.containsKey(ability)) {
-            return System.currentTimeMillis() < this.cooldowns.get(ability).getCooldown();
+            return CooldownSync.effectiveInputTime(this.player.getUniqueId(), ability,
+                    System.currentTimeMillis()) < this.cooldowns.get(ability).getCooldown();
         }
 
         return false;

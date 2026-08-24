@@ -409,20 +409,19 @@ public final class ExactPredictionRuntime
         if (!supports(abilityName) || INSTANCE.bendingPlayer == null || abilityName == null || abilityName.isBlank()) {
             return false;
         }
+        final List<String> cooldowns = inputCooldownNames(abilityName, kind);
+        return CooldownSync.runInputLeniency(INSTANCE.bendingPlayer.getPlayer().getUniqueId(),
+                cooldowns, CooldownSync.INPUT_LENIENCY_MILLIS,
+                () -> cooldowns.stream().anyMatch(INSTANCE.bendingPlayer::isOnCooldown));
+    }
 
-        if (INSTANCE.bendingPlayer.isOnCooldown(abilityName)) {
-            return true;
-        }
-
+    private static List<String> inputCooldownNames(final String abilityName, final InputKind kind) {
+        if (abilityName == null || abilityName.isBlank()) return List.of();
         if (abilityName.equalsIgnoreCase("PhaseChange")) {
-            return switch (kind) {
-                case LEFT_CLICK -> INSTANCE.bendingPlayer.isOnCooldown("PhaseChangeFreeze");
-                case SNEAK_START -> INSTANCE.bendingPlayer.isOnCooldown("PhaseChangeMelt");
-                default -> false;
-            };
-        } else {
-            return false;
+            if (kind == InputKind.LEFT_CLICK) return List.of(abilityName, "PhaseChangeFreeze");
+            if (kind == InputKind.SNEAK_START) return List.of(abilityName, "PhaseChangeMelt");
         }
+        return List.of(abilityName);
     }
 
     public static void removeLocalCooldown(String abilityName) {
@@ -1001,42 +1000,45 @@ public final class ExactPredictionRuntime
                         () -> PredictionDeterminism.run(
                                 sequence,
                                 action.deterministicSeed,
-                                () -> {
-                                    switch (kind) {
-                                        case LEFT_CLICK:
-                                            CommonInputHandler.handleSwing(player, Set.of(), new HashSet());
-                                            com.projectkorra.projectkorra.platform.mc.entity.Entity target = GeneralMethods.getTargetedEntity(player, 3.0);
-                                            if (target instanceof LivingEntity living && !target.equals(player)) {
-                                                CommonInputHandler.handleEntityLeftClick(player, living);
+                                () -> CooldownSync.runInputLeniency(player.getUniqueId(),
+                                        inputCooldownNames(boundName, kind),
+                                        CooldownSync.INPUT_LENIENCY_MILLIS, () -> {
+                                            switch (kind) {
+                                                case LEFT_CLICK:
+                                                    CommonInputHandler.handleSwing(player, Set.of(), new HashSet());
+                                                    com.projectkorra.projectkorra.platform.mc.entity.Entity target = GeneralMethods.getTargetedEntity(player, 3.0);
+                                                    if (target instanceof LivingEntity living && !target.equals(player)) {
+                                                        CommonInputHandler.handleEntityLeftClick(player, living);
+                                                    }
+                                                    break;
+                                                case SNEAK_START:
+                                                    com.projectkorra.projectkorra.fabric.client.PredictionClient.withInputSneaking(
+                                                            false, () -> CommonInputHandler.handleSneak(player, false)
+                                                    );
+                                                    break;
+                                                case RIGHT_CLICK:
+                                                    CommonInputHandler.handleRightClick(player, ClickType.RIGHT_CLICK);
+                                                    break;
+                                                case RIGHT_CLICK_BLOCK:
+                                                    CommonInputHandler.handleRightClick(player, ClickType.RIGHT_CLICK_BLOCK);
+                                                    break;
+                                                case RIGHT_CLICK_ENTITY:
+                                                    CommonInputHandler.handleRightClickEntity(player);
+                                                    break;
+                                                case SNEAK_STOP:
+                                                    com.projectkorra.projectkorra.fabric.client.PredictionClient.withInputSneaking(
+                                                            true, () -> CommonInputHandler.handleSneak(player, true)
+                                                    );
+                                                    break;
+                                                case SWAP_HANDS:
+                                                    CommonInputHandler.handleSwapHands(
+                                                            player,
+                                                            player.getInventory().getItemInMainHand().getType() == Material.AIR,
+                                                            player.getInventory().getItemInOffHand() == null || player.getInventory().getItemInOffHand().getType() == Material.AIR
+                                                    );
                                             }
-                                            break;
-                                        case SNEAK_START:
-                                            com.projectkorra.projectkorra.fabric.client.PredictionClient.withInputSneaking(
-                                                    false, () -> CommonInputHandler.handleSneak(player, false)
-                                            );
-                                            break;
-                                        case RIGHT_CLICK:
-                                            CommonInputHandler.handleRightClick(player, ClickType.RIGHT_CLICK);
-                                            break;
-                                        case RIGHT_CLICK_BLOCK:
-                                            CommonInputHandler.handleRightClick(player, ClickType.RIGHT_CLICK_BLOCK);
-                                            break;
-                                        case RIGHT_CLICK_ENTITY:
-                                            CommonInputHandler.handleRightClickEntity(player);
-                                            break;
-                                        case SNEAK_STOP:
-                                            com.projectkorra.projectkorra.fabric.client.PredictionClient.withInputSneaking(
-                                                    true, () -> CommonInputHandler.handleSneak(player, true)
-                                            );
-                                            break;
-                                        case SWAP_HANDS:
-                                            CommonInputHandler.handleSwapHands(
-                                                    player,
-                                                    player.getInventory().getItemInMainHand().getType() == Material.AIR,
-                                                    player.getInventory().getItemInOffHand() == null || player.getInventory().getItemInOffHand().getType() == Material.AIR
-                                            );
-                                    }
-                                }
+                                            return null;
+                                        })
                         )
                 );
             } catch (Throwable failure) {
