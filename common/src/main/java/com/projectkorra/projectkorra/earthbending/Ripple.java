@@ -22,6 +22,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class Ripple extends EarthAbility {
 
     private static final Map<Integer[], Block> BLOCKS = new ConcurrentHashMap<Integer[], Block>();
+    private static final ShockwaveExecutionPolicy.MovedColumns MOVED_COLUMNS =
+            new ShockwaveExecutionPolicy.MovedColumns();
 
     private int step;
     private int maxStep;
@@ -59,25 +61,21 @@ public class Ripple extends EarthAbility {
         this.initialize(player, origin, direction, getConfig().getDouble("Abilities.Earth.Shockwave.Range"));
     }
 
-    private static void setMoved(final Block block) {
-        final int x = block.getX();
-        final int z = block.getZ();
-        final Integer[] pair = new Integer[]{x, z};
-        BLOCKS.put(pair, block);
+    static boolean markMovedForTick(final Block block) {
+        if (!MOVED_COLUMNS.mark(block.getWorld().getName(), block.getX(), block.getZ())) {
+            return false;
+        }
+        BLOCKS.put(new Integer[]{block.getX(), block.getZ()}, block);
+        return true;
     }
 
     private static boolean hasAnyMoved(final Block block) {
-        final int x = block.getX();
-        final int z = block.getZ();
-        final Integer[] pair = new Integer[]{x, z};
-        if (BLOCKS.containsKey(pair)) {
-            return true;
-        }
-        return false;
+        return MOVED_COLUMNS.contains(block.getWorld().getName(), block.getX(), block.getZ());
     }
 
     public static void progressAllCleanup() {
         BLOCKS.clear();
+        MOVED_COLUMNS.clear();
     }
 
     public static Map<Integer[], Block> getBlocks() {
@@ -286,11 +284,10 @@ public class Ripple extends EarthAbility {
     private boolean decrease(Block block) {
         if (block == null) {
             return false;
-        } else if (hasAnyMoved(block)) {
+        } else if (!markMovedForTick(block)) {
             return false;
         }
 
-        setMoved(block);
         final Block botBlock = block.getRelative(BlockFace.DOWN);
         int length = 1;
 
@@ -304,11 +301,10 @@ public class Ripple extends EarthAbility {
     private boolean increase(final Block block) {
         if (block == null) {
             return false;
-        } else if (hasAnyMoved(block)) {
+        } else if (!markMovedForTick(block)) {
             return false;
         }
 
-        setMoved(block);
         final Block botblock = block.getRelative(BlockFace.DOWN);
         int length = 1;
 
@@ -468,4 +464,5 @@ public class Ripple extends EarthAbility {
     public ArrayList<Entity> getEntities() {
         return this.entities;
     }
+
 }

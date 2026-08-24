@@ -10,7 +10,9 @@ import com.projectkorra.projectkorra.platform.bukkit.BukkitMC;
 import com.projectkorra.projectkorra.platform.bukkit.BukkitProjectKorraPlatform;
 import com.projectkorra.projectkorra.platform.mc.command.Command;
 import com.projectkorra.projectkorra.platform.mc.command.CommandSender;
+import com.projectkorra.projectkorra.prediction.server.PacketEventsEntityInterpolationHook;
 import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
+import com.projectkorra.projectkorra.prediction.server.ServerEntityInterpolation;
 import com.projectkorra.projectkorra.region.BukkitRegionProtectionBootstrap;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
@@ -22,6 +24,8 @@ import org.bukkit.plugin.java.JavaPlugin;
  */
 public final class BukkitProjectKorraPlugin extends JavaPlugin {
     private PaperPredictionServer prediction;
+    private ServerEntityInterpolation entityInterpolation;
+    private PacketEventsEntityInterpolationHook entityInterpolationHook;
     private ExternalActionBarHook externalActionBarHook;
 
     private static CommandSender wrapSender(final org.bukkit.command.CommandSender sender) {
@@ -43,6 +47,7 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         Platform.install(new BukkitProjectKorraPlatform(this));
+        registerServerEntityInterpolation();
         ProjectKorra.initCommon();
         BukkitRegionProtectionBootstrap.registerBuiltIns();
         GeneralMethods.reloadPlugin(new BukkitConsoleSender(getServer().getConsoleSender()));
@@ -95,6 +100,27 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
         }
     }
 
+    private void registerServerEntityInterpolation() {
+        Plugin packetEvents = getServer().getPluginManager().getPlugin("packetevents");
+        if (packetEvents == null) {
+            packetEvents = getServer().getPluginManager().getPlugin("PacketEvents");
+        }
+        if (packetEvents == null || !packetEvents.isEnabled()) return;
+
+        try {
+            this.entityInterpolation = ServerEntityInterpolation.start(this);
+            this.entityInterpolationHook = PacketEventsEntityInterpolationHook.register(
+                    this, this.entityInterpolation);
+        } catch (LinkageError | RuntimeException failure) {
+            if (this.entityInterpolationHook != null) this.entityInterpolationHook.stop();
+            if (this.entityInterpolation != null) this.entityInterpolation.stop();
+            this.entityInterpolationHook = null;
+            this.entityInterpolation = null;
+            getLogger().warning("Could not enable packet-driven entity interpolation; "
+                    + "using Bukkit collision positions. Cause: " + failure);
+        }
+    }
+
     @Override
     public void onDisable() {
         // Keep lifecycle publication and coordinate filtering alive while
@@ -108,6 +134,14 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
         if (this.prediction != null) {
             this.prediction.stop();
             this.prediction = null;
+        }
+        if (this.entityInterpolationHook != null) {
+            this.entityInterpolationHook.stop();
+            this.entityInterpolationHook = null;
+        }
+        if (this.entityInterpolation != null) {
+            this.entityInterpolation.stop();
+            this.entityInterpolation = null;
         }
         Platform.scheduler().cancelAll();
     }

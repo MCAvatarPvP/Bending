@@ -172,16 +172,16 @@ class PredictionTimingBoundaryTest {
                 "an authoritative ownership receipt must survive local Action retirement");
         assertFalse(velocityReceipt.contains("nativeConfirmed"),
                 "the exact authoritative velocity receipt must not be dropped while NativeAction is in flight");
-        assertFalse(velocityAuthority.contains("closeNetworkVelocity"),
-                "velocity ownership must follow receipt/packet order, never vector similarity");
+        assertTrue(velocityAuthority.contains("VelocityReceiptPolicy.matchesPacket"),
+                "a high-latency receipt backlog must pair the announced write with its exact quantized vanilla packet");
         int directStart = velocitySync.indexOf("public static void applyDirect");
         String directVelocity = directStart < 0 ? "" : velocitySync.substring(directStart);
         assertTrue(directVelocity.indexOf("publish(ability, target, velocity);")
                         < directVelocity.indexOf("commit(write);"),
                 "every direct ability velocity must publish ownership before vanilla can echo it back");
-        assertTrue(velocityAuthority.contains("allowed self-owned velocity without retained mutation")
-                        && !velocityAuthority.contains("suppressed self-owned velocity without retained mutation"),
-                "a self-owned receipt without an exact local action+ordinal mutation is the only AirBlast push and must pass");
+        assertTrue(velocityAuthority.contains("suppressed self-owned local-player velocity without retained mutation")
+                        && velocityAuthority.contains("allowed self-owned velocity without retained mutation"),
+                "a missing local-player mutation is still a delayed echo, while an unpredicted remote AirBlast target must accept vanilla movement");
     }
 
     @Test

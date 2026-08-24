@@ -60,7 +60,12 @@ public final class ClientVelocityAuthority {
         if (!receipts.isEmpty()) {
             int receiptIndex = -1;
             for (int index = 0; index < receipts.size(); index++) {
-                if (receipts.get(index).entityId == entityId) {
+                final Receipt candidate = receipts.get(index);
+                if (candidate.entityId == entityId
+                        && (candidate.announcedVelocity == null
+                        || VelocityReceiptPolicy.matchesPacket(
+                        candidate.announcedVelocity.x, candidate.announcedVelocity.y,
+                        candidate.announcedVelocity.z, velocity.x, velocity.y, velocity.z))) {
                     receiptIndex = index;
                     break;
                 }
@@ -96,6 +101,15 @@ public final class ClientVelocityAuthority {
                             + " ability=" + receipt.ability);
                     return true;
                 }
+                final ClientPlayerEntity clientPlayer = MinecraftClient.getInstance().player;
+                final boolean targetsLocalPlayer = clientPlayer != null
+                        && clientPlayer.getId() == entityId;
+                if (VelocityReceiptPolicy.suppressesMissingMutation(true, targetsLocalPlayer)) {
+                    debug.accept("runtime suppressed self-owned local-player velocity without retained mutation action="
+                            + receipt.actionSequence + " ordinal=" + receipt.impulseOrdinal
+                            + " ability=" + receipt.ability);
+                    return true;
+                }
                 debug.accept("runtime allowed self-owned velocity without retained mutation action="
                         + receipt.actionSequence + " ordinal=" + receipt.impulseOrdinal
                         + " ability=" + receipt.ability);
@@ -119,7 +133,7 @@ public final class ClientVelocityAuthority {
                 && localPlayer.getUuid().equals(owner.target()) ? localPlayer.getId() : -1;
         recordOwner(localPlayer, owner.serverTick(), owner.actionSequence(), owner.impulseOrdinal(),
                 owner.abilityOwner(), targetEntityId, owner.ability(), receivedTick,
-                correlateAction);
+                correlateAction, null);
     }
 
     public void recordOwner(final Entity localPlayer,
@@ -129,7 +143,7 @@ public final class ClientVelocityAuthority {
         if (owner == null) return;
         recordOwner(localPlayer, owner.serverTick(), owner.actionSequence(), owner.impulseOrdinal(),
                 owner.abilityOwner(), owner.targetEntityId(), owner.ability(), receivedTick,
-                correlateAction);
+                correlateAction, new Vec3d(owner.velocityX(), owner.velocityY(), owner.velocityZ()));
     }
 
     public void afterLocalProgress(final ClientWorld world, final long tick,
@@ -210,7 +224,8 @@ public final class ClientVelocityAuthority {
                              final long paperActionSequence, final int impulseOrdinal,
                              final UUID abilityOwner, final int targetEntityId,
                              final String ability, final long receivedTick,
-                             final LongUnaryOperator correlateAction) {
+                             final LongUnaryOperator correlateAction,
+                             final Vec3d announcedVelocity) {
         if (localPlayer == null) return;
         final boolean locallyOwned = localPlayer.getUuid().equals(abilityOwner);
         if (!VelocityReceiptPolicy.accepts(
@@ -232,7 +247,7 @@ public final class ClientVelocityAuthority {
             }
         }
         final Receipt receipt = new Receipt(serverTick, localActionSequence, targetEntityId,
-                impulseOrdinal, abilityOwner, ability, receivedTick);
+                impulseOrdinal, abilityOwner, ability, announcedVelocity, receivedTick);
         if (replacement >= 0) receipts.set(replacement, receipt);
         else receipts.add(receipt);
         debug.accept("runtime received velocity owner paperAction=" + paperActionSequence
@@ -313,7 +328,7 @@ public final class ClientVelocityAuthority {
 
     private record Receipt(long serverTick, long actionSequence, int entityId,
                            int impulseOrdinal, UUID abilityOwner, String ability,
-                           long receivedTick) { }
+                           Vec3d announcedVelocity, long receivedTick) { }
 
     private record PendingExternalVelocity(Vec3d velocity, long serverTick,
                                            String ability, long receivedTick) { }

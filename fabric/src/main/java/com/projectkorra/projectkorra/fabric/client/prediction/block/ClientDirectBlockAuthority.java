@@ -17,7 +17,9 @@ import net.minecraft.client.world.ClientWorld;
 import net.minecraft.entity.Entity;
 import net.minecraft.util.math.BlockPos;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -60,7 +62,7 @@ public final class ClientDirectBlockAuthority {
     private final LinkedHashMap<BlockKey, RecentVisual> recentVisuals = new LinkedHashMap<>();
     private final List<ConfirmedWrite> confirmedPackets = new ArrayList<>();
     private final Map<BlockKey, DirectMask> serverMasks = new LinkedHashMap<>();
-    private final List<String> history = new ArrayList<>();
+    private final Deque<String> history = new ArrayDeque<>();
     private long visualRevision;
     private long predictedWriteCount;
     private long receiptCount;
@@ -553,8 +555,8 @@ public final class ClientDirectBlockAuthority {
 
     private void record(final String entry) {
         if (entry == null || entry.isBlank()) return;
-        history.add(entry);
-        while (history.size() > HISTORY_LIMIT) history.remove(0);
+        history.addLast(entry);
+        while (history.size() > HISTORY_LIMIT) history.removeFirst();
     }
 
     private void updateLocalView(final BlockKey key, final BlockState before,

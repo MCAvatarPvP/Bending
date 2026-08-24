@@ -43,6 +43,7 @@ import com.projectkorra.projectkorra.prediction.block.DirectBlockSync;
 import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
 import com.projectkorra.projectkorra.prediction.movement.VelocitySync;
 import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
+import com.projectkorra.projectkorra.prediction.server.ServerEntityInterpolation;
 import com.projectkorra.projectkorra.prediction.state.AbilityStateSync;
 import com.projectkorra.projectkorra.util.TempBlock;
 import net.md_5.bungee.api.chat.TextComponent;
@@ -183,7 +184,7 @@ public final class BukkitMC {
 
     private static org.bukkit.Location viewLocation(org.bukkit.entity.Player player, org.bukkit.Location location,
                                                     boolean eyeLocation) {
-        return location;
+        return ServerEntityInterpolation.location(player, location);
     }
 
     static org.bukkit.Location applyViewOverride(org.bukkit.Location location,
@@ -833,6 +834,8 @@ public final class BukkitMC {
             Map<UUID, Entity> result = new LinkedHashMap<>();
             value.getNearbyEntities(nativeBox).stream().map(BukkitMC::entity).filter(Objects::nonNull)
                     .filter(entity -> filter == null || filter.test(entity)).forEach(entity -> result.put(entity.getUniqueId(), entity));
+            ServerEntityInterpolation.reconcileNearbyPlayers(value, nativeBox,
+                    AbilityExecutionContext.current(), filter, result);
             PaperPredictionServer.augmentNearbyPlayers(value, nativeBox,
                     AbilityExecutionContext.current(), filter, result);
             return result.values();
@@ -2045,7 +2048,8 @@ public final class BukkitMC {
 
         @Override
         public BoundingBox getBoundingBox() {
-            org.bukkit.util.BoundingBox b = value.getBoundingBox();
+            org.bukkit.util.BoundingBox b = ServerEntityInterpolation.boundingBox(
+                    value, value.getBoundingBox());
             return new BoundingBox(new Vector(b.getMinX(), b.getMinY(), b.getMinZ()), new Vector(b.getMaxX(), b.getMaxY(), b.getMaxZ()));
         }
 

@@ -49,14 +49,16 @@ public class Shockwave extends EarthAbility {
         final Shockwave shockWave = getAbility(player, Shockwave.class);
         if (shockWave != null) {
             if (shockWave.charged) {
-                final double dtheta = 360.0 / (2 * Math.PI * shockWave.range) - 1;
+                shockWave.range = ConfigManager.getConfig(shockWave.bPlayer)
+                        .getDouble("Abilities.Earth.Shockwave.LeftClickRange");
+                final int directionCount = ShockwaveExecutionPolicy.directionCount(shockWave.range);
+                final Vector facing = player.getEyeLocation().getDirection();
 
-                for (double theta = 0; theta < 360; theta += dtheta) {
-                    final double rtheta = Math.toRadians(theta);
+                for (int index = 0; index < directionCount; index++) {
+                    final double rtheta = Math.PI * 2.0 * index / directionCount;
                     final Vector vector = new Vector(Math.cos(rtheta), 0, Math.sin(rtheta));
-                    if (vector.angle(player.getEyeLocation().getDirection()) < shockWave.angle) {
-                        shockWave.range = ConfigManager.getConfig(shockWave.bPlayer).getDouble("Abilities.Earth.Shockwave.LeftClickRange");
-                        new Ripple(player, vector.normalize(), shockWave.range);
+                    if (vector.angle(facing) < shockWave.angle) {
+                        new Ripple(player, vector, shockWave.range);
                     }
                 }
                 shockWave.bPlayer.addCooldown(shockWave);
@@ -106,11 +108,11 @@ public class Shockwave extends EarthAbility {
     }
 
     public void areaShockwave() {
-        final double dtheta = 360.0 / (2 * Math.PI * this.range) - 1;
-        for (double theta = 0; theta < 360; theta += dtheta) {
-            final double rtheta = Math.toRadians(theta);
+        final int directionCount = ShockwaveExecutionPolicy.directionCount(this.range);
+        for (int index = 0; index < directionCount; index++) {
+            final double rtheta = Math.PI * 2.0 * index / directionCount;
             final Vector vector = new Vector(Math.cos(rtheta), 0, Math.sin(rtheta));
-            new Ripple(this.player, vector.normalize());
+            new Ripple(this.player, vector, this.range);
         }
         this.bPlayer.addCooldown(this);
     }

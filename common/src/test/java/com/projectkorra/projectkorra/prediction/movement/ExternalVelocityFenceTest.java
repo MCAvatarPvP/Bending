@@ -46,4 +46,26 @@ class ExternalVelocityFenceTest {
         assertFalse(VelocityReceiptPolicy.accepts(true, 0L, 1, 7),
                 "an uncorrelated self-owned packet cannot safely suppress vanilla velocity");
     }
+
+    @Test
+    void announcedVelocityPairsOnlyWithItsQuantizedVanillaPacket() {
+        assertTrue(VelocityReceiptPolicy.matchesPacket(
+                0.40004, 0.12504, -0.25004, 0.4, 0.125, -0.25));
+        assertTrue(VelocityReceiptPolicy.matchesPacket(
+                5.0, -5.0, 0.0, 3.9, -3.9, 0.0),
+                "Minecraft clamps the announced write before encoding the packet");
+        assertFalse(VelocityReceiptPolicy.matchesPacket(
+                0.4, 0.125, -0.25, -0.4, 0.125, 0.25),
+                "a stale ownership receipt must not consume a later impulse");
+    }
+
+    @Test
+    void missingMutationSuppressesOnlyASelfOwnedLocalPlayerEcho() {
+        assertTrue(VelocityReceiptPolicy.suppressesMissingMutation(true, true),
+                "the local player already executed its own predicted push");
+        assertFalse(VelocityReceiptPolicy.suppressesMissingMutation(true, false),
+                "remote target movement is server-owned unless explicitly predicted");
+        assertFalse(VelocityReceiptPolicy.suppressesMissingMutation(false, true),
+                "another player's push must remain authoritative");
+    }
 }
