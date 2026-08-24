@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.fabric.client;
 
+import com.projectkorra.projectkorra.fabric.client.config.ClientBendingConfig;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads;
 import net.fabricmc.api.ClientModInitializer;
 
@@ -7,6 +8,7 @@ import net.fabricmc.api.ClientModInitializer;
 public final class ProjectKorraClientMod implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
+        ClientBendingConfig.initialize();
         PredictionPayloads.registerTypes();
         PredictionClient.initialize();
         PredictionDebugCommands.initialize();

@@ -431,6 +431,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     public void stop() {
         if (task != null) task.cancel();
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.HELLO, this);
+        Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.CLIENT_DISABLED, this);
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.READY, this);
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.INPUT_VETO, this);
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.ACTION_TAG, this);
@@ -460,6 +461,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     private void registerChannels() {
         Messenger messenger = Bukkit.getMessenger();
         messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.HELLO, this);
+        messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.CLIENT_DISABLED, this);
         messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.READY, this);
         messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.INPUT_VETO, this);
         messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.ACTION_TAG, this);
@@ -549,6 +551,8 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             try {
                 switch (channel) {
                     case PaperPredictionProtocol.HELLO -> onHello(player, PaperPredictionProtocol.readHello(message));
+                    case PaperPredictionProtocol.CLIENT_DISABLED -> onClientDisabled(player,
+                            PaperPredictionProtocol.readClientDisabled(message));
                     case PaperPredictionProtocol.READY -> onReady(player, PaperPredictionProtocol.readReady(message));
                     case PaperPredictionProtocol.INPUT_VETO -> onInputVeto(player,
                             PaperPredictionProtocol.readInputVeto(message));
@@ -1106,6 +1110,12 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         sessions.put(player.getUniqueId(), session);
         if (snapshotReady) sendSnapshot(session);
         else requestSnapshotRebuild(false);
+    }
+
+    private void onClientDisabled(final Player player,
+                                  final PaperPredictionProtocol.ClientDisabled disabled) {
+        if (disabled.version() != PaperPredictionProtocol.VERSION) return;
+        sessions.remove(player.getUniqueId());
     }
 
     private void onReady(Player player, PaperPredictionProtocol.Ready ready) {

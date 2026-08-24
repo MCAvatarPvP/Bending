@@ -57,7 +57,8 @@ public class FireSki extends FireAbility implements AddonAbility {
         }
 
         FireJet jet = CoreAbility.getAbility(player, FireJet.class);
-        if (jet != null && jet.isStarted() && cancelOnJet) {
+        final boolean activeFireJet = jet != null && jet.isStarted();
+        if (activeFireJet && cancelOnJet) {
             // JetSki replaces the active jet. Leaving both instances alive causes
             // two velocity writers and makes the client/server disagree over which
             // movement should win.
@@ -74,7 +75,7 @@ public class FireSki extends FireAbility implements AddonAbility {
         player.setAllowFlight(true);
         player.setFlying(true);
 
-        bPlayer.addCooldown(getAbility("FireJet"), getCooldown());
+        FireSkiCooldown.apply(bPlayer, getCooldown(), activeFireJet);
         start();
     }
 

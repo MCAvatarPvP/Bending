@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.fabric.client;
 
+import com.projectkorra.projectkorra.fabric.client.config.ClientBendingConfig;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads;
 import com.projectkorra.projectkorra.prediction.authority.RegionProtectionAuthority;
 import java.util.ArrayList;
@@ -46,6 +47,7 @@ public final class PredictionClient {
     private UUID sessionId;
     private boolean active;
     private boolean readySent;
+    private boolean disableHandshakePending;
     private long clientTick;
     private long nextSequence;
     private boolean previousSneaking;
@@ -147,7 +149,7 @@ public final class PredictionClient {
     }
 
     public static void recordMovementPacket(MinecraftClient client, PlayerMoveC2SPacket packet) {
-        if (client == null || client.player == null || packet == null) return;
+        if (!ClientBendingConfig.isEnabled() || client == null || client.player == null || packet == null) return;
         ClientPlayerEntity player = client.player;
         ServerPose previous = serverVisiblePose(client);
         if (previous == null) {
@@ -181,6 +183,7 @@ public final class PredictionClient {
      * caused valid swings to reach Paper without a local prediction action.
      */
     public static void acceptedMovementPacket(MinecraftClient client, Packet<?> packet) {
+        if (!ClientBendingConfig.isEnabled()) return;
         if (packet instanceof PlayerMoveC2SPacket movement) recordMovementPacket(client, movement);
     }
 
@@ -189,15 +192,18 @@ public final class PredictionClient {
      * the outer packet, but immediately before that vanilla input is written.
      */
     public static void prepareAcceptedNativeInputPacket(MinecraftClient client, Packet<?> packet) {
+        if (!ClientBendingConfig.isEnabled()) return;
         INSTANCE.prepareAcceptedNativeInputPacket0(packet);
     }
 
     /** Runs after the outer vanilla input packet has entered the connection. */
     public static void acceptedNativeInputPacket(MinecraftClient client, Packet<?> packet) {
+        if (!ClientBendingConfig.isEnabled()) return;
         INSTANCE.acceptedNativeInputPacket0(packet);
     }
 
     public static void beforeVanillaPacket(MinecraftClient client, Packet<?> packet) {
+        if (!ClientBendingConfig.isEnabled()) return;
         PredictionClient owner = INSTANCE;
         if (isNativeAbilityInputPacket(packet)) {
             if (owner.currentNativeInputPacket != null && owner.currentNativeInputPacket != packet) {
@@ -480,6 +486,21 @@ public final class PredictionClient {
 
     public static Map<String, PredictionPayloads.ConfigEntry> publicConfig() { return Map.copyOf(INSTANCE.config); }
 
+    /** Applies a Mod Menu setting change without requiring a reconnect. */
+    public static void onClientSideBendingSettingChanged(final boolean enabled) {
+        if (!initialized) return;
+        final MinecraftClient client = MinecraftClient.getInstance();
+        if (!enabled) {
+            INSTANCE.reset(client);
+            INSTANCE.disableHandshakePending = client.getNetworkHandler() != null;
+            INSTANCE.sendPredictionDisabled(client);
+            return;
+        }
+        INSTANCE.disableHandshakePending = false;
+        // Retry the normal authenticated handshake on the next client tick.
+        INSTANCE.lastHelloTick = INSTANCE.clientTick - 20L;
+    }
+
     static String diagnosticStatus() {
         final MinecraftClient client = MinecraftClient.getInstance();
         final String failure = ExactPredictionRuntime.lastStartFailure();
@@ -516,6 +537,7 @@ public final class PredictionClient {
 
     private void onJoin(PacketSender sender, MinecraftClient client) {
         reset(client);
+        if (!ClientBendingConfig.isEnabled()) return;
         debug("join: canSendHello=" + ClientPlayNetworking.canSend(PredictionPayloads.ClientHello.ID));
         if (ClientPlayNetworking.canSend(PredictionPayloads.ClientHello.ID)) {
             sender.sendPacket(new PredictionPayloads.ClientHello(PredictionPayloads.PROTOCOL_VERSION, clientTick, CAPABILITIES));
@@ -525,6 +547,7 @@ public final class PredictionClient {
     }
 
     private void onSnapshot(MinecraftClient client, PredictionPayloads.ServerSnapshot snapshot) {
+        if (!ClientBendingConfig.isEnabled()) return;
         debug("snapshot received protocol=" + snapshot.protocolVersion() + " config=" + snapshot.config().size()
                 + " binds=" + snapshot.binds().size() + " chunksPending=" + configChunks.size());
         if (snapshot.protocolVersion() != PredictionPayloads.PROTOCOL_VERSION) {
@@ -897,6 +920,11 @@ public final class PredictionClient {
 
     private void tick(MinecraftClient client) {
         clientTick++;
+        if (!ClientBendingConfig.isEnabled()) {
+            if (active || sessionId != null || ExactPredictionRuntime.isReady()) reset(client);
+            sendPredictionDisabled(client);
+            return;
+        }
         // Paper advertises Bukkit plugin channels during play setup. Retry the
         // hello until that registration has reached the Fabric client.
         if (!active && sessionId == null && client.getNetworkHandler() != null
@@ -954,6 +982,26 @@ public final class PredictionClient {
         // pose rather than assuming only standing/crouching: swimming, gliding,
         // and collision-constrained crouching follow this same boundary.
         commitServerVisibleEntityPose(client);
+    }
+
+    /** Replaces a ready Paper session with an explicitly non-predicting one. */
+    private void sendPredictionDisabled(final MinecraftClient client) {
+        if (!disableHandshakePending || client == null || client.getNetworkHandler() == null) return;
+        if (ClientPlayNetworking.canSend(PredictionPayloads.ClientDisabled.ID)) {
+            ClientPlayNetworking.send(new PredictionPayloads.ClientDisabled(
+                    PredictionPayloads.PROTOCOL_VERSION));
+            disableHandshakePending = false;
+            debug("sent prediction-disabled packet tick=" + clientTick);
+            return;
+        }
+        // Older matching endpoints do not expose the disable channel. A
+        // zero-capability hello at least prevents them from hiding predicted
+        // effects, although only the explicit packet removes all S2C traffic.
+        if (!ClientPlayNetworking.canSend(PredictionPayloads.ClientHello.ID)) return;
+        ClientPlayNetworking.send(new PredictionPayloads.ClientHello(
+                PredictionPayloads.PROTOCOL_VERSION, clientTick, 0));
+        disableHandshakePending = false;
+        debug("sent legacy prediction-disabled hello tick=" + clientTick);
     }
 
     private void captureLeftClick(MinecraftClient client) {
@@ -1078,6 +1126,7 @@ public final class PredictionClient {
         ExactPredictionRuntime.stop(client);
         active = false; sessionId = null; nextSequence = 0;
         readySent = false;
+        disableHandshakePending = false;
         lastHelloTick = clientTick - 1_000;
         lastRuntimeStartAttemptTick = Long.MIN_VALUE / 2;
         consecutiveRuntimeStartFailures = 0;
@@ -1156,7 +1205,7 @@ public final class PredictionClient {
 
     private boolean startRuntime(final MinecraftClient client, final String reason) {
         lastRuntimeStartAttemptTick = clientTick;
-        if (client == null || client.world == null || client.player == null
+        if (!ClientBendingConfig.isEnabled() || client == null || client.world == null || client.player == null
                 || client.player.getEntityWorld() != client.world) {
             active = false;
             runtimeWorld = null;

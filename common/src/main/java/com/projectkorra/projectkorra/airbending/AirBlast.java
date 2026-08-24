@@ -12,7 +12,7 @@ import com.projectkorra.projectkorra.command.Commands;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.earthbending.lava.LavaFlow;
 import com.projectkorra.projectkorra.object.HorizontalVelocityTracker;
-`import com.projectkorra.projectkorra.platform.mc.Effect;
+import com.projectkorra.projectkorra.platform.mc.Effect;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.Sound;

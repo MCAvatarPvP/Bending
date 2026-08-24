@@ -6,12 +6,16 @@
   "description": "ProjectKorra Fabric client with exact prediction for authoritative Paper servers.",
   "entrypoints": {
     "main": ["com.projectkorra.projectkorra.fabric.ProjectKorraFabricMod"],
-    "client": ["com.projectkorra.projectkorra.fabric.client.ProjectKorraClientMod"]
+    "client": ["com.projectkorra.projectkorra.fabric.client.ProjectKorraClientMod"],
+    "modmenu": ["com.projectkorra.projectkorra.fabric.client.config.ProjectKorraModMenu"]
   },
   "mixins": ["projectkorra.mixins.json"],
   "depends": {
     "fabricloader": ">=0.16.0",
     "fabric-api": "*",
     "minecraft": "=1.21.11"
+  },
+  "suggests": {
+    "modmenu": ">=17.0.0"
   }
 }

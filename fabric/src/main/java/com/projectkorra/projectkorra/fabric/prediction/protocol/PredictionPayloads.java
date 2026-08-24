@@ -107,6 +107,16 @@ public final class PredictionPayloads {
         @Override public Id<ClientHello> getId() { return ID; }
     }
 
+    /** Retires the authenticated prediction session when local bending is disabled. */
+    public record ClientDisabled(int protocolVersion) implements CustomPayload {
+        public static final Id<ClientDisabled> ID = id("client_disabled");
+        public static final PacketCodec<RegistryByteBuf, ClientDisabled> CODEC =
+                PacketCodec.of(ClientDisabled::write, ClientDisabled::new);
+        private ClientDisabled(RegistryByteBuf buf) { this(buf.readVarInt()); }
+        private void write(RegistryByteBuf buf) { buf.writeVarInt(protocolVersion); }
+        @Override public Id<ClientDisabled> getId() { return ID; }
+    }
+
     /** One-time session barrier. Gameplay input continues to use vanilla packets only. */
     public record ClientReady(UUID sessionId, List<String> supportedAbilities) implements CustomPayload {
         public static final Id<ClientReady> ID = id("client_ready");
@@ -587,6 +597,7 @@ public final class PredictionPayloads {
         if (registered) return;
         registered = true;
         PayloadTypeRegistry.playC2S().register(ClientHello.ID, ClientHello.CODEC);
+        PayloadTypeRegistry.playC2S().register(ClientDisabled.ID, ClientDisabled.CODEC);
         PayloadTypeRegistry.playC2S().register(ClientReady.ID, ClientReady.CODEC);
         PayloadTypeRegistry.playC2S().register(InputVeto.ID, InputVeto.CODEC);
         PayloadTypeRegistry.playC2S().register(ActionTag.ID, ActionTag.CODEC);

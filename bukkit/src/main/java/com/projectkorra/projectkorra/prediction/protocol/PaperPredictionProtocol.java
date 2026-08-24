@@ -17,6 +17,7 @@ public final class PaperPredictionProtocol {
     public static final int VERSION = 48;
     public static final int MAX_BLOCK_STATE_CHARACTERS = 512;
     public static final String HELLO = "projectkorra:client_hello";
+    public static final String CLIENT_DISABLED = "projectkorra:client_disabled";
     public static final String READY = "projectkorra:client_ready";
     public static final String INPUT_VETO = "projectkorra:input_veto";
     public static final String ACTION_TAG = "projectkorra:action_tag";
@@ -44,6 +45,13 @@ public final class PaperPredictionProtocol {
     public static Hello readHello(byte[] data) {
         Reader reader = new Reader(data);
         Hello result = new Hello(reader.varInt(), reader.i64(), reader.varInt());
+        reader.finished();
+        return result;
+    }
+
+    public static ClientDisabled readClientDisabled(byte[] data) {
+        Reader reader = new Reader(data);
+        ClientDisabled result = new ClientDisabled(reader.varInt());
         reader.finished();
         return result;
     }
@@ -346,6 +354,9 @@ public final class PaperPredictionProtocol {
     }
 
     public record Hello(int version, long clientTick, int capabilities) {
+    }
+
+    public record ClientDisabled(int version) {
     }
 
     public record Ready(UUID session, List<String> supportedAbilities) {

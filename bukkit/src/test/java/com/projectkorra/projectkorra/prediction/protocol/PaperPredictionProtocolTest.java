@@ -21,6 +21,18 @@ import static org.junit.jupiter.api.Assertions.*;
 class PaperPredictionProtocolTest {
 
     @Test
+    void clientDisabledDecoderCarriesTheProtocolVersion() {
+        byte[] payload = new PaperPredictionProtocol.Writer()
+                .varInt(PaperPredictionProtocol.VERSION).bytes();
+
+        PaperPredictionProtocol.ClientDisabled disabled =
+                PaperPredictionProtocol.readClientDisabled(payload);
+
+        assertEquals("projectkorra:client_disabled", PaperPredictionProtocol.CLIENT_DISABLED);
+        assertEquals(PaperPredictionProtocol.VERSION, disabled.version());
+    }
+
+    @Test
     void reconcileCarriesTheAuthoritativeInputAndComboOutcome() {
         UUID session = UUID.randomUUID();
         PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(
