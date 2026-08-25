@@ -14,6 +14,7 @@ import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.object.HorizontalVelocityTracker;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Material;
+import com.projectkorra.projectkorra.platform.mc.Particle;
 import com.projectkorra.projectkorra.platform.mc.Sound;
 import com.projectkorra.projectkorra.platform.mc.entity.BlockDisplay;
 import com.projectkorra.projectkorra.platform.mc.entity.Display;
@@ -24,6 +25,7 @@ import com.projectkorra.projectkorra.platform.mc.scheduler.BukkitRunnable;
 import com.projectkorra.projectkorra.platform.mc.util.Transformation;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.util.DamageHandler;
+import com.projectkorra.projectkorra.util.ParticleUtil;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
@@ -172,6 +174,12 @@ public class SummonSelf extends AirAbility implements ComboAbility {
                 return;
             }
             if (this.hasHitBlock() || this.origin.distanceSquared(this.location) >= this.range * this.range) {
+                if (this.hasHitBlock()) {
+                    this.impact();
+                } else {
+                    this.dissipate();
+                }
+
                 this.remove();
                 return;
             }
@@ -198,7 +206,13 @@ public class SummonSelf extends AirAbility implements ComboAbility {
 
             final double strength = Math.max(this.minimumOpponentKnockback, this.projectileSpeed * this.opponentKnockbackFactor);
             final Vector knockback = this.velocity.clone().normalize().multiply(strength);
+
+            if (entity.isOnGround()) {
+                knockback.setY(Math.max(knockback.getY(), 0.35D));
+            }
+
             GeneralMethods.setVelocity(this, entity, knockback);
+
             new HorizontalVelocityTracker(entity, this.player, 200L, this);
             entity.setFallDistance(0);
             DamageHandler.damageEntity(entity, 1.0, this);
@@ -305,45 +319,37 @@ public class SummonSelf extends AirAbility implements ComboAbility {
 
     private void impact() {
         final Location center = this.location.clone().add(0, 0.4, 0);
-        this.animateDirectionalImpact(center, this.velocity);
+        this.animateDirectionalImpact(center);
         this.remove();
     }
 
-    private void animateDirectionalImpact(final Location origin, final Vector direction) {
-        final Vector forward = direction.clone().normalize();
-        Vector right = forward.clone().crossProduct(new Vector(0, 1, 0));
-        if (right.lengthSquared() < 0.001) {
-            right = forward.clone().crossProduct(new Vector(1, 0, 0));
+    private void animateDirectionalImpact(final Location origin) {
+        final double midPoint = maximumSpeed - minimumSpeed;
+        if (projectileSpeed <= midPoint) {
+            return;
         }
-        right.normalize();
-        final Vector up = right.clone().crossProduct(forward).normalize();
-        final Vector ringRight = right;
 
-        new BukkitRunnable() {
-            private int frame;
+        ParticleUtil.spawn(Particle.GUST, origin, 1, 0, 0, 0);
+    }
 
-            @Override
-            public void run() {
-                if (this.frame >= 3 || origin.getWorld() == null) {
-                    this.cancel();
-                    return;
-                }
+    private void dissipate() {
+        playAirbendingParticles(
+                this.location,
+                6,
+                0.25D,
+                0.35D,
+                0.25D,
+                0.01D
+        );
 
-                final double radius = impactRingRadius * 0.15 * this.frame;
-                final double particleSpeed = 0.22 + this.frame * 0.04;
-                final Location ringCenter = origin.clone().add(forward.clone().multiply(this.frame * 0.18));
-                final double angleStep = Math.max(30.0, impactRingStep);
-                for (double angle = 0; angle < 360; angle += angleStep) {
-                    final double radians = Math.toRadians(angle + this.frame * 15.0);
-                    final Vector radial = ringRight.clone().multiply(Math.cos(radians))
-                            .add(up.clone().multiply(Math.sin(radians))).normalize();
-                    final Location spawn = ringCenter.clone().add(radial.clone().multiply(radius));
-                    // A zero count makes Bukkit interpret XYZ as particle direction rather than random spread.
-                    playAirbendingParticles(spawn, 0, radial.getX(), radial.getY(), radial.getZ(), particleSpeed);
-                }
-                this.frame++;
-            }
-        }.runTaskTimer(ProjectKorra.plugin, 0L, 1L);
+        ParticleUtil.spawn(
+                Particle.POOF,
+                this.location,
+                4,
+                0.25D,
+                0.25D,
+                0.25D
+        );
     }
 
     @Override
