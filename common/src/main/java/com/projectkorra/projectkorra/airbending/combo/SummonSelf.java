@@ -123,7 +123,25 @@ public class SummonSelf extends AirAbility implements ComboAbility {
     private void applyCasterRecoil() {
         AirBlast airBlast = CoreAbility.getAbility(player, AirBlast.class);
         if (airBlast != null) airBlast.remove();
-        GeneralMethods.setVelocity(this, this.player, new Vector());
+
+        final Vector playerVelocity = this.player.getVelocity().clone();
+
+        if (playerVelocity.lengthSquared() > 1.0E-6) {
+            final Vector projectileDirection = this.velocity.clone().normalize();
+
+            final double forwardSpeed = playerVelocity.dot(projectileDirection);
+
+            if (forwardSpeed > 0.0D) {
+                final Vector forwardVelocity =
+                        projectileDirection.clone().multiply(forwardSpeed);
+
+                final Vector resultingVelocity =
+                        playerVelocity.subtract(forwardVelocity);
+
+                GeneralMethods.setVelocity(this, this.player, resultingVelocity);
+            }
+        }
+
         this.player.setFallDistance(0);
         player.playSound(player.getLocation(), Sound.ENTITY_BREEZE_SHOOT, 0.5f, 1.2f);
     }
