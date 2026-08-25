@@ -126,7 +126,7 @@ public class EarthGlove extends EarthAbility implements AddonAbility {
         }
         if (this.gloveLocation == null || this.gloveLocation.getWorld() != player.getWorld()
                 || this.gloveLocation.distanceSquared(player.getLocation()) > Math.pow(range + 5, 2)) {
-            remove();
+            shatterGlove();
             return;
         }
         if (this.gloveLocation.distanceSquared(player.getLocation()) > range * range) {

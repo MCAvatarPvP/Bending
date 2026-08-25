@@ -4,7 +4,10 @@ import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AirAbility;
+import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.FireAbility;
+import com.projectkorra.projectkorra.airbending.AirBlast;
+import com.projectkorra.projectkorra.airbending.AirScooter;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.attribute.markers.DayNightFactor;
 import com.projectkorra.projectkorra.firebending.util.FireDamageTimer;
@@ -133,6 +136,13 @@ public class WallOfFire extends FireAbility implements EntityHitboxProvider {
         if (entity instanceof Player p) {
             BendingPlayer bendingPlayer = BendingPlayer.getBendingPlayer(p);
             air = bendingPlayer != null && bendingPlayer.isElementToggled(Element.AIR);
+
+            if (air) {
+                AirBlast airBlast = CoreAbility.getAbility(p, AirBlast.class);
+                AirScooter airScooter = CoreAbility.getAbility(p, AirScooter.class);
+                if (airBlast != null) airBlast.remove();
+                if (airScooter !=  null) airScooter.remove();
+            }
         }
 
         final boolean noStop = entity.getVelocity().lengthSquared() > 0.3 && !air;
@@ -140,6 +150,7 @@ public class WallOfFire extends FireAbility implements EntityHitboxProvider {
         if (!noStop) {
             GeneralMethods.setVelocity(this, entity, new Vector(0, 0, 0));
         }
+
 
         if (entity instanceof LivingEntity) {
             final Block block = ((LivingEntity) entity).getEyeLocation().getBlock();

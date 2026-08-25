@@ -114,7 +114,6 @@ public class AirStream extends AirAbility implements ComboAbility {
             this.remove();
             return;
         } else if (this.player.getWorld().equals(this.currentLoc.getWorld()) && Math.abs(this.player.getLocation().distanceSquared(this.currentLoc)) > this.range * this.range) {
-            this.remove();
             return;
         } else if (this.affectedEntities.size() > 0 && System.currentTimeMillis() - this.time >= this.airStreamEntityCarryDuration) {
             this.remove();

@@ -4,8 +4,10 @@ import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.ComboAbility;
+import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation;
 import com.projectkorra.projectkorra.ability.util.ComboUtil;
+import com.projectkorra.projectkorra.airbending.AirBlast;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.command.Commands;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
@@ -98,9 +100,7 @@ public class SummonSelf extends AirAbility implements ComboAbility {
         this.impactRingRadius = getConfig().getDouble(path + "Impact.RingRadius");
         this.impactRingStep = Math.max(1, getConfig().getDouble(path + "Impact.RingStep"));
 
-        final double casterSpeed = this.player.getVelocity().length();
-        this.projectileSpeed = Math.min(this.maximumSpeed, Math.max(this.minimumSpeed,
-                this.minimumSpeed + casterSpeed * this.movementSpeedFactor));
+        this.projectileSpeed = getProjectileSpeed();
         this.velocity = this.player.getEyeLocation().getDirection().normalize().multiply(this.projectileSpeed);
         this.origin = this.player.getEyeLocation().add(this.velocity.clone().normalize().multiply(1.25));
         this.location = this.origin.clone();
@@ -112,10 +112,18 @@ public class SummonSelf extends AirAbility implements ComboAbility {
         this.createDisplayModel();
     }
 
+    private double getProjectileSpeed() {
+        final double directionalSpeed = player.getVelocity().clone().dot(player.getEyeLocation().getDirection()
+                .normalize());
+
+        return Math.min(this.maximumSpeed, Math.max(this.minimumSpeed,
+                this.minimumSpeed + directionalSpeed * this.movementSpeedFactor));
+    }
+
     private void applyCasterRecoil() {
-        final double strength = Math.max(this.minimumCasterKnockback, this.projectileSpeed * this.casterKnockbackFactor);
-        final Vector recoil = this.velocity.clone().normalize().multiply(-strength);
-        GeneralMethods.setVelocity(this, this.player, recoil);
+        AirBlast airBlast = CoreAbility.getAbility(player, AirBlast.class);
+        if (airBlast != null) airBlast.remove();
+        GeneralMethods.setVelocity(this, this.player, new Vector());
         this.player.setFallDistance(0);
         player.playSound(player.getLocation(), Sound.ENTITY_BREEZE_SHOOT, 0.5f, 1.2f);
     }
