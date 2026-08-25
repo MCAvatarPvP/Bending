@@ -35,11 +35,16 @@ class PredictionActivationBoundaryTest {
         String combos = read("../common/src/main/java/com/projectkorra/projectkorra/ability/util/ComboManager.java",
                 "common/src/main/java/com/projectkorra/projectkorra/ability/util/ComboManager.java");
 
-        assertTrue(client.contains("ExactPredictionRuntime.recordNativeOnlyInput(sequence, kind, selectedSlot, pose, ability)"),
+        assertTrue(client.contains("ExactPredictionRuntime.recordNativeOnlyInput(sequence, kind, selectedSlot, pose, ability,")
+                        && client.contains("cooldownActiveAtInput);"),
                 "a locally suppressed swing must remain available for semantic Paper association");
         assertTrue(runtime.contains("!action.executed && (inputHandled || comboRecorded || !authoritativeCreated.isEmpty())")
-                        && runtime.contains("action = this.replayNativeOnlyAction(action)"),
+                        && runtime.contains("action = this.replayNativeOnlyAction(action)")
+                        && runtime.contains("recorded.cooldownActiveAtInput"),
                 "Paper accepting a missed AirBlast must execute that same input in the client common runtime");
+        assertTrue(runtime.contains("CooldownSync.runInputVeto")
+                        && runtime.contains("inputCooldownNames(boundName, kind), nativeInput"),
+                "a cooldown veto must block the bound cast without skipping combo bookkeeping");
         assertTrue(runtime.contains("reconcileCreatedAbilities(action, authoritativeCreated)")
                         && runtime.contains("recoverMissingCombo(action, authoritativeName)"),
                 "differing combo creation outcomes must converge to the authoritative instance set");

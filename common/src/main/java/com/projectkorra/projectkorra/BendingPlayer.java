@@ -325,7 +325,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
             return false;
         } else if (ability.getPlayer() != null && ability.getLocation() != null && !ability.getLocation().getWorld().equals(this.player.getWorld())) {
             return false;
-        } else if (!ignoreCooldowns && this.isOnCooldown(ability.getName())) {
+        } else if (!ignoreCooldowns && this.isOnInputCooldown(ability.getName())) {
             return false;
         } else if (!ignoreBinds && (!ability.getName().equals(this.getBoundAbilityName()))) {
             return false;
@@ -336,13 +336,6 @@ public class BendingPlayer extends OfflineBendingPlayer {
         }
 
         if (!ignoreCooldowns && this.cooldowns.containsKey(ability.getName())) {
-            final long inputTime = CooldownSync.effectiveInputTime(this.player.getUniqueId(),
-                    ability.getName(), System.currentTimeMillis());
-            if (this.cooldowns.get(ability.getName()).getCooldown()
-                    + getConfig().getLong("Properties.GlobalCooldown") > inputTime) {
-                return false;
-            }
-
             this.cooldowns.remove(ability.getName());
         }
 
@@ -612,6 +605,25 @@ public class BendingPlayer extends OfflineBendingPlayer {
         }
 
         return false;
+    }
+
+    /**
+     * Returns the cooldown gate used by an actual input activation, including
+     * the configured global cooldown tail.
+     */
+    public boolean isOnInputCooldown(final String ability) {
+        if (CooldownSync.isInputVetoed(this.player.getUniqueId(), ability)) {
+            return true;
+        }
+        final Cooldown cooldown = this.cooldowns.get(ability);
+        if (cooldown == null) return false;
+        final long globalCooldown = getConfig().getLong("Properties.GlobalCooldown");
+        final long expiresAt = globalCooldown > 0L
+                && cooldown.getCooldown() > Long.MAX_VALUE - globalCooldown
+                ? Long.MAX_VALUE
+                : cooldown.getCooldown() + globalCooldown;
+        return CooldownSync.effectiveInputTime(this.player.getUniqueId(), ability,
+                System.currentTimeMillis()) < expiresAt;
     }
 
     public boolean isParalyzed() {

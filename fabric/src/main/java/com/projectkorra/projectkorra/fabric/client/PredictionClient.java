@@ -1058,12 +1058,17 @@ public final class PredictionClient {
         // surviving a cancellation by an earlier networking mixin.
         pendingTaggedPacket = currentNativeInputPacket;
         pendingActionTag = new PendingActionTag(sequence, kind, selectedSlot, ability);
+        final boolean cooldownActiveAtInput = ExactPredictionRuntime.isInputCooldownActive(ability, kind);
         if (suppressInput) {
             // Preserve the semantic action without executing it. Paper's
             // post-input receipt decides whether its legacy suppression gate
             // agreed. If Paper accepted the swing, reconciliation replays this
             // exact packet-time input through the common runtime client-side.
-            ExactPredictionRuntime.recordNativeOnlyInput(sequence, kind, selectedSlot, pose, ability);
+            ExactPredictionRuntime.recordNativeOnlyInput(sequence, kind, selectedSlot, pose, ability,
+                    cooldownActiveAtInput);
+            if (cooldownActiveAtInput && ClientPlayNetworking.canSend(PredictionPayloads.InputVeto.ID)) {
+                ClientPlayNetworking.send(new PredictionPayloads.InputVeto(sessionId, sequence, kind, ability));
+            }
             actionStartedAtMillis.put(sequence, System.currentTimeMillis());
             actionStartedAtMillis.entrySet().removeIf(entry -> nextSequence - entry.getKey() > 128);
             debug("capture native-only sequence=" + sequence + " kind=" + kind + " ability=" + ability
@@ -1073,17 +1078,16 @@ public final class PredictionClient {
         }
         // Execute first in the same client frame. Networking is independent of
         // the local simulation and never gates its particles or movement.
-        final boolean cooldownActiveAtInput = ExactPredictionRuntime.isInputCooldownActive(ability, kind);
         boolean locallyPredicted = ExactPredictionRuntime.shouldPredictInput(ability, kind)
-                && ExactPredictionRuntime.input(sequence, kind, selectedSlot, pose);
+                && ExactPredictionRuntime.input(sequence, kind, selectedSlot, pose, cooldownActiveAtInput);
         // A vanilla input carries no client timestamp. Without this narrow
         // negative gate, an input rejected locally at t=0 can arrive after a
         // short cooldown expires and be replayed by Paper at t=RTT/2. Send the
         // veto from this sendPacket hook, before the outer vanilla packet, so
-        // both travel in the same ordered connection. A matching veto rejects
-        // the cast; a matching action tag without a veto lets Paper use the same
-        // narrow 100 ms cooldown-boundary allowance as this client runtime.
-        final boolean cooldownVeto = cooldownActiveAtInput && !locallyPredicted;
+        // both travel in the same ordered connection. A matching veto always
+        // preserves the client's strict cooldown decision; only a tagged input
+        // that was ready client-side may receive Paper's narrow 100 ms grace.
+        final boolean cooldownVeto = cooldownActiveAtInput;
         if (cooldownVeto && ClientPlayNetworking.canSend(PredictionPayloads.InputVeto.ID)) {
             ClientPlayNetworking.send(new PredictionPayloads.InputVeto(sessionId, sequence, kind, ability));
         }

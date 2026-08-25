@@ -121,6 +121,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
 import java.util.Map.Entry;
+import java.util.function.Supplier;
 import java.util.logging.Level;
 
 import net.minecraft.block.BlockState;
@@ -410,9 +411,7 @@ public final class ExactPredictionRuntime
             return false;
         }
         final List<String> cooldowns = inputCooldownNames(abilityName, kind);
-        return CooldownSync.runInputLeniency(INSTANCE.bendingPlayer.getPlayer().getUniqueId(),
-                cooldowns, CooldownSync.INPUT_LENIENCY_MILLIS,
-                () -> cooldowns.stream().anyMatch(INSTANCE.bendingPlayer::isOnCooldown));
+        return cooldowns.stream().anyMatch(INSTANCE.bendingPlayer::isOnInputCooldown);
     }
 
     private static List<String> inputCooldownNames(final String abilityName, final InputKind kind) {
@@ -475,14 +474,18 @@ public final class ExactPredictionRuntime
         }
     }
 
-    public static boolean input(long sequence, InputKind kind, int selectedSlot, com.projectkorra.projectkorra.fabric.client.PredictionClient.ServerPose pose) {
-        return INSTANCE.input0(sequence, kind, selectedSlot, pose);
+    public static boolean input(long sequence, InputKind kind, int selectedSlot,
+                                com.projectkorra.projectkorra.fabric.client.PredictionClient.ServerPose pose,
+                                boolean cooldownActiveAtInput) {
+        return INSTANCE.input0(sequence, kind, selectedSlot, pose, cooldownActiveAtInput);
     }
 
     public static void recordNativeOnlyInput(
-            long sequence, InputKind kind, int selectedSlot, com.projectkorra.projectkorra.fabric.client.PredictionClient.ServerPose pose, String ability
+            long sequence, InputKind kind, int selectedSlot,
+            com.projectkorra.projectkorra.fabric.client.PredictionClient.ServerPose pose,
+            String ability, boolean cooldownActiveAtInput
     ) {
-        INSTANCE.recordNativeOnlyInput0(sequence, kind, selectedSlot, pose, ability);
+        INSTANCE.recordNativeOnlyInput0(sequence, kind, selectedSlot, pose, ability, cooldownActiveAtInput);
     }
 
     public static boolean noteNativeAction(NativeAction action) {
@@ -960,7 +963,9 @@ public final class ExactPredictionRuntime
     }
 
     private void recordNativeOnlyInput0(
-            long sequence, InputKind kind, int selectedSlot, com.projectkorra.projectkorra.fabric.client.PredictionClient.ServerPose pose, String ability
+            long sequence, InputKind kind, int selectedSlot,
+            com.projectkorra.projectkorra.fabric.client.PredictionClient.ServerPose pose,
+            String ability, boolean cooldownActiveAtInput
     ) {
         if (this.ready && this.bendingPlayer != null && pose != null && kind != null) {
             String inputAbility = ability != null && !ability.isBlank()
@@ -969,12 +974,15 @@ public final class ExactPredictionRuntime
             com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime.Action action = new com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime.Action(
                     sequence, this.tick, pose.eyePos(), pose.yaw(), pose.pitch(), pose.eyeHeight(), inputAbility, kind, selectedSlot
             );
+            action.cooldownActiveAtInput = cooldownActiveAtInput;
             this.actions.put(sequence, action);
             debug("runtime recorded native-only input sequence=" + sequence + " kind=" + kind + " ability=" + inputAbility + " slot=" + (selectedSlot + 1));
         }
     }
 
-    private boolean input0(long sequence, InputKind kind, int selectedSlot, com.projectkorra.projectkorra.fabric.client.PredictionClient.ServerPose pose) {
+    private boolean input0(long sequence, InputKind kind, int selectedSlot,
+                           com.projectkorra.projectkorra.fabric.client.PredictionClient.ServerPose pose,
+                           boolean cooldownActiveAtInput) {
         if (this.ready && this.bendingPlayer != null) {
             Set<CoreAbility> before = Collections.newSetFromMap(new IdentityHashMap<>());
             before.addAll(CoreAbility.getAbilitiesByInstances());
@@ -986,6 +994,7 @@ public final class ExactPredictionRuntime
                     sequence, this.tick, origin, pose.yaw(), pose.pitch(), pose.eyeHeight(), boundName, kind, selectedSlot
             );
             action.executed = true;
+            action.cooldownActiveAtInput = cooldownActiveAtInput;
             this.actions.put(sequence, action);
             boolean failed = false;
             TrackingResult trackingResult = new TrackingResult(false, List.of());
@@ -1000,45 +1009,51 @@ public final class ExactPredictionRuntime
                         () -> PredictionDeterminism.run(
                                 sequence,
                                 action.deterministicSeed,
-                                () -> CooldownSync.runInputLeniency(player.getUniqueId(),
-                                        inputCooldownNames(boundName, kind),
-                                        CooldownSync.INPUT_LENIENCY_MILLIS, () -> {
-                                            switch (kind) {
-                                                case LEFT_CLICK:
-                                                    CommonInputHandler.handleSwing(player, Set.of(), new HashSet());
-                                                    com.projectkorra.projectkorra.platform.mc.entity.Entity target = GeneralMethods.getTargetedEntity(player, 3.0);
-                                                    if (target instanceof LivingEntity living && !target.equals(player)) {
-                                                        CommonInputHandler.handleEntityLeftClick(player, living);
-                                                    }
-                                                    break;
-                                                case SNEAK_START:
-                                                    com.projectkorra.projectkorra.fabric.client.PredictionClient.withInputSneaking(
-                                                            false, () -> CommonInputHandler.handleSneak(player, false)
-                                                    );
-                                                    break;
-                                                case RIGHT_CLICK:
-                                                    CommonInputHandler.handleRightClick(player, ClickType.RIGHT_CLICK);
-                                                    break;
-                                                case RIGHT_CLICK_BLOCK:
-                                                    CommonInputHandler.handleRightClick(player, ClickType.RIGHT_CLICK_BLOCK);
-                                                    break;
-                                                case RIGHT_CLICK_ENTITY:
-                                                    CommonInputHandler.handleRightClickEntity(player);
-                                                    break;
-                                                case SNEAK_STOP:
-                                                    com.projectkorra.projectkorra.fabric.client.PredictionClient.withInputSneaking(
-                                                            true, () -> CommonInputHandler.handleSneak(player, true)
-                                                    );
-                                                    break;
-                                                case SWAP_HANDS:
-                                                    CommonInputHandler.handleSwapHands(
-                                                            player,
-                                                            player.getInventory().getItemInMainHand().getType() == Material.AIR,
-                                                            player.getInventory().getItemInOffHand() == null || player.getInventory().getItemInOffHand().getType() == Material.AIR
-                                                    );
-                                            }
-                                            return null;
-                                        })
+                                () -> {
+                                    final Supplier<Void> nativeInput = () -> {
+                                        switch (kind) {
+                                            case LEFT_CLICK:
+                                                CommonInputHandler.handleSwing(player, Set.of(), new HashSet());
+                                                com.projectkorra.projectkorra.platform.mc.entity.Entity target = GeneralMethods.getTargetedEntity(player, 3.0);
+                                                if (target instanceof LivingEntity living && !target.equals(player)) {
+                                                    CommonInputHandler.handleEntityLeftClick(player, living);
+                                                }
+                                                break;
+                                            case SNEAK_START:
+                                                com.projectkorra.projectkorra.fabric.client.PredictionClient.withInputSneaking(
+                                                        false, () -> CommonInputHandler.handleSneak(player, false)
+                                                );
+                                                break;
+                                            case RIGHT_CLICK:
+                                                CommonInputHandler.handleRightClick(player, ClickType.RIGHT_CLICK);
+                                                break;
+                                            case RIGHT_CLICK_BLOCK:
+                                                CommonInputHandler.handleRightClick(player, ClickType.RIGHT_CLICK_BLOCK);
+                                                break;
+                                            case RIGHT_CLICK_ENTITY:
+                                                CommonInputHandler.handleRightClickEntity(player);
+                                                break;
+                                            case SNEAK_STOP:
+                                                com.projectkorra.projectkorra.fabric.client.PredictionClient.withInputSneaking(
+                                                        true, () -> CommonInputHandler.handleSneak(player, true)
+                                                );
+                                                break;
+                                            case SWAP_HANDS:
+                                                CommonInputHandler.handleSwapHands(
+                                                        player,
+                                                        player.getInventory().getItemInMainHand().getType() == Material.AIR,
+                                                        player.getInventory().getItemInOffHand() == null || player.getInventory().getItemInOffHand().getType() == Material.AIR
+                                                );
+                                        }
+                                        return null;
+                                    };
+                                    if (cooldownActiveAtInput) {
+                                        CooldownSync.runInputVeto(player.getUniqueId(),
+                                                inputCooldownNames(boundName, kind), nativeInput);
+                                    } else {
+                                        nativeInput.get();
+                                    }
+                                }
                         )
                 );
             } catch (Throwable failure) {
@@ -1389,7 +1404,8 @@ public final class ExactPredictionRuntime
                     recorded.origin.x, recorded.origin.y - recorded.eyeHeight, recorded.origin.z, recorded.yaw, recorded.pitch, recorded.eyeHeight
             );
             this.actions.remove(sequence, recorded);
-            this.input0(sequence, recorded.kind, recorded.selectedSlot, pose);
+            this.input0(sequence, recorded.kind, recorded.selectedSlot, pose,
+                    recorded.cooldownActiveAtInput);
             com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime.Action replayed = this.actions.get(sequence);
             if (replayed == null) {
                 this.actions.put(sequence, recorded);
@@ -2674,6 +2690,7 @@ public final class ExactPredictionRuntime
         boolean executed;
         boolean inputHandled;
         boolean comboRecorded;
+        boolean cooldownActiveAtInput;
         boolean recoveredFromAuthority;
         AbilityInformation comboInput;
         int blockConfirmationTicks = 40;

@@ -284,10 +284,17 @@ class PredictionTimingBoundaryTest {
                 "a reconnect or world change must retain already-active Paper cooldowns");
         String capture = client.substring(client.indexOf("private void capture(MinecraftClient client"),
                 client.indexOf("static ServerPose poseForInput"));
+        assertTrue(capture.indexOf("final boolean cooldownActiveAtInput")
+                        < capture.indexOf("if (suppressInput)"),
+                "legacy-suppressed swings must capture and send the same strict client cooldown decision");
+        assertTrue(capture.contains("recordNativeOnlyInput(sequence, kind, selectedSlot, pose, ability,")
+                        && capture.contains("cooldownActiveAtInput);"),
+                "a delayed native-only replay must retain the cooldown state from its packet boundary");
         assertTrue(capture.indexOf("ExactPredictionRuntime.input(sequence")
-                        < capture.indexOf("new PredictionPayloads.InputVeto"),
+                        < capture.lastIndexOf("new PredictionPayloads.InputVeto"),
                 "the local common runtime must decide before the negative gate is sent");
-        assertTrue(capture.contains("cooldownActiveAtInput && !locallyPredicted"));
+        assertTrue(capture.contains("final boolean cooldownVeto = cooldownActiveAtInput"),
+                "a client cooldown must veto Paper even when the input still records a combo transition");
         String process = paper.substring(paper.indexOf("private CommonInputHandler.InputResult processInput"),
                 paper.indexOf("private void flushTempBlocks", paper.indexOf("private CommonInputHandler.InputResult processInput")));
         assertTrue(process.indexOf("locallyRejectedOnCooldown") < process.indexOf("PredictionDeterminism.run"),
@@ -305,9 +312,14 @@ class PredictionTimingBoundaryTest {
                         && process.contains("clientActionSequence > 0L")
                         && process.contains("veto == null"),
                 "a tagged client-approved input must receive only the shared cooldown-boundary allowance");
-        assertTrue(runtime.contains("CooldownSync.runInputLeniency")
-                        && runtime.contains("CooldownSync.INPUT_LENIENCY_MILLIS"),
-                "Fabric and Paper must apply the same cooldown-boundary allowance");
+        assertTrue(runtime.contains("CooldownSync.runInputVeto")
+                        && runtime.contains("cooldownActiveAtInput")
+                        && runtime.contains("recorded.cooldownActiveAtInput"),
+                "the local callback must retain the cooldown decision captured at the exact packet boundary");
+        assertTrue(runtime.contains("anyMatch(INSTANCE.bendingPlayer::isOnInputCooldown)"),
+                "the packet-boundary verdict must include the same global cooldown tail as canBend");
+        assertFalse(runtime.contains("CooldownSync.runInputLeniency"),
+                "the 100 ms server allowance must never shorten the client's own cooldown");
         assertFalse(process.contains("return CommonInputHandler.InputResult.pass()"),
                 "skipping the complete callback loses cooldown-valid combo steps such as AirSweep's second AirSwipe click");
         String serverAdded = paper.substring(paper.indexOf("public void onAdded(CoreAbility source"),
