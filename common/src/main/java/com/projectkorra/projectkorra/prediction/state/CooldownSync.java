@@ -44,6 +44,12 @@ public final class CooldownSync {
         if (current != null) current.onRemoved(player, ability);
     }
 
+    /** Publishes a complete authoritative cooldown replacement. */
+    public static void synchronize(BendingPlayer player) {
+        Listener current = listener;
+        if (current != null && current.isAuthoritative()) current.onSynchronize(player);
+    }
+
     public static void airBlastReset(BendingPlayer player) {
         Listener current = listener;
         if (current != null) current.onAirBlastReset(player);
@@ -160,6 +166,9 @@ public final class CooldownSync {
         void onAdded(CoreAbility source, BendingPlayer player, String ability, long expiresAtMillis);
 
         void onRemoved(BendingPlayer player, String ability);
+
+        default void onSynchronize(BendingPlayer player) {
+        }
 
         default void onAirBlastReset(BendingPlayer player) {
         }

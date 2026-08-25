@@ -15,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Raw Bukkit plugin-message codec matching Fabric's RegistryByteBuf layout.
  */
 public final class PaperPredictionProtocol {
-    public static final int VERSION = 48;
+    public static final int VERSION = 49;
     public static final int MAX_BLOCK_STATE_CHARACTERS = 512;
     private static final int MAX_CACHED_BLOCK_STATES = 4_096;
     private static final Map<String, byte[]> BLOCK_STATE_UTF8 = new ConcurrentHashMap<>();
@@ -41,6 +41,7 @@ public final class PaperPredictionProtocol {
     public static final String ABILITY_REMOVED = "projectkorra:ability_removed";
     public static final String ABILITY_TRANSFER = "projectkorra:ability_transfer";
     public static final String STATE_DIRECTIVE = "projectkorra:state_directive";
+    public static final String COOLDOWN_SYNC = "projectkorra:cooldown_sync";
 
     private PaperPredictionProtocol() {
     }
@@ -310,6 +311,13 @@ public final class PaperPredictionProtocol {
         return new Writer().uuid(session).string(removedCooldown == null ? "" : removedCooldown, 128)
                 .string(addedCooldown == null ? "" : addedCooldown, 128)
                 .i64(cooldownUntil).i64(serverNowMillis).bool(resetAirBlast).f64(airBlastDecay).bytes();
+    }
+
+    public static byte[] cooldownSync(UUID session, long serverNowMillis,
+                                      Map<String, Long> cooldowns) {
+        Writer out = new Writer().uuid(session).i64(serverNowMillis);
+        writeCooldowns(out, cooldowns == null ? Map.of() : cooldowns);
+        return out.bytes();
     }
 
     private static void writeBinds(Writer out, Map<Integer, String> binds) {

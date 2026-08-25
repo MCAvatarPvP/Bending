@@ -72,6 +72,7 @@ public class SummonSelf extends AirAbility implements ComboAbility {
     private Vector velocity;
     private double projectileSpeed;
     private float modelYaw;
+    private float modelPitch;
     private final ArrayList<BlockDisplay> modelDisplays = new ArrayList<>(MODEL_PARTS.size());
     private static final Random random = new Random();
 
@@ -103,8 +104,7 @@ public class SummonSelf extends AirAbility implements ComboAbility {
         this.velocity = this.player.getEyeLocation().getDirection().normalize().multiply(this.projectileSpeed);
         this.origin = this.player.getEyeLocation().add(this.velocity.clone().normalize().multiply(1.25));
         this.location = this.origin.clone();
-        final Vector modelFacing = this.horizontalFacing();
-        this.modelYaw = (float) Math.atan2(modelFacing.getX(), modelFacing.getZ());
+        this.updateModelOrientation();
 
         this.applyCasterRecoil();
         this.bPlayer.addCooldown(this);
@@ -153,6 +153,7 @@ public class SummonSelf extends AirAbility implements ComboAbility {
 
         this.velocity.setY(this.velocity.getY() - this.gravity);
         this.location.setDirection(this.velocity);
+        this.updateModelOrientation();
         this.updateDisplayModel();
         this.renderAirTrail();
     }
@@ -186,8 +187,9 @@ public class SummonSelf extends AirAbility implements ComboAbility {
 
     private void createDisplayModel() {
         if (this.location == null || this.location.getWorld() == null || !this.modelDisplays.isEmpty()) return;
+        final Quaternionf modelRotation = this.modelRotation();
         for (final ModelPart part : MODEL_PARTS) {
-            final Location partLocation = this.modelPartLocation(part);
+            final Location partLocation = this.modelPartLocation(part, modelRotation);
             final BlockDisplay display = this.location.getWorld().spawn(partLocation, BlockDisplay.class);
             display.setBlock(MODEL_MATERIAL.createBlockData());
             display.setPersistent(false);
@@ -202,24 +204,25 @@ public class SummonSelf extends AirAbility implements ComboAbility {
             display.setInterpolationDuration(1);
             display.setTeleportDuration(MODEL_TELEPORT_DURATION);
             display.setViewRange(32.0F);
-            display.setTransformation(this.modelPartTransformation(part));
+            display.setTransformation(this.modelPartTransformation(part, modelRotation));
             this.modelDisplays.add(display);
         }
     }
 
     private void updateDisplayModel() {
         if (this.modelDisplays.size() != MODEL_PARTS.size()) return;
+        final Quaternionf modelRotation = this.modelRotation();
         for (int index = 0; index < MODEL_PARTS.size(); index++) {
             final BlockDisplay display = this.modelDisplays.get(index);
             final ModelPart part = MODEL_PARTS.get(index);
             if (display != null && display.isValid()) {
-                display.teleport(this.modelPartLocation(part));
+                display.teleport(this.modelPartLocation(part, modelRotation));
+                display.setTransformation(this.modelPartTransformation(part, modelRotation));
             }
         }
     }
 
-    private Location modelPartLocation(final ModelPart part) {
-        final Quaternionf rotation = new Quaternionf().rotateY(this.modelYaw);
+    private Location modelPartLocation(final ModelPart part, final Quaternionf rotation) {
         final Vector3f offset = new Vector3f(part.offsetX(), part.offsetY(), part.offsetZ());
         rotation.transform(offset);
         final Location center = this.location.clone().add(offset.x, offset.y, offset.z);
@@ -230,8 +233,7 @@ public class SummonSelf extends AirAbility implements ComboAbility {
         return center;
     }
 
-    private Transformation modelPartTransformation(final ModelPart part) {
-        final Quaternionf rotation = new Quaternionf().rotateY(this.modelYaw);
+    private Transformation modelPartTransformation(final ModelPart part, final Quaternionf rotation) {
         final Vector3f translation = new Vector3f(
                 part.width() * 0.5F,
                 part.height() * 0.5F,
@@ -247,15 +249,25 @@ public class SummonSelf extends AirAbility implements ComboAbility {
         );
     }
 
-    private Vector horizontalFacing() {
-        Vector facing = this.velocity.clone().setY(0.0D);
-        if (facing.lengthSquared() < 0.001D) {
-            facing = this.player.getLocation().getDirection().setY(0.0D);
+    private Quaternionf modelRotation() {
+        return new Quaternionf().rotateY(this.modelYaw).rotateX(this.modelPitch);
+    }
+
+    private void updateModelOrientation() {
+        Vector facing = this.velocity == null ? null : this.velocity.clone();
+        if (facing == null || facing.lengthSquared() < 0.001D) {
+            facing = this.player.getLocation().getDirection();
         }
         if (facing.lengthSquared() < 0.001D) {
             facing = new Vector(0.0D, 0.0D, 1.0D);
         }
-        return facing.normalize();
+        facing.normalize();
+
+        final double horizontal = Math.hypot(facing.getX(), facing.getZ());
+        if (horizontal >= 0.001D) {
+            this.modelYaw = (float) Math.atan2(facing.getX(), facing.getZ());
+        }
+        this.modelPitch = (float) Math.atan2(-facing.getY(), horizontal);
     }
 
     private void renderAirTrail() {

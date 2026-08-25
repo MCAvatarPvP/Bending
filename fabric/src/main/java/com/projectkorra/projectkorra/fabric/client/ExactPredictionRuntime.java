@@ -11,6 +11,7 @@ import com.projectkorra.projectkorra.BendingManager.TempElementsRunnable;
 import com.projectkorra.projectkorra.Element.SubElement;
 import com.projectkorra.projectkorra.ability.Ability;
 import com.projectkorra.projectkorra.ability.AirAbility;
+import com.projectkorra.projectkorra.ability.ComboAbility;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.EarthAbility;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
@@ -432,6 +433,10 @@ public final class ExactPredictionRuntime
 
             INSTANCE.bendingPlayer.removeCooldown(abilityName);
         }
+    }
+
+    public static void synchronizeCooldowns(final Map<String, Long> authoritativeCooldowns) {
+        INSTANCE.synchronizeCooldowns0(authoritativeCooldowns);
     }
 
     public static void enforceLocalCooldown(String abilityName, long clientUntilMillis) {
@@ -1283,6 +1288,29 @@ public final class ExactPredictionRuntime
                 authoritativeCooldowns.forEach(com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime::enforceLocalCooldown);
             }
         }
+    }
+
+    private void synchronizeCooldowns0(final Map<String, Long> authoritativeCooldowns) {
+        if ((!this.ready && !this.initializing) || this.bendingPlayer == null) return;
+
+        final Set<String> previous = Set.copyOf(this.bendingPlayer.getCooldowns().keySet());
+        this.bendingPlayer.getCooldowns().clear();
+        previous.forEach(this.bendingPlayer.getComboCoolDowns()::remove);
+
+        final long now = System.currentTimeMillis();
+        if (authoritativeCooldowns != null) {
+            authoritativeCooldowns.forEach((abilityName, expiresAtMillis) -> {
+                if (abilityName == null || abilityName.isBlank() || expiresAtMillis == null
+                        || expiresAtMillis <= now) return;
+                final Cooldown cooldown = new Cooldown(expiresAtMillis, false);
+                this.bendingPlayer.getCooldowns().put(abilityName, cooldown);
+                final CoreAbility ability = CoreAbility.getAbility(abilityName);
+                if (ability == null || ability instanceof ComboAbility) {
+                    this.bendingPlayer.getComboCoolDowns().put(abilityName, cooldown);
+                }
+            });
+        }
+        this.cooldownAuthority.clear();
     }
 
     private boolean noteNativeAction0(NativeAction receipt) {

@@ -711,6 +711,25 @@ public class BendingPlayer extends OfflineBendingPlayer {
     }
 
     /**
+     * Removes every cooldown through the normal event lifecycle, then publishes
+     * the resulting authoritative map to an exact-prediction client.
+     */
+    public void clearCooldowns() {
+        for (final String ability : List.copyOf(this.cooldowns.keySet())) {
+            this.removeCooldown(ability);
+        }
+        this.synchronizeCooldowns();
+    }
+
+    /**
+     * Forces the exact-prediction client to replace its cooldown map with this
+     * player's current authoritative cooldown map.
+     */
+    public void synchronizeCooldowns() {
+        CooldownSync.synchronize(this);
+    }
+
+    /**
      * Removes all cooldowns that have expired.
      * <p>
      * We cannot call the {@link #removeCooldown(String)} method here because it

@@ -74,7 +74,7 @@ class PaperPredictionProtocolTest {
 
     @Test
     void protocolIncludesExactAbilityStateOwnershipFence() {
-        assertEquals(48, PaperPredictionProtocol.VERSION);
+        assertEquals(49, PaperPredictionProtocol.VERSION);
         assertEquals("projectkorra:ability_state_owner", PaperPredictionProtocol.ABILITY_STATE_OWNER);
         UUID owner = UUID.randomUUID();
         UUID target = UUID.randomUUID();
@@ -355,6 +355,22 @@ class PaperPredictionProtocolTest {
         assertEquals(10_000L, reader.i64());
         assertFalse(reader.bool());
         assertTrue(Double.isNaN(reader.f64()));
+        reader.finished();
+    }
+
+    @Test
+    void cooldownSyncCarriesTheCompleteAuthoritativeMap() {
+        UUID session = UUID.randomUUID();
+        byte[] payload = PaperPredictionProtocol.cooldownSync(session, 10_000L,
+                Map.of("AirSwipe", 12_500L, "AirBlast", 11_250L));
+        PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(payload);
+        assertEquals(session, reader.uuid());
+        assertEquals(10_000L, reader.i64());
+        assertEquals(2, reader.varInt());
+        Map<String, Long> decoded = new java.util.HashMap<>();
+        decoded.put(reader.string(128), reader.i64());
+        decoded.put(reader.string(128), reader.i64());
+        assertEquals(Map.of("AirSwipe", 12_500L, "AirBlast", 11_250L), decoded);
         reader.finished();
     }
 

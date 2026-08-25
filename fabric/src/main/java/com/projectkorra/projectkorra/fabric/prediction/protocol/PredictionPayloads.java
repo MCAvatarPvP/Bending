@@ -15,7 +15,7 @@ import java.util.UUID;
 
 /** Wire contract used by the Fabric client and the Paper/Fabric server endpoints. */
 public final class PredictionPayloads {
-    public static final int PROTOCOL_VERSION = 48;
+    public static final int PROTOCOL_VERSION = 49;
     public static final int MAX_BLOCK_STATE_CHARACTERS = 512;
     public static final int MAX_CONFIG_ENTRIES = 16_384;
     public static final int MAX_PROFILES = 2_048;
@@ -298,6 +298,30 @@ public final class PredictionPayloads {
             buf.writeLong(cooldownUntil); buf.writeLong(serverNowMillis); buf.writeBoolean(resetAirBlast); buf.writeDouble(airBlastDecay);
         }
         @Override public Id<StateDirective> getId() { return ID; }
+    }
+
+    /** Complete authoritative cooldown replacement requested by server code. */
+    public record CooldownState(UUID sessionId, long serverNowMillis,
+                                Map<String, Long> cooldowns) implements CustomPayload {
+        public static final Id<CooldownState> ID = id("cooldown_sync");
+        public static final PacketCodec<RegistryByteBuf, CooldownState> CODEC =
+                PacketCodec.of(CooldownState::write, CooldownState::new);
+
+        private CooldownState(RegistryByteBuf buf) {
+            this(buf.readUuid(), buf.readLong(), readCooldowns(buf));
+        }
+
+        private void write(RegistryByteBuf buf) {
+            buf.writeUuid(sessionId);
+            buf.writeLong(serverNowMillis);
+            buf.writeVarInt(cooldowns.size());
+            cooldowns.forEach((ability, until) -> {
+                buf.writeString(ability, 128);
+                buf.writeLong(until);
+            });
+        }
+
+        @Override public Id<CooldownState> getId() { return ID; }
     }
 
     /** Ordered overflow chunks sent by Paper before the matching snapshot. */
@@ -607,6 +631,7 @@ public final class PredictionPayloads {
         PayloadTypeRegistry.playS2C().register(NativeAction.ID, NativeAction.CODEC);
         PayloadTypeRegistry.playS2C().register(PlayerState.ID, PlayerState.CODEC);
         PayloadTypeRegistry.playS2C().register(StateDirective.ID, StateDirective.CODEC);
+        PayloadTypeRegistry.playS2C().register(CooldownState.ID, CooldownState.CODEC);
         PayloadTypeRegistry.playS2C().registerLarge(ConfigChunk.ID, ConfigChunk.CODEC, 2 * 1024 * 1024);
         PayloadTypeRegistry.playS2C().register(Reconcile.ID, Reconcile.CODEC);
         PayloadTypeRegistry.playS2C().registerLarge(TempBlockBatch.ID, TempBlockBatch.CODEC, 512 * 1024);

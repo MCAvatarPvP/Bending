@@ -120,6 +120,8 @@ public final class PredictionClient {
                 (payload, context) -> INSTANCE.onPlayerState(payload));
         ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.StateDirective.ID,
                 (payload, context) -> INSTANCE.onStateDirective(payload));
+        ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.CooldownState.ID,
+                (payload, context) -> INSTANCE.onCooldownState(payload));
         ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.ConfigChunk.ID,
                 (payload, context) -> INSTANCE.onConfigChunk(payload));
         ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.Reconcile.ID,
@@ -698,6 +700,15 @@ public final class PredictionClient {
                 + " cooldownUntil=" + directive.cooldownUntil()
                 + " resetAirBlast=" + directive.resetAirBlast()
                 + " airBlastDecay=" + directive.airBlastDecay());
+    }
+
+    private void onCooldownState(final PredictionPayloads.CooldownState state) {
+        if (!active || sessionId == null || !sessionId.equals(state.sessionId())) return;
+        updateServerClock(state.serverNowMillis());
+        final Map<String, Long> authoritative = convertCooldowns(state.cooldowns());
+        rememberAuthoritativeCooldowns(authoritative);
+        ExactPredictionRuntime.synchronizeCooldowns(authoritative);
+        debug("authoritative cooldown synchronization applied cooldowns=" + authoritative.keySet());
     }
 
     private void onReconcile(PredictionPayloads.Reconcile reconcile) {

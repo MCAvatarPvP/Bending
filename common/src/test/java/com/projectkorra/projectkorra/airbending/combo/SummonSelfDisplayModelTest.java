@@ -31,7 +31,7 @@ class SummonSelfDisplayModelTest {
                         && create.contains("display.setShadowRadius(0.0F)")
                         && create.contains("display.setTeleportDuration(MODEL_TELEPORT_DURATION)"),
                 "each body part should be an unshadowed, smoothly moving fixed BlockDisplay");
-        assertTrue(update.contains("display.teleport(this.modelPartLocation(part))"),
+        assertTrue(update.contains("display.teleport(this.modelPartLocation(part, modelRotation))"),
                 "the six entities must persist and move instead of being respawned every tick");
         assertFalse(source.contains("renderPlayerOutline") || source.contains("renderOutlineRing")
                         || source.contains("renderOutlineSegment"),
@@ -42,7 +42,7 @@ class SummonSelfDisplayModelTest {
     void transformedCuboidsStayCenteredAndAreAlwaysCleanedUp() throws IOException {
         final String source = source();
         final String transform = method(source, "private Transformation modelPartTransformation",
-                "private Vector horizontalFacing");
+                "private void updateModelOrientation");
         final String remove = method(source, "public void remove()", "public String getName()");
 
         assertTrue(transform.contains("rotation.transform(translation)")
@@ -66,6 +66,26 @@ class SummonSelfDisplayModelTest {
         assertTrue(trail.contains("this.velocity.clone().normalize().multiply(-")
                         && trail.contains("playAirbendingParticles"),
                 "air particles should trail behind the projectile rather than obscure its front");
+    }
+
+    @Test
+    void modelPitchTracksTheCurrentProjectileVelocity() throws IOException {
+        final String source = source();
+        final String progress = method(source, "public void progress()", "private boolean hasHitEntity");
+        final String update = method(source, "private void updateDisplayModel", "private Location modelPartLocation");
+        final String rotation = method(source, "private Quaternionf modelRotation", "private void updateModelOrientation");
+        final String orientation = method(source, "private void updateModelOrientation", "private void renderAirTrail");
+
+        assertTrue(source.contains("private float modelPitch;"));
+        assertTrue(progress.contains("this.updateModelOrientation();")
+                        && progress.indexOf("this.updateModelOrientation();") < progress.indexOf("this.updateDisplayModel();"),
+                "gravity-adjusted velocity must update orientation before the displays move");
+        assertTrue(rotation.contains("rotateY(this.modelYaw).rotateX(this.modelPitch)"),
+                "pitch must rotate in model-local space after yaw");
+        assertTrue(orientation.contains("Math.atan2(-facing.getY(), horizontal)"),
+                "model pitch must use the complete vertical and horizontal velocity components");
+        assertTrue(update.contains("display.setTransformation(this.modelPartTransformation(part, modelRotation))"),
+                "each persistent display must receive the changing pitch transform");
     }
 
     private static String source() throws IOException {

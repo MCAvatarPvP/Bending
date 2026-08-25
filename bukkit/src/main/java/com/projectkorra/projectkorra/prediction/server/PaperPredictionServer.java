@@ -302,6 +302,24 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         }
     }
 
+    /**
+     * Replaces an exact-prediction client's cooldowns with the cooldown map
+     * currently held by Paper. This is intended for external/admin mutations
+     * where an intentional removal must override a locally predicted cooldown
+     * generation.
+     */
+    public static void synchronizeCooldowns(final Player player) {
+        final PaperPredictionServer server = active;
+        if (server == null || player == null) return;
+        final Session session = server.sessions.get(player.getUniqueId());
+        if (session == null || !session.ready) return;
+        final BendingPlayer bending = BendingPlayer.getBendingPlayer(BukkitMC.player(player));
+        session.predictedCooldowns.clear();
+        server.send(player, PaperPredictionProtocol.COOLDOWN_SYNC,
+                PaperPredictionProtocol.cooldownSync(session.session, System.currentTimeMillis(),
+                        PaperPredictionSnapshot.cooldowns(bending)));
+    }
+
     private static void runWithOwner(UUID owner, Runnable task) {
         runWithOwner(owner, true, task);
     }
@@ -498,6 +516,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.ABILITY_REMOVED);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.ABILITY_TRANSFER);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.STATE_DIRECTIVE);
+        messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.COOLDOWN_SYNC);
     }
 
     @Override
@@ -534,6 +553,12 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         if (predictedOwner != null && player != null && player.getPlayer() != null
                 && predictedOwner.getUniqueId().equals(player.getPlayer().getUniqueId())) return;
         sendDirective(player, ability == null ? "" : ability, "", 0L, false, Double.NaN);
+    }
+
+    @Override
+    public void onSynchronize(final BendingPlayer player) {
+        if (player == null || player.getPlayer() == null) return;
+        synchronizeCooldowns(Bukkit.getPlayer(player.getPlayer().getUniqueId()));
     }
 
     @Override
