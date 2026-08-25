@@ -228,7 +228,7 @@ public abstract class FireAbility extends ElementalAbility {
             final float volume = (float) ConfigManager.getConfig().getDouble("Properties.Fire.LightningSound.Volume");
             final float pitch = (float) ConfigManager.getConfig().getDouble("Properties.Fire.LightningSound.Pitch");
 
-            Sound sound = Sound.ENTITY_CREEPER_HURT;
+            Sound sound = Sound.BLOCK_REDSTONE_TORCH_BURNOUT;
             String soundString = ConfigManager.getConfig().getString("Properties.Fire.LightningSound.Sound");
 
             GeneralMethods.playSound(loc, sound, soundString, volume, pitch);

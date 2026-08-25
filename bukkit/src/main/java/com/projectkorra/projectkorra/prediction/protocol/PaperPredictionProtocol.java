@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Raw Bukkit plugin-message codec matching Fabric's RegistryByteBuf layout.
@@ -16,6 +17,8 @@ import java.util.UUID;
 public final class PaperPredictionProtocol {
     public static final int VERSION = 48;
     public static final int MAX_BLOCK_STATE_CHARACTERS = 512;
+    private static final int MAX_CACHED_BLOCK_STATES = 4_096;
+    private static final Map<String, byte[]> BLOCK_STATE_UTF8 = new ConcurrentHashMap<>();
     public static final String HELLO = "projectkorra:client_hello";
     public static final String CLIENT_DISABLED = "projectkorra:client_disabled";
     public static final String READY = "projectkorra:client_ready";
@@ -194,20 +197,33 @@ public final class PaperPredictionProtocol {
 
     public static byte[] tempBlocks(UUID session, long worldGeneration, String worldIdentity, boolean snapshot,
                              long serverTick, long serverNowMillis, List<TempBlockOp> operations) {
-        Writer out = new Writer().uuid(session).varLong(worldGeneration).string(worldIdentity, 128)
+        Writer out = new Writer(64 + operations.size() * 192)
+                .uuid(session).varLong(worldGeneration).string(worldIdentity, 128)
                 .bool(snapshot).i64(serverTick).i64(serverNowMillis).varInt(operations.size());
         for (TempBlockOp operation : operations) {
-            out.enumeration(operation.operation()).string(operation.world(), 256)
-                    .i32(operation.x()).i32(operation.y()).i32(operation.z())
-                    .string(operation.material(), MAX_BLOCK_STATE_CHARACTERS).i64(operation.revertAtMillis())
-                    .varLong(operation.actionSequence()).string(operation.effectAbility(), 128)
-                    .string(operation.effectState(), 64)
-                    .i64(operation.effectStep()).varInt(operation.effectOrdinal()).varLong(operation.layerId())
-                    .varLong(operation.revision()).bool(operation.ownerId() != null);
-            if (operation.ownerId() != null) out.uuid(operation.ownerId());
-            out.string(operation.viewerMaterial(), MAX_BLOCK_STATE_CHARACTERS).bool(operation.packetExpected());
+            writeTempBlock(out, operation);
         }
         return out.bytes();
+    }
+
+    public static byte[] tempBlock(UUID session, long worldGeneration, String worldIdentity,
+                                   long serverTick, long serverNowMillis, TempBlockOp operation) {
+        Writer out = new Writer(256).uuid(session).varLong(worldGeneration).string(worldIdentity, 128)
+                .bool(false).i64(serverTick).i64(serverNowMillis).varInt(1);
+        writeTempBlock(out, operation);
+        return out.bytes();
+    }
+
+    private static void writeTempBlock(final Writer out, final TempBlockOp operation) {
+        out.enumeration(operation.operation()).string(operation.world(), 256)
+                .i32(operation.x()).i32(operation.y()).i32(operation.z())
+                .blockState(operation.material()).i64(operation.revertAtMillis())
+                .varLong(operation.actionSequence()).string(operation.effectAbility(), 128)
+                .string(operation.effectState(), 64)
+                .i64(operation.effectStep()).varInt(operation.effectOrdinal()).varLong(operation.layerId())
+                .varLong(operation.revision()).bool(operation.ownerId() != null);
+        if (operation.ownerId() != null) out.uuid(operation.ownerId());
+        out.blockState(operation.viewerMaterial()).bool(operation.packetExpected());
     }
 
     public static byte[] velocityOwner(long serverTick, long actionSequence, int impulseOrdinal,
@@ -380,7 +396,15 @@ public final class PaperPredictionProtocol {
     }
 
     static final class Writer {
-        private final ByteArrayOutputStream out = new ByteArrayOutputStream();
+        private final ByteArrayOutputStream out;
+
+        Writer() {
+            this(32);
+        }
+
+        Writer(final int capacity) {
+            this.out = new ByteArrayOutputStream(Math.max(32, capacity));
+        }
 
         Writer varInt(int value) {
             return varLong(value & 0xFFFFFFFFL);
@@ -430,6 +454,26 @@ public final class PaperPredictionProtocol {
             String safe = value == null ? "" : value;
             if (safe.length() > maximumCharacters) safe = safe.substring(0, maximumCharacters);
             byte[] bytes = safe.getBytes(StandardCharsets.UTF_8);
+            return bytes(bytes);
+        }
+
+        Writer blockState(String value) {
+            String safe = value == null ? "" : value;
+            if (safe.length() > MAX_BLOCK_STATE_CHARACTERS) {
+                safe = safe.substring(0, MAX_BLOCK_STATE_CHARACTERS);
+            }
+            byte[] bytes = BLOCK_STATE_UTF8.get(safe);
+            if (bytes == null) {
+                bytes = safe.getBytes(StandardCharsets.UTF_8);
+                if (BLOCK_STATE_UTF8.size() < MAX_CACHED_BLOCK_STATES) {
+                    final byte[] existing = BLOCK_STATE_UTF8.putIfAbsent(safe, bytes);
+                    if (existing != null) bytes = existing;
+                }
+            }
+            return bytes(bytes);
+        }
+
+        private Writer bytes(final byte[] bytes) {
             varInt(bytes.length);
             out.writeBytes(bytes);
             return this;

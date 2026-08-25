@@ -40,6 +40,8 @@ public final class FabricClientPredictionPlatform implements ProjectKorraPlatfor
     private final ClientScheduler scheduler = new ClientScheduler();
     private final ClientEventBus events = new ClientEventBus();
     private final PKAdapter adapter = new FabricPredictionMC.Adapter();
+    private final PKMaterials materials = material ->
+            FabricMC.material(material).getDefaultState().blocksMovement();
 
     public FabricClientPredictionPlatform(MinecraftClient client) {
         this.client = client;
@@ -86,6 +88,11 @@ public final class FabricClientPredictionPlatform implements ProjectKorraPlatfor
     @Override
     public PKEventBus events() {
         return events;
+    }
+
+    @Override
+    public PKMaterials materials() {
+        return materials;
     }
 
     @Override

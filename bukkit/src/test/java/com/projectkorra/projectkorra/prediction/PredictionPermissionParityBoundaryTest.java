@@ -37,17 +37,20 @@ class PredictionPermissionParityBoundaryTest {
                         && payloads.contains("readStrings(buf, 2_048), buf.readDouble()")
                         && payloads.contains("writeStrings(buf, permissions)"));
 
-        String decisions = between(paper, "private static List<String> predictionPermissions",
+        String decisions = between(paper, "private List<String> predictionPermissions",
                 "/**\n     * A client can join");
-        assertTrue(decisions.contains("Bukkit.getPluginManager().getPermissions()")
-                        && decisions.contains("player.getEffectivePermissions()")
-                        && decisions.contains("player.hasPermission(node)")
-                        && decisions.contains("expandPermissionCandidates(registered)"),
+        assertTrue(decisions.contains("player.getEffectivePermissions()")
+                        && decisions.contains("player.hasPermission(normalized)")
+                        && decisions.contains("rebuildPermissionCandidates()")
+                        && decisions.contains("expandPermissionCandidates(Bukkit.getPluginManager().getPermissions())"),
                 "Paper must evaluate registered feature nodes through the player's real permission context");
         assertTrue(decisions.contains("permission.getChildren().keySet()"),
                 "plugin.yml child nodes must be synchronized even when Bukkit did not register them as roots");
         assertTrue(decisions.contains("candidates.add(\"bending.ability.WaterSpout.Wave\")"),
                 "the Wave child permission must remain discoverable when Bukkit omits plugin.yml children");
+        assertTrue(decisions.contains("context.equals(session.permissionContext)")
+                        && paper.contains("if (!ownerId.equals(targetId)) flushAbilityRemovals()"),
+                "unchanged permission state and self-locomotion velocity must stay off the expensive rebuild/removal path");
         assertTrue(paper.contains("permissions.hashCode()")
                         && paper.contains("permissions, airBlastDecay, chiBlocked, cosmetics, regionProtection, activeFlights")
                         && paper.contains("permissions, airBlastDecay, chiBlocked, cosmetics, regionProtection);"),

@@ -554,7 +554,7 @@ public class TempBlock {
         final Map<UUID, BlockData> result = new HashMap<>();
         for (UUID owner : owners) {
             final BlockData data = getVisibleData(block, owner);
-            if (data != null) result.put(owner, data.clone());
+            if (data != null) result.put(owner, data);
         }
         return Map.copyOf(result);
     }

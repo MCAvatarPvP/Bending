@@ -27,6 +27,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.plugin.java.JavaPlugin;
 import com.projectkorra.projectkorra.platform.mc.scheduler.BukkitRunnable;
 import com.projectkorra.projectkorra.prediction.state.CooldownSync;
+import com.projectkorra.projectkorra.prediction.state.PlayerStatusSync;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.BedrockUtil;
 import com.projectkorra.projectkorra.util.ChatUtil;
@@ -643,7 +644,9 @@ public class BendingPlayer extends OfflineBendingPlayer {
      * Sets the {@link BendingPlayer}'s chi blocked to false.
      */
     public void unblockChi() {
+        if (!this.chiBlocked) return;
         this.chiBlocked = false;
+        PlayerStatusSync.chiBlockedChanged(this, false);
     }
 
     /**
@@ -653,7 +656,9 @@ public class BendingPlayer extends OfflineBendingPlayer {
         if (this.isAvatarState() && !ConfigManager.getConfig(this).getBoolean("Abilities.Avatar.AvatarState.CanBeChibblocked"))
             return;
 
+        if (this.chiBlocked) return;
         this.chiBlocked = true;
+        PlayerStatusSync.chiBlockedChanged(this, true);
     }
 
     /**

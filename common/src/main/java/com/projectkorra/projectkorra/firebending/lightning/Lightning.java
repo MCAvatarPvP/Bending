@@ -321,7 +321,7 @@ public class Lightning extends LightningAbility {
                     this.silentHitResolved = false;
                     this.matchedVisualTick = 0;
 
-                    player.getLocation().getWorld().playSound(player.getLocation(), Sound.ENTITY_GENERIC_EXPLODE, 3f, 2f);
+                    player.getLocation().getWorld().playSound(player.getLocation(), Sound.ENTITY_ZOMBIE_VILLAGER_CURE, 3f, 2f);
 
                     if (this.silentHitboxMode == SilentHitboxMode.DELAYED_INSTANT_ARC) {
                         this.destination = this.origin.clone().add(this.silentProjectileDirection.clone().multiply(this.range));

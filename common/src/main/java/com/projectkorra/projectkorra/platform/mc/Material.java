@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.platform.mc;
 
+import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.block.data.Levelled;
 import com.projectkorra.projectkorra.platform.mc.block.data.Snowable;
@@ -305,26 +306,7 @@ public enum Material {
     }
 
     public boolean isSolid() {
-        if (isAir() || this == WATER || this == LAVA || this == FIRE || this == SOUL_FIRE || this == LIGHT)
-            return false;
-        String name = name();
-        if (name.endsWith("_BUTTON") || name.endsWith("_DOOR") || name.endsWith("_TRAPDOOR")) return false;
-        if (name.endsWith("_TORCH") || name.endsWith("_SAPLING") || name.endsWith("_FUNGUS") || name.endsWith("_ROOTS"))
-            return false;
-        if (name.endsWith("_VINES") || name.endsWith("_VINES_PLANT") || name.endsWith("_PETALS")) return false;
-        if (name.endsWith("_CROP") || name.endsWith("_STEM")) return false;
-        return switch (this) {
-            case LADDER, VINE, KELP, KELP_PLANT, SEAGRASS, TALL_SEAGRASS, TALL_GRASS, SHORT_GRASS,
-                 GRASS, FERN, LARGE_FERN, SUGAR_CANE, WHEAT, BEETROOTS, CARROTS, POTATOES,
-                 MELON_STEM, PUMPKIN_STEM, PITCHER_CROP, PITCHER_PLANT, TORCHFLOWER_CROP,
-                 BROWN_MUSHROOM, RED_MUSHROOM, DANDELION, POPPY, BLUE_ORCHID, ALLIUM, AZURE_BLUET,
-                 RED_TULIP, ORANGE_TULIP, WHITE_TULIP, OXEYE_DAISY, CORNFLOWER, LILY_OF_THE_VALLEY,
-                 WITHER_ROSE, SUNFLOWER, LILAC, ROSE_BUSH, PEONY, WILDFLOWERS, DEAD_HORN_CORAL_FAN,
-                 BIG_DRIPLEAF, SMALL_DRIPLEAF, HANGING_ROOTS, NETHER_SPROUTS, SPORE_BLOSSOM,
-                 SWEET_BERRY_BUSH, TWISTING_VINES_PLANT, WEEPING_VINES_PLANT, POWDER_SNOW,
-                 SNOW, BUBBLE_COLUMN, LEVER, REDSTONE_WALL_TORCH, SOUL_TORCH, TORCH -> false;
-            default -> true;
-        };
+        return Platform.isInstalled() && Platform.materials().isSolid(this);
     }
 
     public boolean isFlammable() {

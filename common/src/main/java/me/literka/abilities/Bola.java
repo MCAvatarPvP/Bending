@@ -3,6 +3,7 @@ package me.literka.abilities;
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
+import com.projectkorra.projectkorra.ability.ChiAbility;
 import com.projectkorra.projectkorra.configuration.PKConfigurationSection;
 import com.projectkorra.projectkorra.platform.mc.Color;
 import com.projectkorra.projectkorra.platform.mc.Location;
@@ -21,7 +22,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class Bola extends ModernChiAbility implements AddonAbility {
+public class Bola extends ChiAbility implements AddonAbility {
 
     private long cooldown;
     private double range;

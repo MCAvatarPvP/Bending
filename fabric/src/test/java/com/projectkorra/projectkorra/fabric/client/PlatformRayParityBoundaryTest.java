@@ -53,16 +53,26 @@ class PlatformRayParityBoundaryTest {
     }
 
     @Test
-    void hashBackedBlockTraversalAndSolidityMatchPaper() throws IOException {
+    void hashBackedBlockTraversalAndSolidityUseNativePlatformMetadata() throws IOException {
         String client = source("fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricPredictionMC.java");
+        String fabricServer = source("fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricMC.java");
+        String fabricPlatform = source("fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricProjectKorraPlatform.java");
         String paper = source("bukkit/src/main/java/com/projectkorra/projectkorra/platform/bukkit/BukkitMC.java");
+        String paperPlatform = source("bukkit/src/main/java/com/projectkorra/projectkorra/platform/bukkit/BukkitProjectKorraPlatform.java");
+        String commonMaterial = source("common/src/main/java/com/projectkorra/projectkorra/platform/mc/Material.java");
 
         assertTrue(client.contains("return Objects.hash(pos.getX(), pos.getY(), pos.getZ())"));
         assertTrue(paper.contains("return Objects.hash(value.getX(), value.getY(), value.getZ())"));
         assertTrue(client.contains("@Override public int hashCode() { return 0; }"));
         assertTrue(paper.contains("public int hashCode() {\n            return 0;"));
-        assertTrue(client.contains("@Override public boolean isSolid() { return getType().isSolid(); }"),
-                "source and collision searches must use Bukkit material solidity, not a different native predicate");
+        assertTrue(client.contains("@Override public boolean isSolid() { return getType().isSolid(); }"));
+        assertTrue(fabricServer.contains("return getType().isSolid();"));
+        assertTrue(fabricPlatform.contains("getDefaultState().blocksMovement()"));
+        assertTrue(paperPlatform.contains("BukkitMC.material(material).isSolid()"));
+        String solidity = method(commonMaterial, "public boolean isSolid()", "public boolean isFlammable()");
+        assertTrue(solidity.contains("Platform.materials().isSolid(this)"));
+        assertFalse(solidity.contains("switch") || solidity.contains("endsWith"),
+                "the common material enum must not guess Minecraft block behavior from names or a hand-maintained list");
     }
 
     private static String source(final String relative) throws IOException {

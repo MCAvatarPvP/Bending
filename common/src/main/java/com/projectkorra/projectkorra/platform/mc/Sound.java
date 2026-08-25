@@ -38,6 +38,7 @@ public class Sound {
     public static final Sound ENTITY_BREEZE_HURT = new Sound("ENTITY_BREEZE_HURT");
     public static final Sound ENTITY_BREEZE_IDLE_GROUND = new Sound("ENTITY_BREEZE_IDLE_GROUND");
     public static final Sound ENTITY_BREEZE_INHALE = new Sound("ENTITY_BREEZE_INHALE");
+    public static final Sound BLOCK_REDSTONE_TORCH_BURNOUT = new Sound("BLOCK_REDSTONE_TORCH_BURNOUT");
     public static final Sound ENTITY_BREEZE_LAND = new Sound("ENTITY_BREEZE_LAND");
     public static final Sound ENTITY_BREEZE_SHOOT = new Sound("ENTITY_BREEZE_SHOOT");
     public static final Sound ENTITY_BREEZE_WIND_BURST = new Sound("ENTITY_BREEZE_WIND_BURST");
@@ -58,6 +59,7 @@ public class Sound {
     public static final Sound ENTITY_IRON_GOLEM_HURT = new Sound("ENTITY_IRON_GOLEM_HURT");
     public static final Sound ENTITY_ITEM_BREAK = new Sound("ENTITY_ITEM_BREAK");
     public static final Sound ENTITY_ZOMBIE_BREAK_WOODEN_DOOR = new Sound("ENTITY_ZOMBIE_BREAK_WOODEN_DOOR");
+    public static final Sound ENTITY_ZOMBIE_VILLAGER_CURE = new Sound("ENTITY_ZOMBIE_VILLAGER_CURE");
     public static final Sound ENTITY_BLAZE_SHOOT = new Sound("ENTITY_BLAZE_SHOOT");
     public static final Sound ENTITY_LIGHTNING_BOLT_IMPACT = new Sound("ENTITY_LIGHTNING_BOLT_IMPACT");
     public static final Sound ENTITY_LIGHTNING_BOLT_THUNDER = new Sound("ENTITY_LIGHTNING_BOLT_THUNDER");

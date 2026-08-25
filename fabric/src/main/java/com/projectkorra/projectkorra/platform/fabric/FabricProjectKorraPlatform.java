@@ -33,6 +33,7 @@ import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.platform.PKBossBars;
 import com.projectkorra.projectkorra.platform.PKChunks;
 import com.projectkorra.projectkorra.platform.PKEventBus;
+import com.projectkorra.projectkorra.platform.PKMaterials;
 import com.projectkorra.projectkorra.platform.PKPermissions;
 import com.projectkorra.projectkorra.platform.PKPlayers;
 import com.projectkorra.projectkorra.platform.PKPlugins;
@@ -68,6 +69,8 @@ public final class FabricProjectKorraPlatform implements ProjectKorraPlatform {
     private final PKWorlds worlds = new FabricWorlds();
     private final PKPlugins plugins = new FabricPlugins();
     private final PKTags tags = new FabricTags();
+    private final PKMaterials materials = material ->
+            FabricMC.material(material).getDefaultState().blocksMovement();
     private final PKPermissions permissions = new FabricPermissions();
     private final PKServer serverFacade = new FabricServerFacade();
     private final PKScoreboards scoreboards = new FabricScoreboards();
@@ -101,6 +104,7 @@ public final class FabricProjectKorraPlatform implements ProjectKorraPlatform {
     @Override public PKWorlds worlds() { return this.worlds; }
     @Override public PKPlugins plugins() { return this.plugins; }
     @Override public PKTags tags() { return this.tags; }
+    @Override public PKMaterials materials() { return this.materials; }
     @Override public PKPermissions permissions() { return this.permissions; }
     @Override public PKServer server() { return this.serverFacade; }
     @Override public PKScoreboards scoreboards() { return this.scoreboards; }

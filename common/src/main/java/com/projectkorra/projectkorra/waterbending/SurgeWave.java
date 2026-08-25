@@ -11,6 +11,7 @@ import com.projectkorra.projectkorra.firebending.FireBlast;
 import com.projectkorra.projectkorra.platform.mc.*;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
+import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.block.data.Levelled;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
@@ -39,6 +40,9 @@ public class SurgeWave extends WaterAbility {
             BlockFace.EAST,
             BlockFace.WEST
     };
+    private static final BlockData WATER_DATA = Material.WATER.createBlockData();
+    private static final BlockData OBSIDIAN_DATA = Material.OBSIDIAN.createBlockData();
+    private static final BlockData COBBLESTONE_DATA = Material.COBBLESTONE.createBlockData();
 
     private boolean freezing;
     private boolean activateFreeze;
@@ -266,9 +270,9 @@ public class SurgeWave extends WaterAbility {
             final TempBlock tempBlock;
 
             if (levelled.getLevel() == 0) {
-                tempBlock = new TempBlock(relative, Material.OBSIDIAN.createBlockData(), this);
+                tempBlock = new TempBlock(relative, OBSIDIAN_DATA, this);
             } else {
-                tempBlock = new TempBlock(relative, Material.COBBLESTONE.createBlockData(), this);
+                tempBlock = new TempBlock(relative, COBBLESTONE_DATA, this);
             }
 
             tempBlock.setRevertTime(this.obsidianDuration);
@@ -321,7 +325,7 @@ public class SurgeWave extends WaterAbility {
             return false;
         }
 
-        final TempBlock layer = new TempBlock(block, Material.WATER.createBlockData(), this);
+        final TempBlock layer = new TempBlock(block, WATER_DATA, this);
         this.waveLayers.put(block, layer);
         this.waveBlocks.put(block, block);
         layer.setRevertTask(() -> {

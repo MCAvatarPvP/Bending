@@ -78,6 +78,10 @@ public final class BukkitMC {
     private static final Map<UUID, Entity> ENTITIES = new ConcurrentHashMap<>();
     private static final Map<UUID, OfflinePlayer> OFFLINE_PLAYERS = new ConcurrentHashMap<>();
     private static final Map<UUID, World> WORLDS = new ConcurrentHashMap<>();
+    private static final org.bukkit.Material[] NATIVE_MATERIALS = nativeMaterials();
+    private static final Material[] COMMON_MATERIALS = commonMaterials();
+    private static final org.bukkit.block.data.BlockData[] NATIVE_BLOCK_DATA =
+            new org.bukkit.block.data.BlockData[Material.values().length];
 
     private BukkitMC() {
     }
@@ -201,15 +205,37 @@ public final class BukkitMC {
 
     public static Material material(final org.bukkit.Material value) {
         if (value == null) return null;
-        try {
-            return Material.valueOf(value.name());
-        } catch (IllegalArgumentException ignored) {
-            return Material.AIR;
-        }
+        return COMMON_MATERIALS[value.ordinal()];
     }
 
     public static org.bukkit.Material material(final Material value) {
-        return value == null ? org.bukkit.Material.AIR : org.bukkit.Material.matchMaterial(value.name());
+        return value == null ? org.bukkit.Material.AIR : NATIVE_MATERIALS[value.ordinal()];
+    }
+
+    private static org.bukkit.Material[] nativeMaterials() {
+        final Material[] common = Material.values();
+        final org.bukkit.Material[] nativeMaterials = new org.bukkit.Material[common.length];
+        for (final Material material : common) {
+            try {
+                nativeMaterials[material.ordinal()] = org.bukkit.Material.valueOf(material.name());
+            } catch (IllegalArgumentException ignored) {
+                nativeMaterials[material.ordinal()] = org.bukkit.Material.AIR;
+            }
+        }
+        return nativeMaterials;
+    }
+
+    private static Material[] commonMaterials() {
+        final org.bukkit.Material[] nativeMaterials = org.bukkit.Material.values();
+        final Material[] commonMaterials = new Material[nativeMaterials.length];
+        for (final org.bukkit.Material material : nativeMaterials) {
+            try {
+                commonMaterials[material.ordinal()] = Material.valueOf(material.name());
+            } catch (IllegalArgumentException ignored) {
+                commonMaterials[material.ordinal()] = Material.AIR;
+            }
+        }
+        return commonMaterials;
     }
 
     public static Vector vector(final org.bukkit.util.Vector value) {
@@ -393,8 +419,8 @@ public final class BukkitMC {
     }
 
     public static org.bukkit.block.data.BlockData blockDataHandle(final BlockData value) {
-        org.bukkit.Material material = material(value == null ? Material.AIR : value.getMaterial());
-        org.bukkit.block.data.BlockData nativeData = material.createBlockData();
+        final Material commonMaterial = value == null ? Material.AIR : value.getMaterial();
+        final org.bukkit.Material material = material(commonMaterial);
         if (value != null && value.getClass() == BlockData.class && value.getExactState() != null) {
             try {
                 final org.bukkit.block.data.BlockData exact = Bukkit.createBlockData(value.getExactState());
@@ -402,6 +428,7 @@ public final class BukkitMC {
             } catch (IllegalArgumentException ignored) {
             }
         }
+        final org.bukkit.block.data.BlockData nativeData = defaultBlockData(commonMaterial, material);
         if (value instanceof Levelled levelled) {
             if (nativeData instanceof org.bukkit.block.data.Levelled nativeLevelled) {
                 nativeLevelled.setLevel(Math.max(0, Math.min(nativeLevelled.getMaximumLevel(), levelled.getLevel())));
@@ -427,6 +454,22 @@ public final class BukkitMC {
             }
         }
         return nativeData;
+    }
+
+    private static org.bukkit.block.data.BlockData defaultBlockData(
+            final Material commonMaterial, final org.bukkit.Material nativeMaterial) {
+        final int ordinal = commonMaterial.ordinal();
+        org.bukkit.block.data.BlockData prototype = NATIVE_BLOCK_DATA[ordinal];
+        if (prototype == null) {
+            synchronized (NATIVE_BLOCK_DATA) {
+                prototype = NATIVE_BLOCK_DATA[ordinal];
+                if (prototype == null) {
+                    prototype = nativeMaterial.createBlockData();
+                    NATIVE_BLOCK_DATA[ordinal] = prototype;
+                }
+            }
+        }
+        return prototype.clone();
     }
 
     public static BlockData blockData(final org.bukkit.block.data.BlockData value) {

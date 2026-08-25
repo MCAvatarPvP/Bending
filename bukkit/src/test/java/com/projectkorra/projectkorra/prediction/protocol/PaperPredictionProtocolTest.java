@@ -408,6 +408,8 @@ class PaperPredictionProtocolTest {
                 7, 99, owner, "minecraft:air", true);
         byte[] payload = PaperPredictionProtocol.tempBlocks(
                 session, 4L, world.toString(), false, 91, 10_000, List.of(operation));
+        assertArrayEquals(payload, PaperPredictionProtocol.tempBlock(
+                session, 4L, world.toString(), 91, 10_000, operation));
         PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(payload);
         assertEquals(session, reader.uuid());
         assertEquals(4L, reader.varLong());

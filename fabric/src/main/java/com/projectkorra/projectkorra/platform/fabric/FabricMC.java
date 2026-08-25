@@ -63,6 +63,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -75,6 +76,7 @@ import java.util.UUID;
 import java.util.function.Predicate;
 import com.mojang.authlib.GameProfile;
 import net.minecraft.block.BlockState;
+import net.minecraft.block.Blocks;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.ProfileComponent;
 import net.minecraft.block.ShapeContext;
@@ -166,8 +168,27 @@ public final class FabricMC {
     private static final Map<UUID, Boolean> PICKUP_OVERRIDES = new ConcurrentHashMap<>();
     private static final Map<UUID, Map<String, List<MetadataValue>>> ENTITY_METADATA = new ConcurrentHashMap<>();
     private static final Map<ServerWorld, World> WORLDS = new ConcurrentHashMap<>();
+    private static final MaterialMapping MATERIALS = createMaterialMapping();
 
     private FabricMC() {
+    }
+
+    private static MaterialMapping createMaterialMapping() {
+        final Material[] commonMaterials = Material.values();
+        final net.minecraft.block.Block[] nativeMaterials = new net.minecraft.block.Block[commonMaterials.length];
+        final Map<net.minecraft.block.Block, Material> commonByNative = new IdentityHashMap<>();
+
+        for (final Material common : commonMaterials) {
+            final Identifier id = Identifier.ofVanilla(common.name().toLowerCase(Locale.ROOT));
+            final net.minecraft.block.Block nativeBlock = Registries.BLOCK.containsId(id)
+                    ? Registries.BLOCK.get(id)
+                    : Blocks.AIR;
+            nativeMaterials[common.ordinal()] = nativeBlock;
+            if (nativeBlock != Blocks.AIR || common == Material.AIR) {
+                commonByNative.put(nativeBlock, common);
+            }
+        }
+        return new MaterialMapping(nativeMaterials, commonByNative);
     }
 
     private static void applyHitStatus(final Entity target, final Runnable commit) {
@@ -184,6 +205,10 @@ public final class FabricMC {
     }
 
     private record ObjectiveSnapshot(String title, Map<String, Integer> scores) {
+    }
+
+    private record MaterialMapping(net.minecraft.block.Block[] nativeByCommon,
+                                   Map<net.minecraft.block.Block, Material> commonByNative) {
     }
 
     private record ScoreboardSnapshot(Map<String, TeamSnapshot> teams,
@@ -895,17 +920,11 @@ public final class FabricMC {
     }
 
     public static Material material(BlockState state) {
-        Identifier id = Registries.BLOCK.getId(state.getBlock());
-        try {
-            return Material.valueOf(id.getPath().toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException ignored) {
-            return Material.AIR;
-        }
+        return MATERIALS.commonByNative().getOrDefault(state.getBlock(), Material.AIR);
     }
 
     public static net.minecraft.block.Block material(Material material) {
-        Identifier id = Identifier.ofVanilla(material.name().toLowerCase(Locale.ROOT));
-        return Registries.BLOCK.get(id);
+        return material == null ? Blocks.AIR : MATERIALS.nativeByCommon()[material.ordinal()];
     }
 
     private static ItemStack itemStack(net.minecraft.item.ItemStack value) {

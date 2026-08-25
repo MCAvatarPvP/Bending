@@ -16,8 +16,8 @@ import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.util.TempBlock;
 
 import java.util.HashSet;
-import java.util.Locale;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -51,9 +51,12 @@ public final class TempBlockSync {
     public static void publish(final Operation operation, final TempBlock layer, final BlockData effectiveData,
                                final boolean packetExpected) {
         final Listener current = listener;
-        if (current != null && layer != null && effectiveData != null) {
+        if (current != null && layer != null && effectiveData != null
+                && (!packetExpected || current.receivesPostWorldChange())) {
             try {
-                current.onChange(change(operation, layer, effectiveData, packetExpected));
+                current.onChange(change(operation, layer, effectiveData, packetExpected,
+                        current.copiesChangeData(), current.capturesUnderlay(),
+                        current.capturesOwnerViews()));
             } catch (RuntimeException failure) {
                 ProjectKorra.log.warning("TempBlock lifecycle publication failed: " + failure.getMessage());
             }
@@ -70,7 +73,9 @@ public final class TempBlockSync {
         final Listener current = listener;
         if (current != null && layer != null && effectiveData != null) {
             try {
-                current.beforeWorldChange(change(operation, layer, effectiveData, true));
+                current.beforeWorldChange(change(operation, layer, effectiveData, true,
+                        current.copiesChangeData(), current.capturesUnderlay(),
+                        current.capturesOwnerViews()));
             } catch (RuntimeException failure) {
                 ProjectKorra.log.warning("TempBlock pre-mutation publication failed: " + failure.getMessage());
             }
@@ -254,23 +259,32 @@ public final class TempBlockSync {
     }
 
     private static Change change(final Operation operation, final TempBlock layer,
-                                 final BlockData effectiveData, final boolean packetExpected) {
+                                 final BlockData effectiveData, final boolean packetExpected,
+                                 final boolean copyData, final boolean captureUnderlay,
+                                 final boolean captureOwnerViews) {
         final UUID ownerId = layer.getOwnerId().orElse(null);
-        final BlockData ownerVisible = ownerId == null
-                ? effectiveData : TempBlock.getVisibleData(layer.getBlock(), ownerId);
-        final Map<UUID, BlockData> ownerViews = new HashMap<>(
-                TempBlock.getOwnerViews(layer.getBlock(), ownerId));
-        if (ownerId != null) {
-            ownerViews.put(ownerId, ownerVisible == null ? effectiveData.clone() : ownerVisible.clone());
+        final BlockData ownerVisible;
+        final Map<UUID, BlockData> ownerViews;
+        if (captureOwnerViews) {
+            ownerVisible = ownerId == null
+                    ? effectiveData : TempBlock.getVisibleData(layer.getBlock(), ownerId);
+            final Map<UUID, BlockData> captured = new HashMap<>(
+                    TempBlock.getOwnerViews(layer.getBlock(), ownerId));
+            if (ownerId != null) {
+                captured.put(ownerId, ownerVisible == null ? effectiveData.clone() : ownerVisible.clone());
+            }
+            ownerViews = Map.copyOf(captured);
+        } else {
+            ownerVisible = null;
+            ownerViews = Map.of();
         }
-        return new Change(operation, layer.getBlock(), effectiveData.clone(),
-                layer.getState().getBlockData().clone(),
+        return new Change(operation, layer.getBlock(), copyData ? effectiveData.clone() : effectiveData,
+                captureUnderlay ? layer.getState().getBlockData().clone() : null,
                 layer.getRevertTime(), layer.getAbility().orElse(null), layer.getLayerId(),
                 layer.getRevision(), ownerId, layer.getEffectAbility(),
                 layer.getAbility().map(CoreAbility::getPredictionState).orElse(""),
                 layer.getEffectStep(), layer.getEffectOrdinal(),
-                ownerVisible == null ? effectiveData.clone() : ownerVisible.clone(),
-                Map.copyOf(ownerViews), packetExpected);
+                ownerVisible == null ? null : ownerVisible.clone(), ownerViews, packetExpected);
     }
 
     public static String encode(final BlockData data) {
@@ -321,6 +335,27 @@ public final class TempBlockSync {
     @FunctionalInterface
     public interface Listener {
         void onChange(Change change);
+
+        /**
+         * Paper has already consumed physical operations in
+         * {@link #beforeWorldChange(Change)}; the common client still needs
+         * the post-write callback to register its locally-created layer.
+         */
+        default boolean receivesPostWorldChange() {
+            return true;
+        }
+
+        default boolean capturesUnderlay() {
+            return true;
+        }
+
+        default boolean copiesChangeData() {
+            return true;
+        }
+
+        default boolean capturesOwnerViews() {
+            return true;
+        }
 
         default void beforeWorldChange(final Change change) {
         }

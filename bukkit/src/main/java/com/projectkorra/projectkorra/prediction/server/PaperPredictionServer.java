@@ -22,6 +22,7 @@ import com.projectkorra.projectkorra.prediction.movement.VelocitySync;
 import com.projectkorra.projectkorra.prediction.state.AbilityCheckpointSync;
 import com.projectkorra.projectkorra.prediction.state.AbilityStateSync;
 import com.projectkorra.projectkorra.prediction.state.CooldownSync;
+import com.projectkorra.projectkorra.prediction.state.PlayerStatusSync;
 
 import com.jedk1.jedcore.ability.passive.WallRun;
 import com.projectkorra.projectkorra.BendingPlayer;
@@ -65,7 +66,7 @@ import java.util.function.Supplier;
 public final class PaperPredictionServer implements PluginMessageListener, Runnable, TempBlockSync.Listener,
         TempFallingBlockSync.Listener, CooldownSync.Listener, VelocitySync.Listener,
         AbilityRemovalSync.Listener, DirectBlockSync.Listener,
-        AbilityStateSync.Listener, AbilityCheckpointSync.Listener {
+        AbilityStateSync.Listener, AbilityCheckpointSync.Listener, PlayerStatusSync.Listener {
     public static final int MAX_REWIND_TICKS = 12;
     private static final int CAPABILITY_EXACT = 8;
     private static final int TEMP_BLOCK_OPS_PER_PACKET = 4;
@@ -95,6 +96,8 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     private final AtomicBoolean snapshotBuildRunning = new AtomicBoolean();
     private volatile List<PaperPredictionProtocol.ConfigEntry> publicConfig = List.of();
     private volatile List<PaperPredictionProtocol.AbilityProfile> profiles = List.of();
+    private List<String> permissionCandidates = List.of();
+    private long permissionCandidateGeneration;
     private volatile long configEpoch;
     private volatile boolean snapshotReady;
     private long tick;
@@ -116,6 +119,8 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         AbilityCheckpointSync.install(server);
         AbilityRemovalSync.install(server);
         CooldownSync.install(server);
+        PlayerStatusSync.install(server);
+        server.rebuildPermissionCandidates();
         server.scheduleTicker();
         server.requestSnapshotRebuild(false);
         plugin.getLogger().info("Fabric client prediction endpoint enabled on Paper (protocol " + PaperPredictionProtocol.VERSION + ")");
@@ -455,7 +460,18 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         AbilityCheckpointSync.clear(this);
         AbilityRemovalSync.clear(this);
         CooldownSync.clear(this);
+        PlayerStatusSync.clear(this);
         if (active == this) active = null;
+    }
+
+    @Override
+    public void onChiBlockedChanged(final BendingPlayer bending, final boolean chiBlocked) {
+        if (bending == null || bending.getPlayer() == null) return;
+        final UUID playerId = bending.getPlayer().getUniqueId();
+        final Session session = sessions.get(playerId);
+        final Player player = Bukkit.getPlayer(playerId);
+        if (session == null || player == null || !session.ready) return;
+        sendState(player, session, true);
     }
 
     private void registerChannels() {
@@ -600,6 +616,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             }
         }
         if (tick % 100 == 0) {
+            rebuildPermissionCandidates();
             requestSnapshotRebuild(true);
         }
     }
@@ -720,11 +737,29 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
 
     @Override
     public void onChange(TempBlockSync.Change change) {
-        // Physical changes were already announced by beforeWorldChange using
-        // the same revision. Publish metadata-only layers and expiry changes
-        // here; duplicating physical operations is unnecessary.
-        if (change.packetExpected()) return;
+        // Physical changes are consumed by beforeWorldChange. This callback
+        // therefore only receives metadata-only layers and expiry changes.
         queueTempBlock(change);
+    }
+
+    @Override
+    public boolean receivesPostWorldChange() {
+        return false;
+    }
+
+    @Override
+    public boolean capturesUnderlay() {
+        return false;
+    }
+
+    @Override
+    public boolean copiesChangeData() {
+        return false;
+    }
+
+    @Override
+    public boolean capturesOwnerViews() {
+        return false;
     }
 
     private PendingTempBlock queueTempBlock(final TempBlockSync.Change change) {
@@ -745,9 +780,9 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                 || !predictedOwnershipTransfers.contains(effectiveAbility)) && effectOwner != null
                 && effectiveAbility.getPlayer() != null
                 && effectOwner.equals(effectiveAbility.getPlayer().getUniqueId());
-        final UUID worldId = block.getWorld() != null && block.getWorld().handle() instanceof World world
-                ? world.getUID() : null;
-        if (worldId == null) return null;
+        final String worldIdentity = block.getWorld() != null && block.getWorld().handle() instanceof World world
+                ? world.getUID().toString() : null;
+        if (worldIdentity == null) return null;
 
         Action action = tempLayerActions.get(change.layerId());
         if (action == null && !serverOwnedTempLayers.contains(change.layerId())
@@ -797,16 +832,17 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         final UUID predictedOwner = unpredictedOwnershipTransfer
                 ? null : predictedTempBlockOwner(change.ownerId(), action, effectAbility);
         final Map<UUID, BlockData> ownerViews = predictedOwnerViews(block, predictedOwner, change.data());
-        final PendingTempBlock pending = new PendingTempBlock(worldId,
+        final String encodedData = TempBlockSync.encode(change.data());
+        final PendingTempBlock pending = new PendingTempBlock(worldIdentity,
                 new PaperPredictionProtocol.TempBlockOp(wireOperation, worldKey(block.getWorld()),
-                block.getX(), block.getY(), block.getZ(), TempBlockSync.encode(change.data()),
+                block.getX(), block.getY(), block.getZ(), encodedData,
                 (change.operation() == TempBlockSync.Operation.REVERT
                         || change.operation() == TempBlockSync.Operation.DISCARD) ? 0L : change.revertAtMillis(),
                 action == null ? 0L : action.sequence,
                 effectAbility, change.effectState(), effectStep, effectOrdinal,
                 change.layerId(), change.revision(), predictedOwner,
-                TempBlockSync.encode(change.data()),
-                change.packetExpected()), Map.copyOf(ownerViews));
+                encodedData,
+                change.packetExpected()), ownerViews);
         pendingTempBlocks.add(pending);
         if (change.operation() == TempBlockSync.Operation.REVERT
                 || change.operation() == TempBlockSync.Operation.DISCARD) {
@@ -830,11 +866,11 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
 
     private Map<UUID, BlockData> predictedOwnerViews(final Block block, final UUID closingOwner,
                                                      final BlockData fallbackData) {
-        final Map<UUID, BlockData> views = new HashMap<>(TempBlock.getOwnerViews(block, closingOwner));
-        if (closingOwner != null) {
-            views.put(closingOwner, predictedViewerData(block, closingOwner, fallbackData));
-        }
-        return views;
+        final Map<UUID, BlockData> captured = TempBlock.getOwnerViews(block, closingOwner);
+        if (closingOwner == null || captured.containsKey(closingOwner)) return captured;
+        final Map<UUID, BlockData> views = new HashMap<>(captured);
+        views.put(closingOwner, predictedViewerData(block, closingOwner, fallbackData));
+        return Map.copyOf(views);
     }
 
     private BlockData predictedViewerData(final Block block, final UUID viewer,
@@ -935,7 +971,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         // AirScooter CancelOnHit, etc.) before applying knockback. Publish those
         // exact removals first so the predicting target cannot run the removed
         // movement ability over the following authoritative velocity packet.
-        flushAbilityRemovals();
+        if (!ownerId.equals(targetId)) flushAbilityRemovals();
         byte[] receipt = PaperPredictionProtocol.velocityOwnerV2(tick, action.sequence, ordinal, ownerId, targetId,
                 nativeTarget.getEntityId(), ability.getName(), velocity.getX(), velocity.getY(), velocity.getZ());
         if (ownerSession != null && nativeOwner != null && (ownerSession.capabilities & CAPABILITY_EXACT) != 0) {
@@ -1414,6 +1450,10 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
 
     private void flushTempBlocks() {
         if (pendingTempBlocks.isEmpty()) return;
+        if (pendingTempBlocks.size() == 1) {
+            flushTempBlock(pendingTempBlocks.remove(0));
+            return;
+        }
         List<PendingTempBlock> operations = List.copyOf(pendingTempBlocks);
         pendingTempBlocks.clear();
         for (Session session : sessions.values()) {
@@ -1425,7 +1465,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             List<PaperPredictionProtocol.TempBlockOp> visible = new ArrayList<>();
             for (PendingTempBlock pending : operations) {
                 final long layerId = pending.operation.layerId();
-                final boolean inView = PredictionVisibility.tracksBlock(viewerWorld, pending.worldId.toString(),
+                final boolean inView = PredictionVisibility.tracksBlock(viewerWorld, pending.worldIdentity,
                         location.getBlockX(), location.getBlockZ(), pending.operation.x(), pending.operation.z(),
                         player.getClientViewDistance());
                 if (!session.tempLayers.route(layerId,
@@ -1438,6 +1478,34 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                 sendTempBlockOperations(player, session, visible, false);
             }
         }
+    }
+
+    private void flushTempBlock(final PendingTempBlock pending) {
+        final long now = System.currentTimeMillis();
+        for (Session session : sessions.values()) {
+            final Player player = Bukkit.getPlayer(session.player);
+            if (player == null) continue;
+            final WorldScope scope = refreshWorldScope(player, session);
+            final Location location = player.getLocation();
+            final long layerId = pending.operation.layerId();
+            final boolean inView = PredictionVisibility.tracksBlock(scope.identity(), pending.worldIdentity,
+                    location.getBlockX(), location.getBlockZ(), pending.operation.x(), pending.operation.z(),
+                    player.getClientViewDistance());
+            if (!session.tempLayers.route(layerId,
+                    pending.operation.operation() == PaperPredictionProtocol.TempOperation.REVERT
+                            || pending.operation.operation() == PaperPredictionProtocol.TempOperation.DISCARD,
+                    inView)) continue;
+            sendTempBlockOperation(player, session, scope, pending.forViewer(session.player), now);
+        }
+    }
+
+    private void sendTempBlockOperation(final Player player, final Session session,
+                                        final WorldScope scope,
+                                        final PaperPredictionProtocol.TempBlockOp operation,
+                                        final long now) {
+        send(player, PaperPredictionProtocol.TEMP_BLOCKS,
+                PaperPredictionProtocol.tempBlock(session.session, scope.generation(), scope.identity(),
+                        tick, now, operation));
     }
 
     private void sendTempBlockOperations(final Player player, final Session session,
@@ -1471,7 +1539,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         Map<Integer, String> binds = PaperPredictionSnapshot.binds(bending);
         Map<String, Long> cooldowns = PaperPredictionSnapshot.cooldowns(bending);
         List<String> elements = PaperPredictionSnapshot.elements(bending), subs = PaperPredictionSnapshot.subElements(bending);
-        List<String> permissions = predictionPermissions(player);
+        List<String> permissions = predictionPermissions(player, session);
         double airBlastDecay = bending == null ? 1.0 : bending.getAirBlastDecay();
         boolean chiBlocked = bending != null && bending.isChiBlocked();
         PaperPredictionProtocol.PlayerCosmetics cosmetics = playerCosmetics(bending);
@@ -1567,7 +1635,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         Map<Integer, String> binds = PaperPredictionSnapshot.binds(bending);
         Map<String, Long> cooldowns = PaperPredictionSnapshot.cooldowns(bending);
         List<String> elements = PaperPredictionSnapshot.elements(bending), subs = PaperPredictionSnapshot.subElements(bending);
-        List<String> permissions = predictionPermissions(player);
+        List<String> permissions = predictionPermissions(player, session);
         double airBlastDecay = bending == null ? 1.0 : bending.getAirBlastDecay();
         boolean chiBlocked = bending != null && bending.isChiBlocked();
         PaperPredictionProtocol.PlayerCosmetics cosmetics = playerCosmetics(bending);
@@ -1628,45 +1696,77 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
      * them. Unknown nodes remain denied on the client instead of silently
      * taking a branch Paper may reject.
      */
-    private static List<String> predictionPermissions(final Player player) {
+    private List<String> predictionPermissions(final Player player, final Session session) {
         if (player == null) return List.of();
-        final SortedSet<String> abilityNodes = new TreeSet<>();
-        final SortedSet<String> otherNodes = new TreeSet<>();
+        final Set<String> assignments = new HashSet<>();
+        final List<String> effectiveNodes = new ArrayList<>();
+        player.getEffectivePermissions().forEach(info -> {
+            final String node = info.getPermission();
+            if (node == null || node.isBlank()) return;
+            final String normalized = node.toLowerCase(Locale.ROOT);
+            assignments.add((info.getValue() ? "+" : "-") + normalized);
+            effectiveNodes.add(normalized);
+        });
+        final PermissionContext context = new PermissionContext(permissionCandidateGeneration,
+                player.isOp(), Set.copyOf(assignments));
+        if (session != null && context.equals(session.permissionContext)) {
+            return session.predictionPermissions;
+        }
+
+        final List<String> abilityNodes = new ArrayList<>();
+        final List<String> otherNodes = new ArrayList<>();
+        final Set<String> seen = new HashSet<>();
+        final List<String> candidates = new ArrayList<>(permissionCandidates.size() + effectiveNodes.size());
+        candidates.addAll(permissionCandidates);
+        candidates.addAll(effectiveNodes);
+        for (String node : candidates) {
+            if (node == null || !node.regionMatches(true, 0, "bending.", 0, 8)
+                    || node.indexOf('*') >= 0) continue;
+            final String normalized = node.toLowerCase(Locale.ROOT);
+            if (!seen.add(normalized) || !player.hasPermission(normalized)) continue;
+            if (normalized.startsWith("bending.ability.")) abilityNodes.add(normalized);
+            else otherNodes.add(normalized);
+        }
+        abilityNodes.sort(String::compareTo);
+        otherNodes.sort(String::compareTo);
+        final List<String> result = new ArrayList<>(Math.min(MAX_PREDICTION_PERMISSIONS,
+                abilityNodes.size() + otherNodes.size()));
+        for (String node : abilityNodes) {
+            if (result.size() == MAX_PREDICTION_PERMISSIONS) break;
+            result.add(node);
+        }
+        if (result.size() < MAX_PREDICTION_PERMISSIONS) {
+            for (String node : otherNodes) {
+                if (result.size() == MAX_PREDICTION_PERMISSIONS) break;
+                result.add(node);
+            }
+        }
+        final List<String> resolved = List.copyOf(result);
+        if (session != null) {
+            session.permissionContext = context;
+            session.predictionPermissions = resolved;
+        }
+        return resolved;
+    }
+
+    private void rebuildPermissionCandidates() {
         final Set<String> candidates = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         for (CoreAbility ability : CoreAbility.getAbilities()) {
             if (ability == null || ability.getName() == null || ability.getName().isBlank()) continue;
             candidates.add("bending.ability." + ability.getName());
         }
-        final Collection<org.bukkit.permissions.Permission> registered =
-                Bukkit.getPluginManager().getPermissions();
-        candidates.addAll(expandPermissionCandidates(registered));
+        candidates.addAll(expandPermissionCandidates(Bukkit.getPluginManager().getPermissions()));
         // WaterSpoutWave is a feature branch whose ability name is
-        // intentionally also "WaterSpout". Keep its child node in the
-        // decision set even if a permission provider does not expose the
-        // plugin.yml child graph through getPermissions().
+        // intentionally also "WaterSpout". Keep its child node even if Bukkit
+        // does not register plugin.yml children as standalone permissions.
         candidates.add("bending.ability.WaterSpout.Wave");
-        player.getEffectivePermissions().forEach(info -> {
-            final String node = info.getPermission();
-            if (node != null && !node.isBlank()) candidates.add(node);
-        });
-        for (String node : candidates) {
-            if (node == null || !node.regionMatches(true, 0, "bending.", 0, 8)
-                    || node.indexOf('*') >= 0 || !player.hasPermission(node)) continue;
-            final String normalized = node.toLowerCase(Locale.ROOT);
-            if (normalized.startsWith("bending.ability.")) abilityNodes.add(normalized);
-            else otherNodes.add(normalized);
+        final List<String> rebuilt = List.copyOf(candidates);
+        if (!rebuilt.equals(permissionCandidates)) {
+            permissionCandidates = rebuilt;
         }
-        final List<String> result = new ArrayList<>(Math.min(MAX_PREDICTION_PERMISSIONS,
-                abilityNodes.size() + otherNodes.size()));
-        for (String node : abilityNodes) {
-            if (result.size() == MAX_PREDICTION_PERMISSIONS) return List.copyOf(result);
-            result.add(node);
-        }
-        for (String node : otherNodes) {
-            if (result.size() == MAX_PREDICTION_PERMISSIONS) break;
-            result.add(node);
-        }
-        return List.copyOf(result);
+        // Refresh custom permission-provider decisions periodically even when
+        // Bukkit's registered node graph and effective attachments are stable.
+        permissionCandidateGeneration++;
     }
 
     /**
@@ -1834,15 +1934,16 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     private record OutboundPayload(String channel, byte[] payload) {
     }
 
-    private record PendingTempBlock(UUID worldId, PaperPredictionProtocol.TempBlockOp operation,
+    private record PendingTempBlock(String worldIdentity, PaperPredictionProtocol.TempBlockOp operation,
                                     Map<UUID, BlockData> ownerViews) {
         private PaperPredictionProtocol.TempBlockOp forViewer(final UUID viewer) {
             final BlockData viewerData = ownerViews.get(viewer);
+            if (viewerData == null) return operation;
             return new PaperPredictionProtocol.TempBlockOp(operation.operation(), operation.world(),
                     operation.x(), operation.y(), operation.z(), operation.material(), operation.revertAtMillis(),
                     operation.actionSequence(), operation.effectAbility(), operation.effectState(), operation.effectStep(),
                     operation.effectOrdinal(), operation.layerId(), operation.revision(), operation.ownerId(),
-                    viewerData == null ? operation.material() : TempBlockSync.encode(viewerData),
+                    TempBlockSync.encode(viewerData),
                     operation.packetExpected());
         }
     }
@@ -1851,6 +1952,10 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                                          boolean externallyCaused,
                                          boolean predictionRejected,
                                          CoreAbility instance) {
+    }
+
+    private record PermissionContext(long candidateGeneration, boolean operator,
+                                     Set<String> assignments) {
     }
 
     private static final class Session {
@@ -1874,6 +1979,8 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         RegionProtectionAuthority.Snapshot regionProtectionSpatial =
                 RegionProtectionAuthority.Snapshot.empty();
         boolean ready;
+        PermissionContext permissionContext;
+        List<String> predictionPermissions = List.of();
 
         Session(UUID player, UUID session, int capabilities,
                 long helloClientTick, long helloServerTick) {

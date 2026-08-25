@@ -412,6 +412,43 @@ class PredictionTimingBoundaryTest {
                 "a rejected server activation must also clear the cooldown created by the optimistic client transition");
     }
 
+    @Test
+    void chiBlockTransitionsImmediatelyReachClientAbilityProgression() throws IOException {
+        String bending = read("../common/src/main/java/com/projectkorra/projectkorra/BendingPlayer.java",
+                "common/src/main/java/com/projectkorra/projectkorra/BendingPlayer.java");
+        String status = read("../common/src/main/java/com/projectkorra/projectkorra/prediction/state/PlayerStatusSync.java",
+                "common/src/main/java/com/projectkorra/projectkorra/prediction/state/PlayerStatusSync.java");
+        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
+                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
+        String client = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/PredictionClient.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/PredictionClient.java");
+        String runtime = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
+                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
+        String airSpout = read("../common/src/main/java/com/projectkorra/projectkorra/airbending/AirSpout.java",
+                "common/src/main/java/com/projectkorra/projectkorra/airbending/AirSpout.java");
+        String waterSpout = read("../common/src/main/java/com/projectkorra/projectkorra/waterbending/WaterSpout.java",
+                "common/src/main/java/com/projectkorra/projectkorra/waterbending/WaterSpout.java");
+
+        assertTrue(bending.contains("PlayerStatusSync.chiBlockedChanged(this, true)")
+                        && bending.contains("PlayerStatusSync.chiBlockedChanged(this, false)"),
+                "chi block changes must not wait for the periodic full-state poll");
+        assertTrue(status.contains("current.onChiBlockedChanged(player, chiBlocked)"));
+        assertTrue(paper.contains("PlayerStatusSync.install(server)")
+                        && paper.contains("PlayerStatusSync.clear(this)")
+                        && paper.contains("public void onChiBlockedChanged")
+                        && paper.contains("sendState(player, session, true)"),
+                "Paper must push the changed status immediately to the affected prediction client");
+        assertTrue(runtime.contains("this.bendingPlayer.blockChi()")
+                        && runtime.contains("this.bendingPlayer.unblockChi()"));
+        assertTrue(airSpout.contains("!this.bPlayer.canBendIgnoreBinds(this)")
+                        && waterSpout.contains("!this.bPlayer.canBendIgnoreBindsCooldowns(this)"),
+                "spouts must continue to terminate through their normal common ability checks");
+        int applyStatus = client.indexOf("ExactPredictionRuntime.updatePlayerState");
+        int observeFlights = client.indexOf("ExactPredictionRuntime.reconcileActiveFlightAbilities", applyStatus);
+        assertTrue(applyStatus >= 0 && observeFlights > applyStatus,
+                "the chi block must enter the common runtime before the same state packet's flight observation");
+    }
+
     private static String read(String moduleRelative, String rootRelative) throws IOException {
         Path path = Path.of(moduleRelative);
         if (!Files.exists(path)) path = Path.of(rootRelative);

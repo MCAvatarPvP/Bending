@@ -58,6 +58,10 @@ public final class Platform {
         return current().tags();
     }
 
+    public static PKMaterials materials() {
+        return current().materials();
+    }
+
     public static PKPermissions permissions() {
         return current().permissions();
     }

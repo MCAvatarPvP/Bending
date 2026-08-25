@@ -29,6 +29,8 @@ public interface ProjectKorraPlatform {
 
     PKTags tags();
 
+    PKMaterials materials();
+
     PKPermissions permissions();
 
     PKServer server();

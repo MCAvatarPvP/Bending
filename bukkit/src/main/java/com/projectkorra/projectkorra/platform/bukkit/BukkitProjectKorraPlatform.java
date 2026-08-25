@@ -41,6 +41,7 @@ public final class BukkitProjectKorraPlatform implements ProjectKorraPlatform {
     private final PKWorlds worlds = new BukkitWorldsFacade();
     private final PKPlugins plugins = new BukkitPluginsFacade();
     private final PKTags tags = new BukkitTagsFacade();
+    private final PKMaterials materials = material -> BukkitMC.material(material).isSolid();
     private final PKPermissions permissions = new BukkitPermissionsFacade();
     private final PKServer server = new BukkitServerFacade();
     private final PKScoreboards scoreboards = new BukkitScoreboardsFacade();
@@ -100,6 +101,11 @@ public final class BukkitProjectKorraPlatform implements ProjectKorraPlatform {
     @Override
     public PKTags tags() {
         return this.tags;
+    }
+
+    @Override
+    public PKMaterials materials() {
+        return this.materials;
     }
 
     @Override
