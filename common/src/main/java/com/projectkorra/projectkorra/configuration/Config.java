@@ -30,12 +30,16 @@ public class Config implements PKConfiguration {
     private boolean loadedWithValues;
 
     public Config(final File file) {
+        this(file, true);
+    }
+
+    Config(final File file, final boolean registerForPrediction) {
         if (file.isAbsolute()) {
             this.file = file;
         } else {
             this.file = Platform.dataFolder().resolve(file.getPath()).toFile();
         }
-        PredictionConfigSync.registerFile(this.file.toPath(), this);
+        if (registerForPrediction) PredictionConfigSync.registerFile(this.file.toPath(), this);
         reload();
     }
 
@@ -349,6 +353,16 @@ public class Config implements PKConfiguration {
     @Override
     public boolean contains(final String path) {
         return raw(path) != null;
+    }
+
+    /** True when a path came from the file/remote values rather than defaults. */
+    public boolean containsExplicit(final String path) {
+        return path != null && this.values.containsKey(path);
+    }
+
+    /** True when this configuration was loaded with at least one explicit value. */
+    public boolean hasLoadedValues() {
+        return this.loadedWithValues;
     }
 
     @Override

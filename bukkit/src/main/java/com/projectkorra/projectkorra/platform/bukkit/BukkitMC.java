@@ -45,6 +45,7 @@ import com.projectkorra.projectkorra.prediction.movement.VelocitySync;
 import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
 import com.projectkorra.projectkorra.prediction.server.ServerEntityInterpolation;
 import com.projectkorra.projectkorra.prediction.state.AbilityStateSync;
+import com.projectkorra.projectkorra.prediction.state.GlidingStateSync;
 import com.projectkorra.projectkorra.util.TempBlock;
 import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.Bukkit;
@@ -2255,7 +2256,9 @@ public final class BukkitMC {
 
         @Override
         public void setGliding(boolean gliding) {
-            value.setGliding(gliding);
+            if (value.isGliding() == gliding) return;
+            GlidingStateSync.apply(AbilityExecutionContext.current(), this, gliding,
+                    () -> value.setGliding(gliding));
         }
 
         @Override

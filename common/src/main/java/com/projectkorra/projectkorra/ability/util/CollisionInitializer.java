@@ -11,6 +11,9 @@ import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.configuration.PKConfiguration;
 import com.projectkorra.projectkorra.earthbending.*;
 import com.projectkorra.projectkorra.earthbending.lava.LavaFlow;
+import com.projectkorra.projectkorra.earthbending.sand.SandSpout;
+import com.projectkorra.projectkorra.earthbending.sand.Sandstorm;
+import com.projectkorra.projectkorra.earthbending.sand.SandSurge;
 import com.projectkorra.projectkorra.firebending.*;
 import com.projectkorra.projectkorra.firebending.combo.FireKick;
 import com.projectkorra.projectkorra.firebending.combo.FireSpin;
@@ -73,6 +76,9 @@ public class CollisionInitializer {
         CoreAbility.getAbility(EarthArmor.class);
         final CoreAbility earthBlast = CoreAbility.getAbility(EarthBlast.class);
         final CoreAbility earthSmash = CoreAbility.getAbility(EarthSmash.class);
+        CoreAbility.getAbility(SandSpout.class);
+        final CoreAbility sandstorm = CoreAbility.getAbility(Sandstorm.class);
+        final CoreAbility sandSurge = CoreAbility.getAbility(SandSurge.class);
         CoreAbility.getAbility(EarthTunnel.class);
         CoreAbility.getAbility(LavaFlow.class);
         CoreAbility.getAbility(RaiseEarth.class);
@@ -110,7 +116,7 @@ public class CollisionInitializer {
         CoreAbility.getAbility(WaterSpoutWave.class);
 
         final CoreAbility[] smallAbils = {airSwipe, earthBlast, waterManipulation, iceBlast, iceSpikeBlast, fireBlast, airSlash};
-        final CoreAbility[] largeAbils = {earthSmash, airShield, fireBlastCharged, fireKick, fireSpin, fireWheel, airSweep, iceBullet, airWheel};
+        final CoreAbility[] largeAbils = {earthSmash, airShield, sandstorm, sandSurge, fireBlastCharged, fireKick, fireSpin, fireWheel, airSweep, iceBullet, airWheel};
         final CoreAbility[] comboAbils = {fireKick, fireSpin, fireWheel, airSweep, iceBullet};
         final CoreAbility[] removeSpoutAbils = {airSwipe, earthBlast, waterManipulation, iceBlast, iceSpikeBlast, fireBlast, fireBlastCharged, earthSmash, fireKick, fireSpin, fireWheel, airSweep, airSlash, iceBullet};
         final CoreAbility[] ignoreAbils = {airBlast, airSuction, blazeArc, combustion};
@@ -285,6 +291,7 @@ public class CollisionInitializer {
         this.removeSpoutAbilities.add(ability);
         this.collisionManager.addCollision(new Collision(ability, CoreAbility.getAbility(AirSpout.class), false, true));
         this.collisionManager.addCollision(new Collision(ability, CoreAbility.getAbility(WaterSpout.class), false, true));
+        this.collisionManager.addCollision(new Collision(ability, CoreAbility.getAbility(SandSpout.class), false, true));
     }
 
     /**
@@ -307,6 +314,7 @@ public class CollisionInitializer {
 
         this.collisionManager.addCollision(new Collision(ignoreAbility, CoreAbility.getAbility(AirSpout.class), false, false));
         this.collisionManager.addCollision(new Collision(ignoreAbility, CoreAbility.getAbility(WaterSpout.class), false, false));
+        this.collisionManager.addCollision(new Collision(ignoreAbility, CoreAbility.getAbility(SandSpout.class), false, false));
     }
 
     public CollisionManager getCollisionManager() {

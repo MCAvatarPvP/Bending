@@ -52,6 +52,7 @@ import com.projectkorra.projectkorra.platform.mc.util.Transformation;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
 import com.projectkorra.projectkorra.prediction.state.AbilityStateSync;
+import com.projectkorra.projectkorra.prediction.state.GlidingStateSync;
 import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
 import com.projectkorra.projectkorra.prediction.block.DirectBlockSync;
 import com.projectkorra.projectkorra.prediction.movement.VelocitySync;
@@ -74,7 +75,6 @@ import java.util.OptionalInt;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Predicate;
-import com.mojang.authlib.GameProfile;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.component.DataComponentTypes;
@@ -943,15 +943,11 @@ public final class FabricMC {
         net.minecraft.item.Item item = Registries.ITEM.get(Identifier.ofVanilla(value.getType().name().toLowerCase(Locale.ROOT)));
         net.minecraft.item.ItemStack nativeStack = new net.minecraft.item.ItemStack(item, value.getAmount());
         if (value.getDurability() > 0 && nativeStack.isDamageable()) nativeStack.setDamage(value.getDurability());
-        if (value.hasItemMeta() && value.getItemMeta() instanceof SkullMeta skullMeta
-                && !skullMeta.getTexture().isBlank()) {
-            UUID profileId = skullMeta.getProfileId() != null
-                    ? skullMeta.getProfileId()
-                    : UUID.nameUUIDFromBytes(skullMeta.getTexture().getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            GameProfile profile = new GameProfile(profileId, "");
-            profile.properties().put("textures", new com.mojang.authlib.properties.Property(
-                    "textures", skullMeta.getTexture()));
-            nativeStack.set(DataComponentTypes.PROFILE, ProfileComponent.ofStatic(profile));
+        if (value.hasItemMeta() && value.getItemMeta() instanceof SkullMeta skullMeta) {
+            final var profile = FabricSkullTextures.profile(skullMeta);
+            if (profile != null) {
+                nativeStack.set(DataComponentTypes.PROFILE, ProfileComponent.ofStatic(profile));
+            }
         }
         return nativeStack;
     }
@@ -1256,7 +1252,7 @@ public final class FabricMC {
             RaycastContext.FluidHandling fluid = mode != null && !mode.name().equals("NEVER") ? RaycastContext.FluidHandling.ANY : RaycastContext.FluidHandling.NONE;
             BlockHitResult hit = value.raycast(new RaycastContext(start, end, shape, fluid, ShapeContext.absent()));
             if (hit == null || hit.getType() == HitResult.Type.MISS) {
-                return new RayTraceResult(FabricMC.vector(end));
+                return null;
             }
             return new RayTraceResult(FabricMC.vector(hit.getPos()));
         }
@@ -2374,11 +2370,11 @@ public final class FabricMC {
         @Override public void setRotation(float yaw, float pitch) { value.setYaw(yaw); value.setPitch(pitch); }
         @Override public boolean isGliding() { return value.isGliding(); }
         @Override public void setGliding(boolean gliding) {
-            if (gliding) {
-                value.startGliding();
-            } else {
-                value.stopGliding();
-            }
+            if (value.isGliding() == gliding) return;
+            GlidingStateSync.apply(AbilityExecutionContext.current(), this, gliding, () -> {
+                if (gliding) value.startGliding();
+                else value.stopGliding();
+            });
         }
         @Override public float getExp() { return value.experienceProgress; }
         @Override public void setExp(float experience) {

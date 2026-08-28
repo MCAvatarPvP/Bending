@@ -168,6 +168,11 @@ public class Bola extends ChiAbility implements AddonAbility {
     }
 
     @Override
+    public boolean isModern() {
+        return true;
+    }
+
+    @Override
     public void load() {
     }
 

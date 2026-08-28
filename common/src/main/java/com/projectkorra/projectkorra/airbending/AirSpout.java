@@ -81,6 +81,10 @@ public class AirSpout extends AirAbility {
         if (scooter != null) {
             scooter.remove();
         }
+        final AirGlider glider = CoreAbility.getAbility(player, AirGlider.class);
+        if (glider != null) {
+            glider.remove();
+        }
 
         final boolean cancelBlast = getConfig().getBoolean("Abilities.Air.AirSpout.CancelBlast");
         final AirBlast blast = CoreAbility.getAbility(player, AirBlast.class);

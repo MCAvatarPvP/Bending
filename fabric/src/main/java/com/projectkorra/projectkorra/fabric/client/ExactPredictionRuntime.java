@@ -27,6 +27,7 @@ import com.projectkorra.projectkorra.ability.util.MultiAbilityManager;
 import com.projectkorra.projectkorra.ability.util.PassiveManager;
 import com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation;
 import com.projectkorra.projectkorra.airbending.AirBlast;
+import com.projectkorra.projectkorra.airbending.AirGlider;
 import com.projectkorra.projectkorra.chiblocking.util.ChiblockingManager;
 import com.projectkorra.projectkorra.earthbending.EarthSmash;
 import com.projectkorra.projectkorra.earthbending.RaiseEarth;
@@ -39,15 +40,18 @@ import com.projectkorra.projectkorra.fabric.client.prediction.block.ClientDirect
 import com.projectkorra.projectkorra.fabric.client.prediction.block.ClientTempBlockAuthority;
 import com.projectkorra.projectkorra.fabric.client.prediction.config.ClientPredictionConfig;
 import com.projectkorra.projectkorra.fabric.client.prediction.entity.ClientEntityReconciliation;
+import com.projectkorra.projectkorra.fabric.client.prediction.effect.ClientSoundAuthority;
 import com.projectkorra.projectkorra.fabric.client.prediction.movement.ClientVelocityAuthority;
 import com.projectkorra.projectkorra.fabric.client.prediction.state.ClientPlayerStateAuthority;
 import com.projectkorra.projectkorra.fabric.client.prediction.state.PredictionCooldownAuthority;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.AbilityRemoved;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.AbilityStateOwner;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.AbilityTransfer;
+import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.AirGliderState;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.ConfigEntry;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.DirectBlockReceipt;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.InputKind;
+import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.GlidingStateOwner;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.NativeAction;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.PlayerCosmetics;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.TempBlockBatch;
@@ -91,6 +95,7 @@ import com.projectkorra.projectkorra.prediction.block.TempFallingBlockSync;
 import com.projectkorra.projectkorra.prediction.hit.PredictedContactSync;
 import com.projectkorra.projectkorra.prediction.hit.HitRegistrationPolicy;
 import com.projectkorra.projectkorra.prediction.state.CooldownSync;
+import com.projectkorra.projectkorra.prediction.state.GlidingStateSync;
 import com.projectkorra.projectkorra.prediction.state.PredictionStateOrdering;
 import com.projectkorra.projectkorra.prediction.state.CooldownSync.Listener;
 import com.projectkorra.projectkorra.util.BlockSource;
@@ -132,19 +137,24 @@ import net.minecraft.client.world.ClientWorld;
 import net.minecraft.entity.Entity;
 import net.minecraft.network.packet.s2c.play.EntitySpawnS2CPacket;
 import net.minecraft.network.packet.s2c.play.ExperienceBarUpdateS2CPacket;
+import net.minecraft.network.packet.s2c.play.PlaySoundS2CPacket;
 import net.minecraft.network.packet.s2c.play.PlayerAbilitiesS2CPacket;
+import net.minecraft.sound.SoundCategory;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 
 public final class ExactPredictionRuntime
         implements Listener,
+        GlidingStateSync.Listener,
         com.projectkorra.projectkorra.prediction.block.TempFallingBlockSync.Listener,
         com.projectkorra.projectkorra.prediction.hit.PredictedContactSync.Listener {
     private static final com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime INSTANCE = new com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime();
     private static final ThreadLocal<Long> INPUT_ACTION = new ThreadLocal<>();
     private static final ThreadLocal<Long> INPUT_EVENT_POSE = new ThreadLocal<>();
 
-    private static final Set<String> PERSISTENT_FLIGHT_ABILITIES = Set.of("airscooter", "airspout", "waterspout", "firejet", "flight");
+    private static final Set<String> PERSISTENT_FLIGHT_ABILITIES = Set.of(
+            "airscooter", "airspout", "waterspout", "sandspout", "airglider", "firejet", "flight");
     private static final boolean DEBUG = Boolean.parseBoolean(System.getProperty("projectkorra.prediction.debug", "false"));
     private final Map<Long, com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime.Action> actions = new LinkedHashMap<>();
     private final Map<CoreAbility, Long> abilityActions = new IdentityHashMap<>();
@@ -159,6 +169,7 @@ public final class ExactPredictionRuntime
     private final ClientVelocityAuthority velocityAuthority = new ClientVelocityAuthority(
             com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime::debug
     );
+    private final ClientSoundAuthority soundAuthority = new ClientSoundAuthority();
     private final ClientEntityReconciliation entityReconciliation = new ClientEntityReconciliation(
             com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime::materialState
     );
@@ -369,6 +380,7 @@ public final class ExactPredictionRuntime
     public static boolean supports(String abilityName) {
         return INSTANCE.ready
                 && abilityName != null
+                && isExactPredictionSafe(abilityName)
                 && (
                 CoreAbility.getAbility(abilityName) != null
                         || abilityName.equalsIgnoreCase("FireBlastCharged") && CoreAbility.getAbility(FireBlastCharged.class) != null
@@ -383,7 +395,8 @@ public final class ExactPredictionRuntime
         Set<String> names = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
 
         for (CoreAbility ability : CoreAbility.getAbilities()) {
-            if (ability != null && ability.getName() != null && !ability.getName().isBlank()) {
+            if (ability != null && ability.getName() != null && !ability.getName().isBlank()
+                    && isExactPredictionSafe(ability.getName())) {
                 names.add(ability.getName());
             }
         }
@@ -393,6 +406,11 @@ public final class ExactPredictionRuntime
         }
 
         return List.copyOf(names);
+    }
+
+    /** Common abilities, including AirGlider, execute through the exact client runtime. */
+    static boolean isExactPredictionSafe(final String abilityName) {
+        return abilityName != null && !abilityName.isBlank();
     }
 
     public static boolean shouldPredictInput(String abilityName, InputKind kind) {
@@ -584,6 +602,47 @@ public final class ExactPredictionRuntime
 
     public static void noteAbilityStateOwner(Entity localPlayer, AbilityStateOwner owner) {
         INSTANCE.noteAbilityStateOwner0(localPlayer, owner);
+    }
+
+    public static void noteGlidingStateOwner(final Entity localPlayer, final GlidingStateOwner owner) {
+        INSTANCE.noteGlidingStateOwner0(localPlayer, owner);
+    }
+
+    public static void applyAirGliderState(final Entity localPlayer, final AirGliderState state) {
+        try {
+            INSTANCE.applyAirGliderState0(localPlayer, state);
+        } catch (RuntimeException failure) {
+            ProjectKorra.log.log(Level.WARNING,
+                    "Rejected an unsafe AirGlider prediction checkpoint", failure);
+        }
+    }
+
+    public static void reassertPredictedGliding(final int entityId) {
+        INSTANCE.reassertPredictedGliding0(entityId);
+    }
+
+    /** Keeps the rendered pose while excluding vanilla Elytra travel and audio. */
+    public static boolean suppressVanillaAirGliderEffects(final ClientPlayerEntity player) {
+        final AirGlider glider = INSTANCE.localAirGlider(player);
+        return glider != null && glider.getState() == AirGlider.State.GLIDING;
+    }
+
+    public static void notePredictedAirGliderSound(final Identifier sound,
+                                                   final SoundCategory category,
+                                                   final double x, final double y, final double z,
+                                                   final float volume, final float pitch) {
+        if (AbilityExecutionContext.current() instanceof AirGlider) {
+            INSTANCE.soundAuthority.predict(sound == null ? "" : sound.toString(),
+                    category == null ? "" : category.name(), x, y, z,
+                    volume, pitch, INSTANCE.tick);
+        }
+    }
+
+    public static boolean suppressAuthoritativeSound(final PlaySoundS2CPacket packet) {
+        return packet != null && INSTANCE.ready && INSTANCE.soundAuthority.accept(
+                packet.getSound().value().id().toString(), packet.getCategory().name(),
+                packet.getX(), packet.getY(), packet.getZ(), packet.getVolume(),
+                packet.getPitch(), INSTANCE.tick);
     }
 
     public static void noteTempFallingBlock(Entity localPlayer, TempFallingBlockReceipt receipt) {
@@ -813,6 +872,7 @@ public final class ExactPredictionRuntime
                 TempBlockSync.install(this.tempBlockAuthority);
                 TempFallingBlockSync.install(this);
                 PredictedContactSync.install(this);
+                GlidingStateSync.install(this);
                 this.updatePlayerState0(binds, cooldowns, elements, subElements, permissions,
                         airBlastDecay, chiBlocked, cosmetics, regionProtection);
                 this.ready = true;
@@ -1246,6 +1306,7 @@ public final class ExactPredictionRuntime
             this.abilityTransitionActions.keySet().removeIf(ability -> !live.contains(ability));
             this.authoritativelyEstablishedAbilities.removeIf(ability -> !live.contains(ability));
             this.velocityAuthority.expire(this.tick, 160, 40);
+            this.soundAuthority.expire(this.tick);
             this.tempBlockAuthority.expire();
             this.playerStateAuthority.expire(this.tick, 160L);
             this.entityReconciliation.expire(this.tick, 160);
@@ -1736,11 +1797,13 @@ public final class ExactPredictionRuntime
                 this.directBlockAuthority.clear();
                 this.tempBlockAuthority.clear();
                 this.velocityAuthority.clear();
+                this.soundAuthority.clear();
                 this.entityReconciliation.clear();
                 this.playerStateAuthority.clear();
                 TempBlockSync.clear(this.tempBlockAuthority);
                 TempFallingBlockSync.clear(this);
                 PredictedContactSync.clear(this);
+                GlidingStateSync.clear(this);
                 CooldownSync.clear(this);
                 this.cooldownAuthority.clear();
                 this.platform = null;
@@ -2286,7 +2349,9 @@ public final class ExactPredictionRuntime
                     && this.bendingPlayer != null
                     && this.bendingPlayer.getPlayer() != null
                     && ability.getPlayer().getUniqueId().equals(this.bendingPlayer.getPlayer().getUniqueId())
-                    && (ability.getName().equalsIgnoreCase("WaterSpout") || ability.getName().equalsIgnoreCase("AirSpout"))) {
+                    && (ability.getName().equalsIgnoreCase("WaterSpout")
+                    || ability.getName().equalsIgnoreCase("AirSpout")
+                    || ability.getName().equalsIgnoreCase("SandSpout"))) {
                 active.add(ability.getClass().getSimpleName() + "@" + this.abilityCreationActions.get(ability));
             }
         }
@@ -2363,6 +2428,95 @@ public final class ExactPredictionRuntime
         this.playerStateAuthority.recordAbilityOwner(
                 localPlayer, owner, this.tick, this::localActionSequence
         );
+    }
+
+    @Override
+    public void beforeWrite(final CoreAbility ability, final Player target, final boolean gliding) {
+        if (!this.ready || target == null || this.bendingPlayer == null
+                || this.bendingPlayer.getPlayer() == null
+                || !target.getUniqueId().equals(this.bendingPlayer.getPlayer().getUniqueId())) return;
+        final long sequence = this.currentAction();
+        final Action action = this.actions.get(sequence);
+        final ClientPlayerEntity player = MinecraftClient.getInstance().player;
+        if (action != null && player != null) {
+            action.glidingStateOrdinals.merge(player.getId(), 1, Integer::sum);
+        }
+    }
+
+    private void noteGlidingStateOwner0(final Entity localPlayer, final GlidingStateOwner owner) {
+        if (!this.ready || localPlayer == null || owner == null
+                || !localPlayer.getUuid().equals(owner.target())) return;
+        final long localSequence = this.localActionSequence(owner.actionSequence());
+        final Action action = this.actions.get(localSequence);
+        if (action == null) return;
+        final AirGlider glider = this.bendingPlayer == null ? null
+                : CoreAbility.getAbility(this.bendingPlayer.getPlayer(), AirGlider.class);
+        final Long latest = glider == null ? null : this.abilityActions.get(glider);
+        if (latest != null && latest > localSequence) return;
+        final int predictedOrdinal = action.glidingStateOrdinals.getOrDefault(localPlayer.getId(), 0);
+        if (owner.mutationOrdinal() > predictedOrdinal) {
+            action.glidingStateOrdinals.put(localPlayer.getId(), owner.mutationOrdinal());
+        }
+        if (localPlayer instanceof ClientPlayerEntity player && player.isGliding() != owner.gliding()) {
+            if (owner.gliding()) player.startGliding();
+            else player.stopGliding();
+        }
+    }
+
+    private void applyAirGliderState0(final Entity localPlayer, final AirGliderState payload) {
+        if (!this.ready || localPlayer == null || payload == null
+                || !localPlayer.getUuid().equals(payload.player()) || this.bendingPlayer == null) return;
+        final long localSequence = this.localActionSequence(payload.actionSequence());
+        final Action action = this.actions.get(localSequence);
+        if (action == null) return;
+        final AirGlider.State state;
+        try {
+            state = AirGlider.State.valueOf(payload.state());
+        } catch (IllegalArgumentException invalid) {
+            return;
+        }
+        final AirGlider.PredictionState checkpoint = new AirGlider.PredictionState(
+                state, payload.stateTicks(), payload.stalled(), payload.stallTicks(),
+                payload.recoveryTicks(), payload.transitionRevision(), payload.velocityX(),
+                payload.velocityY(), payload.velocityZ(), payload.gliding(), payload.previousGlidingState());
+        AirGlider glider = CoreAbility.getAbility(this.bendingPlayer.getPlayer(), AirGlider.class);
+        final Long latest = glider == null ? null : this.abilityActions.get(glider);
+        if (latest != null && latest > localSequence) return;
+        if (glider == null) {
+            final AirGlider[] restored = new AirGlider[1];
+            runWithAction(localSequence, () -> restored[0] = AirGlider.restorePredictionState(
+                    this.bendingPlayer.getPlayer(), checkpoint));
+            glider = restored[0];
+            if (glider == null) return;
+            this.authoritativelyEstablishedAbilities.add(glider);
+            this.abilityCreationActions.putIfAbsent(glider, localSequence);
+        } else if (!glider.confirmsPredictionTransition(checkpoint)) {
+            glider.applyPredictionState(checkpoint);
+        }
+        this.associateAbility(action, glider);
+        action.abilities.add(glider);
+        action.locallyPredicted = true;
+        action.recoveredFromAuthority = true;
+    }
+
+    private void reassertPredictedGliding0(final int entityId) {
+        final ClientPlayerEntity player = MinecraftClient.getInstance().player;
+        if (!this.ready || player == null || player.getId() != entityId || this.bendingPlayer == null) return;
+        final AirGlider glider = CoreAbility.getAbility(this.bendingPlayer.getPlayer(), AirGlider.class);
+        if (glider == null || glider.isRemoved()) return;
+        final boolean expected = glider.getState() == AirGlider.State.GLIDING;
+        if (player.isGliding() != expected) {
+            if (expected) player.startGliding();
+            else player.stopGliding();
+        }
+    }
+
+    private AirGlider localAirGlider(final ClientPlayerEntity player) {
+        if (!this.ready || player == null || this.bendingPlayer == null
+                || this.bendingPlayer.getPlayer() == null
+                || !player.getUuid().equals(this.bendingPlayer.getPlayer().getUniqueId())) return null;
+        final AirGlider glider = CoreAbility.getAbility(this.bendingPlayer.getPlayer(), AirGlider.class);
+        return glider == null || glider.isRemoved() ? null : glider;
     }
 
     private void notePredictedExperience0(float barProgress, int experience, int level) {
@@ -2708,6 +2862,7 @@ public final class ExactPredictionRuntime
         final Map<CoreAbility, Long> previousAbilityActions = new IdentityHashMap<>();
         final Map<Integer, Integer> velocityOrdinals = new HashMap<>();
         final Map<Integer, Integer> abilityStateOrdinals = new HashMap<>();
+        final Map<Integer, Integer> glidingStateOrdinals = new HashMap<>();
         final Map<String, Integer> directBlockOrdinals = new HashMap<>();
         final Set<UUID> claimedTargets = new HashSet<>();
         int tempFallingBlockOrdinal;

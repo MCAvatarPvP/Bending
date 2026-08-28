@@ -7,6 +7,7 @@ import com.projectkorra.projectkorra.prediction.authority.RegionProtectionAuthor
 import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
 
 import com.projectkorra.projectkorra.ability.activation.AbilityActivationManager;
+import com.projectkorra.projectkorra.airbending.AirGlider;
 import com.projectkorra.projectkorra.earthbending.EarthSmash;
 import com.projectkorra.projectkorra.platform.mc.permissions.Permission;
 import org.junit.jupiter.api.Test;
@@ -74,7 +75,7 @@ class PaperPredictionProtocolTest {
 
     @Test
     void protocolIncludesExactAbilityStateOwnershipFence() {
-        assertEquals(49, PaperPredictionProtocol.VERSION);
+        assertEquals(50, PaperPredictionProtocol.VERSION);
         assertEquals("projectkorra:ability_state_owner", PaperPredictionProtocol.ABILITY_STATE_OWNER);
         UUID owner = UUID.randomUUID();
         UUID target = UUID.randomUUID();
@@ -355,6 +356,52 @@ class PaperPredictionProtocolTest {
         assertEquals(10_000L, reader.i64());
         assertFalse(reader.bool());
         assertTrue(Double.isNaN(reader.f64()));
+        reader.finished();
+    }
+
+    @Test
+    void glidingOwnershipFenceMatchesTheFabricPayloadOrder() {
+        final UUID owner = UUID.randomUUID();
+        final UUID target = UUID.randomUUID();
+        final PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(
+                PaperPredictionProtocol.glidingStateOwner(
+                        12L, 7L, 3, owner, target, "AirGlider", true));
+
+        assertEquals("projectkorra:gliding_state_owner", PaperPredictionProtocol.GLIDING_STATE_OWNER);
+        assertEquals(12L, reader.i64());
+        assertEquals(7L, reader.varLong());
+        assertEquals(3, reader.varInt());
+        assertEquals(owner, reader.uuid());
+        assertEquals(target, reader.uuid());
+        assertEquals("AirGlider", reader.string(128));
+        assertTrue(reader.bool());
+        reader.finished();
+    }
+
+    @Test
+    void airGliderCheckpointCarriesEverySimulationStateField() {
+        final UUID player = UUID.randomUUID();
+        final AirGlider.PredictionState state = new AirGlider.PredictionState(
+                AirGlider.State.FOLDED_DIVE, 9, true, 6, 2, 4L,
+                1.25, -0.4, -0.75, false, true);
+        final PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(
+                PaperPredictionProtocol.airGliderState(player, 18L, 11L, state));
+
+        assertEquals("projectkorra:air_glider_state", PaperPredictionProtocol.AIR_GLIDER_STATE);
+        assertEquals(player, reader.uuid());
+        assertEquals(18L, reader.i64());
+        assertEquals(11L, reader.varLong());
+        assertEquals("FOLDED_DIVE", reader.string(32));
+        assertEquals(9, reader.varInt());
+        assertTrue(reader.bool());
+        assertEquals(6, reader.varInt());
+        assertEquals(2, reader.varInt());
+        assertEquals(4L, reader.varLong());
+        assertEquals(1.25, reader.f64());
+        assertEquals(-0.4, reader.f64());
+        assertEquals(-0.75, reader.f64());
+        assertFalse(reader.bool());
+        assertTrue(reader.bool());
         reader.finished();
     }
 

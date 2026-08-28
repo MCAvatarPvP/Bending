@@ -17,6 +17,9 @@ import com.projectkorra.projectkorra.earthbending.lava.LavaFlow;
 import com.projectkorra.projectkorra.earthbending.lava.LavaSurge;
 import com.projectkorra.projectkorra.earthbending.metal.Extraction;
 import com.projectkorra.projectkorra.earthbending.metal.MetalClips;
+import com.projectkorra.projectkorra.earthbending.sand.SandSpout;
+import com.projectkorra.projectkorra.earthbending.sand.Sandstorm;
+import com.projectkorra.projectkorra.earthbending.sand.SandSurge;
 import com.projectkorra.projectkorra.firebending.*;
 import com.projectkorra.projectkorra.firebending.lightning.Lightning;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
@@ -63,6 +66,7 @@ final class CoreAbilityActivationBootstrap {
         register("AirSwipe", ClickType.SHIFT_DOWN, context -> created(new AirSwipe(context.getPlayer(), true)));
         register("AirShield", ClickType.SHIFT_DOWN, context -> created(new AirShield(context.getPlayer())));
         register("Suffocate", ClickType.SHIFT_DOWN, context -> created(new Suffocate(context.getPlayer())));
+        register("AirGlider", ClickType.SHIFT_DOWN, context -> AirGlider.toggleGlider(context.getPlayer()));
 
         register("AirBlast", ClickType.LEFT_CLICK, context -> {
             AirBlast.shoot(context.getPlayer());
@@ -157,6 +161,9 @@ final class CoreAbilityActivationBootstrap {
                 context -> activateEarthSmash(context, ClickType.SHIFT_UP));
         register("MetalClips", ClickType.SHIFT_DOWN, CoreAbilityActivationBootstrap::shiftMetalClips);
         register("EarthGrab", ClickType.SHIFT_DOWN, context -> created(new EarthGrab(context.getPlayer(), EarthGrab.GrabMode.DRAG)));
+        register("SandSpout", ClickType.SHIFT_DOWN, context -> created(new SandSpout(context.getPlayer())));
+        register("Sandstorm", ClickType.SHIFT_DOWN, context -> created(new Sandstorm(context.getPlayer())));
+        register("SandSurge", ClickType.SHIFT_DOWN, context -> created(new SandSurge(context.getPlayer())));
 
         register("Catapult", ClickType.LEFT_CLICK, context -> created(new Catapult(context.getPlayer(), false)));
         register("EarthBlast", ClickType.LEFT_CLICK, context -> {
@@ -179,6 +186,9 @@ final class CoreAbilityActivationBootstrap {
         register("EarthSmash", ClickType.LEFT_CLICK,
                 context -> activateEarthSmash(context, ClickType.LEFT_CLICK));
         register("EarthGrab", ClickType.LEFT_CLICK, context -> created(new EarthGrab(context.getPlayer(), EarthGrab.GrabMode.PROJECTING)));
+        register("SandSpout", ClickType.LEFT_CLICK, context -> SandSpout.activate(context.getPlayer()));
+        register("Sandstorm", ClickType.LEFT_CLICK, context -> Sandstorm.activate(context.getPlayer()));
+        register("SandSurge", ClickType.LEFT_CLICK, context -> SandSurge.launch(context.getPlayer()));
         register("EarthSmash", ClickType.RIGHT_CLICK_BLOCK,
                 context -> activateEarthSmash(context, ClickType.RIGHT_CLICK));
     }

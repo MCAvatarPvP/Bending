@@ -78,6 +78,7 @@ public class ConfigManager {
         avatarStateConfig = new Config(avatarStateFile);
         migrateLegacyTornadoConfig();
         migrateAirStaminaBarConfig();
+        migrateSandstormDefaults();
         repairMisplacedAvatarStateConfig();
 
         configCheck(ConfigType.DEFAULT);
@@ -537,6 +538,8 @@ public class ConfigManager {
             config.addDefault("Abilities.Air.AirShield.Instructions", "Hold sneak and a shield of air will form around you, blocking projectiles and pushing entities back.");
             config.addDefault("Abilities.Air.AirSpout.Description", "This ability gives the airbender limited sustained levitation. It allows an airbender to gain a height advantage to escape from mobs, players or just to dodge from attacks. This ability is also useful for building as it allows you to reach great heights.");
             config.addDefault("Abilities.Air.AirSpout.Instructions", "Left click to activate a spout beneath you and hold spacebar to go higher. If you wish to go lower, simply hold sneak. To disable this ability, left click once again.");
+            addUpgradeDefault(languageConfig, "Abilities.Air.AirGlider.Description", "Deploy an Air Nomad glider with momentum-based flight. Dive for speed, pull out for lift, bank through turns, and combine the glider with ordinary AirBlast self-propulsion.");
+            addUpgradeDefault(languageConfig, "Abilities.Air.AirGlider.Instructions", "Tap sneak while airborne to deploy or fold the glider. Hold sprint for powered lift, dive to recover from a stall, and use AirBlast normally for an additional burst of momentum.");
             config.addDefault("Abilities.Air.AirSuction.Description", "AirSuction is a basic ability that allows you to manipulation an entity's movement. It can be used to bring someone back to you when they're running away, or even to get yourself to great heights.");
             config.addDefault("Abilities.Air.AirSuction.Instructions", "\n" + "(Pull) Left click while aiming at a target to pull them towards you." + "\n" + "(Manipulation) Sneak to select a point and then left click at a target or yourself to send you or your target to the point that you selected.");
             config.addDefault("Abilities.Air.AirSuction.HorizontalVelocityDeath", "{victim} experienced a fatal collision by {attacker}'s {ability}");
@@ -643,6 +646,12 @@ public class ConfigManager {
             config.addDefault("Abilities.Earth.Shockwave.Description", "Shockwave is one of the most powerful earthbending abilities. It allows the earthbender to deal mass damage to everyone around them and knock them back. It's extremely useful when fighting more than one target or if you're surrounded by mobs.");
             config.addDefault("Abilities.Earth.Shockwave.Instructions", "Hold sneak until you see particles and then release sneak to send a wave of earth outwards, damaging and knocking entities back that it collides with. Additionally, instead of releasing sneak you can send a cone of earth forwards by left clicking. If you are on the Shockwave slot and you fall from a great height, your Shockwave will automatically activate.");
             config.addDefault("Abilities.Earth.Shockwave.DeathMessage", "{victim} was blown away by {attacker}'s {ability}");
+            addUpgradeDefault(languageConfig, "Abilities.Earth.SandSpout.Description", "Gather loose grains into a controllable sand spout without requiring a sand source. SandSpout uses familiar AirSpout flight controls and can be collapsed into a forward launch.");
+            addUpgradeDefault(languageConfig, "Abilities.Earth.SandSpout.Instructions", "Hold sneak to gather the spout, then left click to mount it. Fly it like AirSpout. Left click again to launch forward, or sneak and left click to collapse without launching.");
+            addUpgradeDefault(languageConfig, "Abilities.Earth.Sandstorm.Description", "Whirl a selected sand source into a steerable dust devil ahead of you. Sandstone shards rise through its tapered funnel, dealing light damage on contact while the rotating dust blinds, sweeps, and deflects.");
+            addUpgradeDefault(languageConfig, "Abilities.Earth.Sandstorm.Instructions", "Hold sneak while looking at sand and left click to form the dust devil. Hold sneak to guide it, or release sneak to leave it running in place. While it is active, hold sneak and left click again to launch it along the ground.");
+            addUpgradeDefault(languageConfig, "Abilities.Earth.SandSurge.Description", "Drive one broad wave of tumbling sand and sandstone shards over the ground. The surge damages and carries targets before throwing them from its collapsing front.");
+            addUpgradeDefault(languageConfig, "Abilities.Earth.SandSurge.Instructions", "Hold sneak while looking at sand, aim along the ground, and left click to release the surge.");
             config.addDefault("Abilities.Earth.Tremorsense.Description", "This is a pure utility ability for earthbenders. If you are in an area of low-light and are standing on top of an earthbendable block, this ability will automatically turn that block into glowstone, visible *only by you*. If you lose contact with a bendable block, the light will go out as you have lost contact with the earth and cannot 'see' until you can touch earth again. Additionally, if you click with this ability selected, smoke will appear above nearby earth with pockets of air beneath them.");
             config.addDefault("Abilities.Earth.Tremorsense.Instructions", "Simply left click while on an earthbendable block.");
             config.addDefault("Abilities.Earth.Combo.EarthDome.Description", "EarthDome allows earthbenders to surround themselves or another entity in earth, temporarily preventing anything from entering or escaping the dome.");
@@ -1206,6 +1215,40 @@ public class ConfigManager {
             config.addDefault("Abilities.Air.AirSpout.Animation.Radius", 0.32);
             config.addDefault("Abilities.Air.AirSpout.Animation.Sway", 0.18);
             config.addDefault("Abilities.Air.AirSpout.Animation.MaxBaseLag", 0.9);
+
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Enabled", true);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Cooldown", 1500);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.CrashCooldown", 3000);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.DeployCost", 0.05);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Glide.StraightDrag", 0.992);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Glide.Gravity", 0.045);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Glide.MinimumAirspeed", 0.28);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Glide.FullLiftAirspeed", 0.65);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Glide.MaximumCoastLift", 0.035);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Glide.PoweredLift", 0.025);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Glide.CoastTurnDegrees", 5.0);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Glide.PoweredTurnDegrees", 8.0);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Glide.TurnDragPerDegree", 0.0015);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Glide.StallLiftFactor", 0.15);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Glide.HorizontalAcceleration", 0.035);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Glide.DiveAcceleration", 0.05);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Glide.DescentConversion", 0.10);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Glide.PoweredStaminaDrain", 0.12);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Glide.PoweredTurnStaminaDrain", 0.08);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Glide.MaximumVelocity", 1.35);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Glide.FoldLockTicks", 6);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.OrangeTexture", "https://textures.minecraft.net/texture/cbf7797a24a6af875f5c8271c5b8c425e19f372a415e0552fc247763f2859d1");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.YellowTexture", "https://textures.minecraft.net/texture/27bbd0b2911c96b5d87b2df76691a51b8b12c6fefd523146d8ac5ef1b8ee");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.WoodTexture", "https://textures.minecraft.net/texture/45ac6e6c436d6e137d80482b888569b8181b8b3daa06c047f9751d32ebf8e4c1");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Animation.DeployTicks", 8);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Animation.OrientationSmoothing", 0.30);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Animation.MaximumBankDegrees", 35.0);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Position.HeightOffset", 0.82);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Position.ForwardOffset", 0.08);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Visuals.WingtipSpan", 1.45);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Visuals.TrailLength", 0.65);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Visuals.GustAirspeed", 0.9);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Sound.WindIntervalTicks", 11);
 
             config.addDefault("Abilities.Air.AirSuction.Enabled", true);
             config.addDefault("Abilities.Air.AirSuction.Speed", 25);
@@ -1841,6 +1884,74 @@ public class ConfigManager {
             config.addDefault("Abilities.Earth.Tremorsense.LightThreshold", 7);
             config.addDefault("Abilities.Earth.Tremorsense.Cooldown", 1000);
             config.addDefault("Abilities.Earth.Tremorsense.StickyRange", 3);
+
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSpout.Enabled", true);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSpout.Cooldown", 4000);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSpout.Duration", 10000);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSpout.Height", 6.0);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSpout.PrepareTimeout", 3000);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSpout.HopForward", 0.75);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSpout.HopUp", 0.55);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSpout.Visuals.Strands", 3);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSpout.Visuals.Spacing", 0.32);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSpout.Sound.IntervalTicks", 9);
+
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.Enabled", true);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.Cooldown", 6000);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.Duration", 5000);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.SourceRange", 8.0);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.PrepareTimeout", 3000);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.Radius", 3.0);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.GrowthTicks", 10);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.Push", 0.22);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.ShardDamage", 0.5);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.EffectInterval", 4);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.BlindnessTicks", 30);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.ShardHitCooldownTicks", 10);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.ShardCollisionRadius", 0.38);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.ProjectileDeflection", 0.8);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.CenterDistance", 4.5);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.ControlSpeed", 0.18);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.ControlAcceleration", 0.024);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.ControlDrag", 0.88);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.AimSmoothing", 0.1);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.Height", 3.2);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.Swirl", 0.16);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.Visuals.Ribbons", 3);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.Visuals.RibbonPoints", 18);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.Visuals.CloudLobes", 6);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.Visuals.GroundTendrils", 5);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.Visuals.Shards", 14);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.Visuals.MinimumShardScale", 0.12);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.Visuals.MaximumShardScale", 0.28);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.Visuals.ShardOrbitSpeed", 0.2);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.Sound.IntervalTicks", 11);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.Launch.Speed", 0.65);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.Launch.Range", 14.0);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.Launch.Damage", 1.5);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.Launch.Knockback", 0.65);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.Launch.ImpactRadius", 1.05);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.Sandstorm.Launch.MaximumStepHeight", 1);
+
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSurge.Enabled", true);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSurge.Cooldown", 5000);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSurge.SourceRange", 8.0);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSurge.PrepareTimeout", 3000);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSurge.Range", 16.0);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSurge.Width", 4.0);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSurge.Speed", 0.8);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSurge.Damage", 2.0);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSurge.CarryTicks", 10);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSurge.Knockback", 0.8);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSurge.Knockup", 0.3);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSurge.MaximumStepHeight", 1);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSurge.Visuals.Shards", 32);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSurge.Visuals.Rows", 4);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSurge.Visuals.MinimumShardScale", 0.16);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSurge.Visuals.MaximumShardScale", 0.38);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSurge.Visuals.ShardGravity", 0.026);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSurge.Visuals.ShardBounce", 0.46);
+            addUpgradeDefault(defaultConfig, "Abilities.Earth.SandSurge.Sound.IntervalTicks", 7);
 
             config.addDefault("Abilities.Earth.EarthPillars.Enabled", true);
             config.addDefault("Abilities.Earth.EarthPillars.Cooldown", 8000);
@@ -2478,6 +2589,30 @@ public class ConfigManager {
         }
     }
 
+    /** Updates only the original Sandstorm tuning values, preserving server overrides. */
+    private static void migrateSandstormDefaults() {
+        boolean migrated = replaceLegacyNumericDefault(defaultConfig,
+                "Abilities.Earth.Sandstorm.Radius", 4.0, 3.0);
+        migrated |= replaceLegacyNumericDefault(defaultConfig,
+                "Abilities.Earth.Sandstorm.CenterDistance", 4.0, 4.5);
+        migrated |= replaceLegacyNumericDefault(defaultConfig,
+                "Abilities.Earth.Sandstorm.ControlSpeed", 0.42, 0.18);
+        if (migrated) {
+            defaultConfig.save();
+            Platform.logger().info("Updated legacy Sandstorm size and steering defaults.");
+        }
+    }
+
+    static boolean replaceLegacyNumericDefault(final Config config, final String path,
+                                               final double previous, final double updated) {
+        if (!config.hasLoadedValues() || !config.containsExplicit(path)
+                || Math.abs(config.getDouble(path) - previous) > 1.0E-9) {
+            return false;
+        }
+        config.set(path, updated);
+        return true;
+    }
+
     private static boolean moveSection(final Config config, final String sourcePath,
                                        final String targetPath, final Set<String> excludedKeys) {
         final PKConfigurationSection section = config.getConfigurationSection(sourcePath);
@@ -2497,6 +2632,17 @@ public class ConfigManager {
         config.removeTree(targetPath);
         migratedValues.forEach((key, value) -> config.set(targetPath + "." + key, value));
         return true;
+    }
+
+    /**
+     * Adds a default and writes it into an existing file when the setting was
+     * introduced by this build. New/empty files still use the normal bootstrap
+     * path so the complete default configuration is emitted at once.
+     */
+    static void addUpgradeDefault(final Config config, final String path, final Object value) {
+        final boolean materialize = config.hasLoadedValues() && !config.containsExplicit(path);
+        config.addDefault(path, value);
+        if (materialize) config.set(path, value);
     }
 
     public static PKConfiguration getConfig() {

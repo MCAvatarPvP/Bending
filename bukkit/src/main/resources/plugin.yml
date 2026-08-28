@@ -104,6 +104,7 @@ permissions:
       bending.ability.AirShield: true
       bending.ability.AirSlash: true
       bending.ability.AirSpout: true
+      bending.ability.AirGlider: true
       bending.ability.AirSuction: true
       bending.ability.AirSwipe: true
       bending.ability.Suffocate: true
@@ -177,6 +178,8 @@ permissions:
       bending.ability.LavaFlow: true
       bending.ability.EarthSmash: true
       bending.ability.SandSpout: true
+      bending.ability.Sandstorm: true
+      bending.ability.SandSurge: true
       bending.ability.EarthCombo: true
   bending.fire:
     default: true

@@ -18,6 +18,7 @@ import net.minecraft.network.packet.s2c.play.EntityPositionS2CPacket;
 import net.minecraft.network.packet.s2c.play.EntityPositionSyncS2CPacket;
 import net.minecraft.network.packet.s2c.play.ExperienceBarUpdateS2CPacket;
 import net.minecraft.network.packet.s2c.play.PlayerAbilitiesS2CPacket;
+import net.minecraft.network.packet.s2c.play.PlaySoundS2CPacket;
 import net.minecraft.network.packet.s2c.play.UpdateSelectedSlotS2CPacket;
 import net.minecraft.util.math.BlockPos;
 import org.spongepowered.asm.mixin.Mixin;
@@ -64,6 +65,12 @@ public abstract class ClientPlayNetworkHandlerPredictionMixin {
         if (ExactPredictionRuntime.hasEntityAlias(packet.getEntityId())) { ci.cancel(); return; }
         if (!ExactPredictionRuntime.tracksVelocityEntity(packet.getEntityId())) return;
         if (ExactPredictionRuntime.authoritativeVelocity(packet.getEntityId(), packet.getVelocity())) ci.cancel();
+    }
+
+    @Inject(method = "onPlaySound", at = @At("HEAD"), cancellable = true)
+    private void projectkorra$suppressPredictedSoundEcho(PlaySoundS2CPacket packet, CallbackInfo ci) {
+        if (MinecraftClient.getInstance().isOnThread()
+                && ExactPredictionRuntime.suppressAuthoritativeSound(packet)) ci.cancel();
     }
 
     @Inject(method = "onPlayerAbilities", at = @At("HEAD"), cancellable = true)
@@ -119,6 +126,13 @@ public abstract class ClientPlayNetworkHandlerPredictionMixin {
     private void projectkorra$suppressAliasedEntityData(EntityTrackerUpdateS2CPacket packet, CallbackInfo ci) {
         if (MinecraftClient.getInstance().isOnThread()
                 && ExactPredictionRuntime.suppressAuthoritativeEntityData(packet.id())) ci.cancel();
+    }
+
+    @Inject(method = "onEntityTrackerUpdate", at = @At("TAIL"))
+    private void projectkorra$restorePredictedGliding(EntityTrackerUpdateS2CPacket packet, CallbackInfo ci) {
+        if (MinecraftClient.getInstance().isOnThread()) {
+            ExactPredictionRuntime.reassertPredictedGliding(packet.id());
+        }
     }
 
     @Inject(method = "onBlockBreakingProgress", at = @At("HEAD"), cancellable = true)

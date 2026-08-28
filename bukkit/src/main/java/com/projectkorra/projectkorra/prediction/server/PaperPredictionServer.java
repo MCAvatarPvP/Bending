@@ -21,6 +21,7 @@ import com.projectkorra.projectkorra.prediction.hit.HitRegistrationPolicy;
 import com.projectkorra.projectkorra.prediction.movement.VelocitySync;
 import com.projectkorra.projectkorra.prediction.state.AbilityCheckpointSync;
 import com.projectkorra.projectkorra.prediction.state.AbilityStateSync;
+import com.projectkorra.projectkorra.prediction.state.GlidingStateSync;
 import com.projectkorra.projectkorra.prediction.state.CooldownSync;
 import com.projectkorra.projectkorra.prediction.state.PlayerStatusSync;
 
@@ -33,6 +34,8 @@ import com.projectkorra.projectkorra.ability.util.ComboManager;
 import com.projectkorra.projectkorra.ability.util.MultiAbilityManager;
 import com.projectkorra.projectkorra.ability.util.PassiveManager;
 import com.projectkorra.projectkorra.firebending.FireBlastCharged;
+import com.projectkorra.projectkorra.airbending.AirBurst;
+import com.projectkorra.projectkorra.airbending.AirGlider;
 import com.projectkorra.projectkorra.earthbending.EarthSmash;
 import com.projectkorra.projectkorra.listener.CommonInputHandler;
 import com.projectkorra.projectkorra.platform.bukkit.BukkitMC;
@@ -66,7 +69,8 @@ import java.util.function.Supplier;
 public final class PaperPredictionServer implements PluginMessageListener, Runnable, TempBlockSync.Listener,
         TempFallingBlockSync.Listener, CooldownSync.Listener, VelocitySync.Listener,
         AbilityRemovalSync.Listener, DirectBlockSync.Listener,
-        AbilityStateSync.Listener, AbilityCheckpointSync.Listener, PlayerStatusSync.Listener {
+        AbilityStateSync.Listener, GlidingStateSync.Listener,
+        AbilityCheckpointSync.Listener, PlayerStatusSync.Listener {
     public static final int MAX_REWIND_TICKS = 12;
     private static final int CAPABILITY_EXACT = 8;
     private static final int TEMP_BLOCK_OPS_PER_PACKET = 4;
@@ -116,6 +120,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         TempFallingBlockSync.install(server);
         VelocitySync.install(server);
         AbilityStateSync.install(server);
+        GlidingStateSync.install(server);
         AbilityCheckpointSync.install(server);
         AbilityRemovalSync.install(server);
         CooldownSync.install(server);
@@ -373,8 +378,10 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                 .filter(ability -> !ability.isRemoved() && ability.getPlayer() != null
                         && playerId.equals(ability.getPlayer().getUniqueId()))
                 .map(CoreAbility::getName)
-                .filter(name -> name.equalsIgnoreCase("AirScooter") || name.equalsIgnoreCase("AirSpout")
-                        || name.equalsIgnoreCase("WaterSpout") || name.equalsIgnoreCase("FireJet")
+        .filter(name -> name.equalsIgnoreCase("AirScooter") || name.equalsIgnoreCase("AirSpout")
+                        || name.equalsIgnoreCase("WaterSpout") || name.equalsIgnoreCase("SandSpout")
+                        || name.equalsIgnoreCase("AirGlider")
+                        || name.equalsIgnoreCase("FireJet")
                         || name.equalsIgnoreCase("Flight"))
                 .map(name -> name.toLowerCase(Locale.ROOT)).distinct().sorted().toList();
     }
@@ -475,6 +482,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         TempFallingBlockSync.clear(this);
         VelocitySync.clear(this);
         AbilityStateSync.clear(this);
+        GlidingStateSync.clear(this);
         AbilityCheckpointSync.clear(this);
         AbilityRemovalSync.clear(this);
         CooldownSync.clear(this);
@@ -510,11 +518,13 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.VELOCITY_OWNER);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.VELOCITY_OWNER_V2);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.ABILITY_STATE_OWNER);
+        messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.GLIDING_STATE_OWNER);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.TEMP_FALLING_BLOCK);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.TEMP_FALLING_BLOCK_PREPARE);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.DIRECT_BLOCK);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.ABILITY_REMOVED);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.ABILITY_TRANSFER);
+        messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.AIR_GLIDER_STATE);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.STATE_DIRECTIVE);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.COOLDOWN_SYNC);
     }
@@ -637,6 +647,8 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                 if (player != null) {
                     sendWorldState(player, session);
                     sendTempBlockSnapshot(player, session);
+                    final AirGlider glider = CoreAbility.getAbility(BukkitMC.player(player), AirGlider.class);
+                    if (glider != null && !glider.isRemoved()) sendAirGliderState(player, glider, null);
                 }
             }
         }
@@ -676,6 +688,11 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             abilityCreationActions.putIfAbsent(ability, action);
             return action;
         }
+        // Fall AirBurst is created by the authoritative fall-damage event,
+        // not by a native input the Fabric client can replay. Associating it
+        // with an older AirBurst input by name hides Paper's particles and
+        // sound from the exact client even though no local fall burst exists.
+        if (ability instanceof AirBurst burst && burst.isFallBurst()) return null;
         List<Action> recent = new ArrayList<>(session.actions.values());
         // Long-lived abilities (notably PhaseChange) can emit TempBlocks well
         // after the old four-tick fallback. Keep an exact owner + ability-name
@@ -1038,6 +1055,29 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     }
 
     @Override
+    public void beforeWrite(final CoreAbility ability,
+                            final com.projectkorra.projectkorra.platform.mc.entity.Player target,
+                            final boolean gliding) {
+        if (target == null) return;
+        final UUID targetId = target.getUniqueId();
+        final UUID contextualOwner = EFFECT_OWNER.get();
+        final UUID ownerId = ability != null && ability.getPlayer() != null
+                ? ability.getPlayer().getUniqueId()
+                : contextualOwner == null ? targetId : contextualOwner;
+        Action action = currentInputAction(ownerId);
+        if (action == null && ability != null) action = actionForEffect(ability);
+        if (action == null || !action.owner.equals(ownerId)) return;
+        final Session targetSession = sessions.get(targetId);
+        final Player nativeTarget = Bukkit.getPlayer(targetId);
+        if (targetSession == null || nativeTarget == null
+                || (targetSession.capabilities & CAPABILITY_EXACT) == 0) return;
+        final int ordinal = action.glidingStateOrdinals.merge(targetId, 1, Integer::sum);
+        send(nativeTarget, PaperPredictionProtocol.GLIDING_STATE_OWNER,
+                PaperPredictionProtocol.glidingStateOwner(tick, action.sequence, ordinal,
+                        ownerId, targetId, ability == null ? action.ability : ability.getName(), gliding));
+    }
+
+    @Override
     public void onRemoved(CoreAbility ability, boolean externallyCaused) {
         onRemoved(ability, externallyCaused, false);
     }
@@ -1098,12 +1138,20 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
 
     @Override
     public void onCheckpoint(final CoreAbility ability) {
-        if (!(ability instanceof EarthSmash smash) || ability.getPlayer() == null) return;
+        if (ability == null || ability.getPlayer() == null) return;
         final UUID playerId = ability.getPlayer().getUniqueId();
-        final Action checkpointAction = abilityActions.getOrDefault(
+        Action checkpointAction = currentInputAction(playerId);
+        if (checkpointAction == null) checkpointAction = abilityActions.getOrDefault(
                 ability, abilityCreationActions.get(ability));
         final Session session = sessions.get(playerId);
         final Player player = Bukkit.getPlayer(playerId);
+        if (ability instanceof AirGlider glider) {
+            if (checkpointAction == null || session == null || !session.ready || player == null
+                    || (session.capabilities & CAPABILITY_EXACT) == 0) return;
+            sendAirGliderState(player, glider, checkpointAction);
+            return;
+        }
+        if (!(ability instanceof EarthSmash smash)) return;
         final EarthSmash.PredictionTransfer checkpoint = smash.capturePredictionTransfer();
         if (checkpointAction == null || checkpoint == null || session == null || !session.ready
                 || player == null || (session.capabilities & CAPABILITY_EXACT) == 0) return;
@@ -1116,6 +1164,19 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         if (cooldownUntil > System.currentTimeMillis()) {
             sendDirective(bending, "", ability.getName(), cooldownUntil, false, Double.NaN);
         }
+    }
+
+    private void sendAirGliderState(final Player player, final AirGlider glider,
+                                    final Action preferredAction) {
+        if (player == null || glider == null || glider.isRemoved()) return;
+        final Session session = sessions.get(player.getUniqueId());
+        if (session == null || !session.ready || (session.capabilities & CAPABILITY_EXACT) == 0) return;
+        final Action action = preferredAction != null ? preferredAction
+                : abilityActions.getOrDefault(glider, abilityCreationActions.get(glider));
+        final AirGlider.PredictionState state = glider.capturePredictionState();
+        if (action == null || state == null) return;
+        send(player, PaperPredictionProtocol.AIR_GLIDER_STATE,
+                PaperPredictionProtocol.airGliderState(player.getUniqueId(), tick, action.sequence, state));
     }
 
     private void sendEarthSmashState(final Player player, final EarthSmash smash,
@@ -1454,10 +1515,20 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                 }
             }
         }
+        if (abilityName.equalsIgnoreCase("AirGlider")) {
+            for (CoreAbility candidate : CoreAbility.getAbilitiesByInstances()) {
+                if (candidate instanceof AirGlider
+                        && !candidate.isRemoved() && candidate.getPlayer() != null
+                        && candidate.getPlayer().getUniqueId().equals(player.getUniqueId())) {
+                    abilityActions.put(candidate, action);
+                    onCheckpoint(candidate);
+                }
+            }
+        }
         action.locallyPredicted = createdAnyAbility || trackingResult.handled()
                 || action.tempBlockOrdinal > 0 || action.tempFallingBlockOrdinal > 0
                 || !action.directBlockOrdinals.isEmpty() || !action.velocityOrdinals.isEmpty()
-                || !action.abilityStateOrdinals.isEmpty();
+                || !action.abilityStateOrdinals.isEmpty() || !action.glidingStateOrdinals.isEmpty();
         flushTempBlocks();
         // Every path here is a supported client-predicted native event. Its
         // common runtime already started (or deliberately did not start) the
@@ -1936,6 +2007,8 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         return ability != null && (ability.equalsIgnoreCase("AirScooter")
                 || ability.equalsIgnoreCase("AirSpout")
                 || ability.equalsIgnoreCase("WaterSpout")
+                || ability.equalsIgnoreCase("SandSpout")
+                || ability.equalsIgnoreCase("AirGlider")
                 || ability.equalsIgnoreCase("FireJet")
                 || ability.equalsIgnoreCase("Flight"));
     }
@@ -2037,6 +2110,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         final long deterministicSeed;
         final Map<UUID, Integer> velocityOrdinals = new HashMap<>();
         final Map<UUID, Integer> abilityStateOrdinals = new HashMap<>();
+        final Map<UUID, Integer> glidingStateOrdinals = new HashMap<>();
         final Map<String, Integer> directBlockOrdinals = new HashMap<>();
         final Map<UUID, Claim> claims = new HashMap<>();
         long clientSequence;

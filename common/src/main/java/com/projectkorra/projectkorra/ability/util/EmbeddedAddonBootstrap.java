@@ -5,6 +5,7 @@ import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.platform.Platform;
 import me.literka.ChiRework;
+import me.macieq.FloorIsLava;
 import me.moros.hyperion.Hyperion;
 import me.simplicitee.project.addons.ProjectAddons;
 
@@ -16,6 +17,7 @@ public final class EmbeddedAddonBootstrap {
     private static JedCore jedCore;
     private static ProjectAddons projectAddons;
     private static ChiRework chiRework;
+    private static FloorIsLava molten;
 
     private EmbeddedAddonBootstrap() {
     }
@@ -26,9 +28,11 @@ public final class EmbeddedAddonBootstrap {
             jedCore = new JedCore();
             projectAddons = new ProjectAddons();
             chiRework = new ChiRework();
+            molten = new FloorIsLava();
             tryEnable("JedCore", jedCore::onEnable);
             tryEnable("ProjectAddons", projectAddons::onEnable);
             tryEnable("ChiRework", chiRework::onEnable);
+            tryEnable("Molten", molten::onEnable);
             tryEnable("Hyperion", Hyperion::enable);
         }
         // CoreAbility.registerAbilities clears the registry on reload and on a
@@ -41,6 +45,7 @@ public final class EmbeddedAddonBootstrap {
         tryEnable("Hyperion abilities", () -> CoreAbility.registerPluginAbilities(Hyperion.getPlugin(), "me.moros.hyperion.abilities"));
         tryEnable("ProjectAddons abilities", () -> CoreAbility.registerPluginAbilities(projectAddons, "me.simplicitee.project.addons.ability"));
         tryEnable("ChiRework abilities", () -> CoreAbility.registerPluginAbilities(chiRework, "me.literka.abilities"));
+        tryEnable("Molten abilities", () -> CoreAbility.registerPluginAbilities(molten, "me.macieq.abilities"));
     }
 
     public static synchronized void disable() {
@@ -48,6 +53,7 @@ public final class EmbeddedAddonBootstrap {
         tryEnable("JedCore shutdown", jedCore::onDisable);
         tryEnable("ProjectAddons shutdown", projectAddons::onDisable);
         tryEnable("ChiRework shutdown", chiRework::onDisable);
+        tryEnable("Molten shutdown", molten::onDisable);
         tryEnable("Hyperion shutdown", Hyperion::disable);
         // The common event bridge owns registrations by the embedded plugin
         // object. Some upstream onDisable implementations never unregister
@@ -55,10 +61,12 @@ public final class EmbeddedAddonBootstrap {
         tryEnable("JedCore listener shutdown", () -> Platform.events().unregisterAll(jedCore));
         tryEnable("ProjectAddons listener shutdown", () -> Platform.events().unregisterAll(projectAddons));
         tryEnable("ChiRework listener shutdown", () -> Platform.events().unregisterAll(chiRework));
+        tryEnable("Molten listener shutdown", () -> Platform.events().unregisterAll(molten));
         tryEnable("Hyperion listener shutdown", () -> Platform.events().unregisterAll(Hyperion.getPlugin()));
         jedCore = null;
         projectAddons = null;
         chiRework = null;
+        molten = null;
         enabled = false;
     }
 

@@ -3,6 +3,7 @@ package com.projectkorra.projectkorra.prediction.protocol;
 import com.projectkorra.projectkorra.prediction.authority.RegionProtectionAuthority;
 
 import com.projectkorra.projectkorra.earthbending.EarthSmash;
+import com.projectkorra.projectkorra.airbending.AirGlider;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
@@ -15,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Raw Bukkit plugin-message codec matching Fabric's RegistryByteBuf layout.
  */
 public final class PaperPredictionProtocol {
-    public static final int VERSION = 49;
+    public static final int VERSION = 50;
     public static final int MAX_BLOCK_STATE_CHARACTERS = 512;
     private static final int MAX_CACHED_BLOCK_STATES = 4_096;
     private static final Map<String, byte[]> BLOCK_STATE_UTF8 = new ConcurrentHashMap<>();
@@ -35,11 +36,13 @@ public final class PaperPredictionProtocol {
     public static final String VELOCITY_OWNER = "projectkorra:velocity_owner";
     public static final String VELOCITY_OWNER_V2 = "projectkorra:velocity_owner_v2";
     public static final String ABILITY_STATE_OWNER = "projectkorra:ability_state_owner";
+    public static final String GLIDING_STATE_OWNER = "projectkorra:gliding_state_owner";
     public static final String TEMP_FALLING_BLOCK = "projectkorra:temp_falling_block";
     public static final String TEMP_FALLING_BLOCK_PREPARE = "projectkorra:temp_falling_prepare";
     public static final String DIRECT_BLOCK = "projectkorra:direct_block";
     public static final String ABILITY_REMOVED = "projectkorra:ability_removed";
     public static final String ABILITY_TRANSFER = "projectkorra:ability_transfer";
+    public static final String AIR_GLIDER_STATE = "projectkorra:air_glider_state";
     public static final String STATE_DIRECTIVE = "projectkorra:state_directive";
     public static final String COOLDOWN_SYNC = "projectkorra:cooldown_sync";
 
@@ -249,6 +252,14 @@ public final class PaperPredictionProtocol {
                 .bool(flying).bool(allowFlight).f32(flySpeed).bytes();
     }
 
+    public static byte[] glidingStateOwner(final long serverTick, final long actionSequence,
+                                           final int mutationOrdinal, final UUID abilityOwner,
+                                           final UUID target, final String ability,
+                                           final boolean gliding) {
+        return new Writer().i64(serverTick).varLong(actionSequence).varInt(mutationOrdinal)
+                .uuid(abilityOwner).uuid(target).string(ability, 128).bool(gliding).bytes();
+    }
+
     public static byte[] tempFallingBlock(long serverTick, long actionSequence, int spawnOrdinal,
                                    UUID abilityOwner, int serverEntityId, String ability) {
         return new Writer().i64(serverTick).varLong(actionSequence).varInt(spawnOrdinal)
@@ -303,6 +314,17 @@ public final class PaperPredictionProtocol {
                     .string(block.material(), MAX_BLOCK_STATE_CHARACTERS);
         }
         return out.bytes();
+    }
+
+    public static byte[] airGliderState(final UUID player, final long serverTick,
+                                        final long actionSequence,
+                                        final AirGlider.PredictionState state) {
+        return new Writer().uuid(player).i64(serverTick).varLong(actionSequence)
+                .string(state.state().name(), 32).varInt(state.stateTicks())
+                .bool(state.stalled()).varInt(state.stallTicks()).varInt(state.recoveryTicks())
+                .varLong(state.transitionRevision())
+                .f64(state.velocityX()).f64(state.velocityY()).f64(state.velocityZ())
+                .bool(state.gliding()).bool(state.previousGlidingState()).bytes();
     }
 
     public static byte[] stateDirective(UUID session, String removedCooldown, String addedCooldown,

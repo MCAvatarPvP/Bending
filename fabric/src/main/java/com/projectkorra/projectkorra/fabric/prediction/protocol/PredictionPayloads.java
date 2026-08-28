@@ -15,7 +15,7 @@ import java.util.UUID;
 
 /** Wire contract used by the Fabric client and the Paper/Fabric server endpoints. */
 public final class PredictionPayloads {
-    public static final int PROTOCOL_VERSION = 49;
+    public static final int PROTOCOL_VERSION = 50;
     public static final int MAX_BLOCK_STATE_CHARACTERS = 512;
     public static final int MAX_CONFIG_ENTRIES = 16_384;
     public static final int MAX_PROFILES = 2_048;
@@ -481,6 +481,25 @@ public final class PredictionPayloads {
         @Override public Id<AbilityStateOwner> getId() { return ID; }
     }
 
+    /** Ownership fence sent immediately before one native gliding-flag write. */
+    public record GlidingStateOwner(long serverTick, long actionSequence, int mutationOrdinal,
+                                    UUID abilityOwner, UUID target, String ability,
+                                    boolean gliding) implements CustomPayload {
+        public static final Id<GlidingStateOwner> ID = id("gliding_state_owner");
+        public static final PacketCodec<RegistryByteBuf, GlidingStateOwner> CODEC =
+                PacketCodec.of(GlidingStateOwner::write, GlidingStateOwner::new);
+        private GlidingStateOwner(final RegistryByteBuf buf) {
+            this(buf.readLong(), buf.readVarLong(), buf.readVarInt(), buf.readUuid(),
+                    buf.readUuid(), buf.readString(128), buf.readBoolean());
+        }
+        private void write(final RegistryByteBuf buf) {
+            buf.writeLong(serverTick); buf.writeVarLong(actionSequence); buf.writeVarInt(mutationOrdinal);
+            buf.writeUuid(abilityOwner); buf.writeUuid(target); buf.writeString(ability, 128);
+            buf.writeBoolean(gliding);
+        }
+        @Override public Id<GlidingStateOwner> getId() { return ID; }
+    }
+
     /** Exact ownership of one server TempFallingBlock, sent only to its caster. */
     public record TempFallingBlockPrepare(long serverTick, long actionSequence, int spawnOrdinal,
                                           UUID abilityOwner, String ability, String world,
@@ -617,6 +636,34 @@ public final class PredictionPayloads {
         @Override public Id<AbilityTransfer> getId() { return ID; }
     }
 
+    /** Sparse authoritative checkpoint for the locally simulated AirGlider. */
+    public record AirGliderState(UUID player, long serverTick, long actionSequence,
+                                 String state, int stateTicks, boolean stalled,
+                                 int stallTicks, int recoveryTicks, long transitionRevision,
+                                 double velocityX, double velocityY, double velocityZ,
+                                 boolean gliding, boolean previousGlidingState) implements CustomPayload {
+        public static final Id<AirGliderState> ID = id("air_glider_state");
+        public static final PacketCodec<RegistryByteBuf, AirGliderState> CODEC =
+                PacketCodec.of(AirGliderState::write, AirGliderState::new);
+
+        private AirGliderState(final RegistryByteBuf buf) {
+            this(buf.readUuid(), buf.readLong(), buf.readVarLong(), buf.readString(32),
+                    buf.readVarInt(), buf.readBoolean(), buf.readVarInt(), buf.readVarInt(),
+                    buf.readVarLong(), buf.readDouble(), buf.readDouble(), buf.readDouble(),
+                    buf.readBoolean(), buf.readBoolean());
+        }
+
+        private void write(final RegistryByteBuf buf) {
+            buf.writeUuid(player); buf.writeLong(serverTick); buf.writeVarLong(actionSequence);
+            buf.writeString(state, 32); buf.writeVarInt(stateTicks); buf.writeBoolean(stalled);
+            buf.writeVarInt(stallTicks); buf.writeVarInt(recoveryTicks); buf.writeVarLong(transitionRevision);
+            buf.writeDouble(velocityX); buf.writeDouble(velocityY); buf.writeDouble(velocityZ);
+            buf.writeBoolean(gliding); buf.writeBoolean(previousGlidingState);
+        }
+
+        @Override public Id<AirGliderState> getId() { return ID; }
+    }
+
     public static synchronized void registerTypes() {
         if (registered) return;
         registered = true;
@@ -638,11 +685,13 @@ public final class PredictionPayloads {
         PayloadTypeRegistry.playS2C().register(VelocityOwner.ID, VelocityOwner.CODEC);
         PayloadTypeRegistry.playS2C().register(VelocityOwnerV2.ID, VelocityOwnerV2.CODEC);
         PayloadTypeRegistry.playS2C().register(AbilityStateOwner.ID, AbilityStateOwner.CODEC);
+        PayloadTypeRegistry.playS2C().register(GlidingStateOwner.ID, GlidingStateOwner.CODEC);
         PayloadTypeRegistry.playS2C().register(TempFallingBlockPrepare.ID, TempFallingBlockPrepare.CODEC);
         PayloadTypeRegistry.playS2C().register(TempFallingBlockReceipt.ID, TempFallingBlockReceipt.CODEC);
         PayloadTypeRegistry.playS2C().register(DirectBlockReceipt.ID, DirectBlockReceipt.CODEC);
         PayloadTypeRegistry.playS2C().register(AbilityRemoved.ID, AbilityRemoved.CODEC);
         PayloadTypeRegistry.playS2C().register(AbilityTransfer.ID, AbilityTransfer.CODEC);
+        PayloadTypeRegistry.playS2C().register(AirGliderState.ID, AirGliderState.CODEC);
     }
 
     private static List<ConfigEntry> readConfig(RegistryByteBuf buf) {

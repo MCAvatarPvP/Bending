@@ -24,6 +24,11 @@ import com.projectkorra.projectkorra.util.ClickType;
 import hackathonpack.HackathonPackListener;
 import me.literka.ChiRework;
 import me.literka.abilities.*;
+import me.macieq.FloorIsLava;
+import me.macieq.abilities.Eruption;
+import me.macieq.abilities.LavaManipulation;
+import me.macieq.abilities.LavaWave;
+import me.macieq.abilities.MagmaShot;
 import me.moros.hyperion.Hyperion;
 import me.moros.hyperion.abilities.chiblocking.Smokescreen;
 import me.moros.hyperion.abilities.earthbending.*;
@@ -57,6 +62,47 @@ final class AddonAbilityActivationBootstrap {
         registerHackathonPack();
         registerToss();
         registerHyperion();
+        registerMolten();
+    }
+
+    private static void registerMolten() {
+        if (FloorIsLava.plugin == null) {
+            new FloorIsLava().onEnable();
+        } else {
+            CoreAbility.registerPluginAbilities(FloorIsLava.plugin, "me.macieq.abilities");
+        }
+
+        register("MagmaShot", ClickType.SHIFT_DOWN,
+                context -> canStart(context, MagmaShot.class, false) && created(new MagmaShot(context.getPlayer())));
+        register("MagmaShot", ClickType.LEFT_CLICK, context -> {
+            final MagmaShot shot = CoreAbility.getAbility(context.getPlayer(), MagmaShot.class);
+            if (shot == null) return false;
+            shot.onClick();
+            return true;
+        });
+
+        register("LavaWave", ClickType.SHIFT_DOWN,
+                context -> canStart(context, LavaWave.class) && created(new LavaWave(context.getPlayer())));
+        register("LavaWave", ClickType.LEFT_CLICK, context -> {
+            final LavaWave wave = CoreAbility.getAbility(context.getPlayer(), LavaWave.class);
+            if (wave == null) return false;
+            wave.onClick();
+            return true;
+        });
+
+        register("Eruption", ClickType.SHIFT_DOWN,
+                context -> canStart(context, Eruption.class, false) && created(new Eruption(context.getPlayer())));
+
+        register("LavaManipulation", ClickType.LEFT_CLICK, context -> {
+            final LavaManipulation manipulation = CoreAbility.getAbility(context.getPlayer(), LavaManipulation.class);
+            if (manipulation != null && manipulation.state != LavaManipulation.State.MONITOR) {
+                manipulation.onClick();
+                return true;
+            }
+            return context.getPlayer().isSneaking()
+                    && canStart(context, LavaManipulation.class, false)
+                    && created(new LavaManipulation(context.getPlayer()));
+        });
     }
 
     private static void registerHackathonPack() {

@@ -10,10 +10,12 @@
   "client": [
     "client.AreaEffectCloudEntityAccessor",
     "client.ClientConnectionMovementMixin",
+    "client.ClientPlayerAirGliderSoundMixin",
     "client.ClientPlayerInteractionManagerPredictionMixin",
     "client.ClientPlayNetworkHandlerMovementMixin",
     "client.ClientPlayNetworkHandlerPredictionMixin",
-    "client.ClientWorldPredictionAliasMixin"
+    "client.ClientWorldPredictionAliasMixin",
+    "client.LivingEntityAirGliderPredictionMixin"
   ],
   "injectors": {
     "defaultRequire": 1

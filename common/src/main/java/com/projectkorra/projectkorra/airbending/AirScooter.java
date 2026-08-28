@@ -95,6 +95,8 @@ public class AirScooter extends AirAbility {
 
         AirSpout spout = CoreAbility.getAbility(player, AirSpout.class);
         if (spout != null && disableSpout) spout.remove();
+        final AirGlider glider = CoreAbility.getAbility(player, AirGlider.class);
+        if (glider != null) glider.remove();
 
         boolean cancelBlast = getConfig().getBoolean(settings + ".CancelBlast");
         AirBlast blast = CoreAbility.getAbility(player, AirBlast.class);

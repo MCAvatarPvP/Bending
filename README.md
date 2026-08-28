@@ -70,6 +70,7 @@ with their original creators:
 - Hyperion — [Moros / PrimordialMoros](https://github.com/PrimordialMoros), with
   its existing copyright and GPL notices retained in source
 - ChiRework — Literka (code), Rakion and Magikas (concepts)
+- Molten — Macie_Q
 - Hackathon Pack abilities and Toss — Hiro3
 
 These acknowledgements supplement, and do not replace, the copyright, license,

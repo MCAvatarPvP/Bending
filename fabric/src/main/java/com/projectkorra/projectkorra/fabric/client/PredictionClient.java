@@ -134,6 +134,8 @@ public final class PredictionClient {
                 (payload, context) -> INSTANCE.onVelocityOwner(context.client(), payload));
         ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.AbilityStateOwner.ID,
                 (payload, context) -> INSTANCE.onAbilityStateOwner(context.client(), payload));
+        ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.GlidingStateOwner.ID,
+                (payload, context) -> INSTANCE.onGlidingStateOwner(context.client(), payload));
         ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.TempFallingBlockReceipt.ID,
                 (payload, context) -> INSTANCE.onTempFallingBlock(context.client(), payload));
         ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.TempFallingBlockPrepare.ID,
@@ -144,6 +146,8 @@ public final class PredictionClient {
                 (payload, context) -> INSTANCE.onAbilityRemoved(context.client(), payload));
         ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.AbilityTransfer.ID,
                 (payload, context) -> INSTANCE.onAbilityTransfer(context.client(), payload));
+        ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.AirGliderState.ID,
+                (payload, context) -> INSTANCE.onAirGliderState(context.client(), payload));
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> INSTANCE.onJoin(sender, client));
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> INSTANCE.reset(client));
         ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register(INSTANCE::onClientWorldChange);
@@ -927,6 +931,16 @@ public final class PredictionClient {
 
     private void onAbilityTransfer(MinecraftClient client, PredictionPayloads.AbilityTransfer transfer) {
         if (client.player != null) ExactPredictionRuntime.transferAuthoritativeAbility(client.player, transfer);
+    }
+
+    private void onGlidingStateOwner(final MinecraftClient client,
+                                     final PredictionPayloads.GlidingStateOwner owner) {
+        if (client.player != null) ExactPredictionRuntime.noteGlidingStateOwner(client.player, owner);
+    }
+
+    private void onAirGliderState(final MinecraftClient client,
+                                  final PredictionPayloads.AirGliderState state) {
+        if (client.player != null) ExactPredictionRuntime.applyAirGliderState(client.player, state);
     }
 
     private void tick(MinecraftClient client) {

@@ -51,6 +51,7 @@ import com.projectkorra.projectkorra.prediction.hit.HitRegistrationPolicy;
 import com.projectkorra.projectkorra.prediction.hit.PredictedContactSync;
 import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
 import com.projectkorra.projectkorra.prediction.movement.VelocitySync;
+import com.projectkorra.projectkorra.prediction.state.GlidingStateSync;
 import com.projectkorra.projectkorra.platform.model.PKAdapter;
 import com.projectkorra.projectkorra.platform.model.PKBlock;
 import com.projectkorra.projectkorra.platform.model.PKEntity;
@@ -283,8 +284,12 @@ public final class FabricPredictionMC {
             if (sound == null || sound.isBlank()) return;
             Identifier id = FabricMC.soundIdentifier(sound);
             if (id == null) return;
+            final net.minecraft.sound.SoundCategory nativeCategory =
+                    net.minecraft.sound.SoundCategory.valueOf(category.name());
+            ExactPredictionRuntime.notePredictedAirGliderSound(id, nativeCategory,
+                    location.getX(), location.getY(), location.getZ(), volume, pitch);
             value.playSoundClient(location.getX(), location.getY(), location.getZ(), SoundEvent.of(id),
-                    net.minecraft.sound.SoundCategory.valueOf(category.name()), volume, pitch, false);
+                    nativeCategory, volume, pitch, false);
         }
         @Override public void playEffect(Location location, Effect effect, int data) { playEffect(location, effect, Integer.valueOf(data)); }
         @Override public void playEffect(Location location, Effect effect, Object data) {
@@ -664,7 +669,13 @@ public final class FabricPredictionMC {
         @Override public boolean getAllowFlight() { return value.getAbilities().allowFlying; }
         @Override public void setAllowFlight(boolean allow) { if (!suppressRemoteMutation() && value.getAbilities().allowFlying != allow) { value.getAbilities().allowFlying = allow; noteAbilityState(); } }
         @Override public boolean isGliding() { return value.isGliding(); }
-        @Override public void setGliding(boolean gliding) { if (!suppressRemoteMutation()) { if (gliding) value.startGliding(); else value.stopGliding(); } }
+        @Override public void setGliding(boolean gliding) {
+            if (suppressRemoteMutation() || value.isGliding() == gliding) return;
+            GlidingStateSync.apply(AbilityExecutionContext.current(), this, gliding, () -> {
+                if (gliding) value.startGliding();
+                else value.stopGliding();
+            });
+        }
         @Override public float getFlySpeed() { return value.getAbilities().getFlySpeed() * 2; }
         @Override public void setFlySpeed(float speed) { if (!suppressRemoteMutation() && Float.compare(getFlySpeed(), speed) != 0) { value.getAbilities().setFlySpeed(speed / 2); noteAbilityState(); } }
         @Override public float getExp() { return value.experienceProgress; }

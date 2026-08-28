@@ -9,6 +9,7 @@ import com.projectkorra.projectkorra.board.BendingBoardManager;
 import com.projectkorra.projectkorra.command.Commands;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.earthbending.metal.MetalClips;
+import com.projectkorra.projectkorra.earthbending.sand.SandSpout;
 import com.projectkorra.projectkorra.event.PlayerJumpEvent;
 import com.projectkorra.projectkorra.firebending.passive.FirePassive;
 import com.projectkorra.projectkorra.object.Preset;
@@ -194,7 +195,9 @@ public final class CommonPlayerListenerCore {
                                                final boolean locallySimulated) {
         final boolean hasWaterSpout = CoreAbility.hasAbility(player, WaterSpout.class);
         final boolean hasAirSpout = CoreAbility.hasAbility(player, AirSpout.class);
-        if (!hasWaterSpout && !hasAirSpout) {
+        final SandSpout sandSpout = CoreAbility.getAbility(player, SandSpout.class);
+        final boolean hasSandSpout = sandSpout != null && sandSpout.isRiding();
+        if (!hasWaterSpout && !hasAirSpout && !hasSandSpout) {
             return false;
         }
 
@@ -202,16 +205,26 @@ public final class CommonPlayerListenerCore {
         final Vector horizontal = movement.clone().setY(0);
         final var config = bPlayer != null ? ConfigManager.getConfig(bPlayer) : ConfigManager.defaultConfig.get();
         double maxSpeed = Double.MAX_VALUE;
-        double airMaxSpeed = Double.MAX_VALUE;
+        double verticalMaxSpeed = Double.MAX_VALUE;
         if (hasWaterSpout) {
             maxSpeed = Math.min(maxSpeed, Math.max(0, config.getDouble("Abilities.Water.WaterSpout.FlightSpeed", 0.2)));
         }
         if (hasAirSpout) {
-            airMaxSpeed = Math.max(0, config.getDouble("Abilities.Air.AirSpout.FlightSpeed", 0.2));
-            maxSpeed = Math.min(maxSpeed, airMaxSpeed);
+            final double airSpeed = Math.max(0, config.getDouble("Abilities.Air.AirSpout.FlightSpeed", 0.2));
+            maxSpeed = Math.min(maxSpeed, airSpeed);
+            verticalMaxSpeed = Math.min(verticalMaxSpeed, airSpeed);
+        }
+        if (hasSandSpout) {
+            // SandSpout deliberately shares AirSpout's native flight controls
+            // and movement cap instead of maintaining a second control model.
+            final double spoutSpeed = Math.max(0,
+                    config.getDouble("Abilities.Air.AirSpout.FlightSpeed", 0.2));
+            maxSpeed = Math.min(maxSpeed, spoutSpeed);
+            verticalMaxSpeed = Math.min(verticalMaxSpeed, spoutSpeed);
         }
 
         final double upperMaxSpeed = maxSpeed + 0.05;
+        final boolean controlsVertical = hasAirSpout || hasSandSpout;
         // Vanilla flight reaches the server as position updates; Paper and a
         // dedicated Fabric server do not mirror that self-propelled movement
         // into Entity#getVelocity. Use observed displacement there only for
@@ -219,22 +232,22 @@ public final class CommonPlayerListenerCore {
         // horizontal correction must not feed observed ascent back into Y.
         // Exact client prediction has a real local velocity on every axis.
         final Vector cappedVelocity = SpoutMovementPolicy.initialVelocity(
-                hasAirSpout, locallySimulated, movement, player.getVelocity());
+                controlsVertical, locallySimulated, movement, player.getVelocity());
         final Vector horizontalVelocity = cappedVelocity.clone().setY(0);
         final boolean capHorizontal = horizontal.lengthSquared() > upperMaxSpeed * upperMaxSpeed
                 && horizontalVelocity.lengthSquared() > upperMaxSpeed * upperMaxSpeed;
-        final boolean capVertical = hasAirSpout
-                && Math.abs(movement.getY()) > airMaxSpeed + 0.01
-                && Math.abs(cappedVelocity.getY()) > airMaxSpeed + 0.01;
+        final boolean capVertical = controlsVertical
+                && Math.abs(movement.getY()) > verticalMaxSpeed + 0.01
+                && Math.abs(cappedVelocity.getY()) > verticalMaxSpeed + 0.01;
         if (capHorizontal || capVertical) {
             if (capHorizontal) {
                 horizontalVelocity.normalize().multiply(maxSpeed);
                 cappedVelocity.setX(horizontalVelocity.getX()).setZ(horizontalVelocity.getZ());
             }
             if (capVertical) {
-                cappedVelocity.setY(Math.copySign(airMaxSpeed, cappedVelocity.getY()));
+                cappedVelocity.setY(Math.copySign(verticalMaxSpeed, cappedVelocity.getY()));
             }
-            final CoreAbility owner = hasAirSpout
+            final CoreAbility owner = hasSandSpout ? sandSpout : hasAirSpout
                     ? CoreAbility.getAbility(player, AirSpout.class)
                     : CoreAbility.getAbility(player, WaterSpout.class);
             if (owner != null) {

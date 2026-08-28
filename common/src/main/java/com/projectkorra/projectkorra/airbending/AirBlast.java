@@ -736,6 +736,11 @@ public class AirBlast extends AirAbility {
     }
 
     @Override
+    public void remove() {
+        super.remove();
+    }
+
+    @Override
     public Location getLocation() {
         return this.location;
     }
