@@ -64,6 +64,8 @@ public class AirScooter extends AirAbility {
     private boolean oldScooter;
     private double phi = 0;
     private String removalReason = "external removal";
+    private double damageThreshold;
+    private double damageTaken = 0;
 
     public AirScooter(final Player player) {
         super(player);
@@ -121,6 +123,7 @@ public class AirScooter extends AirAbility {
         this.strength = getConfig().getDouble(settings + ".Strength", 0.15);
         this.useslime = getConfig().getBoolean(settings + ".ShowSitting");
         this.disableSprint = getConfig().getBoolean(settings + ".DisableSprint");
+        this.damageThreshold = getConfig().getDouble(settings + ".DamageThreshold");
         this.random = new Random();
 
         this.recalculateAttributes();
@@ -394,10 +397,13 @@ public class AirScooter extends AirAbility {
         return this.bPlayer.getAirBlastDecay() > this.decayMinimum;
     }
 
-    /**
-     *
-     * MAKE SUMMON SELF RECODE!!@!@#!@!@
-     */
+    public void onDamage(double damage) {
+        this.damageTaken += damage;
+        if (this.damageTaken >= damageThreshold) {
+            removalReason = "Damage threshold";
+            remove();
+        }
+    }
 
     /*
      * Updates the players flight, also adds the cooldown.

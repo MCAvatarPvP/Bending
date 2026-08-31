@@ -1163,6 +1163,7 @@ public class ConfigManager {
             config.addDefault("Abilities.Air.AirScooter.CancelOnHit", new ArrayList<>());
             config.addDefault("Abilities.Air.AirScooter.DisableSpout", false);
             config.addDefault("Abilities.Air.AirScooter.DisableSpeed", false);
+            config.addDefault("Abilities.Air.AirScooter.DamageThreshold", 3);
 
             config.addDefault("Abilities.Air.AirSurf.Enabled", true);
             config.addDefault("Abilities.Air.AirSurf.ShowSitting", false);
@@ -1188,6 +1189,7 @@ public class ConfigManager {
             config.addDefault("Abilities.Air.AirSurf.WindCharge.Radius", 1.2);
             config.addDefault("Abilities.Air.AirSurf.WindCharge.YOffset", 0.4);
             config.addDefault("Abilities.Air.AirSurf.WindCharge.AngularSpeed", 14.0);
+            config.addDefault("Abilities.Air.AirSurf.DamageThreshold", 3);
 
             config.addDefault("Abilities.Air.AirShield.Enabled", true);
             config.addDefault("Abilities.Air.AirShield.Cooldown", 0);

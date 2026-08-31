@@ -23,6 +23,7 @@ import com.projectkorra.projectkorra.firebending.FireShield;
 import com.projectkorra.projectkorra.firebending.combustion.Combustion;
 import com.projectkorra.projectkorra.firebending.util.FirebendingManager;
 import com.projectkorra.projectkorra.listener.AirGliderHitListener;
+import com.projectkorra.projectkorra.listener.AirScooterHitListener;
 import com.projectkorra.projectkorra.object.*;
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.mc.*;
@@ -1417,6 +1418,7 @@ public class GeneralMethods {
         // Native listeners remain registered by the active platform module.
         Platform.events().registerListener(new ComboListener(), ProjectKorra.plugin);
         Platform.events().registerListener(new AirGliderHitListener(), ProjectKorra.plugin);
+        Platform.events().registerListener(new AirScooterHitListener(), ProjectKorra.plugin);
         CoreAbility.registerAbilities(); //Register all abilities again
         EmbeddedAddonBootstrap.enable();
         AbilityActivationManager.reload();

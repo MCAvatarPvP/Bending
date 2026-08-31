@@ -216,7 +216,7 @@ public class Sandstorm extends SandAbility {
     @Override
     public void progress() {
         if (this.player.isDead() || !this.player.isOnline() || this.source == null
-                || !this.bPlayer.canBendIgnoreCooldowns(this) || !this.bPlayer.canBind(this)) {
+                || !this.bPlayer.canBendIgnoreBinds(this)) {
             this.remove();
             return;
         }
