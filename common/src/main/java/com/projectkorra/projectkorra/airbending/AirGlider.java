@@ -173,9 +173,9 @@ public class AirGlider extends AirAbility {
         this.crashCooldown = getConfig().getLong(path + "CrashCooldown", 3000L);
         this.staminaMinimum = getConfig().getDouble("Abilities.Air.AirBlast.DecayMinimum", 0.2);
         this.deployCost = getConfig().getDouble(path + "DeployCost", 0.05);
-        this.poweredDrain = getConfig().getDouble(path + "Glide.PoweredStaminaDrain", 0.12);
-        this.poweredTurnDrain = getConfig().getDouble(path + "Glide.PoweredTurnStaminaDrain", 0.08);
-        this.maximumVelocity = getConfig().getDouble(path + "Glide.MaximumVelocity", 1.35);
+        this.poweredDrain = getConfig().getDouble(path + "Glide.PoweredStaminaDrain", 0.0);
+        this.poweredTurnDrain = getConfig().getDouble(path + "Glide.PoweredTurnStaminaDrain", 0.0);
+        this.maximumVelocity = getConfig().getDouble(path + "Glide.MaximumVelocity", 1.55);
         this.foldLockTicks = Math.max(1, getConfig().getInt(path + "Glide.FoldLockTicks", 6));
         this.modelDeployTicks = Math.max(1, getConfig().getInt(path + "Model.Animation.DeployTicks", 8));
         this.modelOrientationSmoothing = (float) Math.max(0.05, Math.min(1.0,
@@ -193,19 +193,19 @@ public class AirGlider extends AirAbility {
         this.windSoundIntervalTicks = Math.max(5,
                 getConfig().getInt(path + "Sound.WindIntervalTicks", 11));
         this.physics = new AirGliderPhysics.Settings(
-                getConfig().getDouble(path + "Glide.StraightDrag", 0.992),
-                getConfig().getDouble(path + "Glide.Gravity", 0.045),
-                getConfig().getDouble(path + "Glide.MinimumAirspeed", 0.28),
-                getConfig().getDouble(path + "Glide.FullLiftAirspeed", 0.65),
+                getConfig().getDouble(path + "Glide.StraightDrag", 1.008),
+                getConfig().getDouble(path + "Glide.Gravity", 0.035),
+                getConfig().getDouble(path + "Glide.MinimumAirspeed", 0.24),
+                getConfig().getDouble(path + "Glide.FullLiftAirspeed", 0.70),
                 getConfig().getDouble(path + "Glide.MaximumCoastLift", 0.035),
-                getConfig().getDouble(path + "Glide.PoweredLift", 0.025),
-                getConfig().getDouble(path + "Glide.CoastTurnDegrees", 5.0),
-                getConfig().getDouble(path + "Glide.PoweredTurnDegrees", 8.0),
-                getConfig().getDouble(path + "Glide.TurnDragPerDegree", 0.0015),
-                getConfig().getDouble(path + "Glide.StallLiftFactor", 0.15),
-                getConfig().getDouble(path + "Glide.HorizontalAcceleration", 0.035),
-                getConfig().getDouble(path + "Glide.DiveAcceleration", 0.05),
-                getConfig().getDouble(path + "Glide.DescentConversion", 0.10),
+                getConfig().getDouble(path + "Glide.PoweredLift", 0.012),
+                getConfig().getDouble(path + "Glide.CoastTurnDegrees", 9.0),
+                getConfig().getDouble(path + "Glide.PoweredTurnDegrees", 13.0),
+                getConfig().getDouble(path + "Glide.TurnDragPerDegree", 0.0012),
+                getConfig().getDouble(path + "Glide.StallLiftFactor", 0.12),
+                getConfig().getDouble(path + "Glide.HorizontalAcceleration", 0.022),
+                getConfig().getDouble(path + "Glide.DiveAcceleration", 0.065),
+                getConfig().getDouble(path + "Glide.DescentConversion", 0.55),
                 this.maximumVelocity);
     }
 

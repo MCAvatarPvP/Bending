@@ -233,6 +233,7 @@ public class AirSweep extends AirAbility implements ComboAbility {
                         1L
                 );
                 this.tasks.add(stream);
+                this.previousStreamLocations.put(stream, hand.clone());
             }
         }
         this.manageAirVectors();
@@ -277,27 +278,25 @@ public class AirSweep extends AirAbility implements ComboAbility {
     }
 
     /**
-     * Normalized interpolation produces stable, ordered directions between
-     * the two captured sweep edges. Slight extrapolation around the midpoint
-     * widens the visual fan without adding more streams.
+     * Spherical interpolation keeps neighboring streams separated by a
+     * constant angle. Normalized linear interpolation bunches streams at the
+     * edges of a wide sweep and can collapse completely when the captured
+     * directions are opposite.
+     *
+     * Slight extrapolation around the midpoint widens the visual fan without
+     * adding more streams.
      */
     private Vector interpolateFanDirection(
             final Vector startDirection,
             final Vector endDirection,
             final double progress
     ) {
-        final double widenedProgress = 0.5
-                + (progress - 0.5) * FAN_WIDTH_MULTIPLIER;
-
-        final Vector result = startDirection.clone()
-                .multiply(1.0 - widenedProgress)
-                .add(endDirection.clone().multiply(widenedProgress));
-
-        if (result.length() <= 1.0E-9) {
-            return startDirection.clone();
-        }
-
-        return result.normalize();
+        return AirSweepFan.interpolateDirection(
+                startDirection,
+                endDirection,
+                progress,
+                FAN_WIDTH_MULTIPLIER
+        );
     }
 
     public void manageAirVectors() {
