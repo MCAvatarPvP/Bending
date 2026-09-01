@@ -5,6 +5,9 @@ import com.projectkorra.projectkorra.ability.PassiveAbility;
 import com.projectkorra.projectkorra.earthbending.EarthSmash;
 import com.projectkorra.projectkorra.event.AbilityCollisionEvent;
 import com.projectkorra.projectkorra.prediction.action.AbilityRemovalSync;
+import com.projectkorra.projectkorra.prediction.combat.AirFireCombat;
+import com.projectkorra.projectkorra.prediction.combat.SweptSphereContact;
+import com.projectkorra.projectkorra.prediction.hit.HitRegistrationPolicy;
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.World;
@@ -30,7 +33,7 @@ import java.util.*;
  * cancelled, abilityFirst.handleCollision, and finally
  * abilitySecond.handleCollision.
  */
-public class CollisionManager {
+public class CollisionManager implements AirFireCombat.ReactiveCollisionPolicy {
 
     private static final int LBVH_PAIR_THRESHOLD = 128;
     private final HashMap<String, Collision> collisionLookup;
@@ -38,6 +41,8 @@ public class CollisionManager {
     private final HashMap<CoreAbility, List<Location>> locationsCache;
     private final HashMap<Class<? extends CoreAbility>, List<CollisionEntry>> entriesCache;
     private final HashMap<Class<? extends CoreAbility>, LBVH> indexCache;
+    private final IdentityHashMap<CoreAbility, ArrayDeque<AbilityFrame>> reactiveHistory;
+    private long collisionTick;
     /*
      * If true an ability instance can remove multiple other instances on a
      * single tick. e.g. 3 Colliding WaterManipulations can all be removed
@@ -69,6 +74,7 @@ public class CollisionManager {
         this.locationsCache = new HashMap<CoreAbility, List<Location>>();
         this.entriesCache = new HashMap<Class<? extends CoreAbility>, List<CollisionEntry>>();
         this.indexCache = new HashMap<Class<? extends CoreAbility>, LBVH>();
+        this.reactiveHistory = new IdentityHashMap<>();
     }
 
     private static boolean isEarthSmashCollision(final Collision collision) {
@@ -76,7 +82,9 @@ public class CollisionManager {
     }
 
     private static long collisionPairKey(final CoreAbility first, final CoreAbility second) {
-        return ((long) first.getId() << 32) ^ (second.getId() & 0xffffffffL);
+        final int low = Math.min(first.getId(), second.getId());
+        final int high = Math.max(first.getId(), second.getId());
+        return ((long) low << 32) ^ (high & 0xffffffffL);
     }
 
     private static String collisionKey(final Class<? extends CoreAbility> first, final Class<? extends CoreAbility> second) {
@@ -86,6 +94,7 @@ public class CollisionManager {
     }
 
     public void detectCollisions() {
+        this.collisionTick++;
         int activeInstanceCount = 0;
 
         for (final CoreAbility ability : CoreAbility.getAbilitiesByInstances()) {
@@ -96,13 +105,14 @@ public class CollisionManager {
             }
         }
 
-        if (activeInstanceCount <= 1) {
-            return;
-        }
-
         this.locationsCache.clear();
         this.entriesCache.clear();
         this.indexCache.clear();
+
+        if (activeInstanceCount <= 1) {
+            this.captureReactiveHistory();
+            return;
+        }
 
         for (final Collision collision : this.collisions) {
             final Class<? extends CoreAbility> classFirst = collision.getAbilityFirst().getClass();
@@ -119,8 +129,14 @@ public class CollisionManager {
             final HashSet<Long> checkedPairs = new HashSet<Long>();
             final long possiblePairCount = (long) entriesFirst.size() * (long) entriesSecond.size();
 
+            if (isReactivePair(collision)) {
+                this.detectReactive(entriesFirst, entriesSecond,
+                        alreadyCollided, checkedPairs);
+                continue;
+            }
+
             if (possiblePairCount <= LBVH_PAIR_THRESHOLD) {
-                this.detectDirect(collision, entriesFirst, entriesSecond, alreadyCollided, checkedPairs);
+                this.detectDirect(entriesFirst, entriesSecond, alreadyCollided, checkedPairs);
                 continue;
             }
 
@@ -137,15 +153,113 @@ public class CollisionManager {
                 secondIndex.query(entryFirst, candidates);
 
                 for (final CollisionEntry entrySecond : candidates) {
-                    if (this.tryCollide(collision, entryFirst, entrySecond, alreadyCollided, checkedPairs) && !this.removeMultipleInstances) {
+                    if (this.tryCollide(entryFirst, entrySecond, alreadyCollided, checkedPairs) && !this.removeMultipleInstances) {
                         break;
                     }
                 }
             }
         }
+        this.captureReactiveHistory();
     }
 
-    private void detectDirect(final Collision collision, final List<CollisionEntry> entriesFirst, final List<CollisionEntry> entriesSecond, final HashSet<CoreAbility> alreadyCollided, final HashSet<Long> checkedPairs) {
+    private static boolean isReactivePair(final Collision collision) {
+        return collision != null
+                && AirFireCombat.isTimelineManaged(collision.getAbilityFirst())
+                && AirFireCombat.isTimelineManaged(collision.getAbilitySecond());
+    }
+
+    @Override
+    public boolean participates(final CoreAbility ability) {
+        if (ability == null) return false;
+        final Class<? extends CoreAbility> type = ability.getClass();
+        for (final Collision collision : this.collisions) {
+            if (!isAirFireTemplate(collision)) continue;
+            if (collision.getAbilityFirst().getClass() == type
+                    || collision.getAbilitySecond().getClass() == type) return true;
+        }
+        return false;
+    }
+
+    @Override
+    public boolean canBeRemoved(final CoreAbility ability) {
+        if (ability == null) return false;
+        final Class<? extends CoreAbility> type = ability.getClass();
+        for (final Collision collision : this.collisions) {
+            if (!isAirFireTemplate(collision)) continue;
+            if ((collision.getAbilityFirst().getClass() == type
+                    && collision.isRemovingFirst())
+                    || (collision.getAbilitySecond().getClass() == type
+                    && collision.isRemovingSecond())) return true;
+        }
+        return false;
+    }
+
+    private static boolean isAirFireTemplate(final Collision collision) {
+        return collision != null
+                && HitRegistrationPolicy.forAbility(collision.getAbilityFirst())
+                == HitRegistrationPolicy.SERVER_CURRENT
+                && HitRegistrationPolicy.forAbility(collision.getAbilitySecond())
+                == HitRegistrationPolicy.SERVER_CURRENT;
+    }
+
+    /**
+     * Resolves every registered Air/Fire pair on one aligned simulation tick.
+     * A late ability uses its current replay state against the other ability's
+     * retained frame; no ability names or attack/shield roles are encoded here.
+     */
+    private void detectReactive(final List<CollisionEntry> entriesFirst,
+                                final List<CollisionEntry> entriesSecond,
+                                final HashSet<CoreAbility> alreadyCollided,
+                                final HashSet<Long> checkedPairs) {
+        final HashMap<Long, CollisionCandidate> earliest = new HashMap<>();
+        for (final CollisionEntry currentFirst : entriesFirst) {
+            for (final CollisionEntry currentSecond : entriesSecond) {
+                if (currentFirst.ability == currentSecond.ability
+                        || currentFirst.playerId.equals(currentSecond.playerId)) continue;
+                final long alignedTick = Math.min(currentFirst.timelineTick,
+                        currentSecond.timelineTick);
+                final CollisionEntry first = this.atTimelineTick(currentFirst, alignedTick);
+                final CollisionEntry second = this.atTimelineTick(currentSecond, alignedTick);
+                if (first == null || second == null || first.world != second.world
+                        || !first.intersectsBounds(second)) continue;
+
+                final double contact = SweptSphereContact.firstContact(
+                        first.previousX, first.previousY, first.previousZ,
+                        first.x, first.y, first.z,
+                        second.previousX, second.previousY, second.previousZ,
+                        second.x, second.y, second.z,
+                        first.radius + second.radius);
+                if (Double.isNaN(contact)) continue;
+                final long pair = collisionPairKey(first.ability, second.ability);
+                final CollisionCandidate prior = earliest.get(pair);
+                if (prior == null || contact < prior.contactFraction) {
+                    earliest.put(pair, new CollisionCandidate(first, second, contact));
+                }
+            }
+        }
+
+        final ArrayList<CollisionCandidate> ordered = new ArrayList<>(earliest.values());
+        ordered.sort(Comparator
+                .comparingDouble((CollisionCandidate candidate) -> candidate.contactFraction)
+                .thenComparing(candidate -> stableAbilityKey(candidate.first.ability))
+                .thenComparing(candidate -> stableAbilityKey(candidate.second.ability)));
+        for (final CollisionCandidate candidate : ordered) {
+            if (candidate.first.ability.isRemoved() || candidate.second.ability.isRemoved()) continue;
+            if (this.resolveCollision(candidate.first, candidate.second,
+                    candidate.contactFraction, alreadyCollided, checkedPairs)
+                    && !this.removeMultipleInstances) {
+                // Continue iterating so a candidate not involving either
+                // consumed ability can still resolve in deterministic order.
+            }
+        }
+    }
+
+    private static String stableAbilityKey(final CoreAbility ability) {
+        return (ability.getPlayer() == null ? "" : ability.getPlayer().getUniqueId().toString())
+                + '|' + ability.getClass().getName() + '|' + ability.getId();
+    }
+
+    private void detectDirect(final List<CollisionEntry> entriesFirst, final List<CollisionEntry> entriesSecond, final HashSet<CoreAbility> alreadyCollided, final HashSet<Long> checkedPairs) {
         for (final CollisionEntry entryFirst : entriesFirst) {
             final CoreAbility abilityFirst = entryFirst.ability;
             if (alreadyCollided.contains(abilityFirst)) {
@@ -153,14 +267,14 @@ public class CollisionManager {
             }
 
             for (final CollisionEntry entrySecond : entriesSecond) {
-                if (this.tryCollide(collision, entryFirst, entrySecond, alreadyCollided, checkedPairs) && !this.removeMultipleInstances) {
+                if (this.tryCollide(entryFirst, entrySecond, alreadyCollided, checkedPairs) && !this.removeMultipleInstances) {
                     break;
                 }
             }
         }
     }
 
-    private boolean tryCollide(final Collision collision, final CollisionEntry entryFirst, final CollisionEntry entrySecond, final HashSet<CoreAbility> alreadyCollided, final HashSet<Long> checkedPairs) {
+    private boolean tryCollide(final CollisionEntry entryFirst, final CollisionEntry entrySecond, final HashSet<CoreAbility> alreadyCollided, final HashSet<Long> checkedPairs) {
         final CoreAbility abilityFirst = entryFirst.ability;
         final CoreAbility abilitySecond = entrySecond.ability;
         if (alreadyCollided.contains(abilityFirst) || alreadyCollided.contains(abilitySecond) || entryFirst.playerId.equals(entrySecond.playerId)) {
@@ -181,28 +295,55 @@ public class CollisionManager {
             return false;
         }
 
-        final double dx = entryFirst.x - entrySecond.x;
-        final double dy = entryFirst.y - entrySecond.y;
-        final double dz = entryFirst.z - entrySecond.z;
-        final double requiredDist = entryFirst.radius + entrySecond.radius;
-        if (dx * dx + dy * dy + dz * dz > requiredDist * requiredDist) {
+        final double contact = SweptSphereContact.firstContact(
+                entryFirst.x, entryFirst.y, entryFirst.z, entryFirst.x, entryFirst.y, entryFirst.z,
+                entrySecond.x, entrySecond.y, entrySecond.z, entrySecond.x, entrySecond.y, entrySecond.z,
+                entryFirst.radius + entrySecond.radius);
+        if (Double.isNaN(contact)) {
             return false;
         }
 
-        checkedPairs.add(pair);
-        final Collision forwardCollision = new Collision(abilityFirst, abilitySecond, activeCollision.isRemovingFirst(), activeCollision.isRemovingSecond(), entryFirst.location, entrySecond.location);
-        final Collision reverseCollision = new Collision(abilitySecond, abilityFirst, activeCollision.isRemovingSecond(), activeCollision.isRemovingFirst(), entrySecond.location, entryFirst.location);
+        return this.resolveCollision(entryFirst, entrySecond, contact,
+                alreadyCollided, checkedPairs);
+    }
+
+    private boolean resolveCollision(final CollisionEntry entryFirst,
+                                     final CollisionEntry entrySecond,
+                                     final double contactFraction,
+                                     final HashSet<CoreAbility> alreadyCollided,
+                                     final HashSet<Long> checkedPairs) {
+        final CoreAbility abilityFirst = entryFirst.ability;
+        final CoreAbility abilitySecond = entrySecond.ability;
+        if (alreadyCollided.contains(abilityFirst) || alreadyCollided.contains(abilitySecond)
+                || abilityFirst.isRemoved() || abilitySecond.isRemoved()) return false;
+
+        final long pair = collisionPairKey(abilityFirst, abilitySecond);
+        if (!checkedPairs.add(pair)) return false;
+        final Collision activeCollision = this.getCollision(abilityFirst, abilitySecond);
+        if (activeCollision == null) return false;
+
+        final Location firstContact = entryFirst.locationAt(contactFraction);
+        final Location secondContact = entrySecond.locationAt(contactFraction);
+        final Collision forwardCollision = new Collision(abilityFirst, abilitySecond,
+                activeCollision.isRemovingFirst(), activeCollision.isRemovingSecond(),
+                firstContact, secondContact);
         final AbilityCollisionEvent event = new AbilityCollisionEvent(forwardCollision);
         AbilityRemovalSync.runExternalCause(() -> Platform.events().call(event));
         if (event.isCancelled()) {
             return false;
         }
         AbilityRemovalSync.runExternalCause(() -> {
-            if (!isEarthSmashCollision(forwardCollision)) {
-                ElementalCollisionEffects.play(forwardCollision);
-            }
-            abilityFirst.handleCollision(forwardCollision);
-            abilitySecond.handleCollision(reverseCollision);
+            final Collision reverseCollision = new Collision(abilitySecond, abilityFirst,
+                    forwardCollision.isRemovingSecond(), forwardCollision.isRemovingFirst(),
+                    forwardCollision.getLocationSecond(), forwardCollision.getLocationFirst());
+            AirFireCombat.resolveCollision(forwardCollision,
+                    Math.min(entryFirst.timelineTick, entrySecond.timelineTick), () -> {
+                if (!isEarthSmashCollision(forwardCollision)) {
+                    ElementalCollisionEffects.play(forwardCollision);
+                }
+                abilityFirst.handleCollision(forwardCollision);
+                abilitySecond.handleCollision(reverseCollision);
+            });
         });
         if (!this.removeMultipleInstances) {
             alreadyCollided.add(abilityFirst);
@@ -242,15 +383,85 @@ public class CollisionManager {
             }
 
             final double radius = Math.max(0, ability.getCollisionRadius());
-            for (final Location location : locations) {
+            final long timelineTick = this.collisionTick - AirFireCombat.timelineOffset(ability);
+            for (int index = 0; index < locations.size(); index++) {
+                final Location location = locations.get(index);
                 if (location != null && location.getWorld() != null) {
-                    entries.add(new CollisionEntry(ability, location, radius));
+                    entries.add(this.entry(ability, location, radius, index, timelineTick));
                 }
             }
         }
 
         this.entriesCache.put(clazz, entries);
         return entries;
+    }
+
+    private CollisionEntry entry(final CoreAbility ability, final Location location,
+                                 final double radius, final int locationIndex,
+                                 final long timelineTick) {
+        final LocationPoint previous = this.pointAt(ability, timelineTick - 1L, locationIndex);
+        return new CollisionEntry(ability, location, radius, locationIndex, timelineTick,
+                previous == null || previous.world != location.getWorld() ? location.getX() : previous.x,
+                previous == null || previous.world != location.getWorld() ? location.getY() : previous.y,
+                previous == null || previous.world != location.getWorld() ? location.getZ() : previous.z);
+    }
+
+    private CollisionEntry atTimelineTick(final CollisionEntry current, final long timelineTick) {
+        if (current.timelineTick == timelineTick) return current;
+        final LocationPoint point = this.pointAt(current.ability, timelineTick,
+                current.locationIndex);
+        if (point == null) return null;
+        final LocationPoint previous = this.pointAt(current.ability, timelineTick - 1L,
+                current.locationIndex);
+        final Location location = new Location(point.world, point.x, point.y, point.z);
+        return new CollisionEntry(current.ability, location, current.radius,
+                current.locationIndex, timelineTick,
+                previous == null || previous.world != point.world ? point.x : previous.x,
+                previous == null || previous.world != point.world ? point.y : previous.y,
+                previous == null || previous.world != point.world ? point.z : previous.z);
+    }
+
+    private LocationPoint pointAt(final CoreAbility ability, final long timelineTick,
+                                  final int locationIndex) {
+        final ArrayDeque<AbilityFrame> frames = this.reactiveHistory.get(ability);
+        if (frames == null) return null;
+        for (final AbilityFrame frame : frames) {
+            if (frame.timelineTick != timelineTick) continue;
+            return locationIndex >= 0 && locationIndex < frame.locations.size()
+                    ? frame.locations.get(locationIndex) : null;
+        }
+        return null;
+    }
+
+    private void captureReactiveHistory() {
+        final Set<CoreAbility> live = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (final CoreAbility ability : CoreAbility.getAbilitiesByInstances()) {
+            if (ability.getPlayer() == null || ability.isRemoved() || !ability.isCollidable()
+                    || !AirFireCombat.isTimelineManaged(ability)) continue;
+            live.add(ability);
+            List<Location> locations = this.locationsCache.get(ability);
+            if (locations == null) {
+                locations = ability.getLocations();
+                this.locationsCache.put(ability, locations);
+            }
+            if (locations == null || locations.isEmpty()) continue;
+            final ArrayList<LocationPoint> points = new ArrayList<>(locations.size());
+            for (final Location location : locations) {
+                points.add(location == null || location.getWorld() == null ? null
+                        : new LocationPoint(location.getWorld(), location.getX(),
+                        location.getY(), location.getZ()));
+            }
+            final ArrayDeque<AbilityFrame> frames = this.reactiveHistory.computeIfAbsent(
+                    ability, ignored -> new ArrayDeque<>());
+            final long timelineTick = this.collisionTick - AirFireCombat.timelineOffset(ability);
+            if (!frames.isEmpty() && frames.getLast().timelineTick == timelineTick) frames.removeLast();
+            frames.addLast(new AbilityFrame(timelineTick,
+                    Collections.unmodifiableList(points)));
+            while (frames.size() > AirFireCombat.MAX_ROLLBACK_TICKS + 2) frames.removeFirst();
+        }
+        this.reactiveHistory.entrySet().removeIf(entry -> !live.contains(entry.getKey())
+                && (entry.getValue().isEmpty() || this.collisionTick
+                - entry.getValue().getLast().timelineTick > AirFireCombat.MAX_ROLLBACK_TICKS + 2L));
     }
 
     /**
@@ -390,6 +601,11 @@ public class CollisionManager {
         private final double x;
         private final double y;
         private final double z;
+        private final int locationIndex;
+        private final long timelineTick;
+        private final double previousX;
+        private final double previousY;
+        private final double previousZ;
         private final double minX;
         private final double minY;
         private final double minZ;
@@ -397,7 +613,10 @@ public class CollisionManager {
         private final double maxY;
         private final double maxZ;
 
-        private CollisionEntry(final CoreAbility ability, final Location location, final double radius) {
+        private CollisionEntry(final CoreAbility ability, final Location location, final double radius,
+                               final int locationIndex, final long timelineTick,
+                               final double previousX, final double previousY,
+                               final double previousZ) {
             this.ability = ability;
             this.location = location;
             this.world = location.getWorld();
@@ -406,12 +625,17 @@ public class CollisionManager {
             this.x = location.getX();
             this.y = location.getY();
             this.z = location.getZ();
-            this.minX = this.x - radius;
-            this.minY = this.y - radius;
-            this.minZ = this.z - radius;
-            this.maxX = this.x + radius;
-            this.maxY = this.y + radius;
-            this.maxZ = this.z + radius;
+            this.locationIndex = locationIndex;
+            this.timelineTick = timelineTick;
+            this.previousX = previousX;
+            this.previousY = previousY;
+            this.previousZ = previousZ;
+            this.minX = Math.min(this.x, previousX) - radius;
+            this.minY = Math.min(this.y, previousY) - radius;
+            this.minZ = Math.min(this.z, previousZ) - radius;
+            this.maxX = Math.max(this.x, previousX) + radius;
+            this.maxY = Math.max(this.y, previousY) + radius;
+            this.maxZ = Math.max(this.z, previousZ) + radius;
         }
 
         private boolean intersectsBounds(final CollisionEntry other) {
@@ -419,6 +643,24 @@ public class CollisionManager {
                     this.minY <= other.maxY && this.maxY >= other.minY &&
                     this.minZ <= other.maxZ && this.maxZ >= other.minZ;
         }
+
+        private Location locationAt(final double fraction) {
+            final double bounded = Math.max(0.0, Math.min(1.0, fraction));
+            return new Location(this.world,
+                    this.previousX + (this.x - this.previousX) * bounded,
+                    this.previousY + (this.y - this.previousY) * bounded,
+                    this.previousZ + (this.z - this.previousZ) * bounded);
+        }
+    }
+
+    private record CollisionCandidate(CollisionEntry first, CollisionEntry second,
+                                      double contactFraction) {
+    }
+
+    private record LocationPoint(World world, double x, double y, double z) {
+    }
+
+    private record AbilityFrame(long timelineTick, List<LocationPoint> locations) {
     }
 
     private static final class LBVH {

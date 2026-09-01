@@ -29,8 +29,8 @@ class PredictionPermissionParityBoundaryTest {
         String wrapper = read("../fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricPredictionMC.java",
                 "fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricPredictionMC.java");
 
-        assertTrue(protocol.contains("static final int VERSION = 53"));
-        assertTrue(payloads.contains("public static final int PROTOCOL_VERSION = 53"));
+        assertTrue(protocol.contains("static final int VERSION = 54"));
+        assertTrue(payloads.contains("public static final int PROTOCOL_VERSION = 54"));
         assertTrue(protocol.contains("List<String> permissions, double airBlastDecay")
                         && protocol.contains("writeStrings(out, permissions)"));
         assertTrue(payloads.contains("List<String> permissions, double airBlastDecay")

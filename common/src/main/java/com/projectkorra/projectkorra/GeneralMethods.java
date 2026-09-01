@@ -43,6 +43,7 @@ import com.projectkorra.projectkorra.platform.mc.util.BoundingBox;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.movement.VelocitySync;
 import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
+import com.projectkorra.projectkorra.prediction.combat.AirFireCombat;
 import com.projectkorra.projectkorra.prediction.hit.PredictedContactSync;
 import com.projectkorra.projectkorra.prediction.hit.HitRegistrationPolicy;
 import com.projectkorra.projectkorra.region.RegionProtection;
@@ -1974,6 +1975,11 @@ public class GeneralMethods {
 
     private static void setVelocity(Ability ability, Entity entity, Vector vector,
                                     boolean predictRemoteTarget) {
+        final Vector requestedVelocity = vector == null ? null : vector.clone();
+        if (requestedVelocity != null && AirFireCombat.deferVelocity(ability, entity,
+                () -> setVelocity(ability, entity, requestedVelocity.clone(), predictRemoteTarget))) {
+            return;
+        }
         // Remote contact remains server-validated. Standard velocity writers
         // stop here; explicitly opted-in visual prediction continues under a
         // target-scoped permit below.

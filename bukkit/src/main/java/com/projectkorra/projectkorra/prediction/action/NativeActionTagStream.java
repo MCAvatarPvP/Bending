@@ -5,7 +5,7 @@ import com.projectkorra.projectkorra.prediction.protocol.PaperPredictionProtocol
 /**
  * One-shot identity metadata for the next native input callback.
  *
- * <p>Protocol v48 sends a tag immediately before its vanilla packet on the
+ * <p>Protocol v54 sends a tag immediately before its vanilla packet on the
  * same ordered connection. A second tag therefore supersedes an unconsumed
  * one, and every callback consumes the pending value even when its semantics
  * disagree. Those rules prevent stale metadata from crossing into a later,
@@ -20,12 +20,19 @@ public final class NativeActionTagStream {
 
     public long consume(final PaperPredictionProtocol.InputKind kind,
                         final int selectedSlot, final String ability) {
+        final PaperPredictionProtocol.ActionTag tag = consumeTag(kind, selectedSlot, ability);
+        return tag == null ? 0L : tag.clientSequence();
+    }
+
+    public PaperPredictionProtocol.ActionTag consumeTag(final PaperPredictionProtocol.InputKind kind,
+                                                        final int selectedSlot,
+                                                        final String ability) {
         final PaperPredictionProtocol.ActionTag tag = pending;
         pending = null;
         if (tag == null || tag.clientSequence() <= 0L || tag.kind() != kind
                 || tag.selectedSlot() != selectedSlot || ability == null
-                || !ability.equalsIgnoreCase(tag.ability())) return 0L;
-        return tag.clientSequence();
+                || !ability.equalsIgnoreCase(tag.ability())) return null;
+        return tag;
     }
 
     public void clear() {

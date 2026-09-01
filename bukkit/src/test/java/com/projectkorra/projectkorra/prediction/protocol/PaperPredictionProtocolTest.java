@@ -75,7 +75,7 @@ class PaperPredictionProtocolTest {
 
     @Test
     void protocolIncludesExactAbilityStateOwnershipFence() {
-        assertEquals(53, PaperPredictionProtocol.VERSION);
+        assertEquals(54, PaperPredictionProtocol.VERSION);
         assertEquals("projectkorra:ability_state_owner", PaperPredictionProtocol.ABILITY_STATE_OWNER);
         UUID owner = UUID.randomUUID();
         UUID target = UUID.randomUUID();
@@ -116,11 +116,13 @@ class PaperPredictionProtocolTest {
         UUID session = UUID.randomUUID();
         UUID target = UUID.randomUUID();
         byte[] tagPayload = new PaperPredictionProtocol.Writer().uuid(session).varLong(17L)
+                .i64(399L)
                 .enumeration(PaperPredictionProtocol.InputKind.LEFT_CLICK)
                 .varInt(2).string("AirBlast", 128).bytes();
         PaperPredictionProtocol.ActionTag tag = PaperPredictionProtocol.readActionTag(tagPayload);
         assertEquals(session, tag.session());
         assertEquals(17L, tag.clientSequence());
+        assertEquals(399L, tag.clientTick());
         assertEquals(PaperPredictionProtocol.InputKind.LEFT_CLICK, tag.kind());
         assertEquals(2, tag.selectedSlot());
         assertEquals("AirBlast", tag.ability());

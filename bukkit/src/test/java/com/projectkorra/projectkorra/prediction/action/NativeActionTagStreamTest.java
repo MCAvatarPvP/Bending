@@ -38,8 +38,16 @@ class NativeActionTagStreamTest {
         assertEquals(51L, tags.consume(InputKind.LEFT_CLICK, 2, "EarthSmash"));
     }
 
+    @Test
+    void acceptedTagRetainsItsPacketTimeTick() {
+        final NativeActionTagStream tags = new NativeActionTagStream();
+        tags.offer(tag(50L, InputKind.LEFT_CLICK, "FireBlast"));
+
+        assertEquals(120L, tags.consumeTag(InputKind.LEFT_CLICK, 2, "FireBlast").clientTick());
+    }
+
     private PaperPredictionProtocol.ActionTag tag(final long sequence, final InputKind kind,
                                                    final String ability) {
-        return new PaperPredictionProtocol.ActionTag(this.session, sequence, kind, 2, ability);
+        return new PaperPredictionProtocol.ActionTag(this.session, sequence, 120L, kind, 2, ability);
     }
 }

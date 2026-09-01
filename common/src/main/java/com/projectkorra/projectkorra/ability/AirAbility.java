@@ -16,6 +16,8 @@ import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.util.ParticleEffect;
 import com.projectkorra.projectkorra.util.ParticleUtil;
+import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
+import com.projectkorra.projectkorra.prediction.combat.AirFireCombat;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,6 +40,10 @@ public abstract class AirAbility extends ElementalAbility {
      * @param entity The entity to be acted upon
      */
     public static void breakBreathbendingHold(final Entity entity) {
+        if (AirFireCombat.deferAuxiliary(AbilityExecutionContext.current(), entity,
+                () -> breakBreathbendingHold(entity))) {
+            return;
+        }
         if (Suffocate.isBreathbent(entity)) {
             Suffocate.breakSuffocate(entity);
             return;

@@ -15,7 +15,7 @@ import java.util.UUID;
 
 /** Wire contract used by the Fabric client and the Paper/Fabric server endpoints. */
 public final class PredictionPayloads {
-    public static final int PROTOCOL_VERSION = 53;
+    public static final int PROTOCOL_VERSION = 54;
     public static final int MAX_BLOCK_STATE_CHARACTERS = 512;
     public static final int MAX_CONFIG_ENTRIES = 16_384;
     public static final int MAX_PROFILES = 2_048;
@@ -175,20 +175,20 @@ public final class PredictionPayloads {
 
     /**
      * Correlates the immediately following accepted vanilla input with the
-     * local prediction id.
+     * local prediction id and packet-time combat tick.
      * This metadata cannot schedule or authorize an ability.
      */
-    public record ActionTag(UUID sessionId, long clientActionSequence, InputKind kind,
+    public record ActionTag(UUID sessionId, long clientActionSequence, long clientTick, InputKind kind,
                             int selectedSlot, String ability) implements CustomPayload {
         public static final Id<ActionTag> ID = id("action_tag");
         public static final PacketCodec<RegistryByteBuf, ActionTag> CODEC =
                 PacketCodec.of(ActionTag::write, ActionTag::new);
         private ActionTag(RegistryByteBuf buf) {
-            this(buf.readUuid(), buf.readVarLong(), buf.readEnumConstant(InputKind.class),
+            this(buf.readUuid(), buf.readVarLong(), buf.readLong(), buf.readEnumConstant(InputKind.class),
                     buf.readVarInt(), buf.readString(128));
         }
         private void write(RegistryByteBuf buf) {
-            buf.writeUuid(sessionId); buf.writeVarLong(clientActionSequence);
+            buf.writeUuid(sessionId); buf.writeVarLong(clientActionSequence); buf.writeLong(clientTick);
             buf.writeEnumConstant(kind); buf.writeVarInt(selectedSlot); buf.writeString(ability, 128);
         }
         @Override public Id<ActionTag> getId() { return ID; }

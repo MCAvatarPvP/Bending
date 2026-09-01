@@ -14,6 +14,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.combat.AirFireCombat;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
 
@@ -41,6 +42,10 @@ public class HorizontalVelocityTracker {
     private Ability abil;
 
     public HorizontalVelocityTracker(final Entity e, final Player instigator, final long delay, final Ability ability) {
+        if (AirFireCombat.deferAuxiliary(ability, e,
+                () -> new HorizontalVelocityTracker(e, instigator, delay, ability))) {
+            return;
+        }
         if (!ProjectKorra.plugin.getConfig().getBoolean("Properties.HorizontalCollisionPhysics.Enabled")) {
             return;
         }

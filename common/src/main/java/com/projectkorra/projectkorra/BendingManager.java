@@ -5,6 +5,7 @@ import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.event.WorldTimeEvent;
 import com.projectkorra.projectkorra.object.HorizontalVelocityTracker;
+import com.projectkorra.projectkorra.prediction.combat.AirFireCombat;
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.mc.World;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
@@ -123,6 +124,7 @@ public class BendingManager implements Runnable {
         if (ProjectKorra.collisionManager != null) {
             ProjectKorra.collisionManager.detectCollisions();
         }
+        AirFireCombat.tick();
         TempPotionEffect.progressAll();
         this.handleDayNight();
         RevertChecker.revertAirBlocks();

@@ -332,7 +332,8 @@ public final class PredictionClient {
             if (tag != null && active && sessionId != null
                     && ClientPlayNetworking.canSend(PredictionPayloads.ActionTag.ID)) {
                 ClientPlayNetworking.send(new PredictionPayloads.ActionTag(sessionId,
-                        tag.clientActionSequence(), tag.kind(), tag.selectedSlot(), tag.ability()));
+                        tag.clientActionSequence(), tag.clientTick(), tag.kind(), tag.selectedSlot(),
+                        tag.ability()));
             }
         }
     }
@@ -1098,7 +1099,7 @@ public final class PredictionClient {
         // boundary. It therefore precedes the exact vanilla packet without
         // surviving a cancellation by an earlier networking mixin.
         pendingTaggedPacket = currentNativeInputPacket;
-        pendingActionTag = new PendingActionTag(sequence, kind, selectedSlot, ability);
+        pendingActionTag = new PendingActionTag(sequence, clientTick, kind, selectedSlot, ability);
         final boolean cooldownActiveAtInput = ExactPredictionRuntime.isInputCooldownActive(ability, kind);
         if (suppressInput) {
             // Preserve the semantic action without executing it. Paper's
@@ -1383,7 +1384,8 @@ public final class PredictionClient {
         if (DEBUG) System.out.println("[ProjectKorraPrediction] " + message);
     }
 
-    private record PendingActionTag(long clientActionSequence, PredictionPayloads.InputKind kind,
+    private record PendingActionTag(long clientActionSequence, long clientTick,
+                                    PredictionPayloads.InputKind kind,
                                     int selectedSlot, String ability) {
     }
 

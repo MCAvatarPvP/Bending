@@ -54,6 +54,7 @@ import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
 import com.projectkorra.projectkorra.prediction.state.AbilityStateSync;
 import com.projectkorra.projectkorra.prediction.state.GlidingStateSync;
 import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
+import com.projectkorra.projectkorra.prediction.combat.AirFireCombat;
 import com.projectkorra.projectkorra.prediction.block.DirectBlockSync;
 import com.projectkorra.projectkorra.prediction.movement.VelocitySync;
 import com.projectkorra.projectkorra.util.TempBlock;
@@ -192,6 +193,7 @@ public final class FabricMC {
     }
 
     private static void applyHitStatus(final Entity target, final Runnable commit) {
+        if (AirFireCombat.deferStatus(target, commit)) return;
         commit.run();
     }
 

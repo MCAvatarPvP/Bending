@@ -16,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Raw Bukkit plugin-message codec matching Fabric's RegistryByteBuf layout.
  */
 public final class PaperPredictionProtocol {
-    public static final int VERSION = 53;
+    public static final int VERSION = 54;
     public static final int MAX_BLOCK_STATE_CHARACTERS = 512;
     private static final int MAX_CACHED_BLOCK_STATES = 4_096;
     private static final Map<String, byte[]> BLOCK_STATE_UTF8 = new ConcurrentHashMap<>();
@@ -85,7 +85,7 @@ public final class PaperPredictionProtocol {
 
     public static ActionTag readActionTag(byte[] data) {
         Reader reader = new Reader(data);
-        ActionTag result = new ActionTag(reader.uuid(), reader.varLong(),
+        ActionTag result = new ActionTag(reader.uuid(), reader.varLong(), reader.i64(),
                 reader.enumeration(InputKind.values()), reader.varInt(), reader.string(128));
         reader.finished();
         return result;
@@ -420,7 +420,8 @@ public final class PaperPredictionProtocol {
     public record InputVeto(UUID session, long sequence, InputKind kind, String ability) {
     }
 
-    public record ActionTag(UUID session, long clientSequence, InputKind kind, int selectedSlot,
+    public record ActionTag(UUID session, long clientSequence, long clientTick,
+                     InputKind kind, int selectedSlot,
                      String ability) {
     }
 

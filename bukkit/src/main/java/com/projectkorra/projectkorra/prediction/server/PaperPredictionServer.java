@@ -15,6 +15,8 @@ import com.projectkorra.projectkorra.prediction.block.DirectBlockSync;
 import com.projectkorra.projectkorra.prediction.block.TempBlockDeliveryTracker;
 import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
 import com.projectkorra.projectkorra.prediction.block.TempFallingBlockSync;
+import com.projectkorra.projectkorra.prediction.combat.AirFireCombat;
+import com.projectkorra.projectkorra.prediction.combat.CombatNetworkTiming;
 import com.projectkorra.projectkorra.prediction.hit.ConfirmedHitEffects;
 import com.projectkorra.projectkorra.prediction.hit.HitRewind;
 import com.projectkorra.projectkorra.prediction.hit.HitRegistrationPolicy;
@@ -27,6 +29,7 @@ import com.projectkorra.projectkorra.prediction.state.PlayerStatusSync;
 
 import com.jedk1.jedcore.ability.passive.WallRun;
 import com.projectkorra.projectkorra.BendingPlayer;
+import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.Ability;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.activation.AbilityActivationManager;
@@ -87,6 +90,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     private final JavaPlugin plugin;
     private final Map<UUID, Session> sessions = new ConcurrentHashMap<>();
     private final Map<UUID, Deque<EntityFrame>> playerHistory = new HashMap<>();
+    private final Map<UUID, Deque<CombatEntityFrame>> combatPlayerHistory = new HashMap<>();
     private final Map<CoreAbility, Action> abilityActions = Collections.synchronizedMap(new IdentityHashMap<>());
     private final Map<CoreAbility, Action> abilityCreationActions = Collections.synchronizedMap(new IdentityHashMap<>());
     private final Set<CoreAbility> predictedOwnershipTransfers = Collections.synchronizedSet(
@@ -115,6 +119,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         PaperPredictionServer server = new PaperPredictionServer(plugin);
         server.registerChannels();
         active = server;
+        AirFireCombat.activate(server::combatCenterAt, ProjectKorra.collisionManager);
         TempBlockSync.install(server);
         DirectBlockSync.install(server);
         TempFallingBlockSync.install(server);
@@ -204,8 +209,8 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         if (action == null) return;
         if (HitRegistrationPolicy.forAbility(ability)
                 == HitRegistrationPolicy.SERVER_CURRENT) {
-            // Never inject historical player boxes into reactive ability
-            // queries. The normal Bukkit query above is their sole hit source.
+            // Reactive contacts use the server-reconstructed viewer timeline
+            // above. Client claims never add a second, older player candidate.
             action.claims.clear();
             return;
         }
@@ -477,6 +482,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         pendingTempBlocks.clear();
         pendingAbilityRemovals.clear();
         playerHistory.clear();
+        combatPlayerHistory.clear();
         TempBlockSync.clear(this);
         DirectBlockSync.clear(this);
         TempFallingBlockSync.clear(this);
@@ -487,6 +493,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         AbilityRemovalSync.clear(this);
         CooldownSync.clear(this);
         PlayerStatusSync.clear(this);
+        AirFireCombat.deactivate();
         if (active == this) active = null;
     }
 
@@ -1355,6 +1362,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     private void onActionTag(final Player player, final PaperPredictionProtocol.ActionTag tag) {
         final Session session = valid(player, tag.session());
         if (session == null || !session.ready || tag.clientSequence() <= 0L
+                || tag.clientTick() < 0L
                 || tag.kind() == null || tag.selectedSlot() < 0 || tag.selectedSlot() > 8
                 || tag.ability() == null || tag.ability().isBlank()) return;
         session.actionTags.offer(tag);
@@ -1428,8 +1436,70 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                     && tick - frames.getFirst().serverTick > MAX_REWIND_TICKS + 4L) {
                 frames.removeFirst();
             }
+            recordCombatFrame(player, CoreAbility.getCurrentTick());
         }
         playerHistory.keySet().removeIf(uuid -> Bukkit.getPlayer(uuid) == null);
+        combatPlayerHistory.keySet().removeIf(uuid -> Bukkit.getPlayer(uuid) == null);
+    }
+
+    /**
+     * Samples the authoritative pose onto the same logical clock used by
+     * Air/Fire contacts. Backdating by the measured one-way latency lets a
+     * movement that was sent before contact, but arrived during confirmation,
+     * participate without admitting arbitrary movement after the contact tick.
+     */
+    private void recordCombatFrame(final Player player, final long observedTimelineTick) {
+        if (player == null) return;
+        final int oneWayTicks = CombatNetworkTiming.oneWayTicks(
+                player.getPing(), AirFireCombat.MAX_ROLLBACK_TICKS);
+        final long effectiveTick = observedTimelineTick - oneWayTicks;
+        final org.bukkit.util.Vector center = player.getBoundingBox().getCenter();
+        final CombatEntityFrame frame = new CombatEntityFrame(effectiveTick,
+                observedTimelineTick, player.getWorld().getUID(),
+                center.getX(), center.getY(), center.getZ());
+        final Deque<CombatEntityFrame> frames = combatPlayerHistory.computeIfAbsent(
+                player.getUniqueId(), ignored -> new ArrayDeque<>());
+        if (!frames.isEmpty() && frames.getLast().observedTick == observedTimelineTick) {
+            frames.removeLast();
+        }
+        frames.addLast(frame);
+        while (!frames.isEmpty() && observedTimelineTick - frames.getFirst().observedTick
+                > AirFireCombat.MAX_ROLLBACK_TICKS * 2L + 4L) {
+            frames.removeFirst();
+        }
+    }
+
+    private com.projectkorra.projectkorra.platform.mc.util.Vector combatCenterAt(
+            final com.projectkorra.projectkorra.platform.mc.entity.Entity target,
+            final long timelineTick) {
+        if (target == null
+                || !(target.handle() instanceof org.bukkit.entity.Entity nativeEntity)) {
+            return null;
+        }
+        if (nativeEntity instanceof Player player) {
+            // The confirmation runs before this service's regular ticker. Take
+            // a fresh sample so movement packets received since last tick are
+            // available to the causal lookup below.
+            recordCombatFrame(player, CoreAbility.getCurrentTick());
+        }
+        final Deque<CombatEntityFrame> frames = combatPlayerHistory.get(target.getUniqueId());
+        final UUID world = nativeEntity.getWorld().getUID();
+        CombatEntityFrame best = null;
+        if (frames != null) {
+            for (CombatEntityFrame frame : frames) {
+                if (!frame.world.equals(world) || frame.effectiveTick > timelineTick) continue;
+                if (best == null || frame.effectiveTick > best.effectiveTick
+                        || frame.effectiveTick == best.effectiveTick
+                        && frame.observedTick > best.observedTick) {
+                    best = frame;
+                }
+            }
+        }
+        if (best != null) {
+            return new com.projectkorra.projectkorra.platform.mc.util.Vector(
+                    best.centerX, best.centerY, best.centerZ);
+        }
+        return null;
     }
 
     private EntityFrame frameAt(final UUID playerId, final long wantedTick) {
@@ -1463,7 +1533,9 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         // Consume the stream item for this native callback even when Paper and
         // the client disagree about the bound ability. Retaining a mismatched
         // item would let it poison the next repeated input.
-        final long clientActionSequence = session.actionTags.consume(kind, selectedSlot, abilityName);
+        final PaperPredictionProtocol.ActionTag actionTag = session.actionTags.consumeTag(
+                kind, selectedSlot, abilityName);
+        final long clientActionSequence = actionTag == null ? 0L : actionTag.clientSequence();
         final boolean predictable = !abilityName.isBlank()
                 && session.supportedAbilities.contains(abilityName.toLowerCase(Locale.ROOT));
         // The client action tag is written immediately before this vanilla
@@ -1479,7 +1551,14 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                 : null;
         if (action != null) {
             action.clientSequence = clientActionSequence;
+            action.clientTick = actionTag == null ? -1L : actionTag.clientTick();
+            final CombatNetworkTiming.Sample combatTiming = actionTag == null
+                    ? new CombatNetworkTiming.Sample(tick, 0, 0)
+                    : session.mapCombatTick(actionTag.clientTick(), tick, player.getPing());
+            action.effectiveTick = combatTiming.effectiveTick();
             session.actions.put(sequence, action);
+            AirFireCombat.registerAction(player.getUniqueId(), sequence,
+                    combatTiming.ageTicks(), combatTiming.jitterTicks());
         }
         send(player, PaperPredictionProtocol.NATIVE_ACTION,
                 PaperPredictionProtocol.nativeAction(session.session, sequence,
@@ -2157,6 +2236,13 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             return HitRewind.mapClientTick(helloClientTick, helloServerTick, clientTick,
                     currentServerTick, attackerPing, defenderPing, MAX_REWIND_TICKS);
         }
+
+        CombatNetworkTiming.Sample mapCombatTick(final long clientTick,
+                                                  final long currentServerTick,
+                                                  final int playerPing) {
+            return CombatNetworkTiming.sample(helloClientTick, helloServerTick, clientTick,
+                    currentServerTick, playerPing, AirFireCombat.MAX_ROLLBACK_TICKS);
+        }
     }
 
     private record WorldScope(long generation, String identity) {
@@ -2177,6 +2263,8 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         final Map<String, Integer> directBlockOrdinals = new HashMap<>();
         final Map<UUID, Claim> claims = new HashMap<>();
         long clientSequence;
+        long clientTick = -1L;
+        long effectiveTick;
         int tempFallingBlockOrdinal;
         int tempBlockOrdinal;
         boolean locallyPredicted;
@@ -2219,6 +2307,10 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
 
     private record EntityFrame(long serverTick, UUID world,
                                org.bukkit.util.BoundingBox box) {
+    }
+
+    private record CombatEntityFrame(long effectiveTick, long observedTick, UUID world,
+                                     double centerX, double centerY, double centerZ) {
     }
 
     private static final class RateLimiter {

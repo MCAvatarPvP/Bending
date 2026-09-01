@@ -15,9 +15,10 @@ import java.util.function.Supplier;
 /**
  * Selects which position authority an ability uses for player hit registration.
  *
- * <p>Fire and Air are reactive elements: their gameplay contact is accepted only
- * from Paper's current entity query. Other elements retain the bounded rewind
- * path used to compensate deliberate, less reactive attacks.</p>
+ * <p>Fire and Air are reactive elements: entity acquisition remains
+ * authoritative and their short response/ability timeline is resolved by the
+ * server rather than by a client hit claim. Other elements retain the bounded
+ * claim-assisted rewind used to compensate deliberate, less reactive attacks.</p>
  */
 public enum HitRegistrationPolicy {
     REWIND_ASSISTED,

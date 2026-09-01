@@ -3,6 +3,7 @@ package com.projectkorra.projectkorra.prediction.server;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.platform.bukkit.BukkitMC;
 import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
+import com.projectkorra.projectkorra.prediction.combat.AirFireCombat;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -10,6 +11,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
+import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -21,8 +23,9 @@ import java.util.function.Predicate;
 
 /**
  * Replays the exact remote-player movement packets sent to each viewer through
- * vanilla's client interpolation rules. This is collision view state only; it
- * does not use ping, history, rewind, or sampled Bukkit movement.
+ * vanilla's client interpolation rules. Reactive Air/Fire queries may select
+ * a bounded packet-state frame using their server-validated action age; this
+ * never trusts a client-supplied hit or sampled Bukkit movement.
  */
 public final class ServerEntityInterpolation implements Runnable {
     private static volatile ServerEntityInterpolation active;
@@ -114,8 +117,10 @@ public final class ServerEntityInterpolation implements Runnable {
         PacketUpdate update;
         while ((update = this.pending.poll()) != null) apply(update);
 
-        this.viewers.values().forEach(state ->
-                state.byTarget.values().forEach(tracked -> tracked.position.tick()));
+        this.viewers.values().forEach(state -> state.byTarget.values().forEach(tracked -> {
+            tracked.position.tick();
+            tracked.record();
+        }));
     }
 
     private void prepareViewers() {
@@ -169,9 +174,10 @@ public final class ServerEntityInterpolation implements Runnable {
         if (tracked == null) return actual;
 
         final Location serverPosition = target.getLocation();
-        return actual.clone().add(tracked.position.x() - serverPosition.getX(),
-                tracked.position.y() - serverPosition.getY(),
-                tracked.position.z() - serverPosition.getZ());
+        final PositionFrame frame = tracked.frameFor(AbilityExecutionContext.current());
+        return actual.clone().add(frame.x - serverPosition.getX(),
+                frame.y - serverPosition.getY(),
+                frame.z - serverPosition.getZ());
     }
 
     /** Returns the remote player's current vanilla-interpolated bounding box. */
@@ -189,7 +195,8 @@ public final class ServerEntityInterpolation implements Runnable {
             final Predicate<com.projectkorra.projectkorra.platform.mc.entity.Entity> filter,
             final Map<UUID, com.projectkorra.projectkorra.platform.mc.entity.Entity> result) {
         final ServerEntityInterpolation service = active;
-        if (service == null || world == null || query == null || result == null) return;
+        if (service == null || world == null || query == null || result == null
+                || !AirFireCombat.isTimelineManaged(ability)) return;
         final UUID observer = observer(ability);
         final ViewerState viewer = observer == null ? null : service.viewers.get(observer);
         if (viewer == null) return;
@@ -197,7 +204,7 @@ public final class ServerEntityInterpolation implements Runnable {
         for (TrackedPlayer tracked : viewer.byTarget.values()) {
             final Player target = Bukkit.getPlayer(tracked.target);
             if (target == null || target.getWorld() != world
-                    || !service.sweptIntersects(target, query, tracked)) {
+                    || !service.sweptIntersects(target, query, tracked, ability)) {
                 result.remove(tracked.target);
                 continue;
             }
@@ -212,6 +219,7 @@ public final class ServerEntityInterpolation implements Runnable {
     }
 
     private TrackedPlayer trackedPlayer(final Player target, final CoreAbility ability) {
+        if (!AirFireCombat.isTimelineManaged(ability)) return null;
         final UUID observer = observer(ability);
         if (observer == null || observer.equals(target.getUniqueId())) return null;
         final ViewerState viewer = this.viewers.get(observer);
@@ -225,10 +233,10 @@ public final class ServerEntityInterpolation implements Runnable {
         if (tracked == null) return actual;
 
         final Location actualLocation = target.getLocation();
-        final VanillaRemotePlayerPosition position = tracked.position;
-        final double dx = position.x() - actualLocation.getX();
-        final double dy = position.y() - actualLocation.getY();
-        final double dz = position.z() - actualLocation.getZ();
+        final PositionFrame frame = tracked.frameFor(ability);
+        final double dx = frame.x - actualLocation.getX();
+        final double dy = frame.y - actualLocation.getY();
+        final double dz = frame.z - actualLocation.getZ();
         return new org.bukkit.util.BoundingBox(
                 actual.getMinX() + dx, actual.getMinY() + dy, actual.getMinZ() + dz,
                 actual.getMaxX() + dx, actual.getMaxY() + dy, actual.getMaxZ() + dz);
@@ -236,10 +244,11 @@ public final class ServerEntityInterpolation implements Runnable {
 
     private boolean sweptIntersects(final Player target,
                                     final org.bukkit.util.BoundingBox query,
-                                    final TrackedPlayer tracked) {
+                                    final TrackedPlayer tracked,
+                                    final CoreAbility ability) {
         final Location actualLocation = target.getLocation();
         final org.bukkit.util.BoundingBox actual = target.getBoundingBox();
-        return tracked.position.sweptIntersects(
+        return tracked.frameFor(ability).sweptIntersects(
                 query.getMinX(), query.getMinY(), query.getMinZ(),
                 query.getMaxX(), query.getMaxY(), query.getMaxZ(),
                 actual.getMinX() - actualLocation.getX(),
@@ -281,8 +290,57 @@ public final class ServerEntityInterpolation implements Runnable {
         }
     }
 
-    private record TrackedPlayer(int entityId, UUID target,
-                                 VanillaRemotePlayerPosition position) {
+    private static final class TrackedPlayer {
+        private final int entityId;
+        private final UUID target;
+        private final VanillaRemotePlayerPosition position;
+        private final ArrayDeque<PositionFrame> history = new ArrayDeque<>();
+
+        private TrackedPlayer(final int entityId, final UUID target,
+                              final VanillaRemotePlayerPosition position) {
+            this.entityId = entityId;
+            this.target = target;
+            this.position = position;
+            this.record();
+        }
+
+        private void record() {
+            this.history.addLast(new PositionFrame(
+                    this.position.previousX(), this.position.previousY(), this.position.previousZ(),
+                    this.position.x(), this.position.y(), this.position.z()));
+            while (this.history.size() > AirFireCombat.MAX_ROLLBACK_TICKS + 2) {
+                this.history.removeFirst();
+            }
+        }
+
+        private PositionFrame frameFor(final CoreAbility ability) {
+            final int age = AirFireCombat.timelineOffset(ability);
+            if (age <= 0 || this.history.isEmpty()) return new PositionFrame(
+                    this.position.previousX(), this.position.previousY(), this.position.previousZ(),
+                    this.position.x(), this.position.y(), this.position.z());
+            final Iterator<PositionFrame> iterator = this.history.descendingIterator();
+            PositionFrame frame = iterator.next();
+            for (int index = 0; index < age && iterator.hasNext(); index++) {
+                frame = iterator.next();
+            }
+            return frame;
+        }
+    }
+
+    private record PositionFrame(double previousX, double previousY, double previousZ,
+                                 double x, double y, double z) {
+        private boolean sweptIntersects(
+                final double queryMinX, final double queryMinY, final double queryMinZ,
+                final double queryMaxX, final double queryMaxY, final double queryMaxZ,
+                final double boxMinOffsetX, final double boxMinOffsetY, final double boxMinOffsetZ,
+                final double boxMaxOffsetX, final double boxMaxOffsetY, final double boxMaxOffsetZ) {
+            return VanillaRemotePlayerPosition.segmentIntersectsAabb(
+                    previousX, previousY, previousZ, x, y, z,
+                    queryMinX - boxMaxOffsetX, queryMinY - boxMaxOffsetY,
+                    queryMinZ - boxMaxOffsetZ,
+                    queryMaxX - boxMinOffsetX, queryMaxY - boxMinOffsetY,
+                    queryMaxZ - boxMinOffsetZ);
+        }
     }
 
     private sealed interface PacketUpdate permits Spawn, RelativeMove, PositionSync, Teleport, Destroy {

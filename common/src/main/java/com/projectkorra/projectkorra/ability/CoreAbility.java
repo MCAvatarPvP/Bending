@@ -22,6 +22,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.permissions.Permission;
 import com.projectkorra.projectkorra.platform.mc.plugin.java.JavaPlugin;
 import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
+import com.projectkorra.projectkorra.prediction.combat.AirFireCombat;
 import com.projectkorra.projectkorra.prediction.action.AbilityRemovalSync;
 import com.projectkorra.projectkorra.prediction.action.PredictionDeterminism;
 import com.projectkorra.projectkorra.util.AbilityTimingDebugger;
@@ -162,6 +163,9 @@ public abstract class CoreAbility implements Ability {
                 // knockback). Never let that retired locomotion instance run
                 // once more and overwrite the accepted hit velocity.
                 if (abil.isRemoved()) {
+                    continue;
+                }
+                if (AirFireCombat.isSuspended(abil)) {
                     continue;
                 }
                 if (abil instanceof PassiveAbility) {
@@ -833,6 +837,7 @@ public abstract class CoreAbility implements Ability {
         }
         INSTANCES_BY_CLASS.get(clazz).add(this);
         INSTANCES.add(this);
+        AirFireCombat.onAbilityStarted(this);
         AbilityTimingDebugger.recordStart(this);
     }
 
@@ -848,6 +853,9 @@ public abstract class CoreAbility implements Ability {
     @Override
     public void remove() {
         if (this.player == null && this.requiresPlayer()) {
+            return;
+        }
+        if (AirFireCombat.deferRemoval(this)) {
             return;
         }
 

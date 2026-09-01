@@ -172,7 +172,7 @@ final class VanillaRemotePlayerPosition {
         return (Math.round(base * PACKET_SCALE) + Math.round(delta * PACKET_SCALE)) / PACKET_SCALE;
     }
 
-    private static boolean segmentIntersectsAabb(
+    static boolean segmentIntersectsAabb(
             final double fromX, final double fromY, final double fromZ,
             final double toX, final double toY, final double toZ,
             final double minX, final double minY, final double minZ,

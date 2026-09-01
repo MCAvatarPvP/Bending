@@ -7,6 +7,7 @@ import com.projectkorra.projectkorra.firebending.HeatControl;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
+import com.projectkorra.projectkorra.prediction.combat.AirFireCombat;
 import com.projectkorra.projectkorra.util.DamageHandler;
 
 import java.util.Map;
@@ -38,6 +39,10 @@ public class FireDamageTimer {
     }
 
     public FireDamageTimer(final Entity entity, final Player source, Ability abil, final boolean affectSelf) {
+        if (AirFireCombat.deferAuxiliary(abil, entity,
+                () -> new FireDamageTimer(entity, source, abil, affectSelf))) {
+            return;
+        }
         if (entity.getEntityId() == source.getEntityId() && !affectSelf) {
             return;
         }
