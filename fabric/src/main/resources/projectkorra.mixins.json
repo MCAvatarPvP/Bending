@@ -17,6 +17,7 @@
     "client.ClientPlayNetworkHandlerMovementMixin",
     "client.ClientPlayNetworkHandlerPredictionMixin",
     "client.ClientWorldPredictionAliasMixin",
+    "client.FallingBlockEntityPredictionMixin",
     "client.LivingEntityAirGliderPredictionMixin",
     "client.SodiumLevelSlicePredictionMixin"
   ],

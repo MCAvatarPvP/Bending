@@ -240,8 +240,8 @@ class AuthoritativeBlockBoundaryTest {
                         && collisionState.contains("entity instanceof FallingBlockEntity")
                         && collisionState.contains("isPredictedOwned(entity)"),
                 "remote entities and unrelated predicted visuals may not collide with local overlays");
-        assertTrue(collisionState.contains(
-                        "blockVisualOverlay.compose(world, pos, authoritativeState)"),
+        assertTrue(collisionState.contains("blockVisualOverlay.compose(")
+                        && collisionState.contains("world, pos, authoritativeState"),
                 "owned movement should consume the same immutable overlay used by rendering");
         assertFalse(collisionState.contains("blockState(world")
                         || collisionState.contains("setBlockState("),

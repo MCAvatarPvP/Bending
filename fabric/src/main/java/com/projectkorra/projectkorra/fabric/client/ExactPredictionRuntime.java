@@ -42,6 +42,7 @@ import com.projectkorra.projectkorra.fabric.client.prediction.block.ClientBlockV
 import com.projectkorra.projectkorra.fabric.client.prediction.block.ClientTempBlockAuthority;
 import com.projectkorra.projectkorra.fabric.client.prediction.config.ClientPredictionConfig;
 import com.projectkorra.projectkorra.fabric.client.prediction.entity.ClientEntityReconciliation;
+import com.projectkorra.projectkorra.fabric.client.prediction.entity.EarthShardFallingCollisionPolicy;
 import com.projectkorra.projectkorra.fabric.client.prediction.effect.ClientSoundAuthority;
 import com.projectkorra.projectkorra.fabric.client.prediction.movement.ClientVelocityAuthority;
 import com.projectkorra.projectkorra.fabric.client.prediction.state.ClientPlayerStateAuthority;
@@ -138,6 +139,7 @@ import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.FallingBlockEntity;
+import net.minecraft.entity.MovementType;
 import net.minecraft.network.packet.s2c.play.EntitySpawnS2CPacket;
 import net.minecraft.network.packet.s2c.play.ExperienceBarUpdateS2CPacket;
 import net.minecraft.network.packet.s2c.play.PlaySoundS2CPacket;
@@ -782,6 +784,32 @@ public final class ExactPredictionRuntime
 
     public static boolean isPredictedOwned(Entity entity) {
         return INSTANCE.entityReconciliation.isPredictedOwned(entity);
+    }
+
+    /**
+     * Gives only locally predicted EarthShard falling blocks a brief launch
+     * window in which delayed source/ready blocks cannot stop their movement.
+     */
+    public static void moveTempFallingBlock(final FallingBlockEntity entity,
+                                            final MovementType movementType,
+                                            final Vec3d movement) {
+        if (entity == null) return;
+        final ClientEntityReconciliation.PredictedTempFallingOwner owner =
+                INSTANCE.entityReconciliation.predictedTempFallingOwner(entity);
+        final boolean earthShardGrace = INSTANCE.ready && owner != null
+                && EarthShardFallingCollisionPolicy.ignoresBlocks(
+                owner.ability(), owner.spawnedAtNanos(), System.nanoTime());
+        if (!earthShardGrace) {
+            entity.move(movementType, movement);
+            return;
+        }
+        final boolean previousNoClip = entity.noClip;
+        entity.noClip = true;
+        try {
+            entity.move(movementType, movement);
+        } finally {
+            entity.noClip = previousNoClip;
+        }
     }
 
     public static void trackSpawn(Entity entity) {
@@ -2797,7 +2825,8 @@ public final class ExactPredictionRuntime
 
             com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime.Action action = this.actions.get(sequence);
             if (action != null) {
-                this.entityReconciliation.trackTempFallingBlock(sequence, spawnOrdinal, entity, ability.getName());
+                this.entityReconciliation.trackTempFallingBlock(
+                        sequence, spawnOrdinal, entity, ability.getName());
             }
         }
     }

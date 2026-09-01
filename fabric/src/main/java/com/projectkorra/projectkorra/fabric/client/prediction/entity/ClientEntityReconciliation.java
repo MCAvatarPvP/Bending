@@ -36,6 +36,8 @@ public final class ClientEntityReconciliation {
     private final Map<Entity, PredictedSpawn> predictedSpawns = new IdentityHashMap<>();
     private final Map<TempFallingBlockKey, PredictedTempFallingBlock> predictedTempFallingBlocks =
             new HashMap<>();
+    private final Map<Entity, PredictedTempFallingOwner> predictedTempFallingOwners =
+            new IdentityHashMap<>();
     private final Map<TempFallingBlockKey, ServerTempFallingPrepare> serverTempFallingPrepares =
             new LinkedHashMap<>();
     private final Map<Integer, TempFallingBlockKey> preparedFallingEntityIds = new HashMap<>();
@@ -58,8 +60,16 @@ public final class ClientEntityReconciliation {
     public void trackTempFallingBlock(final long actionSequence, final int spawnOrdinal,
                                       final Entity entity, final String ability) {
         if (actionSequence <= 0L || spawnOrdinal <= 0 || entity == null) return;
+        final String normalizedAbility = ability == null ? "" : ability;
         predictedTempFallingBlocks.put(new TempFallingBlockKey(actionSequence, spawnOrdinal),
-                new PredictedTempFallingBlock(entity, ability == null ? "" : ability));
+                new PredictedTempFallingBlock(entity, normalizedAbility));
+        predictedTempFallingOwners.put(entity, new PredictedTempFallingOwner(
+                actionSequence, normalizedAbility, System.nanoTime()));
+    }
+
+    /** Local TempFallingBlock identity and monotonic spawn time. */
+    public PredictedTempFallingOwner predictedTempFallingOwner(final Entity entity) {
+        return entity == null ? null : predictedTempFallingOwners.get(entity);
     }
 
     public void notePrepare(final Entity localPlayer,
@@ -218,6 +228,8 @@ public final class ClientEntityReconciliation {
     public void retireAction(final long actionSequence) {
         predictedSpawns.entrySet().removeIf(entry -> entry.getValue().actionSequence == actionSequence);
         predictedTempFallingBlocks.keySet().removeIf(key -> key.actionSequence == actionSequence);
+        predictedTempFallingOwners.entrySet().removeIf(
+                entry -> entry.getValue().actionSequence == actionSequence);
         serverTempFallingPrepares.keySet().removeIf(key -> key.actionSequence == actionSequence);
         preparedFallingEntityIds.entrySet().removeIf(
                 entry -> entry.getValue().actionSequence == actionSequence);
@@ -232,6 +244,9 @@ public final class ClientEntityReconciliation {
         authoritativeAliases.entrySet().removeIf(entry -> actionEntities.contains(entry.getValue()));
         predictedSpawns.entrySet().removeIf(entry -> entry.getValue().actionSequence == actionSequence);
         predictedTempFallingBlocks.keySet().removeIf(key -> key.actionSequence == actionSequence);
+        predictedTempFallingOwners.entrySet().removeIf(entry ->
+                entry.getValue().actionSequence == actionSequence
+                        || actionEntities.contains(entry.getKey()));
         serverTempFallingPrepares.keySet().removeIf(key -> key.actionSequence == actionSequence);
         preparedFallingEntityIds.entrySet().removeIf(
                 entry -> entry.getValue().actionSequence == actionSequence);
@@ -244,6 +259,7 @@ public final class ClientEntityReconciliation {
         hiddenPredictedDisplays.clear();
         predictedSpawns.clear();
         predictedTempFallingBlocks.clear();
+        predictedTempFallingOwners.clear();
         serverTempFallingPrepares.clear();
         preparedFallingEntityIds.clear();
         observedFallingBlockSpawns.clear();
@@ -263,6 +279,8 @@ public final class ClientEntityReconciliation {
     private record PredictedSpawn(long actionSequence, Vec3d origin) { }
     private record TempFallingBlockKey(long actionSequence, int spawnOrdinal) { }
     private record PredictedTempFallingBlock(Entity entity, String ability) { }
+    public record PredictedTempFallingOwner(long actionSequence, String ability,
+                                            long spawnedAtNanos) { }
     private record ServerTempFallingPrepare(PredictionPayloads.TempFallingBlockPrepare prepare,
                                             long receivedTick) { }
 }
