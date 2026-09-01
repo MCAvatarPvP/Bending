@@ -1,6 +1,5 @@
 package com.projectkorra.projectkorra.fabric.client.prediction.block;
 
-import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.earthbending.EarthSmash;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads;
@@ -10,8 +9,6 @@ import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
 import com.projectkorra.projectkorra.prediction.block.ClientTempBlockLedger;
 import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
-import com.projectkorra.projectkorra.prediction.block.TempBlockTeardownFence;
-import com.projectkorra.projectkorra.prediction.block.TempBlockTeardownPolicy;
 import com.projectkorra.projectkorra.util.TempBlock;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
@@ -29,6 +26,7 @@ import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
@@ -36,8 +34,9 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
- * Owns local TempBlock prediction, Paper lifecycle pairing, and the composed
- * client block view.
+ * Owns local TempBlock prediction, Paper lifecycle pairing, and the TEMP layer
+ * in the render-only client block overlay. Vanilla remains the sole writer of
+ * the backing {@link ClientWorld}.
  *
  * <p>Pairing uses action + ability + semantic step/ordinal. Coordinates are a
  * rendered consequence and may legitimately differ between the two runtimes;
@@ -45,7 +44,20 @@ import java.util.function.Function;
  */
 public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
     private static final int ACTION_RETENTION_TICKS = 160;
+    /**
+     * A local close can lead Paper's matching close by a few network ticks. Do
+     * not let that bridge turn into permanent concealment when Paper instead
+     * keeps the layer alive.
+     */
+    private static final int CLOSED_PAIR_GRACE_TICKS = 20;
     private static final int HISTORY_LIMIT = 24;
+    private static final int MAX_STAGED_SNAPSHOT_OPERATIONS = 65_536;
+
+    public enum BatchResult {
+        APPLIED,
+        STAGED,
+        RESYNC_REQUIRED
+    }
 
     /** Action identity supplied by the runtime without exposing its model. */
     public interface Context {
@@ -56,11 +68,12 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
         String inputAbility(long actionSequence);
         int nextTempBlockOrdinal(long actionSequence);
         long localActionSequence(long paperSequence);
-        boolean hasActiveAbility(String ability);
+        int confirmationTicks(long actionSequence);
     }
 
     private final Context context;
     private final ClientDirectBlockAuthority directBlocks;
+    private final ClientBlockVisualOverlay visualOverlay;
     private final Function<String, BlockState> blockStateDecoder;
     private final Consumer<String> debug;
     private final ClientTempBlockLedger<BlockKey, BlockState> serverLayers =
@@ -76,19 +89,23 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
     private final Map<Long, Long> pairedServerLayers = new HashMap<>();
     private final Map<BlockKey, Set<Long>> pairedCoordinates = new HashMap<>();
     private final Map<BlockKey, CompletedRestore> completedRestores = new HashMap<>();
-    private final TempBlockTeardownFence<BlockKey, BlockState> teardownFences =
-            new TempBlockTeardownFence<>();
+    private final Set<Long> concealedLocalActions = new HashSet<>();
     private final List<String> teardownHistory = new ArrayList<>();
     private final List<String> authoritativeHistory = new ArrayList<>();
+    private SnapshotAssembly stagedSnapshot;
+    private long lastStreamSequence;
+    private long lastCommittedSnapshotId;
     private boolean showServerLayers = Boolean.parseBoolean(
             System.getProperty("projectkorra.prediction.debug.server-temp-blocks", "false"));
 
     public ClientTempBlockAuthority(final Context context,
                                     final ClientDirectBlockAuthority directBlocks,
+                                    final ClientBlockVisualOverlay visualOverlay,
                                     final Function<String, BlockState> blockStateDecoder,
                                     final Consumer<String> debug) {
         this.context = context;
         this.directBlocks = directBlocks;
+        this.visualOverlay = visualOverlay;
         this.blockStateDecoder = blockStateDecoder;
         this.debug = debug == null ? ignored -> { } : debug;
     }
@@ -107,18 +124,23 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
                 if (local.serverClosed) {
                     final BlockState finalState = decode(TempBlockSync.encode(change.data()));
                     updateCompletedRestores(change.layerId(), local.key, finalState);
+                    final BlockKey closedKey = local.key;
                     detachLocalLayer(change.layerId());
+                    refreshVisual(closedKey);
                     return;
                 }
                 // Retain a tombstone even when CREATE metadata has not yet
                 // arrived, so a short-lived local layer cannot reconsolidate.
                 local.closed = true;
                 local.closedTick = context.tick();
+                local.concealmentGraceReleased = false;
                 local.closedRevision = change.revision();
                 local.closedState = decode(TempBlockSync.encode(change.data()));
                 updateCompletedRestores(change.layerId(), local.key, local.closedState);
                 log("runtime retained predicted TempBlock close layer=" + change.layerId()
                         + " effect=" + local.effect + " pos=" + local.key.pos);
+                refreshVisual(local.key);
+                reconcileActionConcealment(local.actionSequence);
             }
             return;
         }
@@ -162,6 +184,8 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
             local.createdStates.add(createdState);
         }
         tryMatchLocal(change.layerId(), local);
+        refreshVisual(local.key);
+        reconcileActionConcealment(local.actionSequence);
     }
 
     @Override
@@ -172,7 +196,8 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
         final BlockKey key = clientKey(change.block());
         if (key == null) return;
         if (change.operation() == TempBlockSync.Operation.CREATE) {
-            pendingUnderlays.putIfAbsent(change.layerId(), key.world.getBlockState(key.pos));
+            pendingUnderlays.putIfAbsent(change.layerId(),
+                    composedUnderlay(key, key.world.getBlockState(key.pos)));
             return;
         }
         if (change.operation() != TempBlockSync.Operation.DISCARD) return;
@@ -184,6 +209,7 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
         }
         local.closed = true;
         local.closedTick = context.tick();
+        local.concealmentGraceReleased = false;
         local.closedRevision = change.revision();
         final BlockState capturedUnderlay = change.underlayData() == null
                 ? null : decode(TempBlockSync.encode(change.underlayData()));
@@ -191,9 +217,8 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
                 ? local.authoritativeUnderlay
                 : capturedUnderlay != null ? capturedUnderlay : local.initialUnderlay;
         updateCompletedRestores(change.layerId(), local.key, local.closedState);
-        if (local.closedState != null) {
-            local.key.world.setBlockState(local.key.pos, local.closedState, 19);
-        }
+        refreshVisual(local.key);
+        reconcileActionConcealment(local.actionSequence);
         log("runtime closed external TempBlock handoff layer=" + change.layerId()
                 + " clientPos=" + local.key.pos);
     }
@@ -237,6 +262,12 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
                 .anyMatch(local -> local.actionSequence == actionSequence);
     }
 
+    /** Logical state seen by the common prediction runtime, if overridden. */
+    public BlockState simulatedState(final ClientWorld world, final BlockPos pos) {
+        if (world == null || pos == null) return null;
+        return tempVisualState(new BlockKey(world, pos.toImmutable()));
+    }
+
     /** Applies a common-client TempBlock while preserving composed authority. */
     public void predict(final ClientWorld world, final BlockPos pos, final BlockState state) {
         if (world == null || pos == null || state == null) return;
@@ -247,16 +278,8 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
                 && clientState(world, pos) == null) {
             directBlocks.updateServerViewer(world, pos, state);
         }
-        BlockState visibleState = state;
-        if (showServerLayers) {
-            visibleState = serverLayers.physicalState(key).orElse(visibleState);
-        }
-        final ClientPlayerEntity localPlayer = MinecraftClient.getInstance().player;
-        if (!showServerLayers && localPlayer != null && hidesServerLayer(key)) {
-            visibleState = serverLayers.overlayState(key, localPlayer.getUuid()).orElse(visibleState);
-        }
-        world.setBlockState(pos, visibleState, 19);
-        log("runtime applied client TempBlock directly pos=" + pos + " state=" + visibleState);
+        refreshVisual(key);
+        log("runtime applied render-only client TempBlock pos=" + pos + " state=" + state);
     }
 
     public boolean toggleDebugView() {
@@ -297,195 +320,62 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
                 && hidesServerLayer(key);
     }
 
-    /** @return true when vanilla must not install this authoritative state. */
+    /**
+     * Observes an incoming vanilla state without ever cancelling its install.
+     * The backing ClientWorld is authority; concealment is render-only.
+     */
     public boolean acceptBlock(final ClientWorld world, final BlockPos pos,
                                final BlockState state) {
         if (!context.ready() || world == null || pos == null || state == null) return false;
         final BlockKey key = new BlockKey(world, pos.toImmutable());
-        final Optional<BlockState> teardownRestore = teardownFences.maskIncoming(key, state);
-        if (teardownRestore.isPresent() && !showServerLayers) {
-            directBlocks.takeConfirmed(world, pos, state);
-            final BlockState retained = composeTeardownView(key, teardownRestore.get());
-            if (retained != null && !retained.equals(world.getBlockState(pos))) {
-                world.setBlockState(pos, retained, 19);
-            }
-            directBlocks.removeMutation(world, pos);
-            log("runtime rejected late completed TempBlock state pos=" + pos
-                    + " stale=" + state + " retained=" + retained);
-            return true;
-        }
-        final CompletedRestore completed = takeCompletedRestore(key, state);
-        if (completed != null) {
-            directBlocks.takeConfirmed(world, pos, state);
-            final ClientDirectBlockAuthority.DirectView direct =
-                    directBlocks.maskForIncoming(world, pos, state);
-            final BlockState retained = direct == null
-                    ? completed.state : direct.viewerState();
-            world.setBlockState(pos, retained, 19);
-            directBlocks.removeMutation(world, pos);
-            log("runtime hid completed physical TempBlock lifecycle pos=" + pos
-                    + " state=" + retained);
-            return true;
-        }
-        if (hidesServerLayer(key)) {
-            directBlocks.takeConfirmed(world, pos, state);
-            log("runtime hid physical server TempBlock update pos=" + pos + " state=" + state);
-            return true;
-        }
+        takeCompletedRestore(key, state);
         final boolean serverTempPhysical = serverLayers.physicalState(key)
                 .filter(state::equals).isPresent();
         final ClientDirectBlockAuthority.DirectView directMask = serverTempPhysical
                 ? null : directBlocks.maskForIncoming(world, pos, state);
         final BlockState directViewer = directMask == null ? null : directMask.viewerState();
-        if (preserveLocalAuthority(key, directViewer == null ? state : directViewer)) {
+        final BlockState trustedUnderlay = serverTempPhysical
+                ? composedUnderlay(key, serverLayers.viewerState(key).orElse(state))
+                : directViewer == null ? state : directViewer;
+        if (preserveLocalAuthority(key, trustedUnderlay)) {
             directBlocks.takeConfirmed(world, pos, state);
             directBlocks.removeMutation(world, pos);
-            log("runtime rebased hidden client TempBlock underlay pos=" + pos
+            refreshVisual(key);
+            log("runtime rebased visual TempBlock underlay pos=" + pos
                     + " serverState=" + state + " viewerState="
                     + (directViewer == null ? state : directViewer));
-            return true;
+            return false;
         }
         final ClientDirectBlockAuthority.ConfirmedWrite confirmed =
                 directBlocks.takeConfirmed(world, pos, state);
         if (confirmed != null) {
-            final BlockState restore = directViewer == null
-                    ? directBlocks.desiredState(confirmed) : directViewer;
             directBlocks.removeMutation(world, pos);
-            if (restore != null && !restore.equals(state)) {
-                world.setBlockState(pos, restore, 19);
-                log("runtime hid exactly-confirmed earth write pos=" + pos
-                        + " serverState=" + state + " desired=" + restore);
-                return true;
-            }
-            return false;
+        } else if (directViewer == null) {
+            directBlocks.confirmFromVanilla(world, pos, state);
         }
-        if (directViewer != null) {
-            directBlocks.removeMutation(world, pos);
-            if (!directViewer.equals(state)) {
-                world.setBlockState(pos, directViewer, 19);
-                return true;
-            }
-            return false;
-        }
-        directBlocks.confirmFromVanilla(world, pos, state);
         directBlocks.removeMutation(world, pos);
+        refreshVisual(key);
         return false;
     }
 
-    /** @return true when the mixed-ownership vanilla batch was applied here. */
+    /** Observes a vanilla chunk delta; vanilla still installs every entry. */
     public boolean acceptBatch(final ClientWorld world, final List<BlockPos> positions,
                                final List<BlockState> states) {
         if (!context.ready() || world == null || positions == null || states == null
                 || positions.isEmpty() || positions.size() != states.size()) return false;
-        final boolean[] masked = new boolean[positions.size()];
-        final BlockState[] retainedStates = new BlockState[positions.size()];
-        int maskedEntries = 0;
         for (int index = 0; index < positions.size(); index++) {
-            final BlockPos pos = positions.get(index).toImmutable();
-            final BlockKey key = new BlockKey(world, pos);
-            final BlockState incoming = states.get(index);
-            final Optional<BlockState> teardownRestore = teardownFences.maskIncoming(key, incoming);
-            if (teardownRestore.isPresent() && !showServerLayers) {
-                masked[index] = true;
-                retainedStates[index] = composeTeardownView(key, teardownRestore.get());
-                maskedEntries++;
-                directBlocks.takeConfirmed(world, pos, incoming);
-                directBlocks.removeMutation(world, pos);
-                continue;
-            }
-            final CompletedRestore completed = takeCompletedRestore(key, incoming);
-            if (completed != null) {
-                masked[index] = true;
-                final ClientDirectBlockAuthority.DirectView direct =
-                        directBlocks.maskForIncoming(world, pos, incoming);
-                retainedStates[index] = direct == null ? completed.state : direct.viewerState();
-                maskedEntries++;
-                directBlocks.takeConfirmed(world, pos, incoming);
-                continue;
-            }
-            if (hidesServerLayer(key)) {
-                masked[index] = true;
-                retainedStates[index] = desiredState(key);
-                maskedEntries++;
-                directBlocks.takeConfirmed(world, pos, incoming);
-                continue;
-            }
-            final boolean serverTempPhysical = serverLayers.physicalState(key)
-                    .filter(incoming::equals).isPresent();
-            final ClientDirectBlockAuthority.DirectView directMask = serverTempPhysical
-                    ? null : directBlocks.maskForIncoming(world, pos, incoming);
-            final BlockState directViewer = directMask == null ? null : directMask.viewerState();
-            if (preserveLocalAuthority(key,
-                    directViewer == null ? incoming : directViewer)) {
-                masked[index] = true;
-                retainedStates[index] = desiredState(key);
-                maskedEntries++;
-                directBlocks.takeConfirmed(world, pos, incoming);
-                continue;
-            }
-            final ClientDirectBlockAuthority.ConfirmedWrite confirmed =
-                    directBlocks.takeConfirmed(world, pos, incoming);
-            if (confirmed != null) {
-                final BlockState retained = directViewer == null
-                        ? directBlocks.desiredState(confirmed) : directViewer;
-                if (retained != null && !retained.equals(incoming)) {
-                    masked[index] = true;
-                    retainedStates[index] = retained;
-                    maskedEntries++;
-                } else {
-                    directBlocks.removeMutation(world, pos);
-                }
-            } else if (directViewer != null) {
-                directBlocks.removeMutation(world, pos);
-                if (!directViewer.equals(incoming)) {
-                    masked[index] = true;
-                    retainedStates[index] = directViewer;
-                    maskedEntries++;
-                }
-            } else {
-                directBlocks.confirmFromVanilla(world, pos, incoming);
-                directBlocks.removeMutation(world, pos);
-            }
+            acceptBlock(world, positions.get(index), states.get(index));
         }
-        if (maskedEntries == 0) return false;
-        // Chunk deltas are one packet with per-entry ownership. Install every
-        // unrelated entry here and leave owned entries on their composed view.
-        for (int index = 0; index < positions.size(); index++) {
-            final BlockPos pos = positions.get(index).toImmutable();
-            final BlockState selected = masked[index] ? retainedStates[index] : states.get(index);
-            if (selected != null && !world.getBlockState(pos).equals(selected)) {
-                world.setBlockState(pos, selected, 19);
-            }
-        }
-        log("runtime masked owned chunk-delta entries=" + maskedEntries
-                + " authoritativeEntries=" + (positions.size() - maskedEntries));
-        return true;
+        return false;
     }
 
     public void acceptChunk(final ClientWorld world, final int chunkX, final int chunkZ) {
         if (!context.ready() || world == null) return;
         final Set<BlockPos> preserved = new HashSet<>();
         final String worldName = FabricPredictionMC.world(world).getName();
-        final Map<BlockKey, BlockState> teardownChunkStates = new LinkedHashMap<>();
-        for (BlockKey key : teardownFences.keys()) {
-            if (key == null || key.world != world || key.pos == null
-                    || key.pos.getX() >> 4 != chunkX || key.pos.getZ() >> 4 != chunkZ) continue;
-            teardownChunkStates.put(key, world.getBlockState(key.pos));
-        }
         preserved.addAll(directBlocks.restoreChunk(world, chunkX, chunkZ,
                 (pos, chunkState) -> serverLayers.physicalState(new BlockKey(world, pos))
                         .filter(chunkState::equals).isPresent()));
-        for (Map.Entry<BlockKey, BlockState> entry : teardownChunkStates.entrySet()) {
-            final Optional<BlockState> retained =
-                    teardownFences.maskIncoming(entry.getKey(), entry.getValue());
-            if (retained.isEmpty() || showServerLayers) continue;
-            final BlockState desired = composeTeardownView(entry.getKey(), retained.get());
-            if (desired != null
-                    && !desired.equals(entry.getKey().world.getBlockState(entry.getKey().pos))) {
-                entry.getKey().world.setBlockState(entry.getKey().pos, desired, 19);
-            }
-            preserved.add(entry.getKey().pos);
-        }
         final Set<BlockPos> localCoordinates = new HashSet<>();
         for (TempBlock layer : TempBlock.getActiveLayers()) {
             final com.projectkorra.projectkorra.platform.mc.block.Block block = layer.getBlock();
@@ -494,36 +384,25 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
             final BlockPos pos = new BlockPos(block.getX(), block.getY(), block.getZ()).toImmutable();
             if (!localCoordinates.add(pos)) continue;
             final BlockKey key = new BlockKey(world, pos);
-            if (!hidesServerLayer(key)) rebaseUnderlay(key, world.getBlockState(pos));
             preserved.add(pos);
-            final BlockState desired = desiredState(key);
-            if (desired != null) world.setBlockState(pos, desired, 19);
+            refreshVisual(key);
         }
-        for (BlockKey key : List.copyOf(pairedCoordinates.keySet())) {
+        for (BlockKey key : List.copyOf(authoritativeByCoordinate.keySet())) {
             if (key.world != world || key.pos.getX() >> 4 != chunkX
                     || key.pos.getZ() >> 4 != chunkZ || preserved.contains(key.pos)
-                    || !hidesServerLayer(key)) continue;
-            final BlockState desired = desiredState(key);
-            if (desired != null) world.setBlockState(key.pos, desired, 19);
+                    || topAuthoritative(key) == null) continue;
+            refreshVisual(key);
             preserved.add(key.pos);
-        }
-        for (ServerLayer server : List.copyOf(authoritativeLayers.values())) {
-            if (server == null || !server.hiddenForLocalViewer || server.key.world != world
-                    || server.key.pos.getX() >> 4 != chunkX
-                    || server.key.pos.getZ() >> 4 != chunkZ
-                    || preserved.contains(server.key.pos) || !hidesServerLayer(server.key)) continue;
-            final BlockState desired = desiredState(server.key);
-            if (desired != null) world.setBlockState(server.key.pos, desired, 19);
-            preserved.add(server.key.pos);
         }
         directBlocks.removeChunkMutationsExcept(world, chunkX, chunkZ, preserved);
     }
 
     private CompletedRestore takeCompletedRestore(final BlockKey key,
                                                    final BlockState receivedState) {
-        final CompletedRestore completed = completedRestores.remove(key);
+        final CompletedRestore completed = completedRestores.get(key);
         if (completed == null) return null;
         if (completed.expectedState.equals(receivedState)) {
+            completedRestores.remove(key, completed);
             final BlockState liveState = completed.followLiveClientState
                     ? clientState(key.world, key.pos) : null;
             final BlockState retained = completedRestoreState(
@@ -532,7 +411,11 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
                     : new CompletedRestore(completed.expectedState, retained,
                     completed.followLiveClientState, completed.tick, completed.localLayerId);
         }
-        log("runtime released mismatched completed TempBlock fence pos=" + key.pos
+        // Several vanilla writes for the same coordinate can be delivered
+        // between close metadata and Paper's physical restore (fluid levels
+        // are a common example). Only the state named by the close operation
+        // consumes this short-lived fence; expire() remains its hard bound.
+        log("runtime retained completed TempBlock fence through intermediate update pos=" + key.pos
                 + " expected=" + completed.expectedState + " received=" + receivedState);
         return null;
     }
@@ -553,15 +436,68 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
                         : completed);
     }
 
-    public void applyAuthoritativeBatch(final ClientWorld world,
-                                        final PredictionPayloads.TempBlockBatch batch) {
-        if (!context.ready() || world == null || batch == null) return;
+    public BatchResult applyAuthoritativeBatch(final ClientWorld world,
+                                               final PredictionPayloads.TempBlockBatch batch) {
+        if (!context.ready() || world == null || batch == null) {
+            return BatchResult.RESYNC_REQUIRED;
+        }
+        if (!batch.snapshot()) {
+            if (batch.snapshotId() != 0L || batch.snapshotIndex() != 0
+                    || batch.snapshotParts() != 1 || stagedSnapshot != null
+                    || !advanceStream(batch.streamSequence(), false)) {
+                return requireAuthoritativeResync("invalid or gapped incremental stream");
+            }
+            applyAuthoritativeOperations(world, batch, batch.operations());
+            return BatchResult.APPLIED;
+        }
+
+        if (batch.snapshotId() <= 0L || batch.snapshotParts() <= 0
+                || batch.snapshotIndex() < 0
+                || batch.snapshotIndex() >= batch.snapshotParts()) {
+            return requireAuthoritativeResync("invalid snapshot framing");
+        }
+        if (batch.snapshotIndex() == 0) {
+            if (batch.snapshotId() <= lastCommittedSnapshotId
+                    || !advanceStream(batch.streamSequence(), true)) {
+                return requireAuthoritativeResync("stale snapshot start");
+            }
+            stagedSnapshot = new SnapshotAssembly(batch.snapshotId(), batch.snapshotParts());
+        } else {
+            if (stagedSnapshot == null
+                    || stagedSnapshot.id != batch.snapshotId()
+                    || stagedSnapshot.parts != batch.snapshotParts()
+                    || stagedSnapshot.nextIndex != batch.snapshotIndex()
+                    || !advanceStream(batch.streamSequence(), false)) {
+                return requireAuthoritativeResync("snapshot fragment gap");
+            }
+        }
+        if (stagedSnapshot.operations.size() + batch.operations().size()
+                > MAX_STAGED_SNAPSHOT_OPERATIONS) {
+            return requireAuthoritativeResync("snapshot operation limit exceeded");
+        }
+        stagedSnapshot.operations.addAll(batch.operations());
+        stagedSnapshot.nextIndex++;
+        if (stagedSnapshot.nextIndex < stagedSnapshot.parts) return BatchResult.STAGED;
+
+        final SnapshotAssembly committed = stagedSnapshot;
+        stagedSnapshot = null;
+        applyAuthoritativeOperations(world, batch, committed.operations);
+        lastCommittedSnapshotId = committed.id;
+        pruneAbsentAuthoritativeLayers(world, committed.operations);
+        log("runtime committed TempBlock snapshot id=" + committed.id
+                + " parts=" + committed.parts + " ops=" + committed.operations.size());
+        return BatchResult.APPLIED;
+    }
+
+    private void applyAuthoritativeOperations(final ClientWorld world,
+                                              final PredictionPayloads.TempBlockBatch batch,
+                                              final List<PredictionPayloads.TempBlockOp> operations) {
         log("runtime temp-block batch serverTick=" + batch.serverTick()
-                + " ops=" + batch.operations().size());
+                + " ops=" + operations.size());
         final String worldName = world.getRegistryKey().getValue().toString();
         final ClientPlayerEntity localPlayer = MinecraftClient.getInstance().player;
         final UUID viewerId = localPlayer == null ? null : localPlayer.getUuid();
-        for (PredictionPayloads.TempBlockOp operation : batch.operations()) {
+        for (PredictionPayloads.TempBlockOp operation : operations) {
             if (!matchesWorld(worldName, operation.world())) {
                 recordAuthoritative("SKIP_WORLD snapshot=" + batch.snapshot()
                         + " operation=" + operation.operation() + " layer=" + operation.layerId()
@@ -585,22 +521,26 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
             final boolean locallyOwned = viewerId != null && viewerId.equals(operation.ownerId());
             final long causalSequence = locallyOwned
                     ? context.localActionSequence(operation.actionSequence()) : 0L;
-            final boolean advanced = serverLayers.apply(key, commonOperation,
-                    operation.actionSequence(), operation.layerId(), operation.revision(),
-                    operation.ownerId(), physicalState, viewerState);
+            final boolean advanced = batch.snapshot()
+                    && commonOperation == TempBlockSync.Operation.CREATE
+                    ? serverLayers.applySnapshot(key, operation.actionSequence(),
+                    operation.layerId(), operation.revision(), operation.ownerId(),
+                    physicalState, viewerState)
+                    : serverLayers.apply(key, commonOperation, operation.actionSequence(),
+                    operation.layerId(), operation.revision(), operation.ownerId(),
+                    physicalState, viewerState);
             if (!advanced) continue;
 
             if (commonOperation == TempBlockSync.Operation.REVERT
                     || commonOperation == TempBlockSync.Operation.DISCARD) {
                 final ServerLayer server = authoritativeLayers.get(operation.layerId());
-                // Concealment belongs to the accepted owner lifecycle, not to
-                // a particular ordinal. RaiseEarth and other moving structures
-                // can legitimately produce a different number of overlapping
-                // layers before their exact pairs arrive. Their closing packet
-                // must still reveal the live client view rather than a delayed
-                // Paper frame.
-                final boolean hiddenClosingLayer = server != null
-                        && server.hiddenForLocalViewer;
+                // Only a proven semantic pair was ever concealed. Preserve its
+                // live local view until vanilla installs Paper's physical close.
+                // Owner metadata is emitted only for an authenticated exact
+                // client and a supported predicted ability. Preserve the
+                // concealment fence even when coordinate drift prevented the
+                // optional semantic pair from being formed.
+                final boolean hiddenClosingLayer = hiddenBefore;
                 if (server != null && server.effect != null) {
                     authoritativeEffects.remove(server.effect, operation.layerId());
                 }
@@ -665,22 +605,7 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
             final EffectKey effect = effectKey(causalSequence, operation.effectAbility(),
                     operation.effectStep(), operation.effectOrdinal());
             final ServerLayer previous = authoritativeLayers.get(operation.layerId());
-            // Once hidden, a layer remains hidden for its full lifecycle. An
-            // ownership refresh may also move a previously foreign
-            // EarthSmash bridge under this client: allow that authenticated
-            // update to flip visibility so the old stationary copy does not
-            // remain beside the locally moved continuation.
-            final boolean ownsOperation = viewerId != null
-                    && viewerId.equals(operation.ownerId());
-            final boolean safeOwnershipRefresh = (previous != null
-                    && previous.hiddenForLocalViewer)
-                    || !"EarthSmash".equalsIgnoreCase(operation.effectAbility())
-                    || context.hasActiveAbility(operation.effectAbility());
-            final boolean hiddenForLocalViewer = (previous != null
-                    && previous.hiddenForLocalViewer)
-                    || ownsOperation && safeOwnershipRefresh;
-            if (previous != null && (!Objects.equals(previous.effect, effect)
-                    || previous.hiddenForLocalViewer != hiddenForLocalViewer)) {
+            if (previous != null && !Objects.equals(previous.effect, effect)) {
                 if (previous.effect != null) {
                     authoritativeEffects.remove(previous.effect, operation.layerId());
                 }
@@ -688,7 +613,7 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
             }
             final ServerLayer server = new ServerLayer(causalSequence, key, effect,
                     operation.effectAbility(), operation.effectState(), operation.ownerId(),
-                    physicalState, hiddenForLocalViewer);
+                    physicalState);
             indexAuthoritative(operation.layerId(), server);
             if (effect != null && locallyOwned) {
                 authoritativeEffects.put(effect, operation.layerId());
@@ -698,14 +623,18 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
             final boolean hiddenAfter = hidesServerLayer(key);
             if (hiddenAfter) {
                 directBlocks.removeMutation(world, pos);
-                world.setBlockState(pos, desiredState(key), 19);
             } else if (!operation.packetExpected()) {
-                if (preserveLocalAuthority(key, physicalState)) {
-                    world.setBlockState(pos, desiredState(key), 19);
-                } else {
-                    repaint(key, physicalState);
+                final BlockState authoritativeUnderlay = serverLayers.viewerState(key)
+                        .map(state -> composedUnderlay(key, state))
+                        .orElseGet(() -> composedUnderlay(key, physicalState));
+                if (preserveLocalAuthority(key, authoritativeUnderlay)) {
+                    refreshVisual(key);
                 }
             }
+            // Metadata is enough to establish visual authority. Do this even
+            // when a vanilla block packet is expected so packet loss or delay
+            // cannot leave a DIRECT prediction covering Paper's TempBlock.
+            refreshVisual(key);
             recordAuthoritative("OPEN snapshot=" + batch.snapshot()
                     + " operation=" + commonOperation + " layer=" + operation.layerId()
                     + " revision=" + operation.revision() + " owner=" + operation.ownerId()
@@ -723,6 +652,84 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
         }
     }
 
+    private boolean advanceStream(final long sequence, final boolean snapshotCanRepairGap) {
+        if (sequence <= 0L) return false;
+        if (lastStreamSequence > 0L) {
+            if (snapshotCanRepairGap) {
+                if (sequence <= lastStreamSequence) return false;
+            } else if (sequence != lastStreamSequence + 1L) {
+                return false;
+            }
+        }
+        lastStreamSequence = sequence;
+        return true;
+    }
+
+    private void discardStagedSnapshot(final String reason) {
+        if (stagedSnapshot != null) {
+            log("runtime discarded TempBlock snapshot id=" + stagedSnapshot.id
+                    + " next=" + stagedSnapshot.nextIndex + "/" + stagedSnapshot.parts
+                    + " reason=" + reason);
+        } else {
+            log("runtime rejected TempBlock stream reason=" + reason);
+        }
+        stagedSnapshot = null;
+    }
+
+    /**
+     * Fails open to vanilla authority while a replacement snapshot is owed.
+     * Local prediction remains rendered, but no stale server-pair metadata can
+     * keep a physical block concealed after a stream gap.
+     */
+    private BatchResult requireAuthoritativeResync(final String reason) {
+        discardStagedSnapshot(reason);
+        for (LocalLayer local : localLayers.values()) {
+            if (local != null) local.serverLayerId = 0L;
+        }
+        serverLayers.clear();
+        authoritativeLayers.clear();
+        authoritativeByCoordinate.clear();
+        authoritativeEffects.clear();
+        pairedServerLayers.clear();
+        pairedCoordinates.clear();
+        completedRestores.clear();
+        repaintAll();
+        recordAuthoritative("STREAM_INVALIDATED reason=" + reason);
+        return BatchResult.RESYNC_REQUIRED;
+    }
+
+    /** Commits snapshot membership only after every fragment has arrived. */
+    private void pruneAbsentAuthoritativeLayers(
+            final ClientWorld world,
+            final List<PredictionPayloads.TempBlockOp> operations) {
+        final String worldName = world.getRegistryKey().getValue().toString();
+        final Set<Long> snapshotLayers = new HashSet<>();
+        for (PredictionPayloads.TempBlockOp operation : operations) {
+            if (!matchesWorld(worldName, operation.world())) continue;
+            if (operation.operation() != PredictionPayloads.TempOperation.REVERT
+                    && operation.operation() != PredictionPayloads.TempOperation.DISCARD) {
+                snapshotLayers.add(operation.layerId());
+            }
+        }
+
+        final Set<BlockKey> affected = new HashSet<>(
+                serverLayers.pruneAbsentFromSnapshot(snapshotLayers));
+        for (long layerId : List.copyOf(authoritativeLayers.keySet())) {
+            if (snapshotLayers.contains(layerId)) continue;
+            final ServerLayer stale = authoritativeLayers.get(layerId);
+            if (stale != null && stale.effect != null) {
+                authoritativeEffects.remove(stale.effect, layerId);
+            }
+            unpairServer(layerId);
+            final ServerLayer removed = removeAuthoritative(layerId);
+            if (removed != null && removed.key != null) affected.add(removed.key);
+        }
+        authoritativeEffects.values().removeIf(layerId -> !snapshotLayers.contains(layerId));
+        for (BlockKey key : affected) refreshVisual(key);
+        recordAuthoritative("SNAPSHOT_COMMIT id=" + lastCommittedSnapshotId
+                + " retained=" + snapshotLayers.size() + " refreshed=" + affected.size());
+    }
+
     /** Runs an authoritative ability removal with exact TempBlock cleanup. */
     public void removeAbility(final CoreAbility ability, final Runnable removal) {
         final Map<BlockKey, CapturedLifecycle> captured = captureAbility(ability);
@@ -734,13 +741,18 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
     }
 
     public void afterLocalProgress(final ClientWorld world) {
-        auditTeardownFences(world);
+        // Visual overlays do not need to repair ClientWorld after progress.
     }
 
     public void expire() {
         final long tick = context.tick();
-        completedRestores.entrySet().removeIf(entry -> tick - entry.getValue().tick > 2L);
-        teardownFences.expireBefore(tick - ACTION_RETENTION_TICKS);
+        final List<BlockKey> expiredRestores = new ArrayList<>();
+        completedRestores.entrySet().removeIf(entry -> {
+            if (tick - entry.getValue().tick <= 2L) return false;
+            expiredRestores.add(entry.getKey());
+            return true;
+        });
+        for (BlockKey key : expiredRestores) refreshVisual(key);
         expireUnconfirmedLayers();
     }
 
@@ -750,8 +762,9 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
                 + " localActive=" + TempBlock.getActiveLayers().size()
                 + " serverLayers=" + authoritativeLayers.size()
                 + " serverCoordinates=" + serverLayers.coordinateCount()
-                + " closeFences=" + completedRestores.size()
-                + " teardownFences=" + teardownFences.size()
+                + " renderOverrides="
+                + visualOverlay.size(ClientBlockVisualOverlay.Layer.TEMP)
+                + " closeOverlays=" + completedRestores.size()
                 + " serverDebugVisible=" + showServerLayers);
         if (teardownHistory.isEmpty()) {
             report.add("Authoritative teardown: no ability teardown has captured TempBlock coordinates");
@@ -782,20 +795,11 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
                     + " world=" + local.key.world.getBlockState(local.key.pos));
             if (++details >= 24) break;
         }
-        int fenceDetails = 0;
-        for (BlockKey key : teardownFences.keys()) {
-            if (key == null || key.world == null || key.pos == null) continue;
-            final BlockState current = key.world.getBlockState(key.pos);
-            final Optional<BlockState> retained = teardownFences.retainedState(key);
-            report.add("teardown fence pos=" + key.pos + " world=" + current
-                    + " retained=" + retained.orElse(null)
-                    + " staleNow=" + teardownFences.audit(key, current).isPresent());
-            if (++fenceDetails >= 12) break;
-        }
         return List.copyOf(report);
     }
 
     public void clear() {
+        visualOverlay.clear(ClientBlockVisualOverlay.Layer.TEMP);
         serverLayers.clear();
         localLayers.clear();
         localLayersByCoordinate.clear();
@@ -807,9 +811,12 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
         pairedServerLayers.clear();
         pairedCoordinates.clear();
         completedRestores.clear();
-        teardownFences.clear();
+        concealedLocalActions.clear();
         teardownHistory.clear();
         authoritativeHistory.clear();
+        stagedSnapshot = null;
+        lastStreamSequence = 0L;
+        lastCommittedSnapshotId = 0L;
     }
 
     private Map<BlockKey, CapturedLifecycle> captureAbility(final CoreAbility ability) {
@@ -817,12 +824,8 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
         final Map<BlockKey, CapturedLifecycle> captured = new LinkedHashMap<>();
         for (LocalLayer local : localLayers.values()) {
             if (local == null || local.owner != ability || local.key == null) continue;
-            final BlockState underlay = local.closedState != null ? local.closedState
-                    : local.authoritativeUnderlay != null ? local.authoritativeUnderlay
-                    : local.initialUnderlay;
             final CapturedLifecycle lifecycle = captured.computeIfAbsent(
                     local.key, ignored -> new CapturedLifecycle());
-            if (underlay != null) lifecycle.underlay = underlay;
             lifecycle.staleStates.addAll(local.createdStates);
             lifecycle.addStale(local.initialUnderlay);
             lifecycle.addStale(local.authoritativeUnderlay);
@@ -838,7 +841,6 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
             final BlockState created = decode(TempBlockSync.encode(layer.getBlockData()));
             final CapturedLifecycle lifecycle = captured.computeIfAbsent(
                     key, ignored -> new CapturedLifecycle());
-            if (underlay != null) lifecycle.underlay = underlay;
             lifecycle.addStale(created);
             lifecycle.addStale(underlay);
         }
@@ -849,7 +851,6 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
                                         final Map<BlockKey, CapturedLifecycle> captured) {
         if (captured == null || captured.isEmpty()) return;
         int repainted = 0;
-        int armed = 0;
         int remainingLocal = 0;
         int hiddenServer = 0;
         final List<String> samples = new ArrayList<>();
@@ -863,30 +864,12 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
             if (hidden && player != null) {
                 local = serverLayers.overlayState(key, player.getUuid()).orElse(local);
             }
-            final BlockState hiddenViewer = hidden
-                    ? serverLayers.viewerState(key).orElse(null) : null;
-            final BlockState visiblePhysical = hidden
-                    ? null : serverLayers.physicalState(key).orElse(null);
-            final BlockState directViewer = directBlocks.viewerState(key.world, key.pos);
             final BlockState before = key.world.getBlockState(key.pos);
-            final BlockState selected = TempBlockTeardownPolicy.select(local,
-                    hiddenViewer, visiblePhysical, directViewer,
-                    lifecycle == null ? null : lifecycle.underlay, before);
+            final BlockState selected = tempVisualState(key);
             if (local != null) remainingLocal++;
             if (hidden) hiddenServer++;
-            if (selected != null && !selected.equals(before)) {
-                key.world.setBlockState(key.pos, selected, 19);
-                repainted++;
-            }
-            // An active local layer already owns this coordinate. A durable
-            // teardown fence would outlive that layer and could mistake its
-            // legitimate WATER/AIR restore for a late packet, pinning an
-            // overlapping ice layer until the full action-retention timeout.
-            if (local == null && lifecycle != null && selected != null
-                    && !lifecycle.staleStates.isEmpty()) {
-                teardownFences.arm(key, lifecycle.staleStates, selected, context.tick());
-                armed++;
-            }
+            refreshVisual(key);
+            if (selected != null && !selected.equals(before)) repainted++;
             directBlocks.removeMutation(key.world, key.pos);
             if (samples.size() < 6) {
                 samples.add(key.pos + ":" + before + "->" + selected
@@ -895,79 +878,90 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
             }
         }
         teardownHistory.add("ability=" + (ability == null ? "<null>" : ability.getName())
-                + " captured=" + captured.size() + " armed=" + armed
-                + " repainted=" + repainted + " remainingLocal=" + remainingLocal
+                + " captured=" + captured.size() + " repainted=" + repainted
+                + " remainingLocal=" + remainingLocal
                 + " hiddenServer=" + hiddenServer + " samples=" + samples);
         while (teardownHistory.size() > 12) teardownHistory.remove(0);
         log("runtime finalized authoritative TempBlock teardown "
                 + teardownHistory.get(teardownHistory.size() - 1));
     }
 
-    private BlockState composeTeardownView(final BlockKey key,
-                                           final BlockState retainedFallback) {
-        if (key == null || key.world == null || key.pos == null) return retainedFallback;
-        final boolean hidden = hidesServerLayer(key);
-        BlockState local = clientState(key.world, key.pos);
-        final ClientPlayerEntity player = MinecraftClient.getInstance().player;
-        if (hidden && player != null) {
-            local = serverLayers.overlayState(key, player.getUuid()).orElse(local);
-        }
-        final BlockState hiddenViewer = hidden
-                ? serverLayers.viewerState(key).orElse(null) : null;
-        final BlockState visiblePhysical = hidden
-                ? null : serverLayers.physicalState(key).orElse(null);
-        return TempBlockTeardownPolicy.select(local, hiddenViewer, visiblePhysical,
-                directBlocks.viewerState(key.world, key.pos),
-                retainedFallback, retainedFallback);
-    }
-
-    private void auditTeardownFences(final ClientWorld world) {
-        if (world == null || showServerLayers || teardownFences.size() == 0) return;
-        int repaired = 0;
-        for (BlockKey key : teardownFences.keys()) {
-            if (key == null || key.world != world || key.pos == null) continue;
-            final BlockState current = world.getBlockState(key.pos);
-            final Optional<BlockState> retained = teardownFences.audit(key, current);
-            if (retained.isEmpty()) continue;
-            final BlockState desired = composeTeardownView(key, retained.get());
-            if (desired != null && !desired.equals(current)) {
-                world.setBlockState(key.pos, desired, 19);
-                repaired++;
-            }
-        }
-        if (repaired > 0) log("runtime rejected client-side late TempBlock writes=" + repaired);
-    }
-
     private ServerLayer topAuthoritative(final BlockKey key) {
+        final Map.Entry<Long, ServerLayer> top = topAuthoritativeEntry(key);
+        return top == null ? null : top.getValue();
+    }
+
+    private Map.Entry<Long, ServerLayer> topAuthoritativeEntry(final BlockKey key) {
         if (key == null) return null;
-        final NavigableMap<Long, ServerLayer> atCoordinate = authoritativeByCoordinate.get(key);
-        if (atCoordinate == null || atCoordinate.isEmpty()) return null;
-        while (!atCoordinate.isEmpty()) {
-            final Map.Entry<Long, ServerLayer> newest = atCoordinate.lastEntry();
-            if (serverLayers.containsLayer(key, newest.getKey())) return newest.getValue();
-            atCoordinate.pollLastEntry();
-        }
-        authoritativeByCoordinate.remove(key);
-        return null;
+        final OptionalLong topLayerId = serverLayers.topLayerId(key);
+        if (topLayerId.isEmpty()) return null;
+        final long layerId = topLayerId.getAsLong();
+        final ServerLayer server = authoritativeLayers.get(layerId);
+        return server != null && key.equals(server.key)
+                ? Map.entry(layerId, server) : null;
     }
 
     private boolean hidesServerLayer(final BlockKey key) {
         if (showServerLayers || key == null || key.world == null || key.pos == null) return false;
-        // Paper authenticates ownerId only for a ready exact-prediction client
-        // which advertised this ability. Hide that owner's complete physical
-        // lifecycle immediately; waiting for an exact ordinal pair exposes the
-        // latency-delayed Paper frame beside moving client TempBlocks (most
-        // visibly RaiseEarth and redirected EarthSmash).
-        final NavigableMap<Long, ServerLayer> atCoordinate = authoritativeByCoordinate.get(key);
-        if (atCoordinate != null) {
-            for (final Map.Entry<Long, ServerLayer> entry
-                    : atCoordinate.descendingMap().entrySet()) {
-                final ServerLayer server = entry.getValue();
-                if (server != null && server.hiddenForLocalViewer
-                        && serverLayers.containsLayer(key, entry.getKey())) return true;
-            }
+        final ClientPlayerEntity player = MinecraftClient.getInstance().player;
+        if (player == null || !serverLayers.hidesServerWorld(key, player.getUuid())) return false;
+
+        // Owner metadata alone is not a perpetual hiding grant. It is emitted
+        // only for an authenticated exact client, but a lost close/snapshot or
+        // a reused server action must still fail open. Coordinates deliberately
+        // do not participate: a latency-shifted Paper copy is hidden only while
+        // its mapped local action owns an active TempBlock, plus a short close
+        // grace for packet ordering.
+        final NavigableMap<Long, ServerLayer> atCoordinate =
+                authoritativeByCoordinate.get(key);
+        if (atCoordinate == null || atCoordinate.isEmpty()) return false;
+        final UUID viewerId = player.getUuid();
+        boolean foundOwnedLayer = false;
+        for (ServerLayer server : atCoordinate.values()) {
+            if (server == null || !viewerId.equals(server.ownerId)) continue;
+            foundOwnedLayer = true;
+            // Paper's viewerState excludes every layer owned by this viewer.
+            // Therefore one valid lease cannot safely hide a second stale
+            // owned layer in the same stack; the whole coordinate fails open.
+            if (!hasLocalActionConcealment(server.actionSequence)) return false;
         }
-        return hasSemanticPair(key);
+        return foundOwnedLayer;
+    }
+
+    private boolean hasLocalActionConcealment(final long actionSequence) {
+        return actionSequence > 0L && concealedLocalActions.contains(actionSequence);
+    }
+
+    private boolean computesLocalActionConcealment(final long actionSequence) {
+        if (actionSequence <= 0L) return false;
+        for (Map.Entry<Long, LocalLayer> entry : localLayers.entrySet()) {
+            final LocalLayer local = entry.getValue();
+            if (local == null || local.actionSequence != actionSequence) continue;
+            if (!local.closed && findActiveLayer(entry.getKey()) != null) return true;
+            if (local.closed && !closedPairGraceExpired(local)) return true;
+        }
+        return false;
+    }
+
+    /** Repaints drifted coordinates only when an action lease changes state. */
+    private void reconcileActionConcealment(final long actionSequence) {
+        if (actionSequence <= 0L) return;
+        final boolean concealed = computesLocalActionConcealment(actionSequence);
+        final boolean changed = concealed
+                ? concealedLocalActions.add(actionSequence)
+                : concealedLocalActions.remove(actionSequence);
+        if (changed) refreshAuthoritativeForAction(actionSequence);
+    }
+
+    /** Re-evaluates every drifted Paper coordinate tied to one local action. */
+    private void refreshAuthoritativeForAction(final long actionSequence) {
+        if (actionSequence <= 0L || authoritativeLayers.isEmpty()) return;
+        final Set<BlockKey> affected = new HashSet<>();
+        for (ServerLayer server : authoritativeLayers.values()) {
+            if (server != null && server.actionSequence == actionSequence
+                    && server.key != null) affected.add(server.key);
+        }
+        for (BlockKey key : affected) refreshVisual(key);
     }
 
     private void indexAuthoritative(final long layerId, final ServerLayer server) {
@@ -1000,17 +994,31 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
         if (key == null || key.world == null || key.pos == null) return false;
         final Set<Long> paired = pairedCoordinates.get(key);
         if (paired == null || paired.isEmpty()) return false;
-        paired.removeIf(serverLayer -> {
+        boolean invalidated = false;
+        for (long serverLayer : List.copyOf(paired)) {
             final Long localLayer = pairedServerLayers.get(serverLayer);
             final LocalLayer local = localLayer == null ? null : localLayers.get(localLayer);
-            return local == null || (!local.closed && findActiveLayer(localLayer) == null)
+            final boolean invalid = local == null || !eligibleForPair(local)
+                    || (!local.closed && findActiveLayer(localLayer) == null)
                     || !serverLayers.containsLayer(key, serverLayer);
-        });
+            if (!invalid) continue;
+            invalidated = true;
+            paired.remove(serverLayer);
+            pairedServerLayers.remove(serverLayer, localLayer);
+            if (local != null && local.serverLayerId == serverLayer) {
+                local.serverLayerId = 0L;
+                if (!local.key.equals(key)) refreshVisual(local.key);
+            }
+        }
+        if (invalidated) refreshVisual(key);
         if (paired.isEmpty()) {
             pairedCoordinates.remove(key);
             return false;
         }
-        return true;
+        // Concealment is stack-top-specific. A valid pair below a newer
+        // unpaired Paper layer must not hide that newer physical layer.
+        final Map.Entry<Long, ServerLayer> top = topAuthoritativeEntry(key);
+        return top != null && paired.contains(top.getKey());
     }
 
     private boolean hasActiveServerPair(final LocalLayer local) {
@@ -1027,7 +1035,7 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
 
     private void tryMatchLocal(final long localLayerId, final LocalLayer local) {
         if (local == null || local.effect == null || local.serverLayerId != 0L
-                || local.serverClosed) return;
+                || !eligibleForPair(local)) return;
         final Long serverLayerId = authoritativeEffects.get(local.effect);
         if (serverLayerId == null) return;
         final ServerLayer server = authoritativeLayers.get(serverLayerId);
@@ -1040,12 +1048,13 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
         final Long localLayerId = localEffects.get(server.effect);
         if (localLayerId == null) return;
         final LocalLayer local = localLayers.get(localLayerId);
-        if (local != null) reconcilePair(serverLayerId, server, localLayerId, local);
+        if (eligibleForPair(local)) reconcilePair(serverLayerId, server, localLayerId, local);
     }
 
     private void reconcilePair(final long serverLayerId, final ServerLayer server,
                                final long localLayerId, final LocalLayer local) {
-        if (server == null || local == null || !Objects.equals(server.effect, local.effect)) return;
+        if (server == null || !eligibleForPair(local)
+                || !Objects.equals(server.effect, local.effect)) return;
         if (local.serverLayerId != 0L && local.serverLayerId != serverLayerId) {
             unpairServer(local.serverLayerId);
         }
@@ -1061,7 +1070,7 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
         // viewer underlay and immediately remove Paper's duplicate visual.
         if (server.key.equals(local.key)) {
             serverLayers.viewerState(server.key).ifPresent(viewer ->
-                    rebaseUnderlay(local.key, viewer));
+                    rebaseUnderlay(local.key, composedUnderlay(local.key, viewer)));
         }
         repaint(server.key, serverLayers.viewerState(server.key).orElse(server.physicalState));
         log("runtime paired semantic TempBlock effect=" + server.effect
@@ -1089,6 +1098,8 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
                 if (paired.isEmpty()) pairedCoordinates.remove(serverKey);
             }
         }
+        refreshVisual(local.key);
+        reconcileActionConcealment(local.actionSequence);
         return local;
     }
 
@@ -1104,31 +1115,35 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
         }
         if (localLayerId != null) {
             final LocalLayer local = localLayers.get(localLayerId);
-            if (local != null && local.serverLayerId == serverLayerId) local.serverLayerId = 0L;
+            if (local != null && local.serverLayerId == serverLayerId) {
+                local.serverLayerId = 0L;
+                refreshVisual(local.key);
+            }
         }
+        if (server != null) refreshVisual(server.key);
     }
 
     private void repaint(final BlockKey key, final BlockState fallback) {
-        if (key == null || key.world == null || key.pos == null) return;
-        final BlockState local = clientState(key.world, key.pos);
-        final BlockState desired;
-        if (hidesServerLayer(key)) {
-            desired = desiredState(key);
-        } else if (local != null) {
-            desired = local;
-        } else {
-            desired = serverLayers.physicalState(key).orElseGet(() -> {
-                final BlockState direct = directBlocks.viewerState(key.world, key.pos);
-                return direct == null ? fallback : direct;
-            });
-        }
-        if (desired != null) key.world.setBlockState(key.pos, desired, 19);
+        refreshVisual(key);
     }
 
     private void expireUnconfirmedLayers() {
         List<Long> expired = null;
+        Set<Long> releasedConcealment = null;
         for (Map.Entry<Long, LocalLayer> entry : localLayers.entrySet()) {
             final LocalLayer local = entry.getValue();
+            if (closedPairGraceExpired(local) && !local.concealmentGraceReleased) {
+                local.concealmentGraceReleased = true;
+                if (releasedConcealment == null) releasedConcealment = new HashSet<>();
+                releasedConcealment.add(local.actionSequence);
+            }
+            if (local.serverLayerId != 0L && closedPairGraceExpired(local)) {
+                final long serverLayerId = local.serverLayerId;
+                unpairServer(serverLayerId);
+                log("runtime released closed TempBlock pair after grace layer="
+                        + entry.getKey() + " serverLayer=" + serverLayerId
+                        + " effect=" + local.effect);
+            }
             if (!local.closed && findActiveLayer(entry.getKey()) == null) {
                 if (expired == null) expired = new ArrayList<>();
                 expired.add(entry.getKey());
@@ -1140,14 +1155,35 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
             if (expired == null) expired = new ArrayList<>();
             expired.add(entry.getKey());
         }
-        if (expired == null) return;
-        for (long layerId : expired) {
-            final LocalLayer detached = detachLocalLayer(layerId);
-            if (detached != null && detached.closed) {
-                log("runtime expired unconfirmed TempBlock lifecycle layer=" + layerId
-                        + " closed=true effect=" + detached.effect);
+        if (expired != null) {
+            for (long layerId : expired) {
+                final LocalLayer detached = detachLocalLayer(layerId);
+                if (detached != null) refreshVisual(detached.key);
+                if (detached != null && detached.closed) {
+                    log("runtime expired unconfirmed TempBlock lifecycle layer=" + layerId
+                            + " closed=true effect=" + detached.effect);
+                }
             }
         }
+        if (releasedConcealment != null) {
+            for (long actionSequence : releasedConcealment) {
+                reconcileActionConcealment(actionSequence);
+            }
+        }
+    }
+
+    private boolean eligibleForPair(final LocalLayer local) {
+        return local != null && !local.serverClosed && !closedPairGraceExpired(local);
+    }
+
+    private boolean closedPairGraceExpired(final LocalLayer local) {
+        return local != null && local.closed
+                && context.tick() - local.closedTick > closeGraceTicks(local.actionSequence);
+    }
+
+    private int closeGraceTicks(final long actionSequence) {
+        return Math.min(ACTION_RETENTION_TICKS, Math.max(CLOSED_PAIR_GRACE_TICKS,
+                context.confirmationTicks(actionSequence)));
     }
 
     private boolean preserveLocalAuthority(final BlockKey key,
@@ -1161,6 +1197,18 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
 
     private void rebaseUnderlay(final BlockKey key, final BlockState authoritativeState) {
         if (key == null || authoritativeState == null) return;
+        final Set<Long> localAtCoordinate = localLayersByCoordinate.get(key);
+        if (localAtCoordinate != null) {
+            for (long layerId : List.copyOf(localAtCoordinate)) {
+                final LocalLayer local = localLayers.get(layerId);
+                if (local == null) continue;
+                local.authoritativeUnderlay = authoritativeState;
+                if (local.closed) {
+                    local.closedState = authoritativeState;
+                    updateCompletedRestores(layerId, key, authoritativeState);
+                }
+            }
+        }
         final com.projectkorra.projectkorra.platform.mc.block.Block block =
                 FabricPredictionMC.block(key.world, key.pos);
         final TempBlock layer = TempBlock.get(block);
@@ -1169,12 +1217,6 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
                 FabricPredictionMC.blockStateSnapshot(key.world, key.pos, authoritativeState);
         if (snapshot == null) return;
         layer.setState(snapshot);
-        final Set<Long> localAtCoordinate = localLayersByCoordinate.get(key);
-        if (localAtCoordinate == null) return;
-        for (long layerId : List.copyOf(localAtCoordinate)) {
-            final LocalLayer local = localLayers.get(layerId);
-            if (local != null && !local.closed) local.authoritativeUnderlay = authoritativeState;
-        }
     }
 
     private LocalLayer newestClosedLocal(final BlockKey key) {
@@ -1200,31 +1242,83 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
     }
 
     private BlockState desiredState(final BlockKey key) {
-        if (showServerLayers) {
-            final Optional<BlockState> physical = serverLayers.physicalState(key);
-            if (physical.isPresent()) return physical.get();
-        }
-        final ClientPlayerEntity player = MinecraftClient.getInstance().player;
-        if (hidesServerLayer(key) && player != null) {
-            final Optional<BlockState> overlay = serverLayers.overlayState(key, player.getUuid());
-            if (overlay.isPresent()) return overlay.get();
-        }
-        final BlockState local = clientState(key.world, key.pos);
-        if (local != null) return local;
-        if (hasSemanticPair(key)) {
-            final BlockState closed = closedClientState(key);
-            if (closed != null) return closed;
-        }
-        if (hidesServerLayer(key)) {
-            final Optional<BlockState> viewer = serverLayers.viewerState(key);
-            if (viewer.isPresent()) return viewer.get();
-        }
-        final Optional<BlockState> physical = serverLayers.physicalState(key);
-        if (physical.isPresent()) return physical.get();
-        final Optional<BlockState> serverViewer = serverLayers.viewerState(key);
-        if (serverViewer.isPresent()) return serverViewer.get();
+        final BlockState temp = tempVisualState(key);
+        if (temp != null) return temp;
+        if (key == null || key.world == null || key.pos == null) return null;
         final BlockState direct = directBlocks.viewerState(key.world, key.pos);
         return direct == null ? key.world.getBlockState(key.pos) : direct;
+    }
+
+    private BlockState composedUnderlay(final BlockKey key,
+                                         final BlockState authoritativeState) {
+        if (key == null) return authoritativeState;
+        final BlockState direct = directBlocks.viewerState(key.world, key.pos);
+        return direct == null ? authoritativeState : direct;
+    }
+
+    /** Returns the logical TEMP-over-DIRECT state seen by common prediction. */
+    private BlockState tempVisualState(final BlockKey key) {
+        final TempVisual visual = tempVisual(key);
+        if (visual.provenance == TempVisualProvenance.SERVER_UNDERLAY
+                || visual.provenance == TempVisualProvenance.LOCAL_HANDOFF) {
+            final BlockState direct = directBlocks.viewerState(key.world, key.pos);
+            if (direct != null) return direct;
+        }
+        return visual.state;
+    }
+
+    /**
+     * Selects both the composed TEMP state and its provenance. The foreground
+     * renderer may draw only states produced by this client's common ability
+     * simulation; Paper physical/debug/stack-overlay states must remain on the
+     * ordinary terrain path even when their {@link BlockState} happens to equal
+     * a local prediction.
+     */
+    private TempVisual tempVisual(final BlockKey key) {
+        if (key == null || key.world == null || key.pos == null) return TempVisual.NONE;
+        final Optional<BlockState> physical = serverLayers.physicalState(key);
+        if (showServerLayers) return physical.map(TempVisual::server).orElse(TempVisual.NONE);
+        final boolean hiddenServerLayer = hidesServerLayer(key);
+        // Known Paper layers remain authoritative when the authenticated owner
+        // has no bounded local-action lease. Keeping that state in TEMP also
+        // places it above DIRECT without ever modifying ClientWorld.
+        if (!hiddenServerLayer && physical.isPresent()) return TempVisual.server(physical.get());
+        final ClientPlayerEntity player = MinecraftClient.getInstance().player;
+        if (hiddenServerLayer && player != null) {
+            final Optional<BlockState> overlay = serverLayers.overlayState(key, player.getUuid());
+            if (overlay.isPresent()) return TempVisual.server(overlay.get());
+        }
+        final BlockState local = clientState(key.world, key.pos);
+        if (local != null) return TempVisual.active(local);
+        final CompletedRestore completed = completedRestores.get(key);
+        if (completed != null) {
+            return completed.localLayerId > 0L
+                    ? TempVisual.handoff(completed.state)
+                    : TempVisual.underlay(completed.state);
+        }
+        if (hiddenServerLayer) {
+            final BlockState closed = closedClientState(key);
+            if (closed != null) return TempVisual.handoff(closed);
+            final Optional<BlockState> viewer = serverLayers.viewerState(key);
+            if (viewer.isPresent()) return TempVisual.underlay(viewer.get());
+        }
+        return TempVisual.NONE;
+    }
+
+    private void refreshVisual(final BlockKey key) {
+        if (key == null || key.world == null || key.pos == null) return;
+        final TempVisual visual = tempVisual(key);
+        if (visual.state == null) {
+            visualOverlay.remove(ClientBlockVisualOverlay.Layer.TEMP, key.world, key.pos);
+        } else if (visual.provenance == TempVisualProvenance.ACTIVE_LOCAL) {
+            visualOverlay.setImmediateTemp(key.world, key.pos, visual.state);
+        } else if (visual.provenance == TempVisualProvenance.LOCAL_HANDOFF) {
+            visualOverlay.beginTempHandoff(key.world, key.pos, visual.state);
+        } else if (visual.provenance == TempVisualProvenance.SERVER_UNDERLAY) {
+            visualOverlay.setTempUnderlay(key.world, key.pos, visual.state);
+        } else {
+            visualOverlay.set(ClientBlockVisualOverlay.Layer.TEMP, key.world, key.pos, visual.state);
+        }
     }
 
     private BlockState closedClientState(final BlockKey key) {
@@ -1239,21 +1333,15 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
     }
 
     private void repaintAll() {
+        visualOverlay.clear(ClientBlockVisualOverlay.Layer.TEMP);
         final Set<BlockKey> coordinates = new HashSet<>(authoritativeByCoordinate.keySet());
         for (LocalLayer local : localLayers.values()) {
             if (local != null && local.key != null) coordinates.add(local.key);
         }
-        coordinates.addAll(teardownFences.keys());
+        coordinates.addAll(completedRestores.keySet());
         for (BlockKey key : coordinates) {
             if (key.world == null || key.pos == null) continue;
-            final BlockState current = key.world.getBlockState(key.pos);
-            final Optional<BlockState> fenced = showServerLayers
-                    ? Optional.empty() : teardownFences.audit(key, current);
-            final BlockState desired = fenced.isPresent()
-                    ? composeTeardownView(key, fenced.get()) : desiredState(key);
-            if (desired != null && !desired.equals(current)) {
-                key.world.setBlockState(key.pos, desired, 19);
-            }
+            refreshVisual(key);
         }
         log("runtime server TempBlock debug=" + showServerLayers
                 + " repainted=" + coordinates.size());
@@ -1296,8 +1384,33 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
 
     private record BlockKey(ClientWorld world, BlockPos pos) { }
     private record EffectKey(long actionSequence, String ability, long step, int ordinal) { }
+    private enum TempVisualProvenance {
+        SERVER,
+        SERVER_UNDERLAY,
+        ACTIVE_LOCAL,
+        LOCAL_HANDOFF
+    }
+    private record TempVisual(BlockState state, TempVisualProvenance provenance) {
+        private static final TempVisual NONE = new TempVisual(null, TempVisualProvenance.SERVER);
+
+        private static TempVisual server(final BlockState state) {
+            return state == null ? NONE : new TempVisual(state, TempVisualProvenance.SERVER);
+        }
+
+        private static TempVisual underlay(final BlockState state) {
+            return state == null ? NONE
+                    : new TempVisual(state, TempVisualProvenance.SERVER_UNDERLAY);
+        }
+
+        private static TempVisual active(final BlockState state) {
+            return state == null ? NONE : new TempVisual(state, TempVisualProvenance.ACTIVE_LOCAL);
+        }
+
+        private static TempVisual handoff(final BlockState state) {
+            return state == null ? NONE : new TempVisual(state, TempVisualProvenance.LOCAL_HANDOFF);
+        }
+    }
     private static final class CapturedLifecycle {
-        private BlockState underlay;
         private final Set<BlockState> staleStates = new HashSet<>();
 
         private void addStale(final BlockState state) {
@@ -1315,6 +1428,7 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
         private long serverLayerId;
         private boolean closed;
         private boolean serverClosed;
+        private boolean concealmentGraceReleased;
         private long closedTick;
         private long closedRevision;
         private BlockState closedState;
@@ -1335,8 +1449,19 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
     }
     private record ServerLayer(long actionSequence, BlockKey key, EffectKey effect,
                                String effectAbility, String effectState, UUID ownerId,
-                               BlockState physicalState, boolean hiddenForLocalViewer) { }
+                               BlockState physicalState) { }
     private record CompletedRestore(BlockState expectedState, BlockState state,
-                                    boolean followLiveClientState, long tick,
-                                    long localLayerId) { }
+                                     boolean followLiveClientState, long tick,
+                                     long localLayerId) { }
+    private static final class SnapshotAssembly {
+        private final long id;
+        private final int parts;
+        private final List<PredictionPayloads.TempBlockOp> operations = new ArrayList<>();
+        private int nextIndex;
+
+        private SnapshotAssembly(final long id, final int parts) {
+            this.id = id;
+            this.parts = parts;
+        }
+    }
 }

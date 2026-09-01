@@ -16,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Raw Bukkit plugin-message codec matching Fabric's RegistryByteBuf layout.
  */
 public final class PaperPredictionProtocol {
-    public static final int VERSION = 50;
+    public static final int VERSION = 53;
     public static final int MAX_BLOCK_STATE_CHARACTERS = 512;
     private static final int MAX_CACHED_BLOCK_STATES = 4_096;
     private static final Map<String, byte[]> BLOCK_STATE_UTF8 = new ConcurrentHashMap<>();
@@ -199,11 +199,15 @@ public final class PaperPredictionProtocol {
                 .f64(x).f64(y).f64(z).f32(yaw).f32(pitch).bool(predictable).bytes();
     }
 
-    public static byte[] tempBlocks(UUID session, long worldGeneration, String worldIdentity, boolean snapshot,
+    public static byte[] tempBlocks(UUID session, long worldGeneration, String worldIdentity,
+                             boolean snapshot, long streamSequence, long snapshotId,
+                             int snapshotIndex, int snapshotParts,
                              long serverTick, long serverNowMillis, List<TempBlockOp> operations) {
         Writer out = new Writer(64 + operations.size() * 192)
                 .uuid(session).varLong(worldGeneration).string(worldIdentity, 128)
-                .bool(snapshot).i64(serverTick).i64(serverNowMillis).varInt(operations.size());
+                .bool(snapshot).varLong(streamSequence).varLong(snapshotId)
+                .varInt(snapshotIndex).varInt(snapshotParts)
+                .i64(serverTick).i64(serverNowMillis).varInt(operations.size());
         for (TempBlockOp operation : operations) {
             writeTempBlock(out, operation);
         }
@@ -211,9 +215,11 @@ public final class PaperPredictionProtocol {
     }
 
     public static byte[] tempBlock(UUID session, long worldGeneration, String worldIdentity,
-                                   long serverTick, long serverNowMillis, TempBlockOp operation) {
+                                   long streamSequence, long serverTick, long serverNowMillis,
+                                   TempBlockOp operation) {
         Writer out = new Writer(256).uuid(session).varLong(worldGeneration).string(worldIdentity, 128)
-                .bool(false).i64(serverTick).i64(serverNowMillis).varInt(1);
+                .bool(false).varLong(streamSequence).varLong(0L).varInt(0).varInt(1)
+                .i64(serverTick).i64(serverNowMillis).varInt(1);
         writeTempBlock(out, operation);
         return out.bytes();
     }
@@ -287,10 +293,13 @@ public final class PaperPredictionProtocol {
     public static byte[] abilityRemoved(UUID player, String ability, String abilityType, long actionSequence,
                                   boolean externallyCaused, boolean predictionRejected,
                                   long acknowledgedSequence,
-                                  int remainingTypeInstances) {
+                                  int remainingTypeInstances,
+                                  int remainingActionInstances,
+                                  int remainingNamedInstances) {
         return new Writer().uuid(player).string(ability, 128).string(abilityType, 256).varLong(actionSequence)
                 .bool(externallyCaused).bool(predictionRejected)
-                .varLong(acknowledgedSequence).varInt(remainingTypeInstances).bytes();
+                .varLong(acknowledgedSequence).varInt(remainingTypeInstances)
+                .varInt(remainingActionInstances).varInt(remainingNamedInstances).bytes();
     }
 
     public static byte[] abilityTransfer(final UUID player, final long actionSequence,

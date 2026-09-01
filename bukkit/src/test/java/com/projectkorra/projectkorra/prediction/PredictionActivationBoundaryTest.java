@@ -293,7 +293,7 @@ class PredictionActivationBoundaryTest {
                 "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/prediction/movement/ClientVelocityAuthority.java");
 
         assertTrue(commonInput.contains("AbilityActivationManager.markHandled(blast)"));
-        assertTrue(paper.contains("Action action = abilityCreationActions.get(ability)"));
+        assertTrue(paper.contains("final Action action = creationActionForRemoval(ability, playerId)"));
         assertTrue(client.contains("Objects.equals(this.abilityCreationActions.get(ability), localCreationSequence)"),
                 "Paper removals must resolve through the correlated local creation identity");
         assertFalse(client.contains("abilityCreationActions.get(ability), removed.actionSequence()"),

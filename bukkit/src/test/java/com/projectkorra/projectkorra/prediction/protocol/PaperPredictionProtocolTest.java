@@ -75,7 +75,7 @@ class PaperPredictionProtocolTest {
 
     @Test
     void protocolIncludesExactAbilityStateOwnershipFence() {
-        assertEquals(50, PaperPredictionProtocol.VERSION);
+        assertEquals(53, PaperPredictionProtocol.VERSION);
         assertEquals("projectkorra:ability_state_owner", PaperPredictionProtocol.ABILITY_STATE_OWNER);
         UUID owner = UUID.randomUUID();
         UUID target = UUID.randomUUID();
@@ -253,7 +253,7 @@ class PaperPredictionProtocolTest {
         PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(
                 PaperPredictionProtocol.abilityRemoved(owner, "WaterSpout",
                         "com.projectkorra.projectkorra.waterbending.WaterSpoutWave", 47L, true,
-                        true, 52L, 0));
+                        true, 52L, 0, 3, 4));
         assertEquals(owner, reader.uuid());
         assertEquals("WaterSpout", reader.string(128));
         assertEquals("com.projectkorra.projectkorra.waterbending.WaterSpoutWave", reader.string(256));
@@ -262,6 +262,8 @@ class PaperPredictionProtocolTest {
         assertTrue(reader.bool());
         assertEquals(52L, reader.varLong());
         assertEquals(0, reader.varInt());
+        assertEquals(3, reader.varInt());
+        assertEquals(4, reader.varInt());
         reader.finished();
     }
 
@@ -465,19 +467,25 @@ class PaperPredictionProtocolTest {
         UUID session = UUID.randomUUID();
         UUID world = UUID.randomUUID();
         UUID owner = UUID.randomUUID();
+        long streamSequence = 73L;
         PaperPredictionProtocol.TempBlockOp operation = new PaperPredictionProtocol.TempBlockOp(
                 PaperPredictionProtocol.TempOperation.CREATE, "world", 1, 64, 2,
                 "minecraft:stone", 12_000, 45, "EarthSmash", "LIFTED", 6, 3,
                 7, 99, owner, "minecraft:air", true);
         byte[] payload = PaperPredictionProtocol.tempBlocks(
-                session, 4L, world.toString(), false, 91, 10_000, List.of(operation));
+                session, 4L, world.toString(), false, streamSequence,
+                0L, 0, 1, 91, 10_000, List.of(operation));
         assertArrayEquals(payload, PaperPredictionProtocol.tempBlock(
-                session, 4L, world.toString(), 91, 10_000, operation));
+                session, 4L, world.toString(), streamSequence, 91, 10_000, operation));
         PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(payload);
         assertEquals(session, reader.uuid());
         assertEquals(4L, reader.varLong());
         assertEquals(world.toString(), reader.string(128));
         assertFalse(reader.bool());
+        assertEquals(streamSequence, reader.varLong());
+        assertEquals(0L, reader.varLong());
+        assertEquals(0, reader.varInt());
+        assertEquals(1, reader.varInt());
         assertEquals(91L, reader.i64());
         assertEquals(10_000L, reader.i64());
         assertEquals(1, reader.varInt());
@@ -504,6 +512,28 @@ class PaperPredictionProtocolTest {
     }
 
     @Test
+    void fragmentedTempBlockSnapshotHeaderRoundTrips() {
+        UUID session = UUID.randomUUID();
+        UUID world = UUID.randomUUID();
+        PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(
+                PaperPredictionProtocol.tempBlocks(session, 12L, world.toString(), true,
+                        81L, 9001L, 2, 4, 144L, 25_000L, List.of()));
+
+        assertEquals(session, reader.uuid());
+        assertEquals(12L, reader.varLong());
+        assertEquals(world.toString(), reader.string(128));
+        assertTrue(reader.bool());
+        assertEquals(81L, reader.varLong());
+        assertEquals(9001L, reader.varLong());
+        assertEquals(2, reader.varInt());
+        assertEquals(4, reader.varInt());
+        assertEquals(144L, reader.i64());
+        assertEquals(25_000L, reader.i64());
+        assertEquals(0, reader.varInt());
+        reader.finished();
+    }
+
+    @Test
     void boundedTempBlockPageAlwaysFitsPluginMessageLimit() {
         String maximumWorld = "界".repeat(256);
         String maximumState = "界".repeat(PaperPredictionProtocol.MAX_BLOCK_STATE_CHARACTERS);
@@ -519,7 +549,9 @@ class PaperPredictionProtocolTest {
                 .toList();
 
         assertTrue(PaperPredictionProtocol.tempBlocks(UUID.randomUUID(), Long.MAX_VALUE,
-                "ç•Œ".repeat(128), true, Long.MAX_VALUE, Long.MAX_VALUE, page).length
+                "ç•Œ".repeat(128), true, Long.MAX_VALUE, Long.MAX_VALUE,
+                Integer.MAX_VALUE, Integer.MAX_VALUE,
+                Long.MAX_VALUE, Long.MAX_VALUE, page).length
                 <= 32_766); // Bukkit Messenger.MAX_MESSAGE_SIZE
     }
 
@@ -532,12 +564,16 @@ class PaperPredictionProtocolTest {
                 2L, 3L, null, exactState, true);
         PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(
                 PaperPredictionProtocol.tempBlocks(UUID.randomUUID(), 1L, "world-id", true,
-                        1L, 2L, List.of(operation)));
+                        3L, 4L, 0, 1, 1L, 2L, List.of(operation)));
 
         reader.uuid();
         reader.varLong();
         reader.string(128);
         reader.bool();
+        reader.varLong();
+        reader.varLong();
+        reader.varInt();
+        reader.varInt();
         reader.i64();
         reader.i64();
         reader.varInt();

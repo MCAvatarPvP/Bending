@@ -30,18 +30,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Feeds vanilla authority into the prediction ledgers before it is applied. */
+/** Feeds applied vanilla block authority into prediction's visual ledgers. */
 @Mixin(ClientPlayNetworkHandler.class)
 public abstract class ClientPlayNetworkHandlerPredictionMixin {
     @Shadow private ClientWorld world;
 
-    @Inject(method = "onBlockUpdate", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "onBlockUpdate", at = @At("TAIL"))
     private void projectkorra$authoritativeBlock(BlockUpdateS2CPacket packet, CallbackInfo ci) {
         if (!MinecraftClient.getInstance().isOnThread()) return;
-        if (ExactPredictionRuntime.authoritativeBlock(world, packet.getPos(), packet.getState())) ci.cancel();
+        ExactPredictionRuntime.authoritativeBlock(world, packet.getPos(), packet.getState());
     }
 
-    @Inject(method = "onChunkDeltaUpdate", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "onChunkDeltaUpdate", at = @At("TAIL"))
     private void projectkorra$authoritativeBlockBatch(ChunkDeltaUpdateS2CPacket packet, CallbackInfo ci) {
         if (!MinecraftClient.getInstance().isOnThread()) return;
         List<BlockPos> positions = new ArrayList<>();
@@ -50,7 +50,7 @@ public abstract class ClientPlayNetworkHandlerPredictionMixin {
             positions.add(pos.toImmutable());
             states.add(state);
         });
-        if (ExactPredictionRuntime.authoritativeBlockBatch(world, positions, states)) ci.cancel();
+        ExactPredictionRuntime.authoritativeBlockBatch(world, positions, states);
     }
 
     @Inject(method = "onChunkData", at = @At("TAIL"))

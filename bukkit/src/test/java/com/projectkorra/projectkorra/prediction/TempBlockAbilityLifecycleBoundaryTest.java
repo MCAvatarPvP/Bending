@@ -190,6 +190,25 @@ class TempBlockAbilityLifecycleBoundaryTest {
         int nameFallback = paperAction.indexOf("List<Action> recent");
         assertTrue(inherited >= 0 && nameFallback > inherited,
                 "Paper must resolve the exact inherited input before any ability-name fallback");
+
+        String remainingSiblings = method(paper,
+                "private int activeCreationActionCount(",
+                "private void onHello(");
+        assertTrue(remainingSiblings.contains("CoreAbility.getAbilitiesByInstances()")
+                        && remainingSiblings.contains("abilityCreationActions.get(candidate)")
+                        && remainingSiblings.contains("candidate.getPredictionActionSequence()")
+                        && remainingSiblings.contains("ability.equalsIgnoreCase(candidate.getName())")
+                        && remainingSiblings.contains("activeAbilityNameCount(")
+                        && remainingSiblings.contains("candidateSequence != actionSequence"),
+                "composite direct effects must count every same-name child of this exact input, including differently typed children without a direct-write mapping yet");
+
+        String removalAction = method(paper,
+                "private Action creationActionForRemoval(",
+                "public void onOwnerTransferred(");
+        assertTrue(removalAction.contains("ability.getPredictionActionSequence()")
+                        && removalAction.contains("session.actions.get(inherited)")
+                        && removalAction.contains("abilityCreationActions.putIfAbsent"),
+                "a child removed before its first direct effect must recover its immutable input identity for the shared terminal fence");
     }
 
     @Test
@@ -362,7 +381,8 @@ class TempBlockAbilityLifecycleBoundaryTest {
                 "the steady 600-layer tick must not allocate a complete entry snapshot");
         assertTrue(authority.contains("authoritativeByCoordinate")
                         && authority.contains("localLayersByCoordinate"));
-        assertTrue(authoritativeTop.contains("authoritativeByCoordinate.get(key)"));
+        assertTrue(authoritativeTop.contains("serverLayers.topLayerId(key)"),
+                "top-layer identity must follow the ledger's committed stack order");
     }
 
     @Test

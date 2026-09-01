@@ -31,12 +31,14 @@ import com.projectkorra.projectkorra.airbending.AirGlider;
 import com.projectkorra.projectkorra.chiblocking.util.ChiblockingManager;
 import com.projectkorra.projectkorra.earthbending.EarthSmash;
 import com.projectkorra.projectkorra.earthbending.RaiseEarth;
+import com.projectkorra.projectkorra.earthbending.RaiseEarthWall;
 import com.projectkorra.projectkorra.earthbending.EarthTunnel;
 import com.projectkorra.projectkorra.earthbending.EarthSmash.PredictionBlock;
 import com.projectkorra.projectkorra.earthbending.EarthSmash.PredictionTransfer;
 import com.projectkorra.projectkorra.earthbending.util.EarthbendingManager;
 import com.projectkorra.projectkorra.fabric.client.prediction.action.ClientNativeActionCorrelation;
 import com.projectkorra.projectkorra.fabric.client.prediction.block.ClientDirectBlockAuthority;
+import com.projectkorra.projectkorra.fabric.client.prediction.block.ClientBlockVisualOverlay;
 import com.projectkorra.projectkorra.fabric.client.prediction.block.ClientTempBlockAuthority;
 import com.projectkorra.projectkorra.fabric.client.prediction.config.ClientPredictionConfig;
 import com.projectkorra.projectkorra.fabric.client.prediction.entity.ClientEntityReconciliation;
@@ -135,6 +137,7 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.FallingBlockEntity;
 import net.minecraft.network.packet.s2c.play.EntitySpawnS2CPacket;
 import net.minecraft.network.packet.s2c.play.ExperienceBarUpdateS2CPacket;
 import net.minecraft.network.packet.s2c.play.PlaySoundS2CPacket;
@@ -173,6 +176,7 @@ public final class ExactPredictionRuntime
     private final ClientEntityReconciliation entityReconciliation = new ClientEntityReconciliation(
             com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime::materialState
     );
+    private final ClientBlockVisualOverlay blockVisualOverlay = new ClientBlockVisualOverlay();
     private final ClientDirectBlockAuthority directBlockAuthority;
     private final ClientTempBlockAuthority tempBlockAuthority;
     private final ClientPlayerStateAuthority playerStateAuthority =
@@ -234,11 +238,30 @@ public final class ExactPredictionRuntime
                     }
 
                     @Override
+                    public boolean sameActiveAbilityLifecycle(
+                            long actionSequence, long creationActionSequence,
+                            String abilityName) {
+                        for (Entry<CoreAbility, Long> entry
+                                : ExactPredictionRuntime.this.abilityActions.entrySet()) {
+                            CoreAbility ability = entry.getKey();
+                            if (entry.getValue() != actionSequence || ability == null
+                                    || ability.isRemoved()
+                                    || !ability.getName().equalsIgnoreCase(abilityName)) continue;
+                            final long creation = ExactPredictionRuntime.this
+                                    .abilityCreationActions.getOrDefault(
+                                    ability, ability.getPredictionActionSequence());
+                            if (creation == creationActionSequence) return true;
+                        }
+                        return false;
+                    }
+
+                    @Override
                     public int confirmationTicks(long actionSequence) {
                         return ExactPredictionRuntime.this.blockConfirmationTicks(actionSequence);
                     }
                 },
                 com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime::materialState,
+                this.blockVisualOverlay,
                 com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime::debug
         );
         this.tempBlockAuthority = new ClientTempBlockAuthority(
@@ -281,26 +304,12 @@ public final class ExactPredictionRuntime
                     }
 
                     @Override
-                    public boolean hasActiveAbility(String abilityName) {
-                        if (abilityName == null || abilityName.isBlank()
-                                || ExactPredictionRuntime.this.bendingPlayer == null
-                                || ExactPredictionRuntime.this.bendingPlayer.getPlayer() == null) {
-                            return false;
-                        }
-                        final UUID playerId = ExactPredictionRuntime.this.bendingPlayer
-                                .getPlayer().getUniqueId();
-                        for (CoreAbility ability : CoreAbility.getAbilitiesByInstances()) {
-                            if (ability != null && !ability.isRemoved()
-                                    && ability.getPlayer() != null
-                                    && playerId.equals(ability.getPlayer().getUniqueId())
-                                    && ability.getName().equalsIgnoreCase(abilityName)) {
-                                return true;
-                            }
-                        }
-                        return false;
+                    public int confirmationTicks(long actionSequence) {
+                        return ExactPredictionRuntime.this.blockConfirmationTicks(actionSequence);
                     }
                 },
                 this.directBlockAuthority,
+                this.blockVisualOverlay,
                 com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime::materialState,
                 com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime::debug
         );
@@ -551,7 +560,56 @@ public final class ExactPredictionRuntime
     }
 
     public static BlockState blockState(ClientWorld world, BlockPos pos) {
-        return INSTANCE.directBlockAuthority.simulatedState(world, pos.toImmutable());
+        final BlockState temp = INSTANCE.tempBlockAuthority.simulatedState(
+                world, pos.toImmutable());
+        return temp == null
+                ? INSTANCE.directBlockAuthority.simulatedState(world, pos.toImmutable())
+                : temp;
+    }
+
+    /** Render-thread safe composition over the unmodified authoritative chunk. */
+    public static BlockState visualBlockState(final ClientWorld world, final BlockPos pos,
+                                              final BlockState authoritativeState) {
+        return INSTANCE.blockVisualOverlay.composeTerrain(world, pos, authoritativeState);
+    }
+
+    /** Avoids coordinate allocation in renderer-replacement hot loops at rest. */
+    public static boolean hasBlockVisualOverrides() {
+        return !INSTANCE.blockVisualOverlay.isEmpty();
+    }
+
+    /** Logical render state, including prediction, without the terrain cutout. */
+    public static BlockState composedVisualBlockState(final ClientWorld world,
+                                                      final BlockPos pos,
+                                                      final BlockState authoritativeState) {
+        return INSTANCE.blockVisualOverlay.compose(world, pos, authoritativeState);
+    }
+
+    /** Locally proven non-air predictions submitted every rendered frame. */
+    public static List<ClientBlockVisualOverlay.VisualBlock> foregroundBlocks(
+            final ClientWorld world) {
+        return INSTANCE.blockVisualOverlay.foregroundBlocks(world);
+    }
+
+    /**
+     * Composes prediction for movement owned by this client. Remote and
+     * authoritative entities continue to collide with the untouched backing
+     * chunk, so a local visual cannot alter anyone else's simulation.
+     */
+    public static BlockState collisionBlockState(final ClientWorld world,
+                                                 final Entity entity,
+                                                 final BlockPos pos,
+                                                 final BlockState authoritativeState) {
+        if (!INSTANCE.ready || world == null || entity == null || pos == null) {
+            return authoritativeState;
+        }
+        final MinecraftClient client = MinecraftClient.getInstance();
+        final boolean predictedFallingBlock = entity instanceof FallingBlockEntity
+                && INSTANCE.entityReconciliation.isPredictedOwned(entity);
+        if (entity != client.player && !predictedFallingBlock) {
+            return authoritativeState;
+        }
+        return INSTANCE.blockVisualOverlay.compose(world, pos, authoritativeState);
     }
 
     public static void setPredictedBlock(ClientWorld world, BlockPos pos, BlockState state) {
@@ -576,8 +634,9 @@ public final class ExactPredictionRuntime
         INSTANCE.tempBlockAuthority.acceptChunk(world, chunkX, chunkZ);
     }
 
-    public static void applyTempBlockBatch(ClientWorld world, TempBlockBatch batch) {
-        INSTANCE.tempBlockAuthority.applyAuthoritativeBatch(world, batch);
+    public static ClientTempBlockAuthority.BatchResult applyTempBlockBatch(
+            ClientWorld world, TempBlockBatch batch) {
+        return INSTANCE.tempBlockAuthority.applyAuthoritativeBatch(world, batch);
     }
 
     public static void noteDirectBlock(Entity localPlayer, DirectBlockReceipt receipt) {
@@ -676,9 +735,10 @@ public final class ExactPredictionRuntime
     }
 
     static boolean completesRaiseEarthFrame(final String abilityType,
-                                            final int remainingTypeInstances) {
-        return RaiseEarth.class.getName().equals(abilityType)
-                && remainingTypeInstances == 0;
+                                            final int remainingActionInstances) {
+        return (RaiseEarth.class.getName().equals(abilityType)
+                || RaiseEarthWall.class.getName().equals(abilityType))
+                && remainingActionInstances == 0;
     }
 
     public static boolean authoritativeVelocity(int entityId, Vec3d velocity) {
@@ -1129,7 +1189,12 @@ public final class ExactPredictionRuntime
                 trackingResult = AbilityActivationManager.finishTrackingResult();
                 INPUT_EVENT_POSE.remove();
                 INPUT_ACTION.remove();
-                this.directBlockAuthority.rollbackAction(sequence);
+                // Successful synchronous Earth writes are durable visual
+                // transactions waiting for Paper's pre-write receipts. Only
+                // their same-call read-through cache is transient; a full
+                // rollback here used to erase EarthBlast/RaiseEarth prediction
+                // before the authoritative packets could be correlated.
+                this.directBlockAuthority.finishInput(sequence);
             }
 
             action.inputHandled = trackingResult.handled();
@@ -1991,21 +2056,36 @@ public final class ExactPredictionRuntime
         if (this.ready && localPlayer != null && removed != null && localPlayer.getUuid().equals(removed.player())) {
             long localCreationSequence = this.localActionSequence(removed.actionSequence());
             long localAcknowledgement = this.localAcknowledgedSequence(removed.acknowledgedSequence());
-            if (completesRaiseEarthFrame(
-                    removed.abilityType(), removed.remainingTypeInstances())) {
+            // Composite inputs can replace a short-lived orchestrator with
+            // differently typed children that share one direct-effect name
+            // and cause (RaiseEarthWall -> RaiseEarth, Shockwave -> Ripple).
+            // Only the last same-input/name instance may close that cause.
+            final boolean sharedDirectCauseStillActive =
+                    removed.remainingActionInstances() > 0;
+            final boolean completesRaiseEarth = completesRaiseEarthFrame(
+                    removed.abilityType(), removed.remainingActionInstances());
+            if (completesRaiseEarth) {
                 /*
-                 * AbilityRemoved is emitted after the server tick's direct
-                 * block writes. Complete this frame even when its originating
-                 * action has aged out, or when the removal is external/a
-                 * rejection: the authority only touches already-known local
-                 * causes through the acknowledged sequence.
+                 * Complete before installing the generic close tombstone. If
+                 * the exact cause has not arrived locally yet, completion must
+                 * still recognize that it was previously unknown and sweep
+                 * any acknowledged fallback frame.
                  */
-                final long completionSequence =
-                        Math.max(localCreationSequence, localAcknowledgement);
                 final int completed = this.directBlockAuthority.completeAuthoritativeFrames(
-                        removed.ability(), completionSequence);
-                debug("runtime completed authoritative RaiseEarth frame ack="
-                        + completionSequence + " coordinates=" + completed);
+                        removed.ability(), localCreationSequence, localAcknowledgement,
+                        removed.remainingNamedInstances() == 0);
+                debug("runtime completed authoritative RaiseEarth frame exact="
+                        + localCreationSequence + " ack=" + localAcknowledgement
+                        + " coordinates=" + completed);
+            }
+            final int closedDirectCauses = sharedDirectCauseStillActive ? 0
+                    : this.directBlockAuthority.closeAuthoritativeCause(
+                    removed.ability(), localCreationSequence, localAcknowledgement,
+                    removed.remainingNamedInstances() == 0);
+            if (closedDirectCauses > 0) {
+                debug("runtime closed authoritative direct-block cause ability="
+                        + removed.ability() + " localCreation=" + localCreationSequence
+                        + " causes=" + closedDirectCauses);
             }
             if (removed.actionSequence() > 0L) {
                 com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime.Action action = this.actions.get(localCreationSequence);
@@ -2200,16 +2280,29 @@ public final class ExactPredictionRuntime
                         if (selected == null || selected.isRemoved() || !selected.isStarted()) {
                             return;
                         }
+                        selected.acceptPredictionCheckpoint(state, localSequence);
                         restoredFromAuthority = true;
                         recoveredFromCheckpoint = !transfer.ownershipTransfer();
                     } else {
                         final Long latestTransition = this.abilityActions.get(selected);
                         checkpointSuperseded = !transfer.ownershipTransfer()
-                                && latestTransition != null && latestTransition > localSequence;
-                        if (!checkpointSuperseded && (transfer.ownershipTransfer()
-                                || !selected.matchesPredictionCheckpoint(state))) {
-                            selected.applyPredictionTransfer(state);
-                            recoveredFromCheckpoint = !transfer.ownershipTransfer();
+                                && (latestTransition != null && latestTransition > localSequence
+                                || selected.isPredictionCheckpointStale(state, localSequence));
+                        if (!checkpointSuperseded) {
+                            if (transfer.ownershipTransfer()) {
+                                selected.applyPredictionTransfer(state);
+                                selected.acceptPredictionCheckpoint(state, localSequence);
+                            } else if (selected.matchesPredictionCheckpoint(state)) {
+                                // Paper's checkpoint is a transition anchor, not
+                                // a request to throw away motion already rendered
+                                // during the network leg.
+                                selected.reconcilePredictionCheckpoint(state, localSequence);
+                                recoveredFromCheckpoint = true;
+                            } else {
+                                selected.applyPredictionTransfer(state);
+                                selected.acceptPredictionCheckpoint(state, localSequence);
+                                recoveredFromCheckpoint = true;
+                            }
                         }
                     }
 

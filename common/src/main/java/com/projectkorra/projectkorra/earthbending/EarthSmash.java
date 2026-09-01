@@ -32,6 +32,7 @@ import com.projectkorra.projectkorra.util.TempBlock;
 import com.projectkorra.projectkorra.util.colliders.AABB;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
@@ -95,6 +96,12 @@ public class EarthSmash extends EarthAbility {
     private Block origin;
     private Location location;
     private Location destination;
+    /** Local centers at state boundaries used to rebase delayed checkpoints. */
+    private final EnumMap<State, Location> predictionTransitionAnchors =
+            new EnumMap<>(State.class);
+    /** Physical center currently occupied by {@link #affectedBlocks}. */
+    private Location renderedLocation;
+    private EarthSmashCheckpointPolicy.CheckpointOrder acceptedCheckpoint;
     private ArrayList<Entity> affectedEntities;
     private ArrayList<BlockRepresenter> currentBlocks;
     private ArrayList<TempBlock> affectedBlocks;
@@ -546,14 +553,12 @@ public class EarthSmash extends EarthAbility {
                     GeneralMethods.setVelocity(this, entity, direction.clone().multiply(this.flightSpeed));
                 }
 
-                // These values tend to work well when dealing with a person aiming upward or downward.
-                if (direction.getY() < -0.35) {
-                    this.location = this.player.getLocation().clone().add(0, -3.2, 0);
-                } else if (direction.getY() > 0.35) {
-                    this.location = this.player.getLocation().clone().add(0, -1.7, 0);
-                } else {
-                    this.location = this.player.getLocation().clone().add(0, -2.2, 0);
-                }
+                // Keep the historical up/level/down offsets without their
+                // half- to full-block discontinuities at +/-0.35 pitch. A
+                // small client/Paper rotation skew now produces only a small
+                // center difference for the checkpoint rebase to correct.
+                this.location = this.player.getLocation().clone().add(0,
+                        EarthSmashCheckpointPolicy.flightVerticalOffset(direction.getY()), 0);
                 this.draw();
             }
             if (System.currentTimeMillis() - this.flightStartTime > this.flightDuration) {
@@ -677,8 +682,11 @@ public class EarthSmash extends EarthAbility {
             return;
         }
         final long effectFrame = ++this.predictionFrame;
+        final Location drawLocation = this.location == null ? null : this.location.clone();
         for (final BlockRepresenter blockRep : this.currentBlocks) {
-            final Block block = this.location.clone().add(blockRep.getX(), blockRep.getY(), blockRep.getZ()).getBlock();
+            final Block block = drawLocation == null ? null
+                    : drawLocation.clone().add(blockRep.getX(), blockRep.getY(), blockRep.getZ()).getBlock();
+            if (block == null) continue;
             if (block.getType().equals(Material.SAND) || block.getType().equals(Material.GRAVEL)) { // Check if block can be affected by gravity.
 
             }
@@ -688,7 +696,10 @@ public class EarthSmash extends EarthAbility {
                 getPreventEarthbendingBlocks().add(block);
             }
         }
-        if (!this.affectedBlocks.isEmpty()) this.redrawTransferredShape = false;
+        if (!this.affectedBlocks.isEmpty()) {
+            this.renderedLocation = drawLocation;
+            this.redrawTransferredShape = false;
+        }
     }
 
     private void drawTransferredShapeIfNeeded() {
@@ -706,8 +717,14 @@ public class EarthSmash extends EarthAbility {
 
     public void revert() {
         this.checkRemainingBlocks();
+        this.retireRenderedShape();
+    }
+
+    /** Retires exactly the rendered layers without rediscovering shape state. */
+    private void retireRenderedShape() {
         final List<TempBlock> retiring = List.copyOf(this.affectedBlocks);
         this.affectedBlocks.clear();
+        this.renderedLocation = null;
         for (final TempBlock tblock : retiring) {
             getPreventEarthbendingBlocks().remove(tblock.getBlock());
             tblock.revertBlock();
@@ -804,9 +821,17 @@ public class EarthSmash extends EarthAbility {
      */
     public void checkRemainingBlocks() {
         if (animationCounter < 4 && !bPlayer.areSourceHolesOn()) return;
+        // A sparse authority correction can move the logical center while the
+        // most recently rendered frame is still waiting for its ordinary
+        // revert/draw pass. Inspect the coordinate that actually owns those
+        // layers, not the newer logical center, or every shape slot is pruned.
+        final Location inspectedLocation = this.renderedLocation == null
+                ? this.location : this.renderedLocation;
+        if (inspectedLocation == null) return;
         for (int i = 0; i < this.currentBlocks.size(); i++) {
             final BlockRepresenter brep = this.currentBlocks.get(i);
-            final Block block = this.location.clone().add(brep.getX(), brep.getY(), brep.getZ()).getBlock();
+            final Block block = inspectedLocation.clone()
+                    .add(brep.getX(), brep.getY(), brep.getZ()).getBlock();
             // The registered client TempBlock is the visual source of truth.
             // A hidden or delayed physical server packet must never make a
             // live smash delete pieces from its model.
@@ -1489,9 +1514,16 @@ public class EarthSmash extends EarthAbility {
     private void transitionState(final State state) {
         if (state == null || this.state == state) return;
         this.state = state;
+        this.rememberPredictionTransition();
         for (final TempBlock layer : List.copyOf(this.affectedBlocks)) {
             if (layer != null && !layer.isReverted()) layer.refreshPredictionMetadata();
         }
+    }
+
+    private void rememberPredictionTransition() {
+        if (this.state == null) return;
+        if (this.location == null) this.predictionTransitionAnchors.remove(this.state);
+        else this.predictionTransitionAnchors.put(this.state, this.location.clone());
     }
 
     @Override
@@ -1535,12 +1567,7 @@ public class EarthSmash extends EarthAbility {
     public void applyPredictionTransfer(final PredictionTransfer transfer) {
         if (transfer == null || this.player == null || this.player.getWorld() == null
                 || !this.player.getWorld().getName().equals(transfer.world())) return;
-        for (final TempBlock layer : List.copyOf(this.affectedBlocks)) {
-            if (layer == null) continue;
-            getPreventEarthbendingBlocks().remove(layer.getBlock());
-            if (!layer.isReverted()) layer.revertBlock();
-        }
-        this.affectedBlocks.clear();
+        this.retireRenderedShape();
         this.currentBlocks.clear();
         for (final PredictionBlock block : transfer.blocks()) {
             if (block == null || !isSmashOffset(block.x(), block.y(), block.z())) continue;
@@ -1572,6 +1599,8 @@ public class EarthSmash extends EarthAbility {
         // made transferred/checkpointed lifetimes expire too early.
         this.alignPredictedStart(Math.max(0L, authoritativeElapsed - localElapsed));
         this.awaitingPredictionTransfer = false;
+        this.predictionTransitionAnchors.clear();
+        this.rememberPredictionTransition();
         // Moving states repaint on their next ordinary animation step. LIFTED
         // has no such step, so remember that its just-retired visual must be
         // restored if reconciliation lands on the release boundary.
@@ -1635,6 +1664,133 @@ public class EarthSmash extends EarthAbility {
         final BlockData data = new BlockData(material == null ? Material.STONE : material);
         if (!value.isBlank()) data.setExactState(value);
         return data;
+    }
+
+    /**
+     * Whether this checkpoint predates one already accepted for this smash.
+     * The correlated local action is the transition epoch; counters order the
+     * two lift checkpoints which can legitimately share one action.
+     */
+    public boolean isPredictionCheckpointStale(final PredictionTransfer transfer,
+                                               final long actionSequence) {
+        return !EarthSmashCheckpointPolicy.isNewer(
+                checkpointOrder(transfer, actionSequence), this.acceptedCheckpoint);
+    }
+
+    /** Records a full restore or newly-created checkpoint as the latest authority. */
+    public void acceptPredictionCheckpoint(final PredictionTransfer transfer,
+                                           final long actionSequence) {
+        final EarthSmashCheckpointPolicy.CheckpointOrder incoming =
+                checkpointOrder(transfer, actionSequence);
+        if (EarthSmashCheckpointPolicy.isNewer(incoming, this.acceptedCheckpoint)) {
+            this.acceptedCheckpoint = incoming;
+        }
+    }
+
+    /**
+     * Applies authoritative transition kinematics without replacing newer
+     * locally-rendered motion counters or frames.
+     *
+     * <p>The local displacement since the transition is rebased onto Paper's
+     * center. Destination and grab distance are transition parameters rather
+     * than accumulated motion, so Paper's values replace them exactly. The
+     * following ordinary progress pass then continues responsive GRABBED,
+     * SHOT, or FLYING prediction from the corrected state.</p>
+     */
+    public boolean reconcilePredictionCheckpoint(final PredictionTransfer transfer,
+                                                  final long actionSequence) {
+        if (this.isPredictionCheckpointStale(transfer, actionSequence)
+                || !this.matchesPredictionCheckpoint(transfer)
+                || this.player == null || this.player.getWorld() == null
+                || !finite(transfer.x(), transfer.y(), transfer.z(),
+                transfer.grabbedDistance())) return false;
+
+        final Location authoritativeAnchor = new Location(this.player.getWorld(),
+                transfer.x(), transfer.y(), transfer.z());
+        final State checkpointState;
+        try {
+            checkpointState = State.valueOf(transfer.state());
+        } catch (IllegalArgumentException ignored) {
+            return false;
+        }
+        final EarthSmashCheckpointPolicy.Position authoritativeDestination;
+        if (transfer.hasDestination()) {
+            if (!finite(transfer.destinationX(), transfer.destinationY(),
+                    transfer.destinationZ())) return false;
+            authoritativeDestination = new EarthSmashCheckpointPolicy.Position(
+                    transfer.destinationX(), transfer.destinationY(), transfer.destinationZ());
+        } else {
+            authoritativeDestination = null;
+        }
+
+        final Location localTransitionAnchor =
+                this.predictionTransitionAnchors.get(checkpointState);
+        final boolean hasLocalAnchor = this.location != null
+                && localTransitionAnchor != null
+                && this.location.getWorld() == authoritativeAnchor.getWorld()
+                && localTransitionAnchor.getWorld() == authoritativeAnchor.getWorld();
+        final EarthSmashCheckpointPolicy.Kinematics reconciled =
+                EarthSmashCheckpointPolicy.reconcile(
+                        hasLocalAnchor ? position(this.location) : position(authoritativeAnchor),
+                        hasLocalAnchor ? position(localTransitionAnchor)
+                                : position(authoritativeAnchor),
+                        position(authoritativeAnchor), authoritativeDestination,
+                        transfer.grabbedDistance());
+        final Location corrected = new Location(this.player.getWorld(),
+                reconciled.center().x(), reconciled.center().y(), reconciled.center().z());
+
+        final boolean stationaryRedraw = this.state == State.LIFTED
+                && this.location != null && !sameBlock(this.location, corrected)
+                && !this.affectedBlocks.isEmpty();
+        if (stationaryRedraw) this.retireRenderedShape();
+
+        this.location = corrected;
+        this.destination = reconciled.destination() == null ? null
+                : new Location(this.player.getWorld(), reconciled.destination().x(),
+                reconciled.destination().y(), reconciled.destination().z());
+        this.grabbedDistance = reconciled.grabbedDistance();
+
+        if (this.state == State.FLYING) {
+            final long now = System.currentTimeMillis();
+            final long localElapsed = this.flightStartTime <= 0L
+                    ? 0L : Math.max(0L, now - this.flightStartTime);
+            final long authoritativeElapsed = Math.max(0L,
+                    Math.min(60_000L, transfer.flightElapsedMillis()));
+            // Never shorten already-predicted flight time; doing so would make
+            // a delayed transition checkpoint extend the local lifecycle.
+            this.flightStartTime = now - Math.max(localElapsed, authoritativeElapsed);
+        }
+
+        // Future rebases measure only motion rendered after this correction.
+        this.predictionTransitionAnchors.put(checkpointState, authoritativeAnchor);
+        if (stationaryRedraw) this.redrawTransferredShape = !this.currentBlocks.isEmpty();
+        this.acceptPredictionCheckpoint(transfer, actionSequence);
+        return true;
+    }
+
+    private static EarthSmashCheckpointPolicy.CheckpointOrder checkpointOrder(
+            final PredictionTransfer transfer, final long actionSequence) {
+        return transfer == null ? null : new EarthSmashCheckpointPolicy.CheckpointOrder(
+                actionSequence, transfer.progressCounter(), transfer.predictionFrame(),
+                transfer.animationCounter());
+    }
+
+    private static EarthSmashCheckpointPolicy.Position position(final Location location) {
+        return new EarthSmashCheckpointPolicy.Position(
+                location.getX(), location.getY(), location.getZ());
+    }
+
+    private static boolean sameBlock(final Location first, final Location second) {
+        return first != null && second != null && first.getWorld() == second.getWorld()
+                && first.getBlockX() == second.getBlockX()
+                && first.getBlockY() == second.getBlockY()
+                && first.getBlockZ() == second.getBlockZ();
+    }
+
+    private static boolean finite(final double... values) {
+        if (values == null) return false;
+        for (final double value : values) if (!Double.isFinite(value)) return false;
+        return true;
     }
 
     public Block getOrigin() {

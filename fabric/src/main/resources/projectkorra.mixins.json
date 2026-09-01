@@ -9,13 +9,16 @@
   ],
   "client": [
     "client.AreaEffectCloudEntityAccessor",
+    "client.BlockCollisionSpliteratorPredictionMixin",
     "client.ClientConnectionMovementMixin",
+    "client.ChunkRendererRegionPredictionMixin",
     "client.ClientPlayerAirGliderSoundMixin",
     "client.ClientPlayerInteractionManagerPredictionMixin",
     "client.ClientPlayNetworkHandlerMovementMixin",
     "client.ClientPlayNetworkHandlerPredictionMixin",
     "client.ClientWorldPredictionAliasMixin",
-    "client.LivingEntityAirGliderPredictionMixin"
+    "client.LivingEntityAirGliderPredictionMixin",
+    "client.SodiumLevelSlicePredictionMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -5,6 +5,7 @@ import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -113,5 +114,116 @@ class ClientTempBlockLedgerTest {
         ledger.apply("p", TempBlockSync.Operation.REVERT,
                 42L, 9001L, 2L, viewer, "water", "water");
         assertFalse(ledger.hasOwnedLayerForAction("p", viewer, 42L));
+    }
+
+    @Test
+    void committedSnapshotPrunesAbsentLayersAndReportsAffectedCoordinates() {
+        ClientTempBlockLedger<String, String> ledger = new ClientTempBlockLedger<>();
+        ledger.apply("missing", TempBlockSync.Operation.CREATE,
+                10L, 1L, viewer, "ice", "water");
+        ledger.apply("retained", TempBlockSync.Operation.CREATE,
+                20L, 2L, other, "stone", "air");
+
+        Set<String> affected = ledger.pruneAbsentFromSnapshot(Set.of(20L));
+
+        assertEquals(Set.of("missing"), affected);
+        assertFalse(ledger.containsLayer("missing", 10L));
+        assertTrue(ledger.containsLayer("retained", 20L));
+        assertEquals(1, ledger.coordinateCount());
+    }
+
+    @Test
+    void snapshotPruningRetainsPresentStackOrderAndTopState() {
+        ClientTempBlockLedger<String, String> ledger = new ClientTempBlockLedger<>();
+        ledger.apply("stack", TempBlockSync.Operation.CREATE,
+                30L, 1L, viewer, "dirt", "air");
+        ledger.apply("stack", TempBlockSync.Operation.CREATE,
+                31L, 2L, other, "ice", "dirt");
+        ledger.apply("revealed", TempBlockSync.Operation.CREATE,
+                33L, 3L, other, "dirt", "air");
+        ledger.apply("revealed", TempBlockSync.Operation.CREATE,
+                34L, 4L, other, "ice", "dirt");
+        ledger.apply("untouched", TempBlockSync.Operation.CREATE,
+                32L, 5L, other, "stone", "air");
+
+        Set<String> affected = ledger.pruneAbsentFromSnapshot(Set.of(31L, 32L, 33L));
+
+        assertEquals(Set.of("stack", "revealed"), affected);
+        assertFalse(ledger.containsLayer("stack", 30L));
+        assertTrue(ledger.containsLayer("stack", 31L));
+        assertEquals("ice", ledger.physicalState("stack").orElseThrow());
+        assertFalse(ledger.containsLayer("revealed", 34L));
+        assertEquals("dirt", ledger.physicalState("revealed").orElseThrow(),
+                "removing an absent top layer must reveal the newest retained layer");
+        assertEquals("stone", ledger.physicalState("untouched").orElseThrow());
+        assertEquals(3, ledger.coordinateCount());
+    }
+
+    @Test
+    void emptyCommittedSnapshotRetiresEveryActiveCoordinate() {
+        ClientTempBlockLedger<String, String> ledger = new ClientTempBlockLedger<>();
+        ledger.apply("first", TempBlockSync.Operation.CREATE,
+                40L, 1L, viewer, "ice", "water");
+        ledger.apply("second", TempBlockSync.Operation.CREATE,
+                41L, 2L, other, "stone", "air");
+
+        Set<String> affected = ledger.pruneAbsentFromSnapshot(Set.of());
+
+        assertEquals(Set.of("first", "second"), affected);
+        assertEquals(0, ledger.coordinateCount());
+        assertTrue(ledger.physicalState("first").isEmpty());
+        assertTrue(ledger.physicalState("second").isEmpty());
+    }
+
+    @Test
+    void snapshotPruningKeepsRevisionTombstoneAgainstStaleReopen() {
+        ClientTempBlockLedger<String, String> ledger = new ClientTempBlockLedger<>();
+        ledger.apply("p", TempBlockSync.Operation.CREATE,
+                50L, 100L, viewer, "ice", "water");
+
+        ledger.pruneAbsentFromSnapshot(Set.of());
+
+        assertFalse(ledger.apply("p", TempBlockSync.Operation.CREATE,
+                50L, 100L, viewer, "ice", "water"));
+        assertFalse(ledger.apply("p", TempBlockSync.Operation.CREATE,
+                50L, 99L, viewer, "ice", "water"));
+        assertFalse(ledger.containsLayer("p", 50L));
+        assertEquals(0, ledger.coordinateCount());
+
+        assertTrue(ledger.apply("p", TempBlockSync.Operation.CREATE,
+                50L, 101L, viewer, "ice", "water"),
+                "a genuinely newer post-snapshot lifecycle may reuse the layer id");
+    }
+
+    @Test
+    void committedSnapshotMayRestoreEqualRevisionAfterViewRadiusPrune() {
+        ClientTempBlockLedger<String, String> ledger = new ClientTempBlockLedger<>();
+        ledger.apply("p", TempBlockSync.Operation.CREATE,
+                77L, 8L, 500L, viewer, "ice", "water");
+        ledger.pruneAbsentFromSnapshot(Set.of());
+
+        assertTrue(ledger.applySnapshot("p", 77L, 8L, 500L,
+                viewer, "ice", "water"));
+        assertTrue(ledger.containsLayer("p", 8L));
+        assertEquals("ice", ledger.physicalState("p").orElseThrow());
+        assertFalse(ledger.applySnapshot("p", 77L, 8L, 499L,
+                viewer, "stone", "air"));
+    }
+
+    @Test
+    void committedSnapshotRebuildsStackOrderFromItsOperationOrder() {
+        ClientTempBlockLedger<String, String> ledger = new ClientTempBlockLedger<>();
+        ledger.apply("p", TempBlockSync.Operation.CREATE,
+                2L, 20L, 1L, other, "newer", "older");
+
+        assertTrue(ledger.applySnapshot("p", 1L, 10L, 1L,
+                viewer, "older", "base"));
+        assertTrue(ledger.applySnapshot("p", 2L, 20L, 1L,
+                other, "newer", "older"));
+
+        assertEquals("newer", ledger.physicalState("p").orElseThrow(),
+                "snapshot order must replace partial incremental arrival order");
+        assertEquals(20L, ledger.topLayerId("p").orElseThrow(),
+                "semantic concealment must identify the same stack top as physical composition");
     }
 }

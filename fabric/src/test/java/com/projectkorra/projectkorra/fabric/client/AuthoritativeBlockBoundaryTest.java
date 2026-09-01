@@ -21,7 +21,10 @@ class AuthoritativeBlockBoundaryTest {
         assertTrue(direct.indexOf("++causeState.lastOrdinal")
                 < direct.indexOf("if (state.equals(before)) return"));
         assertTrue(direct.contains("predictedWrites.put(effect")
-                && direct.contains("world.setBlockState(pos, state, 19)"));
+                        && direct.contains("visualOverlay.set(ClientBlockVisualOverlay.Layer.DIRECT"),
+                "causal writes must update the removable direct-render overlay");
+        assertFalse(direct.contains("setBlockState("),
+                "direct prediction must never mutate authoritative ClientWorld block storage");
         assertTrue(direct.contains("DirectBlockAuthorityPolicy.mayConceal(")
                 && direct.contains("normalized, local != null, receipt.movedEarthLifecycle(), knownCause"));
         assertTrue(direct.contains("concealed unmatched moved-earth")
@@ -35,13 +38,26 @@ class AuthoritativeBlockBoundaryTest {
                         && inferred.contains("serverState.equals(")
                         && !inferred.contains("setBlockState("),
                 "elapsed-time convergence may release equal masks but must never repaint a delayed Paper frame");
-        assertTrue(explicit.contains("key.world.setBlockState(key.pos, mask.serverState, 19)")
-                        && explicit.contains("state.authoritativeFrameComplete = true"),
-                "only the ordered final RaiseEarth receipt may install Paper's complete frame");
+        assertTrue(explicit.contains("state.authoritativeFrameComplete = true")
+                        && explicit.contains("refreshVisual(key)")
+                        && !explicit.contains("setBlockState("),
+                "the ordered final RaiseEarth receipt may retire its overlay but may not repaint ClientWorld");
         assertTrue(direct.contains("lastReceiptTick = context.tick()")
                         && direct.contains("tick - lastActivity <= convergenceDelay"),
                 "convergence must wait for both local progress and delayed Paper receipts to become quiet");
-        assertTrue(direct.contains("action != 0L && action == mutation.lastAction"));
+        final String expiry = method(direct, "public void expire(", "public void rollbackAction");
+        assertTrue(expiry.contains("converged ? actionRetentionTicks : earthCauseRetentionTicks")
+                        && expiry.contains("retainsActiveMask(entry.getKey(), mask, transactionWide)")
+                        && expiry.contains("backingDiverged")
+                        && expiry.contains("causalPacketPending")
+                        && expiry.contains("!retainsObservedCoalescedFrame(mask)")
+                        && expiry.contains("serverMasks.remove(entry.getKey(), mask)")
+                        && expiry.contains("releaseVisual(entry.getKey(), mask, false)"),
+                "a backing-state conflict must fail open only after pending causal packets and the coalescing window are exhausted");
+        assertTrue(direct.contains("if (mask != null) return mask.viewerState")
+                        && direct.contains("mutation != null && mutation.locallyPredicted")
+                        && direct.contains("? mutation.predicted : world.getBlockState(pos)"),
+                "common prediction reads must compose the durable direct visual over vanilla authority");
         assertTrue(common.contains("final boolean packetExpected")
                 && common.indexOf("final boolean packetExpected")
                 < common.indexOf("current.beforeChange"));
@@ -57,7 +73,10 @@ class AuthoritativeBlockBoundaryTest {
         assertTrue(runtime.contains("TempBlockSync.currentWorldMutation() != null")
                 && runtime.contains("tempBlockAuthority.predict"));
         assertTrue(temp.contains("directBlocks.removeMutation(world, pos)"));
-        assertTrue(temp.contains("world.setBlockState(pos, visibleState, 19)"));
+        assertTrue(temp.contains("runtime applied render-only client TempBlock")
+                        && temp.contains("visualOverlay.set(ClientBlockVisualOverlay.Layer.TEMP"));
+        assertFalse(temp.contains("setBlockState("),
+                "TempBlock prediction and reconciliation must never paint ClientWorld");
         assertFalse(temp.contains("mutations.computeIfAbsent"));
         assertTrue(temp.contains("pendingUnderlays")
                 && temp.contains("change.underlayData()")
@@ -80,18 +99,154 @@ class AuthoritativeBlockBoundaryTest {
     }
 
     @Test
-    void serverBlockTrafficIsMaskedBeforeEnteringClientWorld() throws IOException {
+    void serverBlockTrafficAlwaysEntersAuthoritativeClientWorld() throws IOException {
         final String temp = tempAuthority();
         final String mixin = source("src/main/java/com/projectkorra/projectkorra/fabric/mixin/client/ClientPlayNetworkHandlerPredictionMixin.java");
 
-        assertTrue(temp.contains("teardownFences.maskIncoming(key, state)"));
-        assertTrue(temp.contains("takeCompletedRestore(key, state)"));
-        assertTrue(temp.contains("final boolean[] masked"));
-        assertTrue(temp.contains("masked[index] ? retainedStates[index] : states.get(index)"));
+        final String blockUpdate = method(mixin,
+                "@Inject(method = \"onBlockUpdate\"", "@Inject(method = \"onChunkDeltaUpdate\"");
+        final String chunkDelta = method(mixin,
+                "@Inject(method = \"onChunkDeltaUpdate\"", "@Inject(method = \"onChunkData\"");
+        final String chunkData = method(mixin,
+                "@Inject(method = \"onChunkData\"", "@Inject(method = \"onEntityVelocityUpdate\"");
+        final String blockPacketHooks = blockUpdate + chunkDelta + chunkData;
+
+        assertFalse(blockPacketHooks.contains("cancellable = true")
+                        || blockPacketHooks.contains("ci.cancel()"),
+                "block and chunk packets must always reach vanilla ClientWorld storage");
+        assertTrue(blockUpdate.contains("ExactPredictionRuntime.authoritativeBlock(")
+                        && chunkDelta.contains("ExactPredictionRuntime.authoritativeBlockBatch(")
+                        && chunkData.contains("ExactPredictionRuntime.acceptAuthoritativeChunk("),
+                "packet hooks may observe authority only for overlay bookkeeping");
+        final String single = method(temp, "public boolean acceptBlock", "/** Observes a vanilla chunk delta");
+        final String batch = method(temp, "public boolean acceptBatch", "public void acceptChunk");
+        final String chunk = method(temp, "public void acceptChunk", "private CompletedRestore takeCompletedRestore");
+        assertTrue(single.contains("return false;") && batch.contains("return false;"));
+        assertFalse((single + batch + chunk).contains("setBlockState("),
+                "packet observation may refresh overlays but may not replace vanilla state");
         assertTrue(temp.contains("directBlocks.restoreChunk"));
         assertTrue(temp.contains("TempBlock.getActiveLayers()"));
-        assertFalse(mixin.contains("method = \"onChunkDeltaUpdate\", at = @At(\"TAIL\")"));
         assertFalse(temp.contains("discardUnconfirmedClientTempStack"));
+    }
+
+    @Test
+    void visualOverlayComposesTempAboveDirectInChunkRendering() throws IOException {
+        final String runtime = runtime();
+        final String direct = directAuthority();
+        final String temp = tempAuthority();
+        final String overlay = source(
+                "src/main/java/com/projectkorra/projectkorra/fabric/client/prediction/block/ClientBlockVisualOverlay.java");
+        final String renderer = source(
+                "src/main/java/com/projectkorra/projectkorra/fabric/mixin/client/ChunkRendererRegionPredictionMixin.java");
+        final String mixins = source("src/main/resources/projectkorra.mixins.json");
+        final String terrainState = method(runtime,
+                "public static BlockState visualBlockState",
+                "public static boolean hasBlockVisualOverrides");
+
+        assertTrue(overlay.contains("final TempLayer tempLayer")
+                        && overlay.contains("final BlockState directState")
+                        && overlay.contains("!tempLayer.delegatesToDirect")
+                        && overlay.contains("|| directState == null"),
+                "ordinary TEMP must remain above DIRECT, while an explicitly concealed owner layer reveals DIRECT beneath it");
+        assertTrue(overlay.contains("ConcurrentMap<BlockKey, BlockState>")
+                        && overlay.contains("ConcurrentMap<BlockKey, TempLayer>")
+                        && overlay.contains("scheduleBlockRenders("),
+                "render workers need independently clearable, atomic, rebuild-aware overlay snapshots");
+        assertTrue(renderer.contains("@Mixin(ChunkRendererRegion.class)")
+                        && renderer.contains("ExactPredictionRuntime.visualBlockState(")
+                        && renderer.contains("cir.setReturnValue")
+                        && renderer.contains("getBlockState(pos).getFluidState()"),
+                "terrain and fluid meshes must consume the composed render state");
+        assertTrue(mixins.contains("client.ChunkRendererRegionPredictionMixin")
+                        && runtime.contains("new ClientBlockVisualOverlay()")
+                        && terrainState.contains(
+                        "blockVisualOverlay.composeTerrain(world, pos, authoritativeState)"));
+        assertFalse(direct.contains("setBlockState(") || temp.contains("setBlockState("),
+                "neither prediction authority may retain a physical-paint escape hatch");
+    }
+
+    @Test
+    void localTempModelsRenderEveryFrameWithoutWaitingForAChunkBuild() throws IOException {
+        final String overlay = source(
+                "src/main/java/com/projectkorra/projectkorra/fabric/client/prediction/block/ClientBlockVisualOverlay.java");
+        final String authority = tempAuthority();
+        final String renderer = source(
+                "src/main/java/com/projectkorra/projectkorra/fabric/client/PredictionBlockVisualRenderer.java");
+        final String client = source(
+                "src/main/java/com/projectkorra/projectkorra/fabric/client/ProjectKorraClientMod.java");
+        final String network = source(
+                "src/main/java/com/projectkorra/projectkorra/fabric/mixin/client/ClientPlayNetworkHandlerPredictionMixin.java");
+
+        assertTrue(overlay.contains("public void setImmediateTemp(")
+                        && overlay.contains("public void beginTempHandoff(")
+                        && overlay.contains("public BlockState composeTerrain(")
+                        && overlay.contains("return Blocks.AIR.getDefaultState();"),
+                "foreground TempBlocks must be cut out of the terrain mesh with an explicit handoff API");
+        assertFalse(overlay.contains(
+                        "visual.active() && visual.state.equals(world.getBlockState(key.pos))")
+                        || overlay.contains("if (!state.equals(world.getBlockState(key.pos)))"),
+                "a matching delayed server block must not retire an active local projectile into terrain");
+        assertTrue(overlay.contains("foreground.put(key, ForegroundVisual.active(state))")
+                        && overlay.contains("foregroundMode == ForegroundMode.HANDOFF")
+                        && overlay.contains("ForegroundMode.HANDOFF, true"),
+                "only explicit local lifecycle state may enter handoff, and a closed TEMP reveals the current lower layer");
+        assertTrue(overlay.contains("foreground.awaitingTerrainRead()")
+                        && overlay.contains("foreground.terrainRead(")
+                        && overlay.contains("FOREGROUND_HANDOFF_FAILSAFE_NANOS")
+                        && overlay.contains("removeDirectWithHandoff(")
+                        && overlay.contains("scheduleRebuild(key)"),
+                "release grace must begin after terrain consumption, survive logical removal only when states agree, and rebuild on expiry");
+        assertTrue(authority.contains("TempVisualProvenance.ACTIVE_LOCAL")
+                        && authority.contains("visualOverlay.setImmediateTemp(")
+                        && authority.contains("TempVisualProvenance.LOCAL_HANDOFF")
+                        && authority.contains("visualOverlay.beginTempHandoff("),
+                "only provenance-proven local TEMP states may enter the foreground renderer");
+        assertTrue(renderer.contains("WorldRenderEvents.END_EXTRACTION.register")
+                        && renderer.contains("List.copyOf(extracted)")
+                        && renderer.contains("WorldRenderEvents.BEFORE_ENTITIES.register")
+                        && renderer.contains("context.commandQueue().submitBlockStateModel(")
+                        && renderer.contains("FOREGROUND_SCALE"),
+                "moving prediction must use immutable extraction data and Fabric's per-frame ordered queue");
+        assertTrue(client.contains("PredictionBlockVisualRenderer.initialize();"),
+                "the foreground renderer must be registered by the client entrypoint");
+        assertTrue(network.contains("@Inject(method = \"onBlockUpdate\", at = @At(\"TAIL\"))")
+                        && network.contains("@Inject(method = \"onChunkDeltaUpdate\", at = @At(\"TAIL\"))"),
+                "packet convergence must be observed after ClientWorld installs its authoritative state");
+    }
+
+    @Test
+    void predictedCollisionViewIsLimitedToTheLocalPlayerAndOwnedFallingBlocks()
+            throws IOException {
+        final String runtime = runtime();
+        final String collisionState = method(runtime,
+                "public static BlockState collisionBlockState",
+                "public static void setPredictedBlock");
+        final String collisionMixin = source(
+                "src/main/java/com/projectkorra/projectkorra/fabric/mixin/client/BlockCollisionSpliteratorPredictionMixin.java");
+        final String mixins = source("src/main/resources/projectkorra.mixins.json");
+
+        assertTrue(collisionMixin.contains("@Mixin(BlockCollisionSpliterator.class)")
+                        && collisionMixin.contains("method = \"computeNext\"")
+                        && collisionMixin.contains(
+                        "Lnet/minecraft/world/BlockView;getBlockState")
+                        && collisionMixin.contains("chunk.getBlockState(pos)"),
+                "the collision hook must compose over the spliterator's original chunk result");
+        assertTrue(collisionMixin.contains("this.world instanceof ClientWorld")
+                        && collisionMixin.contains("this.context instanceof EntityShapeContext")
+                        && collisionMixin.contains("entityContext.getEntity()"),
+                "non-client and entity-free collision queries must retain vanilla authority");
+        assertTrue(collisionState.contains("!INSTANCE.ready")
+                        && collisionState.contains("entity != client.player")
+                        && collisionState.contains("entity instanceof FallingBlockEntity")
+                        && collisionState.contains("isPredictedOwned(entity)"),
+                "remote entities and unrelated predicted visuals may not collide with local overlays");
+        assertTrue(collisionState.contains(
+                        "blockVisualOverlay.compose(world, pos, authoritativeState)"),
+                "owned movement should consume the same immutable overlay used by rendering");
+        assertFalse(collisionState.contains("blockState(world")
+                        || collisionState.contains("setBlockState("),
+                "collision composition must not recurse through the common block adapter or mutate chunks");
+        assertTrue(mixins.contains("client.BlockCollisionSpliteratorPredictionMixin"));
     }
 
     @Test
@@ -111,17 +266,26 @@ class AuthoritativeBlockBoundaryTest {
     }
 
     @Test
-    void onlyForcedAbilityRemovalArmsDurableTempBlockTeardown() throws IOException {
+    void teardownClearsVisualLayersInsteadOfRepairingClientWorld() throws IOException {
         final String runtime = runtime();
         final String temp = tempAuthority();
-        assertFalse(method(temp, "public void onChange", "public void beforeWorldChange")
-                .contains("teardownFences.arm"));
-        assertTrue(temp.contains("teardownFences.arm(key, lifecycle.staleStates"));
-        assertTrue(temp.contains("if (local == null && lifecycle != null"),
-                "a teardown fence must not pin a surviving or overlapping local TempBlock");
+        final String direct = directAuthority();
+        final String tempClear = method(temp, "public void clear()", "private Map<BlockKey, CapturedLifecycle>");
+        final String directClear = method(direct, "public void clear()", "private void record(");
+        final String removal = method(temp, "private void finalizeAbilityRemoval",
+                "private ServerLayer topAuthoritative");
+
+        assertTrue(tempClear.contains("visualOverlay.clear(ClientBlockVisualOverlay.Layer.TEMP)")
+                        && directClear.contains("visualOverlay.clear(ClientBlockVisualOverlay.Layer.DIRECT)"),
+                "runtime teardown must invalidate both independently owned visual layers");
+        assertTrue(removal.contains("refreshVisual(key)") && !removal.contains("setBlockState("),
+                "ability removal may rebuild visuals but never restore a captured physical state");
+        assertFalse(temp.contains("teardownFences") || temp.contains("TempBlockTeardownFence"),
+                "render-only state does not need durable packet-rejection fences");
         assertTrue(runtime.contains("tempBlockAuthority.removeAbility"));
         assertTrue(runtime.contains("tempBlockAuthority.afterLocalProgress(client.world)"));
-        assertTrue(temp.contains("teardownFences.expireBefore(tick - ACTION_RETENTION_TICKS)"));
+        assertTrue(runtime.contains("this.directBlockAuthority.clear()")
+                        && runtime.contains("this.tempBlockAuthority.clear()"));
     }
 
     @Test
@@ -147,8 +311,10 @@ class AuthoritativeBlockBoundaryTest {
         assertTrue(direct.contains("context.hasActiveAbility")
                 && direct.contains("EarthAbility.getMovedEarth()")
                 && direct.contains("EarthAbility.getTempAirLocations()"));
-        assertTrue(direct.contains("recent.revision > packet.observedVisualRevision")
-                && direct.contains("return packet.serverUnderlay"));
+        assertTrue(direct.contains("DirectVisualOrderPolicy.select(")
+                        && direct.contains("hasPendingConfirmed(key, incoming)")
+                        && direct.contains("invalidateReleasedLocalVisual"),
+                "live revisions and pending physical receipts must be the only direct-view fences");
         assertTrue(earthBlast.contains("this.sourceBlock.setType(Material.STONE)")
                 && earthBlast.contains("this.sourceBlock.setType(this.sourceType)"));
     }
@@ -184,19 +350,23 @@ class AuthoritativeBlockBoundaryTest {
         assertTrue(direct.contains("hasActiveCause(entry.getValue().ownerId, cause)")
                         && direct.contains("serverMasks.remove(entry.getKey(), entry.getValue())"),
                 "convergence must wait for the complete moved-earth lifecycle and only retire bookkeeping");
-        assertTrue(direct.contains("existingMask.cause.actionSequence > cause.actionSequence")
-                        && direct.contains("? existingMask.cause : cause"),
+        assertTrue(direct.contains("DirectVisualOrderPolicy.select(")
+                        && direct.contains(
+                        "final CauseKey maskCause = retainObserved ? observedVisualCause")
+                        && direct.contains("existingMask.visualRevision"),
                 "an older delayed receipt may not take an overlapping coordinate back from the newer wall transaction");
         assertTrue(direct.contains("PACKET mask coalesced")
-                        && direct.contains("awaitsAuthoritativeFrame(mask.cause)"),
-                "a coalesced multi-write packet must remain hidden until the explicit frame fence");
+                        && direct.contains("awaitsAuthoritativeFrame(key, mask)"),
+                "a receipt-adjacent coalesced multi-write packet may retain the predicted frame");
         final String pendingFrame = method(direct,
                 "private boolean awaitsAuthoritativeFrame", "private BlockState clientBaseState");
-        assertTrue(pendingFrame.contains("\"raiseearth\".equals(cause.ability)"),
-                "the final-removal fence is specific to RaiseEarth; EarthSmash keeps its independent convergence path");
+        assertTrue(pendingFrame.contains("\"raiseearth\".equals(mask.serverCause.ability)")
+                        && pendingFrame.contains("context.tick() - mask.serverReceiptTick")
+                        && pendingFrame.contains("<= COALESCED_PACKET_GRACE_TICKS"),
+                "RaiseEarth's coalescing exception must be short-lived so a later external edit fails open");
         final String runtime = runtime();
         assertTrue(runtime.contains("completesRaiseEarthFrame(")
-                        && runtime.contains("removed.abilityType(), removed.remainingTypeInstances())")
+                        && runtime.contains("removed.abilityType(), removed.remainingActionInstances())")
                         && runtime.contains("completeAuthoritativeFrames("),
                 "the final concrete RaiseEarth removal must drive the ordered frame completion");
         assertTrue(runtime.indexOf("completeAuthoritativeFrames(")

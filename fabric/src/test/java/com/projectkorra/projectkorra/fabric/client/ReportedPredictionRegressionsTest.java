@@ -138,38 +138,60 @@ class ReportedPredictionRegressionsTest {
     }
 
     @Test
-    void waterSpoutCloseFenceResolvesTheLiveClientLayerWhenThePacketActuallyArrives() throws IOException {
+    void waterSpoutCloseRemainsAResolvableRenderOnlyLayerUntilThePacketArrives() throws IOException {
         final String tempBlocks = source("src/main/java/com/projectkorra/projectkorra/fabric/client/prediction/block/ClientTempBlockAuthority.java");
-        final String metadata = method(tempBlocks, "public void applyAuthoritativeBatch",
-                "/** Runs an authoritative ability removal");
+        final String metadata = method(tempBlocks, "private void applyAuthoritativeOperations",
+                "private boolean advanceStream");
         final String packetFence = method(tempBlocks, "private CompletedRestore takeCompletedRestore",
                 "public static <T> T completedRestoreState");
+        final String packetObserver = method(tempBlocks, "public boolean acceptBlock",
+                "/** Observes a vanilla chunk delta");
+        final String visualState = method(tempBlocks, "private TempVisual tempVisual",
+                "private void refreshVisual");
 
-        assertTrue(metadata.contains("final boolean hiddenClosingLayer = server != null")
-                        && metadata.contains("server.hiddenForLocalViewer"),
-                "an owner-hidden lifecycle must fence its physical close even if differing overlap counts prevented an exact ordinal pair");
-        assertTrue(metadata.contains("followLiveClientState = activeLocal != null"),
-                "a paired owned close must remember that its visible state came from a live client layer");
+        assertTrue(metadata.contains("final boolean hiddenClosingLayer = hiddenBefore"),
+                "an authenticated owned layer must keep its existing concealment fence through close even when coordinate drift prevented pairing");
+        assertTrue(metadata.contains("followLiveClientState = local.key.equals(key) && localLayer != null"),
+                "a paired close must remember whether its visible state still comes from a live local layer");
         assertTrue(packetFence.contains("completed.followLiveClientState")
-                        && packetFence.contains("clientState(key.world, key.pos)"),
-                "the one-shot close fence must choose live water or its final underlay at packet time, not snapshot water at metadata time");
+                        && packetFence.contains("clientState(key.world, key.pos)")
+                        && packetFence.contains("completedRestores.get(key)")
+                        && packetFence.contains("completedRestores.remove(key, completed)"),
+                "the removable close overlay must resolve live water or its final underlay at packet time");
+        assertFalse(packetFence.contains(
+                        "final CompletedRestore completed = completedRestores.remove(key)"),
+                "an intermediate fluid update must not consume the expected same-coordinate close fence");
+        assertTrue(visualState.contains("final CompletedRestore completed = completedRestores.get(key)")
+                        && visualState.contains("TempVisual.handoff(completed.state)")
+                        && packetObserver.contains("takeCompletedRestore(key, state)")
+                        && packetObserver.contains("return false;"),
+                "the overlay may bridge packet ordering, but vanilla must still install the authoritative close");
+        assertFalse(tempBlocks.contains("setBlockState("),
+                "a delayed WaterSpout close can no longer strand a physical client block");
     }
 
     @Test
-    void raiseEarthDoesNotExposeLatencyDelayedPaperFrames() throws IOException {
+    void raiseEarthHidesItsAuthenticatedPaperFootprintAcrossCoordinateDrift()
+            throws IOException {
         final String tempBlocks = source(
                 "src/main/java/com/projectkorra/projectkorra/fabric/client/prediction/block/ClientTempBlockAuthority.java");
         final String concealment = method(tempBlocks, "private boolean hidesServerLayer",
                 "private void indexAuthoritative");
-        final String metadata = method(tempBlocks, "public void applyAuthoritativeBatch",
-                "/** Runs an authoritative ability removal");
+        final String metadata = method(tempBlocks, "private void applyAuthoritativeOperations",
+                "private boolean advanceStream");
 
-        assertTrue(concealment.contains("authoritativeByCoordinate.get(key)")
-                        && concealment.contains("server.hiddenForLocalViewer")
-                        && concealment.contains("serverLayers.containsLayer(key, entry.getKey())"),
-                "Paper's owned RaiseEarth frame must be hidden as soon as metadata arrives, without waiting for its per-layer ordinal pair");
-        assertTrue(metadata.contains("previous.hiddenForLocalViewer"),
-                "UPDATE_EXPIRY must not make a previously hidden moving lifecycle visible again");
+        assertTrue(concealment.contains(
+                        "serverLayers.hidesServerWorld(key, player.getUuid())")
+                        && concealment.contains(
+                        "!hasLocalActionConcealment(server.actionSequence)"),
+                "Paper's ownership may hide its delayed footprint only while the mapped local action remains live/recent");
+        assertFalse(concealment.contains("hasSemanticPair(key)"),
+                "coordinate drift must not expose Paper's duplicate while semantic reconciliation catches up");
+        assertTrue(metadata.contains("if (effect != null && locallyOwned)")
+                        && metadata.contains("tryMatchServer(operation.layerId(), server)")
+                        && metadata.contains("final boolean hiddenAfter = hidesServerLayer(key)")
+                        && metadata.contains("refreshVisual(key)"),
+                "ownership controls concealment immediately while exact effect identity remains the lifecycle reconciliation key");
     }
 
     @Test
@@ -289,10 +311,18 @@ class ReportedPredictionRegressionsTest {
                         && paper.contains("? null : predictedTempBlockOwner")
                         && !paper.contains("ownershipBridgeTempLayers"),
                 "after the exact transfer is sent, the ownership refresh must make the old bridge concealable instead of leaving two visible smashes");
-        assertTrue(tempBlocks.contains("previous.hiddenForLocalViewer")
-                        && tempBlocks.contains("viewerId.equals(operation.ownerId())")
-                        && tempBlocks.contains("context.hasActiveAbility(operation.effectAbility())"),
-                "an authenticated ownership refresh may hide a foreign bridge only after the exact local continuation exists");
+        final String concealment = method(tempBlocks, "private boolean hidesServerLayer",
+                "private void indexAuthoritative");
+        assertTrue(tempBlocks.contains("viewerId.equals(operation.ownerId())")
+                        && tempBlocks.contains("tryMatchServer(operation.layerId(), server)")
+                        && tempBlocks.contains("pairedServerLayers.put(serverLayerId, localLayerId)")
+                        && concealment.contains(
+                        "serverLayers.hidesServerWorld(key, player.getUuid())")
+                        && concealment.contains(
+                        "!hasLocalActionConcealment(server.actionSequence)"),
+                "authenticated ownership hides the delayed bridge only while its mapped local continuation remains live/recent");
+        assertFalse(concealment.contains("hasSemanticPair(key)"),
+                "EarthSmash coordinate drift must not make the server duplicate visible before exact pairing completes");
     }
 
     @Test

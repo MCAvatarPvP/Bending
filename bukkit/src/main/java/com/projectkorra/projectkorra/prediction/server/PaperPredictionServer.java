@@ -1086,8 +1086,8 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
     public void onRemoved(final CoreAbility ability, final boolean externallyCaused,
                           final boolean predictionRejected) {
         if (ability.getPlayer() == null || !ability.isStarted()) return;
-        Action action = abilityCreationActions.get(ability);
         UUID playerId = ability.getPlayer().getUniqueId();
+        final Action action = creationActionForRemoval(ability, playerId);
         pendingAbilityRemovals.add(new PendingAbilityRemoval(playerId, ability.getName(),
                 AbilityRemovalSync.typeId(ability),
                 action != null && action.owner.equals(playerId) && action.locallyPredicted
@@ -1095,16 +1095,30 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                 externallyCaused, predictionRejected, ability));
     }
 
+    private Action creationActionForRemoval(final CoreAbility ability,
+                                            final UUID playerId) {
+        if (ability == null || playerId == null) return null;
+        final Action mapped = abilityCreationActions.get(ability);
+        if (mapped != null && playerId.equals(mapped.owner)) return mapped;
+        final long inherited = ability.getPredictionActionSequence();
+        final Session session = sessions.get(playerId);
+        final Action recovered = inherited > 0L && session != null
+                ? session.actions.get(inherited) : null;
+        if (recovered == null || !playerId.equals(recovered.owner)) return null;
+        abilityCreationActions.putIfAbsent(ability, recovered);
+        return recovered;
+    }
+
     @Override
     public void onOwnerTransferred(final CoreAbility ability, final UUID previousOwner,
                                    final UUID nextOwner) {
         if (ability == null || previousOwner == null || nextOwner == null
                 || previousOwner.equals(nextOwner) || !ability.isStarted()) return;
-        final Action previousAction = abilityCreationActions.get(ability);
+        final Action previousAction = creationActionForRemoval(ability, previousOwner);
         sendAbilityRemoval(previousOwner, ability.getName(), AbilityRemovalSync.typeId(ability),
                 previousAction != null && previousAction.owner.equals(previousOwner)
                         && previousAction.locallyPredicted ? previousAction.sequence : 0L,
-                true, false);
+                true, false, ability);
 
         final Action transferAction = currentInputAction(nextOwner);
         if (!ability.supportsPredictedOwnershipTransfer() || transferAction == null
@@ -1205,24 +1219,70 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             predictedOwnershipTransfers.remove(removal.instance);
             sendAbilityRemoval(removal.playerId, removal.ability, removal.abilityType,
                     removal.actionSequence, removal.externallyCaused,
-                    removal.predictionRejected);
+                    removal.predictionRejected, removal.instance);
         }
     }
 
     private void sendAbilityRemoval(final UUID playerId, final String ability,
                                     final String abilityType, final long actionSequence,
                                     final boolean externallyCaused,
-                                    final boolean predictionRejected) {
+                                    final boolean predictionRejected,
+                                    final CoreAbility removedInstance) {
         final Session session = sessions.get(playerId);
         final Player player = Bukkit.getPlayer(playerId);
         if (session == null || player == null) return;
         final int remainingTypeInstances = AbilityRemovalSync.activeTypeCount(playerId, abilityType);
+        final int remainingActionInstances = activeCreationActionCount(
+                playerId, ability, actionSequence, removedInstance);
+        final int remainingNamedInstances = activeAbilityNameCount(
+                playerId, ability, removedInstance);
         send(player, PaperPredictionProtocol.ABILITY_REMOVED,
                 PaperPredictionProtocol.abilityRemoved(playerId, ability, abilityType,
                         actionSequence, externallyCaused, predictionRejected,
                         session.lastSequence,
-                        remainingTypeInstances));
+                        remainingTypeInstances, remainingActionInstances,
+                        remainingNamedInstances));
         sendState(player, session, true);
+    }
+
+    /** Remaining live same-name instances created by this exact predicted input. */
+    private int activeCreationActionCount(final UUID playerId, final String ability,
+                                          final long actionSequence,
+                                          final CoreAbility removedInstance) {
+        if (playerId == null || ability == null || ability.isBlank()
+                || actionSequence <= 0L) return 0;
+        int count = 0;
+        synchronized (abilityCreationActions) {
+            for (CoreAbility candidate : CoreAbility.getAbilitiesByInstances()) {
+                if (candidate == null || candidate == removedInstance || candidate.isRemoved()
+                        || !ability.equalsIgnoreCase(candidate.getName())) continue;
+                final Action action = abilityCreationActions.get(candidate);
+                final UUID candidateOwner = action != null ? action.owner
+                        : candidate.getPlayer() == null ? null
+                        : candidate.getPlayer().getUniqueId();
+                final long candidateSequence = action != null ? action.sequence
+                        : candidate.getPredictionActionSequence();
+                if (!playerId.equals(candidateOwner)
+                        || candidateSequence != actionSequence) continue;
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /** Remaining live instances sharing the direct-effect ability name. */
+    private static int activeAbilityNameCount(final UUID playerId, final String ability,
+                                              final CoreAbility removedInstance) {
+        if (playerId == null || ability == null || ability.isBlank()) return 0;
+        int count = 0;
+        for (CoreAbility candidate : CoreAbility.getAbilitiesByInstances()) {
+            if (candidate == null || candidate == removedInstance || candidate.isRemoved()
+                    || candidate.getPlayer() == null
+                    || !playerId.equals(candidate.getPlayer().getUniqueId())
+                    || !ability.equalsIgnoreCase(candidate.getName())) continue;
+            count++;
+        }
+        return count;
     }
 
     private void onHello(Player player, PaperPredictionProtocol.Hello hello) {
@@ -1601,7 +1661,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                                         final long now) {
         send(player, PaperPredictionProtocol.TEMP_BLOCKS,
                 PaperPredictionProtocol.tempBlock(session.session, scope.generation(), scope.identity(),
-                        tick, now, operation));
+                        ++session.tempBlockStreamSequence, tick, now, operation));
     }
 
     private void sendTempBlockOperations(final Player player, final Session session,
@@ -1609,16 +1669,17 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                                           final boolean snapshot) {
         final long now = System.currentTimeMillis();
         final WorldScope scope = refreshWorldScope(player, session);
-        if (operations.isEmpty()) {
+        final int packetCount = Math.max(1,
+                (operations.size() + TEMP_BLOCK_OPS_PER_PACKET - 1) / TEMP_BLOCK_OPS_PER_PACKET);
+        final long snapshotId = snapshot ? ++session.tempBlockSnapshotSequence : 0L;
+        for (int packetIndex = 0; packetIndex < packetCount; packetIndex++) {
+            final int start = packetIndex * TEMP_BLOCK_OPS_PER_PACKET;
+            final int end = Math.min(start + TEMP_BLOCK_OPS_PER_PACKET, operations.size());
             send(player, PaperPredictionProtocol.TEMP_BLOCKS,
-                    PaperPredictionProtocol.tempBlocks(session.session, scope.generation(), scope.identity(), snapshot,
-                            tick, now, List.of()));
-            return;
-        }
-        for (int start = 0; start < operations.size(); start += TEMP_BLOCK_OPS_PER_PACKET) {
-            send(player, PaperPredictionProtocol.TEMP_BLOCKS,
-                    PaperPredictionProtocol.tempBlocks(session.session, scope.generation(), scope.identity(), snapshot, tick, now,
-                            operations.subList(start, Math.min(start + TEMP_BLOCK_OPS_PER_PACKET, operations.size()))));
+                    PaperPredictionProtocol.tempBlocks(session.session, scope.generation(), scope.identity(),
+                            snapshot, ++session.tempBlockStreamSequence, snapshotId,
+                            snapshot ? packetIndex : 0, snapshot ? packetCount : 1, tick, now,
+                            start == end ? List.of() : operations.subList(start, end)));
         }
     }
 
@@ -2070,6 +2131,8 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         Set<String> supportedAbilities = Set.of();
         long lastSequence;
         long worldGeneration;
+        long tempBlockStreamSequence;
+        long tempBlockSnapshotSequence;
         String worldIdentity = "";
         int stateDigest;
         long regionProtectionSpatialKey = Long.MIN_VALUE;

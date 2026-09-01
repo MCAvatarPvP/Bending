@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.fabric.client;
 
 import com.projectkorra.projectkorra.fabric.client.config.ClientBendingConfig;
+import com.projectkorra.projectkorra.fabric.client.prediction.block.ClientTempBlockAuthority;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads;
 import com.projectkorra.projectkorra.prediction.authority.RegionProtectionAuthority;
 import java.util.ArrayList;
@@ -790,7 +791,6 @@ public final class PredictionClient {
                             + " generation=" + incomingGeneration);
                     return false;
                 }
-                this.clientWorldBoundaryAwaitingIdentity = false;
             }
             return true;
         }
@@ -801,7 +801,11 @@ public final class PredictionClient {
         this.serverWorldIdentity = incomingIdentity;
         final boolean changed = previousGeneration >= 0L;
         final boolean clientBoundaryAlreadyRestarted = this.clientWorldBoundaryAwaitingIdentity;
-        this.clientWorldBoundaryAwaitingIdentity = false;
+        // A first snapshot fragment proves the world identity but not the
+        // ledger. Keep the boundary closed until the authority commits its
+        // final fragment. A dedicated WORLD_STATE marker may open it now.
+        this.clientWorldBoundaryAwaitingIdentity =
+                clientBoundaryAlreadyRestarted && snapshotBoundary;
         debug("authoritative world scope generation=" + previousGeneration + "->" + incomingGeneration
                 + " identity=" + previousIdentity + "->" + incomingIdentity
                 + " changed=" + changed + " clientBoundary=" + clientBoundaryAlreadyRestarted);
@@ -832,8 +836,8 @@ public final class PredictionClient {
      * Fabric fires this while processing the respawn/dimension packet, before
      * the following destination chunks are rendered. Rebuild here instead of
      * waiting for END_CLIENT_TICK: a TempBlock snapshot received in that gap
-     * would otherwise be installed into the new ClientWorld and then erased by
-     * the delayed runtime restart.
+     * would otherwise be staged into the new runtime and then erased by the
+     * delayed restart.
      */
     private void onClientWorldChange(final MinecraftClient client, final ClientWorld world) {
         if (client == null || world == null || sessionId == null || !readySent) return;
@@ -885,13 +889,25 @@ public final class PredictionClient {
                 batch.worldIdentity(), !batch.snapshot(), batch.snapshot())) return;
         final boolean completingDestinationLedger = batch.snapshot() && worldTempBlockResyncPending;
         if (client.world != null) {
-            ExactPredictionRuntime.applyTempBlockBatch(client.world, batch);
-            if (batch.snapshot()) {
+            final ClientTempBlockAuthority.BatchResult result =
+                    ExactPredictionRuntime.applyTempBlockBatch(client.world, batch);
+            if (result == ClientTempBlockAuthority.BatchResult.RESYNC_REQUIRED) {
+                worldTempBlockResyncPending = true;
+                worldTempBlockRequestSent = false;
+                debug("TempBlock stream gap; requested authoritative snapshot sequence="
+                        + batch.streamSequence());
+                requestWorldTempBlockSnapshot();
+                return;
+            }
+            if (batch.snapshot()
+                    && result == ClientTempBlockAuthority.BatchResult.APPLIED) {
+                clientWorldBoundaryAwaitingIdentity = false;
                 worldTempBlockResyncPending = false;
                 worldTempBlockRequestSent = false;
                 if (completingDestinationLedger) {
                     recordWorldTransition("applied destination TempBlock snapshot generation="
-                            + batch.worldGeneration() + " ops=" + batch.operations().size());
+                            + batch.worldGeneration() + " snapshot=" + batch.snapshotId()
+                            + " parts=" + batch.snapshotParts());
                 }
             }
         }

@@ -26,8 +26,8 @@ class PredictionAuthorityStateBoundaryTest {
         String runtime = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
                 "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
 
-        assertTrue(protocol.contains("static final int VERSION = 50"));
-        assertTrue(payloads.contains("public static final int PROTOCOL_VERSION = 50"));
+        assertTrue(protocol.contains("static final int VERSION = 53"));
+        assertTrue(payloads.contains("public static final int PROTOCOL_VERSION = 53"));
         assertTrue(protocol.contains("double airBlastDecay, boolean chiBlocked")
                         && protocol.contains("out.f64(airBlastDecay).bool(chiBlocked)"));
         assertTrue(payloads.contains("double airBlastDecay, boolean chiBlocked")

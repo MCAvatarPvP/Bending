@@ -12,6 +12,7 @@ public final class ProjectKorraClientMod implements ClientModInitializer {
         PredictionPayloads.registerTypes();
         PredictionClient.initialize();
         PredictionDebugCommands.initialize();
+        PredictionBlockVisualRenderer.initialize();
         PredictionDesyncRenderer.initialize();
         FabricAutoUpdater.initialize();
     }

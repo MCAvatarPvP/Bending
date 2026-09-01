@@ -1,9 +1,12 @@
 package com.projectkorra.projectkorra.prediction.block;
 
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalLong;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -43,12 +46,36 @@ public final class ClientTempBlockLedger<K, S> {
     public boolean apply(final K key, final TempBlockSync.Operation operation,
                          final long actionSequence, final long layerId, final long revision,
                          final UUID ownerId, final S physicalState, final S viewerState) {
+        return applyOrdered(key, operation, actionSequence, layerId, revision,
+                ownerId, physicalState, viewerState, false);
+    }
+
+    /**
+     * Applies an active layer from a completely framed snapshot. Snapshot IDs
+     * and stream ordering are validated by the caller, so an equal revision may
+     * authoritatively reopen a layer previously pruned only because it left the
+     * viewer's snapshot radius. Older revisions are still rejected.
+     */
+    public boolean applySnapshot(final K key, final long actionSequence,
+                                 final long layerId, final long revision,
+                                 final UUID ownerId, final S physicalState,
+                                 final S viewerState) {
+        return applyOrdered(key, TempBlockSync.Operation.CREATE, actionSequence,
+                layerId, revision, ownerId, physicalState, viewerState, true);
+    }
+
+    private boolean applyOrdered(final K key, final TempBlockSync.Operation operation,
+                                 final long actionSequence, final long layerId,
+                                 final long revision, final UUID ownerId,
+                                 final S physicalState, final S viewerState,
+                                 final boolean committedSnapshot) {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(operation, "operation");
 
         final LayerKey<K> revisionKey = new LayerKey<>(key, layerId);
         final long previousRevision = this.revisions.getOrDefault(revisionKey, Long.MIN_VALUE);
-        if (revision <= previousRevision) return false;
+        if (revision < previousRevision
+                || revision == previousRevision && !committedSnapshot) return false;
         this.revisions.put(revisionKey, revision);
         while (this.revisions.size() > MAX_REVISION_TOMBSTONES) {
             this.revisions.remove(this.revisions.keySet().iterator().next());
@@ -74,6 +101,10 @@ public final class ClientTempBlockLedger<K, S> {
         final S state = physicalState != null ? physicalState : previous == null ? null : previous.state;
         final long effectiveAction = actionSequence > 0L
                 ? actionSequence : previous == null ? 0L : previous.actionSequence;
+        // A committed snapshot is an ordered stack description. Reinsert even
+        // an equal-revision existing layer so LinkedHashMap order exactly
+        // follows the snapshot rather than the client's partial arrival order.
+        if (committedSnapshot) coordinate.layers.remove(layerId);
         coordinate.layers.put(layerId, new Layer<>(ownerId, effectiveAction, state));
         return true;
     }
@@ -122,6 +153,15 @@ public final class ClientTempBlockLedger<K, S> {
         return top == null ? Optional.empty() : Optional.ofNullable(top.state);
     }
 
+    /** Stable id of the stack-top layer, following incremental or snapshot order. */
+    public OptionalLong topLayerId(final K key) {
+        final Coordinate<S> coordinate = this.coordinates.get(key);
+        if (coordinate == null || coordinate.layers.isEmpty()) return OptionalLong.empty();
+        long top = 0L;
+        for (long layerId : coordinate.layers.keySet()) top = layerId;
+        return OptionalLong.of(top);
+    }
+
     public boolean containsLayer(final K key, final long layerId) {
         final Coordinate<S> coordinate = this.coordinates.get(key);
         return coordinate != null && coordinate.layers.containsKey(layerId);
@@ -160,6 +200,33 @@ public final class ClientTempBlockLedger<K, S> {
 
     public int coordinateCount() {
         return this.coordinates.size();
+    }
+
+    /**
+     * Commits the layer membership from a complete authoritative snapshot.
+     * Active layers omitted by the snapshot are retired, and every coordinate
+     * whose stack changed is returned so a caller can recompute its visual
+     * state. Revision entries are deliberately retained as tombstones: a
+     * delayed operation at the pruned layer's last revision (or older) cannot
+     * resurrect it, while a genuinely newer operation may open it again.
+     *
+     * @param snapshotLayerIds every layer id present in the committed snapshot
+     * @return immutable set of coordinates from which at least one layer was removed
+     */
+    public Set<K> pruneAbsentFromSnapshot(final Set<Long> snapshotLayerIds) {
+        Objects.requireNonNull(snapshotLayerIds, "snapshotLayerIds");
+        if (this.coordinates.isEmpty()) return Set.of();
+
+        final Set<K> affected = new LinkedHashSet<>();
+        this.coordinates.entrySet().removeIf(entry -> {
+            final Coordinate<S> coordinate = entry.getValue();
+            final int previousSize = coordinate.layers.size();
+            coordinate.layers.keySet().removeIf(layerId -> !snapshotLayerIds.contains(layerId));
+            if (coordinate.layers.size() == previousSize) return false;
+            affected.add(entry.getKey());
+            return coordinate.layers.isEmpty();
+        });
+        return Set.copyOf(affected);
     }
 
     public void clear() {

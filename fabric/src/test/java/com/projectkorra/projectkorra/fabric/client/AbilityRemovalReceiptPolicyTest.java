@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.fabric.client;
 
 import com.projectkorra.projectkorra.earthbending.RaiseEarth;
+import com.projectkorra.projectkorra.earthbending.RaiseEarthWall;
 import com.projectkorra.projectkorra.prediction.hit.HitRegistrationPolicy;
 import org.junit.jupiter.api.Test;
 
@@ -53,13 +54,13 @@ class AbilityRemovalReceiptPolicyTest {
     }
 
     @Test
-    void finalConcreteRaiseEarthRemovalCompletesTheDirectFrame() {
+    void finalRaiseEarthChildOrEmptyWallCompletesTheDirectFrame() {
         final String raiseType = RaiseEarth.class.getName();
         assertTrue(ExactPredictionRuntime.completesRaiseEarthFrame(
                 raiseType, 0));
         assertFalse(ExactPredictionRuntime.completesRaiseEarthFrame(
                 raiseType, 1));
-        assertFalse(ExactPredictionRuntime.completesRaiseEarthFrame(
-                "com.example.RaiseEarthWall", 0));
+        assertTrue(ExactPredictionRuntime.completesRaiseEarthFrame(
+                RaiseEarthWall.class.getName(), 0));
     }
 }
