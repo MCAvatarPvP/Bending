@@ -34,8 +34,31 @@ class OptionalHookBoundaryTest {
         assertTrue(hook.contains("sendPacketSilently(nativePlayer, packet)"));
     }
 
+    @Test
+    void serverEntityInterpolationIsReloadableAndOptInByDefault() throws IOException {
+        String config = source("../common/src/main/java/com/projectkorra/projectkorra/configuration/ConfigManager.java");
+        String plugin = source("src/main/java/com/projectkorra/projectkorra/BukkitProjectKorraPlugin.java");
+        String platform = source(
+                "src/main/java/com/projectkorra/projectkorra/platform/bukkit/BukkitProjectKorraPlatform.java");
+        String interpolation = source(
+                "src/main/java/com/projectkorra/projectkorra/prediction/server/ServerEntityInterpolation.java");
+
+        assertTrue(config.contains(
+                "config.addDefault(\"Properties.ServerEntityInterpolation.Enabled\", false)"),
+                "packet-driven interpolation must remain disabled unless a server opts in");
+        assertTrue(plugin.contains("synchronizeServerEntityInterpolation()")
+                        && plugin.contains("stopServerEntityInterpolation()")
+                        && plugin.contains("Properties.ServerEntityInterpolation.Enabled\", false"),
+                "the setting must control both the packet hook and interpolation ticker");
+        assertTrue(platform.contains("projectKorra.synchronizeServerEntityInterpolation()"),
+                "a ProjectKorra reload must apply the new setting");
+        assertTrue(interpolation.contains("this.task != null && !this.task.isCancelled()"),
+                "repeated synchronization must not register duplicate tick tasks");
+    }
+
     private static String source(String relative) throws IOException {
         Path source = Path.of(relative);
+        if (!Files.exists(source) && relative.startsWith("../")) source = Path.of(relative.substring(3));
         if (!Files.exists(source)) source = Path.of("bukkit").resolve(source);
         assertTrue(Files.exists(source), source.toString());
         return Files.readString(source);

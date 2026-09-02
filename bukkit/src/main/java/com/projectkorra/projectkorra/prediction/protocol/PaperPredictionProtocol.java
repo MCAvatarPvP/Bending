@@ -236,6 +236,14 @@ public final class PaperPredictionProtocol {
         out.blockState(operation.viewerMaterial()).bool(operation.packetExpected());
     }
 
+    /** Exact encoded size used to keep dense TempBlock batches below Bukkit's payload ceiling. */
+    public static int tempBlockOperationSize(final TempBlockOp operation) {
+        if (operation == null) return 0;
+        final Writer out = new Writer(256);
+        writeTempBlock(out, operation);
+        return out.size();
+    }
+
     public static byte[] velocityOwner(long serverTick, long actionSequence, int impulseOrdinal,
                                 UUID abilityOwner, UUID target, String ability) {
         return new Writer().i64(serverTick).varLong(actionSequence).varInt(impulseOrdinal)
@@ -520,6 +528,10 @@ public final class PaperPredictionProtocol {
 
         byte[] bytes() {
             return out.toByteArray();
+        }
+
+        int size() {
+            return out.size();
         }
     }
 

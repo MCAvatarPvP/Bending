@@ -161,6 +161,14 @@ public final class ExactPredictionRuntime
     private static final Set<String> PERSISTENT_FLIGHT_ABILITIES = Set.of(
             "airscooter", "airspout", "waterspout", "sandspout", "airglider", "firejet", "flight");
     private static final boolean DEBUG = Boolean.parseBoolean(System.getProperty("projectkorra.prediction.debug", "false"));
+    private static final int MATERIAL_STATE_CACHE_LIMIT = 4_096;
+    private static final Map<String, BlockState> MATERIAL_STATE_CACHE =
+            new LinkedHashMap<>(256, 0.75F, true) {
+                @Override
+                protected boolean removeEldestEntry(final Map.Entry<String, BlockState> eldest) {
+                    return size() > MATERIAL_STATE_CACHE_LIMIT;
+                }
+            };
     private final Map<Long, com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime.Action> actions = new LinkedHashMap<>();
     private final Map<CoreAbility, Long> abilityActions = new IdentityHashMap<>();
     private final Map<CoreAbility, Long> abilityCreationActions = new IdentityHashMap<>();
@@ -1434,6 +1442,7 @@ public final class ExactPredictionRuntime
                 debug("runtime tick skipped ready=" + this.ready + " player=" + (client.player != null) + " world=" + (client.world != null));
             }
         }
+        this.blockVisualOverlay.flushRebuilds();
     }
 
     private void reconcileAuthoritativeCooldowns(Map<String, Long> authoritativeCooldowns) {
@@ -2896,6 +2905,19 @@ public final class ExactPredictionRuntime
     }
 
     private static BlockState materialState(String materialName) {
+        final String cacheKey = materialName == null ? "" : materialName;
+        synchronized (MATERIAL_STATE_CACHE) {
+            final BlockState cached = MATERIAL_STATE_CACHE.get(cacheKey);
+            if (cached != null) return cached;
+        }
+        final BlockState decoded = decodeMaterialState(cacheKey);
+        synchronized (MATERIAL_STATE_CACHE) {
+            MATERIAL_STATE_CACHE.put(cacheKey, decoded);
+        }
+        return decoded;
+    }
+
+    private static BlockState decodeMaterialState(final String materialName) {
         if (materialName != null && !materialName.contains(";")) {
             return FabricMC.blockState(materialName);
         }

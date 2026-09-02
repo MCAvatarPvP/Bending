@@ -51,6 +51,23 @@ public final class ClientBlockVisualOverlay {
             new ConcurrentHashMap<>();
     private final ConcurrentMap<BlockKey, ForegroundVisual> foregroundTemp =
             new ConcurrentHashMap<>();
+    private final Set<RenderSectionKey> pendingRebuildSections = ConcurrentHashMap.newKeySet();
+    private int rebuildBatchDepth;
+
+    /** Coalesces a dense authority update into one terrain request per affected section. */
+    public void beginRebuildBatch() {
+        rebuildBatchDepth++;
+    }
+
+    public void endRebuildBatch() {
+        if (rebuildBatchDepth <= 0) return;
+        rebuildBatchDepth--;
+    }
+
+    /** Flushes all authority packets handled during this client tick together. */
+    public void flushRebuilds() {
+        if (rebuildBatchDepth == 0) flushRebuildSections();
+    }
 
     public BlockState compose(final ClientWorld world, final BlockPos pos,
                               final BlockState authoritativeState) {
@@ -360,6 +377,10 @@ public final class ClientBlockVisualOverlay {
     private void scheduleRebuild(final BlockKey key) {
         if (key == null || key.world == null || key.pos == null) return;
         final MinecraftClient client = MinecraftClient.getInstance();
+        if (client.isOnThread() && rebuildBatchDepth > 0) {
+            queueRebuildSections(key);
+            return;
+        }
         final Runnable rebuild = () -> {
             if (client.world != key.world || client.worldRenderer == null) return;
             // Adjacent faces and fluids are part of the same visual transaction.
@@ -371,7 +392,44 @@ public final class ClientBlockVisualOverlay {
         else client.execute(rebuild);
     }
 
+    private void queueRebuildSections(final BlockKey key) {
+        final int minimumX = (key.pos.getX() - 1) >> 4;
+        final int maximumX = (key.pos.getX() + 1) >> 4;
+        final int minimumY = (key.pos.getY() - 1) >> 4;
+        final int maximumY = (key.pos.getY() + 1) >> 4;
+        final int minimumZ = (key.pos.getZ() - 1) >> 4;
+        final int maximumZ = (key.pos.getZ() + 1) >> 4;
+        for (int sectionX = minimumX; sectionX <= maximumX; sectionX++) {
+            for (int sectionY = minimumY; sectionY <= maximumY; sectionY++) {
+                for (int sectionZ = minimumZ; sectionZ <= maximumZ; sectionZ++) {
+                    pendingRebuildSections.add(new RenderSectionKey(
+                            key.world, sectionX, sectionY, sectionZ));
+                }
+            }
+        }
+    }
+
+    private void flushRebuildSections() {
+        if (pendingRebuildSections.isEmpty()) return;
+        final MinecraftClient client = MinecraftClient.getInstance();
+        final Set<RenderSectionKey> sections = Set.copyOf(pendingRebuildSections);
+        pendingRebuildSections.removeAll(sections);
+        if (client.worldRenderer == null) return;
+        for (RenderSectionKey section : sections) {
+            if (client.world != section.world) continue;
+            final int minimumX = section.x << 4;
+            final int minimumY = section.y << 4;
+            final int minimumZ = section.z << 4;
+            client.worldRenderer.scheduleBlockRenders(
+                    minimumX, minimumY, minimumZ,
+                    minimumX + 15, minimumY + 15, minimumZ + 15);
+        }
+    }
+
     private record BlockKey(ClientWorld world, BlockPos pos) {
+    }
+
+    private record RenderSectionKey(ClientWorld world, int x, int y, int z) {
     }
 
     /**

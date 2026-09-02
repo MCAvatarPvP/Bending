@@ -59,6 +59,7 @@ public final class ServerEntityInterpolation implements Runnable {
     }
 
     private void scheduleTicker() {
+        if (this.task != null && !this.task.isCancelled()) return;
         this.task = Bukkit.getScheduler().runTaskTimer(this.plugin, this, 1L, 1L);
     }
 

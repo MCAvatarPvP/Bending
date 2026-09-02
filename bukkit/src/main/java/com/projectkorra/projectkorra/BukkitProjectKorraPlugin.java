@@ -2,6 +2,7 @@ package com.projectkorra.projectkorra;
 
 import com.projectkorra.projectkorra.command.BendingTabComplete;
 import com.projectkorra.projectkorra.command.Commands;
+import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.hooks.BetonQuestHook;
 import com.projectkorra.projectkorra.hooks.ExternalActionBarHook;
 import com.projectkorra.projectkorra.hooks.WorldGuardFlag;
@@ -27,6 +28,7 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
     private ServerEntityInterpolation entityInterpolation;
     private PacketEventsEntityInterpolationHook entityInterpolationHook;
     private ExternalActionBarHook externalActionBarHook;
+    private boolean shuttingDown;
 
     private static CommandSender wrapSender(final org.bukkit.command.CommandSender sender) {
         if (sender instanceof Player player) {
@@ -47,10 +49,10 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         Platform.install(new BukkitProjectKorraPlatform(this));
-        registerServerEntityInterpolation();
         ProjectKorra.initCommon();
         BukkitRegionProtectionBootstrap.registerBuiltIns();
         GeneralMethods.reloadPlugin(new BukkitConsoleSender(getServer().getConsoleSender()));
+        synchronizeServerEntityInterpolation();
         registerCommands();
         Platform.events().registerListener(new PKListener(this));
         registerBetonQuestHook();
@@ -100,12 +102,31 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
         }
     }
 
-    private void registerServerEntityInterpolation() {
+    /** Applies the reloadable interpolation setting without leaving a packet listener behind. */
+    public void synchronizeServerEntityInterpolation() {
+        if (this.shuttingDown) return;
+        final boolean enabled = ConfigManager.defaultConfig != null
+                && ConfigManager.defaultConfig.get().getBoolean(
+                "Properties.ServerEntityInterpolation.Enabled", false);
+        if (!enabled) {
+            stopServerEntityInterpolation();
+            return;
+        }
+
         Plugin packetEvents = getServer().getPluginManager().getPlugin("packetevents");
         if (packetEvents == null) {
             packetEvents = getServer().getPluginManager().getPlugin("PacketEvents");
         }
-        if (packetEvents == null || !packetEvents.isEnabled()) return;
+        if (packetEvents == null || !packetEvents.isEnabled()) {
+            stopServerEntityInterpolation();
+            return;
+        }
+
+        if (this.entityInterpolation != null && this.entityInterpolationHook != null) {
+            ServerEntityInterpolation.schedulerReset();
+            return;
+        }
+        stopServerEntityInterpolation();
 
         try {
             this.entityInterpolation = ServerEntityInterpolation.start(this);
@@ -121,8 +142,20 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
         }
     }
 
+    private void stopServerEntityInterpolation() {
+        if (this.entityInterpolationHook != null) {
+            this.entityInterpolationHook.stop();
+            this.entityInterpolationHook = null;
+        }
+        if (this.entityInterpolation != null) {
+            this.entityInterpolation.stop();
+            this.entityInterpolation = null;
+        }
+    }
+
     @Override
     public void onDisable() {
+        this.shuttingDown = true;
         // Keep lifecycle publication and coordinate filtering alive while
         // abilities restore their server state. Exact clients can then finish
         // their own ordered TempBlock lifecycles during a reload.
@@ -135,14 +168,7 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
             this.prediction.stop();
             this.prediction = null;
         }
-        if (this.entityInterpolationHook != null) {
-            this.entityInterpolationHook.stop();
-            this.entityInterpolationHook = null;
-        }
-        if (this.entityInterpolation != null) {
-            this.entityInterpolation.stop();
-            this.entityInterpolation = null;
-        }
+        stopServerEntityInterpolation();
         Platform.scheduler().cancelAll();
     }
 

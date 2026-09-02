@@ -534,6 +534,23 @@ class PaperPredictionProtocolTest {
     }
 
     @Test
+    void tempBlockOperationSizeMatchesItsExactWireContribution() {
+        UUID session = UUID.randomUUID();
+        PaperPredictionProtocol.TempBlockOp operation = new PaperPredictionProtocol.TempBlockOp(
+                PaperPredictionProtocol.TempOperation.CREATE, "world", -12, 80, 31,
+                "minecraft:oak_leaves[persistent=true]", 12_000L, 45L,
+                "AirSwipe", "TRAVELING", 6L, 3, 7L, 99L, UUID.randomUUID(),
+                "minecraft:grass_block[snowy=false]", false);
+        byte[] empty = PaperPredictionProtocol.tempBlocks(session, 4L, "world-id", true,
+                10L, 3L, 0, 1, 91L, 10_000L, List.of());
+        byte[] populated = PaperPredictionProtocol.tempBlocks(session, 4L, "world-id", true,
+                10L, 3L, 0, 1, 91L, 10_000L, List.of(operation));
+
+        assertEquals(populated.length - empty.length,
+                PaperPredictionProtocol.tempBlockOperationSize(operation));
+    }
+
+    @Test
     void boundedTempBlockPageAlwaysFitsPluginMessageLimit() {
         String maximumWorld = "界".repeat(256);
         String maximumState = "界".repeat(PaperPredictionProtocol.MAX_BLOCK_STATE_CHARACTERS);

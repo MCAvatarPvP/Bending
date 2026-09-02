@@ -447,7 +447,12 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
                     || !advanceStream(batch.streamSequence(), false)) {
                 return requireAuthoritativeResync("invalid or gapped incremental stream");
             }
-            applyAuthoritativeOperations(world, batch, batch.operations());
+            visualOverlay.beginRebuildBatch();
+            try {
+                applyAuthoritativeOperations(world, batch, batch.operations());
+            } finally {
+                visualOverlay.endRebuildBatch();
+            }
             return BatchResult.APPLIED;
         }
 
@@ -481,9 +486,14 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
 
         final SnapshotAssembly committed = stagedSnapshot;
         stagedSnapshot = null;
-        applyAuthoritativeOperations(world, batch, committed.operations);
-        lastCommittedSnapshotId = committed.id;
-        pruneAbsentAuthoritativeLayers(world, committed.operations);
+        visualOverlay.beginRebuildBatch();
+        try {
+            applyAuthoritativeOperations(world, batch, committed.operations);
+            lastCommittedSnapshotId = committed.id;
+            pruneAbsentAuthoritativeLayers(world, committed.operations);
+        } finally {
+            visualOverlay.endRebuildBatch();
+        }
         log("runtime committed TempBlock snapshot id=" + committed.id
                 + " parts=" + committed.parts + " ops=" + committed.operations.size());
         return BatchResult.APPLIED;

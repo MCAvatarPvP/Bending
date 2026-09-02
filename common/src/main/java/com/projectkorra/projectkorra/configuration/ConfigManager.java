@@ -942,6 +942,11 @@ public class ConfigManager {
             config.addDefault("Properties.HorizontalCollisionPhysics.WallDamageMinimumDistance", 5.0);
             config.addDefault("Properties.HorizontalCollisionPhysics.WallDamageCap", 5.0);
 
+            // PacketEvents-backed viewer interpolation is optional because it
+            // tracks every outbound remote-player movement packet. Bukkit's
+            // authoritative collision positions remain the default path.
+            config.addDefault("Properties.ServerEntityInterpolation.Enabled", false);
+
             config.addDefault("Properties.RegionProtection.AllowHarmlessAbilities", true);
             config.addDefault("Properties.RegionProtection.RespectWorldGuard", true);
             config.addDefault("Properties.RegionProtection.RespectGriefDefender", true);

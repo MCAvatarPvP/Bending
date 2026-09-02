@@ -73,7 +73,9 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         AbilityCheckpointSync.Listener, PlayerStatusSync.Listener {
     public static final int MAX_REWIND_TICKS = 12;
     private static final int CAPABILITY_EXACT = 8;
-    private static final int TEMP_BLOCK_OPS_PER_PACKET = 4;
+    private static final int MAX_TEMP_BLOCK_OPS_PER_PACKET = 256;
+    private static final int TEMP_BLOCK_PACKET_HEADROOM_BYTES = 1_024;
+    private static final long TEMP_BLOCK_SNAPSHOT_SAFETY_TICKS = 1_200L;
     private static final int MAX_PREDICTION_PERMISSIONS = 512;
     private static final int CLAIMS_PER_SECOND = 48;
     private static final double CLAIM_CONTACT_TOLERANCE = 0.75;
@@ -639,14 +641,17 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         if (tick % 20 == 0) {
             syncState();
             // CREATE/REVERT packets are ordered, but a player can enter view
-            // after a layer was created or re-handshake mid-ability. Re-send
-            // the active in-range ledger so authority self-heals without
-            // waiting for an ability-specific update.
+            // after a layer was created. Refresh the ledger when the player's
+            // chunk/view changes, with a slow safety repair for exceptional
+            // desyncs. Sending every unchanged layer every second caused
+            // packet and client-mesh spikes in TempBlock-heavy scenes.
             for (Session session : sessions.values()) {
                 final Player player = Bukkit.getPlayer(session.player);
                 if (player != null) {
                     sendWorldState(player, session);
-                    sendTempBlockSnapshot(player, session);
+                    if (shouldSendPeriodicTempBlockSnapshot(player, session)) {
+                        sendTempBlockSnapshot(player, session);
+                    }
                     final AirGlider glider = CoreAbility.getAbility(BukkitMC.player(player), AirGlider.class);
                     if (glider != null && !glider.isRemoved()) sendAirGliderState(player, glider, null);
                 }
@@ -1669,18 +1674,44 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
                                           final boolean snapshot) {
         final long now = System.currentTimeMillis();
         final WorldScope scope = refreshWorldScope(player, session);
-        final int packetCount = Math.max(1,
-                (operations.size() + TEMP_BLOCK_OPS_PER_PACKET - 1) / TEMP_BLOCK_OPS_PER_PACKET);
+        final List<List<PaperPredictionProtocol.TempBlockOp>> packets =
+                partitionTempBlockOperations(operations);
+        final int packetCount = packets.size();
         final long snapshotId = snapshot ? ++session.tempBlockSnapshotSequence : 0L;
         for (int packetIndex = 0; packetIndex < packetCount; packetIndex++) {
-            final int start = packetIndex * TEMP_BLOCK_OPS_PER_PACKET;
-            final int end = Math.min(start + TEMP_BLOCK_OPS_PER_PACKET, operations.size());
             send(player, PaperPredictionProtocol.TEMP_BLOCKS,
                     PaperPredictionProtocol.tempBlocks(session.session, scope.generation(), scope.identity(),
                             snapshot, ++session.tempBlockStreamSequence, snapshotId,
                             snapshot ? packetIndex : 0, snapshot ? packetCount : 1, tick, now,
-                            start == end ? List.of() : operations.subList(start, end)));
+                            packets.get(packetIndex)));
         }
+    }
+
+    /**
+     * Uses the real encoded operation sizes instead of a tiny fixed count.
+     * Dense, ordinary block states now share a packet, while unusually large
+     * state strings still retain enough room for the protocol envelope.
+     */
+    private static List<List<PaperPredictionProtocol.TempBlockOp>> partitionTempBlockOperations(
+            final List<PaperPredictionProtocol.TempBlockOp> operations) {
+        if (operations == null || operations.isEmpty()) return List.of(List.of());
+        final int payloadBudget = Messenger.MAX_MESSAGE_SIZE - TEMP_BLOCK_PACKET_HEADROOM_BYTES;
+        final List<List<PaperPredictionProtocol.TempBlockOp>> packets = new ArrayList<>();
+        final List<PaperPredictionProtocol.TempBlockOp> current = new ArrayList<>();
+        int encodedBytes = 0;
+        for (PaperPredictionProtocol.TempBlockOp operation : operations) {
+            final int operationBytes = PaperPredictionProtocol.tempBlockOperationSize(operation);
+            if (!current.isEmpty() && (current.size() >= MAX_TEMP_BLOCK_OPS_PER_PACKET
+                    || encodedBytes + operationBytes > payloadBudget)) {
+                packets.add(List.copyOf(current));
+                current.clear();
+                encodedBytes = 0;
+            }
+            current.add(operation);
+            encodedBytes += operationBytes;
+        }
+        if (!current.isEmpty()) packets.add(List.copyOf(current));
+        return List.copyOf(packets);
     }
 
     private void syncState() {
@@ -1992,6 +2023,20 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             session.tempLayers.markActive(layer.getLayerId());
         }
         sendTempBlockOperations(player, session, operations, true);
+        session.tempBlockSnapshotInitialized = true;
+        session.lastTempBlockSnapshotTick = tick;
+        session.lastTempBlockSnapshotChunkX = location.getBlockX() >> 4;
+        session.lastTempBlockSnapshotChunkZ = location.getBlockZ() >> 4;
+        session.lastTempBlockSnapshotViewDistance = player.getClientViewDistance();
+    }
+
+    private boolean shouldSendPeriodicTempBlockSnapshot(final Player player, final Session session) {
+        if (!session.tempBlockSnapshotInitialized) return true;
+        if (tick - session.lastTempBlockSnapshotTick >= TEMP_BLOCK_SNAPSHOT_SAFETY_TICKS) return true;
+        final Location location = player.getLocation();
+        return (location.getBlockX() >> 4) != session.lastTempBlockSnapshotChunkX
+                || (location.getBlockZ() >> 4) != session.lastTempBlockSnapshotChunkZ
+                || player.getClientViewDistance() != session.lastTempBlockSnapshotViewDistance;
     }
 
     private void sendWorldState(final Player player, final Session session) {
@@ -2007,6 +2052,7 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
             session.worldIdentity = identity;
             session.worldGeneration++;
             session.tempLayers.clear();
+            session.tempBlockSnapshotInitialized = false;
         }
         return new WorldScope(session.worldGeneration, session.worldIdentity);
     }
@@ -2133,13 +2179,18 @@ public final class PaperPredictionServer implements PluginMessageListener, Runna
         long worldGeneration;
         long tempBlockStreamSequence;
         long tempBlockSnapshotSequence;
+        long lastTempBlockSnapshotTick;
         String worldIdentity = "";
+        int lastTempBlockSnapshotChunkX;
+        int lastTempBlockSnapshotChunkZ;
+        int lastTempBlockSnapshotViewDistance;
         int stateDigest;
         long regionProtectionSpatialKey = Long.MIN_VALUE;
         long nextRegionProtectionRefreshTick;
         RegionProtectionAuthority.Snapshot regionProtectionSpatial =
                 RegionProtectionAuthority.Snapshot.empty();
         boolean ready;
+        boolean tempBlockSnapshotInitialized;
         PermissionContext permissionContext;
         List<String> predictionPermissions = List.of();
 

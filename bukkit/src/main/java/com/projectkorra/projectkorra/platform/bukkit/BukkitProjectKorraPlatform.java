@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.platform.bukkit;
 
+import com.projectkorra.projectkorra.BukkitProjectKorraPlugin;
 import com.projectkorra.projectkorra.platform.*;
 import com.projectkorra.projectkorra.platform.bukkit.model.BukkitAdapter;
 import com.projectkorra.projectkorra.platform.mc.boss.BarColor;
@@ -497,7 +498,11 @@ public final class BukkitProjectKorraPlatform implements ProjectKorraPlatform {
         @Override
         public void cancelAll() {
             Bukkit.getScheduler().cancelTasks(plugin);
-            ServerEntityInterpolation.schedulerReset();
+            if (plugin instanceof BukkitProjectKorraPlugin projectKorra) {
+                projectKorra.synchronizeServerEntityInterpolation();
+            } else {
+                ServerEntityInterpolation.schedulerReset();
+            }
             PaperPredictionServer.schedulerReset();
         }
 
