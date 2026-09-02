@@ -159,10 +159,10 @@ class TempBlockMetadataAuthorityTest {
         if (!Files.exists(source)) source = Path.of("fabric").resolve(source);
         assertTrue(Files.exists(source), "ExactPredictionRuntime source must be available to the invariant test");
 
-        String runtime = Files.readString(source);
+        String runtime = com.projectkorra.projectkorra.testutil.PredictionSourceBundle.read(source);
         Path tempSource = Path.of("src/main/java/com/projectkorra/projectkorra/fabric/client/prediction/block/ClientTempBlockAuthority.java");
         if (!Files.exists(tempSource)) tempSource = Path.of("fabric").resolve(tempSource);
-        String tempBlocks = Files.readString(tempSource);
+        String tempBlocks = com.projectkorra.projectkorra.testutil.PredictionSourceBundle.read(tempSource);
         int start = runtime.indexOf("private void reconcile0(");
         int end = runtime.indexOf("private void abortFailedLocalInput", start);
         assertTrue(start >= 0 && end > start, "action reconciliation handler must be present");
@@ -197,7 +197,7 @@ class TempBlockMetadataAuthorityTest {
         Path path = Path.of(relative);
         if (!Files.exists(path)) path = Path.of("fabric").resolve(relative);
         assertTrue(Files.exists(path), "missing source: " + path);
-        return Files.readString(path);
+        return com.projectkorra.projectkorra.testutil.PredictionSourceBundle.read(path);
     }
 
     private static String method(final String source, final String startMarker,

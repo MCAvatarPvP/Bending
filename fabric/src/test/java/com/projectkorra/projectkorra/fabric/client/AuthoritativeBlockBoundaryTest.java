@@ -235,7 +235,7 @@ class AuthoritativeBlockBoundaryTest {
                         && collisionMixin.contains("this.context instanceof EntityShapeContext")
                         && collisionMixin.contains("entityContext.getEntity()"),
                 "non-client and entity-free collision queries must retain vanilla authority");
-        assertTrue(collisionState.contains("!INSTANCE.ready")
+        assertTrue(collisionState.contains("!ExactPredictionRuntime.instance().ready")
                         && collisionState.contains("entity != client.player")
                         && collisionState.contains("entity instanceof FallingBlockEntity")
                         && collisionState.contains("isPredictedOwned(entity)"),
@@ -410,7 +410,7 @@ class AuthoritativeBlockBoundaryTest {
         Path path = Path.of(relative);
         if (!Files.exists(path)) path = Path.of("fabric").resolve(relative);
         assertTrue(Files.exists(path), "missing source: " + path);
-        return Files.readString(path);
+        return com.projectkorra.projectkorra.testutil.PredictionSourceBundle.read(path);
     }
 
     private static String method(final String source, final String start, final String end) {

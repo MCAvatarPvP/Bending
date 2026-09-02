@@ -248,7 +248,7 @@ class PredictionActivationBoundaryTest {
 
         assertTrue(paper.contains("HitRewind.combinedRewindTicks")
                 && paper.contains("player.getPing(), defenderPing"));
-        assertTrue(paper.contains("frame.box.clone().expand(CLAIM_CONTACT_TOLERANCE)"));
+        assertTrue(paper.contains("frame.box().clone().expand(CLAIM_CONTACT_TOLERANCE)"));
         assertFalse(paper.contains("HitResolutionSync") || paper.contains("pendingNativeReactions"));
         assertFalse(damage.contains("HitResolutionSync") || velocity.contains("HitResolutionSync"));
         assertFalse(config.contains("Properties.Prediction.Reaction"));
@@ -351,6 +351,6 @@ class PredictionActivationBoundaryTest {
         Path path = Path.of(moduleRelative);
         if (!Files.exists(path)) path = Path.of(rootRelative);
         assertTrue(Files.exists(path));
-        return Files.readString(path);
+        return com.projectkorra.projectkorra.testutil.PredictionSourceBundle.read(path);
     }
 }

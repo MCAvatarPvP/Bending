@@ -58,6 +58,6 @@ class PredictedFluidForegroundBoundaryTest {
         Path path = Path.of(relative);
         if (!Files.exists(path)) path = Path.of("fabric").resolve(relative);
         assertTrue(Files.exists(path), "missing source: " + path);
-        return Files.readString(path);
+        return com.projectkorra.projectkorra.testutil.PredictionSourceBundle.read(path);
     }
 }

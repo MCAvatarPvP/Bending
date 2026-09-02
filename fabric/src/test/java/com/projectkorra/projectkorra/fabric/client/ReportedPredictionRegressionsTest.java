@@ -133,7 +133,7 @@ class ReportedPredictionRegressionsTest {
                 "clicking a predicted smash must skip local mining while leaving Minecraft's subsequent hand swing intact");
         assertTrue(tempBlocks.contains("layer.getAbility().orElse(null) instanceof EarthSmash"),
                 "the mining exception must be narrowly scoped to active EarthSmash TempBlocks");
-        assertTrue(runtime.contains("INSTANCE.tempBlockAuthority.suppressBreakAnimation(world, pos)"),
+        assertTrue(runtime.contains("ExactPredictionRuntime.instance().tempBlockAuthority.suppressBreakAnimation(world, pos)"),
                 "Paper crack packets for the hidden authoritative smash must be suppressed as well");
     }
 
@@ -398,7 +398,7 @@ class ReportedPredictionRegressionsTest {
         Path path = Path.of(value);
         if (!Files.exists(path)) path = Path.of("fabric").resolve(value);
         assertTrue(Files.exists(path), "missing source: " + path);
-        return Files.readString(path);
+        return com.projectkorra.projectkorra.testutil.PredictionSourceBundle.read(path);
     }
 
     private static String method(final String source, final String startMarker, final String endMarker) {

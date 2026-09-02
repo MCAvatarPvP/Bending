@@ -60,6 +60,6 @@ class TempBlockWorldIdentityBoundaryTest {
         Path path = Path.of(moduleRelative);
         if (!Files.exists(path)) path = Path.of(rootRelative);
         assertTrue(Files.exists(path));
-        return Files.readString(path);
+        return com.projectkorra.projectkorra.testutil.PredictionSourceBundle.read(path);
     }
 }

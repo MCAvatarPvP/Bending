@@ -76,6 +76,6 @@ class MovementSendBoundaryTest {
         Path path = Path.of(first);
         if (!Files.exists(path)) path = Path.of(second);
         assertTrue(Files.exists(path), "missing source " + first);
-        return Files.readString(path);
+        return com.projectkorra.projectkorra.testutil.PredictionSourceBundle.read(path);
     }
 }

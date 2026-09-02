@@ -72,7 +72,7 @@ class PredictionArchitectureBoundaryTest {
         final Path firstPath = Path.of(first);
         final Path path = Files.exists(firstPath) ? firstPath : Path.of(second);
         assertTrue(Files.exists(path), "missing source: " + path);
-        return Files.readString(path);
+        return com.projectkorra.projectkorra.testutil.PredictionSourceBundle.read(path);
     }
 
     private static boolean exists(final String first, final String second) {

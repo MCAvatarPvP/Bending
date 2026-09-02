@@ -16,8 +16,8 @@ class ExactBlockStateCodecTest {
         if (!Files.exists(adapterPath)) adapterPath = Path.of("fabric").resolve(adapterPath);
         if (!Files.exists(runtimePath)) runtimePath = Path.of("fabric").resolve(runtimePath);
 
-        String adapter = Files.readString(adapterPath);
-        String runtime = Files.readString(runtimePath);
+        String adapter = com.projectkorra.projectkorra.testutil.PredictionSourceBundle.read(adapterPath);
+        String runtime = com.projectkorra.projectkorra.testutil.PredictionSourceBundle.read(runtimePath);
 
         assertTrue(adapter.contains("data.setExactState(serializeBlockState(state))"));
         assertTrue(adapter.contains("property.parse(value)"));

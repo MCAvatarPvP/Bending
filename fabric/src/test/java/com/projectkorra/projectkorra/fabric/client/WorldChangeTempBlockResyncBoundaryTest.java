@@ -212,7 +212,7 @@ class WorldChangeTempBlockResyncBoundaryTest {
         Path source = Path.of(relative);
         if (!Files.exists(source)) source = Path.of("fabric").resolve(relative);
         assertTrue(Files.exists(source), "missing source: " + source);
-        return Files.readString(source);
+        return com.projectkorra.projectkorra.testutil.PredictionSourceBundle.read(source);
     }
 
     private static boolean exists(final String relative) {

@@ -290,14 +290,14 @@ class GameplayRegressionBoundaryTest {
         Path path = Path.of("../common/src/main/java").resolve(relative);
         if (!Files.exists(path)) path = Path.of("common/src/main/java").resolve(relative);
         assertTrue(Files.exists(path));
-        return Files.readString(path);
+        return com.projectkorra.projectkorra.testutil.PredictionSourceBundle.read(path);
     }
 
     private static String source(String moduleRelative, String rootRelative) throws IOException {
         Path path = Path.of(moduleRelative);
         if (!Files.exists(path)) path = Path.of(rootRelative);
         assertTrue(Files.exists(path));
-        return Files.readString(path);
+        return com.projectkorra.projectkorra.testutil.PredictionSourceBundle.read(path);
     }
 
     private static String method(String source, String startMarker, String endMarker) {

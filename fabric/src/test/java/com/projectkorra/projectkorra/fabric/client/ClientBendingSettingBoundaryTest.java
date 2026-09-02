@@ -26,7 +26,7 @@ class ClientBendingSettingBoundaryTest {
                 "client-side bending must remain enabled by default and persist locally");
         assertTrue(prediction.contains("onClientSideBendingSettingChanged")
                         && prediction.contains("if (!enabled) {")
-                        && prediction.contains("INSTANCE.reset(client)")
+                        && prediction.contains("PredictionClient.instance().reset(client)")
                         && prediction.contains("new PredictionPayloads.ClientDisabled")
                         && payloads.contains("id(\"client_disabled\")")
                         && prediction.contains("if (!ClientBendingConfig.isEnabled())"),
@@ -37,6 +37,6 @@ class ClientBendingSettingBoundaryTest {
         Path path = Path.of(relative);
         if (!Files.exists(path)) path = Path.of("fabric").resolve(relative);
         assertTrue(Files.exists(path), "missing source: " + path);
-        return Files.readString(path);
+        return com.projectkorra.projectkorra.testutil.PredictionSourceBundle.read(path);
     }
 }

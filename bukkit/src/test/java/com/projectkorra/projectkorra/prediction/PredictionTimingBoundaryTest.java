@@ -127,10 +127,10 @@ class PredictionTimingBoundaryTest {
                 "the post-scheduler pose must follow vanilla swimming/gliding/collision constraints, not a two-pose guess");
         assertTrue(runtime.contains("private static final ThreadLocal<Long> INPUT_EVENT_POSE")
                         && runtime.contains("Long eventAction = INPUT_EVENT_POSE.get()"));
-        String executionPose = runtime.substring(
-                runtime.indexOf("private com.projectkorra.projectkorra.fabric.client.PredictionClient.ServerPose executionPose0()"),
-                runtime.indexOf("private static boolean finite",
-                        runtime.indexOf("private com.projectkorra.projectkorra.fabric.client.PredictionClient.ServerPose executionPose0()")));
+        final int executionPoseStart = runtime.indexOf(
+                "private com.projectkorra.projectkorra.fabric.client.PredictionClient.ServerPose executionPose0()");
+        String executionPose = runtime.substring(executionPoseStart,
+                runtime.indexOf("\n    }", executionPoseStart) + "\n    }".length());
         assertFalse(executionPose.contains("tick - action.createdTick") || executionPose.contains("currentAction()"),
                 "Paper's packet pose ends with the event; progress must return to the separately scheduled server-visible pose");
         assertTrue(paper.contains(": nativeInput.get())"));
@@ -316,7 +316,7 @@ class PredictionTimingBoundaryTest {
                         && runtime.contains("cooldownActiveAtInput")
                         && runtime.contains("recorded.cooldownActiveAtInput"),
                 "the local callback must retain the cooldown decision captured at the exact packet boundary");
-        assertTrue(runtime.contains("anyMatch(INSTANCE.bendingPlayer::isOnInputCooldown)"),
+        assertTrue(runtime.contains("anyMatch(ExactPredictionRuntime.instance().bendingPlayer::isOnInputCooldown)"),
                 "the packet-boundary verdict must include the same global cooldown tail as canBend");
         assertFalse(runtime.contains("CooldownSync.runInputLeniency"),
                 "the 100 ms server allowance must never shorten the client's own cooldown");
@@ -453,7 +453,7 @@ class PredictionTimingBoundaryTest {
         Path path = Path.of(moduleRelative);
         if (!Files.exists(path)) path = Path.of(rootRelative);
         assertTrue(Files.exists(path));
-        return Files.readString(path);
+        return com.projectkorra.projectkorra.testutil.PredictionSourceBundle.read(path);
     }
 
     private static int occurrences(final String source, final String needle) {

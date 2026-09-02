@@ -67,6 +67,6 @@ class TempBlockNetworkOptimizationBoundaryTest {
         if (!Files.exists(path) && relative.startsWith("../")) path = Path.of(relative.substring(3));
         if (!Files.exists(path)) path = Path.of("bukkit").resolve(relative);
         assertTrue(Files.exists(path), path.toString());
-        return Files.readString(path).replace("\r\n", "\n");
+        return com.projectkorra.projectkorra.testutil.PredictionSourceBundle.read(path).replace("\r\n", "\n");
     }
 }

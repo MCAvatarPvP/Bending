@@ -131,7 +131,7 @@ class TempBlockAbilityLifecycleBoundaryTest {
         Path path = Path.of("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
         if (!Files.exists(path)) path = Path.of("fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
         assertTrue(Files.exists(path));
-        String runtime = Files.readString(path);
+        String runtime = com.projectkorra.projectkorra.testutil.PredictionSourceBundle.read(path);
         String decision = method(runtime, "public static boolean shouldPredictInput",
                 "public static boolean canActivate");
 
@@ -481,8 +481,8 @@ class TempBlockAbilityLifecycleBoundaryTest {
                 "CoreAbility.remove publishes before subclass TempBlock cleanup and therefore cannot send immediately");
         assertFalse(removed.contains("abilityActions.remove(ability)"),
                 "the closing layers still need the removed instance's exact action association");
-        assertTrue(source.contains("abilityActions.remove(removal.instance)")
-                        && source.contains("abilityCreationActions.remove(removal.instance)"));
+        assertTrue(source.contains("abilityActions.remove(removal.instance())")
+                        && source.contains("abilityCreationActions.remove(removal.instance())"));
         int tick = source.indexOf(tickMarker);
         int temp = source.indexOf("flushTempBlocks();", tick);
         int abilities = source.indexOf("flushAbilityRemovals();", tick);
@@ -494,14 +494,14 @@ class TempBlockAbilityLifecycleBoundaryTest {
         Path path = Path.of("../common/src/main/java").resolve(relative);
         if (!Files.exists(path)) path = Path.of("common/src/main/java").resolve(relative);
         assertTrue(Files.exists(path));
-        return Files.readString(path);
+        return com.projectkorra.projectkorra.testutil.PredictionSourceBundle.read(path);
     }
 
     private static String source(String moduleRelative, String rootRelative) throws IOException {
         Path path = Path.of(moduleRelative);
         if (!Files.exists(path)) path = Path.of(rootRelative);
         assertTrue(Files.exists(path));
-        return Files.readString(path);
+        return com.projectkorra.projectkorra.testutil.PredictionSourceBundle.read(path);
     }
 
     private static String method(String source, String startMarker, String endMarker) {
