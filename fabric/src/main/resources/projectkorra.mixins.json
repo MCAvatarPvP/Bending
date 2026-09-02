@@ -20,6 +20,7 @@
     "client.FallingBlockEntityPredictionMixin",
     "client.LivingEntityAirGliderPredictionMixin",
     "client.SodiumLevelSlicePredictionMixin",
+    "client.TintedLeavesVelocityMixin",
     "client.VulkanRenderRegionPredictionMixin"
   ],
   "injectors": {

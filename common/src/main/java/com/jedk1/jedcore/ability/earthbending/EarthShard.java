@@ -15,6 +15,7 @@ import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
+import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.entity.FallingBlock;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
@@ -28,10 +29,16 @@ import com.projectkorra.projectkorra.util.TempFallingBlock;
 import com.projectkorra.projectkorra.util.colliders.AABB;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 public class EarthShard extends EarthAbility implements AddonAbility, EntityHitboxProvider {
+    private static final int MAX_READY_HANDOFF_ATTEMPTS = 20;
+    private static final int MAX_RISE_TICKS = 40;
+
     @Attribute(Attribute.RANGE)
     public static int range;
     public static int abilityRange;
@@ -47,6 +54,9 @@ public class EarthShard extends EarthAbility implements AddonAbility, EntityHitb
     private final List<TempBlock> tblockTracker = new ArrayList<>();
     private final List<TempBlock> readyBlocksTracker = new ArrayList<>();
     private final List<TempFallingBlock> fallingBlocks = new ArrayList<>();
+    private final Map<TempFallingBlock, Integer> readyHandoffAttempts = new IdentityHashMap<>();
+    private final Map<TempFallingBlock, Integer> riseTicks = new IdentityHashMap<>();
+    private final Map<TempFallingBlock, Integer> riseTickLimits = new IdentityHashMap<>();
     private double animationSpeed;
     private double maxDistance;
     private long shootBuffer;
@@ -141,7 +151,8 @@ public class EarthShard extends EarthAbility implements AddonAbility, EntityHitb
         abilityRange = JedCoreConfig.getConfig(this.bPlayer).getInt("Abilities.Earth.EarthShard.AbilityRange");
         normalDmg = JedCoreConfig.getConfig(this.bPlayer).getDouble("Abilities.Earth.EarthShard.Damage.Normal");
         metalDmg = JedCoreConfig.getConfig(this.bPlayer).getDouble("Abilities.Earth.EarthShard.Damage.Metal");
-        animationSpeed = JedCoreConfig.getConfig(this.bPlayer).getDouble("Abilities.Earth.EarthShard.AnimationSpeed");
+        animationSpeed = Math.max(0.05,
+                JedCoreConfig.getConfig(this.bPlayer).getDouble("Abilities.Earth.EarthShard.AnimationSpeed"));
         maxDistance = JedCoreConfig.getConfig(this.bPlayer).getDouble("Abilities.Earth.EarthShard.MaxDistance");
         maxShards = JedCoreConfig.getConfig(this.bPlayer).getInt("Abilities.Earth.EarthShard.MaxShards");
         cooldown = JedCoreConfig.getConfig(this.bPlayer).getLong("Abilities.Earth.EarthShard.Cooldown");
@@ -175,8 +186,11 @@ public class EarthShard extends EarthAbility implements AddonAbility, EntityHitb
             return;
         }
 
-        // EarthShard requires clear space above the selected source.
-        for (int i = 1; i < 4; i++) {
+        // Validate the complete route to the held height. A lower source can be
+        // much farther than three blocks below the player's original eye level.
+        final int targetY = this.origin.getBlockY() + 2;
+        final int clearanceHeight = Math.max(3, targetY - block.getY());
+        for (int i = 1; i <= clearanceHeight; i++) {
             if (!isTransparent(block.getRelative(BlockFace.UP, i))) {
                 return;
             }
@@ -210,20 +224,32 @@ public class EarthShard extends EarthAbility implements AddonAbility, EntityHitb
 
         final Location spawn = block.getLocation().add(0.5, 0, 0.5);
 
-        new TempFallingBlock(
-                spawn,
-                material.createBlockData(),
-                new Vector(0, this.animationSpeed, 0),
+        final TempBlock sourceLayer = new TempBlock(
+                block,
+                Material.AIR.createBlockData(),
                 this
         );
+        if (sourceLayer.isReverted()) return;
 
-        this.tblockTracker.add(
-                new TempBlock(
-                        block,
-                        Material.AIR.createBlockData(),
-                        this
-                )
-        );
+        TempFallingBlock risingShard = null;
+        try {
+            risingShard = new TempFallingBlock(
+                    spawn,
+                    material.createBlockData(),
+                    new Vector(0, this.animationSpeed, 0),
+                    this
+            );
+            final int verticalDistance = Math.max(1, targetY - block.getY());
+            final int riseTickLimit = Math.max(2, Math.min(MAX_RISE_TICKS,
+                    (int) Math.ceil(verticalDistance / this.animationSpeed) + 2));
+            this.riseTicks.put(risingShard, 0);
+            this.riseTickLimits.put(risingShard, riseTickLimit);
+            this.tblockTracker.add(sourceLayer);
+        } catch (RuntimeException | Error failure) {
+            if (risingShard != null) risingShard.remove();
+            sourceLayer.revertBlock();
+            throw failure;
+        }
     }
 
     private boolean hasShardInColumn(final Block block) {
@@ -337,9 +363,19 @@ public class EarthShard extends EarthAbility implements AddonAbility, EntityHitb
                 final FallingBlock fb = tfb.getFallingBlock();
 
                 if (fb == null) {
+                    this.forgetRisingShard(tfb);
                     tfb.remove();
                     continue;
                 }
+
+                if (fb.isDead()) {
+                    this.forgetRisingShard(tfb);
+                    tfb.remove();
+                    continue;
+                }
+
+                final int riseTick = this.riseTicks.merge(tfb, 1, Integer::sum);
+                final int riseTickLimit = this.riseTickLimits.getOrDefault(tfb, MAX_RISE_TICKS);
 
                 /*
                  * Never rely on:
@@ -352,7 +388,13 @@ public class EarthShard extends EarthAbility implements AddonAbility, EntityHitb
                  *
                  * Instead, crossing the target Y means the rise has completed.
                  */
-                if (fb.isDead() || fb.getLocation().getY() >= targetY) {
+                if (fb.getLocation().getY() >= targetY || riseTick >= riseTickLimit) {
+
+                    // Freeze at the handoff plane. The falling entity remains
+                    // alive until the replacement TempBlock acknowledges that
+                    // it was registered, so a rejected write cannot consume the
+                    // only representation of this shard.
+                    fb.setVelocity(new Vector(0, 0, 0));
 
                     /*
                      * Clamp the shard to its intended fixed Y.
@@ -367,15 +409,26 @@ public class EarthShard extends EarthAbility implements AddonAbility, EntityHitb
                             fb.getLocation().getBlockZ()
                     );
 
-                    final TempBlock readyBlock = new TempBlock(
-                            destination.getBlock(),
-                            fb.getBlockData(),
-                            this
-                    );
-
-                    this.readyBlocksTracker.add(readyBlock);
-                    tfb.remove();
+                    if (this.createReadyBlock(destination, fb.getBlockData())) {
+                        this.forgetRisingShard(tfb);
+                        tfb.remove();
+                    } else if (this.readyHandoffAttempts.merge(tfb, 1, Integer::sum)
+                            >= MAX_READY_HANDOFF_ATTEMPTS) {
+                        // A permanently obstructed/rejected destination must
+                        // restore its source instead of trapping the ability.
+                        this.forgetRisingShard(tfb);
+                        tfb.remove();
+                    }
                 }
+            }
+
+            // If another lifecycle boundary removed a rising entity before the
+            // handoff, restore its source instead of retaining an unthrowable
+            // prepared ability forever.
+            this.pruneOrphanedSources();
+            if (this.tblockTracker.isEmpty()) {
+                this.remove();
+                return;
             }
 
             if (hasBufferedShoot()) {
@@ -439,11 +492,12 @@ public class EarthShard extends EarthAbility implements AddonAbility, EntityHitb
     }
 
     private void throwShard(boolean allowBuffer) {
-        boolean notReady = tblockTracker.size() > readyBlocksTracker.size();
-
         if (isThrown) {
             return;
         }
+
+        this.pruneOrphanedSources();
+        boolean notReady = tblockTracker.size() > readyBlocksTracker.size();
 
         if (notReady && waitTillShardsRise) {
             bufferThrow(allowBuffer);
@@ -459,12 +513,30 @@ public class EarthShard extends EarthAbility implements AddonAbility, EntityHitb
                     return;
                 }
 
-                TempBlock tb = new TempBlock(new Location(
+                final Location destination = new Location(
                         origin.getWorld(),
-                        fb.getLocation().getBlockX(), origin.getBlockY() + 2, fb.getLocation().getBlockZ()).getBlock(), fb.getBlockData(), this);
-                readyBlocksTracker.add(tb);
+                        fb.getLocation().getBlockX(), origin.getBlockY() + 2,
+                        fb.getLocation().getBlockZ());
+                fb.setVelocity(new Vector(0, 0, 0));
+                if (!this.createReadyBlock(destination, fb.getBlockData())) {
+                    bufferThrow(allowBuffer);
+                    return;
+                }
+                this.forgetRisingShard(tfb);
                 tfb.remove();
             }
+            this.pruneOrphanedSources();
+            notReady = tblockTracker.size() > readyBlocksTracker.size();
+            if (notReady) {
+                bufferThrow(allowBuffer);
+                return;
+            }
+        }
+
+        if (readyBlocksTracker.isEmpty()) {
+            if (TempFallingBlock.getFromAbility(this).isEmpty()) this.remove();
+            else bufferThrow(allowBuffer);
+            return;
         }
 
         Location targetLocation = GeneralMethods.getTargetedLocation(player, abilityRange);
@@ -507,6 +579,67 @@ public class EarthShard extends EarthAbility implements AddonAbility, EntityHitb
         }
     }
 
+    private boolean createReadyBlock(final Location destination, final BlockData data) {
+        if (destination == null || destination.getWorld() == null || data == null) return false;
+        final Block destinationBlock = destination.getBlock();
+        final TempBlock readyBlock;
+        try {
+            readyBlock = new TempBlock(destinationBlock, data, this);
+        } catch (RuntimeException failure) {
+            return false;
+        }
+        if (readyBlock.isReverted() || TempBlock.get(destinationBlock) != readyBlock) {
+            if (!readyBlock.isReverted()) readyBlock.revertBlock();
+            return false;
+        }
+        this.readyBlocksTracker.add(readyBlock);
+        return true;
+    }
+
+    private void forgetRisingShard(final TempFallingBlock fallingBlock) {
+        this.readyHandoffAttempts.remove(fallingBlock);
+        this.riseTicks.remove(fallingBlock);
+        this.riseTickLimits.remove(fallingBlock);
+    }
+
+    private void pruneOrphanedSources() {
+        final List<TempFallingBlock> rising = TempFallingBlock.getFromAbility(this);
+        this.readyHandoffAttempts.keySet().removeIf(fallingBlock -> !rising.contains(fallingBlock));
+        this.riseTicks.keySet().removeIf(fallingBlock -> !rising.contains(fallingBlock));
+        this.riseTickLimits.keySet().removeIf(fallingBlock -> !rising.contains(fallingBlock));
+        final Iterator<TempBlock> iterator = this.tblockTracker.iterator();
+        while (iterator.hasNext()) {
+            final TempBlock sourceLayer = iterator.next();
+            if (sourceLayer == null || sourceLayer.isReverted()) {
+                iterator.remove();
+                continue;
+            }
+            final Block sourceBlock = sourceLayer.getBlock();
+            if (this.hasReadyShardInColumn(sourceBlock) || hasRisingShardInColumn(rising, sourceBlock)) continue;
+            sourceLayer.revertBlock();
+            iterator.remove();
+        }
+    }
+
+    private boolean hasReadyShardInColumn(final Block sourceBlock) {
+        for (final TempBlock readyBlock : this.readyBlocksTracker) {
+            if (readyBlock != null && !readyBlock.isReverted()
+                    && sameColumn(readyBlock.getLocation(), sourceBlock)) return true;
+        }
+        return false;
+    }
+
+    private static boolean hasRisingShardInColumn(
+            final List<TempFallingBlock> rising,
+            final Block sourceBlock) {
+        for (final TempFallingBlock tempFallingBlock : rising) {
+            if (tempFallingBlock == null || tempFallingBlock.getFallingBlock() == null
+                    || tempFallingBlock.getFallingBlock().isDead()) continue;
+            if (sameColumn(tempFallingBlock.getLocation(), sourceBlock)) return true;
+        }
+        return false;
+    }
+
     private void bufferThrow(boolean allowBuffer) {
         if (!allowBuffer || shootBuffer <= 0) {
             return;
@@ -530,6 +663,9 @@ public class EarthShard extends EarthAbility implements AddonAbility, EntityHitb
 
     public void revertBlocks() {
         bufferedShootUntil = 0;
+        this.readyHandoffAttempts.clear();
+        this.riseTicks.clear();
+        this.riseTickLimits.clear();
 
         for (TempBlock tb : tblockTracker) {
             tb.revertBlock();

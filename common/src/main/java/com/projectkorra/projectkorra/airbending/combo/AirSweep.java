@@ -9,6 +9,7 @@ import com.projectkorra.projectkorra.ability.ComboAbility;
 import com.projectkorra.projectkorra.ability.util.Collision;
 import com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation;
 import com.projectkorra.projectkorra.ability.util.ComboUtil;
+import com.projectkorra.projectkorra.airbending.AirFoliage;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.command.Commands;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
@@ -23,8 +24,8 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.scheduler.BukkitRunnable;
 import com.projectkorra.projectkorra.platform.mc.util.BoundingBox;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
-import com.projectkorra.projectkorra.prediction.state.CooldownSync;
 import com.projectkorra.projectkorra.prediction.hit.ConfirmedHitEffects;
+import com.projectkorra.projectkorra.prediction.state.CooldownSync;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.colliders.AABB;
 import com.projectkorra.projectkorra.util.colliders.Ray;
@@ -344,8 +345,13 @@ public class AirSweep extends AirAbility implements ComboAbility {
         final int steps = Math.max(1, (int) Math.ceil(distance / 0.25));
         final Vector step = loc.toVector().subtract(previousLoc.toVector()).multiply(1.0 / steps);
         final Location check = previousLoc.clone();
+        final Vector foliageVelocity = direction.clone().normalize().multiply(this.speed);
 
         for (int i = 0; i <= steps; i++) {
+            AirFoliage.clear(this, check.getBlock(), foliageVelocity);
+            for (final Block foliage : GeneralMethods.getBlocksAroundPoint(check, this.radius)) {
+                AirFoliage.clear(this, foliage, foliageVelocity);
+            }
             if (GeneralMethods.checkDiagonalWall(check, direction)) {
                 return true;
             }

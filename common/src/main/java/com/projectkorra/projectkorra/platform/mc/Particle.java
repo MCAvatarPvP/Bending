@@ -75,6 +75,7 @@ public class Particle {
     public static final Particle SQUID_INK = new Particle("SQUID_INK");
     public static final Particle SWEEP_ATTACK = new Particle("SWEEP_ATTACK");
     public static final Particle TOTEM_OF_UNDYING = new Particle("TOTEM_OF_UNDYING");
+    public static final Particle TINTED_LEAVES = new Particle("TINTED_LEAVES");
     public static final Particle WARPED_SPORE = new Particle("WARPED_SPORE");
     public static final Particle WAX_OFF = new Particle("WAX_OFF");
     public static final Particle WAX_ON = new Particle("WAX_ON");
@@ -111,7 +112,7 @@ public class Particle {
             case "BLOCK", "BLOCK_CRACK", "BLOCK_DUST", "FALLING_DUST" -> BlockData.class;
             case "ITEM", "ITEM_CRACK" -> ItemStack.class;
             case "DUST", "REDSTONE", "RED_DUST" -> DustOptions.class;
-            case "ENTITY_EFFECT", "EFFECT" -> Color.class;
+            case "ENTITY_EFFECT", "EFFECT", "TINTED_LEAVES" -> Color.class;
             default -> Void.class;
         };
     }

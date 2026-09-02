@@ -194,49 +194,40 @@ public class AirSwipe extends AirAbility {
         return Math.max(this.minimumSpeed, this.speed + projectedVelocity * velocityFactor);
     }
 
-    public boolean checkLocation(Block block, Vector direction, Location location) {
-        if (!GeneralMethods.isPassable(block)) {
+    public boolean checkLocation(final Block block, final Vector direction, final Location location) {
+        if (location.distanceSquared(this.origin) > this.range * this.range
+                || GeneralMethods.isRegionProtectedFromBuild(this, block.getLocation())) {
+            this.streams.clear();
             return false;
-        } else {
-            if (location.distanceSquared(this.origin) > this.range * this.range || GeneralMethods.isRegionProtectedFromBuild(this, block.getLocation())) {
-                this.streams.clear();
+        }
+
+        // Foliage is handled before solid-block rejection so leaf blocks do not stop the swipe.
+        final Vector foliageVelocity = direction.clone().multiply(this.getSwipeSpeed(direction));
+        final boolean clearedCenter = AirFoliage.clear(this, block, foliageVelocity);
+        for (final Block testBlock : GeneralMethods.getBlocksAroundPoint(block.getLocation(), this.radius)) {
+            if (GeneralMethods.isRegionProtectedFromBuild(this, testBlock.getLocation())) continue;
+            if (FireAbility.isFire(testBlock.getType())) testBlock.setType(Material.AIR);
+            AirFoliage.clear(this, testBlock, foliageVelocity);
+        }
+        if (clearedCenter) return true;
+
+        if (!ElementalAbility.isTransparent(this.player, block) || !GeneralMethods.isPassable(block)) {
+            return false;
+        }
+        if (isAir(block.getType()) || block.getType().equals(Material.SNOW)) return true;
+        if (this.canGoThroughWater && isWater(block)) return true;
+        if (isLava(block)) {
+            if (LavaFlow.isLavaFlowBlock(block)) {
+                LavaFlow.removeBlock(block);
+                return false; // TODO: Make more generic for future lava generating moves.
+            } else if (block.getBlockData() instanceof Levelled
+                    && ((Levelled) block.getBlockData()).getLevel() == 0) {
+                new TempBlock(block, Material.OBSIDIAN);
             } else {
-                if (!ElementalAbility.isTransparent(this.player, block) || !GeneralMethods.isPassable(block)) {
-                    return false;
-                }
-
-                for (final Block testblock : GeneralMethods.getBlocksAroundPoint(block.getLocation(), this.radius)) {
-                    if (FireAbility.isFire(testblock.getType())) {
-                        testblock.setType(Material.AIR);
-                    }
-                }
-
-                if (!isAir(block.getType())) {
-                    if (block.getType().equals(Material.SNOW)) {
-                        return true;
-                    } else if (this.canGoThroughWater && isWater(block)) {
-                        return true;
-                    } else if (isPlant(block.getType())) {
-                        block.breakNaturally();
-                        return false;
-                    } else if (isLava(block)) {
-                        if (LavaFlow.isLavaFlowBlock(block)) {
-                            LavaFlow.removeBlock(block);
-                            return false;// TODO: Make more generic for future lava generating moves.
-                        } else if (block.getBlockData() instanceof Levelled && ((Levelled) block.getBlockData()).getLevel() == 0) {
-                            new TempBlock(block, Material.OBSIDIAN);
-                            return false;
-                        } else {
-                            new TempBlock(block, Material.COBBLESTONE);
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
+                new TempBlock(block, Material.COBBLESTONE);
             }
         }
-        return true;
+        return false;
     }
 
     private void affectPeople(final Location location, final Vector direction) {

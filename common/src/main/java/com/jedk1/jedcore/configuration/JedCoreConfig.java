@@ -361,6 +361,7 @@ public class JedCoreConfig {
         config.addDefault("Abilities.Earth.EarthShard.EntityCollisionRadius", 1.4);
         config.addDefault("Abilities.Earth.EarthShard.WaitForShards", false);
         config.addDefault("Abilities.Earth.EarthShard.WaitForOffset", 1.0);
+        config.addDefault("Abilities.Earth.EarthShard.ShootBuffer", 750);
 
         config.addDefault("Abilities.Earth.EarthSurf.Enabled", true);
         config.addDefault("Abilities.Earth.EarthSurf.Description", "This ability allows an earth bender to "
@@ -535,6 +536,18 @@ public class JedCoreConfig {
         config.addDefault("Abilities.Earth.SandBlast.SourceRange", 8);
         config.addDefault("Abilities.Earth.SandBlast.Range", 30);
         config.addDefault("Abilities.Earth.SandBlast.MaxSandBlocks", 10);
+        config.addDefault("Abilities.Earth.SandBlast.HitRadius", 0.9);
+        config.addDefault("Abilities.Earth.SandBlast.Visuals.ShardsPerBlast", 4);
+        config.addDefault("Abilities.Earth.SandBlast.Visuals.MinimumShardScale", 0.13);
+        config.addDefault("Abilities.Earth.SandBlast.Visuals.MaximumShardScale", 0.31);
+        config.addDefault("Abilities.Earth.SandBlast.Physics.Speed", 0.9);
+        config.addDefault("Abilities.Earth.SandBlast.Physics.Spread", 0.13);
+        config.addDefault("Abilities.Earth.SandBlast.Physics.Lift", 0.18);
+        config.addDefault("Abilities.Earth.SandBlast.Physics.Gravity", 0.026);
+        config.addDefault("Abilities.Earth.SandBlast.Physics.Drag", 0.986);
+        config.addDefault("Abilities.Earth.SandBlast.Physics.Bounce", 0.42);
+        config.addDefault("Abilities.Earth.SandBlast.Physics.MaximumBounces", 3);
+        config.addDefault("Abilities.Earth.SandBlast.Physics.LifetimeTicks", 60);
 
         config.addDefault("Abilities.Earth.EarthCombo.Crevice.Enabled", true);
         config.addDefault("Abilities.Earth.EarthCombo.Crevice.Description", "Create a Crevice in the ground! Once opened, "
