@@ -19,7 +19,8 @@
     "client.ClientWorldPredictionAliasMixin",
     "client.FallingBlockEntityPredictionMixin",
     "client.LivingEntityAirGliderPredictionMixin",
-    "client.SodiumLevelSlicePredictionMixin"
+    "client.SodiumLevelSlicePredictionMixin",
+    "client.VulkanRenderRegionPredictionMixin"
   ],
   "injectors": {
     "defaultRequire": 1

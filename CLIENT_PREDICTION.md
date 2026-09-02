@@ -52,10 +52,13 @@ WaterManipulation visible even when they advance faster than an asynchronous chu
 and server concealment remain terrain-only. Common gameplay reads the same logical composition
 through `FabricPredictionMC`.
 
-The vanilla terrain compiler and Sodium's optional `LevelSlice` integration both read the same
-render-only compositor. Sodium remains optional when absent, but an installed incompatible Sodium
-fails startup instead of silently exposing physical prediction duplicates. Neither path mutates the
-world snapshot it reads. Active foregrounds end only on an explicit local lifecycle transition;
+The vanilla terrain compiler, Sodium's optional `LevelSlice` integration, and VulkanMod's optional
+`RenderRegion` integration all read the same render-only compositor. Sodium and VulkanMod remain
+optional when absent, but an installed incompatible renderer fails startup instead of silently
+exposing physical prediction duplicates. None of these paths mutates the world snapshot it reads.
+The immediate foreground renderer uses Fabric's extracted render state and command queue, so its
+block and fluid submissions stay independent of an OpenGL or Vulkan backend. Active foregrounds
+end only on an explicit local lifecycle transition;
 equality with the backing world is never treated as completion. A foreground-to-terrain handoff
 is reserved for a settled static frame whose viewer state, announced server state, and physically
 installed backing state all agree. Moving EarthBlast cells, conflicts, expiry, and rollback remove
@@ -131,9 +134,10 @@ There is no AirBlast-specific parity tracker or trace protocol.
 - Predicted block composition is in `ClientBlockVisualOverlay`; TempBlock pairing and snapshot
   recovery are in `ClientTempBlockAuthority` and the common `block` ledger. Immediate models and
   captured fluid meshes are submitted by `PredictionBlockVisualRenderer` and
-  `PredictionFluidMesh`. Vanilla and Sodium terrain composition are projected by
-  `ChunkRendererRegionPredictionMixin` and `SodiumLevelSlicePredictionMixin`; predicted movement
-  collision is projected by `BlockCollisionSpliteratorPredictionMixin`.
+  `PredictionFluidMesh`. Vanilla, Sodium, and VulkanMod terrain composition are projected by
+  `ChunkRendererRegionPredictionMixin`, `SodiumLevelSlicePredictionMixin`, and
+  `VulkanRenderRegionPredictionMixin`; predicted movement collision is projected by
+  `BlockCollisionSpliteratorPredictionMixin`.
 - EarthSmash transition-position reconciliation is in `EarthSmashCheckpointPolicy` and
   `EarthSmash.reconcilePredictionCheckpoint`.
 - Falling/display entity matching is in `ClientEntityReconciliation`.

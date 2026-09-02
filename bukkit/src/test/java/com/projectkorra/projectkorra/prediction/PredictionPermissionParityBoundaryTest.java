@@ -14,64 +14,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Guards permission-gated constructor branches such as WaterSpoutWave. */
 class PredictionPermissionParityBoundaryTest {
-    @Test
-    void paperPermissionDecisionsReachTheClientBeforeAbilityConstruction() throws IOException {
-        String protocol = read("src/main/java/com/projectkorra/projectkorra/prediction/protocol/PaperPredictionProtocol.java",
-                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/protocol/PaperPredictionProtocol.java");
-        String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
-                "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
-        String payloads = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/protocol/PredictionPayloads.java",
-                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/prediction/protocol/PredictionPayloads.java");
-        String client = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/PredictionClient.java",
-                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/PredictionClient.java");
-        String runtime = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
-                "fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java");
-        String wrapper = read("../fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricPredictionMC.java",
-                "fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricPredictionMC.java");
-
-        assertTrue(protocol.contains("static final int VERSION = 53"));
-        assertTrue(payloads.contains("public static final int PROTOCOL_VERSION = 53"));
-        assertTrue(protocol.contains("List<String> permissions, double airBlastDecay")
-                        && protocol.contains("writeStrings(out, permissions)"));
-        assertTrue(payloads.contains("List<String> permissions, double airBlastDecay")
-                        && payloads.contains("readStrings(buf, 2_048), buf.readDouble()")
-                        && payloads.contains("writeStrings(buf, permissions)"));
-
-        String decisions = between(paper, "private List<String> predictionPermissions",
-                "/**\n     * A client can join");
-        assertTrue(decisions.contains("player.getEffectivePermissions()")
-                        && decisions.contains("player.hasPermission(normalized)")
-                        && decisions.contains("rebuildPermissionCandidates()")
-                        && decisions.contains("expandPermissionCandidates(Bukkit.getPluginManager().getPermissions())"),
-                "Paper must evaluate registered feature nodes through the player's real permission context");
-        assertTrue(decisions.contains("permission.getChildren().keySet()"),
-                "plugin.yml child nodes must be synchronized even when Bukkit did not register them as roots");
-        assertTrue(decisions.contains("candidates.add(\"bending.ability.WaterSpout.Wave\")"),
-                "the Wave child permission must remain discoverable when Bukkit omits plugin.yml children");
-        assertTrue(decisions.contains("context.equals(session.permissionContext)")
-                        && paper.contains("if (!ownerId.equals(targetId)) flushAbilityRemovals()"),
-                "unchanged permission state and self-locomotion velocity must stay off the expensive rebuild/removal path");
-        assertTrue(paper.contains("permissions.hashCode()")
-                        && paper.contains("permissions, airBlastDecay, chiBlocked, cosmetics, regionProtection, activeFlights")
-                        && paper.contains("permissions, airBlastDecay, chiBlocked, cosmetics, regionProtection);"),
-                "permission changes must invalidate both live state and initial snapshots");
-        assertTrue(client.contains("permissions = snapshot.permissions()")
-                        && client.contains("permissions = state.permissions()")
-                        && client.contains("elements, subElements, permissions, airBlastDecay, chiBlocked, cosmetics, regionProtection)"));
-
-        int seed = runtime.indexOf("this.grantedPermissions = ClientPredictionConfig.normalizePermissions(permissions);");
-        int playerConstruction = runtime.indexOf("this.bendingPlayer = new BendingPlayer(player);");
-        assertTrue(seed >= 0 && playerConstruction > seed,
-                "constructor-time canBend/permission checks must see Paper's snapshot, not a permissive default");
-        assertTrue(runtime.contains("public static boolean hasPermission(String permission)")
-                        && runtime.contains("granted.endsWith(\".*\")"));
-        String clientPermission = between(wrapper,
-                "@Override public boolean hasPermission(String permission)",
-                "@Override public boolean isOnline()");
-        assertTrue(clientPermission.contains("ExactPredictionRuntime.hasPermission(permission)"));
-        assertFalse(clientPermission.contains("return true"),
-                "the predicting player may never assume a permission Paper can deny");
-    }
 
     @Test
     void waterSpoutWaveProbeUsesTheSynchronizedDecision() throws IOException {

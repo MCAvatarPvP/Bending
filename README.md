@@ -16,6 +16,10 @@ exact, zero-input-delay prediction. Paper communicates with those clients over
 vanilla plugin/custom-payload channels; it does not require Fabric Loader.
 Unmodded clients retain the normal server-only path.
 
+Client prediction rendering supports Minecraft's default renderer, Sodium, and
+VulkanMod. The renderer mods are optional and are not bundled in the ProjectKorra
+artifact; use a version built for the same Minecraft release.
+
 ## Publishing jars to GitHub
 
 The `publishGithubJars` task builds the shaded Bukkit jar and remapped Fabric
