@@ -25,7 +25,6 @@ final class FabricAirGliderRecipes {
 
     private static List<RegistryKey<Recipe<?>>> recipeKeys() {
         final List<RegistryKey<Recipe<?>>> keys = new ArrayList<>();
-        keys.add(key("airglider"));
         COLORS.forEach(color -> keys.add(key("airglider_" + color)));
         return List.copyOf(keys);
     }

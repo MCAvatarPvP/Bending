@@ -19,24 +19,15 @@ class AirGliderRecipeDataTest {
             "light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black");
 
     @Test
-    void baseRecipeCreatesTheTaggedStick() {
-        final JsonObject recipe = recipe("airglider");
-        assertEquals("minecraft:crafting_shaped", recipe.get("type").getAsString());
-        assertGliderResult(recipe, "classic");
-    }
-
-    @Test
-    void everyVanillaWoolColorHasARecolorRecipe() {
+    void everyVanillaWoolColorHasTheSameDirectRecipe() {
         for (final String color : COLORS) {
             final JsonObject recipe = recipe("airglider_" + color);
-            assertEquals("minecraft:crafting_shapeless", recipe.get("type").getAsString());
-            final JsonArray ingredients = recipe.getAsJsonArray("ingredients");
-            final JsonObject glider = ingredients.get(0).getAsJsonObject();
-            assertEquals("fabric:custom_data", glider.get("fabric:type").getAsString());
-            assertEquals("minecraft:stick", glider.get("base").getAsString());
-            assertEquals("true", glider.getAsJsonObject("nbt")
-                    .get("projectkorra:airglider").getAsString());
-            assertEquals("minecraft:" + color + "_wool", ingredients.get(1).getAsString());
+            assertEquals("minecraft:crafting_shaped", recipe.get("type").getAsString());
+            assertEquals(List.of("S S", "WWW", " S "), recipe.getAsJsonArray("pattern").asList()
+                    .stream().map(value -> value.getAsString()).toList());
+            final JsonObject key = recipe.getAsJsonObject("key");
+            assertEquals("minecraft:stick", key.get("S").getAsString());
+            assertEquals("minecraft:" + color + "_wool", key.get("W").getAsString());
             assertGliderResult(recipe, color);
         }
     }

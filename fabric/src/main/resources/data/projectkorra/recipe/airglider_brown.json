@@ -1,17 +1,16 @@
 {
-  "type": "minecraft:crafting_shapeless",
-  "group": "projectkorra_airglider_colors",
+  "type": "minecraft:crafting_shaped",
+  "group": "projectkorra_airglider",
   "category": "equipment",
-  "ingredients": [
-    {
-      "fabric:type": "fabric:custom_data",
-      "base": "minecraft:stick",
-      "nbt": {
-        "projectkorra:airglider": "true"
-      }
-    },
-    "minecraft:brown_wool"
+  "pattern": [
+    "S S",
+    "WWW",
+    " S "
   ],
+  "key": {
+    "S": "minecraft:stick",
+    "W": "minecraft:brown_wool"
+  },
   "result": {
     "id": "minecraft:stick",
     "count": 1,

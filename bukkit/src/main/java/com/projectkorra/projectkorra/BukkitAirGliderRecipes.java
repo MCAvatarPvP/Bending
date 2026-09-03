@@ -7,18 +7,14 @@ import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.RecipeChoice;
 import org.bukkit.inventory.ShapedRecipe;
-import org.bukkit.inventory.ShapelessRecipe;
 import org.bukkit.inventory.recipe.CraftingBookCategory;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Set;
 
-/** Registers the tagged AirGlider and wool recolor recipes with Bukkit's recipe book. */
+/** Registers one tagged AirGlider recipe for each vanilla wool color. */
 public final class BukkitAirGliderRecipes {
     private static final Set<NamespacedKey> KEYS = new LinkedHashSet<>();
 
@@ -27,37 +23,19 @@ public final class BukkitAirGliderRecipes {
 
     public static void register(final JavaPlugin plugin) {
         unregister();
-        final GliderColor classic = GliderColor.getDefault();
-        if (classic == null) return;
-
-        final NamespacedKey baseKey = new NamespacedKey(plugin, "airglider");
-        final ShapedRecipe base = new ShapedRecipe(baseKey,
-                BukkitMC.itemHandle(AirGliderItem.create(classic)));
-        base.shape("S S", "OYO", " S ");
-        base.setIngredient('S', Material.STICK);
-        base.setIngredient('O', Material.ORANGE_WOOL);
-        base.setIngredient('Y', Material.YELLOW_WOOL);
-        base.setGroup("projectkorra_airglider");
-        base.setCategory(CraftingBookCategory.EQUIPMENT);
-        add(baseKey, base);
-
-        final List<org.bukkit.inventory.ItemStack> gliderChoices = new ArrayList<>();
-        for (final GliderColor color : GliderColor.getColors()) {
-            gliderChoices.add(BukkitMC.itemHandle(AirGliderItem.create(color)));
-        }
-        final RecipeChoice.ExactChoice anyGlider = new RecipeChoice.ExactChoice(gliderChoices);
         for (final GliderColor color : GliderColor.getColors()) {
             if (color.getWoolMaterial() == null) continue;
             final Material wool = Material.matchMaterial(color.getWoolMaterial().name());
             if (wool == null) continue;
             final NamespacedKey key = new NamespacedKey(plugin, "airglider_" + color.getName());
-            final ShapelessRecipe recolor = new ShapelessRecipe(key,
+            final ShapedRecipe recipe = new ShapedRecipe(key,
                     BukkitMC.itemHandle(AirGliderItem.create(color)));
-            recolor.addIngredient(anyGlider);
-            recolor.addIngredient(wool);
-            recolor.setGroup("projectkorra_airglider_colors");
-            recolor.setCategory(CraftingBookCategory.EQUIPMENT);
-            add(key, recolor);
+            recipe.shape("S S", "WWW", " S ");
+            recipe.setIngredient('S', Material.STICK);
+            recipe.setIngredient('W', wool);
+            recipe.setGroup("projectkorra_airglider");
+            recipe.setCategory(CraftingBookCategory.EQUIPMENT);
+            add(key, recipe);
         }
         Bukkit.getOnlinePlayers().forEach(BukkitAirGliderRecipes::discover);
     }
