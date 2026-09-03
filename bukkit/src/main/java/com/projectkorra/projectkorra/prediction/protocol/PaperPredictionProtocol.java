@@ -16,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Raw Bukkit plugin-message codec matching Fabric's RegistryByteBuf layout.
  */
 public final class PaperPredictionProtocol {
-    public static final int VERSION = 53;
+    public static final int VERSION = 55;
     public static final int MAX_BLOCK_STATE_CHARACTERS = 512;
     private static final int MAX_CACHED_BLOCK_STATES = 4_096;
     private static final Map<String, byte[]> BLOCK_STATE_UTF8 = new ConcurrentHashMap<>();
@@ -174,6 +174,7 @@ public final class PaperPredictionProtocol {
         final PlayerCosmetics safe = cosmetics == null ? PlayerCosmetics.empty() : cosmetics;
         out.string(safe.fireColor(), 128)
                 .string(safe.airColor(), 128)
+                .string(safe.gliderColor(), 128)
                 .string(safe.waterCosmetic(), 128)
                 .string(safe.earthCosmetic(), 128)
                 .bool(safe.sprinkle());
@@ -341,7 +342,8 @@ public final class PaperPredictionProtocol {
                 .bool(state.stalled()).varInt(state.stallTicks()).varInt(state.recoveryTicks())
                 .varLong(state.transitionRevision())
                 .f64(state.velocityX()).f64(state.velocityY()).f64(state.velocityZ())
-                .bool(state.gliding()).bool(state.previousGlidingState()).bytes();
+                .bool(state.gliding()).bool(state.previousGlidingState())
+                .string(state.gliderColor(), 32).bytes();
     }
 
     public static byte[] stateDirective(UUID session, String removedCooldown, String addedCooldown,
@@ -402,17 +404,18 @@ public final class PaperPredictionProtocol {
                           long charge, long cooldown, String material, boolean harmless, boolean sneak) {
     }
 
-    public record PlayerCosmetics(String fireColor, String airColor, String waterCosmetic,
+    public record PlayerCosmetics(String fireColor, String airColor, String gliderColor, String waterCosmetic,
                                   String earthCosmetic, boolean sprinkle) {
         public PlayerCosmetics {
             fireColor = fireColor == null ? "" : fireColor;
             airColor = airColor == null ? "" : airColor;
+            gliderColor = gliderColor == null ? "" : gliderColor;
             waterCosmetic = waterCosmetic == null ? "" : waterCosmetic;
             earthCosmetic = earthCosmetic == null ? "" : earthCosmetic;
         }
 
         public static PlayerCosmetics empty() {
-            return new PlayerCosmetics("", "", "", "", false);
+            return new PlayerCosmetics("", "", "", "", "", false);
         }
     }
 

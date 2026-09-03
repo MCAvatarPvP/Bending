@@ -14,6 +14,7 @@ public class PlayerRecord {
     private final String style;
     private final String fireColor;
     private final String airColor;
+    private final String gliderColor;
     private final String waterCosmetic;
     private final String earthCosmetic;
     private final boolean sprinkle;
@@ -25,7 +26,8 @@ public class PlayerRecord {
     private final Map<Integer, String> slots;
 
     public PlayerRecord(final UUID uuid, final String playerName, final String elements, final String subelements, final String style,
-                        final String fireColor, final String airColor, final String waterCosmetic, final String earthCosmetic, final boolean sprinkle,
+                        final String fireColor, final String airColor, final String gliderColor,
+                        final String waterCosmetic, final String earthCosmetic, final boolean sprinkle,
                         final boolean permaRemoved, final boolean sourceHoles, final String viewDistance, final boolean detailedActionBar,
                         final boolean oldScooter,
                         final Map<Integer, String> slots) {
@@ -36,6 +38,7 @@ public class PlayerRecord {
         this.style = style;
         this.fireColor = fireColor;
         this.airColor = airColor;
+        this.gliderColor = gliderColor;
         this.waterCosmetic = waterCosmetic;
         this.earthCosmetic = earthCosmetic;
         this.sprinkle = sprinkle;
@@ -75,6 +78,10 @@ public class PlayerRecord {
         return this.airColor;
     }
 
+    public String getGliderColor() {
+        return this.gliderColor;
+    }
+
     public String getWaterCosmetic() {
         return this.waterCosmetic;
     }
@@ -111,4 +118,3 @@ public class PlayerRecord {
         return this.slots;
     }
 }
-

@@ -41,6 +41,7 @@ class PredictionCosmeticStateBoundaryTest {
                         && payloads.contains("new PlayerCosmetics(buf)"));
         assertTrue(paper.contains("bending.getFireColor()")
                         && paper.contains("bending.getAirColor()")
+                        && paper.contains("bending.getGliderColor()")
                         && paper.contains("bending.getWaterCosmetic()")
                         && paper.contains("bending.getEarthCosmetic()")
                         && paper.contains("bending.isSprinkleEnabled()")
@@ -48,11 +49,13 @@ class PredictionCosmeticStateBoundaryTest {
         assertTrue(client.contains("cosmetics = snapshot.cosmetics()")
                         && client.contains("cosmetics = state.cosmetics()"));
         assertTrue(config.contains("CosmeticColor.reloadColors()")
+                        && config.contains("GliderColor.reloadColors()")
                         && config.contains("WaterCosmetic.reloadCosmetics()")
                         && config.contains("EarthCosmetic.reloadCosmetics()"));
         assertTrue(runtime.contains("this.bendingPlayer.applyCosmeticState(")
                         && runtime.contains("CosmeticColor.getFireColor")
                         && runtime.contains("CosmeticColor.getAirColor")
+                        && runtime.contains("GliderColor.getColor")
                         && runtime.contains("WaterCosmetic.getCosmetic")
                         && runtime.contains("EarthCosmetic.getCosmetic"));
 

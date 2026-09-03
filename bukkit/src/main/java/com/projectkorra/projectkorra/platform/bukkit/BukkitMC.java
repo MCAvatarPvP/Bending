@@ -353,17 +353,17 @@ public final class BukkitMC {
         if (value.hasItemMeta()) {
             ItemMeta commonMeta = value.getItemMeta();
             org.bukkit.inventory.meta.ItemMeta nativeMeta = stack.getItemMeta();
+            if (nativeMeta == null) return stack;
+            applyCommonItemMeta(commonMeta, nativeMeta);
             if (commonMeta instanceof LeatherArmorMeta leatherMeta
                     && nativeMeta instanceof org.bukkit.inventory.meta.LeatherArmorMeta nativeLeather) {
                 nativeLeather.setColor(colorHandle(leatherMeta.getColor()));
-                stack.setItemMeta(nativeLeather);
             } else if (commonMeta instanceof PotionMeta potionMeta
                     && nativeMeta instanceof org.bukkit.inventory.meta.PotionMeta nativePotion
                     && potionMeta.getBasePotionData() != null
                     && PotionType.WATER.equals(
                     potionMeta.getBasePotionData().getType())) {
                 nativePotion.setBasePotionType(org.bukkit.potion.PotionType.WATER);
-                stack.setItemMeta(nativePotion);
             } else if (commonMeta instanceof SkullMeta skullMeta
                     && nativeMeta instanceof org.bukkit.inventory.meta.SkullMeta nativeSkull
                     && !skullMeta.getTextureUrl().isBlank()) {
@@ -376,13 +376,41 @@ public final class BukkitMC {
                     textures.setSkin(URI.create(skullMeta.getTextureUrl()).toURL());
                     profile.setTextures(textures);
                     nativeSkull.setOwnerProfile(profile);
-                    stack.setItemMeta(nativeSkull);
                 } catch (MalformedURLException | IllegalArgumentException ignored) {
                     // Keep the plain player head if a caller supplied an invalid texture URL.
                 }
             }
+            stack.setItemMeta(nativeMeta);
         }
         return stack;
+    }
+
+    private static void applyCommonItemMeta(final ItemMeta commonMeta,
+                                            final org.bukkit.inventory.meta.ItemMeta nativeMeta) {
+        if (commonMeta == null || nativeMeta == null) return;
+        nativeMeta.setDisplayName(commonMeta.getDisplayName());
+        nativeMeta.setLore(commonMeta.getLore());
+        nativeMeta.setCustomModelData(commonMeta.getCustomModelData());
+        commonMeta.getCustomData().forEach((rawKey, data) -> {
+            final NamespacedKey key = NamespacedKey.fromString(rawKey);
+            if (key != null) {
+                nativeMeta.getPersistentDataContainer().set(key,
+                        org.bukkit.persistence.PersistentDataType.STRING, data);
+            }
+        });
+    }
+
+    private static void copyCommonItemMeta(final org.bukkit.inventory.meta.ItemMeta nativeMeta,
+                                           final ItemMeta commonMeta) {
+        if (nativeMeta == null || commonMeta == null) return;
+        if (nativeMeta.hasDisplayName()) commonMeta.setDisplayName(nativeMeta.getDisplayName());
+        if (nativeMeta.hasLore()) commonMeta.setLore(nativeMeta.getLore());
+        if (nativeMeta.hasCustomModelData()) commonMeta.setCustomModelData(nativeMeta.getCustomModelData());
+        for (final NamespacedKey key : nativeMeta.getPersistentDataContainer().getKeys()) {
+            final String value = nativeMeta.getPersistentDataContainer().get(key,
+                    org.bukkit.persistence.PersistentDataType.STRING);
+            if (value != null) commonMeta.setCustomData(key.toString(), value);
+        }
     }
 
     private static org.bukkit.potion.PotionEffect potionEffectHandle(final PotionEffect value) {
@@ -3965,22 +3993,17 @@ public final class BukkitMC {
                             PotionType.valueOf(
                                     nativeType.getKey().getKey().toUpperCase(Locale.ROOT))));
                 }
-                if (nativePotion.hasDisplayName()) meta.setDisplayName(nativePotion.getDisplayName());
-                if (nativePotion.hasLore()) meta.setLore(nativePotion.getLore());
+                copyCommonItemMeta(nativePotion, meta);
                 return meta;
             }
             if (nativeMeta instanceof org.bukkit.inventory.meta.LeatherArmorMeta nativeLeather) {
                 LeatherArmorMeta meta = new LeatherArmorMeta();
                 meta.setColor(BukkitMC.color(nativeLeather.getColor()));
-                if (nativeLeather.hasDisplayName()) meta.setDisplayName(nativeLeather.getDisplayName());
-                if (nativeLeather.hasLore()) meta.setLore(nativeLeather.getLore());
+                copyCommonItemMeta(nativeLeather, meta);
                 return meta;
             }
             ItemMeta meta = new ItemMeta();
-            if (nativeMeta != null) {
-                if (nativeMeta.hasDisplayName()) meta.setDisplayName(nativeMeta.getDisplayName());
-                if (nativeMeta.hasLore()) meta.setLore(nativeMeta.getLore());
-            }
+            copyCommonItemMeta(nativeMeta, meta);
             return meta;
         }
 
@@ -3990,8 +4013,7 @@ public final class BukkitMC {
             if (nativeMeta == null) {
                 return false;
             }
-            nativeMeta.setDisplayName(meta.getDisplayName());
-            nativeMeta.setLore(meta.getLore());
+            applyCommonItemMeta(meta, nativeMeta);
             if (meta instanceof LeatherArmorMeta leather
                     && nativeMeta instanceof org.bukkit.inventory.meta.LeatherArmorMeta nativeLeather) {
                 nativeLeather.setColor(colorHandle(leather.getColor()));

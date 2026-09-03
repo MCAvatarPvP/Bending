@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.fabric.client.prediction.entity;
 
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads;
+import com.projectkorra.projectkorra.platform.mc.entity.ItemDisplay;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.world.ClientWorld;

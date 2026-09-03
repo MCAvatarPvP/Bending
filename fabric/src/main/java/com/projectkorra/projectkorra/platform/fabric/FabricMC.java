@@ -38,6 +38,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.ShulkerBullet;
 import com.projectkorra.projectkorra.platform.mc.inventory.EntityEquipment;
 import com.projectkorra.projectkorra.platform.mc.inventory.ItemStack;
 import com.projectkorra.projectkorra.platform.mc.inventory.PlayerInventory;
+import com.projectkorra.projectkorra.platform.mc.inventory.meta.ItemMeta;
 import com.projectkorra.projectkorra.platform.mc.inventory.meta.SkullMeta;
 import com.projectkorra.projectkorra.platform.mc.metadata.MetadataValue;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionEffect;
@@ -78,6 +79,9 @@ import java.util.function.Predicate;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.component.DataComponentTypes;
+import net.minecraft.component.type.CustomModelDataComponent;
+import net.minecraft.component.type.LoreComponent;
+import net.minecraft.component.type.NbtComponent;
 import net.minecraft.component.type.ProfileComponent;
 import net.minecraft.block.ShapeContext;
 import net.minecraft.command.permission.Permission;
@@ -101,6 +105,7 @@ import net.minecraft.entity.projectile.SmallFireballEntity;
 import net.minecraft.fluid.FluidState;
 import net.minecraft.item.Items;
 import net.minecraft.item.ItemDisplayContext;
+import net.minecraft.nbt.NbtCompound;
 import net.minecraft.network.packet.s2c.play.BlockUpdateS2CPacket;
 import net.minecraft.network.packet.s2c.play.EntityVelocityUpdateS2CPacket;
 import net.minecraft.network.packet.s2c.play.ExperienceBarUpdateS2CPacket;
@@ -931,7 +936,7 @@ public final class FabricMC {
         return material == null ? Blocks.AIR : MATERIALS.nativeByCommon()[material.ordinal()];
     }
 
-    private static ItemStack itemStack(net.minecraft.item.ItemStack value) {
+    static ItemStack itemStack(net.minecraft.item.ItemStack value) {
         if (value == null || value.isEmpty()) return new ItemStack(Material.AIR, 0);
         Identifier id = Registries.ITEM.getId(value.getItem());
         Material material;
@@ -939,6 +944,30 @@ public final class FabricMC {
         catch (IllegalArgumentException ignored) { material = Material.AIR; }
         FabricItemStack stack = new FabricItemStack(material, value.getCount());
         if (value.isDamageable()) stack.setDurability((short) value.getDamage());
+        final ItemMeta meta = stack.getItemMeta();
+        final Text customName = value.get(DataComponentTypes.CUSTOM_NAME);
+        if (customName != null) meta.setDisplayName(customName.getString());
+        final LoreComponent lore = value.get(DataComponentTypes.LORE);
+        if (lore != null) meta.setLore(lore.lines().stream().map(Text::getString).toList());
+        final CustomModelDataComponent modelData = value.get(DataComponentTypes.CUSTOM_MODEL_DATA);
+        if (modelData != null && modelData.getFloat(0) != null) {
+            meta.setCustomModelData(Math.round(modelData.getFloat(0)));
+        }
+        final NbtComponent customData = value.get(DataComponentTypes.CUSTOM_DATA);
+        if (customData != null) {
+            final NbtCompound nbt = customData.copyNbt();
+            for (final String key : nbt.getKeys()) {
+                nbt.getString(key).ifPresent(data -> meta.setCustomData(key, data));
+            }
+            // Paper serializes Bukkit PersistentDataContainer values inside this
+            // compound when the item crosses the network to a Fabric client.
+            nbt.getCompound("PublicBukkitValues").ifPresent(values -> {
+                for (final String key : values.getKeys()) {
+                    values.getString(key).ifPresent(data -> meta.setCustomData(key, data));
+                }
+            });
+        }
+        stack.setItemMeta(meta);
         return stack;
     }
 
@@ -947,6 +976,26 @@ public final class FabricMC {
         net.minecraft.item.Item item = Registries.ITEM.get(Identifier.ofVanilla(value.getType().name().toLowerCase(Locale.ROOT)));
         net.minecraft.item.ItemStack nativeStack = new net.minecraft.item.ItemStack(item, value.getAmount());
         if (value.getDurability() > 0 && nativeStack.isDamageable()) nativeStack.setDamage(value.getDurability());
+        if (value.hasItemMeta()) {
+            final ItemMeta meta = value.getItemMeta();
+            if (meta.getDisplayName() != null && !meta.getDisplayName().isEmpty()) {
+                nativeStack.set(DataComponentTypes.CUSTOM_NAME, legacyText(meta.getDisplayName()));
+            }
+            if (!meta.getLore().isEmpty()) {
+                nativeStack.set(DataComponentTypes.LORE,
+                        new LoreComponent(meta.getLore().stream().map(FabricMC::legacyText).toList()));
+            }
+            if (meta.getCustomModelData() != null) {
+                nativeStack.set(DataComponentTypes.CUSTOM_MODEL_DATA,
+                        new CustomModelDataComponent(List.of(meta.getCustomModelData().floatValue()),
+                                List.of(), List.of(), List.of()));
+            }
+            if (!meta.getCustomData().isEmpty()) {
+                final NbtCompound nbt = new NbtCompound();
+                meta.getCustomData().forEach(nbt::putString);
+                nativeStack.set(DataComponentTypes.CUSTOM_DATA, NbtComponent.of(nbt));
+            }
+        }
         if (value.hasItemMeta() && value.getItemMeta() instanceof SkullMeta skullMeta) {
             final var profile = FabricSkullTextures.profile(skullMeta);
             if (profile != null) {
@@ -2273,7 +2322,7 @@ public final class FabricMC {
             if (Set.of("air", "earth", "fire", "water", "chi").stream()
                     .anyMatch(element -> permission.equalsIgnoreCase("bending.command.choose." + element))) return true;
             return Set.of("board", "bind", "display", "toggle", "copy", "choose", "version", "help", "clear", "who", "style",
-                    "firecolor", "aircolor", "watercosmetic", "earthcosmetic", "viewdistance", "detailedactionbar", "oldscooter", "combohelp")
+                    "firecolor", "aircolor", "glidercolor", "watercosmetic", "earthcosmetic", "viewdistance", "detailedactionbar", "oldscooter", "combohelp")
                     .stream().anyMatch(command -> permission.equalsIgnoreCase("bending.command." + command));
         }
 

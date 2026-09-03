@@ -52,6 +52,7 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
         ProjectKorra.initCommon();
         BukkitRegionProtectionBootstrap.registerBuiltIns();
         GeneralMethods.reloadPlugin(new BukkitConsoleSender(getServer().getConsoleSender()));
+        BukkitAirGliderRecipes.register(this);
         synchronizeServerEntityInterpolation();
         registerCommands();
         Platform.events().registerListener(new PKListener(this));
@@ -160,6 +161,7 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
         // abilities restore their server state. Exact clients can then finish
         // their own ordered TempBlock lifecycles during a reload.
         GeneralMethods.stopBending();
+        BukkitAirGliderRecipes.unregister();
         if (this.externalActionBarHook != null) {
             this.externalActionBarHook.stop();
             this.externalActionBarHook = null;

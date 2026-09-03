@@ -15,7 +15,7 @@ import java.util.UUID;
 
 /** Wire contract used by the Fabric client and the Paper/Fabric server endpoints. */
 public final class PredictionPayloads {
-    public static final int PROTOCOL_VERSION = 53;
+    public static final int PROTOCOL_VERSION = 55;
     public static final int MAX_BLOCK_STATE_CHARACTERS = 512;
     public static final int MAX_CONFIG_ENTRIES = 16_384;
     public static final int MAX_PROFILES = 2_048;
@@ -72,16 +72,17 @@ public final class PredictionPayloads {
         }
     }
 
-    public record PlayerCosmetics(String fireColor, String airColor, String waterCosmetic,
+    public record PlayerCosmetics(String fireColor, String airColor, String gliderColor, String waterCosmetic,
                                   String earthCosmetic, boolean sprinkle) {
         private PlayerCosmetics(RegistryByteBuf buf) {
-            this(buf.readString(128), buf.readString(128), buf.readString(128),
+            this(buf.readString(128), buf.readString(128), buf.readString(128), buf.readString(128),
                     buf.readString(128), buf.readBoolean());
         }
 
         private void write(RegistryByteBuf buf) {
             buf.writeString(fireColor, 128);
             buf.writeString(airColor, 128);
+            buf.writeString(gliderColor, 128);
             buf.writeString(waterCosmetic, 128);
             buf.writeString(earthCosmetic, 128);
             buf.writeBoolean(sprinkle);
@@ -90,12 +91,13 @@ public final class PredictionPayloads {
         public PlayerCosmetics {
             fireColor = fireColor == null ? "" : fireColor;
             airColor = airColor == null ? "" : airColor;
+            gliderColor = gliderColor == null ? "" : gliderColor;
             waterCosmetic = waterCosmetic == null ? "" : waterCosmetic;
             earthCosmetic = earthCosmetic == null ? "" : earthCosmetic;
         }
 
         public static PlayerCosmetics empty() {
-            return new PlayerCosmetics("", "", "", "", false);
+            return new PlayerCosmetics("", "", "", "", "", false);
         }
     }
 
@@ -649,7 +651,8 @@ public final class PredictionPayloads {
                                  String state, int stateTicks, boolean stalled,
                                  int stallTicks, int recoveryTicks, long transitionRevision,
                                  double velocityX, double velocityY, double velocityZ,
-                                 boolean gliding, boolean previousGlidingState) implements CustomPayload {
+                                 boolean gliding, boolean previousGlidingState,
+                                 String gliderColor) implements CustomPayload {
         public static final Id<AirGliderState> ID = id("air_glider_state");
         public static final PacketCodec<RegistryByteBuf, AirGliderState> CODEC =
                 PacketCodec.of(AirGliderState::write, AirGliderState::new);
@@ -658,7 +661,7 @@ public final class PredictionPayloads {
             this(buf.readUuid(), buf.readLong(), buf.readVarLong(), buf.readString(32),
                     buf.readVarInt(), buf.readBoolean(), buf.readVarInt(), buf.readVarInt(),
                     buf.readVarLong(), buf.readDouble(), buf.readDouble(), buf.readDouble(),
-                    buf.readBoolean(), buf.readBoolean());
+                    buf.readBoolean(), buf.readBoolean(), buf.readString(32));
         }
 
         private void write(final RegistryByteBuf buf) {
@@ -667,6 +670,7 @@ public final class PredictionPayloads {
             buf.writeVarInt(stallTicks); buf.writeVarInt(recoveryTicks); buf.writeVarLong(transitionRevision);
             buf.writeDouble(velocityX); buf.writeDouble(velocityY); buf.writeDouble(velocityZ);
             buf.writeBoolean(gliding); buf.writeBoolean(previousGlidingState);
+            buf.writeString(gliderColor, 32);
         }
 
         @Override public Id<AirGliderState> getId() { return ID; }

@@ -5,6 +5,7 @@ import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads;
 import com.projectkorra.projectkorra.object.CosmeticColor;
 import com.projectkorra.projectkorra.object.EarthCosmetic;
+import com.projectkorra.projectkorra.object.GliderColor;
 import com.projectkorra.projectkorra.object.WaterCosmetic;
 import com.projectkorra.projectkorra.prediction.state.PredictionConfigSync;
 
@@ -30,6 +31,7 @@ public final class ClientPredictionConfig {
                     .put(entry.path().substring(dot + 1), decode(entry));
         }
         apply(ConfigManager.defaultConfig, namespaces.get("config"));
+        if (namespaces.containsKey("config")) GliderColor.reloadColors();
         apply(ConfigManager.avatarStateConfig, namespaces.get("avatarstate"));
         apply(ConfigManager.collisionConfig, namespaces.get("collision"));
         apply(ConfigManager.fireColorsConfig, namespaces.get("fire_colors"));

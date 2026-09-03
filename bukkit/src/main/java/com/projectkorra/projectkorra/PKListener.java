@@ -1381,6 +1381,7 @@ public class PKListener implements Listener {
     @EventHandler
     public void onPlayerJoin(final PlayerJoinEvent event) {
         BukkitMC.clearPlayerState(event.getPlayer());
+        BukkitAirGliderRecipes.discover(event.getPlayer());
         final var player = BukkitMC.player(event.getPlayer());
         JUMPS.put(event.getPlayer(), event.getPlayer().getStatistic(Statistic.JUMP));
 

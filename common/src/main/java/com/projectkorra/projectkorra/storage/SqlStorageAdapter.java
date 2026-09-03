@@ -105,6 +105,7 @@ public class SqlStorageAdapter implements StorageAdapter {
                         "`subelement` varchar(255)," +
                         "`firecolor` varchar(255)," +
                         "`aircolor` varchar(255)," +
+                        "`glidercolor` varchar(255)," +
                         "`watercosmetic` varchar(255)," +
                         "`earthcosmetic` varchar(255)," +
                         "`style` varchar(255)," +
@@ -132,6 +133,7 @@ public class SqlStorageAdapter implements StorageAdapter {
                         "`subelement` TEXT(255)," +
                         "`firecolor` TEXT(255)," +
                         "`aircolor` TEXT(255)," +
+                        "`glidercolor` TEXT(255)," +
                         "`watercosmetic` TEXT(255)," +
                         "`earthcosmetic` TEXT(255)," +
                         "`style` TEXT(255)," +
@@ -185,6 +187,14 @@ public class SqlStorageAdapter implements StorageAdapter {
                         : "ALTER TABLE `pk_players` ADD COLUMN watercosmetic TEXT(255);";
                 this.database.modifyQuery(query, false);
                 ProjectKorra.log.info("Updated Database with watercosmetic.");
+            }
+
+            if (!this.database.columnExists("pk_players", "glidercolor")) {
+                final String query = this.type == StorageType.MYSQL
+                        ? "ALTER TABLE `pk_players` ADD COLUMN glidercolor varchar(255);"
+                        : "ALTER TABLE `pk_players` ADD COLUMN glidercolor TEXT(255);";
+                this.database.modifyQuery(query, false);
+                ProjectKorra.log.info("Updated Database with glidercolor.");
             }
 
             if (!this.database.columnExists("pk_players", "detailedactionbar")) {
@@ -369,6 +379,7 @@ public class SqlStorageAdapter implements StorageAdapter {
                             rs.getString("style"),
                             rs.getString("firecolor"),
                             rs.getString("aircolor"),
+                            rs.getString("glidercolor"),
                             rs.getString("watercosmetic"),
                             rs.getString("earthcosmetic"),
                             sprinkle,
@@ -791,4 +802,3 @@ public class SqlStorageAdapter implements StorageAdapter {
         }
     }
 }
-

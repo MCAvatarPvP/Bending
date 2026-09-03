@@ -297,7 +297,8 @@ public abstract class ExactPredictionPlayerState extends ExactPredictionTransfer
         final AirGlider.PredictionState checkpoint = new AirGlider.PredictionState(
                 state, payload.stateTicks(), payload.stalled(), payload.stallTicks(),
                 payload.recoveryTicks(), payload.transitionRevision(), payload.velocityX(),
-                payload.velocityY(), payload.velocityZ(), payload.gliding(), payload.previousGlidingState());
+                payload.velocityY(), payload.velocityZ(), payload.gliding(), payload.previousGlidingState(),
+                payload.gliderColor());
         AirGlider glider = CoreAbility.getAbility(this.bendingPlayer.getPlayer(), AirGlider.class);
         final Long latest = glider == null ? null : this.abilityActions.get(glider);
         if (latest != null && latest > localSequence) return;

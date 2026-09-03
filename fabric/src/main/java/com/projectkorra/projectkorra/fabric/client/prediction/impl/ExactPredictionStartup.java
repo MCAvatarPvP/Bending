@@ -70,6 +70,7 @@ import com.projectkorra.projectkorra.listener.CommonInputHandler.SlotResult;
 import com.projectkorra.projectkorra.listener.CommonPlayerListenerCore.MovementResult;
 import com.projectkorra.projectkorra.object.CosmeticColor;
 import com.projectkorra.projectkorra.object.EarthCosmetic;
+import com.projectkorra.projectkorra.object.GliderColor;
 import com.projectkorra.projectkorra.object.WaterCosmetic;
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.fabric.FabricClientPredictionPlatform;
@@ -327,6 +328,7 @@ public abstract class ExactPredictionStartup extends ExactPredictionState {
             this.bendingPlayer.applyCosmeticState(
                     safeCosmetics.fireColor().isBlank() ? null : CosmeticColor.getFireColor(safeCosmetics.fireColor()),
                     safeCosmetics.airColor().isBlank() ? null : CosmeticColor.getAirColor(safeCosmetics.airColor()),
+                    safeCosmetics.gliderColor().isBlank() ? null : GliderColor.getColor(safeCosmetics.gliderColor()),
                     safeCosmetics.waterCosmetic().isBlank() ? null : WaterCosmetic.getCosmetic(safeCosmetics.waterCosmetic()),
                     safeCosmetics.earthCosmetic().isBlank() ? null : EarthCosmetic.getCosmetic(safeCosmetics.earthCosmetic()),
                     safeCosmetics.sprinkle());

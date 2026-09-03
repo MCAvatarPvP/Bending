@@ -338,6 +338,11 @@ public class ConfigManager {
             config.addDefault("Commands.AirColor.PlayerNotFound", "Could not find player.");
             config.addDefault("Commands.AirColor.ChangedColor", "Successfully changed air color to {color}.");
 
+            config.addDefault("Commands.GliderColor.Description", "This command allows you to change AirGlider colors.");
+            config.addDefault("Commands.GliderColor.InvalidColor", "Glider color {color} could not be found.");
+            config.addDefault("Commands.GliderColor.PlayerNotFound", "Could not find player.");
+            config.addDefault("Commands.GliderColor.ChangedColor", "Successfully changed glider color to {color}.");
+
             config.addDefault("Commands.WaterCosmetic.Description", "This command allows you to change water cosmetics.");
             config.addDefault("Commands.WaterCosmetic.InvalidCosmetic", "Cosmetic {cosmetic} could not be found.");
             config.addDefault("Commands.WaterCosmetic.PlayerNotFound", "Could not find player.");
@@ -539,7 +544,7 @@ public class ConfigManager {
             config.addDefault("Abilities.Air.AirSpout.Description", "This ability gives the airbender limited sustained levitation. It allows an airbender to gain a height advantage to escape from mobs, players or just to dodge from attacks. This ability is also useful for building as it allows you to reach great heights.");
             config.addDefault("Abilities.Air.AirSpout.Instructions", "Left click to activate a spout beneath you and hold spacebar to go higher. If you wish to go lower, simply hold sneak. To disable this ability, left click once again.");
             addUpgradeDefault(languageConfig, "Abilities.Air.AirGlider.Description", "Deploy an Air Nomad glider with momentum-based flight. Dive for speed, pull out for lift, bank through turns, and combine the glider with ordinary AirBlast self-propulsion.");
-            addUpgradeDefault(languageConfig, "Abilities.Air.AirGlider.Instructions", "Tap sneak while airborne to deploy or fold the glider. Hold sprint for powered lift, dive to recover from a stall, and use AirBlast normally for an additional burst of momentum.");
+            addUpgradeDefault(languageConfig, "Abilities.Air.AirGlider.Instructions", "Tap sneak while airborne to deploy or fold the glider. If RequireItem is enabled, hold a crafted AirGlider in either hand. Hold sprint for powered lift, dive to recover from a stall, and use AirBlast normally for an additional burst of momentum.");
             config.addDefault("Abilities.Air.AirSuction.Description", "AirSuction is a basic ability that allows you to manipulation an entity's movement. It can be used to bring someone back to you when they're running away, or even to get yourself to great heights.");
             config.addDefault("Abilities.Air.AirSuction.Instructions", "\n" + "(Pull) Left click while aiming at a target to pull them towards you." + "\n" + "(Manipulation) Sneak to select a point and then left click at a target or yourself to send you or your target to the point that you selected.");
             config.addDefault("Abilities.Air.AirSuction.HorizontalVelocityDeath", "{victim} experienced a fatal collision by {attacker}'s {ability}");
@@ -1228,6 +1233,7 @@ public class ConfigManager {
             addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Cooldown", 1500);
             addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.CrashCooldown", 3000);
             addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.DeployCost", 0.05);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.RequireItem", false);
             addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Glide.StraightDrag", 1.008);
             addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Glide.Gravity", 0.035);
             addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Glide.MinimumAirspeed", 0.24);
@@ -1248,6 +1254,38 @@ public class ConfigManager {
             addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.OrangeTexture", "https://textures.minecraft.net/texture/cbf7797a24a6af875f5c8271c5b8c425e19f372a415e0552fc247763f2859d1");
             addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.YellowTexture", "https://textures.minecraft.net/texture/27bbd0b2911c96b5d87b2df76691a51b8b12c6fefd523146d8ac5ef1b8ee");
             addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.WoodTexture", "https://textures.minecraft.net/texture/45ac6e6c436d6e137d80482b888569b8181b8b3daa06c047f9751d32ebf8e4c1");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.white.OuterTexture", "https://textures.minecraft.net/texture/2faf4c29f1e7405f4680c5c2b03ef9384f1aecfe2986ad50138c605fefff2f15");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.white.InnerTexture", "https://textures.minecraft.net/texture/2faf4c29f1e7405f4680c5c2b03ef9384f1aecfe2986ad50138c605fefff2f15");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.orange.OuterTexture", "https://textures.minecraft.net/texture/cbf7797a24a6af875f5c8271c5b8c425e19f372a415e0552fc247763f2859d1");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.orange.InnerTexture", "https://textures.minecraft.net/texture/cbf7797a24a6af875f5c8271c5b8c425e19f372a415e0552fc247763f2859d1");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.magenta.OuterTexture", "https://textures.minecraft.net/texture/46b07e71258db8fe241bc659e874941ccb3d12c75e482ea9b50a048e6677a3");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.magenta.InnerTexture", "https://textures.minecraft.net/texture/46b07e71258db8fe241bc659e874941ccb3d12c75e482ea9b50a048e6677a3");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.light_blue.OuterTexture", "https://textures.minecraft.net/texture/f1af46febd45c0f4d81e8fa1b66b275d89e272b2ad55c978553a99c733e1ff");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.light_blue.InnerTexture", "https://textures.minecraft.net/texture/f1af46febd45c0f4d81e8fa1b66b275d89e272b2ad55c978553a99c733e1ff");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.yellow.OuterTexture", "https://textures.minecraft.net/texture/27bbd0b2911c96b5d87b2df76691a51b8b12c6fefd523146d8ac5ef1b8ee");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.yellow.InnerTexture", "https://textures.minecraft.net/texture/27bbd0b2911c96b5d87b2df76691a51b8b12c6fefd523146d8ac5ef1b8ee");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.lime.OuterTexture", "https://textures.minecraft.net/texture/77472d608821f45a8805376ec0c6ffcb78117829ea5f960041c2a09d10e04cb4");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.lime.InnerTexture", "https://textures.minecraft.net/texture/77472d608821f45a8805376ec0c6ffcb78117829ea5f960041c2a09d10e04cb4");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.pink.OuterTexture", "https://textures.minecraft.net/texture/6becfb3879936b899e420bfcd3a74f8a1bf9dd54c58ec7fb9f81d9a5d988e");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.pink.InnerTexture", "https://textures.minecraft.net/texture/6becfb3879936b899e420bfcd3a74f8a1bf9dd54c58ec7fb9f81d9a5d988e");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.gray.OuterTexture", "https://textures.minecraft.net/texture/d703da0249a09094dbb08f0c6f704d2b60b5afa011743b9111934f9d74d34718");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.gray.InnerTexture", "https://textures.minecraft.net/texture/d703da0249a09094dbb08f0c6f704d2b60b5afa011743b9111934f9d74d34718");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.light_gray.OuterTexture", "https://textures.minecraft.net/texture/55288ddc911a75f77c3a5d336365a8f8b139fa53930b4b6ee139875c80ce366c");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.light_gray.InnerTexture", "https://textures.minecraft.net/texture/55288ddc911a75f77c3a5d336365a8f8b139fa53930b4b6ee139875c80ce366c");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.cyan.OuterTexture", "https://textures.minecraft.net/texture/88efad74b254e57c799763dceee4511fa2f85ae9fa556eaa97d45bf67e0b6b3");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.cyan.InnerTexture", "https://textures.minecraft.net/texture/88efad74b254e57c799763dceee4511fa2f85ae9fa556eaa97d45bf67e0b6b3");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.purple.OuterTexture", "https://textures.minecraft.net/texture/ba94cb25de628ca359b2f6ea5a8868cbe26595eedb2bffb750967ad1ee1850");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.purple.InnerTexture", "https://textures.minecraft.net/texture/ba94cb25de628ca359b2f6ea5a8868cbe26595eedb2bffb750967ad1ee1850");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.blue.OuterTexture", "https://textures.minecraft.net/texture/3f3e406291174d24cdf0f953f8a174a82bb3489dce8f679a443ef1aae0169061");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.blue.InnerTexture", "https://textures.minecraft.net/texture/3f3e406291174d24cdf0f953f8a174a82bb3489dce8f679a443ef1aae0169061");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.brown.OuterTexture", "https://textures.minecraft.net/texture/22cbd9f43619ab5cb1b11f91cb03e955c6fc6c458abf89ab61031346a090612e");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.brown.InnerTexture", "https://textures.minecraft.net/texture/22cbd9f43619ab5cb1b11f91cb03e955c6fc6c458abf89ab61031346a090612e");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.green.OuterTexture", "https://textures.minecraft.net/texture/484684344ae098529fc941aa84e195bdca3748d69acfee2bac1332135edd98c");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.green.InnerTexture", "https://textures.minecraft.net/texture/484684344ae098529fc941aa84e195bdca3748d69acfee2bac1332135edd98c");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.red.OuterTexture", "https://textures.minecraft.net/texture/86d35a963d5987894b6bc214e328b39cd2382426ff9c8e082b0b6a6e044d3a3");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.red.InnerTexture", "https://textures.minecraft.net/texture/86d35a963d5987894b6bc214e328b39cd2382426ff9c8e082b0b6a6e044d3a3");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.black.OuterTexture", "https://textures.minecraft.net/texture/3ab0263bdd76f3e418dba5bf481b921ced397d8b8a34a5561fb7beaa46ece1");
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.black.InnerTexture", "https://textures.minecraft.net/texture/3ab0263bdd76f3e418dba5bf481b921ced397d8b8a34a5561fb7beaa46ece1");
             addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Animation.DeployTicks", 8);
             addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Animation.OrientationSmoothing", 0.30);
             addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Animation.MaximumBankDegrees", 35.0);

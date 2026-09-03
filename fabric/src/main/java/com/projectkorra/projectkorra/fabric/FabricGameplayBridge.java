@@ -169,6 +169,7 @@ public class FabricGameplayBridge {
     private void join(ServerPlayerEntity nativePlayer) {
         Player player = FabricMC.player(nativePlayer);
         sneaking.put(nativePlayer.getUuid(), nativePlayer.isSneaking());
+        FabricAirGliderRecipes.discover(nativePlayer);
         CommonPlayerListenerCore.handleJoin(player);
     }
 

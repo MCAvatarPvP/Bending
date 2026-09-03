@@ -13,6 +13,7 @@ import com.projectkorra.projectkorra.event.PlayerChangeElementEvent;
 import com.projectkorra.projectkorra.event.PlayerChangeSubElementEvent;
 import com.projectkorra.projectkorra.object.CosmeticColor;
 import com.projectkorra.projectkorra.object.EarthCosmetic;
+import com.projectkorra.projectkorra.object.GliderColor;
 import com.projectkorra.projectkorra.object.Style;
 import com.projectkorra.projectkorra.object.WaterCosmetic;
 import com.projectkorra.projectkorra.platform.PKTask;
@@ -75,6 +76,7 @@ public class OfflineBendingPlayer {
     protected Style style;
     protected CosmeticColor fireCosmeticColor;
     protected CosmeticColor airCosmeticColor;
+    protected GliderColor gliderColor;
     protected WaterCosmetic waterCosmetic;
     protected EarthCosmetic earthCosmetic;
     protected boolean sprinkle;
@@ -193,6 +195,7 @@ public class OfflineBendingPlayer {
                     final String styleField = record.getStyle();
                     final String fireColorField = record.getFireColor();
                     final String airColorField = record.getAirColor();
+                    final String gliderColorField = record.getGliderColor();
                     final String waterCosmeticField = record.getWaterCosmetic();
                     final String earthCosmeticField = record.getEarthCosmetic();
                     final boolean sprinkleFlag = record.isSprinkle();
@@ -436,6 +439,10 @@ public class OfflineBendingPlayer {
                     if (airColorField != null && CosmeticColor.hasAirColor(airColorField))
                         bPlayer.airCosmeticColor = CosmeticColor.getAirColor(airColorField);
 
+                    //Load AirGlider colors
+                    if (gliderColorField != null && GliderColor.hasColor(gliderColorField))
+                        bPlayer.gliderColor = GliderColor.getColor(gliderColorField);
+
                     //Load waterCosmetics
                     if (waterCosmeticField != null && WaterCosmetic.hasCosmetic(waterCosmeticField))
                         bPlayer.waterCosmetic = WaterCosmetic.getCosmetic(waterCosmeticField);
@@ -533,6 +540,7 @@ public class OfflineBendingPlayer {
         bendingPlayer.style = offlineBendingPlayer.style;
         bendingPlayer.fireCosmeticColor = offlineBendingPlayer.fireCosmeticColor;
         bendingPlayer.airCosmeticColor = offlineBendingPlayer.airCosmeticColor;
+        bendingPlayer.gliderColor = offlineBendingPlayer.gliderColor;
         bendingPlayer.waterCosmetic = offlineBendingPlayer.waterCosmetic;
         bendingPlayer.earthCosmetic = offlineBendingPlayer.earthCosmetic;
         bendingPlayer.sprinkle = offlineBendingPlayer.sprinkle;
@@ -579,6 +587,7 @@ public class OfflineBendingPlayer {
         offlineBendingPlayer.style = bendingPlayer.style;
         offlineBendingPlayer.fireCosmeticColor = bendingPlayer.fireCosmeticColor;
         offlineBendingPlayer.airCosmeticColor = bendingPlayer.airCosmeticColor;
+        offlineBendingPlayer.gliderColor = bendingPlayer.gliderColor;
         offlineBendingPlayer.waterCosmetic = bendingPlayer.waterCosmetic;
         offlineBendingPlayer.earthCosmetic = bendingPlayer.earthCosmetic;
         offlineBendingPlayer.sprinkle = bendingPlayer.sprinkle;
@@ -1308,6 +1317,15 @@ public class OfflineBendingPlayer {
         this.updatePlayerColumn(PlayerColumn.AIR_COLOR, airCosmeticColor != null ? airCosmeticColor.getName() : null);
     }
 
+    public GliderColor getGliderColor() {
+        return this.gliderColor;
+    }
+
+    public void setGliderColor(final GliderColor gliderColor) {
+        this.gliderColor = gliderColor;
+        this.updatePlayerColumn(PlayerColumn.GLIDER_COLOR, gliderColor != null ? gliderColor.getName() : null);
+    }
+
     public EarthCosmetic getEarthCosmetic() {
         return earthCosmetic;
     }
@@ -1328,10 +1346,12 @@ public class OfflineBendingPlayer {
      * the persisted player profile.
      */
     public void applyCosmeticState(final CosmeticColor fireColor, final CosmeticColor airColor,
+                                   final GliderColor gliderColor,
                                    final WaterCosmetic waterCosmetic, final EarthCosmetic earthCosmetic,
                                    final boolean sprinkle) {
         this.fireCosmeticColor = fireColor;
         this.airCosmeticColor = airColor;
+        this.gliderColor = gliderColor;
         this.waterCosmetic = waterCosmetic;
         this.earthCosmetic = earthCosmetic;
         this.sprinkle = sprinkle;

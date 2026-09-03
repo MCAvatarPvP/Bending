@@ -1369,13 +1369,7 @@ public final class FabricPredictionMC {
                 effect.getDuration(), effect.getAmplifier());
     }
     private static ItemStack commonItem(net.minecraft.item.ItemStack nativeStack) {
-        if (nativeStack == null || nativeStack.isEmpty()) return new ItemStack(Material.AIR, 0);
-        Identifier id = Registries.ITEM.getId(nativeStack.getItem());
-        Material material;
-        try { material = Material.valueOf(id.getPath().toUpperCase(Locale.ROOT)); } catch (IllegalArgumentException ignored) { material = Material.AIR; }
-        ItemStack result = new ItemStack(material, nativeStack.getCount());
-        if (nativeStack.isDamageable()) result.setDurability((short) nativeStack.getDamage());
-        return result;
+        return FabricMC.itemStack(nativeStack);
     }
 
     private static int[] faceDelta(BlockFace face) {

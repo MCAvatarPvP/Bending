@@ -1373,6 +1373,7 @@ public class GeneralMethods {
         ConfigManager.fallDamageConfig.reload();
         Style.reloadStyles();
         CosmeticColor.reloadColors();
+        GliderColor.reloadColors();
         WaterCosmetic.reloadCosmetics();
         EarthCosmetic.reloadCosmetics();
         Arrays.stream(Element.getElements()).forEach(e -> {

@@ -46,6 +46,7 @@ permissions:
       bending.admin.style: true
       bending.admin.firecolor: true
       bending.admin.aircolor: true
+      bending.admin.glidercolor: true
       bending.admin.watercosmetic: true
       bending.admin.earthcosmetic: true
       bending.command.sprinkle: true
@@ -74,6 +75,7 @@ permissions:
       bending.command.style: true
       bending.command.firecolor: true
       bending.command.aircolor: true
+      bending.command.glidercolor: true
       bending.command.watercosmetic: true
       bending.command.earthcosmetic: true
       bending.command.viewdistance: true
@@ -332,6 +334,9 @@ permissions:
   bending.aircolor:
     default: op
     description: Grants access to all Air colors
+  bending.glidercolor:
+    default: op
+    description: Grants access to all AirGlider colors
   bending.watercosmetics:
     default: op
     description: Grants access to all Water cosmetics

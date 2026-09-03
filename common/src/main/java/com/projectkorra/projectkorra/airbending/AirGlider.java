@@ -4,6 +4,7 @@ import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
+import com.projectkorra.projectkorra.object.GliderColor;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.Particle;
@@ -37,18 +38,34 @@ public class AirGlider extends AirAbility {
     private static final String WOOD_TEXTURE = "https://textures.minecraft.net/texture/45ac6e6c436d6e137d80482b888569b8181b8b3daa06c047f9751d32ebf8e4c1";
     /** The FIXED item context renders player heads at half scale. */
     private static final float FIXED_HEAD_SCALE = 2.0F;
+    private static final float MIN_FOLDED_SCALE = 0.04F;
     private static final int MODEL_TELEPORT_DURATION = 3;
-    private static final List<ModelPart> MODEL_PARTS = List.of(
-            new ModelPart(0.0F, 0.0F, 0.0F, 0.14F, 0.14F, 3.4F, Texture.WOOD),
-            new ModelPart(-0.80F, 0.0F, -0.35F, 1.60F, 0.12F, 0.14F, Texture.WOOD),
-            new ModelPart(0.80F, 0.0F, -0.35F, 1.60F, 0.12F, 0.14F, Texture.WOOD),
-            new ModelPart(-0.48F, 0.03F, -0.10F, 0.85F, 0.08F, 1.65F, Texture.YELLOW),
-            new ModelPart(-1.12F, 0.02F, 0.18F, 0.75F, 0.08F, 1.35F, Texture.ORANGE),
-            new ModelPart(-1.62F, 0.01F, 0.43F, 0.55F, 0.08F, 0.95F, Texture.ORANGE),
-            new ModelPart(0.48F, 0.03F, -0.10F, 0.85F, 0.08F, 1.65F, Texture.YELLOW),
-            new ModelPart(1.12F, 0.02F, 0.18F, 0.75F, 0.08F, 1.35F, Texture.ORANGE),
-            new ModelPart(1.62F, 0.01F, 0.43F, 0.55F, 0.08F, 0.95F, Texture.ORANGE)
-    );
+
+    /*
+     * Exactly two sails exist in local model space (+Z is forward):
+     *
+     *   1. One large FRONT half-circle wing.
+     *   2. One smaller REAR half-circle wing.
+     *
+     * Both straight diameter edges face forward and both circular arcs trail
+     * toward negative local Z. There are no independent west/east fans.
+     */
+    private static final float REAR_FAN_START_ANGLE = (float) Math.toRadians(91.0);
+    private static final float REAR_FAN_END_ANGLE = (float) Math.toRadians(269.0);
+
+    private static final float MAIN_WING_PIVOT_Z = 0.58F;
+    private static final float MAIN_WING_RADIUS = 2.02F;
+    private static final int MAIN_WING_MEMBRANE_STRIPS = 10;
+    private static final int MAIN_WING_SPOKE_INTERVALS = 8;
+    private static final int MAIN_WING_RIM_SEGMENTS = 6;
+
+    private static final float TAIL_WING_PIVOT_Z = -1.72F;
+    private static final float TAIL_WING_RADIUS = 0.72F;
+    private static final int TAIL_WING_MEMBRANE_STRIPS = 7;
+    private static final int TAIL_WING_SPOKE_INTERVALS = 6;
+    private static final int TAIL_WING_RIM_SEGMENTS = 5;
+
+    private static final List<ModelPart> MODEL_PARTS = createModelParts();
 
     @Attribute(Attribute.COOLDOWN)
     private long cooldown;
@@ -70,6 +87,8 @@ public class AirGlider extends AirAbility {
     private double visualGustAirspeed;
     private int windSoundIntervalTicks;
     private AirGliderPhysics.Settings physics;
+    private GliderColor gliderColor;
+    private boolean requireItem;
 
     private State state;
     private int stateTicks;
@@ -95,6 +114,7 @@ public class AirGlider extends AirAbility {
         super(player);
         if (player == null || hasAbility(player, AirGlider.class)) return;
         this.loadFields();
+        if (!this.selectRequiredItem()) return;
         if (!this.bPlayer.canBend(this) || this.bPlayer.isOnCooldown(this)) return;
         if (GeneralMethods.isOnGround(player) || !this.consumeDeployCost()) return;
 
@@ -126,6 +146,8 @@ public class AirGlider extends AirAbility {
         super(player);
         if (player == null || prediction == null || hasAbility(player, AirGlider.class)) return;
         this.loadFields();
+        final GliderColor predictedColor = GliderColor.getColor(prediction.gliderColor());
+        if (predictedColor != null) this.gliderColor = predictedColor;
         this.state = prediction.state();
         this.stateTicks = Math.max(0, prediction.stateTicks());
         this.stalled = prediction.stalled();
@@ -160,6 +182,7 @@ public class AirGlider extends AirAbility {
             return true;
         }
         if (active.state == State.FOLDED_DIVE && active.stateTicks >= active.foldLockTicks
+                && active.selectRequiredItem()
                 && active.consumeDeployCost()) {
             active.changeState(State.GLIDING);
             return true;
@@ -169,6 +192,10 @@ public class AirGlider extends AirAbility {
 
     private void loadFields() {
         final String path = "Abilities.Air.AirGlider.";
+        final GliderColor selectedColor = this.bPlayer.getGliderColor();
+        this.gliderColor = selectedColor == null ? null : GliderColor.getColor(selectedColor.getName());
+        if (this.gliderColor == null) this.gliderColor = GliderColor.getDefault();
+        this.requireItem = getConfig().getBoolean(path + "RequireItem", false);
         this.cooldown = getConfig().getLong(path + "Cooldown", 1500L);
         this.crashCooldown = getConfig().getLong(path + "CrashCooldown", 3000L);
         this.staminaMinimum = getConfig().getDouble("Abilities.Air.AirBlast.DecayMinimum", 0.2);
@@ -419,7 +446,8 @@ public class AirGlider extends AirAbility {
         return new PredictionState(this.state, this.stateTicks, this.stalled,
                 this.stallTicks, this.recoveryTicks, this.transitionRevision,
                 velocity.getX(), velocity.getY(), velocity.getZ(),
-                this.player.isGliding(), this.previousGlidingState);
+                this.player.isGliding(), this.previousGlidingState,
+                this.gliderColor == null ? "classic" : this.gliderColor.getName());
     }
 
     public static AirGlider restorePredictionState(final Player player, final PredictionState prediction) {
@@ -435,6 +463,14 @@ public class AirGlider extends AirAbility {
     public void applyPredictionState(final PredictionState prediction) {
         if (prediction == null || this.isRemoved()
                 || prediction.transitionRevision() < this.transitionRevision) return;
+        final GliderColor authoritativeColor = GliderColor.getColor(prediction.gliderColor());
+        final boolean colorChanged = authoritativeColor != null
+                && (this.gliderColor == null
+                || !authoritativeColor.getName().equals(this.gliderColor.getName()));
+        if (colorChanged) {
+            this.gliderColor = authoritativeColor;
+            this.destroyDisplayModel();
+        }
         this.state = prediction.state();
         this.stateTicks = Math.max(0, prediction.stateTicks());
         this.stalled = prediction.stalled();
@@ -460,7 +496,17 @@ public class AirGlider extends AirAbility {
      */
     public boolean confirmsPredictionTransition(final PredictionState prediction) {
         return prediction != null && this.state == prediction.state()
-                && this.transitionRevision == prediction.transitionRevision();
+                && this.transitionRevision == prediction.transitionRevision()
+                && this.gliderColor != null
+                && this.gliderColor.getName().equals(prediction.gliderColor());
+    }
+
+    private boolean selectRequiredItem() {
+        if (!this.requireItem) return true;
+        final GliderColor itemColor = AirGliderItem.getHeldColor(this.player);
+        if (itemColor == null) return false;
+        this.gliderColor = itemColor;
+        return true;
     }
 
     private void createDisplayModel() {
@@ -491,11 +537,12 @@ public class AirGlider extends AirAbility {
     private ItemStack texturedHead(final Texture texture) {
         final String path = "Abilities.Air.AirGlider.Model.";
         final String fallback = switch (texture) {
-            case ORANGE -> ORANGE_TEXTURE;
-            case YELLOW -> YELLOW_TEXTURE;
+            case ORANGE -> this.gliderColor == null ? ORANGE_TEXTURE : this.gliderColor.getOuterTexture();
+            case YELLOW -> this.gliderColor == null ? YELLOW_TEXTURE : this.gliderColor.getInnerTexture();
             case WOOD -> WOOD_TEXTURE;
         };
-        final String url = getConfig().getString(path + texture.configKey, fallback);
+        final String url = texture == Texture.WOOD
+                ? getConfig().getString(path + texture.configKey, fallback) : fallback;
         final ItemStack item = new ItemStack(Material.PLAYER_HEAD);
         final SkullMeta meta = (SkullMeta) item.getItemMeta();
         meta.setProfileId(UUID.nameUUIDFromBytes(url.getBytes(StandardCharsets.UTF_8)));
@@ -525,8 +572,11 @@ public class AirGlider extends AirAbility {
     }
 
     private Location modelPartLocation(final Location center, final ModelPart part, final Quaternionf rotation) {
-        final float spread = this.animatedWingSpread(part);
-        final Vector3f offset = new Vector3f(part.x * spread, part.y, part.z);
+        final float spread = this.partSpread(part);
+        final Vector3f offset = new Vector3f(
+                lerp(part.foldedX, part.x, spread),
+                part.y,
+                lerp(part.foldedZ, part.z, spread));
         rotation.transform(offset);
         final Location location = center.clone().add(offset.x, offset.y, offset.z);
         location.setYaw(0);
@@ -535,15 +585,33 @@ public class AirGlider extends AirAbility {
     }
 
     private Transformation modelPartTransformation(final ModelPart part, final Quaternionf rotation) {
-        final float spread = this.animatedWingSpread(part);
-        return new Transformation(new Vector3f(), rotation,
-                new Vector3f(part.width * FIXED_HEAD_SCALE * spread,
+        final float spread = this.partSpread(part);
+        final float visibleSpread = part.foldMode == FoldMode.FIXED
+                ? 1.0F : Math.max(MIN_FOLDED_SCALE, spread);
+        final float widthScale = part.foldMode == FoldMode.RADIAL ? visibleSpread : 1.0F;
+        final float lengthScale = part.foldMode == FoldMode.TANGENTIAL ? visibleSpread : 1.0F;
+        final float yaw = interpolateAngle(part.foldedYaw, part.yaw, spread);
+        final Quaternionf partRotation = new Quaternionf(rotation)
+                .rotateY(yaw)
+                .rotateX(part.pitch)
+                .rotateZ(part.roll);
+        return new Transformation(new Vector3f(), partRotation,
+                new Vector3f(part.width * FIXED_HEAD_SCALE * widthScale,
                         part.height * FIXED_HEAD_SCALE,
-                        part.length * FIXED_HEAD_SCALE), new Quaternionf());
+                        part.length * FIXED_HEAD_SCALE * lengthScale), new Quaternionf());
     }
 
-    private float animatedWingSpread(final ModelPart part) {
-        return Math.abs(part.x) < 0.01F ? 1.0F : Math.max(0.04F, this.modelSpread);
+    private float partSpread(final ModelPart part) {
+        if (part.foldMode == FoldMode.FIXED) return 1.0F;
+        return Math.max(0.0F, Math.min(1.0F, this.modelSpread));
+    }
+
+    private static float lerp(final float from, final float to, final float amount) {
+        return from + (to - from) * amount;
+    }
+
+    private static float interpolateAngle(final float from, final float to, final float amount) {
+        return from + normalizeRadians(to - from) * amount;
     }
 
     private void updateModelOrientation(final Vector velocity) {
@@ -656,9 +724,11 @@ public class AirGlider extends AirAbility {
     public record PredictionState(State state, int stateTicks, boolean stalled,
                                   int stallTicks, int recoveryTicks, long transitionRevision,
                                   double velocityX, double velocityY, double velocityZ,
-                                  boolean gliding, boolean previousGlidingState) {
+                                  boolean gliding, boolean previousGlidingState,
+                                  String gliderColor) {
         public PredictionState {
             if (state == null) state = State.GLIDING;
+            if (gliderColor == null || gliderColor.isBlank()) gliderColor = "classic";
             if (!Double.isFinite(velocityX)) velocityX = 0.0;
             if (!Double.isFinite(velocityY)) velocityY = 0.0;
             if (!Double.isFinite(velocityZ)) velocityZ = 0.0;
@@ -669,13 +739,268 @@ public class AirGlider extends AirAbility {
         }
     }
 
+    private static List<ModelPart> createModelParts() {
+        final List<ModelPart> parts = new ArrayList<>();
+
+        // Fabric first, then ribs and perimeter above it. These calls create
+        // exactly two complete wings: one front half-disc and one rear half-disc.
+        addRearFacingHalfDisc(parts,
+                MAIN_WING_PIVOT_Z, MAIN_WING_RADIUS,
+                MAIN_WING_MEMBRANE_STRIPS,
+                MAIN_WING_SPOKE_INTERVALS,
+                MAIN_WING_RIM_SEGMENTS,
+                -0.020F, 0.050F);
+        addRearFacingHalfDisc(parts,
+                TAIL_WING_PIVOT_Z, TAIL_WING_RADIUS,
+                TAIL_WING_MEMBRANE_STRIPS,
+                TAIL_WING_SPOKE_INTERVALS,
+                TAIL_WING_RIM_SEGMENTS,
+                -0.016F, 0.048F);
+
+        // Long center staff through both wings, projecting beyond the nose and
+        // the tail as in the reference silhouette.
+        parts.add(fixedPart(0.0F, 0.105F, -0.12F,
+                0.10F, 0.10F, 5.10F,
+                0.0F, 0.0F, 0.0F, Texture.WOOD));
+
+        // Compact pivot caps. They do not form additional sail surfaces.
+        parts.add(fixedPart(0.0F, 0.038F, MAIN_WING_PIVOT_Z,
+                0.30F, 0.080F, 0.30F,
+                0.0F, 0.0F, 0.0F, Texture.YELLOW));
+        parts.add(fixedPart(0.0F, 0.040F, TAIL_WING_PIVOT_Z,
+                0.18F, 0.072F, 0.18F,
+                0.0F, 0.0F, 0.0F, Texture.WOOD));
+
+        // Small triangular rider frame in front of the main wing. All orange
+        // membrane remains behind MAIN_WING_PIVOT_Z.
+        final float axleZ = MAIN_WING_PIVOT_Z + 0.10F;
+        final float handBarZ = MAIN_WING_PIVOT_Z + 0.72F;
+        parts.add(foldingPart(0.0F, 0.125F, axleZ,
+                0.90F, 0.085F, 0.085F,
+                0.0F, 0.0F, 0.0F,
+                Texture.WOOD, FoldMode.RADIAL, MAIN_WING_PIVOT_Z));
+        parts.add(foldingPart(0.0F, -0.030F, handBarZ,
+                1.22F, 0.080F, 0.085F,
+                0.0F, 0.0F, 0.0F,
+                Texture.WOOD, FoldMode.RADIAL, MAIN_WING_PIVOT_Z));
+        addBeam(parts,
+                -0.61F, -0.030F, handBarZ,
+                0.0F, 0.125F, axleZ,
+                0.062F, Texture.WOOD, FoldMode.RADIAL, MAIN_WING_PIVOT_Z);
+        addBeam(parts,
+                0.61F, -0.030F, handBarZ,
+                0.0F, 0.125F, axleZ,
+                0.062F, Texture.WOOD, FoldMode.RADIAL, MAIN_WING_PIVOT_Z);
+
+        return List.copyOf(parts);
+    }
+
+    /**
+     * Builds one complete half-circle sail. Its membrane, ribs and curved rim
+     * are all at z <= pivotZ, so its arc always faces the rear of the glider.
+     */
+    private static void addRearFacingHalfDisc(final List<ModelPart> parts,
+                                              final float pivotZ,
+                                              final float radius,
+                                              final int membraneStrips,
+                                              final int spokeIntervals,
+                                              final int rimSegments,
+                                              final float fabricY,
+                                              final float fabricHeight) {
+        addRearFacingMembrane(parts, pivotZ, radius,
+                membraneStrips, fabricY, fabricHeight, Texture.ORANGE);
+
+        final float frameY = 0.058F;
+
+        // Straight diameter/leading edge. It is one continuous bar across the
+        // wing rather than two fan bases pointing west and east.
+        addBeam(parts,
+                -radius, frameY, pivotZ,
+                radius, frameY, pivotZ,
+                0.058F, 0.072F,
+                Texture.WOOD, FoldMode.TANGENTIAL, pivotZ);
+
+        // Interior fan ribs. The diameter supplies the two outer boundaries.
+        final float spokeStep = (REAR_FAN_END_ANGLE - REAR_FAN_START_ANGLE)
+                / spokeIntervals;
+        for (int index = 1; index < spokeIntervals; index++) {
+            final float angle = REAR_FAN_START_ANGLE + spokeStep * index;
+            addRadialPart(parts, angle,
+                    0.075F, radius + 0.022F,
+                    0.054F, frameY, 0.070F,
+                    Texture.WOOD, FoldMode.RADIAL, pivotZ);
+        }
+
+        // Segmented chords form the single curved trailing perimeter.
+        final float rimStep = (REAR_FAN_END_ANGLE - REAR_FAN_START_ANGLE)
+                / rimSegments;
+        for (int index = 0; index < rimSegments; index++) {
+            final float angleA = REAR_FAN_START_ANGLE + rimStep * index;
+            final float angleB = angleA + rimStep;
+            addArcBeam(parts, pivotZ, radius,
+                    angleA, angleB, frameY,
+                    0.058F, 0.072F, Texture.WOOD);
+        }
+    }
+
+    /**
+     * Approximates a rear-facing half-disc with transverse strips. This gives
+     * one continuous semicircular silhouette instead of two radial side fans.
+     * The width tapers monotonically toward the rear-most point.
+     */
+    private static void addRearFacingMembrane(final List<ModelPart> parts,
+                                              final float pivotZ,
+                                              final float radius,
+                                              final int stripCount,
+                                              final float y,
+                                              final float height,
+                                              final Texture texture) {
+        final float stripDepth = radius / stripCount;
+        for (int index = 0; index < stripCount; index++) {
+            final float frontDepth = stripDepth * index;
+            final float rearDepth = stripDepth * (index + 1);
+
+            // Neighboring strips overlap slightly, but the first strip never
+            // crosses the leading edge and the last never crosses the arc tip.
+            final float visibleFrontDepth = frontDepth - (index == 0 ? 0.0F : 0.006F);
+            final float visibleRearDepth = rearDepth
+                    + (index == stripCount - 1 ? 0.0F : 0.006F);
+            final float centerDepth = (visibleFrontDepth + visibleRearDepth) * 0.5F;
+            final float visibleDepth = visibleRearDepth - visibleFrontDepth;
+
+            // Sample near each strip's rear edge so the rectangular piece stays
+            // within the intended circular outline instead of bulging forward.
+            final float widthSampleDepth = Math.min(radius * 0.998F,
+                    frontDepth + stripDepth * 0.90F);
+            final float halfWidth = (float) Math.sqrt(Math.max(0.0F,
+                    radius * radius - widthSampleDepth * widthSampleDepth));
+            final float width = Math.max(0.10F, halfWidth * 2.0F);
+            final float z = pivotZ - centerDepth;
+            final float stripY = y + ((index & 1) == 0 ? -0.0015F : 0.0015F);
+
+            parts.add(foldingPart(0.0F, stripY, z,
+                    width, height, visibleDepth,
+                    0.0F, 0.0F, 0.0F,
+                    texture, FoldMode.RADIAL, pivotZ));
+        }
+    }
+
+    private static void addRadialPart(final List<ModelPart> parts,
+                                      final float angle,
+                                      final float innerRadius, final float outerRadius,
+                                      final float width, final float y, final float height,
+                                      final Texture texture, final FoldMode foldMode,
+                                      final float pivotZ) {
+        final float centerRadius = (innerRadius + outerRadius) * 0.5F;
+        final float x = (float) Math.sin(angle) * centerRadius;
+        final float z = pivotZ + (float) Math.cos(angle) * centerRadius;
+        final float length = Math.max(0.01F, outerRadius - innerRadius);
+        parts.add(foldingPart(x, y, z, width, height, length,
+                0.0F, angle, 0.0F, texture, foldMode, pivotZ));
+    }
+
+    private static void addArcBeam(final List<ModelPart> parts,
+                                   final float pivotZ, final float radius,
+                                   final float angleA, final float angleB,
+                                   final float y,
+                                   final float thickness, final float height,
+                                   final Texture texture) {
+        final float x1 = (float) Math.sin(angleA) * radius;
+        final float z1 = pivotZ + (float) Math.cos(angleA) * radius;
+        final float x2 = (float) Math.sin(angleB) * radius;
+        final float z2 = pivotZ + (float) Math.cos(angleB) * radius;
+        addBeam(parts, x1, y, z1, x2, y, z2,
+                thickness, height, texture, FoldMode.TANGENTIAL, pivotZ);
+    }
+
+    private static void addBeam(final List<ModelPart> parts,
+                                final float x1, final float y1, final float z1,
+                                final float x2, final float y2, final float z2,
+                                final float thickness, final Texture texture,
+                                final FoldMode foldMode, final float pivotZ) {
+        addBeam(parts, x1, y1, z1, x2, y2, z2,
+                thickness, thickness, texture, foldMode, pivotZ);
+    }
+
+    private static void addBeam(final List<ModelPart> parts,
+                                final float x1, final float y1, final float z1,
+                                final float x2, final float y2, final float z2,
+                                final float width, final float height,
+                                final Texture texture, final FoldMode foldMode,
+                                final float pivotZ) {
+        final float dx = x2 - x1;
+        final float dy = y2 - y1;
+        final float dz = z2 - z1;
+        final float horizontal = (float) Math.hypot(dx, dz);
+        final float length = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (length <= 1.0E-5F) return;
+
+        final float x = (x1 + x2) * 0.5F;
+        final float y = (y1 + y2) * 0.5F;
+        final float z = (z1 + z2) * 0.5F;
+        final float yaw = (float) Math.atan2(dx, dz);
+        final float pitch = (float) Math.atan2(-dy, horizontal);
+        if (foldMode == FoldMode.FIXED) {
+            parts.add(fixedPart(x, y, z, width, height, length,
+                    pitch, yaw, 0.0F, texture));
+        } else {
+            parts.add(foldingPart(x, y, z, width, height, length,
+                    pitch, yaw, 0.0F, texture, foldMode, pivotZ));
+        }
+    }
+
+    private static ModelPart fixedPart(final float x, final float y, final float z,
+                                       final float width, final float height, final float length,
+                                       final float pitch, final float yaw, final float roll,
+                                       final Texture texture) {
+        final float normalizedYaw = normalizeRadians(yaw);
+        return new ModelPart(x, y, z, width, height, length,
+                pitch, normalizedYaw, roll,
+                x, z, normalizedYaw, texture, FoldMode.FIXED);
+    }
+
+    private static ModelPart foldingPart(final float x, final float y, final float z,
+                                         final float width, final float height, final float length,
+                                         final float pitch, final float yaw, final float roll,
+                                         final Texture texture, final FoldMode foldMode,
+                                         final float pivotZ) {
+        final float dz = z - pivotZ;
+        final float radius = (float) Math.hypot(x, dz);
+        final float axialDirection = dz >= 0.0F ? 1.0F : -1.0F;
+        final float foldedZ = pivotZ + axialDirection * radius;
+        final float foldedYaw = axialDirection > 0.0F
+                ? 0.0F : (x >= 0.0F ? (float) Math.PI : (float) -Math.PI);
+        final float alignedYaw = alignAxisToReference(yaw, foldedYaw);
+        return new ModelPart(x, y, z, width, height, length,
+                pitch, alignedYaw, roll,
+                0.0F, foldedZ, foldedYaw, texture, foldMode);
+    }
+
+    private static float alignAxisToReference(final float angle, final float reference) {
+        final float primary = normalizeRadians(angle);
+        final float reversed = normalizeRadians(angle + (float) Math.PI);
+        return Math.abs(normalizeRadians(primary - reference))
+                <= Math.abs(normalizeRadians(reversed - reference)) ? primary : reversed;
+    }
+
+    private static float normalizeRadians(float angle) {
+        while (angle > Math.PI) angle -= (float) (Math.PI * 2.0);
+        while (angle < -Math.PI) angle += (float) (Math.PI * 2.0);
+        return angle;
+    }
+
     private enum Texture {
         ORANGE("OrangeTexture"), YELLOW("YellowTexture"), WOOD("WoodTexture");
         private final String configKey;
         Texture(final String configKey) { this.configKey = configKey; }
     }
 
-    private record ModelPart(float x, float y, float z, float width, float height,
-                             float length, Texture texture) {
+    private enum FoldMode { FIXED, RADIAL, TANGENTIAL }
+
+    private record ModelPart(float x, float y, float z,
+                             float width, float height, float length,
+                             float pitch, float yaw, float roll,
+                             float foldedX, float foldedZ, float foldedYaw,
+                             Texture texture, FoldMode foldMode) {
     }
 }

@@ -83,7 +83,7 @@ public final class MemoryStorageAdapter implements StorageAdapter {
         @Override
         public void createDefault(final UUID uuid, final String playerName) {
             players.computeIfAbsent(uuid, key -> new PlayerRecord(
-                    uuid, playerName, null, null, null, null, null, null, null,
+                    uuid, playerName, null, null, null, null, null, null, null, null,
                     false, false, false, "256", false, false, Collections.emptyMap()));
         }
 
@@ -104,6 +104,7 @@ public final class MemoryStorageAdapter implements StorageAdapter {
                     columns.getOrDefault(PlayerColumn.STYLE, old.getStyle()),
                     columns.getOrDefault(PlayerColumn.FIRE_COLOR, old.getFireColor()),
                     columns.getOrDefault(PlayerColumn.AIR_COLOR, old.getAirColor()),
+                    columns.getOrDefault(PlayerColumn.GLIDER_COLOR, old.getGliderColor()),
                     columns.getOrDefault(PlayerColumn.WATER_COSMETIC, old.getWaterCosmetic()),
                     columns.getOrDefault(PlayerColumn.EARTH_COSMETIC, old.getEarthCosmetic()),
                     parseBool(columns.get(PlayerColumn.SPRINKLE), old.isSprinkle()),

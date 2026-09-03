@@ -75,7 +75,7 @@ class PaperPredictionProtocolTest {
 
     @Test
     void protocolIncludesExactAbilityStateOwnershipFence() {
-        assertEquals(53, PaperPredictionProtocol.VERSION);
+        assertEquals(55, PaperPredictionProtocol.VERSION);
         assertEquals("projectkorra:ability_state_owner", PaperPredictionProtocol.ABILITY_STATE_OWNER);
         UUID owner = UUID.randomUUID();
         UUID target = UUID.randomUUID();
@@ -385,7 +385,7 @@ class PaperPredictionProtocolTest {
         final UUID player = UUID.randomUUID();
         final AirGlider.PredictionState state = new AirGlider.PredictionState(
                 AirGlider.State.FOLDED_DIVE, 9, true, 6, 2, 4L,
-                1.25, -0.4, -0.75, false, true);
+                1.25, -0.4, -0.75, false, true, "blue");
         final PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(
                 PaperPredictionProtocol.airGliderState(player, 18L, 11L, state));
 
@@ -404,6 +404,7 @@ class PaperPredictionProtocolTest {
         assertEquals(-0.75, reader.f64());
         assertFalse(reader.bool());
         assertTrue(reader.bool());
+        assertEquals("blue", reader.string(32));
         reader.finished();
     }
 
@@ -430,7 +431,7 @@ class PaperPredictionProtocolTest {
                 Map.of(), Map.of(), List.of(), List.of(),
                 List.of("bending.ability.waterspout.wave"), 1.0, true,
                 new PaperPredictionProtocol.PlayerCosmetics(
-                        "greenfire", "dust", "blue", "obsidian", true),
+                        "greenfire", "dust", "blue", "ice", "obsidian", true),
                 RegionProtectionAuthority.Snapshot.empty(), List.of("waterspout"));
         PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(payload);
         assertEquals(session, reader.uuid());
@@ -448,6 +449,7 @@ class PaperPredictionProtocolTest {
         assertEquals("greenfire", reader.string(128));
         assertEquals("dust", reader.string(128));
         assertEquals("blue", reader.string(128));
+        assertEquals("ice", reader.string(128));
         assertEquals("obsidian", reader.string(128));
         assertTrue(reader.bool());
         assertEquals("", reader.string(256));

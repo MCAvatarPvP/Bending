@@ -216,6 +216,7 @@ public abstract class PaperPredictionDelivery extends PaperPredictionInput {
         return new PaperPredictionProtocol.PlayerCosmetics(
                 bending.getFireColor() == null ? "" : bending.getFireColor().getName(),
                 bending.getAirColor() == null ? "" : bending.getAirColor().getName(),
+                bending.getGliderColor() == null ? "" : bending.getGliderColor().getName(),
                 bending.getWaterCosmetic() == null ? "" : bending.getWaterCosmetic().getName(),
                 bending.getEarthCosmetic() == null ? "" : bending.getEarthCosmetic().getName(),
                 bending.isSprinkleEnabled());

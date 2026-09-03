@@ -10,6 +10,7 @@ public enum PlayerColumn {
     STYLE("style"),
     FIRE_COLOR("firecolor"),
     AIR_COLOR("aircolor"),
+    GLIDER_COLOR("glidercolor"),
     WATER_COSMETIC("watercosmetic"),
     EARTH_COSMETIC("earthcosmetic"),
     SPRINKLE("sprinkle"),
@@ -56,4 +57,3 @@ public enum PlayerColumn {
         return this.columnName;
     }
 }
-

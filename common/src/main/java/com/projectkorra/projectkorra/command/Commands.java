@@ -95,6 +95,7 @@ public class Commands {
         new StyleEditCommand();
         new FireColorCommand();
         new AirColorCommand();
+        new GliderColorCommand();
         new WaterCosmeticCommand();
         new EarthCosmeticCommand();
         new SprinkleCommand();
