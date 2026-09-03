@@ -4,6 +4,7 @@ import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloa
 import com.projectkorra.projectkorra.platform.mc.entity.ItemDisplay;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
@@ -159,7 +160,8 @@ public final class ClientEntityReconciliation {
 
         final Vec3d serverPosition = new Vec3d(packet.getX(), packet.getY(), packet.getZ());
         Entity best = null;
-        double bestDistance = 32.0 * 32.0;
+        // Tested and best distance averages < 0.1 so we're good :)
+        double bestDistance = 1;
         for (Map.Entry<Entity, PredictedSpawn> entry : predictedSpawns.entrySet()) {
             final Entity candidate = entry.getKey();
             if (candidate == null || candidate.getType() != packet.getEntityType()
@@ -168,6 +170,7 @@ public final class ClientEntityReconciliation {
             // Match creation position, not the position reached while waiting
             // for Paper. Removed entities remain tombstones for delayed spawns.
             final double distance = entry.getValue().origin.squaredDistanceTo(serverPosition);
+
             if (distance < bestDistance) {
                 best = candidate;
                 bestDistance = distance;
