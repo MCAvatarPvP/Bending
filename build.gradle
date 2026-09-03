@@ -8,7 +8,7 @@ apply from: rootProject.file('gradle/git-publish.gradle')
 
 allprojects {
     group = 'com.projectkorra'
-    version = '1.10.22'
+    version = '1.10.23'
 }
 
 subprojects {
