@@ -17,13 +17,16 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
 /**
- * Gives locally simulated movement the same logical block view as predicted
- * abilities without ever installing that view in the client chunk.
+ * Gives client-owned predicted falling blocks the same logical block view as
+ * predicted abilities without installing that view in the client chunk.
+ * Player movement deliberately keeps the authoritative chunk collision view:
+ * render-only AIR cannot remove a real block's collision, and a render-only
+ * solid TempBlock cannot add collision over real AIR.
  *
- * <p>This is especially important for TempFallingBlocks. Paper's physical
- * source/previous-frame TempBlock can arrive after the owner has already
- * launched the locally simulated entity. Reading the backing chunk here would
- * make that entity collide with a block which has logically moved away.</p>
+ * <p>For a predicted TempFallingBlock, Paper's physical source or previous
+ * TempBlock frame can arrive after the falling block has already launched
+ * locally. Composing the prediction for that falling-block entity prevents it
+ * from colliding with a server block which has logically moved away.</p>
  */
 @Mixin(BlockCollisionSpliterator.class)
 public abstract class BlockCollisionSpliteratorPredictionMixin {
