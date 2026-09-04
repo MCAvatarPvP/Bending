@@ -72,6 +72,13 @@ particular, render-only AIR may conceal a delayed Paper block but cannot create 
 player can move through; conversely, a locally predicted solid TempBlock over authoritative AIR
 remains non-colliding and the player can move through it.
 
+Every locally spawned prediction entity is assigned an unused negative client-only entity ID before
+it enters `ClientWorld`. Minecraft's constructor IDs are process-local positives, while
+`ClientWorld#addEntity` removes an existing occupant with the same numeric ID. Keeping prediction
+outside Paper's positive ID namespace prevents a projectile, display, or falling block spawn from
+discarding the local player or another authoritative entity. Paper's later positive ID remains a
+separate lifecycle alias and never replaces the predicted entity's client-only ID.
+
 Paper publishes a TempBlock prediction owner only for an authenticated exact-capable session whose
 client advertised support for that ability. A physical layer carrying that provenance is concealed
 from its owner only while its mapped local action has an active TempBlock or remains inside a

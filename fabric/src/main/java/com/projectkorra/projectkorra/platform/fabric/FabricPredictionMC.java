@@ -2,6 +2,7 @@ package com.projectkorra.projectkorra.platform.fabric;
 
 import com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime;
 import com.projectkorra.projectkorra.fabric.client.PredictionClient;
+import com.projectkorra.projectkorra.fabric.client.prediction.entity.PredictedEntityIdAllocator;
 import com.projectkorra.projectkorra.fabric.mixin.client.AreaEffectCloudEntityAccessor;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.platform.mc.Color;
@@ -114,6 +115,8 @@ import java.util.function.Predicate;
 public final class FabricPredictionMC {
     private static final Map<UUID, Map<String, List<MetadataValue>>> METADATA = new HashMap<>();
     private static final Map<UUID, ClientPlayerView> PLAYERS = new HashMap<>();
+    private static final PredictedEntityIdAllocator PREDICTED_ENTITY_IDS =
+            new PredictedEntityIdAllocator();
     private static ClientWorldView worldView;
     private static ClientWorld worldIdentity;
 
@@ -346,14 +349,12 @@ public final class FabricPredictionMC {
             FabricMC.setFallingBlockState(entity, FabricMC.blockState(data));
             entity.dropItem = false;
             entity.setDestroyedOnLanding();
-            value.addEntity(entity);
-            ExactPredictionRuntime.trackSpawn(entity);
+            addPredictedEntity(value, entity);
             return new ClientFallingBlock(entity);
         }
         @Override public Item dropItem(Location location, ItemStack item) {
             ItemEntity entity = new ItemEntity(value, location.getX(), location.getY(), location.getZ(), FabricMC.itemStack(item));
-            value.addEntity(entity);
-            ExactPredictionRuntime.trackSpawn(entity);
+            addPredictedEntity(value, entity);
             return new ClientItem(entity);
         }
         @Override public Item dropItemNaturally(Location location, ItemStack item) {
@@ -363,51 +364,48 @@ public final class FabricPredictionMC {
             if (type == ArmorStand.class) {
                 ArmorStandEntity entity = new ArmorStandEntity(
                         value, location.getX(), location.getY(), location.getZ());
-                value.addEntity(entity);
-                ExactPredictionRuntime.trackSpawn(entity);
+                addPredictedEntity(value, entity);
                 return type.cast(new ClientArmorStand(entity));
             }
             if (type == BlockDisplay.class) {
                 DisplayEntity.BlockDisplayEntity entity = new DisplayEntity.BlockDisplayEntity(
                         net.minecraft.entity.EntityType.BLOCK_DISPLAY, value);
                 entity.refreshPositionAndAngles(location.getX(), location.getY(), location.getZ(), location.getYaw(), location.getPitch());
-                value.addEntity(entity);
-                ExactPredictionRuntime.trackSpawn(entity);
+                addPredictedEntity(value, entity);
                 return type.cast(new ClientBlockDisplay(entity));
             }
             if (type == ItemDisplay.class) {
                 DisplayEntity.ItemDisplayEntity entity = new DisplayEntity.ItemDisplayEntity(
                         net.minecraft.entity.EntityType.ITEM_DISPLAY, value);
                 entity.refreshPositionAndAngles(location.getX(), location.getY(), location.getZ(), location.getYaw(), location.getPitch());
-                value.addEntity(entity);
-                ExactPredictionRuntime.trackSpawn(entity);
+                addPredictedEntity(value, entity);
                 return type.cast(new ClientItemDisplay(entity));
             }
             if (type == ShulkerBullet.class) {
                 ShulkerBulletEntity entity = new ShulkerBulletEntity(
                         net.minecraft.entity.EntityType.SHULKER_BULLET, value);
                 entity.refreshPositionAndAngles(location.getX(), location.getY(), location.getZ(), location.getYaw(), location.getPitch());
-                value.addEntity(entity); ExactPredictionRuntime.trackSpawn(entity);
+                addPredictedEntity(value, entity);
                 return type.cast(new ClientShulkerBullet(entity));
             }
             if (type == Fireball.class) {
                 SmallFireballEntity entity = new SmallFireballEntity(
                         net.minecraft.entity.EntityType.SMALL_FIREBALL, value);
                 entity.refreshPositionAndAngles(location.getX(), location.getY(), location.getZ(), location.getYaw(), location.getPitch());
-                value.addEntity(entity); ExactPredictionRuntime.trackSpawn(entity);
+                addPredictedEntity(value, entity);
                 return type.cast(new ClientFireball(entity));
             }
             if (type == Snowball.class) {
                 SnowballEntity entity = new SnowballEntity(
                         value, location.getX(), location.getY(), location.getZ(), new net.minecraft.item.ItemStack(Items.SNOWBALL));
                 entity.refreshPositionAndAngles(location.getX(), location.getY(), location.getZ(), location.getYaw(), location.getPitch());
-                value.addEntity(entity); ExactPredictionRuntime.trackSpawn(entity);
+                addPredictedEntity(value, entity);
                 return type.cast(new ClientSnowball(entity));
             }
             if (type == AreaEffectCloud.class) {
                 AreaEffectCloudEntity entity = new AreaEffectCloudEntity(
                         value, location.getX(), location.getY(), location.getZ());
-                value.addEntity(entity); ExactPredictionRuntime.trackSpawn(entity);
+                addPredictedEntity(value, entity);
                 return type.cast(new ClientAreaEffectCloud(entity));
             }
             return super.spawn(location, type);
@@ -418,7 +416,7 @@ public final class FabricPredictionMC {
             if (type != EntityType.SLIME) return super.spawnEntity(location, type);
             SlimeEntity entity = new SlimeEntity(net.minecraft.entity.EntityType.SLIME, value);
             entity.refreshPositionAndAngles(location.getX(), location.getY(), location.getZ(), location.getYaw(), location.getPitch());
-            value.addEntity(entity); ExactPredictionRuntime.trackSpawn(entity);
+            addPredictedEntity(value, entity);
             return new ClientSlime(entity);
         }
 
@@ -429,7 +427,7 @@ public final class FabricPredictionMC {
                     new net.minecraft.item.ItemStack(Items.ARROW), null);
             Vector normalized = direction.clone().normalize();
             entity.setVelocity(normalized.getX(), normalized.getY(), normalized.getZ(), speed, spread);
-            value.addEntity(entity); ExactPredictionRuntime.trackSpawn(entity);
+            addPredictedEntity(value, entity);
             return new ClientArrow(entity);
         }
         @Override public void strikeLightningEffect(Location location, boolean flash) { spawnParticle(Particle.ELECTRIC_SPARK, location, 24, .4, 1, .4, .05); }
@@ -765,8 +763,7 @@ public final class FabricPredictionMC {
                 ArrowEntity entity = new ArrowEntity(
                         world, value, new net.minecraft.item.ItemStack(Items.ARROW), null);
                 entity.setVelocity(value, value.getPitch(), value.getYaw(), 0.0F, 3.0F, 1.0F);
-                world.addEntity(entity);
-                ExactPredictionRuntime.trackSpawn(entity);
+                addPredictedEntity(world, entity);
                 return type.cast(new ClientArrow(entity));
             }
             if (type == Snowball.class) {
@@ -1314,6 +1311,15 @@ public final class FabricPredictionMC {
         @Override public float yaw() { return delegate.getYaw(); }
         @Override public float pitch() { return delegate.getPitch(); }
         @Override public PKVec3 direction() { Vector vector = delegate.getDirection(); return new PKVec3(vector.getX(), vector.getY(), vector.getZ()); }
+    }
+
+    private static <T extends net.minecraft.entity.Entity> T addPredictedEntity(
+            final ClientWorld world, final T entity) {
+        entity.setId(PREDICTED_ENTITY_IDS.reserve(id -> world.getEntityById(id) != null
+                || ExactPredictionRuntime.hasEntityAlias(id)));
+        world.addEntity(entity);
+        ExactPredictionRuntime.trackSpawn(entity);
+        return entity;
     }
 
     private static Vec3d nativeVector(Vector vector) { return new Vec3d(vector.getX(), vector.getY(), vector.getZ()); }
