@@ -215,7 +215,7 @@ class AuthoritativeBlockBoundaryTest {
     }
 
     @Test
-    void predictedCollisionViewIsLimitedToTheLocalPlayerAndOwnedFallingBlocks()
+    void predictedCollisionViewIsLimitedToOwnedFallingBlocks()
             throws IOException {
         final String runtime = runtime();
         final String collisionState = method(runtime,
@@ -236,10 +236,14 @@ class AuthoritativeBlockBoundaryTest {
                         && collisionMixin.contains("entityContext.getEntity()"),
                 "non-client and entity-free collision queries must retain vanilla authority");
         assertTrue(collisionState.contains("!ExactPredictionRuntime.instance().ready")
-                        && collisionState.contains("entity != client.player")
                         && collisionState.contains("entity instanceof FallingBlockEntity")
                         && collisionState.contains("isPredictedOwned(entity)"),
-                "remote entities and unrelated predicted visuals may not collide with local overlays");
+                "only client-owned falling blocks may collide with local overlays");
+        assertTrue(collisionState.contains("if (!predictedFallingBlock)")
+                        && collisionState.contains("return authoritativeState;"),
+                "the local player must retain authoritative collision through render-only ghost air and predicted solid blocks");
+        assertFalse(collisionState.contains("client.player"),
+                "player collision must ignore both AIR and solid states from the visual prediction overlay");
         assertTrue(collisionState.contains("blockVisualOverlay.compose(")
                         && collisionState.contains("world, pos, authoritativeState"),
                 "owned movement should consume the same immutable overlay used by rendering");

@@ -65,10 +65,12 @@ installed backing state all agree. Moving EarthBlast cells, conflicts, expiry, a
 their foreground immediately; they can never enter the timed handoff. Every expiry schedules a
 final rebuild.
 
-Client-owned falling blocks and the local player also sample this logical composition for movement
-collision. This prevents EarthShard and a moving/ridden EarthSmash from colliding with Paper's
-latency-delayed previous TempBlock frame. Remote entities and unrelated predicted entities keep the
-authoritative chunk collision view.
+Client-owned falling blocks sample this logical composition for movement collision, preventing an
+EarthShard from colliding with Paper's latency-delayed previous TempBlock frame. The local player,
+remote entities, and unrelated predicted entities keep the authoritative chunk collision view. In
+particular, render-only AIR may conceal a delayed Paper block but cannot create a hole that the
+player can move through; conversely, a locally predicted solid TempBlock over authoritative AIR
+remains non-colliding and the player can move through it.
 
 Paper publishes a TempBlock prediction owner only for an authenticated exact-capable session whose
 client advertised support for that ability. A physical layer carrying that provenance is concealed

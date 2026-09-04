@@ -134,7 +134,6 @@ import java.util.function.Supplier;
 import java.util.logging.Level;
 
 import net.minecraft.block.BlockState;
-import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.entity.Entity;
@@ -185,9 +184,12 @@ public abstract class ExactPredictionApiBlocks extends ExactPredictionApiCore {
     }
 
     /**
-     * Composes prediction for movement owned by this client. Remote and
-     * authoritative entities continue to collide with the untouched backing
-     * chunk, so a local visual cannot alter anyone else's simulation.
+     * Composes prediction only for client-owned falling blocks. Player
+     * movement must keep using the authoritative backing chunk: an AIR visual
+     * can intentionally conceal Paper's latency-delayed solid block, but it
+     * must not turn that render-only concealment into a hole the player can
+     * walk through. Remote and unrelated entities retain vanilla authority as
+     * well.
      */
     public static BlockState collisionBlockState(final ClientWorld world,
                                                  final Entity entity,
@@ -196,10 +198,9 @@ public abstract class ExactPredictionApiBlocks extends ExactPredictionApiCore {
         if (!ExactPredictionRuntime.instance().ready || world == null || entity == null || pos == null) {
             return authoritativeState;
         }
-        final MinecraftClient client = MinecraftClient.getInstance();
         final boolean predictedFallingBlock = entity instanceof FallingBlockEntity
                 && ExactPredictionRuntime.instance().entityReconciliation.isPredictedOwned(entity);
-        if (entity != client.player && !predictedFallingBlock) {
+        if (!predictedFallingBlock) {
             return authoritativeState;
         }
         return ExactPredictionRuntime.instance().blockVisualOverlay.compose(world, pos, authoritativeState);
