@@ -75,9 +75,6 @@ public final class BukkitMC {
     private static final Map<UUID, Scoreboard> PLAYER_SCOREBOARDS = new ConcurrentHashMap<>();
     private static final Map<UUID, Runnable> SCOREBOARD_LISTENERS = new ConcurrentHashMap<>();
     private static final Map<UUID, org.bukkit.scoreboard.Scoreboard> NATIVE_SCOREBOARDS = new ConcurrentHashMap<>();
-    private static final Map<BlockKey, Block> BLOCKS = new ConcurrentHashMap<>();
-    private static final Map<UUID, Entity> ENTITIES = new ConcurrentHashMap<>();
-    private static final Map<UUID, OfflinePlayer> OFFLINE_PLAYERS = new ConcurrentHashMap<>();
     private static final Map<UUID, World> WORLDS = new ConcurrentHashMap<>();
     private static final org.bukkit.Material[] NATIVE_MATERIALS = nativeMaterials();
     private static final Material[] COMMON_MATERIALS = commonMaterials();
@@ -184,7 +181,6 @@ public final class BukkitMC {
             board.removeChangeListener(listener);
         }
         NATIVE_SCOREBOARDS.remove(uuid);
-        ENTITIES.remove(uuid);
     }
 
     private static org.bukkit.Location viewLocation(org.bukkit.entity.Player player, org.bukkit.Location location,
@@ -256,20 +252,28 @@ public final class BukkitMC {
     }
 
     public static Block block(final org.bukkit.block.Block value) {
-        return value == null ? null : BLOCKS.computeIfAbsent(BlockKey.of(value), ignored -> new BlockView(value));
+        return new BlockView(value);
     }
 
     public static Player player(final org.bukkit.entity.Player value) {
-        return value == null ? null : (Player) ENTITIES.computeIfAbsent(value.getUniqueId(), ignored -> new PlayerView(value));
+        return new PlayerView(value);
     }
 
     public static OfflinePlayer offline(final org.bukkit.OfflinePlayer value) {
-        return value instanceof org.bukkit.entity.Player p ? player(p) : value == null ? null : OFFLINE_PLAYERS.computeIfAbsent(value.getUniqueId(), ignored -> new OfflineView(value));
+        return value instanceof org.bukkit.entity.Player p
+                ? player(p)
+                : value == null
+                ? null
+                : new OfflineView(value);
     }
 
     public static LivingEntity living(final org.bukkit.entity.LivingEntity value) {
         if (value instanceof org.bukkit.entity.ArmorStand armorStand) return armorStand(armorStand);
-        return value instanceof org.bukkit.entity.Player p ? player(p) : value == null ? null : (LivingEntity) ENTITIES.computeIfAbsent(value.getUniqueId(), ignored -> new LivingView(value));
+        return value instanceof org.bukkit.entity.Player p
+                ? player(p)
+                : value == null
+                ? null
+                : new LivingView(value);
     }
 
     public static Entity entity(final org.bukkit.entity.Entity value) {
@@ -283,32 +287,31 @@ public final class BukkitMC {
         if (value instanceof org.bukkit.entity.ItemDisplay display) return new ItemDisplayView(display);
         if (value instanceof org.bukkit.entity.Display display) return new DisplayView(display);
         if (value instanceof org.bukkit.entity.Item item) return itemEntity(item);
-        return value == null ? null : ENTITIES.computeIfAbsent(value.getUniqueId(), ignored -> new EntityView(value));
+        return new EntityView(value);
     }
 
     public static FallingBlock falling(final org.bukkit.entity.FallingBlock value) {
-        return value == null ? null : (FallingBlock) ENTITIES.computeIfAbsent(value.getUniqueId(), ignored -> new FallingView(value));
+        return new FallingView(value);
     }
 
     private static Arrow arrow(final org.bukkit.entity.Arrow value) {
-        return value == null ? null : (Arrow) ENTITIES.computeIfAbsent(value.getUniqueId(), ignored -> new ArrowView(value));
+        return new ArrowView(value);
     }
 
     private static ShulkerBullet shulkerBullet(final org.bukkit.entity.ShulkerBullet value) {
-        return value == null ? null : (ShulkerBullet) ENTITIES.computeIfAbsent(value.getUniqueId(), ignored -> new ShulkerBulletView(value));
+        return new ShulkerBulletView(value);
     }
 
     private static Snowball snowball(final org.bukkit.entity.Snowball value) {
-        return value == null ? null : (Snowball) ENTITIES.computeIfAbsent(
-                value.getUniqueId(), ignored -> new SnowballView(value));
+        return new SnowballView(value);
     }
 
     private static Item itemEntity(final org.bukkit.entity.Item value) {
-        return value == null ? null : (Item) ENTITIES.computeIfAbsent(value.getUniqueId(), ignored -> new DroppedItemView(value));
+        return new DroppedItemView(value);
     }
 
     private static ArmorStand armorStand(final org.bukkit.entity.ArmorStand value) {
-        return value == null ? null : (ArmorStand) ENTITIES.computeIfAbsent(value.getUniqueId(), ignored -> new ArmorStandView(value));
+        return new ArmorStandView(value);
     }
 
     public static ItemStack item(final org.bukkit.inventory.ItemStack value) {

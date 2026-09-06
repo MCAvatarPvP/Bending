@@ -1290,7 +1290,7 @@ public class ConfigManager {
             addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Animation.OrientationSmoothing", 0.30);
             addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Animation.MaximumBankDegrees", 35.0);
             addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Position.HeightOffset", 0.82);
-            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Position.ForwardOffset", 0.08);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Position.ForwardOffset", 0.28);
             addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Visuals.WingtipSpan", 1.45);
             addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Visuals.TrailLength", 0.65);
             addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Visuals.GustAirspeed", 0.9);

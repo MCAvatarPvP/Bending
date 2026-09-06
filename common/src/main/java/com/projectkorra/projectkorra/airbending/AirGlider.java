@@ -210,7 +210,7 @@ public class AirGlider extends AirAbility {
         this.maximumBankRadians = (float) Math.toRadians(Math.max(0, Math.min(75,
                 getConfig().getDouble(path + "Model.Animation.MaximumBankDegrees", 35.0))));
         this.modelHeightOffset = getConfig().getDouble(path + "Model.Position.HeightOffset", 0.82);
-        this.modelForwardOffset = getConfig().getDouble(path + "Model.Position.ForwardOffset", 0.08);
+        this.modelForwardOffset = getConfig().getDouble(path + "Model.Position.ForwardOffset", 0.28);
         this.visualWingtipSpan = Math.max(0.25,
                 getConfig().getDouble(path + "Visuals.WingtipSpan", 1.45));
         this.visualTrailLength = Math.max(0.0,
