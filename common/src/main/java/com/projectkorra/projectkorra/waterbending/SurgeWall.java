@@ -253,7 +253,7 @@ public class SurgeWall extends WaterAbility {
         tempBlocks.clear();
 
         for (final Block block : WALL_BLOCKS.keySet()) {
-            if (WALL_BLOCKS.get(block) == this.player) {
+            if (this.player.equals(WALL_BLOCKS.get(block))) {
                 tempBlocks.put(block, new TempBlock(block, getIceData(), this).setCanSuffocate(false));
                 playIcebendingSound(block.getLocation());
             }
@@ -267,7 +267,7 @@ public class SurgeWall extends WaterAbility {
         tempBlocks.clear();
 
         for (final Block block : WALL_BLOCKS.keySet()) {
-            if (WALL_BLOCKS.get(block) == this.player) {
+            if (this.player.equals(WALL_BLOCKS.get(block))) {
                 tempBlocks.put(block, new TempBlock(block, Material.WATER.createBlockData(), this));
             }
         }
@@ -413,7 +413,7 @@ public class SurgeWall extends WaterAbility {
                 }
 
                 for (final Block blocki : WALL_BLOCKS.keySet()) {
-                    if (WALL_BLOCKS.get(blocki) == this.player && !blocks.contains(blocki)) {
+                    if (this.player.equals(WALL_BLOCKS.get(blocki)) && !blocks.contains(blocki)) {
                         this.finalRemoveWater(blocki);
                     }
 
@@ -492,7 +492,7 @@ public class SurgeWall extends WaterAbility {
         this.finalRemoveWater(this.sourceBlock);
 
         for (final Block block : WALL_BLOCKS.keySet()) {
-            if (WALL_BLOCKS.get(block) == this.player) {
+            if (this.player.equals(WALL_BLOCKS.get(block))) {
                 this.finalRemoveWater(block);
             }
         }

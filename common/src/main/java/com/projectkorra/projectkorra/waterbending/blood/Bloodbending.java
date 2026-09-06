@@ -306,7 +306,7 @@ public class Bloodbending extends BloodAbility {
             }
 
             for (final Entity entity : TARGETED_ENTITIES.keySet()) {
-                if (!entities.contains(entity) && TARGETED_ENTITIES.get(entity) == this.player) {
+                if (!entities.contains(entity) && this.player.equals(TARGETED_ENTITIES.get(entity))) {
                     TARGETED_ENTITIES.remove(entity);
                 }
             }
@@ -335,7 +335,7 @@ public class Bloodbending extends BloodAbility {
                 return;
             }
 
-            if (TARGETED_ENTITIES.get(this.target) != this.player) {
+            if (!this.player.equals(TARGETED_ENTITIES.get(this.target))) {
                 this.remove();
                 return;
             }
@@ -378,7 +378,7 @@ public class Bloodbending extends BloodAbility {
             }
         }
         for (final Entity e : TARGETED_ENTITIES.keySet()) {
-            if (TARGETED_ENTITIES.get(e) == this.player) {
+            if (this.player.equals(TARGETED_ENTITIES.get(e))) {
                 TARGETED_ENTITIES.remove(e);
             }
         }

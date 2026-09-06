@@ -233,7 +233,7 @@ public class IceSpikePillar extends IceAbility {
         }
 
         for (final Entity en : GeneralMethods.getEntitiesAroundPoint(this.location, 1.4)) {
-            if (en instanceof LivingEntity && en != this.player && !this.damaged.contains((en))) {
+            if (en instanceof LivingEntity && !en.equals(this.player) && !this.damaged.contains((en))) {
                 final LivingEntity le = (LivingEntity) en;
                 this.affect(le);
             }

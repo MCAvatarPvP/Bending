@@ -68,6 +68,7 @@ import java.util.function.Predicate;
 
 /**
  * Converts Bukkit values at the platform boundary into common API values.
+ * Block, entity, and offline-player views are created on demand; compare them by value.
  */
 public final class BukkitMC {
     private static final Scoreboard EMPTY_SCOREBOARD =
@@ -252,11 +253,11 @@ public final class BukkitMC {
     }
 
     public static Block block(final org.bukkit.block.Block value) {
-        return new BlockView(value);
+        return value == null ? null : new BlockView(value);
     }
 
     public static Player player(final org.bukkit.entity.Player value) {
-        return new PlayerView(value);
+        return value == null ? null : new PlayerView(value);
     }
 
     public static OfflinePlayer offline(final org.bukkit.OfflinePlayer value) {
@@ -287,31 +288,31 @@ public final class BukkitMC {
         if (value instanceof org.bukkit.entity.ItemDisplay display) return new ItemDisplayView(display);
         if (value instanceof org.bukkit.entity.Display display) return new DisplayView(display);
         if (value instanceof org.bukkit.entity.Item item) return itemEntity(item);
-        return new EntityView(value);
+        return value == null ? null : new EntityView(value);
     }
 
     public static FallingBlock falling(final org.bukkit.entity.FallingBlock value) {
-        return new FallingView(value);
+        return value == null ? null : new FallingView(value);
     }
 
     private static Arrow arrow(final org.bukkit.entity.Arrow value) {
-        return new ArrowView(value);
+        return value == null ? null : new ArrowView(value);
     }
 
     private static ShulkerBullet shulkerBullet(final org.bukkit.entity.ShulkerBullet value) {
-        return new ShulkerBulletView(value);
+        return value == null ? null : new ShulkerBulletView(value);
     }
 
     private static Snowball snowball(final org.bukkit.entity.Snowball value) {
-        return new SnowballView(value);
+        return value == null ? null : new SnowballView(value);
     }
 
     private static Item itemEntity(final org.bukkit.entity.Item value) {
-        return new DroppedItemView(value);
+        return value == null ? null : new DroppedItemView(value);
     }
 
     private static ArmorStand armorStand(final org.bukkit.entity.ArmorStand value) {
-        return new ArmorStandView(value);
+        return value == null ? null : new ArmorStandView(value);
     }
 
     public static ItemStack item(final org.bukkit.inventory.ItemStack value) {
@@ -657,12 +658,6 @@ public final class BukkitMC {
         if (value == null) return null;
         if (value.handle() instanceof org.bukkit.Location location) return location;
         return new org.bukkit.Location(value.getWorld() == null ? null : (org.bukkit.World) value.getWorld().handle(), value.getX(), value.getY(), value.getZ(), value.getYaw(), value.getPitch());
-    }
-
-    private record BlockKey(UUID world, int x, int y, int z) {
-        private static BlockKey of(final org.bukkit.block.Block block) {
-            return new BlockKey(block.getWorld().getUID(), block.getX(), block.getY(), block.getZ());
-        }
     }
 
     private static final class LocationView extends Location {
@@ -3395,6 +3390,17 @@ public final class BukkitMC {
         }
 
         @Override
+        public boolean equals(Object other) {
+            return other instanceof Entity entity
+                    && value.getUniqueId().equals(entity.getUniqueId());
+        }
+
+        @Override
+        public int hashCode() {
+            return value.getUniqueId().hashCode();
+        }
+
+        @Override
         public Location getLocation() {
             return location(value.getLocation());
         }
@@ -3631,6 +3637,17 @@ public final class BukkitMC {
             return new BoundingBox(new Vector(box.getMinX(), box.getMinY(), box.getMinZ()),
                     new Vector(box.getMaxX(), box.getMaxY(), box.getMaxZ()));
         }
+
+        @Override
+        public boolean equals(Object other) {
+            return other instanceof Entity entity
+                    && value.getUniqueId().equals(entity.getUniqueId());
+        }
+
+        @Override
+        public int hashCode() {
+            return value.getUniqueId().hashCode();
+        }
     }
 
     private static final class ShulkerBulletView extends ShulkerBullet {
@@ -3784,6 +3801,17 @@ public final class BukkitMC {
             return new BoundingBox(
                     new Vector(b.getMinX(), b.getMinY(), b.getMinZ()),
                     new Vector(b.getMaxX(), b.getMaxY(), b.getMaxZ()));
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            return other instanceof Entity entity
+                    && value.getUniqueId().equals(entity.getUniqueId());
+        }
+
+        @Override
+        public int hashCode() {
+            return value.getUniqueId().hashCode();
         }
     }
 
@@ -3949,6 +3977,17 @@ public final class BukkitMC {
             return new BoundingBox(
                     new Vector(b.getMinX(), b.getMinY(), b.getMinZ()),
                     new Vector(b.getMaxX(), b.getMaxY(), b.getMaxZ()));
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            return other instanceof Entity entity
+                    && value.getUniqueId().equals(entity.getUniqueId());
+        }
+
+        @Override
+        public int hashCode() {
+            return value.getUniqueId().hashCode();
         }
     }
 

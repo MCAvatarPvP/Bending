@@ -37,6 +37,7 @@ dependencies {
     compileOnly 'org.betonquest.betonquest:api:3.1.0-SNAPSHOT'
     compileOnly files('../libs/NeptuneAPI-2.3.jar', '../libs/strikepractice-api.jar')
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testImplementation "io.papermc.paper:paper-api:${paper_api_version}"
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
 }
 

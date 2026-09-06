@@ -66,7 +66,7 @@ public class RemoveCommand extends PKCommand {
                             if (bPlayer.hasTempElements()) {
                                 ChatUtil.sendBrandingMessage(sender, ChatColor.RED + this.noElementsTargetTemps.replace("{target}", player.getName()));
                             } else { //Tell them they have no elements
-                                if (player != sender)
+                                if (!player.equals(sender))
                                     ChatUtil.sendBrandingMessage(sender, ChatColor.RED + this.noElementsTarget.replace("{target}", player.getName()));
                                 else ChatUtil.sendBrandingMessage(sender, ChatColor.RED + this.noElements);
                             }
@@ -201,7 +201,7 @@ public class RemoveCommand extends PKCommand {
                     bPlayer.saveElements();
                     bPlayer.saveSubElements();
                 }
-                if (player != sender)
+                if (!player.equals(sender))
                     ChatUtil.sendBrandingMessage(sender, element.getColor() + this.succesfullyRemovedElementTargetConfirm.replace("{element}", element.toString() + element.getType().getBending()).replace("{target}", ChatColor.DARK_AQUA + player.getName() + element.getColor()));
 
                 if (online) {

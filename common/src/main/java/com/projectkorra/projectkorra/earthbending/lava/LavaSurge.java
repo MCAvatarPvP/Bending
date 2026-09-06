@@ -237,7 +237,7 @@ public class LavaSurge extends LavaAbility {
                 fbs.setDropItem(false);
 
                 for (final Block b : this.fracture) {
-                    if (this.random.nextBoolean() && b != this.sourceBlock) {
+                    if (this.random.nextBoolean() && !b.equals(this.sourceBlock)) {
                         final FallingBlock fb = GeneralMethods.spawnFallingBlock(b.getLocation().add(new Vector(0, 1, 0)), Material.MAGMA_BLOCK, Material.MAGMA_BLOCK.createBlockData());
                         ALL_FALLING_BLOCKS.add(fb);
                         this.fallingBlocks.add(fb);

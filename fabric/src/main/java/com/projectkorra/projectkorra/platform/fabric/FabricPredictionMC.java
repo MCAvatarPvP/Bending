@@ -536,7 +536,7 @@ public final class FabricPredictionMC {
         @Override public void removeMetadata(String key, Object owner) { Map<String, List<MetadataValue>> values = METADATA.get(getUniqueId()); if (values != null) values.remove(key); }
         @Override public Object handle() { return value; }
         @Override public Object nativeHandle() { return value; }
-        @Override public boolean equals(Object other) { return other instanceof ClientEntityView view && value.getUuid().equals(view.value.getUuid()); }
+        @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
         @Override public int hashCode() { return value.getUuid().hashCode(); }
     }
 
@@ -588,7 +588,7 @@ public final class FabricPredictionMC {
         @Override public void removeMetadata(String key, Object owner) { Map<String, List<MetadataValue>> values = METADATA.get(getUniqueId()); if (values != null) values.remove(key); }
         @Override public Object handle() { return value; }
         @Override public Object nativeHandle() { return value; }
-        @Override public boolean equals(Object other) { return other instanceof ClientLivingView view && value.getUuid().equals(view.value.getUuid()); }
+        @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
         @Override public int hashCode() { return value.getUuid().hashCode(); }
     }
 
@@ -801,7 +801,7 @@ public final class FabricPredictionMC {
         @Override public void removeMetadata(String key, Object owner) { Map<String, List<MetadataValue>> values = METADATA.get(getUniqueId()); if (values != null) values.remove(key); }
         @Override public Object handle() { return value; }
         @Override public Object nativeHandle() { return value; }
-        @Override public boolean equals(Object other) { return other instanceof ClientPlayerView view && value.getUuid().equals(view.value.getUuid()); }
+        @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
         @Override public int hashCode() { return value.getUuid().hashCode(); }
         private void noteAbilityState() {
             ExactPredictionRuntime.notePredictedAbilityState(value.getAbilities().invulnerable, value.getAbilities().flying,
@@ -855,6 +855,8 @@ public final class FabricPredictionMC {
         private final FallingBlockEntity value;
         private ClientFallingBlock(FallingBlockEntity value) { this.value = value; }
         @Override public UUID getUniqueId() { return value.getUuid(); }
+        @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
+        @Override public int hashCode() { return value.getUuid().hashCode(); }
         @Override public Location getLocation() { return location((ClientWorld) value.getEntityWorld(), value.getEntityPos(), value.getYaw(), value.getPitch()); }
         @Override public World getWorld() { return world((ClientWorld) value.getEntityWorld()); }
         @Override public Vector getVelocity() { return commonVector(value.getVelocity()); }
@@ -877,6 +879,8 @@ public final class FabricPredictionMC {
         private final ItemEntity value;
         private ClientItem(ItemEntity value) { this.value = value; }
         @Override public UUID getUniqueId() { return value.getUuid(); }
+        @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
+        @Override public int hashCode() { return value.getUuid().hashCode(); }
         @Override public Location getLocation() { return location((ClientWorld) value.getEntityWorld(), value.getEntityPos(), value.getYaw(), value.getPitch()); }
         @Override public World getWorld() { return world((ClientWorld) value.getEntityWorld()); }
         @Override public Vector getVelocity() { return commonVector(value.getVelocity()); }
@@ -897,6 +901,8 @@ public final class FabricPredictionMC {
         private final ArmorStandEntity value;
         private ClientArmorStand(ArmorStandEntity value) { this.value = value; }
         @Override public UUID getUniqueId() { return value.getUuid(); }
+        @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
+        @Override public int hashCode() { return value.getUuid().hashCode(); }
         @Override public Location getLocation() { return location((ClientWorld) value.getEntityWorld(), value.getEntityPos(), value.getYaw(), value.getPitch()); }
         @Override public Location getEyeLocation() { return location((ClientWorld) value.getEntityWorld(), value.getEyePos(), value.getYaw(), value.getPitch()); }
         @Override public World getWorld() { return world((ClientWorld) value.getEntityWorld()); }
@@ -922,6 +928,8 @@ public final class FabricPredictionMC {
         private final DisplayEntity.BlockDisplayEntity value;
         private ClientBlockDisplay(DisplayEntity.BlockDisplayEntity value) { this.value = value; }
         @Override public UUID getUniqueId() { return value.getUuid(); }
+        @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
+        @Override public int hashCode() { return value.getUuid().hashCode(); }
         @Override public Location getLocation() { return location((ClientWorld) value.getEntityWorld(), value.getEntityPos(), value.getYaw(), value.getPitch()); }
         @Override public World getWorld() { return world((ClientWorld) value.getEntityWorld()); }
         @Override public Vector getVelocity() { return commonVector(value.getVelocity()); }
@@ -976,6 +984,8 @@ public final class FabricPredictionMC {
         }
 
         @Override public UUID getUniqueId() { return value.getUuid(); }
+        @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
+        @Override public int hashCode() { return value.getUuid().hashCode(); }
         @Override public Location getLocation() { return location((ClientWorld) value.getEntityWorld(), value.getEntityPos(), value.getYaw(), value.getPitch()); }
         @Override public World getWorld() { return world((ClientWorld) value.getEntityWorld()); }
         @Override public Vector getVelocity() { return commonVector(value.getVelocity()); }
@@ -1036,6 +1046,8 @@ public final class FabricPredictionMC {
         private final ShulkerBulletEntity value;
         private ClientShulkerBullet(ShulkerBulletEntity value) { this.value = value; }
         @Override public UUID getUniqueId() { return value.getUuid(); }
+        @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
+        @Override public int hashCode() { return value.getUuid().hashCode(); }
         @Override public Location getLocation() { return entityLocation(value); }
         @Override public World getWorld() { return world((ClientWorld) value.getEntityWorld()); }
         @Override public Vector getVelocity() { return commonVector(value.getVelocity()); }
@@ -1063,6 +1075,8 @@ public final class FabricPredictionMC {
         private final SmallFireballEntity value;
         private ClientFireball(SmallFireballEntity value) { this.value = value; }
         @Override public UUID getUniqueId() { return value.getUuid(); }
+        @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
+        @Override public int hashCode() { return value.getUuid().hashCode(); }
         @Override public Location getLocation() { return entityLocation(value); }
         @Override public World getWorld() { return world((ClientWorld) value.getEntityWorld()); }
         @Override public Vector getVelocity() { return commonVector(value.getVelocity()); }
@@ -1091,6 +1105,8 @@ public final class FabricPredictionMC {
         private final SnowballEntity value;
         private ClientSnowball(SnowballEntity value) { this.value = value; }
         @Override public UUID getUniqueId() { return value.getUuid(); }
+        @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
+        @Override public int hashCode() { return value.getUuid().hashCode(); }
         @Override public Location getLocation() { return entityLocation(value); }
         @Override public World getWorld() { return world((ClientWorld) value.getEntityWorld()); }
         @Override public Vector getVelocity() { return commonVector(value.getVelocity()); }
@@ -1116,6 +1132,8 @@ public final class FabricPredictionMC {
         private final AreaEffectCloudEntity value;
         private ClientAreaEffectCloud(AreaEffectCloudEntity value) { this.value = value; }
         @Override public UUID getUniqueId() { return value.getUuid(); }
+        @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
+        @Override public int hashCode() { return value.getUuid().hashCode(); }
         @Override public Location getLocation() { return entityLocation(value); }
         @Override public World getWorld() { return world((ClientWorld) value.getEntityWorld()); }
         @Override public Vector getVelocity() { return commonVector(value.getVelocity()); }
@@ -1158,6 +1176,8 @@ public final class FabricPredictionMC {
         private final ArrowEntity value;
         private ClientArrow(ArrowEntity value) { this.value = value; }
         @Override public UUID getUniqueId() { return value.getUuid(); }
+        @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
+        @Override public int hashCode() { return value.getUuid().hashCode(); }
         @Override public Location getLocation() { return entityLocation(value); }
         @Override public World getWorld() { return world((ClientWorld) value.getEntityWorld()); }
         @Override public Vector getVelocity() { return commonVector(value.getVelocity()); }
@@ -1208,6 +1228,8 @@ public final class FabricPredictionMC {
                     && PredictedContactSync.mark(AbilityExecutionContext.current(), this);
         }
         @Override public UUID getUniqueId() { return value.getUuid(); }
+        @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
+        @Override public int hashCode() { return value.getUuid().hashCode(); }
         @Override public Location getLocation() { return entityLocation(value); }
         @Override public Location getEyeLocation() { return location((ClientWorld) value.getEntityWorld(), value.getEyePos(), value.getYaw(), value.getPitch()); }
         @Override public World getWorld() { return world((ClientWorld) value.getEntityWorld()); }

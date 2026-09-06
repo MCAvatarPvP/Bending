@@ -198,7 +198,7 @@ public class FireComet extends FireAbility implements AddonAbility {
         }
 
         for (Entity e : GeneralMethods.getEntitiesAroundPoint(location, blastRadius)) {
-            if (e instanceof Player && e == player) {
+            if (e instanceof Player && e.equals(player)) {
                 continue;
             }
 

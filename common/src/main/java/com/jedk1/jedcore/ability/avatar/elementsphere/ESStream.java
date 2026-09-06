@@ -125,7 +125,7 @@ public class ESStream extends AvatarAbility implements AddonAbility {
         }
 
         for (Entity e : GeneralMethods.getEntitiesAroundPoint(stream, 1.5)) {
-            if (e instanceof Player && e == player) {
+            if (e instanceof Player && e.equals(player)) {
                 continue;
             }
             GeneralMethods.setVelocity(this, e, dir.normalize().multiply(knockback));
@@ -150,7 +150,7 @@ public class ESStream extends AvatarAbility implements AddonAbility {
                 new RegenTempBlock(loc.getBlock(), Material.AIR, Material.AIR.createBlockData(), regen, false);
             }
             for (Entity e : GeneralMethods.getEntitiesAroundPoint(stream, radius)) {
-                if (e instanceof Player && e == player) {
+                if (e instanceof Player && e.equals(player)) {
                     continue;
                 }
                 if (RegionProtection.isRegionProtected(this, e.getLocation()) || ((e instanceof Player) && Commands.invincible.contains(((Player) e).getName()))) {

@@ -209,7 +209,7 @@ public class EarthSmash extends EarthAbility {
             this.start();
         } else if (type == ClickType.LEFT_CLICK && player.isSneaking()) {
             for (final EarthSmash smash : getAbilities(EarthSmash.class)) {
-                if (smash.state == State.GRABBED && smash.player == player) {
+                if (smash.state == State.GRABBED && smash.player.equals(player)) {
                     smash.transitionState(State.SHOT);
                     smash.destination = player.getEyeLocation().clone().add(player.getEyeLocation().getDirection().normalize().multiply(smash.shootRange));
                     playEarthbendingSound(smash.location);

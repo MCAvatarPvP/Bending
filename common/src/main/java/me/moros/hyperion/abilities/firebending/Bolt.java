@@ -78,7 +78,7 @@ public class Bolt extends LightningAbility implements AddonAbility {
             if (!boltInstance.player.getWorld().equals(location.getWorld())) {
                 continue;
             }
-            if (boltInstance.player.getLocation().distanceSquared(location) < 4 * 4 && boltInstance.getPlayer() != source) {
+            if (boltInstance.player.getLocation().distanceSquared(location) < 4 * 4 && !boltInstance.getPlayer().equals(source)) {
                 boltInstance.charged = true;
                 return true;
             }

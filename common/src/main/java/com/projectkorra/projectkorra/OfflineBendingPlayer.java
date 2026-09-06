@@ -133,7 +133,8 @@ public class OfflineBendingPlayer {
             oBendingPlayer = null; // force reloading from the database for fresh data on new logins
         }
         if (oBendingPlayer instanceof BendingPlayer bendingPlayer && offlinePlayer.isOnline()
-                && bendingPlayer.getPlayer() != offlinePlayer) {
+                && (bendingPlayer.getPlayer() == null
+                    || bendingPlayer.getPlayer().handle() != offlinePlayer.handle())) {
             oBendingPlayer = convertToOffline(bendingPlayer);
         }
         if (oBendingPlayer != null) {
@@ -568,8 +569,9 @@ public class OfflineBendingPlayer {
 
     protected static OfflineBendingPlayer convertToOffline(@NotNull BendingPlayer bendingPlayer) {
         Player currentPlayer = Platform.players().getPlayer(bendingPlayer.getUUID());
+        // Wrappers are transient; the native handle identifies the login session.
         if (bendingPlayer.getPlayer() != null && bendingPlayer.getPlayer().isOnline()
-                && bendingPlayer.getPlayer() == currentPlayer) {
+                && currentPlayer != null && bendingPlayer.getPlayer().handle() == currentPlayer.handle()) {
             return bendingPlayer;
         }
 

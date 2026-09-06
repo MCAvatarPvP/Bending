@@ -249,7 +249,7 @@ public class LavaSurgeWall extends LavaAbility {
                 }
 
                 for (final Block blocki : WALL_BLOCKS.keySet()) {
-                    if (WALL_BLOCKS.get(blocki) == this.player && !blocks.contains(blocki)) {
+                    if (this.player.equals(WALL_BLOCKS.get(blocki)) && !blocks.contains(blocki)) {
                         finalRemoveLava(blocki);
                     }
                 }
@@ -301,7 +301,7 @@ public class LavaSurgeWall extends LavaAbility {
     private void breakBlock() {
         finalRemoveLava(this.sourceBlock);
         for (final Block block : WALL_BLOCKS.keySet()) {
-            if (WALL_BLOCKS.get(block) == this.player) {
+            if (this.player.equals(WALL_BLOCKS.get(block))) {
                 finalRemoveLava(block);
             }
         }

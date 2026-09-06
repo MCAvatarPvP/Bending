@@ -1026,7 +1026,7 @@ public class PKListener implements Listener {
 
                 final Flight flight = Manager.getManager(FlightHandler.class).getInstance(player);
                 if (flight != null) {
-                    if (flight.getPlayer() == flight.getSource()) {
+                    if (flight.getPlayer().equals(flight.getSource())) {
                         event.setCancelled(true);
                     }
                 }

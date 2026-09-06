@@ -302,7 +302,7 @@ public class MagmaBlast extends LavaAbility implements AddonAbility, ComboAbilit
 
             for (Entity e : GeneralMethods.getEntitiesAroundPoint(tfb.getLocation(), this.explosionRadius)) {
                 if (!(e instanceof LivingEntity)) continue;
-                if (e == this.player) continue;
+                if (e.equals(this.player)) continue;
 
                 if (blast(tfb, true)) {
                     didExplode = true;

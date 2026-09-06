@@ -128,7 +128,7 @@ public class MetalClips extends MetalAbility {
             return false;
         }
         for (final MetalClips metalclips : CoreAbility.getAbilities(MetalClips.class)) {
-            if (metalclips.targetEntity == entity) {
+            if (entity.equals(metalclips.targetEntity)) {
                 metalclips.remove();
                 return true;
             }
@@ -431,7 +431,7 @@ public class MetalClips extends MetalAbility {
                             this.targetEntity = (LivingEntity) e;
                             TARGET_TO_ABILITY.put(this.targetEntity, this);
                             this.formArmor();
-                        } else if (this.targetEntity == e) {
+                        } else if (this.targetEntity.equals(e)) {
                             this.formArmor();
                         } else {
                             if (TARGET_TO_ABILITY.get(this.targetEntity) == this) {

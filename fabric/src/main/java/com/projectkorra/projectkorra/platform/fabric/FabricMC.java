@@ -1850,7 +1850,7 @@ public final class FabricMC {
             return value;
         }
 
-        @Override public boolean equals(Object other) { return other instanceof EntityView view && value.getUuid().equals(view.value.getUuid()); }
+        @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
         @Override public int hashCode() { return value.getUuid().hashCode(); }
     }
 
@@ -1963,7 +1963,7 @@ public final class FabricMC {
             return value;
         }
 
-        @Override public boolean equals(Object other) { return other instanceof LivingView view && value.getUuid().equals(view.value.getUuid()); }
+        @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
         @Override public int hashCode() { return value.getUuid().hashCode(); }
     }
 
@@ -2060,7 +2060,7 @@ public final class FabricMC {
         @Override public ItemStack getItemStack() { return itemStack(value.getStack()); }
         @Override public void setItemStack(ItemStack item) { value.setStack(itemStack(item)); }
         @Override public void setPickupDelay(int ticks) { value.setPickupDelay(ticks); }
-        @Override public boolean equals(Object other) { return other instanceof DroppedItemView view && value.getUuid().equals(view.value.getUuid()); }
+        @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
         @Override public int hashCode() { return value.getUuid().hashCode(); }
     }
 
@@ -2105,7 +2105,7 @@ public final class FabricMC {
         @Override public List<MetadataValue> getMetadata(String key) { return FabricMC.getMetadata(value.getUuid(), key); }
         @Override public void removeMetadata(String key, Object owner) { FabricMC.removeMetadata(value.getUuid(), key); }
         @Override public Object handle() { return value; }
-        @Override public boolean equals(Object other) { return other instanceof FallingBlockView view && value.getUuid().equals(view.value.getUuid()); }
+        @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
         @Override public int hashCode() { return value.getUuid().hashCode(); }
     }
 
@@ -2166,7 +2166,7 @@ public final class FabricMC {
         @Override public void setTeleportDuration(int duration) { value.setTeleportDuration(duration); }
         @Override public void setViewRange(float range) { value.setViewRange(range); }
         @Override public Object handle() { return value; }
-        @Override public boolean equals(Object other) { return other instanceof DisplayView view && value.getUuid().equals(view.value.getUuid()); }
+        @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
         @Override public int hashCode() { return value.getUuid().hashCode(); }
     }
 
@@ -2205,7 +2205,7 @@ public final class FabricMC {
         @Override public void setTeleportDuration(int duration) { value.setTeleportDuration(duration); }
         @Override public void setViewRange(float range) { value.setViewRange(range); }
         @Override public Object handle() { return value; }
-        @Override public boolean equals(Object other) { return other instanceof BlockDisplayView view && value.getUuid().equals(view.value.getUuid()); }
+        @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
         @Override public int hashCode() { return value.getUuid().hashCode(); }
     }
 
@@ -2255,7 +2255,7 @@ public final class FabricMC {
         }
         @Override public Object handle() { return value; }
         @Override public boolean equals(Object other) {
-            return other instanceof ItemDisplayView view && value.getUuid().equals(view.value.getUuid());
+            return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId());
         }
         @Override public int hashCode() { return value.getUuid().hashCode(); }
     }
@@ -2607,7 +2607,7 @@ public final class FabricMC {
             return value;
         }
 
-        @Override public boolean equals(Object other) { return other instanceof PlayerView view && value.getUuid().equals(view.value.getUuid()); }
+        @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
         @Override public int hashCode() { return value.getUuid().hashCode(); }
     }
 
@@ -2754,6 +2754,8 @@ public final class FabricMC {
         }
 
         @Override public UUID getUniqueId() { return value.getUuid(); }
+        @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
+        @Override public int hashCode() { return value.getUuid().hashCode(); }
         @Override public Location getLocation() { return location((ServerWorld) value.getEntityWorld(), value.getEntityPos(), value.getYaw(), value.getPitch()); }
         @Override public World getWorld() { return world((ServerWorld) value.getEntityWorld()); }
         @Override public Vector getVelocity() { return vector(value.getVelocity()); }
@@ -2809,6 +2811,8 @@ public final class FabricMC {
         }
 
         @Override public UUID getUniqueId() { return value.getUuid(); }
+        @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
+        @Override public int hashCode() { return value.getUuid().hashCode(); }
         @Override public Location getLocation() { return location((ServerWorld) value.getEntityWorld(), value.getEntityPos(), value.getYaw(), value.getPitch()); }
         @Override public World getWorld() { return world((ServerWorld) value.getEntityWorld()); }
         @Override public Vector getVelocity() { return vector(value.getVelocity()); }
@@ -2856,6 +2860,8 @@ public final class FabricMC {
         }
 
         @Override public UUID getUniqueId() { return value.getUuid(); }
+        @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
+        @Override public int hashCode() { return value.getUuid().hashCode(); }
         @Override public Location getLocation() { return location((ServerWorld) value.getEntityWorld(), value.getEntityPos(), value.getYaw(), value.getPitch()); }
         @Override public World getWorld() { return world((ServerWorld) value.getEntityWorld()); }
         @Override public Vector getVelocity() { return vector(value.getVelocity()); }

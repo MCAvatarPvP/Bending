@@ -1044,7 +1044,7 @@ public abstract class CoreAbility implements Ability {
      * @param target The player who now controls the ability
      */
     public void setPlayer(final Player target) {
-        if (target == this.player) {
+        if (Objects.equals(target, this.player)) {
             return;
         }
 

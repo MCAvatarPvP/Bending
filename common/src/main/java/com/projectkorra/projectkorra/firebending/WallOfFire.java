@@ -176,7 +176,7 @@ public class WallOfFire extends FireAbility implements EntityHitboxProvider {
         final Set<UUID> observed = new HashSet<>();
 
         for (final Entity entity : entities) {
-            if (entity == this.player) continue;
+            if (entity.equals(this.player)) continue;
             if (GeneralMethods.isRegionProtectedFromBuild(this, entity.getLocation())) continue;
 
             final BoundingBox curBB = entity.getBoundingBox();
