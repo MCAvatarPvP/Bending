@@ -77,15 +77,18 @@ public class EarthShard extends EarthAbility implements AddonAbility, EntityHitb
 
         if (hasAbility(player, EarthShard.class)) {
             for (EarthShard es : EarthShard.getAbilities(player, EarthShard.class)) {
-                if (es.isThrown && System.currentTimeMillis() - es.getStartTime() >= 20000) {
-                    // Remove the old instance because it got into a broken state.
-                    // This shouldn't affect normal gameplay because the cooldown is long enough that the
-                    // shards should have already hit their target.
-                    es.remove();
-                } else {
-                    es.select();
-                    return;
+                if (es.isThrown) {
+                    if (System.currentTimeMillis() - es.getStartTime() >= 20000) {
+                        // Retain the existing cleanup for stale projectiles.
+                        es.remove();
+                    }
+                    // A projectile can outlive the cooldown, especially on the
+                    // predicting client. Its progress() skips preparation, so
+                    // it must never receive another rising shard.
+                    continue;
                 }
+                es.select();
+                return;
             }
         }
 
@@ -168,7 +171,7 @@ public class EarthShard extends EarthAbility implements AddonAbility, EntityHitb
     }
 
     public void raiseEarthBlock(final Block block) {
-        if (block == null) {
+        if (block == null || this.isThrown || this.isRemoved()) {
             return;
         }
 
@@ -359,6 +362,8 @@ public class EarthShard extends EarthAbility implements AddonAbility, EntityHitb
 
             for (final TempFallingBlock tfb :
                     TempFallingBlock.getFromAbility(this)) {
+
+
 
                 final FallingBlock fb = tfb.getFallingBlock();
 

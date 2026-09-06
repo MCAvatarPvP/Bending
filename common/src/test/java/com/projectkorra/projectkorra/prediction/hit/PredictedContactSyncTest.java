@@ -30,6 +30,8 @@ class PredictedContactSyncTest {
         }
 
         @Override
+        // Test ownership is attached to one exact fake entity instance.
+        @SuppressWarnings("WrapperReferenceEquality")
         public boolean isLocallyOwned(final Entity target) {
             return locallyOwned.get() == target;
         }

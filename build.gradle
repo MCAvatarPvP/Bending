@@ -22,5 +22,14 @@ subprojects {
             options.encoding = 'UTF-8'
             options.release = 21
         }
+
+        if (project.path != ':reference-checker') {
+            sourceSets.configureEach {
+                dependencies.add(annotationProcessorConfigurationName, project(':reference-checker'))
+            }
+            tasks.withType(JavaCompile).configureEach {
+                options.compilerArgs.add('-Xplugin:WrapperReferenceEquality')
+            }
+        }
     }
 }

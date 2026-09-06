@@ -31,11 +31,15 @@ class TempBlockSyncRayTest {
             }
 
             @Override
+            // FakeWorld returns the same fixture instance for each coordinate.
+            @SuppressWarnings("WrapperReferenceEquality")
             public String authoritativeEffectAbility(final Block block) {
                 return block == projectile ? "WaterManipulation" : "";
             }
 
             @Override
+            // Match the exact fixture selected above, not a platform wrapper.
+            @SuppressWarnings("WrapperReferenceEquality")
             public UUID authoritativeOwnerId(final Block block) {
                 return block == projectile ? owner[0] : null;
             }

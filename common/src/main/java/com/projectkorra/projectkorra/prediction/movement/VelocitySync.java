@@ -68,6 +68,8 @@ public final class VelocitySync {
         }
     }
 
+    // Identity is only a fast path; distinct wrappers are compared by UUID below.
+    @SuppressWarnings("WrapperReferenceEquality")
     public static boolean isPredictedRemoteTarget(final Entity target) {
         final Entity expected = PREDICTED_REMOTE_TARGET.get();
         if (expected == null || target == null) return false;

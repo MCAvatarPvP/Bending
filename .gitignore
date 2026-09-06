@@ -246,6 +246,8 @@ projectkorra.iml
 #################
 
 .gradle/
+# The checker uses a Java package named build; it contains source, not output.
+!/build-tools/reference-checker/src/**/build/
 *.iml
 *.ipr
 *.iws

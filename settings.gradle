@@ -28,3 +28,5 @@ dependencyResolutionManagement {
 
 rootProject.name = 'ProjectKorra'
 include 'common', 'bukkit', 'fabric'
+include 'reference-checker'
+project(':reference-checker').projectDir = file('build-tools/reference-checker')
