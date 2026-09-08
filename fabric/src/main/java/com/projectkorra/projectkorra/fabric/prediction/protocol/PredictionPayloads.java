@@ -15,7 +15,7 @@ import java.util.UUID;
 
 /** Wire contract used by the Fabric client and the Paper/Fabric server endpoints. */
 public final class PredictionPayloads {
-    public static final int PROTOCOL_VERSION = 55;
+    public static final int PROTOCOL_VERSION = 56;
     public static final int MAX_BLOCK_STATE_CHARACTERS = 512;
     public static final int MAX_CONFIG_ENTRIES = 16_384;
     public static final int MAX_PROFILES = 2_048;
@@ -605,7 +605,8 @@ public final class PredictionPayloads {
     }
 
     /** Exact state used for ownership handoff or a sparse authority checkpoint. */
-    public record AbilityTransfer(UUID player, long actionSequence, String abilityType,
+    public record AbilityTransfer(UUID player, long actionSequence,
+                                  long creationActionSequence, long acknowledgedSequence, String abilityType,
                                   String world, boolean ownershipTransfer,
                                   int tempBlockOrdinal,
                                   double x, double y, double z,
@@ -622,7 +623,7 @@ public final class PredictionPayloads {
                 PacketCodec.of(AbilityTransfer::write, AbilityTransfer::new);
 
         private AbilityTransfer(final RegistryByteBuf buf) {
-            this(buf.readUuid(), buf.readVarLong(), buf.readString(256), buf.readString(256),
+            this(buf.readUuid(), buf.readVarLong(), buf.readVarLong(), buf.readVarLong(), buf.readString(256), buf.readString(256),
                     buf.readBoolean(), buf.readVarInt(), buf.readDouble(), buf.readDouble(), buf.readDouble(), buf.readBoolean(),
                     buf.readDouble(), buf.readDouble(), buf.readDouble(), buf.readString(64),
                     buf.readDouble(), buf.readInt(), buf.readInt(), buf.readVarLong(),
@@ -630,7 +631,9 @@ public final class PredictionPayloads {
         }
 
         private void write(final RegistryByteBuf buf) {
-            buf.writeUuid(player); buf.writeVarLong(actionSequence); buf.writeString(abilityType, 256);
+            buf.writeUuid(player); buf.writeVarLong(actionSequence);
+            buf.writeVarLong(creationActionSequence); buf.writeVarLong(acknowledgedSequence);
+            buf.writeString(abilityType, 256);
             buf.writeString(world, 256); buf.writeBoolean(ownershipTransfer);
             buf.writeVarInt(tempBlockOrdinal);
             buf.writeDouble(x); buf.writeDouble(y); buf.writeDouble(z);

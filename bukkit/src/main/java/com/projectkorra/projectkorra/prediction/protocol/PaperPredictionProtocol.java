@@ -16,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Raw Bukkit plugin-message codec matching Fabric's RegistryByteBuf layout.
  */
 public final class PaperPredictionProtocol {
-    public static final int VERSION = 55;
+    public static final int VERSION = 56;
     public static final int MAX_BLOCK_STATE_CHARACTERS = 512;
     private static final int MAX_CACHED_BLOCK_STATES = 4_096;
     private static final Map<String, byte[]> BLOCK_STATE_UTF8 = new ConcurrentHashMap<>();
@@ -312,11 +312,15 @@ public final class PaperPredictionProtocol {
     }
 
     public static byte[] abilityTransfer(final UUID player, final long actionSequence,
+                                  final long creationActionSequence,
+                                  final long acknowledgedSequence,
                                   final String abilityType, final String world,
                                   final boolean ownershipTransfer,
                                   final int tempBlockOrdinal,
                                   final EarthSmash.PredictionTransfer transfer) {
         final Writer out = new Writer().uuid(player).varLong(actionSequence)
+                .varLong(creationActionSequence)
+                .varLong(acknowledgedSequence)
                 .string(abilityType, 256).string(world, 256)
                 .bool(ownershipTransfer).varInt(tempBlockOrdinal)
                 .f64(transfer.x()).f64(transfer.y()).f64(transfer.z())

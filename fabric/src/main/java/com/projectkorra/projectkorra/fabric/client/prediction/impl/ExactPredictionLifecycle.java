@@ -283,6 +283,7 @@ public abstract class ExactPredictionLifecycle extends ExactPredictionReconcilia
                 this.abilityActions.clear();
                 this.abilityCreationActions.clear();
                 this.abilityTransitionActions.clear();
+                this.earthSmashIdentities.clear();
                 this.authoritativelyEstablishedAbilities.clear();
                 this.abilityRemovalHistory.clear();
                 this.nativeActions.clear();

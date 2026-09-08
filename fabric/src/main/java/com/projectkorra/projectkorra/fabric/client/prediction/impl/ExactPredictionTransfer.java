@@ -162,6 +162,8 @@ public abstract class ExactPredictionTransfer extends ExactPredictionRemoval {
             ClientWorld world = MinecraftClient.getInstance().world;
             if (world != null && matchesWorld(world.getRegistryKey().getValue().toString(), transfer.world())) {
                 long localSequence = this.localActionSequence(transfer.actionSequence());
+                final long observationSequence = Math.max(localSequence,
+                        this.localAcknowledgedSequence(transfer.acknowledgedSequence()));
                 Action action = this.actions.get(localSequence);
                 if (action == null) {
                     debug(
@@ -188,19 +190,17 @@ public abstract class ExactPredictionTransfer extends ExactPredictionRemoval {
                             transfer.delayElapsedMillis(),
                             transfer.blocks().stream().map(block -> new PredictionBlock(block.x(), block.y(), block.z(), block.material())).toList()
                     );
-                    EarthSmash selected = null;
-
-                    for (CoreAbility candidate : CoreAbility.getAbilitiesByInstances()) {
-                        if (candidate instanceof EarthSmash smash
-                                && !smash.isRemoved()
-                                && smash.getPlayer() != null
-                                && smash.getPlayer().getUniqueId().equals(transfer.player())
-                                && this.ownsEarthSmashTransition(
-                                candidate, action, localSequence)) {
-                            selected = smash;
-                            break;
-                        }
-                    }
+                    final long localCreation = this.localActionSequence(transfer.creationActionSequence());
+                    final List<EarthSmash> liveSmashes = CoreAbility.getAbilitiesByInstances().stream()
+                            .filter(candidate -> candidate instanceof EarthSmash && !candidate.isRemoved()
+                                    && candidate.getPlayer() != null
+                                    && candidate.getPlayer().getUniqueId().equals(transfer.player()))
+                            .map(candidate -> (EarthSmash) candidate).toList();
+                    // The transition action can refer to a different predicted
+                    // target. Only creation identity may select an existing smash.
+                    EarthSmash selected = this.earthSmashIdentities.find(
+                            transfer.creationActionSequence(), localCreation, liveSmashes,
+                            smash -> this.abilityCreationActions.getOrDefault(smash, 0L));
 
                     boolean recoveredFromCheckpoint = false;
                     boolean restoredFromAuthority = false;
@@ -210,32 +210,42 @@ public abstract class ExactPredictionTransfer extends ExactPredictionRemoval {
                         if (selected == null || selected.isRemoved() || !selected.isStarted()) {
                             return;
                         }
-                        selected.acceptPredictionCheckpoint(state, localSequence);
+                        selected.acceptPredictionCheckpoint(state, observationSequence);
                         restoredFromAuthority = true;
                         recoveredFromCheckpoint = !transfer.ownershipTransfer();
                     } else {
                         final Long latestTransition = this.abilityActions.get(selected);
-                        checkpointSuperseded = !transfer.ownershipTransfer()
-                                && (latestTransition != null && latestTransition > localSequence
-                                || selected.isPredictionCheckpointStale(state, localSequence));
+                        checkpointSuperseded = (latestTransition != null && latestTransition > observationSequence
+                                || selected.isPredictionCheckpointStale(state, observationSequence));
+                        final boolean rejectedLocalTransition = latestTransition != null
+                                && latestTransition > localSequence && latestTransition <= observationSequence;
                         if (!checkpointSuperseded) {
                             if (transfer.ownershipTransfer()) {
                                 selected.applyPredictionTransfer(state);
-                                selected.acceptPredictionCheckpoint(state, localSequence);
-                            } else if (selected.matchesPredictionCheckpoint(state)) {
+                                selected.acceptPredictionCheckpoint(state, observationSequence);
+                            } else if (!rejectedLocalTransition && selected.matchesPredictionCheckpoint(state)) {
                                 // Paper's checkpoint is a transition anchor, not
                                 // a request to throw away motion already rendered
                                 // during the network leg.
-                                selected.reconcilePredictionCheckpoint(state, localSequence);
+                                if (transfer.actionSequence() == transfer.acknowledgedSequence()) {
+                                    selected.reconcilePredictionCheckpoint(state, observationSequence);
+                                } else {
+                                    // A no-op input observes continuing motion;
+                                    // its center is not a new transition anchor.
+                                    selected.acceptPredictionCheckpoint(state, observationSequence);
+                                }
                                 recoveredFromCheckpoint = true;
                             } else {
                                 selected.applyPredictionTransfer(state);
-                                selected.acceptPredictionCheckpoint(state, localSequence);
+                                selected.acceptPredictionCheckpoint(state, observationSequence);
                                 recoveredFromCheckpoint = true;
                             }
                         }
                     }
 
+                    this.earthSmashIdentities.bind(transfer.creationActionSequence(), selected);
+                    this.abilityTransitionActions.computeIfAbsent(selected,
+                            ignored -> new HashSet<>()).add(localSequence);
                     if (!checkpointSuperseded) {
                         this.associateAbility(action, selected);
                     } else {
@@ -254,12 +264,14 @@ public abstract class ExactPredictionTransfer extends ExactPredictionRemoval {
                     // Paper's correctly empty created-ability list and remove
                     // it immediately. Only an authority-restored instance has
                     // no creation identity yet.
-                    this.abilityCreationActions.putIfAbsent(selected, localSequence);
+                    this.abilityCreationActions.putIfAbsent(selected,
+                            localCreation > 0L ? localCreation : localSequence);
                     if (transfer.ownershipTransfer()) {
+                        selected.establishPredictionOwnership();
                         // Provisional ownership previews never enter the exact
                         // TempBlock ledger, so this payload is the first shared
                         // ordinal boundary for both runtimes.
-                        action.tempBlockOrdinal = Math.max(0, transfer.tempBlockOrdinal());
+                        action.tempBlockOrdinal = Math.max(action.tempBlockOrdinal, transfer.tempBlockOrdinal());
                         this.authoritativelyEstablishedAbilities.add(selected);
                     } else {
                         action.tempBlockOrdinal = Math.max(action.tempBlockOrdinal,
@@ -301,22 +313,13 @@ public abstract class ExactPredictionTransfer extends ExactPredictionRemoval {
         }
     }
 
-    /**
-     * Action reconciliation clears its temporary rollback map, but delayed
-     * EarthSmash checkpoints can arrive after several more sneak/aim
-     * transitions. Keep a live-instance transition history so an old
-     * checkpoint updates (or is superseded on) that same smash instead of
-     * restoring a second client-only instance at Paper's older position.
-     */
-    protected boolean ownsEarthSmashTransition(final CoreAbility candidate,
-                                             final Action action,
-                                             final long localSequence) {
-        if (candidate == null || action == null || localSequence <= 0L) return false;
-        return action.abilities.contains(candidate)
-                || action.previousAbilityActions.containsKey(candidate)
-                || Objects.equals(this.abilityCreationActions.get(candidate), localSequence)
-                || this.abilityTransitionActions.getOrDefault(candidate, Set.of())
-                .contains(localSequence);
+    @Override
+    protected boolean hasLiveEarthSmashTransition(final long actionSequence) {
+        for (Map.Entry<CoreAbility, Set<Long>> entry : this.abilityTransitionActions.entrySet()) {
+            if (entry.getKey() instanceof EarthSmash smash && !smash.isRemoved()
+                    && !smash.getCurrentBlocks().isEmpty() && entry.getValue().contains(actionSequence)) return true;
+        }
+        return false;
     }
 
     protected void recordAbilityRemoval(AbilityRemoved removed, String resolution, List<CoreAbility> matching) {

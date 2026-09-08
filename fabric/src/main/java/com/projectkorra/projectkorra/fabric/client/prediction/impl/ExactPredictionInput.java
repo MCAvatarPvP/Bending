@@ -253,6 +253,7 @@ public abstract class ExactPredictionInput extends ExactPredictionStartup {
 
             for (CoreAbility ability : CoreAbility.getAbilitiesByInstances()) {
                 if (!before.contains(ability)) {
+                    action.inputCreations.add(ability);
                     this.associateAbility(action, ability);
                     this.abilityCreationActions.putIfAbsent(ability, sequence);
                     action.abilities.add(ability);

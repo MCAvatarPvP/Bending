@@ -150,6 +150,8 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 
 import com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime;
+import com.projectkorra.projectkorra.fabric.client.prediction.action.InputAbilityCreations;
+import com.projectkorra.projectkorra.fabric.client.prediction.action.ClientAbilityIdentity;
 
 public abstract class ExactPredictionState
         implements Listener,
@@ -173,6 +175,7 @@ public abstract class ExactPredictionState
     protected final Map<CoreAbility, Long> abilityActions = new IdentityHashMap<>();
     protected final Map<CoreAbility, Long> abilityCreationActions = new IdentityHashMap<>();
     protected final Map<CoreAbility, Set<Long>> abilityTransitionActions = new IdentityHashMap<>();
+    protected final ClientAbilityIdentity<EarthSmash> earthSmashIdentities = new ClientAbilityIdentity<>();
     protected final Set<CoreAbility> authoritativelyEstablishedAbilities = Collections.newSetFromMap(new IdentityHashMap<>());
     protected final List<String> abilityRemovalHistory = new ArrayList<>();
     protected final ClientNativeActionCorrelation nativeActions = new ClientNativeActionCorrelation();
@@ -294,6 +297,10 @@ public abstract class ExactPredictionState
                     @Override
                     public long actionForAbility(CoreAbility ability) {
                         return ExactPredictionState.this.abilityActions.getOrDefault(ability, 0L);
+                    }
+
+                    public boolean hasLiveEarthSmashTransition(long actionSequence) {
+                        return ExactPredictionState.this.hasLiveEarthSmashTransition(actionSequence);
                     }
 
                     @Override
@@ -429,6 +436,7 @@ public abstract class ExactPredictionState
         final int selectedSlot;
         final long deterministicSeed;
         final Set<CoreAbility> abilities = Collections.newSetFromMap(new IdentityHashMap<>());
+        final InputAbilityCreations<CoreAbility> inputCreations = new InputAbilityCreations<>();
         final Set<Entity> spawned = Collections.newSetFromMap(new IdentityHashMap<>());
         final Map<CoreAbility, Long> previousAbilityActions = new IdentityHashMap<>();
         final Map<Integer, Integer> velocityOrdinals = new HashMap<>();
@@ -474,6 +482,7 @@ public abstract class ExactPredictionState
 
 
     protected abstract long currentAction();
+    protected abstract boolean hasLiveEarthSmashTransition(long actionSequence);
     protected abstract int blockConfirmationTicks(long actionSequence);
     protected abstract long localActionSequence(long paperSequence);
     protected abstract void stop0(MinecraftClient client);

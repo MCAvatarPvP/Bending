@@ -5,6 +5,7 @@ import com.projectkorra.projectkorra.command.Commands;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.hooks.BetonQuestHook;
 import com.projectkorra.projectkorra.hooks.ExternalActionBarHook;
+import com.projectkorra.projectkorra.hooks.PlaceholderAPIHook;
 import com.projectkorra.projectkorra.hooks.WorldGuardFlag;
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.bukkit.BukkitMC;
@@ -15,6 +16,7 @@ import com.projectkorra.projectkorra.prediction.server.PacketEventsEntityInterpo
 import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
 import com.projectkorra.projectkorra.prediction.server.ServerEntityInterpolation;
 import com.projectkorra.projectkorra.region.BukkitRegionProtectionBootstrap;
+import org.bukkit.Bukkit;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
@@ -29,6 +31,7 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
     private PacketEventsEntityInterpolationHook entityInterpolationHook;
     private ExternalActionBarHook externalActionBarHook;
     private boolean shuttingDown;
+    private PlaceholderAPIHook papiHook;
 
     private static CommandSender wrapSender(final org.bukkit.command.CommandSender sender) {
         if (sender instanceof Player player) {
@@ -55,6 +58,7 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
         BukkitAirGliderRecipes.register(this);
         synchronizeServerEntityInterpolation();
         registerCommands();
+        registerPlaceHolderHook();
         Platform.events().registerListener(new PKListener(this));
         registerBetonQuestHook();
         registerExternalActionBarHook();
@@ -71,6 +75,21 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
             getLogger().warning("Could not enable exact client prediction; using server authority: "
                     + failure.getMessage());
         }
+    }
+
+    private void registerPlaceHolderHook() {
+        if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
+            papiHook = new PlaceholderAPIHook(this);
+            papiHook.register();
+        }
+    }
+
+    public void unregisterPlaceHolderHook() {
+        if (papiHook == null) {
+            return;
+        }
+
+        papiHook.unregister();
     }
 
     private void registerBetonQuestHook() {
@@ -162,6 +181,7 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
         // their own ordered TempBlock lifecycles during a reload.
         GeneralMethods.stopBending();
         BukkitAirGliderRecipes.unregister();
+        unregisterPlaceHolderHook();
         if (this.externalActionBarHook != null) {
             this.externalActionBarHook.stop();
             this.externalActionBarHook = null;

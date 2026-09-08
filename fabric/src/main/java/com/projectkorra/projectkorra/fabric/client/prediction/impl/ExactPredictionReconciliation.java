@@ -150,6 +150,7 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 
 import com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime;
+import com.projectkorra.projectkorra.fabric.client.prediction.action.InputAbilityCreations;
 
 public abstract class ExactPredictionReconciliation extends ExactPredictionTick {
     protected boolean noteNativeAction0(NativeAction receipt) {
@@ -290,30 +291,32 @@ public abstract class ExactPredictionReconciliation extends ExactPredictionTick 
 
     protected void reconcileCreatedAbilities(Action action, List<String> authoritativeNames) {
         if (action != null && this.bendingPlayer != null) {
-            Map<String, Integer> remaining = abilityNameCounts(authoritativeNames);
+            // Paper reports constructors from the input callback. By arrival,
+            // a wall controller may have finished and spawned several pillars.
+            // Compare the captured callback outcomes, then apply each rejected
+            // root's verdict to its descendants instead of counting live names.
+            Set<CoreAbility> rejected = action.inputCreations.rejected(
+                    authoritativeNames, Ability::getName,
+                    this.authoritativelyEstablishedAbilities::contains);
 
             for (CoreAbility local : this.locallyCreatedAbilities(action.sequence)) {
-                if (!this.authoritativelyEstablishedAbilities.contains(local)) {
-                    String key = normalizedAbilityName(local.getName());
-                    int count = remaining.getOrDefault(key, 0);
-                    if (count > 0) {
-                        remaining.put(key, count - 1);
-                    } else {
-                        debug("runtime retired client-only input outcome action=" + action.sequence + " ability=" + local.getName());
+                if (!this.authoritativelyEstablishedAbilities.contains(local)
+                        && InputAbilityCreations.descendsFrom(local, rejected,
+                        CoreAbility::getPredictionParent)) {
+                    debug("runtime retired client-only input outcome action=" + action.sequence + " ability=" + local.getName());
 
-                        try {
-                            this.forceRemoveAbility(local);
-                        } catch (Throwable var9) {
-                        }
-
-                        this.abilityActions.remove(local);
-                        this.abilityCreationActions.remove(local);
-                        action.abilities.remove(local);
+                    try {
+                        this.forceRemoveAbility(local);
+                    } catch (Throwable var9) {
                     }
+
+                    this.abilityActions.remove(local);
+                    this.abilityCreationActions.remove(local);
+                    action.abilities.remove(local);
                 }
             }
 
-            Map<String, Integer> localCounts = abilityNameCounts(this.locallyCreatedAbilities(action.sequence).stream().<String>map(Ability::getName).toList());
+            Map<String, Integer> localCounts = action.inputCreations.counts(Ability::getName);
 
             for (String authoritativeName : authoritativeNames) {
                 String key = normalizedAbilityName(authoritativeName);
@@ -367,6 +370,7 @@ public abstract class ExactPredictionReconciliation extends ExactPredictionTick 
 
         CoreAbility combo = recovered[0];
         if (combo != null && !combo.isRemoved()) {
+            action.inputCreations.add(combo);
             this.associateAbility(action, combo);
             this.abilityCreationActions.put(combo, action.sequence);
             action.recoveredFromAuthority = true;

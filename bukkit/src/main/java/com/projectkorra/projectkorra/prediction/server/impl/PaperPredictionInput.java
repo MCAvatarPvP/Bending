@@ -353,8 +353,7 @@ public abstract class PaperPredictionInput extends PaperPredictionEffects {
             for (CoreAbility candidate : CoreAbility.getAbilitiesByInstances()) {
                 if (candidate instanceof EarthSmash
                         && !candidate.isRemoved() && candidate.getPlayer() != null
-                        && candidate.getPlayer().getUniqueId().equals(player.getUniqueId())
-                        && !predictedOwnershipTransfers.contains(candidate)) {
+                        && candidate.getPlayer().getUniqueId().equals(player.getUniqueId())) {
                     onCheckpoint(candidate);
                 }
             }

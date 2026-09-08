@@ -20,7 +20,7 @@ public final class EarthSmashCheckpointPolicy {
 
     /**
      * Returns whether {@code incoming} is newer than the last accepted
-     * checkpoint. Action sequence is the transition epoch; the remaining
+     * checkpoint. Action sequence is the observed input epoch; the remaining
      * fields order the sparse checkpoints which can share that transition.
      */
     public static boolean isNewer(final CheckpointOrder incoming,

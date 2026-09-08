@@ -15,6 +15,33 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** Red-first boundaries for regressions reproduced on the exact-prediction client. */
 class ReportedPredictionRegressionsTest {
     @Test
+    void earthSmashObservationsDistinguishRejectedInputsFromInputsStillInFlight() throws IOException {
+        final String transfer = method(runtime(), "private void transferAuthoritativeAbility0",
+                "private void recordAbilityRemoval");
+        assertTrue(transfer.contains("this.localAcknowledgedSequence(transfer.acknowledgedSequence())")
+                        && transfer.contains("latestTransition > observationSequence")
+                        && transfer.contains("latestTransition > localSequence && latestTransition <= observationSequence")
+                        && transfer.contains("!rejectedLocalTransition && selected.matchesPredictionCheckpoint(state)"),
+                "a rejected grab must restore the server state; a newer unacknowledged grab must keep its local state");
+        assertTrue(transfer.contains("transfer.actionSequence() == transfer.acknowledgedSequence()"),
+                "an observation after a no-op input cannot rebase continuing motion as another transition");
+    }
+
+    @Test
+    void wallInputReconciliationUsesConstructorSnapshotAndDescendantAncestry() throws IOException {
+        final String runtime = runtime();
+        final String input = method(runtime, "private boolean input0", "private void associateAbility");
+        final String reconcile = method(runtime, "private void reconcileCreatedAbilities",
+                "private List<CoreAbility> locallyCreatedAbilities");
+        assertTrue(input.contains("action.inputCreations.add(ability)"));
+        assertTrue(reconcile.contains("action.inputCreations.rejected(")
+                        && reconcile.contains("InputAbilityCreations.descendsFrom(local, rejected,")
+                        && reconcile.contains("CoreAbility::getPredictionParent"));
+        assertFalse(reconcile.contains("remaining.getOrDefault(key, 0)"),
+                "live pillars must never compete for the one acknowledged wall-controller constructor");
+    }
+
+    @Test
     void earthSmashCheckpointCannotRewriteItsCreationAction() throws IOException {
         final String runtime = runtime();
         final String transfer = method(runtime, "private void transferAuthoritativeAbility0",
@@ -23,7 +50,8 @@ class ReportedPredictionRegressionsTest {
                 "private List<CoreAbility> locallyCreatedAbilities");
 
         assertTrue(transfer.contains("this.associateAbility(action, selected)")
-                        && transfer.contains("this.abilityCreationActions.putIfAbsent(selected, localSequence)"));
+                        && transfer.contains("this.abilityCreationActions.putIfAbsent(selected,")
+                        && transfer.contains("localCreation > 0L ? localCreation : localSequence"));
         assertFalse(transfer.contains("this.abilityCreationActions.put(selected, localSequence)"),
                 "GRABBED/SHOT checkpoints transition an existing smash and must not make it look newly created by that input");
         assertTrue(transfer.contains("restoredFromAuthority = true")
@@ -45,11 +73,11 @@ class ReportedPredictionRegressionsTest {
                 "public boolean matchesPredictionCheckpoint",
                 "private static BlockData predictionBlockData");
 
-        assertTrue(transfer.contains("action.previousAbilityActions.containsKey(candidate)")
-                        && transfer.contains("abilityTransitionActions.getOrDefault(candidate, Set.of())")
-                        && transfer.contains(".contains(localSequence)"),
-                "a checkpoint must find the exact smash even after reconciliation cleared a newer transition's rollback map");
-        assertTrue(transfer.contains("latestTransition > localSequence")
+        assertTrue(transfer.contains("this.earthSmashIdentities.find(")
+                        && transfer.contains("transfer.creationActionSequence(), localCreation")
+                        && !transfer.contains("action.previousAbilityActions.containsKey(candidate)"),
+                "a checkpoint must select the creation identity even when a regrab predicted a different target");
+        assertTrue(transfer.contains("latestTransition > observationSequence")
                         && transfer.contains("if (!checkpointSuperseded)")
                         && transfer.contains("this.associateAbility(action, selected)"),
                 "an older checkpoint must neither overwrite nor re-associate a smash already advanced by a newer input");
@@ -291,7 +319,7 @@ class ReportedPredictionRegressionsTest {
         final String handoff = method(paper, "public void onOwnerTransferred",
                 "public void onCheckpoint");
 
-        assertTrue(transfer.contains("action.tempBlockOrdinal = Math.max(0, transfer.tempBlockOrdinal())")
+        assertTrue(transfer.contains("action.tempBlockOrdinal = Math.max(action.tempBlockOrdinal, transfer.tempBlockOrdinal())")
                         && !transfer.contains("resetAbilityLayerIdentity"),
                 "the payload must establish the first shared ordinal without mutating generic TempBlock records");
         assertTrue(smash.contains("private boolean awaitingPredictionTransfer")

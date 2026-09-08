@@ -168,6 +168,7 @@ public abstract class ExactPredictionTick extends ExactPredictionInput {
             this.directBlockAuthority.clearTransientReads();
             Set<CoreAbility> live = Collections.newSetFromMap(new IdentityHashMap<>());
             live.addAll(CoreAbility.getAbilitiesByInstances());
+            this.earthSmashIdentities.retain(live);
             this.abilityActions.keySet().removeIf(ability -> !live.contains(ability));
             this.abilityCreationActions.keySet().removeIf(ability -> !live.contains(ability));
             this.abilityTransitionActions.keySet().removeIf(ability -> !live.contains(ability));

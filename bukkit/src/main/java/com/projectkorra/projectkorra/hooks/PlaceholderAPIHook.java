@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.hooks;
 
 import com.projectkorra.projectkorra.BendingPlayer;
+import com.projectkorra.projectkorra.BukkitProjectKorraPlugin;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -8,6 +9,7 @@ import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.bukkit.BukkitMC;
 import com.projectkorra.projectkorra.platform.mc.ChatColor;
+import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
 import com.projectkorra.projectkorra.util.Cooldown;
 import com.projectkorra.projectkorra.util.TimeUtil;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
@@ -20,9 +22,9 @@ import static java.util.stream.Collectors.joining;
 
 public class PlaceholderAPIHook extends PlaceholderExpansion {
 
-    private final ProjectKorra plugin;
+    private final BukkitProjectKorraPlugin plugin;
 
-    public PlaceholderAPIHook(final ProjectKorra plugin) {
+    public PlaceholderAPIHook(final BukkitProjectKorraPlugin plugin) {
         this.plugin = plugin;
     }
 
@@ -113,6 +115,10 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
             float decay = (float) bPlayer.getAirBlastDecay();
             float normalized = (decay - 0.4f) / (1.0f - (float) 0.4);
             return String.valueOf(normalized);
+        } else if (params.equals("clientside")) {
+            return Boolean.toString(
+                    PaperPredictionServer.isExactClient(nativePlayer.getUniqueId())
+            );
         }
         return null;
     }

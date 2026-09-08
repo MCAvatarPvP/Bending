@@ -75,7 +75,7 @@ class PaperPredictionProtocolTest {
 
     @Test
     void protocolIncludesExactAbilityStateOwnershipFence() {
-        assertEquals(55, PaperPredictionProtocol.VERSION);
+        assertEquals(56, PaperPredictionProtocol.VERSION);
         assertEquals("projectkorra:ability_state_owner", PaperPredictionProtocol.ABILITY_STATE_OWNER);
         UUID owner = UUID.randomUUID();
         UUID target = UUID.randomUUID();
@@ -277,11 +277,13 @@ class PaperPredictionProtocolTest {
                 List.of(new EarthSmash.PredictionBlock(-1, 0, 1,
                         "minecraft:stone[axis=y]")));
         PaperPredictionProtocol.Reader reader = new PaperPredictionProtocol.Reader(
-                PaperPredictionProtocol.abilityTransfer(owner, 51L,
+                PaperPredictionProtocol.abilityTransfer(owner, 51L, 13L, 53L,
                         EarthSmash.class.getName(), "minecraft:overworld", true, 17, transfer));
 
         assertEquals(owner, reader.uuid());
         assertEquals(51L, reader.varLong());
+        assertEquals(13L, reader.varLong());
+        assertEquals(53L, reader.varLong());
         assertEquals(EarthSmash.class.getName(), reader.string(256));
         assertEquals("minecraft:overworld", reader.string(256));
         assertTrue(reader.bool());

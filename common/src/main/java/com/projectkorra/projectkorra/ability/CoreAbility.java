@@ -80,6 +80,7 @@ public abstract class CoreAbility implements Ability {
     private boolean hidden;
     private boolean ownershipTransferred;
     private int id;
+    private final CoreAbility predictionParent = AbilityExecutionContext.current();
     private final long predictionActionSequence = PredictionDeterminism.currentAction();
     private final long predictionDeterministicSeed = PredictionDeterminism.currentSeed();
     private long startTime;
@@ -932,6 +933,11 @@ public abstract class CoreAbility implements Ability {
     /** Input identity inherited by delayed progress work and child abilities. */
     public long getPredictionActionSequence() {
         return this.predictionActionSequence;
+    }
+
+    /** Constructor ancestry, distinct from the input inherited by all descendants. */
+    public CoreAbility getPredictionParent() {
+        return this.predictionParent;
     }
 
     /** Loader-independent random seed inherited from the semantic native input. */

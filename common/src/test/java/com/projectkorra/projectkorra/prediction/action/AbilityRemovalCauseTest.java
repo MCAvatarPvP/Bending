@@ -17,6 +17,8 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class AbilityRemovalCauseTest {
     private AbilityRemovalSync.Listener listener;
@@ -130,6 +132,22 @@ class AbilityRemovalCauseTest {
         assertEquals(ability, transferred.get());
         assertEquals(previous, observedPrevious.get());
         assertEquals(next, observedNext.get());
+    }
+
+    @Test
+    void delayedChildrenKeepTheirConstructorAncestryAfterTheInputContextEnds() {
+        final AtomicReference<DummyAbility> root = new AtomicReference<>();
+        final AtomicReference<DummyAbility> child = new AtomicReference<>();
+        final AtomicReference<DummyAbility> grandchild = new AtomicReference<>();
+        PredictionDeterminism.run(17L, () -> root.set(new DummyAbility("RaiseEarth")));
+        AbilityExecutionContext.run(root.get(), () -> child.set(new DummyAbility("RaiseEarth")));
+        AbilityExecutionContext.run(child.get(), () -> grandchild.set(new DummyAbility("RaiseEarth")));
+
+        assertNull(root.get().getPredictionParent());
+        assertSame(root.get(), child.get().getPredictionParent());
+        assertSame(child.get(), grandchild.get().getPredictionParent());
+        assertEquals(17L, grandchild.get().getPredictionActionSequence());
+        assertNull(new DummyAbility("RaiseEarth").getPredictionParent());
     }
 
     private static final class DummyAbility extends CoreAbility {

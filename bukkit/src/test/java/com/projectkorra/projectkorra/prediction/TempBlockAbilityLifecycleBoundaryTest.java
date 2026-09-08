@@ -50,11 +50,13 @@ class TempBlockAbilityLifecycleBoundaryTest {
     }
 
     @Test
-    void earthSmashRetainsLegacyPaperSourceSelectionOrder() throws IOException {
+    void earthSmashCommitsChargeReleaseOnInputWithTheSharedSourceSelection() throws IOException {
         String source = common("com/projectkorra/projectkorra/earthbending/EarthSmash.java");
         String input = common("com/projectkorra/projectkorra/listener/CommonInputHandler.java");
-        String release = method(source, "if (this.state == State.START && this.progressCounter > 1)",
-                "} else if (this.state == State.LIFTING)");
+        String release = method(source, "private void releaseCharge()",
+                "public void establishPredictionOwnership()");
+        String releaseInput = method(source, "if (type == ClickType.SHIFT_UP)",
+                "if (type == ClickType.SHIFT_DOWN)");
         String sneak = method(input, "public static InputResult handleSneak",
                 "public static SlotResult handleSlotChange");
 
@@ -64,8 +66,12 @@ class TempBlockAbilityLifecycleBoundaryTest {
                 "Paper must cache the SHIFT_DOWN earth source before constructing EarthSmash");
         assertTrue(release.contains("this.origin = this.getEarthSourceBlock(this.selectRange)"),
                 "EarthSmash release must consume Paper's cached BlockSource target");
-        assertTrue(release.contains("TempBlock.isTempBlock(this.origin) && !isBendableEarthTempBlock(this.origin)"),
+        assertTrue(release.contains("TempBlock.isTempBlock(this.origin)")
+                        && release.contains("&& !isBendableEarthTempBlock(this.origin)"),
                 "temporary source eligibility must remain identical to the legacy Paper ability");
+        assertTrue(releaseInput.contains("smash.state == State.START")
+                        && releaseInput.contains("smash.releaseCharge()"),
+                "release then press in one server tick must commit the charged lift before the press");
         assertFalse(source.contains("getVisibleEarthSourceBlock"),
                 "a release-time Fabric ray cast changes placement and player input timing");
     }

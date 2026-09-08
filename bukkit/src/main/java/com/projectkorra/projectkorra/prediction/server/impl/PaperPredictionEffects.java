@@ -346,8 +346,12 @@ public abstract class PaperPredictionEffects extends PaperPredictionTempBlocks {
                                      final boolean ownershipTransfer) {
         if (player == null || smash == null || action == null || state == null
                 || smash.getLocation() == null || smash.getLocation().getWorld() == null) return;
+        final Action creation = creationActionForRemoval(smash, player.getUniqueId());
+        final Session session = sessions.get(player.getUniqueId());
+        if (creation == null || session == null) return;
         send(player, PaperPredictionProtocol.ABILITY_TRANSFER,
                         PaperPredictionProtocol.abilityTransfer(player.getUniqueId(), action.sequence,
+                        creation.sequence, session.lastSequence,
                         AbilityRemovalSync.typeId(smash),
                         worldKey(smash.getLocation().getWorld()), ownershipTransfer,
                         action.tempBlockOrdinal, state));

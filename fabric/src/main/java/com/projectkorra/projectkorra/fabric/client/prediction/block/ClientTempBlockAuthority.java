@@ -69,6 +69,7 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
         int nextTempBlockOrdinal(long actionSequence);
         long localActionSequence(long paperSequence);
         int confirmationTicks(long actionSequence);
+        boolean hasLiveEarthSmashTransition(long actionSequence);
     }
 
     private final Context context;
@@ -751,7 +752,12 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
     }
 
     public void afterLocalProgress(final ClientWorld world) {
-        // Visual overlays do not need to repair ClientWorld after progress.
+        // A smash can advance to a new action without drawing any layers for
+        // the old action. Keep its delayed Paper footprint concealed for the
+        // lifetime of that same instance, including stationary release frames.
+        final Set<Long> actions = new HashSet<>();
+        for (ServerLayer server : authoritativeLayers.values()) actions.add(server.actionSequence);
+        for (long action : actions) reconcileActionConcealment(action);
     }
 
     public void expire() {
@@ -939,11 +945,13 @@ public final class ClientTempBlockAuthority implements TempBlockSync.Listener {
     }
 
     private boolean hasLocalActionConcealment(final long actionSequence) {
-        return actionSequence > 0L && concealedLocalActions.contains(actionSequence);
+        return actionSequence > 0L && (concealedLocalActions.contains(actionSequence)
+                || context.hasLiveEarthSmashTransition(actionSequence));
     }
 
     private boolean computesLocalActionConcealment(final long actionSequence) {
         if (actionSequence <= 0L) return false;
+        if (context.hasLiveEarthSmashTransition(actionSequence)) return true;
         for (Map.Entry<Long, LocalLayer> entry : localLayers.entrySet()) {
             final LocalLayer local = entry.getValue();
             if (local == null || local.actionSequence != actionSequence) continue;

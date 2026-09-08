@@ -128,9 +128,12 @@ public class EarthSmash extends EarthAbility {
             // a rapid release/re-grab cannot overtake Paper and leave the two
             // runtimes assigning TempBlocks to different grab generations.
             for (final EarthSmash smash : getAbilities(player, EarthSmash.class)) {
-                if (smash.state != State.GRABBED) continue;
-                smash.transitionState(State.LIFTED);
-                smash.drawTransferredShapeIfNeeded();
+                if (smash.state == State.START) {
+                    smash.releaseCharge();
+                } else if (smash.state == State.GRABBED) {
+                    smash.transitionState(State.LIFTED);
+                    smash.drawTransferredShapeIfNeeded();
+                } else continue;
                 this.markActivationHandled(smash);
                 return;
             }
@@ -423,34 +426,9 @@ public class EarthSmash extends EarthAbility {
 
         if (this.state == State.START && this.progressCounter > 1) {
             if (!this.player.isSneaking()) {
-                if (System.currentTimeMillis() - this.getStartTime() >= this.chargeTime) {
-                    // Preserve legacy Paper sourcing: EarthSmash resolves the
-                    // source from the release/progress view through the shared
-                    // EarthAbility ray, rather than a client-only placement
-                    // shortcut.
-                    this.origin = this.getEarthSourceBlock(this.selectRange);
-                    if (this.origin == null) {
-                        this.remove();
-                        return;
-                    } else if (TempBlock.isTempBlock(this.origin) && !isBendableEarthTempBlock(this.origin)) {
-                        this.remove();
-                        return;
-                    }
-                    this.bPlayer.addCooldown(this);
-                    this.location = this.origin.getLocation();
-                    this.transitionState(State.LIFTING);
-                    // Charge completion is evaluated during independently
-                    // scheduled client and Paper progress ticks. Confirm the
-                    // authoritative transition and source so a threshold-edge
-                    // disagreement can restore the predicted lifecycle before
-                    // Paper's first physical TempBlocks arrive.
-                    AbilityCheckpointSync.publish(this);
-                    this.minDamage = applyMetalPowerFactor(this.minDamage, this.origin);
-                    this.maxDamage = applyMetalPowerFactor(this.maxDamage, this.origin);
-                } else {
-                    this.remove();
-                    return;
-                }
+                // Compatibility for callers that change sneak state directly.
+                // Native releases are committed synchronously in SHIFT_UP.
+                this.releaseCharge();
             } else if (System.currentTimeMillis() - this.getStartTime() > this.chargeTime) {
                 final Location tempLoc = this.player.getEyeLocation().add(this.player.getEyeLocation().getDirection().normalize().multiply(1.2));
                 tempLoc.add(0, 0.3, 0);
@@ -700,6 +678,32 @@ public class EarthSmash extends EarthAbility {
             this.renderedLocation = drawLocation;
             this.redrawTransferredShape = false;
         }
+    }
+
+    private void releaseCharge() {
+        if (System.currentTimeMillis() - this.getStartTime() < this.chargeTime) {
+            this.remove();
+            return;
+        }
+        // Resolve the shared source ray while the release input's pose is active.
+        // A subsequent press in the same server tick cannot erase this release.
+        this.origin = this.getEarthSourceBlock(this.selectRange);
+        if (this.origin == null || TempBlock.isTempBlock(this.origin)
+                && !isBendableEarthTempBlock(this.origin)) {
+            this.remove();
+            return;
+        }
+        this.bPlayer.addCooldown(this);
+        this.location = this.origin.getLocation();
+        this.transitionState(State.LIFTING);
+        AbilityCheckpointSync.publish(this);
+        this.minDamage = applyMetalPowerFactor(this.minDamage, this.origin);
+        this.maxDamage = applyMetalPowerFactor(this.maxDamage, this.origin);
+    }
+
+    /** Confirms a provisional grab without rolling back newer local input. */
+    public void establishPredictionOwnership() {
+        this.awaitingPredictionTransfer = false;
     }
 
     private void drawTransferredShapeIfNeeded() {
@@ -1668,7 +1672,7 @@ public class EarthSmash extends EarthAbility {
 
     /**
      * Whether this checkpoint predates one already accepted for this smash.
-     * The correlated local action is the transition epoch; counters order the
+     * The acknowledged local input is the observation epoch; counters order the
      * two lift checkpoints which can legitimately share one action.
      */
     public boolean isPredictionCheckpointStale(final PredictionTransfer transfer,
