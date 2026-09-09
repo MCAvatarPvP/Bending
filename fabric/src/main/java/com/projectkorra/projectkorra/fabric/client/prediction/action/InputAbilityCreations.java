@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.BiPredicate;
 
 /** The constructor outcomes at the input boundary, before any progress ticks. */
 public final class InputAbilityCreations<T> {
@@ -43,6 +44,11 @@ public final class InputAbilityCreations<T> {
     }
 
     /** Descendants share their root's verdict, even after the root has finished. */
+    public static <T> boolean descendsFrom(final T ability, final Set<T> roots,
+                                          final BiPredicate<T, T> descendant) {
+        return roots.stream().anyMatch(root -> descendant.test(ability, root));
+    }
+
     public static <T> boolean descendsFrom(final T ability, final Set<T> roots,
                                           final Function<T, T> parent) {
         for (T current = ability; current != null; current = parent.apply(current)) {

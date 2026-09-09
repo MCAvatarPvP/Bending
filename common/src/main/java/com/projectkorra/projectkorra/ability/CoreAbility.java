@@ -80,7 +80,9 @@ public abstract class CoreAbility implements Ability {
     private boolean hidden;
     private boolean ownershipTransferred;
     private int id;
-    private final CoreAbility predictionParent = AbilityExecutionContext.current();
+    private final java.lang.ref.WeakReference<CoreAbility> predictionParent =
+            new java.lang.ref.WeakReference<>(AbilityExecutionContext.current());
+    private final PredictionAncestry predictionAncestry = new PredictionAncestry(AbilityExecutionContext.current());
     private final long predictionActionSequence = PredictionDeterminism.currentAction();
     private final long predictionDeterministicSeed = PredictionDeterminism.currentSeed();
     private long startTime;
@@ -937,7 +939,24 @@ public abstract class CoreAbility implements Ability {
 
     /** Constructor ancestry, distinct from the input inherited by all descendants. */
     public CoreAbility getPredictionParent() {
-        return this.predictionParent;
+        return this.predictionParent.get();
+    }
+
+    /** Ancestry survives parent collection without retaining its entities or world. */
+    public boolean isPredictionDescendantOf(final CoreAbility ancestor) {
+        if (ancestor == null) return false;
+        for (PredictionAncestry current = this.predictionAncestry; current != null; current = current.parent) {
+            if (current == ancestor.predictionAncestry) return true;
+        }
+        return false;
+    }
+
+    private static final class PredictionAncestry {
+        private final PredictionAncestry parent;
+
+        private PredictionAncestry(final CoreAbility parent) {
+            this.parent = parent == null ? null : parent.predictionAncestry;
+        }
     }
 
     /** Loader-independent random seed inherited from the semantic native input. */

@@ -7,6 +7,7 @@ import com.projectkorra.projectkorra.platform.mc.metadata.FixedMetadataValue;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.List;
 
 /**
  * Object to represent an ArmorStand that is not used for normal functionality
@@ -30,10 +31,30 @@ public class TempArmorStand {
      * Removes all instances of TempArmorStands and the associated ArmorStands
      */
     public static void removeAll() {
-        for (final TempArmorStand temp : tempStands) {
-            temp.getArmorStand().remove();
+        for (final TempArmorStand temp : List.copyOf(tempStands)) temp.remove();
+    }
+
+    public static void remove(final ArmorStand stand) {
+        for (final TempArmorStand temp : List.copyOf(tempStands)) {
+            if (temp.stand.equals(stand)) {
+                temp.remove();
+                return;
+            }
         }
-        tempStands.clear();
+        if (stand != null) stand.remove();
+    }
+
+    public void remove() {
+        tempStands.remove(this);
+        this.stand.removeMetadata("temparmorstand", ProjectKorra.plugin);
+        this.stand.remove();
+    }
+
+    /** Also releases stands removed externally, including chunk unloads. */
+    public static void manage() {
+        for (final TempArmorStand temp : List.copyOf(tempStands)) {
+            if (!temp.stand.isValid() || temp.stand.isDead()) temp.remove();
+        }
     }
 
     public static Set<TempArmorStand> getTempStands() {

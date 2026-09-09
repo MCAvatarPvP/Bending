@@ -17,14 +17,17 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.WeakHashMap;
 
 public class AttributeCache {
 
     private Field field;
     private String attribute;
     private Map<Class<? extends Annotation>, Annotation> markers = new HashMap<>();
-    private Map<CoreAbility, Object> initialValues = new HashMap<>();
-    private Map<CoreAbility, Set<AttributeModification>> currentModifications = new HashMap<>();
+    // Constructors may recalculate before validating their source, then return
+    // without start()/remove(). The class cache must not own those instances.
+    private Map<CoreAbility, Object> initialValues = new WeakHashMap<>();
+    private Map<CoreAbility, Set<AttributeModification>> currentModifications = new WeakHashMap<>();
     private Optional<AttributeModification> avatarStateModifier = Optional.empty();
 
     public AttributeCache(Field field, String attribute) {

@@ -302,7 +302,7 @@ public abstract class ExactPredictionReconciliation extends ExactPredictionTick 
             for (CoreAbility local : this.locallyCreatedAbilities(action.sequence)) {
                 if (!this.authoritativelyEstablishedAbilities.contains(local)
                         && InputAbilityCreations.descendsFrom(local, rejected,
-                        CoreAbility::getPredictionParent)) {
+                        CoreAbility::isPredictionDescendantOf)) {
                     debug("runtime retired client-only input outcome action=" + action.sequence + " ability=" + local.getName());
 
                     try {

@@ -38,6 +38,8 @@ import com.projectkorra.projectkorra.listener.CommonPlayerListenerCore;
 import com.projectkorra.projectkorra.object.HorizontalVelocityTracker;
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.bukkit.BukkitMC;
+import com.projectkorra.projectkorra.platform.bukkit.BukkitEntityMetadata;
+import com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent;
 import com.projectkorra.projectkorra.platform.mc.GameMode;
 import com.projectkorra.projectkorra.platform.mc.damage.DamageSource;
 import com.projectkorra.projectkorra.platform.mc.damage.DamageType;
@@ -98,6 +100,19 @@ public class PKListener implements Listener {
 
     public static HashMap<Player, String> getBendingPlayerDeath() {
         return BENDING_PLAYER_DEATH;
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onEntityRemovedFromWorld(final EntityRemoveFromWorldEvent event) {
+        // Player world changes do not end their metadata lifetime; quit does.
+        if (!(event.getEntity() instanceof Player)) {
+            BukkitEntityMetadata.clear(event.getEntity(), this.plugin);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void clearDepartedPlayerMetadata(final PlayerQuitEvent event) {
+        BukkitEntityMetadata.clear(event.getPlayer(), this.plugin);
     }
 
     public static Set<UUID> getRightClickPlayers() {

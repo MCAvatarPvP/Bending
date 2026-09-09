@@ -1804,7 +1804,7 @@ public final class BukkitMC {
 
         @Override
         public void setMetadata(String key, MetadataValue metadata) {
-            value.setMetadata(key, new org.bukkit.metadata.FixedMetadataValue(Bukkit.getPluginManager().getPlugin("ProjectKorra"), metadata.value()));
+            BukkitEntityMetadata.set(value, key, Bukkit.getPluginManager().getPlugin("ProjectKorra"), metadata.value());
         }
 
         @Override
@@ -1822,7 +1822,7 @@ public final class BukkitMC {
 
         @Override
         public void removeMetadata(String key, Object plugin) {
-            value.removeMetadata(key, Bukkit.getPluginManager().getPlugin("ProjectKorra"));
+            BukkitEntityMetadata.remove(value, key, Bukkit.getPluginManager().getPlugin("ProjectKorra"));
         }
 
         @Override
@@ -1961,7 +1961,7 @@ public final class BukkitMC {
 
         @Override
         public void setMetadata(String key, MetadataValue metadata) {
-            value.setMetadata(key, new org.bukkit.metadata.FixedMetadataValue(Bukkit.getPluginManager().getPlugin("ProjectKorra"), metadata.value()));
+            BukkitEntityMetadata.set(value, key, Bukkit.getPluginManager().getPlugin("ProjectKorra"), metadata.value());
         }
 
         @Override
@@ -1974,7 +1974,7 @@ public final class BukkitMC {
 
         @Override
         public void removeMetadata(String key, Object plugin) {
-            value.removeMetadata(key, Bukkit.getPluginManager().getPlugin("ProjectKorra"));
+            BukkitEntityMetadata.remove(value, key, Bukkit.getPluginManager().getPlugin("ProjectKorra"));
         }
 
         @Override
@@ -2533,7 +2533,7 @@ public final class BukkitMC {
 
         @Override
         public void setMetadata(String key, MetadataValue metadata) {
-            value.setMetadata(key, new org.bukkit.metadata.FixedMetadataValue(Platform.pluginHandle(Plugin.class), metadata.value()));
+            BukkitEntityMetadata.set(value, key, Platform.pluginHandle(Plugin.class), metadata.value());
         }
 
         @Override
@@ -2548,7 +2548,7 @@ public final class BukkitMC {
 
         @Override
         public void removeMetadata(String key, Object owner) {
-            value.removeMetadata(key, Platform.pluginHandle(Plugin.class));
+            BukkitEntityMetadata.remove(value, key, Platform.pluginHandle(Plugin.class));
         }
 
         @Override
@@ -2871,7 +2871,7 @@ public final class BukkitMC {
 
         @Override
         public void setMetadata(String key, MetadataValue metadata) {
-            value.setMetadata(key, new org.bukkit.metadata.FixedMetadataValue(Platform.pluginHandle(Plugin.class), metadata.value()));
+            BukkitEntityMetadata.set(value, key, Platform.pluginHandle(Plugin.class), metadata.value());
         }
 
         @Override
@@ -2886,7 +2886,7 @@ public final class BukkitMC {
 
         @Override
         public void removeMetadata(String key, Object owner) {
-            value.removeMetadata(key, Platform.pluginHandle(Plugin.class));
+            BukkitEntityMetadata.remove(value, key, Platform.pluginHandle(Plugin.class));
         }
 
         @Override
@@ -3611,8 +3611,7 @@ public final class BukkitMC {
 
         @Override
         public void setMetadata(String key, MetadataValue metadata) {
-            value.setMetadata(key, new org.bukkit.metadata.FixedMetadataValue(
-                    Platform.pluginHandle(Plugin.class), metadata.value()));
+            BukkitEntityMetadata.set(value, key, Platform.pluginHandle(Plugin.class), metadata.value());
         }
 
         @Override
@@ -3628,7 +3627,7 @@ public final class BukkitMC {
 
         @Override
         public void removeMetadata(String key, Object owner) {
-            value.removeMetadata(key, JavaPlugin.getPlugin(BukkitProjectKorraPlugin.class));
+            BukkitEntityMetadata.remove(value, key, JavaPlugin.getPlugin(BukkitProjectKorraPlugin.class));
         }
 
         @Override
@@ -3777,7 +3776,7 @@ public final class BukkitMC {
 
         @Override
         public void setMetadata(String key, MetadataValue metadata) {
-            value.setMetadata(key, new org.bukkit.metadata.FixedMetadataValue(Platform.pluginHandle(Plugin.class), metadata.value()));
+            BukkitEntityMetadata.set(value, key, Platform.pluginHandle(Plugin.class), metadata.value());
         }
 
         @Override
@@ -3792,7 +3791,7 @@ public final class BukkitMC {
 
         @Override
         public void removeMetadata(String key, Object owner) {
-            value.removeMetadata(key, JavaPlugin.getPlugin(BukkitProjectKorraPlugin.class));
+            BukkitEntityMetadata.remove(value, key, JavaPlugin.getPlugin(BukkitProjectKorraPlugin.class));
         }
 
         @Override
@@ -3953,7 +3952,7 @@ public final class BukkitMC {
 
         @Override
         public void setMetadata(String key, MetadataValue metadata) {
-            value.setMetadata(key, new org.bukkit.metadata.FixedMetadataValue(Platform.pluginHandle(Plugin.class), metadata.value()));
+            BukkitEntityMetadata.set(value, key, Platform.pluginHandle(Plugin.class), metadata.value());
         }
 
         @Override
@@ -3968,7 +3967,7 @@ public final class BukkitMC {
 
         @Override
         public void removeMetadata(String key, Object owner) {
-            value.removeMetadata(key, JavaPlugin.getPlugin(BukkitProjectKorraPlugin.class));
+            BukkitEntityMetadata.remove(value, key, JavaPlugin.getPlugin(BukkitProjectKorraPlugin.class));
         }
 
         @Override

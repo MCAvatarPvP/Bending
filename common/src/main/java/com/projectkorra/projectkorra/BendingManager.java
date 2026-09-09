@@ -131,6 +131,7 @@ public class BendingManager implements Runnable {
         TempArmor.cleanup();
 
         TempFallingBlock.manage();
+        com.projectkorra.projectkorra.util.TempArmorStand.manage();
 
         tempBlockRevertTask.run();
     }

@@ -323,7 +323,8 @@ public class EarthGrab extends EarthAbility {
         super.remove();
         if (this.mode == GrabMode.TRAP && this.initiated) {
             this.mHandler.reset();
-            this.trap.remove();
+            this.trap.removeMetadata("earthgrab:trap", ProjectKorra.plugin);
+            TempArmorStand.remove(this.trap);
             if (TempArmor.getTempArmorList(this.target).contains(this.armor)) {
                 this.armor.revert();
             }

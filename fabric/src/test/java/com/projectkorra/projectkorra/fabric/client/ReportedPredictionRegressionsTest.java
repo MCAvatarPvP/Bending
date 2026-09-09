@@ -36,7 +36,7 @@ class ReportedPredictionRegressionsTest {
         assertTrue(input.contains("action.inputCreations.add(ability)"));
         assertTrue(reconcile.contains("action.inputCreations.rejected(")
                         && reconcile.contains("InputAbilityCreations.descendsFrom(local, rejected,")
-                        && reconcile.contains("CoreAbility::getPredictionParent"));
+                        && reconcile.contains("CoreAbility::isPredictionDescendantOf"));
         assertFalse(reconcile.contains("remaining.getOrDefault(key, 0)"),
                 "live pillars must never compete for the one acknowledged wall-controller constructor");
     }

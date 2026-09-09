@@ -86,6 +86,9 @@ public class CollisionManager {
     }
 
     public void detectCollisions() {
+        this.locationsCache.clear();
+        this.entriesCache.clear();
+        this.indexCache.clear();
         int activeInstanceCount = 0;
 
         for (final CoreAbility ability : CoreAbility.getAbilitiesByInstances()) {
@@ -99,10 +102,6 @@ public class CollisionManager {
         if (activeInstanceCount <= 1) {
             return;
         }
-
-        this.locationsCache.clear();
-        this.entriesCache.clear();
-        this.indexCache.clear();
 
         for (final Collision collision : this.collisions) {
             final Class<? extends CoreAbility> classFirst = collision.getAbilityFirst().getClass();
@@ -335,6 +334,9 @@ public class CollisionManager {
      * Stops the collision detecting BukkitRunnable.
      */
     public void stopCollisionDetection() {
+        this.locationsCache.clear();
+        this.entriesCache.clear();
+        this.indexCache.clear();
         if (this.detectionRunnable != null) {
             this.detectionRunnable.cancel();
             this.detectionRunnable = null;

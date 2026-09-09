@@ -192,6 +192,7 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
         }
         stopServerEntityInterpolation();
         Platform.scheduler().cancelAll();
+        com.projectkorra.projectkorra.platform.bukkit.BukkitEntityMetadata.clearAll(this, Bukkit::getEntity);
     }
 
     private void registerCommands() {

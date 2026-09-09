@@ -25,6 +25,7 @@ public class TempFallingBlock {
     private long creation;
     private boolean expire;
     private Consumer<TempFallingBlock> onPlace;
+    private final String metadataKey;
 
     public TempFallingBlock(Location location, BlockData data, Vector velocity, CoreAbility ability) {
         this(location, data, velocity, ability, false);
@@ -41,7 +42,8 @@ public class TempFallingBlock {
         this.fallingblock.setVelocity(velocity);
         this.fallingblock.setDropItem(false);
         this.fallingblock.setHurtEntities(false);
-        this.fallingblock.setMetadata(ability.getName().toLowerCase(), new FixedMetadataValue(ProjectKorra.plugin, this));
+        this.metadataKey = ability.getName().toLowerCase(java.util.Locale.ROOT);
+        this.fallingblock.setMetadata(this.metadataKey, new FixedMetadataValue(ProjectKorra.plugin, this));
         this.ability = ability;
         this.creation = System.currentTimeMillis();
         this.expire = expire;
@@ -59,9 +61,12 @@ public class TempFallingBlock {
                 continue;
             }
 
-            if (fb.isDead() || fb.isOnGround()) {
-                tfb.tryPlace();
-                tfb.remove();
+            if (!fb.isValid() || fb.isDead() || fb.isOnGround()) {
+                try {
+                    if (fb.isDead() || fb.isOnGround()) tfb.tryPlace();
+                } finally {
+                    tfb.remove();
+                }
                 continue;
             }
 
@@ -85,17 +90,12 @@ public class TempFallingBlock {
     }
 
     public static void removeFallingBlock(FallingBlock fallingblock) {
-        if (isTempFallingBlock(fallingblock)) {
-            fallingblock.remove();
-            instances.remove(fallingblock);
-        }
+        final TempFallingBlock instance = instances.get(fallingblock);
+        if (instance != null) instance.remove();
     }
 
     public static void removeAllFallingBlocks() {
-        for (FallingBlock fallingblock : instances.keySet()) {
-            fallingblock.remove();
-            instances.remove(fallingblock);
-        }
+        for (TempFallingBlock instance : List.copyOf(instances.values())) instance.remove();
     }
 
     /** Drops old-world wrappers after normal entity cleanup has been attempted. */
@@ -114,8 +114,13 @@ public class TempFallingBlock {
     }
 
     public void remove() {
-        fallingblock.remove();
-        instances.remove(fallingblock);
+        instances.remove(fallingblock, this);
+        try {
+            fallingblock.removeMetadata(this.metadataKey, ProjectKorra.plugin);
+        } finally {
+            this.onPlace = null;
+            fallingblock.remove();
+        }
     }
 
     public FallingBlock getFallingBlock() {
