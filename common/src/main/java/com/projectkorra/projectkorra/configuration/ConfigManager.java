@@ -13,6 +13,7 @@ public class ConfigManager {
 
     private static final String TORNADO_DESCRIPTION = "Create a particle cyclone that travels along the ground and pulls in nearby entities. Aim at your own Tornado and right-click to ride it.";
     private static final String TORNADO_INSTRUCTIONS = "Hold sneak to charge and deploy Tornado. Once it forms, aim at the funnel and right-click in the air or on a block to ride; sneak to dismount.";
+    private static final String WHITE_GLIDER_TEXTURE = "https://textures.minecraft.net/texture/366a5c98928fa5d4b5d5b8efb490155b4dda3956bcaa9371177814532cfc";
 
     static final List<String> DEFAULT_WATER_COSMETICS = List.of(
             "white, WHITE_STAINED_GLASS",
@@ -1254,8 +1255,16 @@ public class ConfigManager {
             addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.OrangeTexture", "https://textures.minecraft.net/texture/cbf7797a24a6af875f5c8271c5b8c425e19f372a415e0552fc247763f2859d1");
             addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.YellowTexture", "https://textures.minecraft.net/texture/27bbd0b2911c96b5d87b2df76691a51b8b12c6fefd523146d8ac5ef1b8ee");
             addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.WoodTexture", "https://textures.minecraft.net/texture/45ac6e6c436d6e137d80482b888569b8181b8b3daa06c047f9751d32ebf8e4c1");
-            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.white.OuterTexture", "https://textures.minecraft.net/texture/2faf4c29f1e7405f4680c5c2b03ef9384f1aecfe2986ad50138c605fefff2f15");
-            addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.white.InnerTexture", "https://textures.minecraft.net/texture/2faf4c29f1e7405f4680c5c2b03ef9384f1aecfe2986ad50138c605fefff2f15");
+            for (final String panel : List.of("OuterTexture", "InnerTexture")) {
+                final String path = "Abilities.Air.AirGlider.Model.Colors.white." + panel;
+                final String previous = defaultConfig.getString(path, "");
+                // Repair the missing texture in existing configs while preserving custom skins.
+                final String brokenTexture = "textures.minecraft.net/texture/2faf4c29f1e7405f4680c5c2b03ef9384f1aecfe2986ad50138c605fefff2f15";
+                if (previous.equals("https://" + brokenTexture) || previous.equals("http://" + brokenTexture)) {
+                    defaultConfig.set(path, WHITE_GLIDER_TEXTURE);
+                }
+                addUpgradeDefault(defaultConfig, path, WHITE_GLIDER_TEXTURE);
+            }
             addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.orange.OuterTexture", "https://textures.minecraft.net/texture/cbf7797a24a6af875f5c8271c5b8c425e19f372a415e0552fc247763f2859d1");
             addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.orange.InnerTexture", "https://textures.minecraft.net/texture/cbf7797a24a6af875f5c8271c5b8c425e19f372a415e0552fc247763f2859d1");
             addUpgradeDefault(defaultConfig, "Abilities.Air.AirGlider.Model.Colors.magenta.OuterTexture", "https://textures.minecraft.net/texture/46b07e71258db8fe241bc659e874941ccb3d12c75e482ea9b50a048e6677a3");

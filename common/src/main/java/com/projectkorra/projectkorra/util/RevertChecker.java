@@ -4,6 +4,7 @@ import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.EarthAbility;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.configuration.PKConfiguration;
+import com.projectkorra.projectkorra.earthbending.RaiseEarth;
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.mc.Server;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
@@ -59,7 +60,7 @@ public class RevertChecker implements Runnable {
         for (final Block block : earthRevertQueue.keySet()) {
             Platform.chunks().getChunkAtAsync(block.getLocation()).thenAccept(result -> {
                 if (EarthAbility.getMovedEarth().containsKey(block)) {
-                    EarthAbility.revertBlock(block);
+                    RaiseEarth.revertExpiredBlock(block);
                 }
 
                 earthRevertQueue.remove(block);

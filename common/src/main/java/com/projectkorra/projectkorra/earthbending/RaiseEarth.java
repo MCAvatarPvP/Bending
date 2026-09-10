@@ -6,6 +6,7 @@ import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
+import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.util.BlockSource;
@@ -161,6 +162,15 @@ public class RaiseEarth extends EarthAbility {
     /** Returns whether a block belongs to either a RaiseEarth wall or column. */
     public static boolean blockInRaisedAffectedBlocks(final Block block) {
         return blockInWallAffectedBlocks(block) || blockInColumnAffectedBlocks(block);
+    }
+
+    /** Restores expired moved earth, crumbling only visible RaiseEarth blocks that disappear. */
+    public static void revertExpiredBlock(final Block block) {
+        final BlockData raisedData = blockInRaisedAffectedBlocks(block) && block.getType().isSolid()
+                ? block.getBlockData().clone() : null;
+        if (EarthAbility.revertBlock(block) && raisedData != null && !block.getType().isSolid()) {
+            RaiseEarthRevertEffects.play(block.getLocation().add(0.5, 0.5, 0.5), raisedData);
+        }
     }
 
     public static void revertWallAffectedBlock(final Block block) {

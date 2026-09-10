@@ -22,6 +22,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.scheduler.BukkitRunnable;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.action.PredictionDeterminism;
+import com.projectkorra.projectkorra.prediction.hit.ConfirmedHitEffects;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.LightManager;
@@ -406,7 +407,9 @@ public class ParticleStream extends BukkitRunnable {
     }
 
     public void collision(final LivingEntity entity, final Vector direction, final CoreAbility coreAbility) {
-        entity.getLocation().getWorld().playSound(entity.getLocation(), Sound.ENTITY_VILLAGER_HURT, 0.3f, 0.3f);
+        ConfirmedHitEffects.sound(coreAbility, entity, () -> {
+            entity.getLocation().getWorld().playSound(entity.getLocation(), Sound.ENTITY_VILLAGER_HURT, 0.3f, 0.3f);
+        });
 
         if (coreAbility.getName().equalsIgnoreCase("FireKick")) {
             final FireKick fireKick = CoreAbility.getAbility(this.player, FireKick.class);

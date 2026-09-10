@@ -16,6 +16,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Display;
 import com.projectkorra.projectkorra.platform.mc.scheduler.BukkitRunnable;
 import com.projectkorra.projectkorra.platform.mc.util.Transformation;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.authority.AuthoritativeEffects;
 import com.projectkorra.projectkorra.util.ParticleEffect;
 import org.joml.AxisAngle4f;
 import org.joml.Vector3f;
@@ -58,6 +59,11 @@ public final class ElementalCollisionEffects {
     }
 
     private static void play(final Location location, final Element firstElement, final Element secondElement, final CollisionCosmetics cosmetics, final Vector direction) {
+        // Other players' ability collisions cannot be reproduced by local prediction.
+        AuthoritativeEffects.run(() -> playImpact(location, firstElement, secondElement, cosmetics, direction));
+    }
+
+    private static void playImpact(final Location location, final Element firstElement, final Element secondElement, final CollisionCosmetics cosmetics, final Vector direction) {
         final Element first = parentElement(firstElement);
         final Element second = parentElement(secondElement);
         if (!isBendingElement(first) || !isBendingElement(second)) {

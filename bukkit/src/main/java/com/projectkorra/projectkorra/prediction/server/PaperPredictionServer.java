@@ -11,6 +11,7 @@ import com.projectkorra.projectkorra.prediction.action.NativeActionTagStream;
 import com.projectkorra.projectkorra.prediction.action.PredictionActionSeed;
 import com.projectkorra.projectkorra.prediction.action.PredictionDeterminism;
 import com.projectkorra.projectkorra.prediction.authority.PredictionVisibility;
+import com.projectkorra.projectkorra.prediction.authority.AuthoritativeEffects;
 import com.projectkorra.projectkorra.prediction.authority.RegionProtectionAuthority;
 import com.projectkorra.projectkorra.prediction.block.DirectBlockSync;
 import com.projectkorra.projectkorra.prediction.block.TempBlockDeliveryTracker;
@@ -144,6 +145,7 @@ public final class PaperPredictionServer extends PaperPredictionSnapshots {
     }
 
     public static Player predictedEffectOwner() {
+        if (AuthoritativeEffects.isBroadcasting()) return null;
         PaperPredictionServer server = active;
         if (server == null) return null;
         UUID owner = EFFECT_OWNER.get();

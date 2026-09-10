@@ -7,6 +7,7 @@ import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.EarthAbility;
 import com.projectkorra.projectkorra.ability.util.Collision;
 import com.projectkorra.projectkorra.ability.util.ElementalCollisionEffects;
+import com.projectkorra.projectkorra.prediction.authority.AuthoritativeEffects;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.earthbending.passive.DensityShift;
 import com.projectkorra.projectkorra.platform.mc.Location;
@@ -202,8 +203,10 @@ public class EarthBlast extends EarthAbility {
 
     private void playDeflectEffect(final EarthBlast blast) {
         final Location impactLocation = blast.location.clone();
-        ElementalCollisionEffects.play(impactLocation, Element.EARTH, Element.EARTH, this.bPlayer);
-        impactLocation.getWorld().playSound(impactLocation, Sound.BLOCK_DEEPSLATE_BREAK, 1.0F, 0.65F);
+        AuthoritativeEffects.run(() -> {
+            ElementalCollisionEffects.play(impactLocation, Element.EARTH, Element.EARTH, this.bPlayer);
+            impactLocation.getWorld().playSound(impactLocation, Sound.BLOCK_DEEPSLATE_BREAK, 1.0F, 0.65F);
+        });
     }
 
     private void focusBlock() {
