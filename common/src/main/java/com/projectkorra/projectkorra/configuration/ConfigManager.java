@@ -741,6 +741,7 @@ public class ConfigManager {
 
             config.addDefault("Commands.Help.Elements.Avatar", "Avatars are the human embodiment of light and peace created through a connection with the Avatar Spirit. It is considered an Avatar's duty to master the four elements and use that power to keep balance among the four nations as well as act as the bridge between the physical and spiritual worlds.\nEnter /b display Avatar for a list of the available avatar abilities.");
 
+            languageConfig.repairTruncatedAbilityText();
             languageConfig.save();
         } else if (type == ConfigType.DEFAULT) {
             config = defaultConfig.get();

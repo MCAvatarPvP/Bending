@@ -54,6 +54,7 @@ shadowJar {
     relocate 'co.aikar.timings.lib', 'timingslib.projectkorra'
     relocate 'io.papermc.lib', 'paperlib.projectkorra'
     relocate 'org.apache.commons', 'commonslang3.projectkorra'
+    relocate 'org.yaml.snakeyaml', 'com.projectkorra.libs.snakeyaml'
 }
 
 assemble.dependsOn shadowJar

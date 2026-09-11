@@ -215,7 +215,7 @@ public final class BukkitMC {
         final org.bukkit.Material[] nativeMaterials = new org.bukkit.Material[common.length];
         for (final Material material : common) {
             try {
-                nativeMaterials[material.ordinal()] = org.bukkit.Material.valueOf(material.name());
+                nativeMaterials[material.ordinal()] = org.bukkit.Material.valueOf(material.canonical().name());
             } catch (IllegalArgumentException ignored) {
                 nativeMaterials[material.ordinal()] = org.bukkit.Material.AIR;
             }

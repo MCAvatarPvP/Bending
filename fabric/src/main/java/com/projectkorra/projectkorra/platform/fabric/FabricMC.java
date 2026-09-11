@@ -184,13 +184,13 @@ public final class FabricMC {
         final Map<net.minecraft.block.Block, Material> commonByNative = new IdentityHashMap<>();
 
         for (final Material common : commonMaterials) {
-            final Identifier id = Identifier.ofVanilla(common.name().toLowerCase(Locale.ROOT));
+            final Identifier id = Identifier.ofVanilla(common.canonical().name().toLowerCase(Locale.ROOT));
             final net.minecraft.block.Block nativeBlock = Registries.BLOCK.containsId(id)
                     ? Registries.BLOCK.get(id)
                     : Blocks.AIR;
             nativeMaterials[common.ordinal()] = nativeBlock;
             if (nativeBlock != Blocks.AIR || common == Material.AIR) {
-                commonByNative.put(nativeBlock, common);
+                commonByNative.put(nativeBlock, common.canonical());
             }
         }
         return new MaterialMapping(nativeMaterials, commonByNative);

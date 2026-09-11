@@ -3,6 +3,10 @@ package com.projectkorra.projectkorra.configuration;
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.prediction.state.PredictionConfigSync;
+import org.yaml.snakeyaml.DumperOptions;
+import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -56,110 +60,6 @@ public class Config implements PKConfiguration {
             current = (Map<String, Object>) child;
         }
         current.put(parts[parts.length - 1], value);
-    }
-
-    @SuppressWarnings("unchecked")
-    private static void writeYaml(final BufferedWriter writer, final Map<String, Object> map, final int indent) throws IOException {
-        final String prefix = " ".repeat(indent);
-        for (final Map.Entry<String, Object> entry : map.entrySet()) {
-            if (entry.getValue() instanceof Map<?, ?> child) {
-                writer.write(prefix + entry.getKey() + ":");
-                writer.newLine();
-                writeYaml(writer, (Map<String, Object>) child, indent + 2);
-            } else if (entry.getValue() instanceof Collection<?> collection) {
-                writer.write(prefix + entry.getKey() + ":");
-                writer.newLine();
-                for (final Object value : collection) {
-                    writer.write(" ".repeat(indent + 2) + "- " + formatScalar(value));
-                    writer.newLine();
-                }
-            } else {
-                writer.write(prefix + entry.getKey() + ": " + formatScalar(entry.getValue()));
-                writer.newLine();
-            }
-        }
-    }
-
-    private static String formatScalar(final Object value) {
-        if (value == null) return "null";
-        if (value instanceof Number || value instanceof Boolean) return String.valueOf(value);
-        final String s = String.valueOf(value).replace("'", "''");
-        return "'" + s + "'";
-    }
-
-    private static int findMappingColon(final String trimmed) {
-        boolean single = false;
-        boolean dbl = false;
-        for (int i = 0; i < trimmed.length(); i++) {
-            final char c = trimmed.charAt(i);
-            if (c == '\'' && !dbl) single = !single;
-            else if (c == '"' && !single) dbl = !dbl;
-            else if (c == ':' && !single && !dbl) return i;
-        }
-        return -1;
-    }
-
-    private static String stripInlineComment(final String raw) {
-        boolean single = false;
-        boolean dbl = false;
-        for (int i = 0; i < raw.length(); i++) {
-            final char c = raw.charAt(i);
-            if (c == '\'' && !dbl) single = !single;
-            else if (c == '"' && !single) dbl = !dbl;
-            else if (c == '#' && !single && !dbl) {
-                // YAML treats a # as a comment only when it begins the scalar or is
-                // preceded by whitespace.  Keep tag literals such as #ice intact.
-                if (i == 0) return raw;
-                if (Character.isWhitespace(raw.charAt(i - 1))) {
-                    return raw.substring(0, i).trim();
-                }
-            }
-        }
-        return raw.trim();
-    }
-
-    private static int countLeadingSpaces(final String line) {
-        int count = 0;
-        while (count < line.length() && line.charAt(count) == ' ') count++;
-        return count;
-    }
-
-    private static String join(final List<String> path) {
-        return String.join(".", path.stream().filter(s -> !s.isEmpty()).toList());
-    }
-
-    private static Object parseScalar(final String rawValue) {
-        final String raw = stripInlineComment(rawValue);
-        if (raw.equalsIgnoreCase("true")) return true;
-        if (raw.equalsIgnoreCase("false")) return false;
-        if (raw.equalsIgnoreCase("null")) return null;
-        if (raw.startsWith("[") && raw.endsWith("]")) {
-            final String body = raw.substring(1, raw.length() - 1).trim();
-            if (body.isEmpty()) return new ArrayList<>();
-            final List<String> list = new ArrayList<>();
-            for (final String part : body.split(",")) list.add(unquote(stripInlineComment(part.trim())));
-            return list;
-        }
-        try {
-            return Integer.parseInt(raw);
-        } catch (final NumberFormatException ignored) {
-        }
-        try {
-            return Long.parseLong(raw);
-        } catch (final NumberFormatException ignored) {
-        }
-        try {
-            return Double.parseDouble(raw);
-        } catch (final NumberFormatException ignored) {
-        }
-        return unquote(raw);
-    }
-
-    private static String unquote(final String raw) {
-        if (raw.length() >= 2 && ((raw.startsWith("'") && raw.endsWith("'")) || (raw.startsWith("\"") && raw.endsWith("\"")))) {
-            return raw.substring(1, raw.length() - 1).replace("''", "'");
-        }
-        return raw;
     }
 
     /**
@@ -244,49 +144,32 @@ public class Config implements PKConfiguration {
 
     public void reload() {
         create();
-        this.values.clear();
-        this.loadedWithValues = false;
         try (BufferedReader reader = Files.newBufferedReader(this.file.toPath(), StandardCharsets.UTF_8)) {
-            final List<String> path = new ArrayList<>();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.trim().isEmpty() || line.trim().startsWith("#")) continue;
-                final int indent = countLeadingSpaces(line) / 2;
-                while (path.size() > indent) path.remove(path.size() - 1);
-                final String trimmed = line.trim();
-                if (trimmed.startsWith("- ")) {
-                    final String full = join(path);
-                    Object existing = this.values.get(full);
-                    List<Object> list;
-                    if (existing instanceof List<?> existingList) {
-                        @SuppressWarnings("unchecked") List<Object> mutable = (List<Object>) existingList;
-                        list = mutable;
-                    } else {
-                        list = new ArrayList<>();
-                        this.values.put(full, list);
-                        this.loadedWithValues = true;
-                    }
-                    list.add(parseScalar(trimmed.substring(2).trim()));
-                    continue;
-                }
-                final int colon = findMappingColon(trimmed);
-                if (colon <= 0) continue;
-                final String key = unquote(trimmed.substring(0, colon).trim());
-                final String rest = trimmed.substring(colon + 1).trim();
-                while (path.size() < indent) path.add("");
-                if (path.size() == indent) path.add(key);
-                else path.set(indent, key);
-                final String full = join(path);
-                if (rest.isEmpty()) {
-                    // Sections are represented by their child paths. Storing an empty
-                    // map here would overwrite those children when defaults are merged.
-                } else {
-                    this.values.put(full, parseScalar(rest));
-                    this.loadedWithValues = true;
-                }
+            final Object document = new Yaml(new SafeConstructor(new LoaderOptions())).load(reader);
+            final Map<String, Object> loaded = new LinkedHashMap<>();
+            if (document instanceof Map<?, ?> root) {
+                flattenYaml(root, "", loaded);
+            } else if (document != null) {
+                throw new IllegalArgumentException("Configuration root must be a mapping: " + this.file);
             }
+            // Parse the complete document before replacing the current values.
+            this.values.clear();
+            this.values.putAll(loaded);
+            this.loadedWithValues = !loaded.isEmpty();
         } catch (final IOException e) {
             Platform.logger().warning("Failed to load config " + this.file + ": " + e.getMessage());
+        }
+    }
+
+    private static void flattenYaml(final Map<?, ?> source, final String prefix,
+                                    final Map<String, Object> target) {
+        for (final Map.Entry<?, ?> entry : source.entrySet()) {
+            final String path = prefix + entry.getKey();
+            if (entry.getValue() instanceof Map<?, ?> section) {
+                flattenYaml(section, path + ".", target);
+            } else {
+                target.put(path, entry.getValue());
+            }
         }
     }
 
@@ -300,7 +183,11 @@ public class Config implements PKConfiguration {
                     writer.newLine();
                 }
             }
-            writeYaml(writer, treeForSave(), 0);
+            final DumperOptions yamlOptions = new DumperOptions();
+            yamlOptions.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
+            yamlOptions.setIndent(2);
+            yamlOptions.setSplitLines(false);
+            new Yaml(yamlOptions).dump(treeForSave(), writer);
         } catch (final IOException e) {
             Platform.logger().warning("Failed to save config " + this.file + ": " + e.getMessage());
         }
@@ -363,6 +250,28 @@ public class Config implements PKConfiguration {
     /** True when this configuration was loaded with at least one explicit value. */
     public boolean hasLoadedValues() {
         return this.loadedWithValues;
+    }
+
+    /** Repairs stock help text whose wrapped continuation was lost by the old line reader. */
+    int repairTruncatedAbilityText() {
+        int repaired = 0;
+        for (final Map.Entry<String, Object> entry : this.defaults.entrySet()) {
+            final String path = entry.getKey();
+            if (!path.startsWith("Abilities.")
+                    || !(path.endsWith(".Description") || path.endsWith(".Instructions"))
+                    || !(entry.getValue() instanceof String complete)
+                    || !(this.values.get(path) instanceof String stored)) continue;
+            // An opening quote could also survive when a quoted YAML scalar was cut in half.
+            final String fragment = stored.startsWith("'") || stored.startsWith("\"")
+                    ? stored.substring(1) : stored;
+            if (fragment.length() >= 32 && fragment.length() < complete.length()
+                    && complete.startsWith(fragment)
+                    && Character.isWhitespace(complete.charAt(fragment.length()))) {
+                this.values.put(path, complete);
+                repaired++;
+            }
+        }
+        return repaired;
     }
 
     @Override
