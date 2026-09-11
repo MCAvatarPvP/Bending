@@ -7,15 +7,18 @@ import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
+import org.yaml.snakeyaml.error.YAMLException;
+import org.yaml.snakeyaml.parser.ParserException;
 
-import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
+import java.util.logging.Logger;
 
 /**
  * Platform-neutral ProjectKorra configuration file.
@@ -144,22 +147,65 @@ public class Config implements PKConfiguration {
 
     public void reload() {
         create();
-        try (BufferedReader reader = Files.newBufferedReader(this.file.toPath(), StandardCharsets.UTF_8)) {
-            final Object document = new Yaml(new SafeConstructor(new LoaderOptions())).load(reader);
+        try {
+            final LoadedYaml yaml = loadYaml(Files.readString(this.file.toPath(), StandardCharsets.UTF_8));
+            final Object document = yaml.document();
             final Map<String, Object> loaded = new LinkedHashMap<>();
             if (document instanceof Map<?, ?> root) {
                 flattenYaml(root, "", loaded);
             } else if (document != null) {
                 throw new IllegalArgumentException("Configuration root must be a mapping: " + this.file);
             }
+            if (yaml.repaired()) backUpMalformedConfig();
             // Parse the complete document before replacing the current values.
             this.values.clear();
             this.values.putAll(loaded);
             this.loadedWithValues = !loaded.isEmpty();
         } catch (final IOException e) {
             Platform.logger().warning("Failed to load config " + this.file + ": " + e.getMessage());
+        } catch (final YAMLException e) {
+            throw new YAMLException("Failed to load config " + this.file + ": " + e.getMessage(), e);
         }
     }
+
+    private static LoadedYaml loadYaml(final String source) {
+        String yaml = source;
+        boolean repaired = false;
+        while (true) {
+            try {
+                return new LoadedYaml(new Yaml(new SafeConstructor(new LoaderOptions())).load(yaml), repaired);
+            } catch (final ParserException failure) {
+                // The old line reader lost the name of root-level, unindented lists.
+                // Its writer then emitted a bare ':' for the resulting empty key.
+                // Only repair a root key at the parser's actual error location; colons
+                // inside help text and unrelated syntax errors must remain untouched.
+                final var mark = failure.getProblemMark();
+                final String[] lines = yaml.split("\\r\\n|[\\r\\n\\u0085\\u2028\\u2029]", -1);
+                if (mark == null || mark.getColumn() != 0 || mark.getLine() >= lines.length
+                        || !lines[mark.getLine()].matches(": *(?:#.*)?")) throw failure;
+                lines[mark.getLine()] = "''" + lines[mark.getLine()];
+                yaml = String.join("\n", lines);
+                repaired = true;
+            }
+        }
+    }
+
+    private void backUpMalformedConfig() {
+        final Path backup;
+        try {
+            backup = Files.createTempFile(this.file.toPath().toAbsolutePath().getParent(),
+                    this.file.getName() + ".", ".invalid.bak");
+            Files.copy(this.file.toPath(), backup, StandardCopyOption.REPLACE_EXISTING);
+        } catch (final IOException failure) {
+            // Do not let a later save overwrite the only copy of a malformed file.
+            throw new YAMLException("Could not back up the malformed configuration", failure);
+        }
+        final Logger logger = Platform.isInstalled() ? Platform.logger() : Logger.getLogger("ProjectKorra");
+        logger.warning("Recovered an unnamed entry in " + this.file + "; original saved to " + backup
+                + ". The empty key will be quoted on the next save; its values have been retained.");
+    }
+
+    private record LoadedYaml(Object document, boolean repaired) { }
 
     private static void flattenYaml(final Map<?, ?> source, final String prefix,
                                     final Map<String, Object> target) {

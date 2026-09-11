@@ -97,8 +97,70 @@ class ConfigYamlTest {
     void parsingFailureKeepsThePreviouslyLoadedConfiguration() throws Exception {
         final Config config = load("value: complete\n");
         Files.writeString(directory.resolve("language.yml"), "value: 'unterminated\n");
+        final YAMLException failure = assertThrows(YAMLException.class, config::reload);
+        assertTrue(failure.getMessage().contains(directory.resolve("language.yml").toString()));
+        assertEquals("complete", config.getString("value"));
+    }
+
+    @Test
+    void legacyBarePresetKeyIsBackedUpAndRetainedAlongsideNamedPresets() throws Exception {
+        final String original = ":\r\n  - 'FireBlast'\r\n  - 'AirBlast'\r\nCustom:\r\n- WaterManipulation\r\n";
+        final Path file = directory.resolve("presets.yml");
+        Files.writeString(file, original);
+        final Config config = new Config(file.toFile(), false);
+
+        assertEquals(List.of("FireBlast", "AirBlast"), config.getStringList(""));
+        assertEquals(List.of("WaterManipulation"), config.getStringList("Custom"));
+        assertEquals(original, Files.readString(file), "loading must leave the original file intact");
+        final List<Path> backups = backups();
+        assertEquals(1, backups.size());
+        assertEquals(original, Files.readString(backups.getFirst()));
+
+        config.save();
+        config.reload();
+        assertEquals(List.of("FireBlast", "AirBlast"), config.getStringList(""));
+        assertEquals(List.of("WaterManipulation"), config.getStringList("Custom"));
+        assertEquals(1, backups().size(), "valid saved YAML needs no further repair");
+
+        Files.writeString(file, ": # another legacy empty key\n- EarthBlast\n");
+        config.reload();
+        assertEquals(List.of("EarthBlast"), config.getStringList(""));
+        assertEquals(2, backups().size());
+        assertEquals(original, Files.readString(backups.getFirst()), "never overwrite an earlier backup");
+    }
+
+    @Test
+    void bareKeyRecoveryDoesNotHideOtherSyntaxErrorsOrOverwriteValues() throws Exception {
+        final Config config = load("value: complete\n");
+        final String malformed = ":\n- FireBlast\nvalue: 'unterminated\n";
+        Files.writeString(directory.resolve("language.yml"), malformed);
         assertThrows(YAMLException.class, config::reload);
         assertEquals("complete", config.getString("value"));
+        assertEquals(malformed, Files.readString(directory.resolve("language.yml")));
+        assertTrue(backups().isEmpty(), "no repair may be committed until the complete YAML parses");
+        Files.writeString(directory.resolve("language.yml"), "value: fixed\n");
+        config.reload();
+        assertEquals("fixed", config.getString("value"));
+    }
+
+    @Test
+    void validColonTextAndUnindentedPresetListsNeedNoRepair() throws Exception {
+        final String original = "text: |\n  :\n  Keep this text.\nExample:\n- FireBlast\n- AirBlast\n";
+        final Config config = load(original);
+        assertEquals(":\nKeep this text.\n", config.getString("text"));
+        assertEquals(List.of("FireBlast", "AirBlast"), config.getStringList("Example"));
+        assertTrue(backups().isEmpty());
+        assertEquals(original, Files.readString(directory.resolve("language.yml")));
+        config.save();
+        config.reload();
+        assertEquals(List.of("FireBlast", "AirBlast"), config.getStringList("Example"));
+        assertEquals(":\nKeep this text.\n", config.getString("text"));
+    }
+
+    private List<Path> backups() throws Exception {
+        try (var files = Files.list(directory)) {
+            return files.filter(path -> path.getFileName().toString().endsWith(".invalid.bak")).toList();
+        }
     }
 
     @Test

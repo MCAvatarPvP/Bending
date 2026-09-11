@@ -46,6 +46,7 @@ tasks.withType(Test).configureEach {
 }
 
 processResources {
+    inputs.property 'version', project.version
     filesMatching('plugin.yml') { expand(version: project.version) }
 }
 

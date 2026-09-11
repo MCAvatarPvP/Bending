@@ -31,6 +31,7 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
     private PacketEventsEntityInterpolationHook entityInterpolationHook;
     private ExternalActionBarHook externalActionBarHook;
     private boolean shuttingDown;
+    private boolean commonInitialized;
     private PlaceholderAPIHook papiHook;
 
     private static CommandSender wrapSender(final org.bukkit.command.CommandSender sender) {
@@ -51,8 +52,11 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
 
     @Override
     public void onEnable() {
+        this.shuttingDown = false;
+        this.commonInitialized = false;
         Platform.install(new BukkitProjectKorraPlatform(this));
         ProjectKorra.initCommon();
+        this.commonInitialized = true;
         BukkitRegionProtectionBootstrap.registerBuiltIns();
         GeneralMethods.reloadPlugin(new BukkitConsoleSender(getServer().getConsoleSender()));
         BukkitAirGliderRecipes.register(this);
@@ -179,7 +183,11 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
         // Keep lifecycle publication and coordinate filtering alive while
         // abilities restore their server state. Exact clients can then finish
         // their own ordered TempBlock lifecycles during a reload.
-        GeneralMethods.stopBending();
+        // Config loading can fail before ability classes are safe to initialize.
+        if (this.commonInitialized) {
+            this.commonInitialized = false;
+            GeneralMethods.stopBending();
+        }
         BukkitAirGliderRecipes.unregister();
         unregisterPlaceHolderHook();
         if (this.externalActionBarHook != null) {
