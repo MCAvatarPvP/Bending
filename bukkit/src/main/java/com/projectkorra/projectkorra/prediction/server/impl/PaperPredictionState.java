@@ -77,7 +77,7 @@ public abstract class PaperPredictionState implements PluginMessageListener, Run
     protected static final int MAX_PREDICTION_PERMISSIONS = 512;
     protected static final int CLAIMS_PER_SECOND = 48;
     protected static final double CLAIM_CONTACT_TOLERANCE = 0.75;
-    protected static final double CLAIM_QUERY_TOLERANCE = 1.0;
+    protected static final double CLAIM_QUERY_TOLERANCE = 0.0;
     protected static final double MAX_CLAIM_DISTANCE_SQUARED = 160.0 * 160.0;
     protected static final ThreadLocal<UUID> EFFECT_OWNER = new ThreadLocal<>();
     protected static final ThreadLocal<Boolean> EFFECT_PREDICTED = new ThreadLocal<>();
