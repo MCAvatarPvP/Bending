@@ -4,6 +4,7 @@ import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.util.Collision;
+import com.projectkorra.projectkorra.airbending.AirBlast;
 import com.projectkorra.projectkorra.airbending.AirSpout;
 import com.projectkorra.projectkorra.airbending.Suffocate;
 import com.projectkorra.projectkorra.airbending.flight.FlightMultiAbility;
@@ -216,6 +217,14 @@ public abstract class AirAbility extends ElementalAbility {
     @Deprecated
     public static void removeAirSpouts(final Location loc, final Player source) {
         removeAirSpouts(loc, 1.5, source);
+    }
+
+    public static void breakAirBlast(Entity entity) {
+        if (entity instanceof Player player) {
+            AirBlast airBlast = CoreAbility.getAbility(player, AirBlast.class);
+            if (airBlast != null)
+                airBlast.remove();
+        }
     }
 
     @Override
