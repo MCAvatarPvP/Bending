@@ -163,10 +163,12 @@ public class EarthBlast extends EarthAbility {
         }
 
         for (final EarthBlast blast : getAbilities(player, EarthBlast.class)) {
-            if (!blast.isProgressing && bPlayer.canBend(blast)) {
+            if (!blast.isRemoved() && !blast.isProgressing && !blast.isAtDestination && bPlayer.canBend(blast)) {
                 blast.throwEarth();
-                ignore.add(blast);
-                earthBlast = blast;
+                if (!blast.isRemoved() && blast.isProgressing) {
+                    ignore.add(blast);
+                    earthBlast = blast;
+                }
             }
         }
 
@@ -282,6 +284,11 @@ public class EarthBlast extends EarthAbility {
         }
 
         this.checkForCollision();
+        // Deflecting an incoming blast cancels this preparation too.
+        // Registering it afterwards leaves a removed instance that never ticks.
+        if (this.isRemoved()) {
+            return false;
+        }
 
         if (block.getLocation().distanceSquared(this.player.getLocation()) > this.selectRange * this.selectRange) {
             return false;
@@ -479,31 +486,24 @@ public class EarthBlast extends EarthAbility {
     }
 
     public void throwEarth() {
-        if (this.sourceBlock == null || !this.sourceBlock.getWorld().equals(this.player.getWorld())) {
+        if (this.isRemoved() || this.isProgressing || this.isAtDestination || !this.isFocusedSourceValid()
+                || !this.sourceBlock.getWorld().equals(this.player.getWorld())) {
             return;
-        }
-
-        if (getMovedEarth().containsKey(this.sourceBlock)) {
-            if (!isEarthRevertOn()) {
-                removeRevertIndex(this.sourceBlock);
-            }
         }
 
         final Entity target = GeneralMethods.getTargetedEntity(this.player, this.range, new ArrayList<Entity>());
-        if (target != null) {
-            this.destination = target.getLocation();
-        } else {
-            this.destination = this.getTargetLocation();
-        }
-
-        if (this.sourceBlock == null) {
-            return;
-        }
-        this.location = this.sourceBlock.getLocation();
-        if (this.destination.distanceSquared(this.location) < 1) {
+        final Location targetLocation = target != null ? target.getLocation() : this.getTargetLocation();
+        final Location sourceLocation = this.sourceBlock.getLocation();
+        if (targetLocation.distanceSquared(sourceLocation) <= 1) {
             return;
         }
 
+        if (getMovedEarth().containsKey(this.sourceBlock) && !isEarthRevertOn()) {
+            removeRevertIndex(this.sourceBlock);
+        }
+
+        this.destination = targetLocation;
+        this.location = sourceLocation;
         this.firstDestination = this.location.clone();
         if (this.destination.getY() - this.location.getY() > 2) {
             this.firstDestination.setY(this.destination.getY() - 1);
@@ -515,23 +515,18 @@ public class EarthBlast extends EarthAbility {
             this.firstDestination.add(GeneralMethods.getDirection(this.location, this.destination).normalize().setY(0));
         }
 
-        if (this.destination.distanceSquared(this.location) <= 1) {
-            this.isProgressing = false;
-            this.destination = null;
+        this.isProgressing = true;
+        playEarthbendingSound(this.sourceBlock.getLocation());
+
+        final Material currentType = this.sourceBlock.getType();
+        this.sourceBlock.setType(this.sourceType);
+        if (isEarthRevertOn()) {
+            addTempAirBlock(this.sourceBlock);
         } else {
-            this.isProgressing = true;
-            playEarthbendingSound(this.sourceBlock.getLocation());
-
-            final Material currentType = this.sourceBlock.getType();
-            this.sourceBlock.setType(this.sourceType);
-            if (isEarthRevertOn()) {
-                addTempAirBlock(this.sourceBlock);
-            } else {
-                this.sourceBlock.breakNaturally();
-            }
-
-            this.sourceBlock.setType(currentType);
+            this.sourceBlock.breakNaturally();
         }
+
+        this.sourceBlock.setType(currentType);
     }
 
     @Override
