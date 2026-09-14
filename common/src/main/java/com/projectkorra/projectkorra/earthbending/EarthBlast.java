@@ -392,6 +392,7 @@ public class EarthBlast extends EarthAbility {
 
                     if (entity instanceof LivingEntity && (entity.getEntityId() != this.player.getEntityId() || this.canHitSelf)) {
                         AirAbility.breakBreathbendingHold(entity);
+                        AirAbility.breakAirBlast(entity);
 
                         final Location location = this.player.getEyeLocation();
                         final Vector vector = location.getDirection();

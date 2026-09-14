@@ -2,6 +2,7 @@ package com.projectkorra.projectkorra.firebending.combo;
 
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
+import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.ComboAbility;
 import com.projectkorra.projectkorra.ability.FireAbility;
 import com.projectkorra.projectkorra.ability.util.Collision;
@@ -248,6 +249,7 @@ public class FireSpin extends FireAbility implements ComboAbility {
         }
 
         this.affectedEntities.add(entity);
+        AirAbility.breakAirBlast(entity);
 
         if (entity instanceof Player) {
             final FireJet fireJet = getAbility((Player) entity, FireJet.class);

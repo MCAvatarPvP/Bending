@@ -29,6 +29,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * one alias must match so a changed terrain boundary fails at startup instead
  * of silently exposing Paper's delayed physical copy.</p>
  */
+@SuppressWarnings("UnresolvedMixinReference")
 @Pseudo
 @Mixin(targets = "net.vulkanmod.render.chunk.build.RenderRegion", remap = false)
 public abstract class VulkanRenderRegionPredictionMixin {

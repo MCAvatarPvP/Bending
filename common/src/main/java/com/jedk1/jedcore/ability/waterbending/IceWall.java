@@ -21,6 +21,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
+import com.projectkorra.projectkorra.prediction.authority.AuthoritativeEffects;
 import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.ParticleEffect;
@@ -579,8 +580,11 @@ public class IceWall extends IceAbility implements AddonAbility {
             if (tb != null) {
                 tb.revertBlock();
 
-                ParticleEffect.BLOCK_CRACK.display(tb.getLocation(), 5, 0, 0, 0, 0, Material.PACKED_ICE.createBlockData());
-                tb.getLocation().getWorld().playSound(tb.getLocation(), Sound.BLOCK_GLASS_BREAK, 5f, 5f);
+                AuthoritativeEffects.run(() -> {
+                    ParticleEffect.BLOCK_CRACK.display(tb.getLocation(), 5, 0, 0, 0, 0,
+                            Material.PACKED_ICE.createBlockData());
+                    tb.getLocation().getWorld().playSound(tb.getLocation(), Sound.BLOCK_GLASS_BREAK, 5f, 5f);
+                });
 
                 for (Entity e : GeneralMethods.getEntitiesAroundPoint(tb.getLocation(), radius)) {
                     if (e.getEntityId() != player.getEntityId()) {
