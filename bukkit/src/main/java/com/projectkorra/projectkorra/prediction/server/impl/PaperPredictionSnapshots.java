@@ -29,6 +29,7 @@ import com.jedk1.jedcore.ability.passive.WallRun;
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.ability.Ability;
 import com.projectkorra.projectkorra.ability.CoreAbility;
+import com.projectkorra.projectkorra.ability.PassiveAbility;
 import com.projectkorra.projectkorra.ability.activation.AbilityActivationManager;
 import com.projectkorra.projectkorra.ability.util.ComboManager;
 import com.projectkorra.projectkorra.ability.util.MultiAbilityManager;
@@ -182,6 +183,7 @@ public abstract class PaperPredictionSnapshots extends PaperPredictionDelivery {
             return session.predictionPermissions;
         }
 
+        final List<String> passiveNodes = new ArrayList<>();
         final List<String> abilityNodes = new ArrayList<>();
         final List<String> otherNodes = new ArrayList<>();
         final Set<String> seen = new HashSet<>();
@@ -194,12 +196,21 @@ public abstract class PaperPredictionSnapshots extends PaperPredictionDelivery {
             final String normalized = node.toLowerCase(Locale.ROOT);
             if (!seen.add(normalized) || !player.hasPermission(normalized)) continue;
             if (normalized.startsWith("bending.ability.")) abilityNodes.add(normalized);
+            else if (normalized.endsWith(".passive")) passiveNodes.add(normalized);
             else otherNodes.add(normalized);
         }
+        passiveNodes.sort(String::compareTo);
         abilityNodes.sort(String::compareTo);
         otherNodes.sort(String::compareTo);
         final List<String> result = new ArrayList<>(Math.min(MAX_PREDICTION_PERMISSIONS,
-                abilityNodes.size() + otherNodes.size()));
+                passiveNodes.size() + abilityNodes.size() + otherNodes.size()));
+        // Each passive needs both its ability node and its element's passive
+        // node. Reserve the parent decisions before the bounded ability list;
+        // otherwise a full snapshot can deny every passive only on the client.
+        for (String node : passiveNodes) {
+            if (result.size() == MAX_PREDICTION_PERMISSIONS) break;
+            result.add(node);
+        }
         for (String node : abilityNodes) {
             if (result.size() == MAX_PREDICTION_PERMISSIONS) break;
             result.add(node);
@@ -223,6 +234,9 @@ public abstract class PaperPredictionSnapshots extends PaperPredictionDelivery {
         for (CoreAbility ability : CoreAbility.getAbilities()) {
             if (ability == null || ability.getName() == null || ability.getName().isBlank()) continue;
             candidates.add("bending.ability." + ability.getName());
+            if (ability instanceof PassiveAbility && ability.getElement() != null) {
+                candidates.add("bending." + ability.getElement().getName() + ".passive");
+            }
         }
         candidates.addAll(expandPermissionCandidates(Bukkit.getPluginManager().getPermissions()));
         // WaterSpoutWave is a feature branch whose ability name is

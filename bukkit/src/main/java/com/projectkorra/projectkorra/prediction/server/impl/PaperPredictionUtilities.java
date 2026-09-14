@@ -162,7 +162,9 @@ public abstract class PaperPredictionUtilities extends PaperPredictionState {
                                               BendingPlayer bending, PaperPredictionProtocol.InputKind kind,
                                               String fallback) {
         if (player == null || bending == null) return fallback == null ? "" : fallback;
-        if (kind == PaperPredictionProtocol.InputKind.SNEAK_START && !CoreAbility.hasAbility(player, FastSwim.class)) {
+        // Match the common sneak handler regardless of whether an older
+        // passive instance has reached its final progress tick yet.
+        if (kind == PaperPredictionProtocol.InputKind.SNEAK_START) {
             CoreAbility bound = bending.getBoundAbility();
             CoreAbility passive = CoreAbility.getAbility(FastSwim.class);
             if ((bound == null || !bound.isSneakAbility()) && PassiveManager.hasPassive(player, passive)) {

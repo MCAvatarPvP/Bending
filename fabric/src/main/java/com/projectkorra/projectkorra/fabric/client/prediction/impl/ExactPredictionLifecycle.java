@@ -286,6 +286,7 @@ public abstract class ExactPredictionLifecycle extends ExactPredictionReconcilia
                 this.earthSmashIdentities.clear();
                 this.authoritativelyEstablishedAbilities.clear();
                 this.abilityRemovalHistory.clear();
+                this.swimDiagnostics.clear();
                 this.nativeActions.clear();
                 this.authoritativeFlightAbilities = Set.of();
                 this.authoritativeFlightSequence = -1L;
@@ -392,7 +393,12 @@ public abstract class ExactPredictionLifecycle extends ExactPredictionReconcilia
 
     protected void setVelocity0(Entity entity, Vec3d velocity) {
         if (this.ready && entity != null && velocity != null && finite(velocity)) {
-            if (ExactPredictionRuntime.isLocalPlayerEntity(entity.getId()) && this.velocityAuthority.blocksPredictedWrite(entity.getId())) {
+            final boolean local = ExactPredictionRuntime.isLocalPlayerEntity(entity.getId());
+            final boolean blocked = local && this.velocityAuthority.blocksPredictedWrite(entity.getId());
+            if (local && "FastSwim".equals(this.currentAbilityName())) {
+                this.swimDiagnostics.recordWrite(this.tick, blocked, velocity);
+            }
+            if (blocked) {
                 debug(
                         "runtime suppressed late predicted velocity behind external authority entity="
                                 + entity.getId()

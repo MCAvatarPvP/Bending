@@ -387,7 +387,10 @@ public abstract class ExactPredictionStartup extends ExactPredictionState {
     }
 
     protected boolean canStartFastSwim(Player player) {
-        if (player != null && !CoreAbility.hasAbility(player, FastSwim.class)) {
+        // The common sneak handler accepts shift-down even when a previous
+        // passive instance is still alive. Its lifetime can differ across
+        // the latency boundary; it must not change the input's action name.
+        if (player != null) {
             CoreAbility bound = this.bendingPlayer.getBoundAbility();
             CoreAbility passive = CoreAbility.getAbility(FastSwim.class);
             return (bound == null || !bound.isSneakAbility()) && PassiveManager.hasPassive(player, passive);

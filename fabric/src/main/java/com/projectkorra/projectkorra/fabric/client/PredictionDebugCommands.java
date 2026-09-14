@@ -23,6 +23,14 @@ final class PredictionDebugCommands {
                                             "ProjectKorra prediction: " + PredictionClient.diagnosticStatus()));
                                     return 1;
                                 }))
+                        .then(literal("swim")
+                                .executes(context -> {
+                                    context.getSource().sendFeedback(Text.literal(
+                                            "ProjectKorra prediction: " + PredictionClient.diagnosticStatus()));
+                                    ExactPredictionRuntime.fastSwimReport().forEach(line ->
+                                            context.getSource().sendFeedback(Text.literal(line)));
+                                    return 1;
+                                }))
                         .then(literal("removals")
                                 .executes(context -> {
                                     ExactPredictionRuntime.abilityRemovalReport().forEach(line ->

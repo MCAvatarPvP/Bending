@@ -163,6 +163,8 @@ public abstract class ExactPredictionTick extends ExactPredictionInput {
                 debug("runtime tick failed " + failure.getClass().getSimpleName() + ": " + failure.getMessage());
             }
 
+            this.swimDiagnostics.sample(this.tick, client, this.bendingPlayer,
+                    this.velocityAuthority.blocksPredictedWrite(client.player.getId()));
             this.velocityAuthority.afterLocalProgress(client.world, this.tick, this::hasLivePredictedVelocityWriter);
             this.tempBlockAuthority.afterLocalProgress(client.world);
             this.directBlockAuthority.clearTransientReads();

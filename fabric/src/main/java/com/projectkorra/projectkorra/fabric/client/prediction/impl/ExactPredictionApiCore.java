@@ -223,6 +223,14 @@ public abstract class ExactPredictionApiCore extends ExactPredictionEntities {
         return ExactPredictionRuntime.instance().lastStartFailure;
     }
 
+    public static List<String> fastSwimReport() {
+        final var runtime = ExactPredictionRuntime.instance();
+        final List<String> report = new ArrayList<>();
+        report.add("Synchronized permissions=" + runtime.grantedPermissions.size());
+        report.addAll(runtime.swimDiagnostics.report());
+        return List.copyOf(report);
+    }
+
     public static boolean supports(String abilityName) {
         return ExactPredictionRuntime.instance().ready
                 && abilityName != null

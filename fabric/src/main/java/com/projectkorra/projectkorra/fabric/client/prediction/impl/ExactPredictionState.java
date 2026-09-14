@@ -152,6 +152,7 @@ import net.minecraft.util.math.Vec3d;
 import com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime;
 import com.projectkorra.projectkorra.fabric.client.prediction.action.InputAbilityCreations;
 import com.projectkorra.projectkorra.fabric.client.prediction.action.ClientAbilityIdentity;
+import com.projectkorra.projectkorra.fabric.client.prediction.movement.FastSwimPredictionDiagnostics;
 
 public abstract class ExactPredictionState
         implements Listener,
@@ -178,6 +179,7 @@ public abstract class ExactPredictionState
     protected final ClientAbilityIdentity<EarthSmash> earthSmashIdentities = new ClientAbilityIdentity<>();
     protected final Set<CoreAbility> authoritativelyEstablishedAbilities = Collections.newSetFromMap(new IdentityHashMap<>());
     protected final List<String> abilityRemovalHistory = new ArrayList<>();
+    protected final FastSwimPredictionDiagnostics swimDiagnostics = new FastSwimPredictionDiagnostics();
     protected final ClientNativeActionCorrelation nativeActions = new ClientNativeActionCorrelation();
     protected Set<String> authoritativeFlightAbilities = Set.of();
     protected long authoritativeFlightSequence = -1L;
