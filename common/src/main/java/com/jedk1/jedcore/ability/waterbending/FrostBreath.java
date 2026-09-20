@@ -100,7 +100,7 @@ public class FrostBreath extends IceAbility implements AddonAbility {
         long time = System.currentTimeMillis();
 
         frozenBlocks.removeIf(frozen -> {
-            if (time >= frozen.endTime) {
+            if (frozen.tempBlock.isReverted() || time >= frozen.endTime) {
                 removeFrozenBlock(frozen.tempBlock);
                 frozen.tempBlock.revertBlock();
                 return true;
@@ -192,6 +192,33 @@ public class FrostBreath extends IceAbility implements AddonAbility {
 
     private void removeFrozenBlock(TempBlock tempBlock) {
         PhaseChange.getFrozenBlocksMap().remove(tempBlock);
+    }
+
+    void updateFrozenBlock(Block block, Material type, long duration, boolean bendable) {
+        final long lifetime = Math.max(1L, duration);
+        FrozenBlock frozen = null;
+        for (FrozenBlock candidate : frozenBlocks) {
+            if (!candidate.tempBlock.isReverted() && candidate.tempBlock.getBlock().equals(block)) {
+                frozen = candidate;
+                break;
+            }
+        }
+
+        if (frozen == null) {
+            final TempBlock layer = new TempBlock(block, type.createBlockData(), FrostBreath.this);
+            if (layer.isReverted()) return;
+            layer.setRevertTask(() -> removeFrozenBlock(layer));
+            frozen = new FrozenBlock(layer, 0L);
+            frozenBlocks.add(frozen);
+        } else if (frozen.tempBlock.getBlockData().getMaterial() != type) {
+            frozen.tempBlock.setType(type);
+        }
+
+        frozen.endTime = System.currentTimeMillis() + lifetime;
+        // Keep an expiry even if this ability stops progressing, and refresh only our own layer.
+        frozen.tempBlock.setRevertTime(lifetime);
+        if (bendable) addFrozenBlock(frozen.tempBlock);
+        else removeFrozenBlock(frozen.tempBlock);
     }
 
     private interface State {
@@ -321,7 +348,7 @@ public class FrostBreath extends IceAbility implements AddonAbility {
                             if (isFreezable(cageLocation, entity)) {
                                 Block block = cageLocation.getBlock();
 
-                                updateFrozenBlock(block, getIceMaterial(), config.freezeDuration);
+                                updateFrozenBlock(block, getIceMaterial(), config.freezeDuration, true);
                             }
                         }
 
@@ -361,51 +388,12 @@ public class FrostBreath extends IceAbility implements AddonAbility {
                     Block block = l.getBlock();
 
                     if ((config.freezeTempBlocks || !TempBlock.isTempBlock(l.getBlock())) && isWater(l.getBlock())) {
-                        updateFrozenBlock(block, getIceMaterial(), config.frozenWaterDuration);
+                        updateFrozenBlock(block, getIceMaterial(), config.frozenWaterDuration, true);
                     } else if (isTransparent(l.getBlock()) && l.clone().add(0, -1, 0).getBlock().getType().isSolid() && !isIce(l.clone().add(0, -1, 0).getBlock()) && !INVALID_MATERIALS.contains(l.clone().add(0, -1, 0).getBlock().getType())) {
-                        if (config.bendSnow) {
-                            updateFrozenBlock(block, Material.SNOW, config.snowDuration);
-                        } else {
-                            TempBlock current = TempBlock.get(block);
-
-                            // Refresh any existing TempBlock so the timer resets.
-                            if (current != null) {
-                                current.revertBlock();
-                            }
-
-                            TempBlock tempBlock = new TempBlock(block, Material.SNOW.createBlockData());
-                            tempBlock.setRevertTime(config.snowDuration);
-                        }
+                        updateFrozenBlock(block, Material.SNOW, config.snowDuration, config.bendSnow);
                     }
                 }
             }
-        }
-
-        private void updateFrozenBlock(Block block, Material type, long duration) {
-            // Store the TempBlock as a FrozenBlock block so it can be reverted later.
-            for (FrozenBlock fb : frozenBlocks) {
-                if (fb.tempBlock.getBlock().equals(block)) {
-                    if (fb.tempBlock.getBlockData().getMaterial() != type) {
-                        // Completely overwrite this FrozenBlock if the new type doesn't match the old one.
-                        removeFrozenBlock(fb.tempBlock);
-                        fb.tempBlock.revertBlock();
-                        frozenBlocks.remove(fb);
-                        break;
-                    }
-
-                    fb.endTime = System.currentTimeMillis() + duration;
-                    return;
-                }
-            }
-
-            TempBlock tempBlock = new TempBlock(block, type.createBlockData());
-
-            frozenBlocks.add(new FrozenBlock(tempBlock, System.currentTimeMillis() + duration));
-
-            // Add the TempBlock to a ProjectKorra block list so it can be used as a water source.
-            // I don't believe there exists a way to make a TempBlock water bendable right now, so this
-            // is a hack to make it work.
-            addFrozenBlock(tempBlock);
         }
 
         private List<Location> createCage(Location centerBlock) {

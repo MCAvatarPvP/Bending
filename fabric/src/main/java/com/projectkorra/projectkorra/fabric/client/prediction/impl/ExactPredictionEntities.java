@@ -86,6 +86,8 @@ import com.projectkorra.projectkorra.platform.mc.block.data.type.Snow;
 import com.projectkorra.projectkorra.platform.mc.entity.FallingBlock;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
+import com.projectkorra.projectkorra.platform.mc.entity.Projectile;
+import com.projectkorra.projectkorra.platform.mc.event.entity.ProjectileHitEvent;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
 import com.projectkorra.projectkorra.prediction.action.AbilityRemovalSync;
@@ -148,10 +150,47 @@ import net.minecraft.sound.SoundCategory;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.entity.projectile.ProjectileEntity;
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.hit.EntityHitResult;
+import net.minecraft.util.hit.HitResult;
 
 import com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime;
+import me.moros.hyperion.abilities.earthbending.MetalCable;
+import me.moros.hyperion.methods.CoreMethods;
 
 public abstract class ExactPredictionEntities extends ExactPredictionPlayerState {
+    protected boolean projectileHit0(ProjectileEntity projectile, HitResult hit) {
+        if (!this.ready || projectile == null || !(projectile.getEntityWorld() instanceof ClientWorld world)
+                || hit == null || hit.getType() == HitResult.Type.MISS) return false;
+        long action = this.entityReconciliation.spawnAction(projectile);
+        if (action <= 0L || !this.actions.containsKey(action)
+                || !(FabricPredictionMC.entity(projectile)
+                instanceof Projectile commonProjectile)) return false;
+
+        var event = new ProjectileHitEvent();
+        event.setEntity(commonProjectile);
+        if (hit instanceof BlockHitResult blockHit) {
+            event.setHitBlock(FabricPredictionMC.block(world, blockHit.getBlockPos()));
+        } else if (hit instanceof EntityHitResult entityHit) {
+            event.setHitEntity(FabricPredictionMC.entity(entityHit.getEntity()));
+        }
+        // Sneaking after firing can transition MetalCable to a newer action.
+        // Match Paper's current ability owner rather than its original shot.
+        long impactAction = action;
+        for (var metadata : commonProjectile.getMetadata(CoreMethods.CABLE_KEY)) {
+            if (metadata.value() instanceof MetalCable cable) {
+                impactAction = this.abilityActions.getOrDefault(cable, action);
+                break;
+            }
+        }
+        // Native entity ticks run after the input that created the projectile.
+        // Re-enter that action so impact-spawned effects reconcile to Paper.
+        ExactPredictionRuntime.runWithAction(
+                impactAction, () -> this.platform.events().call(event));
+        return event.isCancelled();
+    }
+
     protected void trackSpawn0(Entity entity) {
         long action = this.currentAction();
         Action owner = this.actions.get(action);

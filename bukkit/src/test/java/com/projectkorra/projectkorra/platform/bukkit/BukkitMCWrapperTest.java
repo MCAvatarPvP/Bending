@@ -11,6 +11,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import java.lang.reflect.Proxy;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Stream;
@@ -18,6 +19,33 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BukkitMCWrapperTest {
+    @Test
+    void blockCollisionBoxesKeepSeparateStairSurfacesAndUseWorldCoordinates() {
+        var lower = new org.bukkit.util.BoundingBox(0, 0, 0, 1, 0.5, 1);
+        var upper = new org.bukkit.util.BoundingBox(0.5, 0.5, 0, 1, 1, 1);
+        var shape = stub(org.bukkit.util.VoxelShape.class, Map.of("getBoundingBoxes", List.of(lower, upper)));
+        var block = stub(org.bukkit.block.Block.class,
+                Map.of("getX", -8, "getY", 64, "getZ", 12, "getCollisionShape", shape));
+
+        var boxes = BukkitMC.block(block).getCollisionBoxes();
+
+        assertEquals(2, boxes.size());
+        assertEquals(-8, boxes.get(0).getMinX());
+        assertEquals(64.5, boxes.get(0).getMaxY());
+        assertEquals(12, boxes.get(0).getMinZ());
+        assertEquals(-7.5, boxes.get(1).getMinX());
+        assertEquals(65, boxes.get(1).getMaxY());
+        assertEquals(13, boxes.get(1).getMaxZ());
+        assertEquals(0, lower.getMinX(), "reading collision must not mutate the native shape");
+    }
+
+    @Test
+    void collisionlessBlocksHaveNoSupportBoxes() {
+        var shape = stub(org.bukkit.util.VoxelShape.class, Map.of("getBoundingBoxes", List.of()));
+        var block = stub(org.bukkit.block.Block.class, Map.of("getCollisionShape", shape));
+        assertTrue(BukkitMC.block(block).getCollisionBoxes().isEmpty());
+    }
+
     @Test
     void blocksUseTheSuppliedHandleAndKeepCoordinateBasedMapLookups() {
         org.bukkit.World world = stub(org.bukkit.World.class, Map.of("getUID", UUID.randomUUID()));

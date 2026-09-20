@@ -15,11 +15,13 @@ import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
+import com.projectkorra.projectkorra.platform.mc.util.BoundingBox;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.util.ClickType;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.function.Predicate;
 
 public class Toss extends EarthAbility implements AddonAbility, ComboAbility {
     private long cooldown;
@@ -69,6 +71,7 @@ public class Toss extends EarthAbility implements AddonAbility, ComboAbility {
 
     private void launch() {
         for (final LivingEntity target : this.targets) {
+            if (findSupportingBlock(target, this::isEarthbendable) == null) continue;
             final Vector vector = this.targetLoc.clone().toVector().subtract(target.getLocation().toVector());
             GeneralMethods.setVelocity(this, target, new Vector(vector.getX(), vector.getY() < 4 ? 4 : vector.getY() + 1.5, vector.getZ()).multiply(0.175));
             if (this.bPlayer.areSourceHolesOn()) shape(target, target.getVelocity());
@@ -84,10 +87,36 @@ public class Toss extends EarthAbility implements AddonAbility, ComboAbility {
 
     private void findTargets(final double radius) {
         for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(this.player.getLocation(), radius)) {
-            if (entity instanceof LivingEntity living && !entity.equals(this.player) && isEarthbendable(living.getLocation().add(0, -1, 0).getBlock())) {
+            if (entity instanceof LivingEntity living && !entity.equals(this.player)
+                    && findSupportingBlock(living, this::isEarthbendable) != null) {
                 if (!this.limited || this.targets.size() < this.maxEntity) this.targets.add(living);
             }
         }
+    }
+
+    static Block findSupportingBlock(final LivingEntity entity, final Predicate<Block> bendable) {
+        final BoundingBox feet = entity.getBoundingBox();
+        final double epsilon = 1.0E-5;
+        // Include partial blocks and walls whose collision extends above their block coordinate.
+        final int minY = (int) Math.floor(feet.getMinY() - 1.5);
+        final int maxY = (int) Math.floor(feet.getMinY() + epsilon);
+        for (int x = (int) Math.floor(feet.getMinX()); x <= (int) Math.floor(feet.getMaxX()); x++) {
+            for (int z = (int) Math.floor(feet.getMinZ()); z <= (int) Math.floor(feet.getMaxZ()); z++) {
+                for (int y = minY; y <= maxY; y++) {
+                    final Block block = entity.getWorld().getBlockAt(x, y, z);
+                    for (final BoundingBox shape : block.getCollisionBoxes()) {
+                        if (shape.getMaxY() > shape.getMinY()
+                                && Math.abs(shape.getMaxY() - feet.getMinY()) <= epsilon
+                                && Math.min(feet.getMaxX(), shape.getMaxX()) > Math.max(feet.getMinX(), shape.getMinX())
+                                && Math.min(feet.getMaxZ(), shape.getMaxZ()) > Math.max(feet.getMinZ(), shape.getMinZ())
+                                && bendable.test(block)) {
+                            return block;
+                        }
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     private void findTargetLocation() {

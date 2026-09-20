@@ -17,16 +17,21 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+/** Run after the network-thread handoff: HEAD is visited twice for queued packets. */
 @Mixin(ServerPlayNetworkHandler.class)
 abstract class ServerPlayNetworkHandlerMixin {
-    @Inject(method = "onHandSwing", at = @At("HEAD"), cancellable = true, require = 0)
+    @Inject(method = "onHandSwing", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/network/NetworkThreadUtils;forceMainThread(Lnet/minecraft/network/packet/Packet;Lnet/minecraft/network/listener/PacketListener;Lnet/minecraft/server/world/ServerWorld;)V",
+            shift = At.Shift.AFTER), cancellable = true)
     private void projectKorra$onHandSwing(HandSwingC2SPacket packet, CallbackInfo callback) {
         if (FabricGameplayBridge.onArmSwing(((ServerPlayNetworkHandler) (Object) this).player)) {
             callback.cancel();
         }
     }
 
-    @Inject(method = "onClientCommand", at = @At("HEAD"), require = 0)
+    @Inject(method = "onClientCommand", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/network/NetworkThreadUtils;forceMainThread(Lnet/minecraft/network/packet/Packet;Lnet/minecraft/network/listener/PacketListener;Lnet/minecraft/server/world/ServerWorld;)V",
+            shift = At.Shift.AFTER))
     private void projectKorra$onClientCommand(ClientCommandC2SPacket packet, CallbackInfo callback) {
         ClientCommandC2SPacket.Mode mode = packet.getMode();
         String name = mode.name();
@@ -37,13 +42,17 @@ abstract class ServerPlayNetworkHandlerMixin {
         }
     }
 
-    @Inject(method = "onPlayerInput", at = @At("HEAD"), require = 0)
+    @Inject(method = "onPlayerInput", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/network/NetworkThreadUtils;forceMainThread(Lnet/minecraft/network/packet/Packet;Lnet/minecraft/network/listener/PacketListener;Lnet/minecraft/server/world/ServerWorld;)V",
+            shift = At.Shift.AFTER))
     private void projectKorra$onPlayerInput(PlayerInputC2SPacket packet, CallbackInfo callback) {
         FabricGameplayBridge.onPlayerInput(
                 ((ServerPlayNetworkHandler) (Object) this).player, packet.input().sneak());
     }
 
-    @Inject(method = "onPlayerAction", at = @At("HEAD"), cancellable = true, require = 0)
+    @Inject(method = "onPlayerAction", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/network/NetworkThreadUtils;forceMainThread(Lnet/minecraft/network/packet/Packet;Lnet/minecraft/network/listener/PacketListener;Lnet/minecraft/server/world/ServerWorld;)V",
+            shift = At.Shift.AFTER), cancellable = true)
     private void projectKorra$onPlayerAction(PlayerActionC2SPacket packet, CallbackInfo callback) {
         ServerPlayNetworkHandler handler = (ServerPlayNetworkHandler) (Object) this;
         if (FabricGameplayBridge.onPlayerAction(handler.player, packet.getAction())) {
@@ -51,7 +60,9 @@ abstract class ServerPlayNetworkHandlerMixin {
         }
     }
 
-    @Inject(method = "onPlayerInteractBlock", at = @At("HEAD"), cancellable = true, require = 0)
+    @Inject(method = "onPlayerInteractBlock", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/network/NetworkThreadUtils;forceMainThread(Lnet/minecraft/network/packet/Packet;Lnet/minecraft/network/listener/PacketListener;Lnet/minecraft/server/world/ServerWorld;)V",
+            shift = At.Shift.AFTER), cancellable = true)
     private void projectKorra$onPlayerInteractBlock(PlayerInteractBlockC2SPacket packet, CallbackInfo callback) {
         ServerPlayNetworkHandler handler = (ServerPlayNetworkHandler) (Object) this;
         if (FabricGameplayBridge.onRightClickBlock(handler.player, packet.getHand())) {
@@ -59,7 +70,9 @@ abstract class ServerPlayNetworkHandlerMixin {
         }
     }
 
-    @Inject(method = "onPlayerInteractItem", at = @At("HEAD"), cancellable = true, require = 0)
+    @Inject(method = "onPlayerInteractItem", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/network/NetworkThreadUtils;forceMainThread(Lnet/minecraft/network/packet/Packet;Lnet/minecraft/network/listener/PacketListener;Lnet/minecraft/server/world/ServerWorld;)V",
+            shift = At.Shift.AFTER), cancellable = true)
     private void projectKorra$onPlayerInteractItem(PlayerInteractItemC2SPacket packet, CallbackInfo callback) {
         ServerPlayNetworkHandler handler = (ServerPlayNetworkHandler) (Object) this;
         if (FabricGameplayBridge.onRightClickItem(handler.player, packet.getHand())) {
@@ -67,7 +80,9 @@ abstract class ServerPlayNetworkHandlerMixin {
         }
     }
 
-    @Inject(method = "onPlayerInteractEntity", at = @At("HEAD"), cancellable = true, require = 0)
+    @Inject(method = "onPlayerInteractEntity", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/network/NetworkThreadUtils;forceMainThread(Lnet/minecraft/network/packet/Packet;Lnet/minecraft/network/listener/PacketListener;Lnet/minecraft/server/world/ServerWorld;)V",
+            shift = At.Shift.AFTER), cancellable = true)
     private void projectKorra$onPlayerInteractEntity(PlayerInteractEntityC2SPacket packet, CallbackInfo callback) {
         ServerPlayNetworkHandler handler = (ServerPlayNetworkHandler) (Object) this;
         boolean[] cancel = {false};
@@ -91,7 +106,9 @@ abstract class ServerPlayNetworkHandlerMixin {
         }
     }
 
-    @Inject(method = "onUpdateSelectedSlot", at = @At("HEAD"), cancellable = true, require = 0)
+    @Inject(method = "onUpdateSelectedSlot", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/network/NetworkThreadUtils;forceMainThread(Lnet/minecraft/network/packet/Packet;Lnet/minecraft/network/listener/PacketListener;Lnet/minecraft/server/world/ServerWorld;)V",
+            shift = At.Shift.AFTER), cancellable = true)
     private void projectKorra$onUpdateSelectedSlot(UpdateSelectedSlotC2SPacket packet, CallbackInfo callback) {
         ServerPlayNetworkHandler handler = (ServerPlayNetworkHandler) (Object) this;
         if (FabricGameplayBridge.onSelectedSlot(handler.player, packet.getSelectedSlot())) {

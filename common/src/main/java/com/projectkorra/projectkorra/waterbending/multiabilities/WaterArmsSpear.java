@@ -12,10 +12,12 @@ import com.projectkorra.projectkorra.platform.mc.entity.ArmorStand;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
+import com.projectkorra.projectkorra.platform.mc.util.BoundingBox;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.action.PredictionDeterminism;
 import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
 import com.projectkorra.projectkorra.util.DamageHandler;
+import com.projectkorra.projectkorra.util.FallHandler;
 import com.projectkorra.projectkorra.util.TempBlock;
 import com.projectkorra.projectkorra.waterbending.multiabilities.WaterArms.Arm;
 
@@ -114,6 +116,42 @@ public class WaterArmsSpear extends WaterAbility {
         return Map.copyOf(TRACKED_BLOCKS);
     }
 
+    public static void protectFallFromIce(final Player player, final Location from, final Location to) {
+        if (TRACKED_BLOCKS.isEmpty()) return;
+        if (isSupportedByIce(player, from) || isSupportedByIce(player, to)) {
+            FallHandler.stopFall(player, false);
+        }
+    }
+
+    private static boolean isSupportedByIce(final Player player, final Location location) {
+        if (location == null || !player.getWorld().equals(location.getWorld())) return false;
+        final Location current = player.getLocation();
+        final BoundingBox feet = player.getBoundingBox().shift(location.getX() - current.getX(),
+                location.getY() - current.getY(), location.getZ() - current.getZ());
+        final int y = (int) Math.floor(feet.getMinY() - 0.05);
+        for (int x = (int) Math.floor(feet.getMinX()); x <= (int) Math.floor(feet.getMaxX() - 1.0E-6); x++) {
+            for (int z = (int) Math.floor(feet.getMinZ()); z <= (int) Math.floor(feet.getMaxZ() - 1.0E-6); z++) {
+                final Block block = location.getWorld().getBlockAt(x, y, z);
+                final TempBlock layer = TRACKED_BLOCKS.get(block);
+                if (layer != null && !layer.isReverted() && TempBlock.get(block) == layer
+                        && isIce(block) && isIce(layer.getBlockData().getMaterial())) return true;
+            }
+        }
+        return false;
+    }
+
+    private static void protectPlayersAbove(final Block block) {
+        if (GeneralMethods.isSolid(block)) return;
+        final double top = block.getY() + 1.0;
+        final BoundingBox surface = new BoundingBox(new Vector(block.getX(), top - 0.05, block.getZ()),
+                new Vector(block.getX() + 1, top + 0.05, block.getZ() + 1));
+        for (Entity entity : block.getWorld().getNearbyEntities(surface, entity -> entity instanceof Player)) {
+            if (Math.abs(entity.getBoundingBox().getMinY() - top) <= 0.05) {
+                FallHandler.stopFall((Player) entity, false);
+            }
+        }
+    }
+
     public static void expireBlocks(final boolean ignoreTime) {
         final long now = System.currentTimeMillis();
         for (Map.Entry<Block, Long> entry : List.copyOf(ICE_BLOCKS.entrySet())) {
@@ -138,6 +176,7 @@ public class WaterArmsSpear extends WaterAbility {
         final long expiresAt = System.currentTimeMillis() + Math.max(1L, duration);
         ICE_BLOCKS.put(block, expiresAt);
         layer.setRevertTask(() -> {
+            if (isIce(layer.getBlockData().getMaterial())) protectPlayersAbove(block);
             if (TRACKED_BLOCKS.remove(block, layer)) ICE_BLOCKS.remove(block);
         });
         layer.setRevertTime(Math.max(1L, duration));

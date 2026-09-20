@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra;
 
+import com.jedk1.jedcore.ability.earthbending.LavaFlux;
 import com.projectkorra.projectkorra.Element.SubElement;
 import com.projectkorra.projectkorra.ability.*;
 import com.projectkorra.projectkorra.ability.util.ComboManager;
@@ -554,6 +555,8 @@ public class PKListener implements Listener {
         if (!(event instanceof EntityDamageByEntityEvent)) {
             final com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent commonEvent =
                     new com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent(entity, commonDamageCause(event.getCause()), event.getDamage());
+            LavaFlux.handleLavaDamage(commonEvent,
+                    event instanceof EntityDamageByBlockEvent byBlock ? BukkitMC.block(byBlock.getDamager()) : null);
             Platform.events().call(commonEvent);
             event.setCancelled(commonEvent.isCancelled());
             event.setDamage(commonEvent.getDamage());

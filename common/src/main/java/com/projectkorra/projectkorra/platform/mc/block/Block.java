@@ -75,6 +75,11 @@ public class Block {
         return new BoundingBox();
     }
 
+    /** Individual collision boxes in world coordinates; empty for blocks without collision. */
+    public List<BoundingBox> getCollisionBoxes() {
+        return isPassable() ? List.of() : List.of(getBoundingBox());
+    }
+
     public boolean breakNaturally() {
         return true;
     }

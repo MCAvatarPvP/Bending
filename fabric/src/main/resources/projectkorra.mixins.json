@@ -19,6 +19,7 @@
     "client.ClientWorldPredictionAliasMixin",
     "client.FallingBlockEntityPredictionMixin",
     "client.LivingEntityAirGliderPredictionMixin",
+    "client.ProjectileEntityPredictionMixin",
     "client.SodiumLevelSlicePredictionMixin",
     "client.TintedLeavesVelocityMixin",
     "client.VulkanRenderRegionPredictionMixin"

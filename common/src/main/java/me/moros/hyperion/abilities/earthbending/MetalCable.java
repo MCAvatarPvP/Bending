@@ -140,10 +140,10 @@ public class MetalCable extends MetalAbility implements AddonAbility {
             }
             direction = GeneralMethods.getDirection(entityToMove.getLocation(), targetLocation).normalize();
             if (distance > 3) {
-                entityToMove.setVelocity(direction.multiply(0.8));
+                setTargetVelocity(entityToMove, direction.multiply(0.8));
             } else {
                 if (target.getType() == CableTarget.Type.ENTITY) {
-                    entityToMove.setVelocity(new Vector());
+                    setTargetVelocity(entityToMove, new Vector());
                     if (target.getEntity() instanceof FallingBlock fb) {
                         Location tempLocation = fb.getLocation().add(0, 0.5, 0);
                         ParticleEffect.BLOCK_CRACK.display(tempLocation, 4, ThreadLocalRandom.current().nextDouble() / 4, ThreadLocalRandom.current().nextDouble() / 8, ThreadLocalRandom.current().nextDouble() / 4, 0, fb.getBlockData());
@@ -154,9 +154,9 @@ public class MetalCable extends MetalAbility implements AddonAbility {
                     return;
                 } else {
                     if (distance <= 3 && distance > 1.5) {
-                        entityToMove.setVelocity(direction.multiply(0.35));
+                        setTargetVelocity(entityToMove, direction.multiply(0.35));
                     } else {
-                        player.setVelocity(new Vector(0, 0.5, 0));
+                        GeneralMethods.setVelocity(this, player, new Vector(0, 0.5, 0));
                         remove();
                         return;
                     }
@@ -183,8 +183,16 @@ public class MetalCable extends MetalAbility implements AddonAbility {
         }
 
         Vector direction = GeneralMethods.getDirection(location, targetLocation).normalize();
-        target.getEntity().setVelocity(direction.multiply(blockSpeed).add(new Vector(0, 0.2, 0)));
+        setTargetVelocity(target.getEntity(), direction.multiply(blockSpeed).add(new Vector(0, 0.2, 0)));
         remove();
+    }
+
+    private void setTargetVelocity(final Entity entity, final Vector velocity) {
+        if (entity instanceof Player) {
+            GeneralMethods.setVelocity(this, entity, velocity);
+        } else {
+            entity.setVelocity(velocity);
+        }
     }
 
     private boolean launchCable() {
@@ -324,7 +332,7 @@ public class MetalCable extends MetalAbility implements AddonAbility {
         }
         if (player.isSneaking() && !MaterialCheck.isUnbreakable(block)) {
             BlockData data = block.getState().getBlockData();
-            new TempBlock(block, Material.AIR.createBlockData(), regenDelay);
+            new TempBlock(block, Material.AIR.createBlockData(), regenDelay, this);
             final Vector velocity = GeneralMethods.getDirection(location, player.getEyeLocation()).normalize().multiply(0.2);
             final BendingFallingBlock bfb = new BendingFallingBlock(location, data, velocity, this, true);
             new Projectile(this, bfb, damage);

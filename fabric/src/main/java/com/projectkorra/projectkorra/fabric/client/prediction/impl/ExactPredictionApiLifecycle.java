@@ -254,6 +254,11 @@ public abstract class ExactPredictionApiLifecycle extends ExactPredictionApiBloc
         ExactPredictionRuntime.instance().trackSpawn0(entity);
     }
 
+    public static boolean projectileHit(net.minecraft.entity.projectile.ProjectileEntity projectile,
+                                        net.minecraft.util.hit.HitResult hit) {
+        return ExactPredictionRuntime.instance().projectileHit0(projectile, hit);
+    }
+
     public static boolean reconcileSpawn(EntitySpawnS2CPacket packet) {
         return ExactPredictionRuntime.instance().reconcileSpawn0(packet);
     }

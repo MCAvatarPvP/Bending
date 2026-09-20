@@ -24,6 +24,7 @@ import com.projectkorra.projectkorra.prediction.movement.SpoutMovementPolicy;
 import com.projectkorra.projectkorra.util.*;
 import com.projectkorra.projectkorra.waterbending.WaterSpout;
 import com.projectkorra.projectkorra.waterbending.blood.Bloodbending;
+import com.projectkorra.projectkorra.waterbending.multiabilities.WaterArmsSpear;
 import com.projectkorra.projectkorra.waterbending.passive.FastSwim;
 
 import java.util.List;
@@ -164,6 +165,7 @@ public final class CommonPlayerListenerCore {
         if (FallHandler.contains(player)) {
             FallHandler.move(player);
         }
+        WaterArmsSpear.protectFallFromIce(player, from, to);
 
         return MovementResult.pass();
     }

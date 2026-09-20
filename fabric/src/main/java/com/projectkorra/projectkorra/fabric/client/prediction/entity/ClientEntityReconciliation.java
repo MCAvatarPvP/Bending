@@ -59,6 +59,11 @@ public final class ClientEntityReconciliation {
         return entity != null && predictedSpawns.containsKey(entity);
     }
 
+    public long spawnAction(final Entity entity) {
+        final PredictedSpawn spawn = predictedSpawns.get(entity);
+        return spawn == null ? 0L : spawn.actionSequence;
+    }
+
     public void trackTempFallingBlock(final long actionSequence, final int spawnOrdinal,
                                       final Entity entity, final String ability) {
         if (actionSequence <= 0L || spawnOrdinal <= 0 || entity == null) return;

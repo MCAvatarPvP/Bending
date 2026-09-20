@@ -291,6 +291,29 @@ public final class BukkitMC {
         return value == null ? null : new EntityView(value);
     }
 
+    /** Collision queries use model geometry but retain the host's health, identity, and effects. */
+    private static Entity combatEntity(final org.bukkit.entity.Entity value) {
+        if (!BetterModelHitboxes.isHitbox(value)) return entity(value);
+        BetterModelHitboxes.Part part = BetterModelHitboxes.resolve(value);
+        if (part == null) return null;
+        return part.owner() instanceof org.bukkit.entity.Player player
+                ? new ModeledPlayerView(player, part.geometry())
+                : new ModeledLivingView(part.owner(), part.geometry());
+    }
+
+    private static Map<UUID, Entity> combatEntities(Collection<org.bukkit.entity.Entity> candidates,
+                                                     Predicate<Entity> filter) {
+        Map<UUID, Entity> result = new LinkedHashMap<>();
+        for (org.bukkit.entity.Entity candidate : candidates) {
+            Entity target = combatEntity(candidate);
+            // Test each part before merging identities: a ray may miss the cow and hit its head.
+            if (target == null || (filter != null && !filter.test(target))) continue;
+            result.merge(target.getUniqueId(), target, (previous, next) ->
+                    previous instanceof ModelPart ? previous : next);
+        }
+        return result;
+    }
+
     public static FallingBlock falling(final org.bukkit.entity.FallingBlock value) {
         return value == null ? null : new FallingView(value);
     }
@@ -901,9 +924,10 @@ public final class BukkitMC {
         @Override
         public Collection<Entity> getNearbyEntities(BoundingBox box, Predicate<Entity> filter) {
             org.bukkit.util.BoundingBox nativeBox = new org.bukkit.util.BoundingBox(box.getMinX(), box.getMinY(), box.getMinZ(), box.getMaxX(), box.getMaxY(), box.getMaxZ());
-            Map<UUID, Entity> result = new LinkedHashMap<>();
-            value.getNearbyEntities(nativeBox).stream().map(BukkitMC::entity).filter(Objects::nonNull)
-                    .filter(entity -> filter == null || filter.test(entity)).forEach(entity -> result.put(entity.getUniqueId(), entity));
+            // A companion's broad-phase bounds can overlap while its actual part does not.
+            Map<UUID, Entity> result = combatEntities(value.getNearbyEntities(nativeBox),
+                    entity -> (!(entity instanceof ModelPart) || entity.getBoundingBox().overlaps(box))
+                            && (filter == null || filter.test(entity)));
             ServerEntityInterpolation.reconcileNearbyPlayers(value, nativeBox,
                     AbilityExecutionContext.current(), filter, result);
             PaperPredictionServer.augmentNearbyPlayers(value, nativeBox,
@@ -1189,6 +1213,15 @@ public final class BukkitMC {
         public BoundingBox getBoundingBox() {
             org.bukkit.util.BoundingBox b = value.getBoundingBox();
             return new BoundingBox(new Vector(b.getMinX(), b.getMinY(), b.getMinZ()), new Vector(b.getMaxX(), b.getMaxY(), b.getMaxZ()));
+        }
+
+        @Override
+        public List<BoundingBox> getCollisionBoxes() {
+            return value.getCollisionShape().getBoundingBoxes().stream()
+                    .map(box -> new BoundingBox(
+                            new Vector(box.getMinX() + value.getX(), box.getMinY() + value.getY(), box.getMinZ() + value.getZ()),
+                            new Vector(box.getMaxX() + value.getX(), box.getMaxY() + value.getY(), box.getMaxZ() + value.getZ())))
+                    .toList();
         }
 
         @Override
@@ -1655,6 +1688,40 @@ public final class BukkitMC {
         }
     }
 
+    private interface ModelPart {}
+
+    private static final class ModeledLivingView extends LivingView implements ModelPart {
+        private final org.bukkit.entity.Entity geometry;
+
+        private ModeledLivingView(org.bukkit.entity.LivingEntity owner, org.bukkit.entity.Entity geometry) {
+            super(owner);
+            this.geometry = geometry;
+        }
+
+        @Override public BoundingBox getBoundingBox() { return modelBounds(geometry); }
+        @Override public Location getLocation() { return location(geometry.getLocation()); }
+        @Override public boolean isValid() { return super.isValid() && geometry.isValid(); }
+    }
+
+    private static final class ModeledPlayerView extends PlayerView implements ModelPart {
+        private final org.bukkit.entity.Entity geometry;
+
+        private ModeledPlayerView(org.bukkit.entity.Player owner, org.bukkit.entity.Entity geometry) {
+            super(owner);
+            this.geometry = geometry;
+        }
+
+        @Override public BoundingBox getBoundingBox() { return modelBounds(geometry); }
+        @Override public Location getLocation() { return location(geometry.getLocation()); }
+        @Override public boolean isValid() { return super.isValid() && geometry.isValid(); }
+    }
+
+    private static BoundingBox modelBounds(org.bukkit.entity.Entity geometry) {
+        org.bukkit.util.BoundingBox box = geometry.getBoundingBox();
+        return new BoundingBox(new Vector(box.getMinX(), box.getMinY(), box.getMinZ()),
+                new Vector(box.getMaxX(), box.getMaxY(), box.getMaxZ()));
+    }
+
     private static final class ArmorStandView extends ArmorStand {
         private final org.bukkit.entity.ArmorStand value;
 
@@ -2003,7 +2070,7 @@ public final class BukkitMC {
         }
     }
 
-    private static final class PlayerView extends Player {
+    private static class PlayerView extends Player {
         private final org.bukkit.entity.Player value;
 
         private PlayerView(org.bukkit.entity.Player value) {
@@ -2393,7 +2460,11 @@ public final class BukkitMC {
 
         @Override
         public List<Entity> getNearbyEntities(double x, double y, double z) {
-            return value.getNearbyEntities(x, y, z).stream().map(BukkitMC::entity).toList();
+            org.bukkit.util.BoundingBox area = value.getBoundingBox().expand(x, y, z);
+            BoundingBox query = new BoundingBox(new Vector(area.getMinX(), area.getMinY(), area.getMinZ()),
+                    new Vector(area.getMaxX(), area.getMaxY(), area.getMaxZ()));
+            return new ArrayList<>(combatEntities(value.getNearbyEntities(x, y, z),
+                    target -> !(target instanceof ModelPart) || target.getBoundingBox().overlaps(query)).values());
         }
 
         @Override

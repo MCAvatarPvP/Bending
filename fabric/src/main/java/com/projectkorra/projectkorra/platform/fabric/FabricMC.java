@@ -1628,6 +1628,15 @@ public final class FabricMC {
         }
 
         @Override
+        public List<BoundingBox> getCollisionBoxes() {
+            return state().getCollisionShape(world, pos).getBoundingBoxes().stream()
+                    .map(box -> new BoundingBox(
+                            new Vector(box.minX + pos.getX(), box.minY + pos.getY(), box.minZ + pos.getZ()),
+                            new Vector(box.maxX + pos.getX(), box.maxY + pos.getY(), box.maxZ + pos.getZ())))
+                    .toList();
+        }
+
+        @Override
         public boolean isEmpty() {
             return state().isAir();
         }

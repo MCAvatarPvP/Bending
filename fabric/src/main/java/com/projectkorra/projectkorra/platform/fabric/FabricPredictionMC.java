@@ -465,6 +465,10 @@ public final class FabricPredictionMC {
         @Override public boolean isLiquid() { return !nativeState().getFluidState().isEmpty(); }
         @Override public boolean isSolid() { return getType().isSolid(); }
         @Override public boolean isPassable() { return nativeState().getCollisionShape(world, pos).isEmpty(); }
+        @Override public List<BoundingBox> getCollisionBoxes() {
+            return nativeState().getCollisionShape(world, pos).getBoundingBoxes().stream()
+                    .map(box -> commonBox(box.offset(pos))).toList();
+        }
         @Override public boolean isEmpty() { return nativeState().isAir(); }
         @Override public byte getLightLevel() { return (byte) world.getLightLevel(pos); }
         @Override public boolean breakNaturally() { setType(Material.AIR); return true; }
@@ -1179,6 +1183,15 @@ public final class FabricPredictionMC {
         @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
         @Override public int hashCode() { return value.getUuid().hashCode(); }
         @Override public Location getLocation() { return entityLocation(value); }
+        @Override public boolean teleport(Location location) {
+            if (location == null || !getWorld().equals(location.getWorld())) return false;
+            value.refreshPositionAndAngles(location.getX(), location.getY(), location.getZ(),
+                    location.getYaw(), location.getPitch());
+            // CraftEntity's default teleport uses a zero-velocity transition.
+            // A grabbed MetalCable anchor must not keep flying between pulls.
+            value.setVelocity(Vec3d.ZERO);
+            return true;
+        }
         @Override public World getWorld() { return world((ClientWorld) value.getEntityWorld()); }
         @Override public Vector getVelocity() { return commonVector(value.getVelocity()); }
         @Override public void setVelocity(Vector velocity) { ExactPredictionRuntime.setPredictedVelocity(value, nativeVector(velocity)); }

@@ -17,6 +17,7 @@ import com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent;
 import com.projectkorra.projectkorra.platform.mc.event.entity.PlayerDeathEvent;
 import com.projectkorra.projectkorra.platform.mc.event.entity.ProjectileHitEvent;
 import com.projectkorra.projectkorra.platform.mc.event.player.PlayerQuitEvent;
+import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
 import me.moros.hyperion.Hyperion;
 import me.moros.hyperion.abilities.chiblocking.Smokescreen;
 import me.moros.hyperion.abilities.chiblocking.Smokescreen.SmokescreenData;
@@ -30,14 +31,18 @@ public final class HyperionCommonListener {
     public void onProjectileHit(final ProjectileHitEvent event) {
         if (event.getEntity() instanceof Arrow && event.getEntity().hasMetadata(CoreMethods.CABLE_KEY)) {
             final Object value = event.getEntity().getMetadata(CoreMethods.CABLE_KEY).get(0).value();
-            if (value instanceof MetalCable cable) {
-                if (event.getHitBlock() != null) {
-                    cable.setHitBlock(event.getHitBlock());
-                } else if (event.getHitEntity() instanceof LivingEntity) {
-                    cable.setHitEntity(event.getHitEntity());
-                } else {
-                    event.getEntity().remove();
-                }
+            if (value instanceof MetalCable cable && !cable.isRemoved()) {
+                // Impacts run outside ability progress. Preserve ownership for
+                // the source hole, falling block, and child projectile ability.
+                AbilityExecutionContext.run(cable, () -> {
+                    if (event.getHitBlock() != null) {
+                        cable.setHitBlock(event.getHitBlock());
+                    } else if (event.getHitEntity() instanceof LivingEntity) {
+                        cable.setHitEntity(event.getHitEntity());
+                    } else {
+                        event.getEntity().remove();
+                    }
+                });
             }
         } else if (event.getEntity() instanceof Snowball && event.getEntity().hasMetadata(CoreMethods.SMOKESCREEN_KEY)) {
             final Object value = event.getEntity().getMetadata(CoreMethods.SMOKESCREEN_KEY).get(0).value();

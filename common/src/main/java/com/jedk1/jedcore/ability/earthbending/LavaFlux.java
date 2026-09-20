@@ -19,7 +19,9 @@ import com.projectkorra.projectkorra.prediction.action.PredictionDeterminism;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
+import com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent;
 import com.projectkorra.projectkorra.platform.mc.util.BlockIterator;
+import com.projectkorra.projectkorra.platform.mc.util.BoundingBox;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.DamageHandler;
@@ -164,7 +166,7 @@ public class LavaFlux extends LavaAbility implements AddonAbility {
         for (Location location : flux) {
             if (flux.indexOf(location) <= step) {
                 if (!blocks.containsKey(location.getBlock())) { //Make a new temp block if we haven't made one there before
-                    blocks.put(location.getBlock(), new TempBlock(location.getBlock(), LAVA, duration + cleanup));
+                    blocks.put(location.getBlock(), new TempBlock(location.getBlock(), LAVA, duration + cleanup, this));
                 }
 
                 //new RegenTempBlock(location.getBlock(), Material.LAVA, LAVA, duration + cleanup);
@@ -185,7 +187,7 @@ public class LavaFlux extends LavaAbility implements AddonAbility {
                             }
                         }
                     } else if (wave && isTransparent(above)) {
-                        new TempBlock(location.getBlock().getRelative(BlockFace.UP), LAVA, speed * 150L);
+                        new TempBlock(location.getBlock().getRelative(BlockFace.UP), LAVA, speed * 150L, this);
                     }
                 }
             }
@@ -213,6 +215,41 @@ public class LavaFlux extends LavaAbility implements AddonAbility {
                 new FireDamageTimer(entity, player, this);
             }
         }
+    }
+
+    public static LavaFlux getLavaSource(final Block block) {
+        if (block == null || block.getType() != Material.LAVA) return null;
+        final TempBlock layer = TempBlock.get(block);
+        if (layer == null || layer.getBlockData().getMaterial() != Material.LAVA) return null;
+        return layer.getAbility().orElse(null) instanceof LavaFlux source ? source : null;
+    }
+
+    /** Lava damage events do not always supply the touching block. */
+    public static LavaFlux getLavaSource(final Entity entity) {
+        final BoundingBox box = entity.getBoundingBox();
+        for (int x = (int) Math.floor(box.getMinX()); x <= (int) Math.floor(box.getMaxX() - 1.0E-6); x++) {
+            for (int y = (int) Math.floor(box.getMinY()); y <= (int) Math.floor(box.getMaxY() - 1.0E-6); y++) {
+                for (int z = (int) Math.floor(box.getMinZ()); z <= (int) Math.floor(box.getMaxZ() - 1.0E-6); z++) {
+                    final LavaFlux source = getLavaSource(entity.getWorld().getBlockAt(x, y, z));
+                    if (source != null) return source;
+                }
+            }
+        }
+        return null;
+    }
+
+    public static void handleLavaDamage(final EntityDamageEvent event, final Block damagingBlock) {
+        if (event.isCancelled() || event.getCause() != EntityDamageEvent.DamageCause.LAVA) return;
+        final Entity entity = event.getEntity();
+        final LavaFlux source = damagingBlock != null ? getLavaSource(damagingBlock) : getLavaSource(entity);
+        if (source == null) return;
+        if (source.getPlayer().getUniqueId().equals(entity.getUniqueId()) || source.getDamage() <= 0) {
+            event.setCancelled(true);
+            return;
+        }
+        // Vanilla lava must use this cast's configured damage, including after the wave has ended.
+        event.setDamage(source.getDamage());
+        new FireDamageTimer(entity, source.getPlayer(), source);
     }
 
     private void expand(Block block) {

@@ -476,9 +476,13 @@ public class EarthBlast extends EarthAbility {
 
     @Override
     public void remove() {
+        if (this.isRemoved()) {
+            return;
+        }
         super.remove();
         if (this.destination != null && this.sourceBlock != null) {
             if (!RaiseEarth.isBlockingAbility(this.sourceBlock)) {
+                removeRevertIndex(this.sourceBlock);
                 this.sourceBlock.setType(Material.AIR);
             }
         } else if (this.sourceBlock != null) {

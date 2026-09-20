@@ -20,6 +20,21 @@ Client prediction rendering supports Minecraft's default renderer, Sodium, and
 VulkanMod. The renderer mods are optional and are not bundled in the ProjectKorra
 artifact; use a version built for the same Minecraft release.
 
+## BetterModel mob hitboxes
+
+The Bukkit build optionally recognizes BetterModel body hitboxes in ability entity queries.
+Each body part supplies its actual collision bounds while the owning mob supplies health,
+identity, metadata, damage, and knockback. Overlapping parts and their clickable companions
+produce one target per query; passenger seat anchors are excluded. Ordinary armor stand
+filtering remains controlled by the existing configuration.
+
+This integration targets BetterModel's 3.4 hitbox API and does not bundle BetterModel or
+require it on servers that do not use custom models. It changes the Bukkit plugin only;
+existing clients, models, and resource packs do not need an update for server hit detection.
+Automated checks cover upper-body contacts outside the vanilla host box, ray/sphere queries,
+gaps between parts, duplicate hits, seats, removed parts, and effects reaching the host.
+Visual alignment and live combat still need checking on the server.
+
 ## Publishing jars to GitHub
 
 The `publishGithubJars` task builds the shaded Bukkit jar and remapped Fabric
@@ -52,8 +67,22 @@ Use `-PgithubReleaseDryRun=true` to verify the build, pushed commit, and stored
 GitHub authentication without creating or changing a release.
 
 The Fabric auto-updater reads the latest release from
-`https://github.com/MCAvatarPvP/Bending/releases`, downloads its Fabric asset,
-and verifies GitHub's SHA-256 digest before installation.
+`https://github.com/MCAvatarPvP/Bending/releases`. On the title screen, players
+can choose **Install update** to download the Fabric jar and verify its SHA-256
+digest, mod identity, version, and Minecraft/Loader/mod dependencies. After
+download, **Quit to apply update** closes Minecraft; players relaunch through
+their usual launcher. **Keep playing** applies the update when they quit later.
+An independent Java helper waits for Minecraft to exit before replacing the
+installed jar (including on Windows). It replaces that file in place, so its
+filename may retain the old version; the mod metadata contains the new version.
+It keeps a temporary backup and installation log in
+`config/projectkorra/updater/`, cleaned up after the next successful launch.
+Failed checks/downloads leave the installed mod untouched.
+
+Players need to install this updater-enabled build once. Future updates must be
+published as a higher project version with a matching
+`ProjectKorra-<version>-fabric.jar` asset and GitHub SHA-256 digest; development,
+draft, prerelease, and incompatible builds are not installed automatically.
 Update checks are enabled by default; use the JVM argument
 `-Dprojectkorra.updater.enabled=false` to opt out.
 
