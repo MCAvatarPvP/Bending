@@ -298,6 +298,18 @@ public class Config implements PKConfiguration {
         return this.loadedWithValues;
     }
 
+    /** Adds a newly introduced section to an existing file without copying unrelated defaults. */
+    void persistDefaultsInSection(final String section) {
+        // Keep new files empty until save() bootstraps the complete default configuration.
+        if (!this.loadedWithValues) return;
+        final String prefix = section.endsWith(".") ? section : section + ".";
+        for (final Map.Entry<String, Object> entry : this.defaults.entrySet()) {
+            if (entry.getKey().startsWith(prefix)) {
+                this.values.putIfAbsent(entry.getKey(), entry.getValue());
+            }
+        }
+    }
+
     /** Repairs stock help text whose wrapped continuation was lost by the old line reader. */
     int repairTruncatedAbilityText() {
         int repaired = 0;

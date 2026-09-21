@@ -265,11 +265,13 @@ permissions:
       bending.ability.EarthPillars: true
       bending.ability.EarthDome: true
       bending.ability.EarthDomeOthers: true
+      bending.ability.EarthShell: true
   bending.ability.FireCombo:
     default: false
     description: Grants access to all FireCombos.
     children:
       bending.ability.FireKick: true
+      bending.ability.LightningPunch: true
       bending.ability.FireSpin: true
       bending.ability.JetBlast: true
       bending.ability.JetBlaze: true

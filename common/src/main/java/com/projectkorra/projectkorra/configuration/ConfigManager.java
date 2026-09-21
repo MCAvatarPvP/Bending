@@ -628,6 +628,12 @@ public class ConfigManager {
             config.addDefault("Abilities.Earth.Collapse.DeathMessage", "{victim} was suffocated by {attacker}'s {ability}");
             config.addDefault("Abilities.Earth.EarthArmor.Description", "This ability encases the Earthbender in armor, giving them protection. It is a fundamental earthbending technique that's used to survive longer in battles.");
             config.addDefault("Abilities.Earth.EarthArmor.Instructions", "Tap sneak while looking at an earthbendable block to bring those blocks towards you, forming earth armor. This ability will give you extra hearts and will be removed once those extra hearts are gone. You can disable this ability by holding sneak and left clicking with EarthArmor.");
+            config.addDefault("Abilities.Earth.Combo.EarthShell.Description", "Crush nearby earth into a tight dome around yourself, then launch its shards outward with powerful horizontal knockback. The burst deals no damage and briefly disables AirBlast and AirScooter for airbenders it hits. Source blocks stay intact unless your source holes are enabled.");
+            config.addDefault("Abilities.Earth.Combo.EarthShell.Instructions", "Hold sneak on Shockwave, then switch to EarthBlast and left click without releasing sneak. Keep holding for the dome; release sneak to burst it. Stay close to earth below you; the dome grows from the ground to cover you. Nearby walls remain intact. Switching abilities after forming the dome or holding too long dismisses it.");
+            config.addDefault("Abilities.Earth.Combo.EarthShell.Unavailable", "EarthShell is unavailable. Check your bending toggle, permissions, and cooldown.");
+            config.addDefault("Abilities.Earth.Combo.EarthShell.NoGround", "Stay close to earth below you to use EarthShell.");
+            config.addDefault("Abilities.Earth.Combo.EarthShell.NoRoom", "EarthShell needs room around you and above your head.");
+            config.addDefault("Abilities.Earth.Combo.EarthShell.NoSources", "EarthShell needs more nearby earth while source holes are enabled.");
             config.addDefault("Abilities.Earth.EarthBlast.Description", "EarthBlast is a basic yet fundamental earthbending ability. It allows you to deal rapid fire damage to your target to finish low health targets off or deal burst damage to them. Although it can be used at long range, it's potential is greater in close ranged combat.");
             config.addDefault("Abilities.Earth.EarthBlast.Instructions", "Tap sneak at an earthbendable block and then left click in a direction to send an earthblast. Additionally, you can left click again to change the direction of the earthblast. You can also redirect other earthbender's earth blast by left clicking. If the earth blast hits an entity it will deal damage and knockback.");
             config.addDefault("Abilities.Earth.EarthBlast.DeathMessage", "{victim} was shattered by {attacker}'s {ability}");
@@ -701,6 +707,14 @@ public class ConfigManager {
             config.addDefault("Abilities.Fire.Combo.FireKick.Description", "A short ranged arc of fire launches from the player's feet dealing moderate damage to enemies.");
             config.addDefault("Abilities.Fire.Combo.FireKick.DeathMessage", "{victim} was kicked to the floor, in flames, from {attacker}'s {ability}");
             config.addDefault("Abilities.Fire.Combo.FireKick.Instructions", "FireBlast > FireBlast > (Hold sneak) > FireBlast");
+            config.addDefault("Abilities.Fire.Combo.LightningPunch.Description", "Prepare a lightning fist that deals 1.5 hearts and stuns on every melee hit for Lightning's stun duration. A hit also puts FirePunch on cooldown; a miss uses a separate, shorter LightningPunch cooldown. Cannot be used with Lightning bound in any slot.");
+            final String lightningPunchInstructions = "Left click LightningBurst, then switch to FirePunch to ready the lightning fist. Left click an enemy to punch; a missed swing consumes the fist with its shorter miss cooldown.";
+            if ("Left click LightningBurst, then left click FirePunch. Punch an enemy while FirePunch remains selected to discharge the lightning fist."
+                    .equals(config.getString("Abilities.Fire.Combo.LightningPunch.Instructions"))) {
+                config.set("Abilities.Fire.Combo.LightningPunch.Instructions", lightningPunchInstructions);
+            }
+            config.addDefault("Abilities.Fire.Combo.LightningPunch.Instructions", lightningPunchInstructions);
+            config.addDefault("Abilities.Fire.Combo.LightningPunch.DeathMessage", "{victim} was electrocuted by {attacker}'s {ability}");
             config.addDefault("Abilities.Fire.Combo.FireSpin.Description", "A circular array of fire that causes damage and massive knockback to nearby enemies.");
             config.addDefault("Abilities.Fire.Combo.FireSpin.DeathMessage", "{victim} was caught in {attacker}'s {ability} inferno");
             config.addDefault("Abilities.Fire.Combo.FireSpin.Instructions", "FireBlast > FireBlast > FireShield (Left Click) > FireShield (Tap Shift)");
@@ -742,6 +756,8 @@ public class ConfigManager {
             config.addDefault("Commands.Help.Elements.Avatar", "Avatars are the human embodiment of light and peace created through a connection with the Avatar Spirit. It is considered an Avatar's duty to master the four elements and use that power to keep balance among the four nations as well as act as the bridge between the physical and spiritual worlds.\nEnter /b display Avatar for a list of the available avatar abilities.");
 
             languageConfig.repairTruncatedAbilityText();
+            languageConfig.persistDefaultsInSection("Abilities.Earth.Combo.EarthShell");
+            languageConfig.persistDefaultsInSection("Abilities.Fire.Combo.LightningPunch");
             languageConfig.save();
         } else if (type == ConfigType.DEFAULT) {
             config = defaultConfig.get();
@@ -1127,6 +1143,7 @@ public class ConfigManager {
             config.addDefault("Abilities.Air.AirBlast.CanOpenDoors", true);
             config.addDefault("Abilities.Air.AirBlast.CanPressButtons", true);
             config.addDefault("Abilities.Air.AirBlast.CanCoolLava", true);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.AirBlast.StaminaEnabled", true);
             config.addDefault("Abilities.Air.AirBlast.DecayAmount", 0.20);
             config.addDefault("Abilities.Air.AirBlast.DecayMinimum", 0.20);
             config.addDefault("Abilities.Air.AirBlast.RegenRate", 0.25);
@@ -1769,6 +1786,17 @@ public class ConfigManager {
             config.addDefault("Abilities.Earth.EarthArmor.Cooldown", 7500);
             config.addDefault("Abilities.Earth.EarthArmor.MaxDuration", 17500);
             config.addDefault("Abilities.Earth.EarthArmor.IsInstant", false);
+            config.addDefault("Abilities.Earth.EarthShell.Enabled", true);
+            config.addDefault("Abilities.Earth.EarthShell.Cooldown", 7000);
+            config.addDefault("Abilities.Earth.EarthShell.Duration", 8000);
+            config.addDefault("Abilities.Earth.EarthShell.SourceRadius", 4);
+            config.addDefault("Abilities.Earth.EarthShell.MaxHeightAboveGround", 2.0);
+            config.addDefault("Abilities.Earth.EarthShell.LayerIntervalTicks", 2);
+            config.addDefault("Abilities.Earth.EarthShell.BurstRange", 12);
+            config.addDefault("Abilities.Earth.EarthShell.AirStunDuration", 3000);
+            config.addDefault("Abilities.Earth.EarthShell.ShardHitRadius", 0.85);
+            config.addDefault("Abilities.Earth.EarthShell.Knockback", 4.0);
+            config.addDefault("Abilities.Earth.EarthShell.Combination", Arrays.asList("Shockwave:SHIFT_DOWN", "EarthBlast:LEFT_CLICK"));
 
             config.addDefault("Abilities.Earth.EarthBlast.Enabled", true);
             config.addDefault("Abilities.Earth.EarthBlast.CanHitSelf", false);
@@ -2195,6 +2223,16 @@ public class ConfigManager {
             config.addDefault("Abilities.Fire.WallOfFire.MaxAngle", 50);
 
             config.addDefault("Abilities.Fire.FireKick.Enabled", true);
+            config.addDefault("Abilities.Fire.LightningPunch.Enabled", true);
+            config.addDefault("Abilities.Fire.LightningPunch.Damage", 3.0);
+            config.addDefault("Abilities.Fire.LightningPunch.Cooldown", 4000);
+            config.addDefault("Abilities.Fire.LightningPunch.MissCooldown", 1000);
+            final List<String> lightningPunchInput = List.of("LightningBurst:LEFT_CLICK", "FirePunch:SLOT_CHANGE");
+            if (config.getStringList("Abilities.Fire.LightningPunch.Combination")
+                    .equals(List.of("LightningBurst:LEFT_CLICK", "FirePunch:LEFT_CLICK"))) {
+                config.set("Abilities.Fire.LightningPunch.Combination", lightningPunchInput);
+            }
+            config.addDefault("Abilities.Fire.LightningPunch.Combination", lightningPunchInput);
             config.addDefault("Abilities.Fire.FireKick.Range", 7.0);
             config.addDefault("Abilities.Fire.FireKick.Damage", 3.0);
             config.addDefault("Abilities.Fire.FireKick.Cooldown", 6000);
@@ -2323,6 +2361,8 @@ public class ConfigManager {
 
             config.addDefault("debug", false);
 
+            defaultConfig.persistDefaultsInSection("Abilities.Earth.EarthShell");
+            defaultConfig.persistDefaultsInSection("Abilities.Fire.LightningPunch");
             defaultConfig.save();
         } else if (type == ConfigType.AVATAR_STATE) {
             config = avatarStateConfig.get();

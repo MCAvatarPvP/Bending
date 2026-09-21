@@ -196,7 +196,9 @@ public abstract class ExactPredictionEntities extends ExactPredictionPlayerState
         Action owner = this.actions.get(action);
         if (owner != null && entity != null) {
             owner.spawned.add(entity);
-            this.entityReconciliation.trackSpawn(action, entity);
+            this.entityReconciliation.trackSpawn(action, entity,
+                    AbilityExecutionContext.current() instanceof MetalCable
+                            || owner.inputAbility.equalsIgnoreCase("MetalCable"));
         }
     }
 

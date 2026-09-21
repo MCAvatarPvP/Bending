@@ -44,6 +44,10 @@ public class FirePunch extends FireAbility implements AddonAbility {
     }
 
     public static void spawnCircleParticles(Location location, ParticleEffect effect, double angleY, double angleX, double step, double startRadius) {
+        spawnCircleParticles(location, effect, angleY, angleX, step, startRadius, true);
+    }
+
+    public static void spawnCircleParticles(Location location, ParticleEffect effect, double angleY, double angleX, double step, double startRadius, boolean smoke) {
         for (double i = 0; i < 180; i += step) {
             double x, z;
             x = startRadius * Math.cos(Math.toRadians(i));
@@ -59,8 +63,10 @@ public class FirePunch extends FireAbility implements AddonAbility {
             Location second = location.clone().subtract(v);
             ParticleUtil.spawn(effect.getParticle(), first, 0, vel.getX(), vel.getY(), vel.getZ(), 0.08, null);
             ParticleUtil.spawn(effect.getParticle(), second, 0, -vel.getX(), -vel.getY(), -vel.getZ(), 0.08, null);
-            ParticleEffect.SMOKE_NORMAL.display(first, 1, 0.01, 0.01, 0.01, 0.01);
-            ParticleEffect.SMOKE_NORMAL.display(second, 1, 0.01, 0.01, 0.01, 0.01);
+            if (smoke) {
+                ParticleEffect.SMOKE_NORMAL.display(first, 1, 0.01, 0.01, 0.01, 0.01);
+                ParticleEffect.SMOKE_NORMAL.display(second, 1, 0.01, 0.01, 0.01, 0.01);
+            }
         }
     }
 
@@ -73,7 +79,7 @@ public class FirePunch extends FireAbility implements AddonAbility {
     }
 
     private void setFields() {
-        cooldown = JedCoreConfig.getConfig(this.bPlayer).getLong("Abilities.Fire.FirePunch.Cooldown");
+        cooldown = configuredCooldown(this.bPlayer);
         damage = JedCoreConfig.getConfig(this.bPlayer).getDouble("Abilities.Fire.FirePunch.Damage");
         fireTicks = JedCoreConfig.getConfig(this.bPlayer).getInt("Abilities.Fire.FirePunch.FireTicks");
         activationOnPunch = JedCoreConfig.getConfig(this.bPlayer).getBoolean("Abilities.Fire.FirePunch.ActivationOnPunch");
@@ -83,14 +89,19 @@ public class FirePunch extends FireAbility implements AddonAbility {
 
     private void applyModifiers() {
         if (bPlayer.canUseSubElement(Element.BLUE_FIRE)) {
-            cooldown *= BlueFireAbility.getCooldownFactor();
             damage *= BlueFireAbility.getDamageFactor();
         }
 
         if (isDay(player.getWorld())) {
-            cooldown -= ((long) getDayFactor(cooldown) - cooldown);
             damage = getDayFactor(damage);
         }
+    }
+
+    public static long configuredCooldown(final BendingPlayer bPlayer) {
+        long value = JedCoreConfig.getConfig(bPlayer).getLong("Abilities.Fire.FirePunch.Cooldown");
+        if (bPlayer.canUseSubElement(Element.BLUE_FIRE)) value *= BlueFireAbility.getCooldownFactor();
+        if (isDay(bPlayer.getPlayer().getWorld())) value -= ((long) getDayFactor(value, bPlayer.getPlayer().getWorld()) - value);
+        return value;
     }
 
     @Override
@@ -118,6 +129,10 @@ public class FirePunch extends FireAbility implements AddonAbility {
     }
 
     private Location getImpactLocation(LivingEntity target) {
+        return getImpactLocation(player, target);
+    }
+
+    public static Location getImpactLocation(Player player, LivingEntity target) {
         Location base = target.getLocation().clone();
         double attackerEyeY = player.getEyeLocation().getY();
         double targetEyeY = target.getEyeLocation().getY();
@@ -134,11 +149,17 @@ public class FirePunch extends FireAbility implements AddonAbility {
     }
 
     private void playHitImpact(final LivingEntity target, final Location center) {
+        final ParticleEffect ringParticle = bPlayer.canUseSubElement(Element.BLUE_FIRE) ? ParticleEffect.SOUL_FIRE_FLAME : ParticleEffect.FLAME;
+        playFirebendingSound(center);
+        spawnImpactParticles(player, target, center, ringParticle, true);
+    }
+
+    public static void spawnImpactParticles(final Player player, final LivingEntity target,
+                                            final Location center, final ParticleEffect ringParticle,
+                                            final boolean smoke) {
         Vector vector = target.getEyeLocation().toVector().subtract(player.getEyeLocation().toVector());
         final Location facing = center.clone().setDirection(vector);
-        final ParticleEffect ringParticle = bPlayer.canUseSubElement(Element.BLUE_FIRE) ? ParticleEffect.SOUL_FIRE_FLAME : ParticleEffect.FLAME;
         final double verticalOffset = center.getY() - target.getEyeLocation().getY();
-        playFirebendingSound(center);
 
         double baseAngleX = -120;
         if (verticalOffset > 0.2) {
@@ -147,7 +168,7 @@ public class FirePunch extends FireAbility implements AddonAbility {
             baseAngleX = -136;
         }
         double angleX = baseAngleX + (Math.random() * 14);
-        spawnCircleParticles(facing, ringParticle, facing.getYaw(), angleX, 12, 0.1);
+        spawnCircleParticles(facing, ringParticle, facing.getYaw(), angleX, 12, 0.1, smoke);
     }
 
     private void checkKillFinisher(final LivingEntity target, final Location hitLocation) {

@@ -40,5 +40,7 @@ public enum ClickType {
     /**
      * The item swap hand key was pressed
      */
-    OFFHAND_TRIGGER;
+    OFFHAND_TRIGGER,
+    /** Selecting a bound ability to finish a combo. */
+    SLOT_CHANGE;
 }

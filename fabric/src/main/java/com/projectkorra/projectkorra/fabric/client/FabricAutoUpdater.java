@@ -58,7 +58,7 @@ public final class FabricAutoUpdater {
         String repository = System.getProperty("projectkorra.updater.repository", FabricUpdateService.DEFAULT_REPOSITORY).trim();
         CompletableFuture.supplyAsync(() -> {
             try {
-                FabricUpdateService.cleanCompleted(updates);
+                FabricUpdateService.cleanCompleted(updates, installedJar);
                 return FabricUpdateService.checkLatest(repository, current);
             } catch (IOException | InterruptedException failure) {
                 if (failure instanceof InterruptedException) Thread.currentThread().interrupt();
@@ -137,7 +137,7 @@ public final class FabricAutoUpdater {
                 downloading = false;
                 if (failure == null) {
                     staged = true;
-                    status = "Update ready. It will install when Minecraft closes.";
+                    status = "Update ready. Quit and relaunch Minecraft to use it.";
                     installButton.setMessage(Text.literal("Quit to apply update"));
                     laterButton.setMessage(Text.literal("Keep playing"));
                 } else {

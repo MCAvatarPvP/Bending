@@ -365,7 +365,10 @@ public class AirSweep extends AirAbility implements ComboAbility {
     }
 
     private boolean isBlocked(final Block block) {
-        return block == null || !block.isPassable() || block.isLiquid() || !this.isTransparent(block);
+        if (block == null || !block.isPassable() || !this.isTransparent(block)) {
+            return true;
+        }
+        return isWater(block) ? !this.goThroughWater : block.isLiquid();
     }
 
     private List<Entity> getEntitiesAlongSegment(final Location previousLoc, final Location loc) {

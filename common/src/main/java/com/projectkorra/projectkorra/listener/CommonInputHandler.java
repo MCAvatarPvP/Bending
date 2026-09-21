@@ -19,9 +19,11 @@ import com.projectkorra.projectkorra.board.BendingBoardManager;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.earthbending.EarthBlast;
 import com.projectkorra.projectkorra.earthbending.EarthGrab;
+import com.projectkorra.projectkorra.earthbending.EarthShell;
 import com.projectkorra.projectkorra.earthbending.EarthSmash;
 import com.projectkorra.projectkorra.earthbending.passive.FerroControl;
 import com.projectkorra.projectkorra.event.PlayerSwingEvent;
+import com.projectkorra.projectkorra.firebending.combo.LightningPunch;
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.mc.GameMode;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
@@ -143,6 +145,10 @@ public final class CommonInputHandler {
 
         AirScooter.check(player);
 
+        // EarthShell is a combo: its release arrives on the final component's
+        // slot, not on a separately bound EarthShell ability.
+        if (wasSneaking) EarthShell.release(player);
+
         final CoreAbility coreAbility = bPlayer.getBoundAbility();
         if (coreAbility == null || !coreAbility.isSneakAbility()) {
             if (PassiveManager.hasPassive(player, CoreAbility.getAbility(FerroControl.class))) {
@@ -186,6 +192,7 @@ public final class CommonInputHandler {
         BendingBoardManager.changeActiveSlot(player, slot);
         if (player.getGameMode() != GameMode.SPECTATOR) {
             AddonSlotActivation.handleSlotChange(player, slot);
+            LightningPunch.select(player, slot);
         }
 
         if (ConfigManager.defaultConfig.get().getBoolean("Abilities.Water.WaterArms.DisplayBoundMsg")) {
@@ -291,6 +298,7 @@ public final class CommonInputHandler {
     }
 
     private static InputResult handleStagedLeftClick(final Player player, final BendingPlayer bPlayer) {
+        if (LightningPunch.swing(player)) return InputResult.cancel();
         final String abilityName = bPlayer.getBoundAbilityName();
         if ("AirBlast".equalsIgnoreCase(abilityName)) {
             for (final AirBlast blast : CoreAbility.getAbilities(player, AirBlast.class)) {
@@ -333,6 +341,9 @@ public final class CommonInputHandler {
         final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
         if (bPlayer == null || target == null || player.getGameMode() == GameMode.SPECTATOR) {
             return false;
+        }
+        if (LightningPunch.punch(player, target) || LightningPunch.reserveFinisherHit(player, target)) {
+            return true;
         }
         if (!JedCoreConfig.getConfig(bPlayer).getBoolean("Abilities.Fire.FirePunch.ActivationOnPunch")) {
             return false;

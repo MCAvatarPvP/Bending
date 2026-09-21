@@ -4,13 +4,14 @@ import java.io.IOException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 
-/** Standalone, JDK-only helper: the running game must release its jar before replacement. */
+/** Standalone, JDK-only helper that replaces the instance's persistent mod jar. */
 public final class FabricUpdateInstaller {
     private FabricUpdateInstaller() { }
 
@@ -21,14 +22,24 @@ public final class FabricUpdateInstaller {
         Path directory = download.getParent();
         try {
             ProcessHandle parent = ProcessHandle.of(Long.parseLong(args[0])).orElse(null);
-            Files.writeString(directory.resolve("ready"), "Waiting for Minecraft to exit");
-            if (parent != null) parent.onExit().join();
             // Windows launchers/virus scanners can briefly retain a handle after exit.
             IOException last = null;
             for (int attempt = 0; attempt < 60; attempt++) {
                 try {
-                    install(target, download, args[3], args[4]);
-                    Files.writeString(directory.resolve("success"), "Installed " + target.getFileName());
+                    // Pandora restores original_mods over the runtime mods directory at exit.
+                    // Replace that inactive copy before exit so its restore keeps the update.
+                    // Resolve again on retries in case Pandora has already moved the directory.
+                    Path persistent = pandoraSource(target);
+                    if (persistent == null && parent != null && parent.isAlive()) {
+                        Files.writeString(directory.resolve("ready"), "Waiting for Minecraft to exit");
+                        parent.onExit().join();
+                        continue;
+                    }
+                    Path destination = persistent == null ? target : persistent;
+                    install(destination, download, args[3], args[4]);
+                    System.out.println("Installed update into " + destination);
+                    Files.writeString(directory.resolve("success"), args[4]);
+                    Files.writeString(directory.resolve("ready"), "Update installed; restart Minecraft to load it");
                     return;
                 } catch (IOException locked) {
                     last = locked;
@@ -45,7 +56,20 @@ public final class FabricUpdateInstaller {
         }
     }
 
+    /** Null for ordinary profiles, including Modrinth's profiles/<name>/mods layout. */
+    static Path pandoraSource(Path target) {
+        Path mods = target.toAbsolutePath().normalize().getParent();
+        Path game = mods == null ? null : mods.getParent();
+        Path instance = game == null ? null : game.getParent();
+        if (instance == null || !mods.getFileName().toString().equals("mods")
+                || !game.getFileName().toString().equals(".minecraft")
+                || !Files.isRegularFile(instance.resolve("info_v1.json"), LinkOption.NOFOLLOW_LINKS)
+                || !Files.isDirectory(instance.resolve("original_mods"), LinkOption.NOFOLLOW_LINKS)) return null;
+        return instance.resolve("original_mods").resolve(target.getFileName());
+    }
+
     static void install(Path target, Path download, String oldHash, String newHash) throws IOException {
+        if (!Files.exists(target, LinkOption.NOFOLLOW_LINKS)) throw new NoSuchFileException(target.toString());
         if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)
                 || !Files.isRegularFile(download, LinkOption.NOFOLLOW_LINKS)) {
             throw new IllegalStateException("The installed jar or download is missing or is a symbolic link");
@@ -61,7 +85,7 @@ public final class FabricUpdateInstaller {
         }
 
         Path backup = download.resolveSibling("previous.jar.backup");
-        Files.copy(target, backup, StandardCopyOption.REPLACE_EXISTING);
+        if (!Files.exists(backup)) Files.copy(target, backup);
         // Copy onto the target filesystem first, so the final rename can be atomic.
         Path replacement = Files.createTempFile(target.getParent(), ".projectkorra-update-", ".tmp");
         try {

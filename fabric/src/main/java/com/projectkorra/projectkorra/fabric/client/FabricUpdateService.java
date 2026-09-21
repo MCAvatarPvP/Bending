@@ -152,6 +152,9 @@ final class FabricUpdateService {
                 .redirectErrorStream(true).redirectOutput(directory.resolve("installer.log").toFile()).start();
         try {
             for (int attempt = 0; attempt < 100; attempt++) {
+                if (Files.exists(directory.resolve("failure"))) {
+                    throw new IOException("Update installer failed: " + Files.readString(directory.resolve("failure")));
+                }
                 if (Files.exists(directory.resolve("ready"))) return process;
                 if (!process.isAlive()) throw new IOException("Update installer stopped; see " + directory.resolve("installer.log"));
                 Thread.sleep(50);
@@ -178,12 +181,17 @@ final class FabricUpdateService {
     }
 
     /** Only remove our known files from completed installations, after a successful relaunch. */
-    static void cleanCompleted(Path updates) throws IOException {
+    static void cleanCompleted(Path updates, Path installedJar) throws IOException {
         if (!Files.isDirectory(updates)) return;
+        String loadedHash = FabricUpdateInstaller.sha256(installedJar);
         try (var directories = Files.list(updates)) {
             for (Path directory : directories.toList()) {
                 if (!Files.isDirectory(directory, java.nio.file.LinkOption.NOFOLLOW_LINKS)) continue;
                 if (!Files.isRegularFile(directory.resolve("success"))) continue;
+                if (!Files.readString(directory.resolve("success")).trim().equalsIgnoreCase(loadedHash)) {
+                    System.err.println("[ProjectKorraUpdater] Previous update was not loaded; keeping diagnostics in " + directory);
+                    continue;
+                }
                 for (String name : List.of("update.jar", "previous.jar.backup", "installer.jar", "installer.log", "ready", "success")) {
                     Files.deleteIfExists(directory.resolve(name));
                 }

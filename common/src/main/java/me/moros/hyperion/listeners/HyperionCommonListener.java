@@ -33,7 +33,7 @@ public final class HyperionCommonListener {
             final Object value = event.getEntity().getMetadata(CoreMethods.CABLE_KEY).get(0).value();
             if (value instanceof MetalCable cable && !cable.isRemoved()) {
                 // Impacts run outside ability progress. Preserve ownership for
-                // the source hole, falling block, and child projectile ability.
+                // legacy cable impacts and any terrain/display changes they make.
                 AbilityExecutionContext.run(cable, () -> {
                     if (event.getHitBlock() != null) {
                         cable.setHitBlock(event.getHitBlock());

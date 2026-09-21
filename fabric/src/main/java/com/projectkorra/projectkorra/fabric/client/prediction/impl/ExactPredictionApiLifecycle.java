@@ -211,6 +211,11 @@ public abstract class ExactPredictionApiLifecycle extends ExactPredictionApiBloc
         return ExactPredictionRuntime.instance().ready && ExactPredictionRuntime.instance().entityReconciliation.suppressAuthoritativeData(entityId);
     }
 
+    public static boolean hideDisplayFallback(final Entity entity) {
+        return ExactPredictionRuntime.instance().ready
+                && ExactPredictionRuntime.instance().entityReconciliation.hideDisplayFallback(entity);
+    }
+
     public static boolean suppressAuthoritativeBreakAnimation(ClientWorld world, BlockPos pos) {
         return ExactPredictionRuntime.instance().ready && (ExactPredictionRuntime.instance().directBlockAuthority.suppressBreakAnimation(world, pos)
                 || ExactPredictionRuntime.instance().tempBlockAuthority.suppressBreakAnimation(world, pos));

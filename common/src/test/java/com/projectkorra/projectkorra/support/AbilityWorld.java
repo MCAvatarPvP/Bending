@@ -14,9 +14,12 @@ import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.block.BlockState;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
+import com.projectkorra.projectkorra.platform.mc.entity.BlockDisplay;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
+import com.projectkorra.projectkorra.platform.mc.inventory.PlayerInventory;
 import com.projectkorra.projectkorra.platform.mc.metadata.MetadataValue;
 import com.projectkorra.projectkorra.platform.mc.util.BoundingBox;
+import com.projectkorra.projectkorra.platform.mc.util.Transformation;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 
 import java.util.*;
@@ -29,6 +32,7 @@ import java.util.function.Predicate;
 public final class AbilityWorld extends World implements AutoCloseable {
     private final Map<String, TestBlock> blocks = new HashMap<>();
     private final List<Entity> entities = new ArrayList<>();
+    public final List<TestDisplay> displays = new ArrayList<>();
     private final Field platformField;
     private final Object previousPlatform;
     private final Config previousConfig;
@@ -79,6 +83,27 @@ public final class AbilityWorld extends World implements AutoCloseable {
         return player;
     }
 
+    @Override public <T> T spawn(Location location, Class<T> type) {
+        if (type != BlockDisplay.class) return super.spawn(location, type);
+        TestDisplay display = new TestDisplay(location.clone());
+        displays.add(display);
+        return type.cast(display);
+    }
+
+    public static final class TestDisplay extends BlockDisplay {
+        public Location location;
+        public BlockData data;
+        public Transformation transformation;
+        private boolean valid = true;
+        private TestDisplay(Location location) { this.location = location; }
+        @Override public boolean isValid() { return valid; }
+        @Override public void remove() { valid = false; }
+        @Override public Location getLocation() { return location.clone(); }
+        @Override public boolean teleport(Location location) { this.location = location.clone(); return true; }
+        @Override public void setBlock(BlockData data) { this.data = data.clone(); }
+        @Override public void setTransformation(Transformation transformation) { this.transformation = transformation; }
+    }
+
     public final class TestBlock extends Block {
         private final Location location;
         private BlockData data = Material.AIR.createBlockData();
@@ -87,6 +112,7 @@ public final class AbilityWorld extends World implements AutoCloseable {
         @Override public World getWorld() { return AbilityWorld.this; }
         @Override public Location getLocation() { return location.clone(); }
         @Override public Material getType() { return data.getMaterial(); }
+        @Override public boolean isLiquid() { return getType() == Material.WATER || getType() == Material.LAVA; }
         @Override public BlockData getBlockData() { return data.clone(); }
         @Override public void setType(Material type) { data = type.createBlockData(); }
         @Override public void setBlockData(BlockData data) { this.data = data.clone(); }
@@ -100,6 +126,7 @@ public final class AbilityWorld extends World implements AutoCloseable {
         }
         @Override public Block getRelative(BlockFace face) {
             return switch (face) {
+                case SELF -> this;
                 case DOWN -> getBlockAt(getX(), getY() - 1, getZ());
                 case UP -> getBlockAt(getX(), getY() + 1, getZ());
                 case NORTH -> getBlockAt(getX(), getY(), getZ() - 1);
@@ -126,14 +153,18 @@ public final class AbilityWorld extends World implements AutoCloseable {
     public static final class TestPlayer extends Player {
         private final UUID id = UUID.randomUUID();
         private final Map<String, MetadataValue> metadata = new HashMap<>();
+        private final PlayerInventory inventory = new PlayerInventory();
         public Location location;
         public boolean onGround;
         public boolean sneaking;
+        public double eyeHeight;
         private TestPlayer(Location location) { this.location = location; }
         @Override public UUID getUniqueId() { return id; }
         @Override public int getEntityId() { return id.hashCode(); }
         @Override public World getWorld() { return location.getWorld(); }
         @Override public Location getLocation() { return location.clone(); }
+        @Override public Location getEyeLocation() { return location.clone().add(0, eyeHeight, 0); }
+        @Override public PlayerInventory getInventory() { return inventory; }
         @Override public boolean isOnGround() { return onGround; }
         @Override public boolean isSneaking() { return sneaking; }
         @Override public BoundingBox getBoundingBox() {

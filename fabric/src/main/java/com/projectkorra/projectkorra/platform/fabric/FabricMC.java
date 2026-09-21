@@ -567,6 +567,10 @@ public final class FabricMC {
             return TintedParticleEffect.create(
                     ParticleTypes.ENTITY_EFFECT, opaqueRgb(color));
         }
+        if (particleName.equals("FLASH")) {
+            return TintedParticleEffect.create(ParticleTypes.FLASH,
+                    opaqueRgb(data instanceof Color color ? color : Color.WHITE));
+        }
         if (particleName.equals("TINTED_LEAVES") && data instanceof Color color) {
             return TintedParticleEffect.create(
                     ParticleTypes.TINTED_LEAVES, opaqueRgb(color));

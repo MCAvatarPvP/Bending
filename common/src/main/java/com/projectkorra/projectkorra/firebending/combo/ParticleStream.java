@@ -87,7 +87,8 @@ public class ParticleStream extends BukkitRunnable {
         this.cancelled = false;
         this.collides = true;
         this.singlePoint = false;
-        this.goThroughWater = true;
+        // Legacy fire streams stop in water unless an owning ability opts in.
+        this.goThroughWater = false;
         this.particlesVisible = true;
         this.density = 1;
         this.checkCollisionDelay = 1;
@@ -146,7 +147,7 @@ public class ParticleStream extends BukkitRunnable {
             return;
         }
 
-        if ((this.goThroughWater
+        if ((!this.goThroughWater
                 && ElementalAbility.isWater(block)
                 && !FireAbility.canPassThroughWater(block))
                 && !ElementalAbility.isAir(

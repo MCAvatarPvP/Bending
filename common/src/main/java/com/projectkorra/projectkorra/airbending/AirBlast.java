@@ -69,6 +69,7 @@ public class AirBlast extends AirAbility {
     @Attribute(Attribute.RADIUS)
     private double radius;
 
+    private boolean staminaEnabled;
     private double decayAmount;
     private double decayMinimum;
     private double speedStaminaScale;
@@ -179,8 +180,8 @@ public class AirBlast extends AirAbility {
      * prediction repair/fallback from bypassing the configured stamina floor.
      */
     public static boolean hasSufficientStamina(final BendingPlayer bPlayer) {
-        return bPlayer != null && bPlayer.getAirBlastDecay()
-                > ConfigManager.getConfig(bPlayer).getDouble("Abilities.Air.AirBlast.DecayMinimum");
+        return bPlayer != null && (!ConfigManager.getConfig(bPlayer).getBoolean("Abilities.Air.AirBlast.StaminaEnabled", true)
+                || bPlayer.getAirBlastDecay() > ConfigManager.getConfig(bPlayer).getDouble("Abilities.Air.AirBlast.DecayMinimum"));
     }
 
     /**
@@ -264,6 +265,7 @@ public class AirBlast extends AirAbility {
         this.canOpenDoors = getConfig().getBoolean("Abilities.Air.AirBlast.CanOpenDoors");
         this.canPressButtons = getConfig().getBoolean("Abilities.Air.AirBlast.CanPressButtons");
         this.canCoolLava = getConfig().getBoolean("Abilities.Air.AirBlast.CanCoolLava");
+        this.staminaEnabled = getConfig().getBoolean("Abilities.Air.AirBlast.StaminaEnabled", true);
         this.decayAmount = getConfig().getDouble("Abilities.Air.AirBlast.DecayAmount");
         this.decayMinimum = getConfig().getDouble("Abilities.Air.AirBlast.DecayMinimum");
         this.speedStaminaScale = getConfig().getDouble("Abilities.Air.AirBlast.SpeedStaminaScale", 1.0);
@@ -333,7 +335,7 @@ public class AirBlast extends AirAbility {
             playAirbendingParticles(this.location, this.particles, 0.275F, 0.275F, 0.275F);
         }
         if (this.random.nextInt(4) == 0) {
-            final double percentage = bPlayer.getAirBlastDecay();
+            final double percentage = this.staminaEnabled ? bPlayer.getAirBlastDecay() : 1.0;
             final float pitch = (float) (0.9 * percentage);
             playAirbendingSound(this.location, pitch);
         }
@@ -395,7 +397,7 @@ public class AirBlast extends AirAbility {
             sliding = false;
         }
 
-        final boolean triggerStamina = !sliding || this.slidingConsumesStamina;
+        final boolean triggerStamina = this.staminaEnabled && (!sliding || this.slidingConsumesStamina);
         final boolean consumeStamina = triggerStamina && isUser && (this.usedStaminaThisShot || (sliding && this.slidingConsumesStamina && !this.pushed));
 
         if (consumeStamina) {
@@ -436,7 +438,7 @@ public class AirBlast extends AirAbility {
         if (sliding) {
             double speed = 1 - this.bPlayer.getAirBlastDecay();
 
-            if (this.staminaSliding) {
+            if (!this.staminaEnabled || this.staminaSliding) {
                 speed = 0;
             }
 
@@ -665,7 +667,7 @@ public class AirBlast extends AirAbility {
             return;
         }
 
-        this.preShootStamina = bPlayer.getAirBlastDecay();
+        this.preShootStamina = this.staminaEnabled ? bPlayer.getAirBlastDecay() : 1.0;
         this.usedStaminaThisShot = false;
         this.refundedThisSlide = false;
 
@@ -674,7 +676,7 @@ public class AirBlast extends AirAbility {
             return;
         }
 
-        final boolean willConsumeStamina = isFromOtherOrigin;
+        final boolean willConsumeStamina = this.staminaEnabled && isFromOtherOrigin;
         this.shotStamina = willConsumeStamina ? Math.max(decayMinimum, this.preShootStamina - decayAmount) : this.preShootStamina;
         this.speed = applyStaminaScaling(this.speed, this.shotStamina, this.speedStaminaScale);
         this.range = applyStaminaScaling(this.range, this.shotStamina, this.rangeStaminaScale);

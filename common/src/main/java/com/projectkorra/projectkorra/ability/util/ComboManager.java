@@ -78,6 +78,11 @@ public class ComboManager {
         }
 
         final String abilityName = bPlayer.getBoundAbilityName();
+        addComboAbility(player, abilityName, type);
+    }
+
+    /** Slot events can precede the native inventory update; use the selected binding explicitly. */
+    public static void addComboAbility(final Player player, final String abilityName, final ClickType type) {
         if (abilityName == null) {
             return;
         }
@@ -414,6 +419,8 @@ public class ComboManager {
                 return "Shift Up";
             case OFFHAND_TRIGGER:
                 return "Offhand";
+            case SLOT_CHANGE:
+                return "Select Slot";
             default:
                 return clickType.name();
         }

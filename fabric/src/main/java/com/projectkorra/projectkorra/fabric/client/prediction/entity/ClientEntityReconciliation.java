@@ -26,8 +26,10 @@ import java.util.function.Function;
  * their later Paper entity packets.
  *
  * <p>Ordinary predicted entities are aliased to Paper's numeric entity id.
- * Displays and TempFallingBlocks stay fully client simulated, so their Paper
- * ids are retained only as hidden lifecycle tombstones. TempFallingBlocks use
+ * Most displays and TempFallingBlocks stay fully client simulated, so their
+ * Paper ids are retained only as hidden lifecycle tombstones. MetalCable
+ * displays keep a normally tracked server fallback, hidden only during live
+ * local prediction. TempFallingBlocks use
  * action + spawn ordinal matching; proximity is never sufficient.</p>
  */
 public final class ClientEntityReconciliation {
@@ -35,6 +37,8 @@ public final class ClientEntityReconciliation {
     private final Set<Integer> tempFallingAliases = new HashSet<>();
     private final Set<Integer> hiddenTempFallingEntities = new HashSet<>();
     private final Map<Integer, Entity> hiddenPredictedDisplays = new HashMap<>();
+    private final ClientDisplayFallbacks<Entity> displayFallbacks =
+            new ClientDisplayFallbacks<>(entity -> !entity.isRemoved());
     private final Map<Entity, PredictedSpawn> predictedSpawns = new IdentityHashMap<>();
     private final Map<TempFallingBlockKey, PredictedTempFallingBlock> predictedTempFallingBlocks =
             new HashMap<>();
@@ -50,9 +54,10 @@ public final class ClientEntityReconciliation {
         this.blockStateDecoder = blockStateDecoder;
     }
 
-    public void trackSpawn(final long actionSequence, final Entity entity) {
+    public void trackSpawn(final long actionSequence, final Entity entity,
+                           final boolean allowDisplayFallback) {
         if (actionSequence <= 0L || entity == null) return;
-        predictedSpawns.put(entity, new PredictedSpawn(actionSequence, entity.getEntityPos()));
+        predictedSpawns.put(entity, new PredictedSpawn(actionSequence, entity.getEntityPos(), allowDisplayFallback));
     }
 
     public boolean isPredictedOwned(final Entity entity) {
@@ -171,6 +176,7 @@ public final class ClientEntityReconciliation {
             final Entity candidate = entry.getKey();
             if (candidate == null || candidate.getType() != packet.getEntityType()
                     || authoritativeAliases.containsValue(candidate)
+                    || displayFallbacks.isPaired(candidate)
                     || hiddenPredictedDisplays.containsValue(candidate)) continue;
             // Match creation position, not the position reached while waiting
             // for Paper. Removed entities remain tombstones for delayed spawns.
@@ -183,6 +189,13 @@ public final class ClientEntityReconciliation {
         }
         if (best == null) return false;
         if (best instanceof DisplayEntity) {
+            if (predictedSpawns.get(best).allowDisplayFallback) {
+                // MetalCable can stop predicting at a grab/throw transition.
+                // Keep vanilla spawn, tracker and movement packets flowing;
+                // hide only the rendering while the local segment is alive.
+                displayFallbacks.pair(packet.getEntityId(), best);
+                return false;
+            }
             // Displays stay common-client simulated. Never expose their Paper
             // ids through a world lookup or let tracker packets steer them.
             hiddenPredictedDisplays.put(packet.getEntityId(), best);
@@ -200,6 +213,10 @@ public final class ClientEntityReconciliation {
                 || hiddenPredictedDisplays.containsKey(serverEntityId);
     }
 
+    public boolean hideDisplayFallback(final Entity entity) {
+        return entity instanceof DisplayEntity && displayFallbacks.hide(entity.getId());
+    }
+
     public Entity aliasedEntity(final int serverEntityId) {
         // TempFallingBlocks consume lifecycle but reject movement lookup.
         return tempFallingAliases.contains(serverEntityId)
@@ -211,6 +228,8 @@ public final class ClientEntityReconciliation {
     }
 
     public boolean removeHidden(final int serverEntityId) {
+        // A fallback is a real vanilla entity: let vanilla destroy it as usual.
+        displayFallbacks.remove(serverEntityId);
         final boolean display = hiddenPredictedDisplays.remove(serverEntityId) != null;
         return hiddenTempFallingEntities.remove(serverEntityId) || display;
     }
@@ -266,6 +285,7 @@ public final class ClientEntityReconciliation {
         tempFallingAliases.clear();
         hiddenTempFallingEntities.clear();
         hiddenPredictedDisplays.clear();
+        displayFallbacks.clear();
         predictedSpawns.clear();
         predictedTempFallingBlocks.clear();
         predictedTempFallingOwners.clear();
@@ -285,7 +305,7 @@ public final class ClientEntityReconciliation {
         return first.squaredDistanceTo(second) <= tolerance * tolerance;
     }
 
-    private record PredictedSpawn(long actionSequence, Vec3d origin) { }
+    private record PredictedSpawn(long actionSequence, Vec3d origin, boolean allowDisplayFallback) { }
     private record TempFallingBlockKey(long actionSequence, int spawnOrdinal) { }
     private record PredictedTempFallingBlock(Entity entity, String ability) { }
     public record PredictedTempFallingOwner(long actionSequence, String ability,
