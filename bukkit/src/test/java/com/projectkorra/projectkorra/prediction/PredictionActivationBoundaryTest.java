@@ -255,7 +255,7 @@ class PredictionActivationBoundaryTest {
     }
 
     @Test
-    void reactiveElementsUseOnlyCurrentPaperPlayerPositions() throws IOException {
+    void airAndFireClaimsUseExistingModSessionAtBothValidationPoints() throws IOException {
         String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
                 "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
         String runtime = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
@@ -265,20 +265,21 @@ class PredictionActivationBoundaryTest {
         String targeting = read("../common/src/main/java/com/projectkorra/projectkorra/GeneralMethods.java",
                 "common/src/main/java/com/projectkorra/projectkorra/GeneralMethods.java");
 
-        assertTrue(paper.contains("HitRegistrationPolicy.forAbility(ability)")
+        assertTrue(paper.contains("HitRegistrationPolicy.forTarget(ability, isExactClient(target.getUniqueId()))")
                         && paper.contains("== HitRegistrationPolicy.SERVER_CURRENT")
-                        && paper.contains("action.claims.clear()"),
-                "Paper must never augment a Fire/Air query with a historical player box");
+                        && paper.contains("claims.remove()"),
+                "Fire/Air query augmentation must recheck the target's existing mod session");
         assertTrue(paper.contains("CoreAbility.getAbility(action.ability)")
-                        && paper.contains("HitRegistrationPolicy.forAbility(claimedAbility)"),
-                "known reactive claims should be rejected before history lookup");
+                        && paper.contains("HitRegistrationPolicy.forTarget(claimedAbility,")
+                        && paper.contains("PaperPredictionServer.isExactClient(target.getUniqueId())"),
+                "Fire/Air claims require a modded target before history validation");
         assertTrue(runtime.contains("== HitRegistrationPolicy.REWIND_ASSISTED")
                         && runtime.contains("retainsAcceptedPredictedLifecycle("),
-                "reactive contacts must not emit claims and Paper removal must win their lifecycle");
+                "reuse the existing client claim and lifecycle paths");
         assertTrue(fabricWorld.contains("HitRegistrationPolicy.includePredictedEntity"),
-                "the prediction world must hide delayed remote-player collision candidates");
+                "shared policy controls contact reporting without changing the Fabric adapter");
         assertTrue(targeting.contains("HitRegistrationPolicy.targetAcquisition("),
-                "aiming queries must retain remote players even though contact queries hide them");
+                "existing aiming queries remain available");
     }
 
     @Test

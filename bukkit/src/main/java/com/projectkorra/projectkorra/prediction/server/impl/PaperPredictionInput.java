@@ -156,13 +156,14 @@ public abstract class PaperPredictionInput extends PaperPredictionEffects {
                 || tick - action.acceptedTick > 200L
                 || action.claims.containsKey(hit.target())) return;
         final CoreAbility claimedAbility = CoreAbility.getAbility(action.ability);
-        if (claimedAbility != null && HitRegistrationPolicy.forAbility(claimedAbility)
-                == HitRegistrationPolicy.SERVER_CURRENT) return;
         final Player target = Bukkit.getPlayer(hit.target());
         if (target == null || target == player || target.isDead()
                 || target.getEntityId() != hit.entityId()
                 || target.getGameMode() == org.bukkit.GameMode.SPECTATOR
                 || target.getWorld() != player.getWorld()) return;
+        if (HitRegistrationPolicy.forTarget(claimedAbility,
+                PaperPredictionServer.isExactClient(target.getUniqueId()))
+                == HitRegistrationPolicy.SERVER_CURRENT) return;
 
         final int defenderPing = target.getPing();
         final long rewindTick = session.mapClientTick(hit.clientTick(), tick,

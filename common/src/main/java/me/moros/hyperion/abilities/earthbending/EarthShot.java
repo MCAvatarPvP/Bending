@@ -365,7 +365,7 @@ public class EarthShot extends EarthAbility implements AddonAbility {
         if (prematureLaunch) {
             location = projectile.getFallingBlock().getLocation();
             Vector direction = GeneralMethods.getDirection(location, GeneralMethods.getTargetedLocation(player, range)).normalize();
-            projectile.getFallingBlock().setGravity(true);
+            projectile.getFallingBlock().setGravity(false);
             projectile.getFallingBlock().setVelocity(direction.multiply(1.8).add(new Vector(0, 0.2, 0)));
         } else {
             Vector direction = GeneralMethods.getDirection(readySource.getLocation(), GeneralMethods.getTargetedLocation(player, range, readySource.getBlock().getType())).normalize();

@@ -1800,6 +1800,7 @@ public class ConfigManager {
 
             config.addDefault("Abilities.Earth.EarthBlast.Enabled", true);
             config.addDefault("Abilities.Earth.EarthBlast.CanHitSelf", false);
+            config.addDefault("Abilities.Earth.EarthBlast.RedirectFix", true);
             config.addDefault("Abilities.Earth.EarthBlast.SelectRange", 10);
             config.addDefault("Abilities.Earth.EarthBlast.Range", 30);
             config.addDefault("Abilities.Earth.EarthBlast.Speed", 35);
@@ -2362,6 +2363,7 @@ public class ConfigManager {
             config.addDefault("debug", false);
 
             defaultConfig.persistDefaultsInSection("Abilities.Earth.EarthShell");
+            defaultConfig.persistDefaultsInSection("Abilities.Earth.EarthBlast");
             defaultConfig.persistDefaultsInSection("Abilities.Fire.LightningPunch");
             defaultConfig.save();
         } else if (type == ConfigType.AVATAR_STATE) {

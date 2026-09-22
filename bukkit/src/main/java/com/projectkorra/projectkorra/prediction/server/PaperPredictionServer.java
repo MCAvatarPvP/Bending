@@ -178,13 +178,6 @@ public final class PaperPredictionServer extends PaperPredictionSnapshots {
         if (server == null || world == null || query == null || result == null) return;
         final Action action = ability == null ? null : server.actionForEffect(ability);
         if (action == null) return;
-        if (HitRegistrationPolicy.forAbility(ability)
-                == HitRegistrationPolicy.SERVER_CURRENT) {
-            // Never inject historical player boxes into reactive ability
-            // queries. The normal Bukkit query above is their sole hit source.
-            action.claims.clear();
-            return;
-        }
         final Iterator<Claim> claims = action.claims.values().iterator();
         while (claims.hasNext()) {
             final Claim claim = claims.next();
@@ -194,6 +187,11 @@ public final class PaperPredictionServer extends PaperPredictionSnapshots {
             }
             final Player target = Bukkit.getPlayer(claim.target);
             if (target == null || target.isDead() || target.getWorld() != world) continue;
+            if (HitRegistrationPolicy.forTarget(ability, isExactClient(target.getUniqueId()))
+                    == HitRegistrationPolicy.SERVER_CURRENT) {
+                claims.remove();
+                continue;
+            }
             if (!query.clone().expand(CLAIM_QUERY_TOLERANCE).overlaps(claim.rewoundBox)) continue;
             final com.projectkorra.projectkorra.platform.mc.entity.Entity wrapped = BukkitMC.entity(target);
             if (wrapped == null || filter != null && !filter.test(wrapped)) continue;

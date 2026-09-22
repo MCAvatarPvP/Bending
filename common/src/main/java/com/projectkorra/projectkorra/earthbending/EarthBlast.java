@@ -1,24 +1,22 @@
 package com.projectkorra.projectkorra.earthbending;
 
 import com.projectkorra.projectkorra.BendingPlayer;
-import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.EarthAbility;
 import com.projectkorra.projectkorra.ability.util.Collision;
-import com.projectkorra.projectkorra.ability.util.ElementalCollisionEffects;
-import com.projectkorra.projectkorra.prediction.authority.AuthoritativeEffects;
+import com.projectkorra.projectkorra.ability.activation.AbilityActivationManager;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.earthbending.passive.DensityShift;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Material;
-import com.projectkorra.projectkorra.platform.mc.Sound;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.*;
 
 import java.util.ArrayList;
@@ -29,6 +27,7 @@ public class EarthBlast extends EarthAbility {
     private boolean isSettingUp;
     private boolean canHitSelf;
     private boolean isFirstMove;
+    private boolean redirectFix;
     private long time;
     private long interval;
     @Attribute(Attribute.COOLDOWN)
@@ -61,6 +60,7 @@ public class EarthBlast extends EarthAbility {
         this.isAtDestination = false;
         this.isSettingUp = true;
         this.isFirstMove = true;
+        this.redirectFix = getConfig().getBoolean("Abilities.Earth.EarthBlast.RedirectFix", true);
         this.deflectRange = getConfig().getDouble("Abilities.Earth.EarthBlast.DeflectRange");
         this.collisionRadius = getConfig().getDouble("Abilities.Earth.EarthBlast.CollisionRadius");
         this.cooldown = getConfig().getLong("Abilities.Earth.EarthBlast.Cooldown");
@@ -123,14 +123,15 @@ public class EarthBlast extends EarthAbility {
 
     private static void redirectTargettedBlasts(final Player player, final ArrayList<EarthBlast> ignore) {
         for (final EarthBlast blast : getAbilities(EarthBlast.class)) {
-            if (!blast.isProgressing || ignore.contains(blast)) {
+            if (blast.isRemoved() || !blast.isProgressing || ignore.contains(blast)) {
                 continue;
             } else if (!blast.location.getWorld().equals(player.getWorld())) {
                 continue;
-            } else if (GeneralMethods.isRegionProtectedFromBuild(blast, blast.location)) {
+            } else if (RegionProtection.isRegionProtected(blast.redirectFix ? player : blast.player, blast.location, blast)) {
                 continue;
             } else if (blast.player.equals(player)) {
-                blast.redirect(player, blast.getTargetLocation());
+                blast.redirect(player, blast.getTargetLocation(player));
+                continue;
             }
 
             final Location location = player.getEyeLocation();
@@ -138,7 +139,12 @@ public class EarthBlast extends EarthAbility {
             final Location mloc = blast.location;
 
             if (mloc.distanceSquared(location) <= blast.range * blast.range && GeneralMethods.getDistanceFromLine(vector, location, blast.location) < blast.deflectRange && mloc.distanceSquared(location.clone().add(vector)) < mloc.distanceSquared(location.clone().add(vector.clone().multiply(-1)))) {
-                blast.redirect(player, blast.getTargetLocation());
+                if (blast.redirectFix) {
+                    final BendingPlayer bending = BendingPlayer.getBendingPlayer(player);
+                    // Focused metal/sand can look like ordinary stone; check the carried material.
+                    if (!isEarthbendable(blast.sourceType, bending.canMetalbend(), bending.canSandbend(), bending.canLavabend())) continue;
+                }
+                blast.redirect(player, blast.getTargetLocation(blast.redirectFix ? player : blast.player));
             }
         }
     }
@@ -195,20 +201,11 @@ public class EarthBlast extends EarthAbility {
             final Vector vector = location.getDirection();
             final Location mloc = blast.location;
             if (mloc.distanceSquared(location) <= this.range * this.range && GeneralMethods.getDistanceFromLine(vector, location, blast.location) < this.deflectRange && mloc.distanceSquared(location.clone().add(vector)) < mloc.distanceSquared(location.clone().add(vector.clone().multiply(-1)))) {
-                this.playDeflectEffect(blast);
                 blast.remove();
                 this.remove();
                 return;
             }
         }
-    }
-
-    private void playDeflectEffect(final EarthBlast blast) {
-        final Location impactLocation = blast.location.clone();
-        AuthoritativeEffects.run(() -> {
-            ElementalCollisionEffects.play(impactLocation, Element.EARTH, Element.EARTH, this.bPlayer);
-            impactLocation.getWorld().playSound(impactLocation, Sound.BLOCK_DEEPSLATE_BREAK, 1.0F, 0.65F);
-        });
     }
 
     private void focusBlock() {
@@ -235,9 +232,15 @@ public class EarthBlast extends EarthAbility {
     }
 
     private Location getTargetLocation() {
-        final Entity target = GeneralMethods.getTargetedEntity(this.player, this.range, new ArrayList<Entity>());
+        return this.getTargetLocation(this.player);
+    }
+
+    private Location getTargetLocation(final Player aimingPlayer) {
+        final Entity target = GeneralMethods.getTargetedEntity(aimingPlayer, this.range, new ArrayList<Entity>());
         Location location;
-        final Material[] trans = new Material[getTransparentMaterials().length + this.getEarthbendableBlocks().size()];
+        final boolean ignoreProjectile = this.redirectFix && this.isProgressing && this.sourceBlock != null;
+        final Material[] trans = new Material[getTransparentMaterials().length + this.getEarthbendableBlocks().size()
+                + (ignoreProjectile ? 1 : 0)];
         int i = 0;
         for (int j = 0; j < getTransparentMaterials().length; j++) {
             trans[j] = getTransparentMaterials()[j];
@@ -252,8 +255,11 @@ public class EarthBlast extends EarthAbility {
             i++;
         }
 
+        // A redirected metal/sand projectile must not become its own raycast destination.
+        if (ignoreProjectile) trans[trans.length - 1] = this.sourceBlock.getType();
+
         if (target == null) {
-            location = GeneralMethods.getTargetedLocation(this.player, this.range, true, trans);
+            location = GeneralMethods.getTargetedLocation(aimingPlayer, this.range, true, trans);
         } else {
             location = ((LivingEntity) target).getEyeLocation();
         }
@@ -283,7 +289,8 @@ public class EarthBlast extends EarthAbility {
             return false;
         }
 
-        this.checkForCollision();
+        // Legacy sneak-deflection destroys incoming blasts before they can be redirected.
+        if (!this.redirectFix) this.checkForCollision();
         // Deflecting an incoming blast cancels this preparation too.
         // Registering it afterwards leaves a removed instance that never ticks.
         if (this.isRemoved()) {
@@ -470,6 +477,11 @@ public class EarthBlast extends EarthAbility {
             if (this.location.distanceSquared(player.getLocation()) <= this.range * this.range) {
                 this.isSettingUp = false;
                 this.destination = targetlocation;
+                if (this.redirectFix) {
+                    // The controller supplies damage attribution, hit immunity, and future redirects.
+                    this.setPlayer(player);
+                    AbilityActivationManager.markHandled(this);
+                }
             }
         }
     }

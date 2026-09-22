@@ -15,9 +15,9 @@ import java.util.function.Supplier;
 /**
  * Selects which position authority an ability uses for player hit registration.
  *
- * <p>Fire and Air are reactive elements: their gameplay contact is accepted only
- * from Paper's current entity query. Other elements retain the bounded rewind
- * path used to compensate deliberate, less reactive attacks.</p>
+ * <p>All elements can report client contacts through the existing bounded rewind
+ * path. Server validation accepts Fire/Air reports only for modded targets;
+ * their other targets retain the current server hit path.</p>
  */
 public enum HitRegistrationPolicy {
     REWIND_ASSISTED,
@@ -26,8 +26,14 @@ public enum HitRegistrationPolicy {
     private static final ThreadLocal<Integer> TARGET_ACQUISITION_DEPTH =
             ThreadLocal.withInitial(() -> 0);
 
+    /** Client reports share one path; the server checks target eligibility separately. */
     public static HitRegistrationPolicy forAbility(final CoreAbility ability) {
-        return ability == null
+        return forTarget(ability, true);
+    }
+
+    /** The mod flag must come from the server's existing client session. */
+    public static HitRegistrationPolicy forTarget(final CoreAbility ability, final boolean targetHasMod) {
+        return targetHasMod || ability == null
                 ? REWIND_ASSISTED
                 : resolve(ability.getClass(), ability.getElement());
     }
@@ -86,8 +92,8 @@ public enum HitRegistrationPolicy {
     }
 
     /**
-     * The exact client must not turn its delayed view of another player into a
-     * Fire/Air impact. Paper still runs the same query without this filter.
+     * Client contact candidates use the shared reporting policy. Target-specific
+     * Fire/Air eligibility is checked when Paper validates the resulting claim.
      */
     public static boolean includePredictedEntity(final CoreAbility ability,
                                                  final Entity candidate) {
