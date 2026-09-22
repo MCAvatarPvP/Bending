@@ -103,9 +103,8 @@ class PredictionActivationBoundaryTest {
     }
 
     @Test
-    void predictedRemoteContactsCannotTerminateAuthoritativeProjectiles() throws IOException {
+    void remainingServerOnlyProjectilesRetainTheirContactGuards() throws IOException {
         final String[] guardedProjectiles = {
-                "airbending/AirBlade.java",
                 "airbending/AirPunch.java",
                 "airbending/SonicBlast.java",
                 "waterbending/WaterBlast.java"
@@ -119,16 +118,12 @@ class PredictionActivationBoundaryTest {
 
         final String fireBall = read("../common/src/main/java/com/jedk1/jedcore/ability/firebending/FireBall.java",
                 "common/src/main/java/com/jedk1/jedcore/ability/firebending/FireBall.java");
-        final String fireShots = read("../common/src/main/java/com/jedk1/jedcore/ability/firebending/FireShots.java",
-                "common/src/main/java/com/jedk1/jedcore/ability/firebending/FireShots.java");
         final String combustion = read("../common/src/main/java/com/jedk1/jedcore/ability/firebending/Combustion.java",
                 "common/src/main/java/com/jedk1/jedcore/ability/firebending/Combustion.java");
         final String earthShard = read("../common/src/main/java/com/jedk1/jedcore/ability/earthbending/EarthShard.java",
                 "common/src/main/java/com/jedk1/jedcore/ability/earthbending/EarthShard.java");
         assertTrue(fireBall.contains("else if (CooldownSync.isAuthoritative())")
                 && fireBall.contains("if (!CooldownSync.isAuthoritative()) return true;"));
-        assertTrue(fireShots.contains("hit && authoritative")
-                && fireShots.contains("if (!authoritative) return true;"));
         assertTrue(combustion.contains("hit && authoritative")
                 && combustion.contains("if (!authoritative) return true;"));
         assertTrue(earthShard.contains("if (!CooldownSync.isAuthoritative()) return true;"),

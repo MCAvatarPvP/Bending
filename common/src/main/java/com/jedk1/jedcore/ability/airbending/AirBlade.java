@@ -15,7 +15,6 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Transformation;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.hit.ConfirmedHitEffects;
-import com.projectkorra.projectkorra.prediction.state.CooldownSync;
 import com.projectkorra.projectkorra.prediction.hit.EntityHitboxProvider;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.DamageHandler;
@@ -104,7 +103,6 @@ public class AirBlade extends AirAbility implements AddonAbility, EntityHitboxPr
     }
 
     private void progressBlade() {
-        final boolean authoritative = CooldownSync.isAuthoritative();
         for (int j = 0; j < 2; j++) {
             location = location.add(direction.clone());
             travelled++;
@@ -147,18 +145,17 @@ public class AirBlade extends AirAbility implements AddonAbility, EntityHitboxPr
                         lastLoc = tempLoc;
 
                         boolean hit = CollisionDetector.checkEntityCollisions(player, new Sphere(tempLoc, entityCollisionRadius), entity -> {
-                            if (!authoritative) return true;
+                            // The damage handler reports predicted contacts while keeping health server-owned.
                             DamageHandler.damageEntity(entity, damage, this);
                             final Location hitLocation = entity.getLocation().clone();
                             ConfirmedHitEffects.sound(this, entity, () -> {
                                 hitLocation.getWorld().playSound(hitLocation, Sound.ENTITY_PLAYER_ATTACK_CRIT, 1f, 1.45F);
                                 hitLocation.getWorld().playSound(hitLocation, Sound.ENTITY_BREEZE_HURT, 1f, 2f);
                             });
-                            remove();
                             return true;
                         });
 
-                        if (hit && authoritative) {
+                        if (hit) {
                             remove();
                             return;
                         }

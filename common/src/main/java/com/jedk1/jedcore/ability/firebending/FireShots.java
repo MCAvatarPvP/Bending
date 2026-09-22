@@ -336,14 +336,16 @@ public class FireShots extends FireAbility implements AddonAbility {
                 Sphere collider = new Sphere(location, collisionRadius);
 
                 boolean hit = CollisionDetector.checkEntityCollisions(player, collider, (entity) -> {
-                    if (!authoritative) return true;
+                    // Reports predicted contact without changing remote health on the client.
                     DamageHandler.damageEntity(entity, damage, ability);
-                    FireTick.set(entity, Math.round(fireTicks / 50F));
-                    new FireDamageTimer(entity, player, FireShots.this);
+                    if (authoritative) {
+                        FireTick.set(entity, Math.round(fireTicks / 50F));
+                        new FireDamageTimer(entity, player, FireShots.this);
+                    }
                     return true;
                 });
 
-                if (hit && authoritative) {
+                if (hit) {
                     return false;
                 }
             }
