@@ -2,18 +2,28 @@ plugins {
     id 'java-library'
     id 'com.gradleup.shadow'
     id 'xyz.jpenilla.run-paper'
+    id 'io.papermc.paperweight.userdev'
+}
+
+configurations {
+    optionalPluginApi {
+        canBeConsumed = false
+    }
+    compileOnly.extendsFrom(optionalPluginApi)
 }
 
 def optional = { Object notation ->
-    dependencies.add('compileOnly', notation) { transitive = false }
+    dependencies.add('optionalPluginApi', notation) { transitive = false }
 }
 
 dependencies {
     api project(':common')
-    compileOnly "io.papermc.paper:paper-api:${paper_api_version}"
+    paperweight.paperDevBundle("${paper_api_version}")
     implementation 'org.xerial:sqlite-jdbc:3.49.1.0'
     implementation 'io.papermc:paperlib:1.0.1'
     implementation 'co.aikar:minecraft-timings:1.0.4'
+    implementation 'net.bytebuddy:byte-buddy:1.15.11'
+    implementation 'org.objenesis:objenesis:3.3'
     optional 'com.github.retrooper:packetevents-spigot:2.12.0'
     optional 'com.github.retrooper:packetevents-api:2.12.0'
     optional 'org.geysermc.floodgate:api:2.2.5-SNAPSHOT'
@@ -37,9 +47,60 @@ dependencies {
     compileOnly 'org.betonquest.betonquest:api:3.1.0-SNAPSHOT'
     compileOnly files('../libs/NeptuneAPI-2.3.jar', '../libs/strikepractice-api.jar')
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
-    testImplementation "io.papermc.paper:paper-api:${paper_api_version}"
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
 }
+
+paperweight.reobfArtifactConfiguration = io.papermc.paperweight.userdev.ReobfArtifactConfiguration.getMOJANG_PRODUCTION()
+
+// Inspect Paper's declared metadata schema at build time. Runtime item creation
+// reads the generated immutable table without reflective field/type discovery.
+def paperSchemaClasspath = configurations.compileClasspath.minus(configurations.optionalPluginApi)
+def paperMetadataSources = layout.buildDirectory.dir('generated/sources/paperMetadata')
+def generatePaperItemCatalog = tasks.register('generatePaperItemCatalog') {
+    inputs.files(paperSchemaClasspath).withPropertyName('paperSchemaClasspath').withNormalizer(ClasspathNormalizer)
+    outputs.dir(paperMetadataSources)
+    doLast {
+        def urls = paperSchemaClasspath.files.collect { it.toURI().toURL() } as URL[]
+        new URLClassLoader(urls, (ClassLoader) null).withCloseable { loader ->
+            def itemType = loader.loadClass('org.bukkit.inventory.ItemType')
+            def typedItem = loader.loadClass('org.bukkit.inventory.ItemType$Typed')
+            def skull = loader.loadClass('org.bukkit.inventory.meta.SkullMeta')
+            def potion = loader.loadClass('org.bukkit.inventory.meta.PotionMeta')
+            def leather = loader.loadClass('org.bukkit.inventory.meta.LeatherArmorMeta')
+            def kinds = new TreeMap<String, String>()
+            itemType.fields.each { field ->
+                def generic = field.genericType
+                if (java.lang.reflect.Modifier.isStatic(field.modifiers)
+                        && generic instanceof java.lang.reflect.ParameterizedType
+                        && generic.rawType == typedItem && generic.actualTypeArguments[0] instanceof Class) {
+                    def meta = generic.actualTypeArguments[0] as Class
+                    kinds.put('minecraft:' + field.name.toLowerCase(Locale.ROOT), skull.isAssignableFrom(meta) ? 'SKULL'
+                            : potion.isAssignableFrom(meta) ? 'POTION' : leather.isAssignableFrom(meta) ? 'LEATHER' : 'GENERIC')
+                }
+            }
+            if (kinds.isEmpty()) throw new GradleException('Paper item metadata schema is unavailable')
+            kinds.put('minecraft:air', 'GENERIC')
+            def source = new StringBuilder('''package com.projectkorra.projectkorra.prediction.rollback;
+
+import com.projectkorra.projectkorra.prediction.rollback.world.RollbackNativeItems.Kind;
+import java.util.Map;
+import java.util.TreeMap;
+
+// Generated from this build's Paper ItemType declarations. Do not edit.
+final class PaperItemMetadata {
+    static final Map<String, Kind> VALUES;
+    static {
+        var values = new TreeMap<String, Kind>();
+''')
+            kinds.each { name, kind -> source.append('        values.put("').append(name).append('", Kind.').append(kind).append(');\n') }
+            source.append('        VALUES = java.util.Collections.unmodifiableMap(values);\n    }\n}\n')
+            def target = paperMetadataSources.get().file('com/projectkorra/projectkorra/prediction/rollback/PaperItemMetadata.java').asFile
+            target.parentFile.mkdirs()
+            target.setText(source.toString(), 'UTF-8')
+        }
+    }
+}
+sourceSets.main.java.srcDir(generatePaperItemCatalog)
 
 tasks.withType(Test).configureEach {
     useJUnitPlatform()
@@ -69,5 +130,62 @@ tasks.register('runPaperServer') {
     group = 'paper'
     description = 'Builds ProjectKorra and runs a local Paper server with the Bukkit plugin installed.'
     dependsOn tasks.named('runServer')
+}
+
+// Native integration tests use the same paperweight bundle as production
+// compilation. They bootstrap registries without starting a server or using run/.
+sourceSets {
+    nativeTest {
+        resources.srcDir(rootProject.file('test-fixtures'))
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+        runtimeClasspath += sourceSets.main.output + sourceSets.main.runtimeClasspath + sourceSets.main.compileClasspath.minus(configurations.optionalPluginApi)
+    }
+}
+configurations.nativeTestImplementation.extendsFrom(configurations.testImplementation)
+configurations.nativeTestRuntimeOnly.extendsFrom(configurations.testRuntimeOnly)
+
+tasks.register('nativeTest', Test) {
+    group = 'verification'
+    description = 'Tests native Paper geometry/rollback adapters without running a Minecraft server.'
+    testClassesDirs = sourceSets.nativeTest.output.classesDirs
+    classpath = sourceSets.nativeTest.runtimeClasspath
+    useJUnitPlatform()
+    maxHeapSize = '2G'
+}
+
+// Explicit cross-project contract check against freshly compiled Neptune classes.
+// No runtime plugin dependency and no copied implementation or prebuilt plugin jar.
+def neptuneClasses = providers.gradleProperty('neptuneClasses')
+def neptuneOutput = files(neptuneClasses.isPresent() ? neptuneClasses.get() : [])
+sourceSets {
+    neptuneTest {
+        compileClasspath += sourceSets.nativeTest.output + sourceSets.nativeTest.compileClasspath + neptuneOutput
+        runtimeClasspath += sourceSets.nativeTest.output + sourceSets.nativeTest.runtimeClasspath + neptuneOutput
+    }
+}
+configurations.neptuneTestImplementation.extendsFrom(configurations.nativeTestImplementation)
+configurations.neptuneTestRuntimeOnly.extendsFrom(configurations.nativeTestRuntimeOnly)
+tasks.named('compileNeptuneTestJava') {
+    doFirst {
+        if (!neptuneClasses.isPresent() || !file(neptuneClasses.get()).isDirectory()) {
+            throw new GradleException('Compile Neptune :Plugin:classes, then pass -PneptuneClasses=<Neptune>/Plugin/build/classes/java/main')
+        }
+    }
+}
+tasks.register('neptuneTest', Test) {
+    group = 'verification'
+    description = 'Tests the Neptune round bridge against private native Paper damage and replay.'
+    testClassesDirs = sourceSets.neptuneTest.output.classesDirs
+    classpath = sourceSets.neptuneTest.runtimeClasspath
+    useJUnitPlatform()
+    maxHeapSize = '2G'
+}
+
+// Some optional plugin jars bundle old server libraries (SaberFactions includes
+// authlib). Compile native calls against paperweight's libraries first.
+sourceSets.configureEach { source ->
+    tasks.named(source.compileJavaTaskName, JavaCompile) {
+        classpath = source.compileClasspath.minus(configurations.optionalPluginApi).plus(configurations.optionalPluginApi)
+    }
 }
 

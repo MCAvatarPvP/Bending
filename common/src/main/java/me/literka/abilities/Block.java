@@ -1,5 +1,7 @@
 package me.literka.abilities;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.event.AbilityDamageEntityEvent;
@@ -53,7 +55,7 @@ public class Block extends ModernChiAbility implements AddonAbility {
             return;
         }
 
-        if (duration != 0 && System.currentTimeMillis() > getStartTime() + duration) {
+        if (duration != 0 && RollbackClock.millis() > getStartTime() + duration) {
             bPlayer.addCooldown(this);
             remove();
         }

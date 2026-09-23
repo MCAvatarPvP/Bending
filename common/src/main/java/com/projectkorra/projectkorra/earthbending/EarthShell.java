@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -215,7 +217,7 @@ public class EarthShell extends EarthAbility implements ComboAbility {
         if (!player.isOnline() || player.isDead() || !isEnabled()
                 || !bPlayer.canBendIgnoreBindsCooldowns(this)
                 || !holdingAbility.equals(bPlayer.getBoundAbilityName()) || !center.getWorld().equals(player.getWorld())
-                || System.currentTimeMillis() - getStartTime() >= duration) return false;
+                || RollbackClock.millis() - getStartTime() >= duration) return false;
         final BoundingBox body = player.getBoundingBox();
         return body.getMinX() >= interior.getMinX() - BOUNDARY_EPSILON
                 && body.getMaxX() <= interior.getMaxX() + BOUNDARY_EPSILON
@@ -307,7 +309,7 @@ public class EarthShell extends EarthAbility implements ComboAbility {
         final BendingPlayer air = BendingPlayer.getBendingPlayer(target);
         if (airStunDuration <= 0 || air == null || !air.hasElement(Element.AIR)) return;
         // Preserve existing cooldowns even when interrupting the scooter adds its own.
-        final long until = System.currentTimeMillis() + airStunDuration;
+        final long until = RollbackClock.millis() + airStunDuration;
         final long blastUntil = Math.max(until, cooldownEnd(air, "AirBlast"));
         final long scooterUntil = Math.max(until, cooldownEnd(air, "AirScooter"));
         for (final AirBlast blast : new ArrayList<>(getAbilities(target, AirBlast.class))) blast.remove();
@@ -327,7 +329,7 @@ public class EarthShell extends EarthAbility implements ComboAbility {
 
     private static void extendCooldown(final BendingPlayer bender, final String ability, final long until) {
         if (cooldownEnd(bender, ability) < until) {
-            bender.addCooldown(ability, until - System.currentTimeMillis());
+            bender.addCooldown(ability, until - RollbackClock.millis());
         }
     }
 

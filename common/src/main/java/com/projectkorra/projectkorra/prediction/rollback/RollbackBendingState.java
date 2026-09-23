@@ -1,0 +1,198 @@
+package com.projectkorra.projectkorra.prediction.rollback;
+
+import com.projectkorra.projectkorra.BendingPlayer;
+import com.projectkorra.projectkorra.Manager;
+import com.projectkorra.projectkorra.OfflineBendingPlayer;
+import com.projectkorra.projectkorra.ProjectKorra;
+import com.projectkorra.projectkorra.ability.CoreAbility;
+import com.projectkorra.projectkorra.ability.util.CollisionManager;
+import com.projectkorra.projectkorra.attribute.AttributeCache;
+import com.projectkorra.projectkorra.prediction.rollback.world.RollbackPlayer;
+
+import java.lang.reflect.Field;
+import java.util.*;
+import java.util.function.Function;
+
+/**
+ * Transferred participant bending state and active-instance indices for domain bootstrap.
+ * The loader supplies platform replacements and additional service roots to the same
+ * transfer, so references shared with abilities remain shared in the private graph.
+ * This does not discover addon static state, import live scheduler tasks, configure
+ * event hooks, or install other services; the runtime bootstrap must provide those.
+ */
+public final class RollbackBendingState implements RollbackStateCell<Void> {
+    private final Thread owner = Thread.currentThread();
+    private final Map<UUID, BendingPlayer> players;
+    private final CoreAbility.RollbackRegistry abilities;
+    private final Manager.RollbackRegistry managers;
+    private final CollisionManager collisions;
+    private final List<OfflineBendingPlayer.RollbackTemporaryElement> temporaryElements;
+    private final List<Object> services;
+    private boolean installed;
+
+    private RollbackBendingState(Map<UUID, BendingPlayer> players, CoreAbility.RollbackRegistry abilities,
+                                 Manager.RollbackRegistry managers, CollisionManager collisions, List<OfflineBendingPlayer.RollbackTemporaryElement> temporaryElements,
+                                 List<Object> services) {
+        this.players = Collections.unmodifiableMap(players);
+        this.abilities = abilities;
+        this.managers = managers;
+        this.collisions = collisions;
+        this.temporaryElements = List.copyOf(temporaryElements);
+        this.services = List.copyOf(services);
+    }
+
+    /** Run synchronously at the same tick boundary and clock epoch as native body import. */
+    public static RollbackBendingState capture(Collection<BendingPlayer> participants, CollisionManager collisions,
+                                               Collection<?> services, RollbackStateTransfer transfer) {
+        Source source = source(participants, collisions, services);
+        RollbackBendingState imported = fromRoots(source.roster.keySet(), transfer.copy(source.roots, source.projections));
+        for (var entry : source.roster.entrySet()) {
+            BendingPlayer player = imported.players.get(entry.getKey());
+            if (player == entry.getValue() || player.getPlayer().handle() == entry.getValue().getPlayer().handle()) {
+                throw new IllegalStateException("Bending import retained source player");
+            }
+        }
+        if (imported.abilities == source.abilities || imported.managers == source.managers
+                || imported.managers.instances().size() != source.managers.instances().size()
+                || imported.managers.instances().stream().anyMatch(manager -> source.managers.instances().stream().anyMatch(live -> live == manager))) {
+            throw new IllegalStateException("Bending import retained source registries/managers");
+        }
+        Set<CoreAbility> live = Collections.newSetFromMap(new IdentityHashMap<>());
+        live.addAll(source.abilities.instances());
+        if (imported.abilities.instances().stream().anyMatch(live::contains)) throw new IllegalStateException("Bending import retained source ability");
+        return imported;
+    }
+
+    /** Capture one portable graph. Server and client decode these same bytes with their private bindings. */
+    public static byte[] encode(Collection<BendingPlayer> participants, CollisionManager collisions,
+                                Collection<?> services, RollbackGraphCodec codec) {
+        Source source = source(participants, collisions, services);
+        return codec.encode(source.roots, source.projections);
+    }
+
+    /** The expected roster comes from the session contract, never from an unvalidated object graph. */
+    public static RollbackBendingState decode(Collection<UUID> participants, byte[] bytes, RollbackGraphCodec codec) {
+        return fromRoots(participants, codec.decode(bytes));
+    }
+
+    private record Source(SortedMap<UUID, BendingPlayer> roster, CoreAbility.RollbackRegistry abilities,
+                          Manager.RollbackRegistry managers, List<Object> roots,
+                          Function<Object, RollbackStateTransfer.Replacement> projections) { }
+
+    private static Source source(Collection<BendingPlayer> participants, CollisionManager collisions, Collection<?> services) {
+        Objects.requireNonNull(collisions, "collisions");
+        var roster = new TreeMap<UUID, BendingPlayer>();
+        for (BendingPlayer player : participants) {
+            if (player.getPlayer() == null || !player.getUUID().equals(player.getPlayer().getUniqueId())
+                    || roster.putIfAbsent(player.getUUID(), player) != null) throw new IllegalArgumentException("Bending import roster");
+        }
+        if (roster.isEmpty() || roster.size() > 128) throw new IllegalArgumentException("Bending import participant count");
+        CoreAbility.RollbackRegistry registry = CoreAbility.captureRollbackRegistry(roster.keySet());
+        Manager.RollbackRegistry managerRegistry = Manager.captureRollbackRegistry();
+        var roots = new ArrayList<Object>(roster.values());
+        roots.add(registry);
+        roots.add(collisions.rollbackImportSource());
+        roots.add(OfflineBendingPlayer.captureRollbackTemporaryElements(roster.keySet()));
+        roots.add(managerRegistry);
+        roots.addAll(services);
+        // Attribute definitions exist for future activations too. Keep their metadata,
+        // but import only this roster's per-instance cache entries. Project the maps,
+        // not the cache objects, to preserve references held by arbitrary ability fields.
+        var projections = new IdentityHashMap<Object, RollbackStateTransfer.Replacement>();
+        managerRegistry.projectSources(roster.keySet(), (source, view) ->
+                projections.put(source, RollbackStateTransfer.Replacement.fromProjection(view)));
+        for (AttributeCache cache : registry.attributes()) {
+            projections.put(cache, RollbackStateTransfer.Replacement.fromProjection(cache));
+            projectAttributeEntries(cache.getInitialValues(), roster.keySet(), projections);
+            projectAttributeEntries(cache.getCurrentModifications(), roster.keySet(), projections);
+        }
+        return new Source(roster, registry, managerRegistry, roots, value -> AttributeCache.isRollbackMetadata(value)
+                ? new RollbackStateTransfer.Replacement(value) : projections.get(value));
+    }
+
+    private static RollbackBendingState fromRoots(Collection<UUID> participants, List<Object> copied) {
+        var roster = new TreeSet<>(participants);
+        if (roster.isEmpty() || roster.size() > 128 || roster.size() != participants.size() || copied.size() < roster.size() + 4) {
+            throw new IllegalArgumentException("Bending import roster/roots");
+        }
+        var players = new LinkedHashMap<UUID, BendingPlayer>();
+        int index = 0;
+        for (UUID id : roster) {
+            BendingPlayer player = root(copied.get(index++), BendingPlayer.class);
+            if (!id.equals(player.getUUID()) || !(player.getPlayer() instanceof RollbackPlayer)
+                    || !id.equals(player.getPlayer().getUniqueId())) throw new IllegalStateException("Bending import player identity/private binding");
+            players.put(id, player);
+        }
+        var abilities = root(copied.get(index++), CoreAbility.RollbackRegistry.class);
+        var collisions = root(copied.get(index++), CollisionManager.class);
+        if (collisions.getDetectionRunnable() != null) throw new IllegalStateException("Bending import retained live collision scheduler");
+        List<?> temporary = root(copied.get(index++), List.class);
+        var temporaryElements = temporary.stream()
+                .map(value -> root(value, OfflineBendingPlayer.RollbackTemporaryElement.class)).toList();
+        var managers = root(copied.get(index++), Manager.RollbackRegistry.class);
+        for (CoreAbility ability : abilities.instances()) {
+            BendingPlayer player = ability.getPlayer() == null ? null : players.get(ability.getPlayer().getUniqueId());
+            if (player == null || ability.getBendingPlayer() != player || ability.getPlayer().handle() != player.getPlayer().handle()) {
+                throw new IllegalStateException("Imported ability does not reference the participant bending graph");
+            }
+        }
+        return new RollbackBendingState(players, abilities, managers, collisions, temporaryElements, copied.subList(index, copied.size()));
+    }
+
+    private static <T> T root(Object value, Class<T> type) {
+        if (!type.isInstance(value)) throw new IllegalArgumentException("Bending import root type " + type.getName());
+        return type.cast(value);
+    }
+
+    public Map<UUID, BendingPlayer> players() { return players; }
+    public List<CoreAbility> abilities() { return abilities.instances(); }
+    public CollisionManager collisions() { return collisions; }
+    public List<Object> services() { return services; }
+
+    /** Include these roots in addition to every other shared service used by the session. */
+    public static List<Field> sharedFields() {
+        var fields = new ArrayList<Field>();
+        fields.addAll(RollbackStateGraph.staticFields(OfflineBendingPlayer.class,
+                field -> Set.of("PLAYERS", "ONLINE_PLAYERS", "TEMP_ELEMENTS").contains(field.getName())));
+        fields.addAll(RollbackStateGraph.staticFields(CoreAbility.class, field -> field.getName().startsWith("INSTANCES")
+                || Set.of("idCounter", "currentTick", "ATTRIBUTE_FIELDS").contains(field.getName())));
+        fields.addAll(RollbackStateGraph.staticFields(ProjectKorra.class, field -> field.getName().equals("collisionManager")));
+        fields.addAll(RollbackStateGraph.staticFields(Manager.class, field -> field.getName().equals("MANAGERS")));
+        return List.copyOf(fields);
+    }
+
+    /** Called once from domain bootstrap; subsequent swaps use ordinary checkpoints. */
+    public void install() {
+        if (Thread.currentThread() != owner || !RollbackDomain.active() || installed) {
+            throw new IllegalStateException("Bending import requires one bootstrap on its owning thread");
+        }
+        abilities.install();
+        OfflineBendingPlayer.installRollbackPlayers(players, temporaryElements);
+        ProjectKorra.collisionManager = collisions;
+        managers.install();
+        installed = true;
+    }
+
+    @Override public Void captureRollbackState() { return null; }
+    @Override public void restoreRollbackState(Void ignored) { }
+    @Override public Collection<?> rollbackReferences() {
+        var roots = new ArrayList<Object>(players.values());
+        roots.add(abilities);
+        roots.add(managers);
+        roots.add(collisions);
+        roots.addAll(temporaryElements);
+        roots.addAll(services);
+        return roots;
+    }
+
+    private static <V> void projectAttributeEntries(Map<CoreAbility, V> source, Set<UUID> participants,
+                                                     IdentityHashMap<Object, RollbackStateTransfer.Replacement> projections) {
+        var selected = new WeakHashMap<CoreAbility, V>();
+        source.forEach((ability, value) -> {
+            if (ability == null || ability.getPlayer() == null || participants.contains(ability.getPlayer().getUniqueId())) {
+                selected.put(ability, value);
+            }
+        });
+        projections.put(source, RollbackStateTransfer.Replacement.fromProjection(selected));
+    }
+}

@@ -8,6 +8,8 @@ dependencies {
     implementation 'org.joml:joml:1.10.8'
     implementation 'com.google.guava:guava:33.3.1-jre'
     implementation 'org.yaml:snakeyaml:2.5'
+    implementation 'net.bytebuddy:byte-buddy:1.15.11'
+    implementation 'org.objenesis:objenesis:3.3'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
 }

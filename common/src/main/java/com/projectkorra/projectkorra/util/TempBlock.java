@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackStateCell;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -317,6 +320,7 @@ public class TempBlock {
                 try {
                     layer.revertBlock();
                 } catch (RuntimeException failure) {
+                    if (RollbackClock.active() || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) throw failure;
                     ProjectKorra.log.warning("TempBlock shutdown restore failed at " + layer.getLocation()
                             + ": " + failure.getMessage());
                 }
@@ -444,6 +448,7 @@ public class TempBlock {
                 try {
                     layer.revertTask.run();
                 } catch (RuntimeException failure) {
+                    if (RollbackClock.active() || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) throw failure;
                     ProjectKorra.log.warning("TempBlock revert callback failed at " + layer.getLocation()
                             + ": " + failure.getMessage());
                 }
@@ -452,6 +457,7 @@ public class TempBlock {
                 try {
                     attached.revertBlock();
                 } catch (RuntimeException failure) {
+                    if (RollbackClock.active() || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) throw failure;
                     ProjectKorra.log.warning("Attached TempBlock revert failed at " + attached.getLocation()
                             + ": " + failure.getMessage());
                 }
@@ -464,7 +470,7 @@ public class TempBlock {
 
     private void scheduleLocked(final long duration) {
         if (duration <= 0L || this.state.hasBlockEntity()) return;
-        final long now = System.currentTimeMillis();
+        final long now = RollbackClock.millis();
         final long aligned = PredictionTiming.alignDuration(this.ability.orElse(null), duration);
         this.revertTime = aligned >= Long.MAX_VALUE - now ? Long.MAX_VALUE : now + aligned;
         this.scheduled = true;
@@ -779,6 +785,7 @@ public class TempBlock {
             try {
                 this.block.setBlockData(effectiveData.clone(), physics);
             } catch (RuntimeException firstFailure) {
+                if (RollbackClock.active() || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) throw firstFailure;
                 try {
                     this.block.setBlockData(effectiveData.clone(), physics);
                 } catch (RuntimeException finalFailure) {
@@ -794,6 +801,7 @@ public class TempBlock {
         try {
             if (this.state.update(true, physics)) return;
         } catch (RuntimeException firstFailure) {
+            if (RollbackClock.active() || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) throw firstFailure;
             try {
                 this.block.setBlockData(originalData.clone(), physics);
                 return;
@@ -913,7 +921,7 @@ public class TempBlock {
                 ", revision=" + revision +
                 ", newData=" + newData.getAsString() +
                 ", attachedTempBlocks=" + attachedTempBlocks.size() +
-                ", revertTime=" + (revertTime == 0L ? "N/A" : revertTime - System.currentTimeMillis() + "ms") +
+                ", revertTime=" + (revertTime == 0L ? "N/A" : revertTime - RollbackClock.millis() + "ms") +
                 ", reverted=" + reverted +
                 ", ability=" + ability.map(value -> value.getClass().getName()).orElse("null") +
                 '}';
@@ -936,7 +944,13 @@ public class TempBlock {
     private record LayerView(long id, UUID ownerId, BlockData data) {
     }
 
-    private record VisibilitySnapshot(BlockData original, List<LayerView> layers, List<UUID> owners) {
+    private record VisibilitySnapshot(BlockData original, List<LayerView> layers, List<UUID> owners)
+            implements RollbackStateCell<Void> {
+        // The private owners list is an immutable owned copy and permits null (unowned layers).
+        // Only block-data children are mutable; do not reflect into the JDK's read-only list wrapper.
+        @Override public Void captureRollbackState() { return null; }
+        @Override public void restoreRollbackState(Void ignored) { }
+        @Override public List<?> rollbackReferences() { return List.of(original, layers); }
     }
 
     private record EffectCounter(long step, int ordinal) {
@@ -948,7 +962,7 @@ public class TempBlock {
     public static class TempBlockRevertTask implements Runnable {
         @Override
         public void run() {
-            final long now = System.currentTimeMillis();
+            final long now = RollbackClock.millis();
             while (true) {
                 final TempBlock expired;
                 synchronized (MUTATION_LOCK) {
@@ -960,6 +974,7 @@ public class TempBlock {
                 try {
                     expired.revertBlock(false);
                 } catch (RuntimeException failure) {
+                    if (RollbackClock.active() || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) throw failure;
                     ProjectKorra.log.warning("Timed TempBlock restore failed at " + expired.getLocation()
                             + ": " + failure.getMessage());
                 }

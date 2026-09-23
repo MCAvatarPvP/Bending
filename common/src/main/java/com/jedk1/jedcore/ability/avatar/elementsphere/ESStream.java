@@ -1,5 +1,7 @@
 package com.jedk1.jedcore.ability.avatar.elementsphere;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JCMethods;
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
@@ -162,11 +164,11 @@ public class ESStream extends AvatarAbility implements AddonAbility {
                 }
             }
 
-            ParticleEffect.FLAME.display(stream, 20, Math.random(), Math.random(), Math.random(), 0.5);
-            ParticleEffect.SMOKE_LARGE.display(stream, 20, Math.random(), Math.random(), Math.random(), 0.5);
-            ParticleEffect.FIREWORKS_SPARK.display(stream, 20, Math.random(), Math.random(), Math.random(), 0.5);
-            ParticleEffect.SMOKE_LARGE.display(stream, 20, Math.random(), Math.random(), Math.random(), 0.5);
-            ParticleEffect.EXPLOSION_HUGE.display(stream, 5, Math.random(), Math.random(), Math.random(), 0.5);
+            ParticleEffect.FLAME.display(stream, 20, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.5);
+            ParticleEffect.SMOKE_LARGE.display(stream, 20, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.5);
+            ParticleEffect.FIREWORKS_SPARK.display(stream, 20, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.5);
+            ParticleEffect.SMOKE_LARGE.display(stream, 20, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.5);
+            ParticleEffect.EXPLOSION_HUGE.display(stream, 5, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.5);
 
             stream.getWorld().playSound(stream, (rand.nextBoolean()) ? Sound.ENTITY_FIREWORK_ROCKET_BLAST : Sound.ENTITY_FIREWORK_ROCKET_BLAST_FAR, 1f, 1f);
             stream.getWorld().playSound(stream, (rand.nextBoolean()) ? Sound.ENTITY_FIREWORK_ROCKET_TWINKLE : Sound.ENTITY_FIREWORK_ROCKET_TWINKLE_FAR, 1f, 1f);

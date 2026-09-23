@@ -2,6 +2,7 @@ plugins {
     id 'fabric-loom' version '1.14.10' apply false
     id 'com.gradleup.shadow' version '9.5.1' apply false
     id 'xyz.jpenilla.run-paper' version '3.0.2' apply false
+    id 'io.papermc.paperweight.userdev' version '2.0.0-beta.23' apply false
 }
 
 apply from: rootProject.file('gradle/git-publish.gradle')
@@ -12,6 +13,25 @@ allprojects {
 }
 
 subprojects {
+    // Loom and paperweight add project repositories. Keep the shared repositories
+    // at the same level so those plugins cannot hide settings-level repositories.
+    repositories {
+        mavenCentral()
+        maven { url = rootProject.uri('localrepo') }
+        maven { url = 'https://maven.fabricmc.net/' }
+        maven { url = 'https://repo.papermc.io/repository/maven-public/' }
+        maven { url = 'https://maven.enginehub.org/repo/' }
+        maven { url = 'https://repo.codemc.io/repository/maven-releases/' }
+        maven { url = 'https://repo.extendedclip.com/content/repositories/placeholderapi/' }
+        maven { url = 'https://repo.opencollab.dev/main/' }
+        maven { url = 'https://jitpack.io' }
+        maven { url = 'https://repo.aikar.co/nexus/content/groups/aikar/' }
+        maven { url = 'https://hub.spigotmc.org/nexus/content/repositories/snapshots/' }
+        maven { url = 'https://repo.glaremasters.me/repository/bloodshot' }
+        maven { url = 'https://raw.githubusercontent.com/FabioZumbi12/RedProtect/mvn-repo/' }
+        maven { url = 'https://repo.betonquest.org/betonquest/' }
+    }
+
     plugins.withType(JavaPlugin) {
         java {
             toolchain.languageVersion = JavaLanguageVersion.of(21)

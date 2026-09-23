@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.prediction.hit;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackDomain;
+import com.projectkorra.projectkorra.prediction.authority.PredictionServices;
+import com.projectkorra.projectkorra.prediction.rollback.world.RollbackEntityBody;
 import com.projectkorra.projectkorra.prediction.state.CooldownSync;
 import com.projectkorra.projectkorra.ability.Ability;
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -26,12 +29,21 @@ public final class PredictedContactSync {
      * and validate it through the real ability query.</p>
      */
     public static boolean mark(final Ability ability, final Entity target) {
+        if (RollbackDomain.active()) {
+            // Replayed contact mutates the logical victim on either loader. Never
+            // let a leaked live target acquire that permission through this bypass.
+            if (target != null) RollbackEntityBody.logicalBody(target);
+            if (ability != null && ability.getPlayer() != null) {
+                RollbackEntityBody.logicalBody(ability.getPlayer());
+            }
+            return false;
+        }
         if (CooldownSync.isAuthoritative() || !(ability instanceof CoreAbility coreAbility)
                 || target == null || coreAbility.getPlayer() == null
                 || target.getUniqueId().equals(coreAbility.getPlayer().getUniqueId())) {
             return false;
         }
-        final Listener current = listener;
+        final Listener current = PredictionServices.current(Listener.class, listener);
         if (current != null) {
             try {
                 // Ability-owned projectiles and displays have UUIDs distinct
@@ -41,6 +53,7 @@ public final class PredictedContactSync {
                     return false;
                 }
             } catch (final RuntimeException ignored) {
+                if (PredictionServices.active()) throw ignored;
                 // A failed ownership lookup must retain the safe remote-state
                 // default below.
             }
@@ -56,6 +69,7 @@ public final class PredictedContactSync {
             try {
                 current.onPredictedContact(coreAbility, target);
             } catch (final RuntimeException ignored) {
+                if (PredictionServices.active()) throw ignored;
                 // Evidence transport must never interrupt the visual/world pass.
             }
         }
@@ -63,10 +77,12 @@ public final class PredictedContactSync {
     }
 
     public static void install(final Listener next) {
+        PredictionServices.requireGlobalMutation();
         listener = next;
     }
 
     public static void clear(final Listener expected) {
+        PredictionServices.requireGlobalMutation();
         if (listener == expected) listener = null;
     }
 

@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -208,16 +209,24 @@ class PredictionActivationBoundaryTest {
         assertTrue(Files.exists(root));
         final Set<String> resourceDamageOnly = Set.of(
                 "PlantArmor.java", "LeafStorm.java", "WallOfFire.java");
+        final Path logicalEntityPlatform = root.resolve("com/projectkorra/projectkorra/prediction/rollback/world");
+        // Native damage application takes arguments; damage() also names immutable history accessors.
+        final Pattern damageCall = Pattern.compile("\\.damage\\s*\\((?!\\s*\\))");
         final List<String> bypasses = new ArrayList<>();
         try (var files = Files.walk(root)) {
             files.filter(path -> path.toString().endsWith(".java")).forEach(path -> {
+                // These are platform API implementations, like BukkitMC/FabricMC:
+                // DamageHandler calls their LivingEntity.damage implementation, which
+                // delegates to the scoped native rules. Every bundled ability remains
+                // scanned; only the logical world/entity adapter package is excluded.
+                if (path.startsWith(logicalEntityPlatform)) return;
                 final String name = path.getFileName().toString();
                 if (name.equals("DamageHandler.java") || resourceDamageOnly.contains(name)) return;
                 try {
                     int lineNumber = 0;
                     for (final String line : Files.readAllLines(path)) {
                         lineNumber++;
-                        if (line.contains(".damage(") && !line.contains("Utils.damage(")) {
+                        if (damageCall.matcher(line).find() && !line.contains("Utils.damage(")) {
                             bypasses.add(path + ":" + lineNumber + " " + line.trim());
                         }
                     }

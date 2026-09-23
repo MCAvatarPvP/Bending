@@ -1583,17 +1583,7 @@ public class PKListener implements Listener {
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onPlayerToggleFlight(final PlayerToggleFlightEvent event) {
-        final var player = BukkitMC.player(event.getPlayer());
-        if (CoreAbility.hasAbility(player, Tornado.class) || Bloodbending.isBloodbent(player) || Suffocate.isBreathbent(player) || CoreAbility.hasAbility(player, FireJet.class) || CoreAbility.hasAbility(player, AvatarState.class)) {
-            event.setCancelled(player.getGameMode() != GameMode.CREATIVE);
-            return;
-        }
-
-        if (FlightMultiAbility.getFlyingPlayers().contains(player.getUniqueId())) {
-            if (player.isFlying()) {
-                event.setCancelled(true);
-            }
-        }
+        event.setCancelled(CommonInputHandler.handleToggleFlight(BukkitMC.player(event.getPlayer())).cancelEvent());
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
@@ -1601,19 +1591,7 @@ public class PKListener implements Listener {
         if (!(event.getEntity() instanceof org.bukkit.entity.Player nativePlayer)) {
             return;
         }
-        final var player = BukkitMC.player(nativePlayer);
-
-        if (FlightMultiAbility.getFlyingPlayers().contains(player.getUniqueId())) {
-            if (player.isGliding()) {
-                event.setCancelled(true);
-                return;
-            }
-        }
-        if (ConfigManager.getConfig(BendingPlayer.getBendingPlayer(player)).getBoolean("Abilities.Fire.FireJet.ShowGliding")) {
-            if (CoreAbility.getAbility(player, FireJet.class) != null) {
-                event.setCancelled(true);
-            }
-        }
+        event.setCancelled(CommonInputHandler.handleToggleGlide(BukkitMC.player(nativePlayer)).cancelEvent());
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)

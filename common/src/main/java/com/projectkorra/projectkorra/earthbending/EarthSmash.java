@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
@@ -144,7 +146,7 @@ public class EarthSmash extends EarthAbility {
             final EarthSmash flySmash = flyingInSmashCheck(player);
             if (flySmash != null) {
                 flySmash.transitionState(State.FLYING);
-                flySmash.flightStartTime = System.currentTimeMillis();
+                flySmash.flightStartTime = RollbackClock.millis();
                 flySmash.setPlayer(player);
                 flySmash.setFields();
                 this.markActivationHandled(flySmash);
@@ -225,7 +227,7 @@ public class EarthSmash extends EarthAbility {
             if (grabbedSmash != null) {
                 player.teleport(grabbedSmash.location.clone().add(0, 2, 0));
                 grabbedSmash.transitionState(State.FLYING);
-                grabbedSmash.flightStartTime = System.currentTimeMillis();
+                grabbedSmash.flightStartTime = RollbackClock.millis();
                 grabbedSmash.setPlayer(player);
                 grabbedSmash.setFields();
                 this.markActivationHandled(grabbedSmash);
@@ -396,7 +398,7 @@ public class EarthSmash extends EarthAbility {
     @Override
     public void progress() {
         this.progressCounter++;
-        if (this.state == State.LIFTED && this.duration > 0 && System.currentTimeMillis() - this.getStartTime() > this.duration) {
+        if (this.state == State.LIFTED && this.duration > 0 && RollbackClock.millis() - this.getStartTime() > this.duration) {
             this.remove();
             return;
         }
@@ -429,14 +431,14 @@ public class EarthSmash extends EarthAbility {
                 // Compatibility for callers that change sneak state directly.
                 // Native releases are committed synchronously in SHIFT_UP.
                 this.releaseCharge();
-            } else if (System.currentTimeMillis() - this.getStartTime() > this.chargeTime) {
+            } else if (RollbackClock.millis() - this.getStartTime() > this.chargeTime) {
                 final Location tempLoc = this.player.getEyeLocation().add(this.player.getEyeLocation().getDirection().normalize().multiply(1.2));
                 tempLoc.add(0, 0.3, 0);
                 ParticleEffect.SMOKE_NORMAL.display(tempLoc, 4, 0.3, 0.1, 0.3, 0);
             }
         } else if (this.state == State.LIFTING) {
-            if (System.currentTimeMillis() - this.delay >= this.liftAnimationInterval) {
-                this.delay = System.currentTimeMillis();
+            if (RollbackClock.millis() - this.delay >= this.liftAnimationInterval) {
+                this.delay = RollbackClock.millis();
                 this.animateLift();
             }
         } else if (this.state == State.GRABBED) {
@@ -471,8 +473,8 @@ public class EarthSmash extends EarthAbility {
                 return;
             }
         } else if (this.state == State.SHOT) {
-            if (System.currentTimeMillis() - this.delay >= this.shootAnimationInterval) {
-                this.delay = System.currentTimeMillis();
+            if (RollbackClock.millis() - this.delay >= this.shootAnimationInterval) {
+                this.delay = RollbackClock.millis();
                 if (GeneralMethods.isRegionProtectedFromBuild(this, this.location)) {
                     this.remove();
                     return;
@@ -509,8 +511,8 @@ public class EarthSmash extends EarthAbility {
             if (!this.player.isSneaking()) {
                 this.remove();
                 return;
-            } else if (System.currentTimeMillis() - this.delay >= this.flightAnimationInterval) {
-                this.delay = System.currentTimeMillis();
+            } else if (RollbackClock.millis() - this.delay >= this.flightAnimationInterval) {
+                this.delay = RollbackClock.millis();
                 if (GeneralMethods.isRegionProtectedFromBuild(this, this.location)) {
                     this.remove();
                     return;
@@ -539,7 +541,7 @@ public class EarthSmash extends EarthAbility {
                         EarthSmashCheckpointPolicy.flightVerticalOffset(direction.getY()), 0);
                 this.draw();
             }
-            if (System.currentTimeMillis() - this.flightStartTime > this.flightDuration) {
+            if (RollbackClock.millis() - this.flightStartTime > this.flightDuration) {
                 this.remove();
                 return;
             }
@@ -681,7 +683,7 @@ public class EarthSmash extends EarthAbility {
     }
 
     private void releaseCharge() {
-        if (System.currentTimeMillis() - this.getStartTime() < this.chargeTime) {
+        if (RollbackClock.millis() - this.getStartTime() < this.chargeTime) {
             this.remove();
             return;
         }
@@ -791,7 +793,7 @@ public class EarthSmash extends EarthAbility {
         if (blocks == null || blocks.isEmpty()) return;
         this.authoritativeBridgeOwner = owner;
         this.authoritativeBridgeExpiresAt =
-                System.currentTimeMillis() + AUTHORITATIVE_BRIDGE_GRACE_MILLIS;
+                RollbackClock.millis() + AUTHORITATIVE_BRIDGE_GRACE_MILLIS;
         this.authoritativeBridgeBlocks.clear();
         for (TempBlockSync.AuthoritativeEffectBlock entry : blocks) {
             if (entry != null && entry.block() != null) {
@@ -802,7 +804,7 @@ public class EarthSmash extends EarthAbility {
 
     private boolean isProvisionalAuthoritativeBridgeBlock(final Block block) {
         if (block == null || this.authoritativeBridgeBlocks.isEmpty()
-                || System.currentTimeMillis() > this.authoritativeBridgeExpiresAt) {
+                || RollbackClock.millis() > this.authoritativeBridgeExpiresAt) {
             this.authoritativeBridgeBlocks.clear();
             this.authoritativeBridgeOwner = null;
             return false;
@@ -1548,7 +1550,7 @@ public class EarthSmash extends EarthAbility {
     /** Exact state sent when Paper hands this live smash to another client. */
     public PredictionTransfer capturePredictionTransfer() {
         if (this.location == null || this.location.getWorld() == null) return null;
-        final long now = System.currentTimeMillis();
+        final long now = RollbackClock.millis();
         final List<PredictionBlock> shape = this.currentBlocks.stream()
                 .map(block -> new PredictionBlock(block.getX(), block.getY(), block.getZ(),
                         TempBlockSync.encode(block.getData())))
@@ -1593,7 +1595,7 @@ public class EarthSmash extends EarthAbility {
         this.animationCounter = Math.max(0, transfer.animationCounter());
         this.progressCounter = Math.max(0, transfer.progressCounter());
         this.predictionFrame = Math.max(0L, transfer.predictionFrame());
-        final long now = System.currentTimeMillis();
+        final long now = RollbackClock.millis();
         this.flightStartTime = now - Math.max(0, Math.min(60_000, transfer.flightElapsedMillis()));
         this.delay = now - Math.max(0, Math.min(60_000, transfer.delayElapsedMillis()));
         final long localElapsed = Math.max(0L, now - this.getStartTime());
@@ -1755,7 +1757,7 @@ public class EarthSmash extends EarthAbility {
         this.grabbedDistance = reconciled.grabbedDistance();
 
         if (this.state == State.FLYING) {
-            final long now = System.currentTimeMillis();
+            final long now = RollbackClock.millis();
             final long localElapsed = this.flightStartTime <= 0L
                     ? 0L : Math.max(0L, now - this.flightStartTime);
             final long authoritativeElapsed = Math.max(0L,

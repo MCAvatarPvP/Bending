@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.waterbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AirAbility;
@@ -124,7 +127,7 @@ public class Torrent extends WaterAbility {
             return;
         }
 
-        this.time = System.currentTimeMillis();
+        this.time = RollbackClock.millis();
         this.recalculateAttributes(); // Recalculate attributes to account for night factor
         this.sourceBlock = BlockSource.getWaterSourceBlock(player, this.selectRange, ClickType.LEFT_CLICK, true, true, this.bPlayer.canPlantbend());
         if (this.sourceBlock != null && !GeneralMethods.isRegionProtectedFromBuild(this, this.sourceBlock.getLocation())) {
@@ -306,13 +309,13 @@ public class Torrent extends WaterAbility {
             return;
         }
 
-        if (this.chargeTimeout > 0 && System.currentTimeMillis() > this.getStartTime() + this.chargeTimeout) {
+        if (this.chargeTimeout > 0 && RollbackClock.millis() > this.getStartTime() + this.chargeTimeout) {
             this.remove();
             return;
         }
 
-        if (System.currentTimeMillis() > this.time + this.interval) {
-            this.time = System.currentTimeMillis();
+        if (RollbackClock.millis() > this.time + this.interval) {
+            this.time = RollbackClock.millis();
 
             if (this.sourceSelected) {
                 if (this.sourceBlock.getLocation().getWorld() != this.player.getWorld()) {
@@ -411,7 +414,7 @@ public class Torrent extends WaterAbility {
             }
 
             if (this.forming || this.formed) {
-                if ((new Random()).nextInt(4) == 0) {
+                if ((new RollbackRandom()).nextInt(4) == 0) {
                     playWaterbendingSound(this.location);
                 }
                 for (double theta = this.startAngle; theta < this.angle + this.startAngle; theta += 20) {
@@ -423,7 +426,7 @@ public class Torrent extends WaterAbility {
                     // TODO: Fix that one torrent bug
                     loc.add(dx, dy, dz);
                     if (isWater(loc.getBlock()) && GeneralMethods.isAdjacentToThreeOrMoreSources(loc.getBlock())) {
-                        ParticleEffect.WATER_BUBBLE.display(loc.getBlock().getLocation().clone().add(.5, .5, .5), 5, Math.random(), Math.random(), Math.random(), 0);
+                        ParticleEffect.WATER_BUBBLE.display(loc.getBlock().getLocation().clone().add(.5, .5, .5), 5, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0);
                     }
                     loc.subtract(dx, dy, dz);
                 }
@@ -559,7 +562,7 @@ public class Torrent extends WaterAbility {
             }
             if (locBlock.getLocation().distanceSquared(targetLoc) > 1) {
                 if (isWater(locBlock)) {
-                    ParticleEffect.WATER_BUBBLE.display(locBlock.getLocation().clone().add(.5, .5, .5), 5, Math.random(), Math.random(), Math.random(), 0);
+                    ParticleEffect.WATER_BUBBLE.display(locBlock.getLocation().clone().add(.5, .5, .5), 5, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0);
                 }
                 newBlocks.add(new TempBlock(locBlock, Material.WATER.createBlockData(), this));
             } else {

@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.ability;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.Element.SubElement;
@@ -148,7 +150,7 @@ public abstract class CoreAbility implements Ability {
         }
 
         this.flightHandler = Manager.getManager(FlightHandler.class);
-        this.startTime = System.currentTimeMillis();
+        this.startTime = RollbackClock.millis();
         this.started = false;
         this.id = idCounter++;
     }
@@ -201,6 +203,9 @@ public abstract class CoreAbility implements Ability {
                         Platform.events().call(new AbilityProgressEvent(abil));
                     }
                 } catch (final Exception e) {
+                    if (RollbackClock.active() || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) {
+                        throw new IllegalStateException("Rollback ability progress failed: " + abil.getClass().getName(), e);
+                    }
                     e.printStackTrace();
                     Platform.logger().severe(abil.toString());
                     try {
@@ -270,6 +275,73 @@ public abstract class CoreAbility implements Ability {
         INSTANCES.clear();
         INSTANCES_BY_PLAYER.clear();
         INSTANCES_BY_CLASS.clear();
+    }
+
+    /**
+     * Selects the active participant instances and their existing ID/tick epoch.
+     * These are source references: transfer this object with the bending players
+     * and service roots before installing it in a private rollback domain.
+     */
+    public static RollbackRegistry captureRollbackRegistry(final Collection<UUID> participants) {
+        if (RollbackClock.active() || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) {
+            throw new IllegalStateException("Capture live ability registry before replay");
+        }
+        Set<UUID> roster = Set.copyOf(participants);
+        if (roster.isEmpty() || roster.size() > 128) throw new IllegalArgumentException("Ability import roster");
+        List<CoreAbility> selected = new ArrayList<>();
+        for (CoreAbility ability : orderedInstances(INSTANCES)) {
+            if (ability.player != null && roster.contains(ability.player.getUniqueId())) selected.add(ability);
+        }
+        return new RollbackRegistry(selected, new HashMap<>(ATTRIBUTE_FIELDS), idCounter, currentTick);
+    }
+
+    /** Registry data is copied as part of the same graph as its instance objects. */
+    public static final class RollbackRegistry {
+        private final List<CoreAbility> instances;
+        private final Map<Class<? extends CoreAbility>, Map<String, AttributeCache>> attributes;
+        private final int nextId;
+        private final long tick;
+
+        private RollbackRegistry(List<CoreAbility> instances, Map<Class<? extends CoreAbility>, Map<String, AttributeCache>> attributes,
+                                 int nextId, long tick) {
+            this.instances = List.copyOf(instances);
+            this.attributes = attributes;
+            this.nextId = nextId;
+            this.tick = tick;
+        }
+
+        public List<CoreAbility> instances() { return instances; }
+        public List<AttributeCache> attributes() { return attributes.values().stream().flatMap(map -> map.values().stream()).toList(); }
+
+        /** Installs transferred instances without activation, attribute or removal callbacks. */
+        public void install() {
+            if (!com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) {
+                throw new IllegalStateException("Ability registry import requires a private domain");
+            }
+            Set<Integer> ids = new HashSet<>();
+            Map<Class<? extends CoreAbility>, Map<UUID, Map<Integer, CoreAbility>>> byPlayer = new ConcurrentHashMap<>();
+            Map<Class<? extends CoreAbility>, Set<CoreAbility>> byClass = new ConcurrentHashMap<>();
+            for (CoreAbility ability : instances) {
+                if (!ability.started || ability.removed || ability.player == null || !ids.add(ability.id)
+                        || !attributes.containsKey(ability.getClass())) {
+                    throw new IllegalStateException("Invalid imported active ability registry");
+                }
+                Class<? extends CoreAbility> type = ability.getClass();
+                byPlayer.computeIfAbsent(type, ignored -> new ConcurrentHashMap<>())
+                        .computeIfAbsent(ability.player.getUniqueId(), ignored -> new ConcurrentHashMap<>()).put(ability.id, ability);
+                byClass.computeIfAbsent(type, ignored -> Collections.newSetFromMap(new ConcurrentHashMap<>())).add(ability);
+            }
+            INSTANCES.clear();
+            INSTANCES.addAll(instances);
+            INSTANCES_BY_PLAYER.clear();
+            INSTANCES_BY_PLAYER.putAll(byPlayer);
+            INSTANCES_BY_CLASS.clear();
+            INSTANCES_BY_CLASS.putAll(byClass);
+            ATTRIBUTE_FIELDS.clear();
+            ATTRIBUTE_FIELDS.putAll(attributes);
+            idCounter = nextId;
+            currentTick = tick;
+        }
     }
 
     /**
@@ -812,7 +884,7 @@ public abstract class CoreAbility implements Ability {
         }
 
         this.started = true;
-        this.startTime = System.currentTimeMillis();
+        this.startTime = RollbackClock.millis();
         this.startTick = getCurrentTick();
         final Class<? extends CoreAbility> clazz = this.getClass();
         final UUID uuid = this.player != null ? this.player.getUniqueId() : null;
@@ -1029,7 +1101,7 @@ public abstract class CoreAbility implements Ability {
         final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
         String displayedMessage = getMovePreviewWithoutCooldownTimer(player, false);
         if (bPlayer.isOnCooldown(this)) {
-            final long cooldown = bPlayer.getCooldown(this.getName()) - System.currentTimeMillis();
+            final long cooldown = bPlayer.getCooldown(this.getName()) - RollbackClock.millis();
             displayedMessage += this.getElement().getColor() + " - " + TimeUtil.formatTime(cooldown);
         }
 

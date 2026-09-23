@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.firebending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element.SubElement;
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -118,7 +121,7 @@ public class HeatControl extends FireAbility {
                 return;
             }
 
-            this.solidifyLastBlockTime = System.currentTimeMillis();
+            this.solidifyLastBlockTime = RollbackClock.millis();
             this.start();
         }
     }
@@ -215,7 +218,7 @@ public class HeatControl extends FireAbility {
 
     public void setFields() {
         if (this.heatControlType == HeatControlType.COOK) {
-            this.cookTime = System.currentTimeMillis();
+            this.cookTime = RollbackClock.millis();
             this.cookInterval = getConfig().getLong("Abilities.Fire.HeatControl.Cook.Interval");
         } else if (this.heatControlType == HeatControlType.EXTINGUISH) {
             this.extinguishCooldown = getConfig().getLong("Abilities.Fire.HeatControl.Extinguish.Cooldown");
@@ -232,7 +235,7 @@ public class HeatControl extends FireAbility {
             this.solidifyRange = getConfig().getDouble("Abilities.Fire.HeatControl.Solidify.Range");
             this.solidifyRevert = getConfig().getBoolean("Abilities.Fire.HeatControl.Solidify.Revert");
             this.solidifyRevertTime = getConfig().getLong("Abilities.Fire.HeatControl.Solidify.RevertTime");
-            this.randy = new Random();
+            this.randy = new RollbackRandom();
             this.gameplayRandom = PredictionDeterminism.random(
                     this.player == null ? null : this.player.getUniqueId(), getClass().getName() + ":solidify");
         }
@@ -258,9 +261,9 @@ public class HeatControl extends FireAbility {
                 return;
             }
 
-            if (System.currentTimeMillis() - this.cookTime > this.cookInterval) {
+            if (RollbackClock.millis() - this.cookTime > this.cookInterval) {
                 this.cook();
-                this.cookTime = System.currentTimeMillis();
+                this.cookTime = RollbackClock.millis();
                 return;
             }
 
@@ -390,7 +393,7 @@ public class HeatControl extends FireAbility {
     }
 
     public void solidify(final List<Location> area) {
-        if (System.currentTimeMillis() < this.solidifyLastBlockTime + this.solidifyDelay) {
+        if (RollbackClock.millis() < this.solidifyLastBlockTime + this.solidifyDelay) {
             return;
         }
 
@@ -401,7 +404,7 @@ public class HeatControl extends FireAbility {
             }
         }
 
-        this.solidifyLastBlockTime = System.currentTimeMillis();
+        this.solidifyLastBlockTime = RollbackClock.millis();
         if (lava.size() == 0) {
             this.solidifyRadius++;
             return;

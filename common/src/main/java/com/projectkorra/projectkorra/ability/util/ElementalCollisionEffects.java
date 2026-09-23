@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.ability.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.Element.SubElement;
@@ -25,7 +27,7 @@ import java.util.Random;
 
 public final class ElementalCollisionEffects {
 
-    private static final Random RANDOM = new Random();
+    private static final Random RANDOM = new RollbackRandom();
     private static final Particle.DustOptions AIR_DUST = new Particle.DustOptions(Color.fromRGB(210, 235, 255), 1.25F);
     private static final Particle.DustOptions WATER_DUST = new Particle.DustOptions(Color.fromRGB(70, 165, 255), 1.35F);
     private static final Particle.DustOptions EARTH_DUST = new Particle.DustOptions(Color.fromRGB(125, 88, 48), 1.25F);

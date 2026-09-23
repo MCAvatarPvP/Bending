@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.Element.SubElement;
 import com.projectkorra.projectkorra.ability.Ability;
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -58,7 +60,13 @@ public class OfflineBendingPlayer {
     /**
      * Queue of all the temporary elements, sorted by expiry time. Only for online players
      */
-    protected static final PriorityQueue<Pair<Player, Long>> TEMP_ELEMENTS = new PriorityQueue(Comparator.comparingLong(Pair<Player, Long>::getRight));
+    protected static final PriorityQueue<Pair<Player, Long>> TEMP_ELEMENTS = new PriorityQueue<>(new TemporaryElementExpiryOrder());
+
+    private static final class TemporaryElementExpiryOrder implements Comparator<Pair<Player, Long>> {
+        @Override public int compare(Pair<Player, Long> first, Pair<Player, Long> second) {
+            return Long.compare(first.getRight(), second.getRight());
+        }
+    }
 
     /**
      * Map of all the players that are currently loading
@@ -95,6 +103,45 @@ public class OfflineBendingPlayer {
     private long uncacheTime = 30_000; //This is the default time to unload after when the data is accessed by code, NOT when logging out
     private PKTask uncache;
 
+    /** Detached queue entries are transferred with their participant player objects. */
+    public static final class RollbackTemporaryElement {
+        private final Player player;
+        private final long expiry;
+        private RollbackTemporaryElement(Player player, long expiry) { this.player = player; this.expiry = expiry; }
+    }
+
+    public static List<RollbackTemporaryElement> captureRollbackTemporaryElements(Set<UUID> participants) {
+        if (RollbackClock.active() || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) {
+            throw new IllegalStateException("Capture temporary elements before replay");
+        }
+        var entries = new ArrayList<RollbackTemporaryElement>();
+        for (Pair<Player, Long> entry : TEMP_ELEMENTS) {
+            if (participants.contains(entry.getLeft().getUniqueId())) {
+                entries.add(new RollbackTemporaryElement(entry.getLeft(), entry.getRight()));
+            }
+        }
+        return entries;
+    }
+
+    /** Domain bootstrap only: no load events, storage writes or scheduler cancellation. */
+    public static void installRollbackPlayers(Map<UUID, BendingPlayer> players, List<RollbackTemporaryElement> temporaryElements) {
+        if (!com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) {
+            throw new IllegalStateException("Bending player import requires a private domain");
+        }
+        for (RollbackTemporaryElement entry : temporaryElements) {
+            BendingPlayer player = players.get(entry.player.getUniqueId());
+            if (player == null || player.getPlayer().handle() != entry.player.handle()) {
+                throw new IllegalStateException("Temporary element refers to another participant graph");
+            }
+        }
+        ONLINE_PLAYERS.clear();
+        ONLINE_PLAYERS.putAll(players);
+        PLAYERS.clear();
+        PLAYERS.putAll(players);
+        TEMP_ELEMENTS.clear();
+        for (RollbackTemporaryElement entry : temporaryElements) TEMP_ELEMENTS.add(Pair.of(entry.player, entry.expiry));
+    }
+
     public OfflineBendingPlayer(@NotNull OfflinePlayer player) {
         this.player = player;
         this.uuid = player.getUniqueId();
@@ -103,7 +150,7 @@ public class OfflineBendingPlayer {
         this.viewDistance = 256;
         this.loading = true;
 
-        this.lastAccessed = System.currentTimeMillis();
+        this.lastAccessed = RollbackClock.millis();
     }
 
     public OfflineBendingPlayer(@NotNull UUID playerUUID) {
@@ -143,7 +190,7 @@ public class OfflineBendingPlayer {
                 ((BendingPlayer) oBendingPlayer).postLoad();
             }
             if (!(oBendingPlayer instanceof BendingPlayer)) {
-                oBendingPlayer.lastAccessed = System.currentTimeMillis();
+                oBendingPlayer.lastAccessed = RollbackClock.millis();
             }
             future.complete(oBendingPlayer);
             return future;
@@ -240,11 +287,11 @@ public class OfflineBendingPlayer {
                              * in, or it times out.
                              */
                             final CopyOnWriteArrayList<String> addonClone = new CopyOnWriteArrayList<>(Arrays.asList(split[split.length - 1].split(",")));
-                            final long startTime = System.currentTimeMillis();
+                            final long startTime = RollbackClock.millis();
                             final long timeoutLength = 5_000; // How long until it should time out attempting to load addons in.
                             OfflineBendingPlayer finalBPlayer = bPlayer;
                             Predicate<List<String>> func = (elements) -> {
-                                if (System.currentTimeMillis() - startTime > timeoutLength) {
+                                if (RollbackClock.millis() - startTime > timeoutLength) {
                                     ProjectKorra.log.severe("ProjectKorra has timed out after attempting to load in the following addon elements: " + addonClone.toString());
                                     ProjectKorra.log.severe("These elements have taken too long to load in, resulting in users having lost these element.");
                                     return true;
@@ -343,11 +390,11 @@ public class OfflineBendingPlayer {
                         }
                         if (hasAddon) {
                             final CopyOnWriteArrayList<String> addonClone = new CopyOnWriteArrayList<String>(Arrays.asList(split[split.length - 1].split(",")));
-                            final long startTime = System.currentTimeMillis();
+                            final long startTime = RollbackClock.millis();
                             final long timeoutLength = 5_000; // How long until it should time out attempting to load addons in.
                             OfflineBendingPlayer finalBPlayer1 = bPlayer;
                             Predicate<List<String>> func = (elements) -> {
-                                if (System.currentTimeMillis() - startTime > timeoutLength) {
+                                if (RollbackClock.millis() - startTime > timeoutLength) {
                                     ProjectKorra.log.severe("ProjectKorra has timed out after attempting to load in the following addon subelements: " + addonClone.toString());
                                     ProjectKorra.log.severe("These subelements have taken too long to load in, resulting in users having lost these subelement.");
                                     return true;
@@ -393,11 +440,11 @@ public class OfflineBendingPlayer {
                             abilitiesClone.put(i, ability);
                         }
                     }
-                    final long startTime = System.currentTimeMillis();
+                    final long startTime = RollbackClock.millis();
                     final long timeoutLength = 5_000; // How long until it should time out attempting to load addons in.
                     OfflineBendingPlayer finalBPlayer2 = bPlayer;
                     Predicate<Map<Integer, String>> func = (abils) -> {
-                        if (System.currentTimeMillis() - startTime > timeoutLength) {
+                        if (RollbackClock.millis() - startTime > timeoutLength) {
                             ProjectKorra.log.severe("ProjectKorra has timed out after attempting to load in the following abilities: " + abilitiesClone.toString());
                             ProjectKorra.log.severe("These abilities have taken too long to load in, resulting in users having lost these abilities.");
                             return true;
@@ -599,7 +646,7 @@ public class OfflineBendingPlayer {
         offlineBendingPlayer.oldScooter = bendingPlayer.oldScooter;
         offlineBendingPlayer.cooldowns.putAll(bendingPlayer.cooldowns);
         offlineBendingPlayer.loading = false;
-        offlineBendingPlayer.lastAccessed = System.currentTimeMillis();
+        offlineBendingPlayer.lastAccessed = RollbackClock.millis();
 
         if (bendingPlayer.getPlayer() == null || !bendingPlayer.getPlayer().isOnline())
             ONLINE_PLAYERS.remove(bendingPlayer.getUUID());
@@ -996,7 +1043,7 @@ public class OfflineBendingPlayer {
      * Remove all cooldowns that have expired
      */
     protected void removeOldCooldowns() {
-        this.cooldowns.entrySet().removeIf(entry -> System.currentTimeMillis() >= entry.getValue().getCooldown());
+        this.cooldowns.entrySet().removeIf(entry -> RollbackClock.millis() >= entry.getValue().getCooldown());
     }
 
     /**
@@ -1058,7 +1105,7 @@ public class OfflineBendingPlayer {
             return;
         }
 
-        this.cooldowns.put(ability, new Cooldown(cooldown + System.currentTimeMillis(), database));
+        this.cooldowns.put(ability, new Cooldown(cooldown + RollbackClock.millis(), database));
 
         CooldownCommand.addCooldownType(ability);
     }
@@ -1142,7 +1189,7 @@ public class OfflineBendingPlayer {
         if (element.isAvatarElement() && hasTempElement(Element.AVATAR)) return true;
 
         if (element instanceof SubElement) return this.hasTempSubElement((SubElement) element);
-        return this.tempElements.containsKey(element) && this.tempElements.get(element) > System.currentTimeMillis();
+        return this.tempElements.containsKey(element) && this.tempElements.get(element) > RollbackClock.millis();
     }
 
     /**
@@ -1153,7 +1200,7 @@ public class OfflineBendingPlayer {
      */
     public boolean hasTempSubElement(@NotNull final SubElement sub) {
         return this.tempSubElements.containsKey(sub) && (this.tempSubElements.get(sub) == -1 || //-1 means that the time is linked to the parent element
-                this.tempSubElements.get(sub) > System.currentTimeMillis());
+                this.tempSubElements.get(sub) > RollbackClock.millis());
     }
 
     /**
@@ -1163,7 +1210,7 @@ public class OfflineBendingPlayer {
      * @return true If the player has the subelement
      */
     public boolean hasTempSubElementExcludeParents(@NotNull final SubElement sub) {
-        return this.tempSubElements.containsKey(sub) && this.tempSubElements.get(sub) > System.currentTimeMillis();
+        return this.tempSubElements.containsKey(sub) && this.tempSubElements.get(sub) > RollbackClock.millis();
     }
 
     /**
@@ -1174,7 +1221,7 @@ public class OfflineBendingPlayer {
     public boolean hasTempElements() {
         Map<Element, Long> tempMap = new HashMap<>(this.tempElements);
         tempMap.putAll(this.tempSubElements);
-        return tempMap.entrySet().stream().anyMatch(entry -> entry.getValue() > System.currentTimeMillis());
+        return tempMap.entrySet().stream().anyMatch(entry -> entry.getValue() > RollbackClock.millis());
     }
 
     /**
@@ -1211,7 +1258,7 @@ public class OfflineBendingPlayer {
 
         long time = this.tempElements.getOrDefault(element, 0L);
         if (time == 0) return time;
-        return time - System.currentTimeMillis();
+        return time - RollbackClock.millis();
     }
 
     /**
@@ -1223,7 +1270,7 @@ public class OfflineBendingPlayer {
     public long getTempSubElementRelativeTime(@NotNull final SubElement sub) {
         long time = this.tempSubElements.getOrDefault(sub, 0L);
         if (time == 0) return time;
-        return time - System.currentTimeMillis();
+        return time - RollbackClock.millis();
     }
 
     /**
@@ -1579,7 +1626,7 @@ public class OfflineBendingPlayer {
     public void uncache() {
         if (this.player.isOnline() || this instanceof BendingPlayer) return;
 
-        long remaining = (this.lastAccessed + this.uncacheTime) - System.currentTimeMillis();
+        long remaining = (this.lastAccessed + this.uncacheTime) - RollbackClock.millis();
 
         if (remaining >= 500) { //If there is at least half a second to go, delay the uncache
             if (this.uncache != null) this.uncache.cancel(); //Cancel existing task
@@ -1599,7 +1646,7 @@ public class OfflineBendingPlayer {
      */
     public void uncacheAfter(long time) {
         this.uncacheTime = time;
-        this.lastAccessed = System.currentTimeMillis();
+        this.lastAccessed = RollbackClock.millis();
         uncache();
     }
 
@@ -1623,7 +1670,7 @@ public class OfflineBendingPlayer {
 
         boolean sub = element instanceof SubElement;
 
-        long expiry = time + System.currentTimeMillis();
+        long expiry = time + RollbackClock.millis();
 
         //Check the event isn't cancelled
         Cancellable event = sub ? new PlayerChangeSubElementEvent(sender, this.player, (SubElement) element, PlayerChangeSubElementEvent.Result.TEMP_ADD) :
@@ -1698,7 +1745,7 @@ public class OfflineBendingPlayer {
         boolean remove = time == 0 || (this.hasTempElement(element) && this.getTempElementRelativeTime(element) <= time);
         boolean add = time > 0 && !this.hasTempElement(element);
 
-        long expiry = time + System.currentTimeMillis();
+        long expiry = time + RollbackClock.millis();
 
         if (add || remove) {
             //Check the event isn't cancelled

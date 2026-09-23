@@ -1,5 +1,8 @@
 package com.jedk1.jedcore.ability.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JCMethods;
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
@@ -66,7 +69,7 @@ public class LavaDisc extends LavaAbility implements AddonAbility {
         }
 
         state = new HoldState();
-        time = System.currentTimeMillis();
+        time = RollbackClock.millis();
         discRenderer = new DiscRenderer(this.player);
 
         setFields();
@@ -176,7 +179,7 @@ public class LavaDisc extends LavaAbility implements AddonAbility {
         DamageHandler.damageEntity(entity, damage, this);
         entity.setFireTicks(20);
         new FireDamageTimer(entity, player, this);
-        ParticleEffect.LAVA.display(entity.getLocation(), 15, Math.random(), Math.random(), Math.random(), 0.1);
+        ParticleEffect.LAVA.display(entity.getLocation(), 15, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.1);
     }
 
     @Override
@@ -335,7 +338,7 @@ public class LavaDisc extends LavaAbility implements AddonAbility {
             location.setPitch(0);
 
             if (!player.isSneaking()) {
-                time = System.currentTimeMillis();
+                time = RollbackClock.millis();
                 state = new ForwardTravelState(location.getDirection().normalize());
             }
         }
@@ -388,7 +391,7 @@ public class LavaDisc extends LavaAbility implements AddonAbility {
 
         @Override
         public void update() {
-            if (!isLocationSafe() || System.currentTimeMillis() > time + duration) {
+            if (!isLocationSafe() || RollbackClock.millis() > time + duration) {
                 state = new CleanupState();
                 return;
             }
@@ -456,7 +459,7 @@ public class LavaDisc extends LavaAbility implements AddonAbility {
         private final long regenTime;
 
         public CleanupState() {
-            this.startTime = System.currentTimeMillis();
+            this.startTime = RollbackClock.millis();
 
             regenTime = JedCoreConfig.getConfig(bPlayer).getLong("Abilities.Earth.LavaDisc.Destroy.RegenTime");
             bPlayer.addCooldown(LavaDisc.this);
@@ -464,7 +467,7 @@ public class LavaDisc extends LavaAbility implements AddonAbility {
 
         @Override
         public void update() {
-            if (System.currentTimeMillis() >= startTime + regenTime || trailBlocks.isEmpty()) {
+            if (RollbackClock.millis() >= startTime + regenTime || trailBlocks.isEmpty()) {
                 remove();
             }
         }
@@ -493,9 +496,9 @@ public class LavaDisc extends LavaAbility implements AddonAbility {
 
         void render(Location location, boolean largeLava) {
             if (largeLava)
-                ParticleEffect.LAVA.display(location, particles * 2, Math.random(), Math.random(), Math.random(), 0.1);
+                ParticleEffect.LAVA.display(location, particles * 2, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.1);
             else
-                ParticleEffect.LAVA.display(location, 1, Math.random(), Math.random(), Math.random(), 0.1);
+                ParticleEffect.LAVA.display(location, 1, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.1);
 
             angle += 1;
             if (angle > 360)
@@ -530,7 +533,7 @@ public class LavaDisc extends LavaAbility implements AddonAbility {
                         new RegenTempBlock(l.getBlock(), Material.AIR, Material.AIR.createBlockData(), regenTime);
                     }
 
-                    ParticleEffect.LAVA.display(l, particles * 2, Math.random(), Math.random(), Math.random(), 0.2);
+                    ParticleEffect.LAVA.display(l, particles * 2, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.2);
                 }
             }
         }

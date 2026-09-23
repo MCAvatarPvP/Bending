@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.waterbending.multiabilities;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.WaterAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
@@ -153,7 +155,7 @@ public class WaterArmsSpear extends WaterAbility {
     }
 
     public static void expireBlocks(final boolean ignoreTime) {
-        final long now = System.currentTimeMillis();
+        final long now = RollbackClock.millis();
         for (Map.Entry<Block, Long> entry : List.copyOf(ICE_BLOCKS.entrySet())) {
             if (!ignoreTime && now <= entry.getValue()) continue;
             final Block block = entry.getKey();
@@ -173,7 +175,7 @@ public class WaterArmsSpear extends WaterAbility {
         if (layer == null || layer.isReverted()) return;
         final Block block = layer.getBlock();
         final TempBlock previous = TRACKED_BLOCKS.put(block, layer);
-        final long expiresAt = System.currentTimeMillis() + Math.max(1L, duration);
+        final long expiresAt = RollbackClock.millis() + Math.max(1L, duration);
         ICE_BLOCKS.put(block, expiresAt);
         layer.setRevertTask(() -> {
             if (isIce(layer.getBlockData().getMaterial())) protectPlayersAbove(block);

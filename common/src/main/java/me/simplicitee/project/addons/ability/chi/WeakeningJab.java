@@ -1,5 +1,7 @@
 package me.simplicitee.project.addons.ability.chi;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.ChiAbility;
@@ -84,7 +86,7 @@ public class WeakeningJab extends ChiAbility implements ComboAbility, AddonAbili
     @Override
     public void progress() {
         ParticleEffect.DAMAGE_INDICATOR.display(entity.getLocation(), 3, 0.2, 1.0, 0.2, 0.0004);
-        if (System.currentTimeMillis() >= getStartTime() + duration) {
+        if (RollbackClock.millis() >= getStartTime() + duration) {
             remove();
         }
     }

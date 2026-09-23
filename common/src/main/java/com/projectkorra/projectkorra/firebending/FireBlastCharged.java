@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.firebending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.Element.SubElement;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AirAbility;
@@ -83,7 +86,7 @@ public class FireBlastCharged extends FireAbility {
         this.canChargeInWater = getConfig().getBoolean("Abilities.Fire.FireBlast.Charged.CanChargeInWater");
         this.chargeTime = (long) applyInverseModifiers(getConfig().getLong("Abilities.Fire.FireBlast.Charged.ChargeTime"));
         this.cooldown = applyModifiersCooldown(getConfig().getLong("Abilities.Fire.FireBlast.Charged.Cooldown"));
-        this.time = System.currentTimeMillis();
+        this.time = RollbackClock.millis();
         this.interval = 25;
         this.collisionRadius = applyModifiers(getConfig().getDouble("Abilities.Fire.FireBlast.Charged.CollisionRadius"));
         this.minDamage = applyModifiersDamage(getConfig().getDouble("Abilities.Fire.FireBlast.Charged.MinimumDamage"));
@@ -316,7 +319,7 @@ public class FireBlastCharged extends FireAbility {
         } else {
             for (final Block block : GeneralMethods.getBlocksAroundPoint(this.location, this.collisionRadius)) {
                 playFirebendingParticles(block.getLocation(), 5, 0.5, 0.5, 0.5);
-                if ((new Random()).nextInt(4) == 0) {
+                if ((new RollbackRandom()).nextInt(4) == 0) {
                     playFirebendingSound(this.location);
                 }
             }
@@ -359,7 +362,7 @@ public class FireBlastCharged extends FireAbility {
             return;
         }
 
-        if (System.currentTimeMillis() > this.getStartTime() + this.chargeTime) {
+        if (RollbackClock.millis() > this.getStartTime() + this.chargeTime) {
             this.charged = true;
         }
         if (!this.player.isSneaking() && !this.launched) {
@@ -376,7 +379,7 @@ public class FireBlastCharged extends FireAbility {
             }
         }
 
-        if (System.currentTimeMillis() > this.time + this.interval) {
+        if (RollbackClock.millis() > this.time + this.interval) {
             if (this.launched) {
                 if (GeneralMethods.isRegionProtectedFromBuild(this, this.location)) {
                     this.remove();
@@ -384,7 +387,7 @@ public class FireBlastCharged extends FireAbility {
                 }
             }
 
-            this.time = System.currentTimeMillis();
+            this.time = RollbackClock.millis();
 
             if (!this.launched && !this.charged) {
                 return;

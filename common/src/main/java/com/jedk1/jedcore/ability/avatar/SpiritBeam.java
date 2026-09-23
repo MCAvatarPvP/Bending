@@ -1,5 +1,8 @@
 package com.jedk1.jedcore.ability.avatar;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JCMethods;
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
@@ -74,7 +77,7 @@ public class SpiritBeam extends AvatarAbility implements AddonAbility {
             remove();
             return;
         }
-        if (System.currentTimeMillis() > getStartTime() + duration) {
+        if (RollbackClock.millis() > getStartTime() + duration) {
             bPlayer.addCooldown(this);
             remove();
             return;
@@ -103,8 +106,8 @@ public class SpiritBeam extends AvatarAbility implements AddonAbility {
             }
 
             ParticleEffect.SPELL_WITCH.display(location, 1, 0f, 0f, 0f, 0f);
-            ParticleEffect.SPELL_WITCH.display(location, 1, (float) Math.random() / 3, (float) Math.random() / 3, (float) Math.random() / 3, 0f);
-            ParticleEffect.BLOCK_CRACK.display(location, 1, (float) Math.random() / 3, (float) Math.random() / 3, (float) Math.random() / 3, 0.1F, Material.NETHER_PORTAL.createBlockData());
+            ParticleEffect.SPELL_WITCH.display(location, 1, (float) RollbackRandom.fraction() / 3, (float) RollbackRandom.fraction() / 3, (float) RollbackRandom.fraction() / 3, 0f);
+            ParticleEffect.BLOCK_CRACK.display(location, 1, (float) RollbackRandom.fraction() / 3, (float) RollbackRandom.fraction() / 3, (float) RollbackRandom.fraction() / 3, 0.1F, Material.NETHER_PORTAL.createBlockData());
             ParticleEffect.BLOCK_CRACK.display(location, 1, direction.getX(), direction.getY(), direction.getZ(), 0.1F, Material.NETHER_PORTAL.createBlockData());
 
             for (Entity entity : GeneralMethods.getEntitiesAroundPoint(location, 2)) {

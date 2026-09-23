@@ -26,6 +26,10 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.*;
@@ -246,15 +250,12 @@ public final class BukkitProjectKorraPlatform implements ProjectKorraPlatform {
         @Override
         public boolean isBedrockPlayer(final UUID uuid) {
             try {
-                final Class<?> floodgate = Class.forName("org.geysermc.floodgate.api.FloodgateApi");
-                final Object api = floodgate.getMethod("getInstance").invoke(null);
-                return Boolean.TRUE.equals(floodgate.getMethod("isFloodgatePlayer", UUID.class).invoke(api, uuid));
+                return org.geysermc.floodgate.api.FloodgateApi.getInstance().isFloodgatePlayer(uuid);
             } catch (final Throwable ignored) {
                 // Floodgate is optional.
             }
             try {
-                final Class<?> geyserUtil = Class.forName("io.github.retrooper.packetevents.util.GeyserUtil");
-                return Boolean.TRUE.equals(geyserUtil.getMethod("isGeyserPlayer", UUID.class).invoke(null, uuid));
+                return io.github.retrooper.packetevents.util.GeyserUtil.isGeyserPlayer(uuid);
             } catch (final Throwable ignored) {
                 return false;
             }
@@ -266,9 +267,7 @@ public final class BukkitProjectKorraPlatform implements ProjectKorraPlatform {
                 return false;
             }
             try {
-                final Class<?> strikePractice = Class.forName("ga.strikepractice.StrikePractice");
-                final Object api = strikePractice.getMethod("getAPI").invoke(null);
-                return Boolean.TRUE.equals(api.getClass().getMethod("isSpectator", Player.class).invoke(api, bukkitPlayer));
+                return ga.strikepractice.StrikePractice.getAPI().isSpectator(bukkitPlayer);
             } catch (final Throwable ignored) {
                 return false;
             }
@@ -554,18 +553,19 @@ public final class BukkitProjectKorraPlatform implements ProjectKorraPlatform {
                 final org.bukkit.event.EventHandler bukkitAnnotation = method.getAnnotation(org.bukkit.event.EventHandler.class);
                 final EventHandler commonAnnotation = method.getAnnotation(EventHandler.class);
                 if (Event.class.isAssignableFrom(eventType) && bukkitAnnotation != null && listener instanceof Listener bukkitListener) {
+                    final ListenerCall target = ListenerCall.bind(listener, method);
                     Bukkit.getPluginManager().registerEvent(
                             eventType.asSubclass(Event.class), bukkitListener, bukkitAnnotation.priority(),
                             (ignored, event) -> {
                                 if (method.getParameterTypes()[0].isInstance(event)) {
-                                    invoke(method, listener, event);
+                                    target.invoke(event);
                                 }
                             }, plugin, bukkitAnnotation.ignoreCancelled());
                     this.nativeListeners.add(new OwnedListener(listener, owner));
                 } else if (com.projectkorra.projectkorra.platform.mc.event.Event.class.isAssignableFrom(eventType) && (bukkitAnnotation != null || commonAnnotation != null)) {
                     final int priority = commonAnnotation != null ? commonAnnotation.priority().ordinal() : bukkitAnnotation.priority().ordinal();
                     final boolean ignoreCancelled = commonAnnotation != null ? commonAnnotation.ignoreCancelled() : bukkitAnnotation.ignoreCancelled();
-                    this.neutralHandlers.add(new NeutralHandler(listener, owner, method, eventType, priority, ignoreCancelled));
+                    this.neutralHandlers.add(new NeutralHandler(listener, owner, ListenerCall.bind(listener, method), eventType, priority, ignoreCancelled));
                 }
             }
         }
@@ -587,27 +587,30 @@ public final class BukkitProjectKorraPlatform implements ProjectKorraPlatform {
                     handler.listener() == target || handler.owner() == target);
         }
 
-        private void invoke(final Method method, final Object listener, final Object event) {
-            try {
-                method.invoke(listener, event);
-            } catch (ReflectiveOperationException exception) {
-                throw new RuntimeException("Failed to dispatch " + event.getClass().getName() + " to " + listener.getClass().getName(), exception);
-            }
-        }
-
         private record OwnedListener(Object listener, Object owner) {
         }
 
-        private record NeutralHandler(Object listener, Object owner, Method method, Class<?> eventType, int priority,
+        private record NeutralHandler(Object listener, Object owner, ListenerCall target, Class<?> eventType, int priority,
                                       boolean ignoreCancelled) {
             private void invoke(final com.projectkorra.projectkorra.platform.mc.event.Event event) {
                 if (ignoreCancelled && event instanceof Cancellable cancellable && cancellable.isCancelled()) return;
-                try {
-                    method.invoke(listener, event);
-                } catch (ReflectiveOperationException exception) {
-                    throw new RuntimeException("Failed to dispatch " + event.getClass().getName() + " to " + listener.getClass().getName(), exception);
-                }
+                target.invoke(event);
             }
+        }
+    }
+
+    /** Discover annotations once; dispatch with an already bound, typed call. */
+    private record ListenerCall(Object listener, MethodHandle target) {
+        static ListenerCall bind(Object listener, Method method) {
+            try {
+                MethodHandle target = MethodHandles.privateLookupIn(method.getDeclaringClass(), MethodHandles.lookup()).unreflect(method);
+                if (!Modifier.isStatic(method.getModifiers())) target = target.bindTo(listener);
+                return new ListenerCall(listener, target.asType(MethodType.methodType(void.class, Object.class)));
+            } catch (IllegalAccessException failure) { throw new IllegalArgumentException("Cannot register event listener: " + method, failure); }
+        }
+        void invoke(Object event) {
+            try { target.invokeExact(event); }
+            catch (Throwable failure) { throw new RuntimeException("Failed to dispatch " + event.getClass().getName() + " to " + listener.getClass().getName(), failure); }
         }
     }
 }

@@ -1,4 +1,6 @@
 // package com.projectkorra.projectkorra.hooks;
+
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 //
 // import com.djrapitops.plan.extension.CallEvents;
 // import com.djrapitops.plan.extension.Caller;
@@ -173,12 +175,12 @@
 //                 .columnTwo("Duration", Icon.called("clock").build());
 //
 //         for (Element element : bPlayer.getTempElements().keySet()) {
-//             long duration = System.currentTimeMillis() - bPlayer.getTempElements().get(element);
+//             long duration = RollbackClock.millis() - bPlayer.getTempElements().get(element);
 //             table.addRow(element.getColor() + element.getName(), TimeUtil.formatTime(duration));
 //         }
 //         for (Element.SubElement subElement : bPlayer.getTempSubElements().keySet()) {
 //             long duration = bPlayer.getTempSubElements().get(subElement);
-//             if (duration > 0) table.addRow(subElement.getName(), TimeUtil.formatTime(System.currentTimeMillis() - duration));
+//             if (duration > 0) table.addRow(subElement.getName(), TimeUtil.formatTime(RollbackClock.millis() - duration));
 //         }
 //
 //         return table.build();

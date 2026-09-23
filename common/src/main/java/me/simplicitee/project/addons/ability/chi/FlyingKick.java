@@ -1,5 +1,7 @@
 package me.simplicitee.project.addons.ability.chi;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.ChiAbility;
@@ -97,7 +99,7 @@ public class FlyingKick extends ChiAbility implements ComboAbility, AddonAbility
             return;
         }
 
-        if (System.currentTimeMillis() > this.getStartTime() + 400) {
+        if (RollbackClock.millis() > this.getStartTime() + 400) {
             if (player.getLocation().subtract(0, 0.1, 0).getBlock().getType() != Material.AIR) {
                 remove();
                 bPlayer.addCooldown(this);

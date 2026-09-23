@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.waterbending.ice;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AirAbility;
@@ -300,11 +303,11 @@ public class IceSpikeBlast extends IceAbility {
             return;
         }
 
-        if (System.currentTimeMillis() < this.time + this.interval) {
+        if (RollbackClock.millis() < this.time + this.interval) {
             return;
         }
 
-        this.time = System.currentTimeMillis();
+        this.time = RollbackClock.millis();
 
         if (this.progressing) {
             Vector direction;
@@ -354,7 +357,7 @@ public class IceSpikeBlast extends IceAbility {
                 }
             }
 
-            if ((new Random()).nextInt(4) == 0) {
+            if ((new RollbackRandom()).nextInt(4) == 0) {
                 playIcebendingSound(this.location);
             }
 

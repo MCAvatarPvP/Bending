@@ -18,6 +18,8 @@ import com.projectkorra.projectkorra.prediction.block.TempFallingBlockSync;
 import com.projectkorra.projectkorra.prediction.hit.ConfirmedHitEffects;
 import com.projectkorra.projectkorra.prediction.hit.HitRewind;
 import com.projectkorra.projectkorra.prediction.hit.HitRegistrationPolicy;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackIngress;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackStartPacket;
 import com.projectkorra.projectkorra.prediction.movement.VelocitySync;
 import com.projectkorra.projectkorra.prediction.state.AbilityCheckpointSync;
 import com.projectkorra.projectkorra.prediction.state.AbilityStateSync;
@@ -70,6 +72,12 @@ public abstract class PaperPredictionInput extends PaperPredictionEffects {
     }
 
     protected void onHello(Player player, PaperPredictionProtocol.Hello hello) {
+        rollbackStarts.stopPlayer(player.getUniqueId(), RollbackStartPacket.AbortReason.STATE_CHANGED);
+        rollbackBootstraps.stopPlayer(player.getUniqueId(), RollbackStartPacket.AbortReason.STATE_CHANGED);
+        if (rollbackInputs.blocksLegacy(player.getUniqueId())) {
+            rollbackInputs.stopPlayer(player.getUniqueId(), RollbackIngress.StopReason.CLIENT_RESET);
+            return;
+        }
         if (hello.version() != PaperPredictionProtocol.VERSION) return;
         Session session = new Session(player.getUniqueId(), UUID.randomUUID(), hello.capabilities(),
                 hello.clientTick(), tick);
@@ -81,10 +89,14 @@ public abstract class PaperPredictionInput extends PaperPredictionEffects {
     protected void onClientDisabled(final Player player,
                                   final PaperPredictionProtocol.ClientDisabled disabled) {
         if (disabled.version() != PaperPredictionProtocol.VERSION) return;
+        rollbackStarts.stopPlayer(player.getUniqueId(), RollbackStartPacket.AbortReason.OPT_OUT);
+        rollbackBootstraps.stopPlayer(player.getUniqueId(), RollbackStartPacket.AbortReason.OPT_OUT);
+        rollbackInputs.stopPlayer(player.getUniqueId(), RollbackIngress.StopReason.CLIENT_RESET);
         sessions.remove(player.getUniqueId());
     }
 
     protected void onReady(Player player, PaperPredictionProtocol.Ready ready) {
+        if (rollbackInputs.blocksLegacy(player.getUniqueId())) return;
         final Session session = valid(player, ready.session());
         if (session == null) return;
         final boolean wasReady = session.ready;
@@ -114,6 +126,7 @@ public abstract class PaperPredictionInput extends PaperPredictionEffects {
     }
 
     protected void onInputVeto(Player player, PaperPredictionProtocol.InputVeto veto) {
+        if (rollbackInputs.blocksLegacy(player.getUniqueId())) return;
         final Session session = valid(player, veto.session());
         if (session == null || !session.ready || veto.kind() == null
                 || veto.ability() == null || veto.ability().isBlank()
@@ -137,6 +150,7 @@ public abstract class PaperPredictionInput extends PaperPredictionEffects {
     }
 
     protected void onActionTag(final Player player, final PaperPredictionProtocol.ActionTag tag) {
+        if (rollbackInputs.blocksLegacy(player.getUniqueId())) return;
         final Session session = valid(player, tag.session());
         if (session == null || !session.ready || tag.clientSequence() <= 0L
                 || tag.kind() == null || tag.selectedSlot() < 0 || tag.selectedSlot() > 8
@@ -145,6 +159,7 @@ public abstract class PaperPredictionInput extends PaperPredictionEffects {
     }
 
     protected void onHitClaim(final Player player, final PaperPredictionProtocol.HitClaim hit) {
+        if (rollbackInputs.blocksLegacy(player.getUniqueId()) || rollbackInputs.blocksLegacy(hit.target())) return;
         final Session session = valid(player, hit.session());
         if (session == null || !session.ready
                 || !session.claimLimiter.allow(tick, CLAIMS_PER_SECOND)
@@ -206,6 +221,7 @@ public abstract class PaperPredictionInput extends PaperPredictionEffects {
 
     protected void recordPlayerHistory() {
         for (Player player : Bukkit.getOnlinePlayers()) {
+            if (rollbackInputs.blocksLegacy(player.getUniqueId())) { playerHistory.remove(player.getUniqueId()); continue; }
             final Deque<EntityFrame> frames = playerHistory.computeIfAbsent(
                     player.getUniqueId(), ignored -> new ArrayDeque<>());
             frames.addLast(new EntityFrame(tick, player.getWorld().getUID(), player.getBoundingBox()));
@@ -235,6 +251,7 @@ public abstract class PaperPredictionInput extends PaperPredictionEffects {
     protected CommonInputHandler.InputResult processInput(
             Player player, Session session, PaperPredictionProtocol.InputKind kind,
             Supplier<CommonInputHandler.InputResult> nativeInput) {
+        if (player != null && rollbackInputs.blocksLegacy(player.getUniqueId())) return CommonInputHandler.InputResult.cancel();
         if (player == null || !player.isOnline() || sessions.get(player.getUniqueId()) != session) {
             return nativeInput.get();
         }

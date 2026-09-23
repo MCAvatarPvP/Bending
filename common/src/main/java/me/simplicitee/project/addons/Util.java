@@ -1,5 +1,7 @@
 package me.simplicitee.project.addons;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.platform.mc.Location;
 
@@ -12,7 +14,7 @@ public final class Util {
     }
 
     public static void playLightningParticles(Location loc, int amount, double xOff, double yOff, double zOff) {
-        int i = (int) Math.round(Math.random() * (lightning.length - 1));
+        int i = (int) Math.round(RollbackRandom.fraction() * (lightning.length - 1));
         GeneralMethods.displayColoredParticle(lightning[i], loc, amount, xOff, yOff, zOff);
     }
 

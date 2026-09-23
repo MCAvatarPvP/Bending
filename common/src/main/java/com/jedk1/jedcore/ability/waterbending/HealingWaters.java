@@ -1,5 +1,8 @@
 package com.jedk1.jedcore.ability.waterbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
 import com.projectkorra.projectkorra.BendingPlayer;
@@ -39,8 +42,8 @@ public class HealingWaters extends HealingAbility implements AddonAbility {
 
     public static void heal(Server server) {
         if (enabled) {
-            if (System.currentTimeMillis() - time >= 1000) {
-                time = System.currentTimeMillis();
+            if (RollbackClock.millis() - time >= 1000) {
+                time = RollbackClock.millis();
                 for (Player player : server.getOnlinePlayers()) {
                     BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
                     if (bPlayer != null && bPlayer.canBend(getAbility("HealingWaters"))) {
@@ -60,14 +63,14 @@ public class HealingWaters extends HealingAbility implements AddonAbility {
                 if (entity instanceof LivingEntity && inWater(entity)) {
                     Location playerLoc = entity.getLocation();
                     playerLoc.add(0, 1, 0);
-                    ParticleEffect.SPELL_MOB_AMBIENT.display(playerLoc, 3, Math.random(), Math.random(), Math.random(), 0.0);
+                    ParticleEffect.SPELL_MOB_AMBIENT.display(playerLoc, 3, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.0);
                     ParticleEffect.WATER_WAKE.display(playerLoc, 25, 0, 0, 0, 0.05F);
                     giveHPToEntity((LivingEntity) entity);
                 }
             } else {
                 Location playerLoc = player.getLocation();
                 playerLoc.add(0, 1, 0);
-                ParticleEffect.SPELL_MOB_AMBIENT.display(playerLoc, 3, Math.random(), Math.random(), Math.random(), 0.0);
+                ParticleEffect.SPELL_MOB_AMBIENT.display(playerLoc, 3, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.0);
                 ParticleEffect.WATER_WAKE.display(playerLoc, 25, 0, 0, 0, 0.05F);
                 giveHP(player);
             }
@@ -79,11 +82,11 @@ public class HealingWaters extends HealingAbility implements AddonAbility {
                     if (dLe.getHealth() < dLe.getMaxHealth()) {
                         Location playerLoc = entity.getLocation();
                         playerLoc.add(0, 1, 0);
-                        ParticleEffect.SPELL_MOB_AMBIENT.display(playerLoc, 3, Math.random(), Math.random(), Math.random(), 0.0);
+                        ParticleEffect.SPELL_MOB_AMBIENT.display(playerLoc, 3, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.0);
                         ParticleEffect.WATER_WAKE.display(playerLoc, 25, 0, 0, 0, 0.05F);
                         giveHPToEntity((LivingEntity) entity);
                         entity.setFireTicks(0);
-                        Random rand = new Random();
+                        Random rand = new RollbackRandom();
                         if (rand.nextInt(getDrainChance(bPlayer)) == 0)
                             drainWaterSupply(player);
                     }
@@ -91,11 +94,11 @@ public class HealingWaters extends HealingAbility implements AddonAbility {
             } else {
                 Location playerLoc = player.getLocation();
                 playerLoc.add(0, 1, 0);
-                ParticleEffect.SPELL_MOB_AMBIENT.display(playerLoc, 3, Math.random(), Math.random(), Math.random(), 0.0);
+                ParticleEffect.SPELL_MOB_AMBIENT.display(playerLoc, 3, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.0);
                 ParticleEffect.WATER_WAKE.display(playerLoc, 25, 0, 0, 0, 0.05F);
                 giveHP(player);
                 player.setFireTicks(0);
-                Random rand = new Random();
+                Random rand = new RollbackRandom();
                 if (rand.nextInt(getDrainChance(bPlayer)) == 0)
                     drainWaterSupply(player);
             }

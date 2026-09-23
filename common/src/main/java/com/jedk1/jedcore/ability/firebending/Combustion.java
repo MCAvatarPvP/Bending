@@ -1,5 +1,8 @@
 package com.jedk1.jedcore.ability.firebending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.collision.CollisionDetector;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
@@ -200,7 +203,7 @@ public class Combustion extends CombustionAbility implements AddonAbility, Entit
         private int currPoint;
 
         public ChargeState() {
-            this.startTime = System.currentTimeMillis();
+            this.startTime = RollbackClock.millis();
             this.playerStartHealth = player.getHealth();
 
             this.instantExplodeIfHit = JedCoreConfig.getConfig(bPlayer).getBoolean("Abilities.Fire.Combustion.InstantExplodeIfHit");
@@ -209,7 +212,7 @@ public class Combustion extends CombustionAbility implements AddonAbility, Entit
 
         @Override
         public void update() {
-            long time = System.currentTimeMillis();
+            long time = RollbackClock.millis();
 
             boolean charged = time >= this.startTime + warmup;
 
@@ -228,7 +231,7 @@ public class Combustion extends CombustionAbility implements AddonAbility, Entit
                 }
 
                 if (charged) {
-                    ParticleEffect.SMOKE_LARGE.display(player.getLocation(), 1, Math.random(), Math.random(), Math.random(), 0.1);
+                    ParticleEffect.SMOKE_LARGE.display(player.getLocation(), 1, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.1);
                 }
             } else {
                 if (charged) {
@@ -379,7 +382,7 @@ public class Combustion extends CombustionAbility implements AddonAbility, Entit
             // This stops players from moving into a protected area to bypass the regen wait time.
             removalPolicy.removePolicyType(CannotBendRemovalPolicy.class);
 
-            this.startTime = System.currentTimeMillis();
+            this.startTime = RollbackClock.millis();
             this.regenTime = JedCoreConfig.getConfig(bPlayer).getLong("Abilities.Fire.Combustion.RegenTime");
             this.waitForRegen = JedCoreConfig.getConfig(bPlayer).getBoolean("Abilities.Fire.Combustion.WaitForRegen");
 
@@ -421,7 +424,7 @@ public class Combustion extends CombustionAbility implements AddonAbility, Entit
 
         @Override
         public void update() {
-            if (!waitForRegen || System.currentTimeMillis() >= (this.startTime + this.regenTime)) {
+            if (!waitForRegen || RollbackClock.millis() >= (this.startTime + this.regenTime)) {
                 remove();
             }
         }
@@ -460,14 +463,14 @@ public class Combustion extends CombustionAbility implements AddonAbility, Entit
 
         private void render(Location location) {
             if (bPlayer.canUseSubElement(SubElement.BLUE_FIRE)) {
-                ParticleEffect.SOUL_FIRE_FLAME.display(location, 20, Math.random(), Math.random(), Math.random(), 0.5);
+                ParticleEffect.SOUL_FIRE_FLAME.display(location, 20, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.5);
             } else {
-                ParticleEffect.FLAME.display(location, 20, Math.random(), Math.random(), Math.random(), 0.5);
+                ParticleEffect.FLAME.display(location, 20, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.5);
             }
-            ParticleEffect.SMOKE_LARGE.display(location, 20, Math.random(), Math.random(), Math.random(), 0.5);
-            ParticleEffect.FIREWORKS_SPARK.display(location, 20, Math.random(), Math.random(), Math.random(), 0.5);
-            ParticleEffect.SMOKE_LARGE.display(location, 20, Math.random(), Math.random(), Math.random());
-            ParticleEffect.EXPLOSION_HUGE.display(location, 20, Math.random(), Math.random(), Math.random(), 0.5);
+            ParticleEffect.SMOKE_LARGE.display(location, 20, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.5);
+            ParticleEffect.FIREWORKS_SPARK.display(location, 20, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.5);
+            ParticleEffect.SMOKE_LARGE.display(location, 20, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction());
+            ParticleEffect.EXPLOSION_HUGE.display(location, 20, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.5);
 
             location.getWorld().playSound(location, Sound.ENTITY_GENERIC_EXPLODE, 1f, 1f);
         }

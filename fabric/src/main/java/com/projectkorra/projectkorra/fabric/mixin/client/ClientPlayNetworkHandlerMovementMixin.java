@@ -17,8 +17,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(ClientCommonNetworkHandler.class)
 abstract class ClientPlayNetworkHandlerMovementMixin {
     @Inject(method = "sendPacket", at = @At(value = "INVOKE",
-            target = "Lnet/minecraft/network/ClientConnection;send(Lnet/minecraft/network/packet/Packet;)V"))
+            target = "Lnet/minecraft/network/ClientConnection;send(Lnet/minecraft/network/packet/Packet;)V"), cancellable = true)
     private void projectkorra$captureNativeInput(Packet<?> packet, CallbackInfo ci) {
+        if (PredictionClient.consumeRollbackPacket(MinecraftClient.getInstance(), (ClientCommonNetworkHandler) (Object) this, packet)) {
+            ci.cancel(); return;
+        }
         PredictionClient.beforeVanillaPacket(MinecraftClient.getInstance(), packet);
     }
 }

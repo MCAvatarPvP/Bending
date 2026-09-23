@@ -1,5 +1,7 @@
 package me.literka;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.ability.Ability;
@@ -157,7 +159,7 @@ public class ChiListener implements Listener {
             return false;
         }
         long swingCooldown = ChiRework.config().getLong("Abilities." + abilityName + ".SwingCooldown");
-        long remaining = cooldownUntil - System.currentTimeMillis();
+        long remaining = cooldownUntil - RollbackClock.millis();
         if (swingCooldown > 0 && remaining > 0 && remaining <= swingCooldown + 100) {
             bPlayer.removeCooldown(abilityName);
             return true;

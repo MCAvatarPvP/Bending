@@ -4,14 +4,16 @@ import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.mc.event.HandlerList;
 import com.projectkorra.projectkorra.platform.mc.event.Listener;
 import com.projectkorra.projectkorra.platform.mc.plugin.java.JavaPlugin;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackDomain;
 import com.projectkorra.projectkorra.util.FlightHandler;
 import com.projectkorra.projectkorra.util.StatisticsManager;
 import org.apache.commons.lang3.Validate;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
+import java.util.function.BiConsumer;
 
 public abstract class Manager implements Listener {
 
@@ -20,6 +22,52 @@ public abstract class Manager implements Listener {
      * {@link Class} as key
      */
     private static final Map<Class<? extends Manager>, Manager> MANAGERS = new HashMap<>();
+
+    /** Source references only; transfer this registry before installing it in a domain. */
+    public static RollbackRegistry captureRollbackRegistry() {
+        if (RollbackDomain.active() || RollbackClock.active()) throw new IllegalStateException("Manager import during replay");
+        return new RollbackRegistry(MANAGERS);
+    }
+
+    /**
+     * Select the source containers to import. Values remain source references until
+     * the whole bending graph is transferred, preserving aliases held by abilities.
+     * A manager must explicitly support import; unknown services cannot use live state.
+     */
+    protected void projectRollbackState(Set<UUID> participants, BiConsumer<Object, Object> project) {
+        throw new UnsupportedOperationException("Manager has no rollback import: " + getClass().getName());
+    }
+
+    /** Recreate private tasks only. Never call normal activation or register live listeners. */
+    protected void onRollbackInstall() { }
+
+    public static final class RollbackRegistry {
+        private final Map<Class<? extends Manager>, Manager> managers;
+
+        private RollbackRegistry(Map<Class<? extends Manager>, Manager> source) {
+            managers = new LinkedHashMap<>();
+            source.entrySet().stream().sorted(Comparator.comparing(entry -> entry.getKey().getName()))
+                    .forEach(entry -> managers.put(entry.getKey(), entry.getValue()));
+        }
+
+        public List<Manager> instances() { return List.copyOf(managers.values()); }
+
+        public void projectSources(Set<UUID> participants, BiConsumer<Object, Object> project) {
+            if (RollbackDomain.active() || RollbackClock.active()) throw new IllegalStateException("Manager import during replay");
+            Set<UUID> roster = Set.copyOf(participants);
+            for (Manager manager : managers.values()) {
+                project.accept(manager, manager);
+                manager.projectRollbackState(roster, project);
+            }
+        }
+
+        public void install() {
+            if (!RollbackDomain.active()) throw new IllegalStateException("Manager install requires a rollback domain");
+            MANAGERS.clear();
+            MANAGERS.putAll(managers);
+            managers.values().forEach(Manager::onRollbackInstall);
+        }
+    }
 
     /**
      * Register a new {@link Manager} instance.

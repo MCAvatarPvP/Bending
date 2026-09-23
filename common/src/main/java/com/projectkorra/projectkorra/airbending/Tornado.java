@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.airbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AirAbility;
@@ -197,7 +199,7 @@ public class Tornado extends AirAbility {
             return;
         }
 
-        final long now = System.currentTimeMillis();
+        final long now = RollbackClock.millis();
         if ((this.riding && this.rideDuration > 0 && now - this.rideStartTime >= this.rideDuration)
                 || (!this.riding && now - this.time >= this.tornadoRemoveDelay)) {
             this.remove();
@@ -260,7 +262,7 @@ public class Tornado extends AirAbility {
         this.currentLoc = this.origin.clone();
         this.direction = facing;
         this.motion.zero();
-        this.time = System.currentTimeMillis();
+        this.time = RollbackClock.millis();
         this.state = AbilityState.TORNADO_STATIONARY;
         this.bPlayer.addCooldown(this);
     }
@@ -297,7 +299,7 @@ public class Tornado extends AirAbility {
         }
 
         this.riding = true;
-        this.rideStartTime = System.currentTimeMillis();
+        this.rideStartTime = RollbackClock.millis();
         this.distanceTravelled = 0;
         this.flightHandler.createInstance(this.player, RIDE_FLIGHT_ID);
         this.player.setAllowFlight(true);
@@ -397,14 +399,14 @@ public class Tornado extends AirAbility {
         this.chargeAngle += 11.0 + progress * 8.0;
         this.renderParticleFunnel(center, formingHeight, formingRadius, this.chargeAngle);
 
-        if (System.currentTimeMillis() - this.lastSoundTime >= CHARGE_SOUND_INTERVAL) {
+        if (RollbackClock.millis() - this.lastSoundTime >= CHARGE_SOUND_INTERVAL) {
             playAirbendingSound(center, (float) (1.0 + (progress * 0.2)));
-            this.lastSoundTime = System.currentTimeMillis();
+            this.lastSoundTime = RollbackClock.millis();
         }
     }
 
     private void updateChargeProgress() {
-        final long now = System.currentTimeMillis();
+        final long now = RollbackClock.millis();
         if (this.lastChargeUpdateTime == 0L) {
             this.lastChargeUpdateTime = now;
             return;
@@ -437,9 +439,9 @@ public class Tornado extends AirAbility {
         this.vortexAngle += Math.max(7.0, this.speed * 45.0 * movementFactor);
         this.renderParticleFunnel(this.currentLoc, this.tornadoHeight, this.tornadoRadius, this.vortexAngle);
 
-        if (System.currentTimeMillis() - this.lastSoundTime >= TORNADO_SOUND_INTERVAL) {
+        if (RollbackClock.millis() - this.lastSoundTime >= TORNADO_SOUND_INTERVAL) {
             playAirbendingSound(this.currentLoc);
-            this.lastSoundTime = System.currentTimeMillis();
+            this.lastSoundTime = RollbackClock.millis();
         }
     }
 
@@ -730,7 +732,7 @@ public class Tornado extends AirAbility {
         this.caughtEntities.put(entity.getUniqueId(), entity);
         this.pulledEntitiesThisTick.add(entity.getUniqueId());
 
-        final long now = System.currentTimeMillis();
+        final long now = RollbackClock.millis();
         final long pullStart = this.pullStartTimes.computeIfAbsent(entity.getUniqueId(), uuid -> now);
         if (this.maxPullDuration > 0 && now - pullStart >= this.maxPullDuration) {
             if (this.exhaustedPullEntities.add(entity.getUniqueId())) {
@@ -758,8 +760,8 @@ public class Tornado extends AirAbility {
                 continue;
             }
 
-            final long pullStart = this.pullStartTimes.computeIfAbsent(uuid, ignored -> System.currentTimeMillis());
-            if (this.maxPullDuration > 0 && System.currentTimeMillis() - pullStart >= this.maxPullDuration) {
+            final long pullStart = this.pullStartTimes.computeIfAbsent(uuid, ignored -> RollbackClock.millis());
+            if (this.maxPullDuration > 0 && RollbackClock.millis() - pullStart >= this.maxPullDuration) {
                 if (this.exhaustedPullEntities.add(uuid)) {
                     this.releaseEntity(entity, this.currentLoc);
                 }
@@ -840,7 +842,7 @@ public class Tornado extends AirAbility {
     }
 
     private boolean canDamage(final Entity entity) {
-        final long now = System.currentTimeMillis();
+        final long now = RollbackClock.millis();
         final Long lastDamageTime = this.lastDamageTimes.get(entity.getUniqueId());
         if (lastDamageTime != null && now - lastDamageTime < this.damageInterval) {
             return false;
@@ -860,7 +862,7 @@ public class Tornado extends AirAbility {
             return;
         }
 
-        final long now = System.currentTimeMillis();
+        final long now = RollbackClock.millis();
         final long refreshInterval = Math.max(250L, this.trappedAbilityCooldown / 2L);
         final Long lastRestricted = this.lastRestrictedTimes.get(player.getUniqueId());
         if (lastRestricted != null && now - lastRestricted < refreshInterval) {

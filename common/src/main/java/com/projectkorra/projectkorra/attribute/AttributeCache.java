@@ -7,6 +7,7 @@ import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.configuration.PKConfiguration;
 import com.projectkorra.projectkorra.configuration.PKConfigurationSection;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackStateCell;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -18,12 +19,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.List;
 
 public class AttributeCache {
 
-    private Field field;
-    private String attribute;
-    private Map<Class<? extends Annotation>, Annotation> markers = new HashMap<>();
+    private Metadata metadata;
     // Constructors may recalculate before validating their source, then return
     // without start()/remove(). The class cache must not own those instances.
     private Map<CoreAbility, Object> initialValues = new WeakHashMap<>();
@@ -31,18 +31,34 @@ public class AttributeCache {
     private Optional<AttributeModification> avatarStateModifier = Optional.empty();
 
     public AttributeCache(Field field, String attribute) {
-        this.field = field;
-        this.attribute = attribute;
+        metadata = new Metadata(field, attribute, Map.of());
     }
+
+    /** Field declarations and annotation values are definition metadata, not live ability state. */
+    private static final class Metadata implements RollbackStateCell<Void> {
+        final Field field;
+        final String attribute;
+        final Map<Class<? extends Annotation>, Annotation> markers;
+        Metadata(Field field, String attribute, Map<Class<? extends Annotation>, Annotation> markers) {
+            this.field = field;
+            this.attribute = attribute;
+            this.markers = Map.copyOf(markers);
+        }
+        @Override public Void captureRollbackState() { return null; }
+        @Override public void restoreRollbackState(Void ignored) { }
+        @Override public List<?> rollbackReferences() { return List.of(); }
+    }
+
+    public static boolean isRollbackMetadata(Object value) { return value instanceof Metadata; }
 
     @NotNull
     public Field getField() {
-        return field;
+        return metadata.field;
     }
 
     @NotNull
     public String getAttribute() {
-        return attribute;
+        return metadata.attribute;
     }
 
     /**
@@ -52,16 +68,18 @@ public class AttributeCache {
      * @return True if the cache has a marker of the given class
      */
     public boolean hasMarker(Class<? extends Annotation> markerClass) {
-        return markers.containsKey(markerClass);
+        return metadata.markers.containsKey(markerClass);
     }
 
     public void addMaker(@NotNull Annotation marker) {
+        var markers = new HashMap<>(metadata.markers);
         markers.put(marker.annotationType(), marker);
+        metadata = new Metadata(metadata.field, metadata.attribute, markers);
     }
 
     @Nullable
     public <T extends Annotation> T getMarker(Class<T> markerClass) {
-        return (T) markers.get(markerClass);
+        return (T) metadata.markers.get(markerClass);
     }
 
     public Map<CoreAbility, Object> getInitialValues() {
@@ -80,6 +98,7 @@ public class AttributeCache {
     public void calculateAvatarStateModifier(CoreAbility ability) {
         if (ability instanceof AvatarAbility && ((AvatarAbility) ability).requireAvatar()) return;
 
+        String attribute = metadata.attribute;
         String configName = attribute;
 
         if (attribute.equals(Attribute.AVATAR_STATE_TOGGLE)) configName = "IsToggle";
@@ -93,7 +112,7 @@ public class AttributeCache {
 
         String stringObject = configObject.toString();
 
-        if (configObject instanceof Boolean && field.getType() == Boolean.TYPE) {
+        if (configObject instanceof Boolean && metadata.field.getType() == Boolean.TYPE) {
             avatarStateModifier = Optional.of(AttributeModification.setter((Boolean) configObject, AttributeModification.PRIORITY_LOW, AttributeModification.AVATAR_STATE_FACTOR));
         } else if (configObject instanceof Number) {
             avatarStateModifier = Optional.of(AttributeModification.of(AttributeModifier.SET, (Number) configObject, AttributeModification.PRIORITY_LOW, AttributeModification.AVATAR_STATE_FACTOR));

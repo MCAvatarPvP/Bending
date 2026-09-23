@@ -1,5 +1,7 @@
 package com.jedk1.jedcore.ability.airbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.collision.CollisionDetector;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
@@ -134,9 +136,9 @@ public class AirBlade extends AirAbility implements AddonAbility, EntityHitboxPr
                     playAirbendingParticles(
                             tempLoc,
                             1,
-                            (float) Math.random() / 2,
-                            (float) Math.random() / 2,
-                            (float) Math.random() / 2
+                            (float) RollbackRandom.fraction() / 2,
+                            (float) RollbackRandom.fraction() / 2,
+                            (float) RollbackRandom.fraction() / 2
                     );
                 }
 

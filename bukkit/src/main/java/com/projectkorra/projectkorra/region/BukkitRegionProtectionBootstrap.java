@@ -17,12 +17,7 @@ public final class BukkitRegionProtectionBootstrap {
         if (enabled("WorldGuard")) new WorldGuard();
         if (enabled("Factions")) {
             Object raw = Platform.plugins().getPlugin("Factions");
-            String website = null;
-            try {
-                Object description = raw.getClass().getMethod("getDescription").invoke(raw);
-                website = String.valueOf(description.getClass().getMethod("getWebsite").invoke(description));
-            } catch (Throwable ignored) {
-            }
+            String website = raw instanceof org.bukkit.plugin.Plugin plugin ? plugin.getDescription().getWebsite() : null;
             if (website != null && website.toLowerCase().contains("factionsuuid")) {
                 new FactionsUUID();
             } else {

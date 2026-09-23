@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.firebending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.FireAbility;
 import com.projectkorra.projectkorra.platform.mc.Location;
@@ -53,14 +56,14 @@ public class FireManipulation extends FireAbility {
             this.minimumShootTime = getConfig().getLong("Abilities.Fire.FireManipulation.Stream.MinimumShootTime");
             this.points = new ConcurrentHashMap<>();
             damageTick = 0;
-            time = System.currentTimeMillis();
+            time = RollbackClock.millis();
         } else if (this.fireManipulationType == FireManipulationType.CLICK) {
 
         }
     }
 
     public void click() {
-        if (System.currentTimeMillis() - this.getStartTime() > minimumShootTime) {
+        if (RollbackClock.millis() - this.getStartTime() > minimumShootTime) {
             new FireManipulationStream(player, this);
             this.remove();
         }
@@ -77,29 +80,29 @@ public class FireManipulation extends FireAbility {
             this.bPlayer.addCooldown(this, this.shieldCooldown);
             this.remove();
             return;
-        } else if (System.currentTimeMillis() - time > this.maxDuration) {
+        } else if (RollbackClock.millis() - time > this.maxDuration) {
             this.bPlayer.addCooldown(this, this.shieldCooldown);
             this.remove();
             return;
         }
 
-        if (System.currentTimeMillis() - this.getStartTime() > minimumShootTime) {
+        if (RollbackClock.millis() - this.getStartTime() > minimumShootTime) {
             Location location = player.getEyeLocation();
             location.add(location.getDirection());
             playFirebendingParticles(location, 1, .01, .01, .01);
         } else {
-            time = System.currentTimeMillis();
+            time = RollbackClock.millis();
         }
 
         final Location targetLocation = GeneralMethods.getTargetedLocation(this.player, this.shieldRange);
-        this.points.put(targetLocation, System.currentTimeMillis());
+        this.points.put(targetLocation, RollbackClock.millis());
         for (final Location point : this.points.keySet()) {
-            if (System.currentTimeMillis() - this.points.get(point) > 1500) {
+            if (RollbackClock.millis() - this.points.get(point) > 1500) {
                 this.points.remove(point);
                 return;
             }
             playFirebendingParticles(point, shieldParticles, 0.25, 0.25, 0.25);
-            if (System.currentTimeMillis() - this.getStartTime() > this.damageTick * this.damageInterval) {
+            if (RollbackClock.millis() - this.getStartTime() > this.damageTick * this.damageInterval) {
                 this.damageTick++;
                 for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(point, 1.2D)) {
                     if (entity instanceof LivingEntity && entity.getUniqueId() != this.player.getUniqueId() && shieldDamage != 0) {
@@ -107,7 +110,7 @@ public class FireManipulation extends FireAbility {
                     }
                 }
             }
-            if (new Random().nextInt(this.points.keySet().size()) == 0) {
+            if (new RollbackRandom().nextInt(this.points.keySet().size()) == 0) {
                 playFirebendingSound(point);
             }
         }

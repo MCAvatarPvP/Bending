@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.airbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
@@ -282,7 +285,7 @@ public class AirBlast extends AirAbility {
 
         this.isFromOtherOrigin = false;
         this.showParticles = true;
-        this.random = new Random();
+        this.random = new RollbackRandom();
         this.affectedLevers = new ArrayList<>();
         this.affectedEntities = new ArrayList<>();
         this.preShootStamina = bPlayer.getAirBlastDecay();
@@ -393,7 +396,7 @@ public class AirBlast extends AirAbility {
         }
 
         boolean sliding = GeneralMethods.isSolid(entity.getLocation().clone().add(0, -0.5, 0).getBlock()) && this.source == null;
-        if (sliding && System.currentTimeMillis() - this.getStartTime() < this.slidingActivationDelay) {
+        if (sliding && RollbackClock.millis() - this.getStartTime() < this.slidingActivationDelay) {
             sliding = false;
         }
 
@@ -697,7 +700,7 @@ public class AirBlast extends AirAbility {
         }
 
         if (isFromOtherOrigin) {
-            if (System.currentTimeMillis() - bPlayer.getLastScooterUse() < scooterThreshold) {
+            if (RollbackClock.millis() - bPlayer.getLastScooterUse() < scooterThreshold) {
                 bPlayer.addCooldown("AirScooter", scooterBlastCD);
             }
 

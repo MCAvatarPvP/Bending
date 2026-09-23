@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.command;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.Element.SubElement;
@@ -212,7 +214,7 @@ public class TempCommand extends PKCommand {
         String message = element == Element.AVATAR ? addedSuccessAvatar : addedSuccess;
         String messageOther = element == Element.AVATAR ? addedSuccessOtherAvatar : addedSuccessOther;
 
-        long expiry = time + System.currentTimeMillis();
+        long expiry = time + RollbackClock.millis();
         String newExpiryString = TimeUtil.formatTime(time, true);
 
         ChatUtil.sendBrandingMessage(sender, ChatColor.YELLOW + messageOther
@@ -249,12 +251,12 @@ public class TempCommand extends PKCommand {
 
         if (element instanceof SubElement) {
             //If they don't have it, or they do but it has already expired
-            add = !bPlayer.getTempSubElements().containsKey(element) || (bPlayer.getTempSubElements().get(element) != -1 && bPlayer.getTempSubElements().get(element) < System.currentTimeMillis());
+            add = !bPlayer.getTempSubElements().containsKey(element) || (bPlayer.getTempSubElements().get(element) != -1 && bPlayer.getTempSubElements().get(element) < RollbackClock.millis());
 
             oldTime = bPlayer.getTempSubElementRelativeTime((SubElement) element);
         } else {
             //If they don't have it, or they do but it has already expired
-            add = !bPlayer.getTempElements().containsKey(element) || bPlayer.getTempElements().get(element) < System.currentTimeMillis();
+            add = !bPlayer.getTempElements().containsKey(element) || bPlayer.getTempElements().get(element) < RollbackClock.millis();
 
             oldTime = bPlayer.getTempElementRelativeTime(element);
         }
@@ -301,8 +303,8 @@ public class TempCommand extends PKCommand {
             return; //Skip elements tied to parent elements
         }
 
-        boolean elementCheck = !bPlayer.getTempElements().containsKey(element) || bPlayer.getTempElements().get(element) < System.currentTimeMillis();
-        boolean subElementCheck = !bPlayer.getTempSubElements().containsKey(element) || (bPlayer.getTempSubElements().get(element) < System.currentTimeMillis() && bPlayer.getTempSubElements().get(element) != -1L);
+        boolean elementCheck = !bPlayer.getTempElements().containsKey(element) || bPlayer.getTempElements().get(element) < RollbackClock.millis();
+        boolean subElementCheck = !bPlayer.getTempSubElements().containsKey(element) || (bPlayer.getTempSubElements().get(element) < RollbackClock.millis() && bPlayer.getTempSubElements().get(element) != -1L);
 
         //If they don't have it, or they do but it has already expired
         if (element instanceof SubElement ? subElementCheck : elementCheck) { //or it has already expired
@@ -322,10 +324,10 @@ public class TempCommand extends PKCommand {
         long newExpiry;
 
         if (element instanceof SubElement) {
-            remove = bPlayer.getTempSubElements().get(element) - time < System.currentTimeMillis() && bPlayer.getTempSubElements().get(element) != -1L;
+            remove = bPlayer.getTempSubElements().get(element) - time < RollbackClock.millis() && bPlayer.getTempSubElements().get(element) != -1L;
             newExpiry = remove ? 0 : bPlayer.getTempSubElementRelativeTime((SubElement) element) - time;
         } else {
-            remove = bPlayer.getTempElements().get(element) - time < System.currentTimeMillis();
+            remove = bPlayer.getTempElements().get(element) - time < RollbackClock.millis();
             newExpiry = remove ? 0 : bPlayer.getTempElementRelativeTime(element) - time;
         }
 

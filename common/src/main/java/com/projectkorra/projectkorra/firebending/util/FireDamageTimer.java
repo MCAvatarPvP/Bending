@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.firebending.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.ability.Ability;
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -50,11 +52,11 @@ public class FireDamageTimer {
         if (INSTANCES.containsKey(entity)) {
             if (TIMES.containsKey(entity)) {
                 final long time = TIMES.get(entity);
-                if (System.currentTimeMillis() < time + BUFFER) {
+                if (RollbackClock.millis() < time + BUFFER) {
                     return false;
                 }
             }
-            TIMES.put(entity, System.currentTimeMillis());
+            TIMES.put(entity, RollbackClock.millis());
             return true;
         } else {
             return false;

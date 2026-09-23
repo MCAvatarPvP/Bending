@@ -3,6 +3,9 @@ package com.projectkorra.projectkorra.configuration;
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.prediction.state.PredictionConfigSync;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackConfiguration;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackDomain;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackStateCell;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
@@ -35,12 +38,15 @@ public class Config implements PKConfiguration {
     private final PKConfigurationOptions options = new PKConfigurationOptions();
     private BendingPlayer player;
     private boolean loadedWithValues;
+    private final boolean frozen;
 
     public Config(final File file) {
         this(file, true);
     }
 
     Config(final File file, final boolean registerForPrediction) {
+        if (RollbackDomain.active()) throw new IllegalStateException("Cannot load configuration during rollback");
+        this.frozen = false;
         if (file.isAbsolute()) {
             this.file = file;
         } else {
@@ -48,6 +54,43 @@ public class Config implements PKConfiguration {
         }
         if (registerForPrediction) PredictionConfigSync.registerFile(this.file.toPath(), this);
         reload();
+    }
+
+    protected Config(RollbackConfiguration.Settings settings) {
+        this.file = null;
+        this.frozen = true;
+        this.values.putAll(settings.values());
+        this.defaults.putAll(settings.defaults());
+        this.loadedWithValues = settings.loaded();
+    }
+
+    /** No file access, registration, defaults loading or ability activation during bootstrap import. */
+    public Config createRollbackView(RollbackConfiguration.Settings settings) {
+        if (getClass() != Config.class) throw new IllegalStateException("Configuration subclass must supply its private rollback view: " + getClass().getName());
+        return new Frozen(settings);
+    }
+
+    public RollbackConfiguration.Settings captureRollbackSettings() {
+        if (RollbackDomain.active()) throw new IllegalStateException("Capture configuration before rollback");
+        return new RollbackConfiguration.Settings(getClass().getName(), this.values, this.defaults, this.loadedWithValues);
+    }
+
+    /** Subclasses include any additional per-reader style context in this checkpoint. */
+    public List<BendingPlayer> captureRollbackContext() { return Collections.singletonList(this.player); }
+    public void restoreRollbackContext(List<BendingPlayer> context) {
+        if (context.size() != 1) throw new IllegalArgumentException("Config reader context");
+        this.player = context.getFirst();
+    }
+
+    private static final class Frozen extends Config implements RollbackStateCell<List<BendingPlayer>> {
+        private Frozen(RollbackConfiguration.Settings settings) { super(settings); }
+        @Override public List<BendingPlayer> captureRollbackState() { return captureRollbackContext(); }
+        @Override public void restoreRollbackState(List<BendingPlayer> context) { restoreRollbackContext(context); }
+        @Override public Collection<?> rollbackReferences() { return captureRollbackContext().stream().filter(Objects::nonNull).toList(); }
+    }
+
+    private void requireMutable() {
+        if (this.frozen || RollbackDomain.active()) throw new IllegalStateException("Session configuration is frozen during rollback");
     }
 
     @SuppressWarnings("unchecked")
@@ -110,10 +153,12 @@ public class Config implements PKConfiguration {
     }
 
     public Config get() {
-        return this;
+        return RollbackConfiguration.resolve(this);
     }
 
     public Config get(final BendingPlayer player) {
+        Config view = RollbackConfiguration.resolve(this);
+        if (view != this) return view.get(player);
         this.player = player;
         return this;
     }
@@ -124,12 +169,14 @@ public class Config implements PKConfiguration {
      * Defaults remain available for forward compatibility.
      */
     public synchronized void applyRemoteValues(final Map<String, Object> remoteValues) {
+        requireMutable();
         this.values.clear();
         if (remoteValues != null) this.values.putAll(remoteValues);
         this.loadedWithValues = !this.values.isEmpty();
     }
 
     public void create() {
+        requireMutable();
         final File parent = this.file.getParentFile();
         if (parent != null && !parent.exists() && !parent.mkdirs()) {
             Platform.logger().warning("Failed to create config directory " + parent);
@@ -146,6 +193,7 @@ public class Config implements PKConfiguration {
     }
 
     public void reload() {
+        requireMutable();
         create();
         try {
             final LoadedYaml yaml = loadYaml(Files.readString(this.file.toPath(), StandardCharsets.UTF_8));
@@ -220,6 +268,7 @@ public class Config implements PKConfiguration {
     }
 
     public void save() {
+        requireMutable();
         create();
         try (BufferedWriter writer = Files.newBufferedWriter(this.file.toPath(), StandardCharsets.UTF_8)) {
             if (this.options.header() != null && !this.options.header().isBlank()) {
@@ -240,6 +289,7 @@ public class Config implements PKConfiguration {
     }
 
     public void save(final File target) throws IOException {
+        requireMutable();
         if (target.equals(this.file)) {
             save();
             return;
@@ -275,11 +325,13 @@ public class Config implements PKConfiguration {
     }
 
     public Config getConfig(final String path) {
+        Config view = RollbackConfiguration.resolve(this);
+        if (view != this) return view.getConfig(path);
         if (this.player == null || this.player.getStyle() == null) {
             this.player = null;
             return null;
         }
-        final Config c = this.player.getStyle().getConfig();
+        final Config c = RollbackConfiguration.resolve(this.player.getStyle().getConfig());
         return c.contains(path) ? c : null;
     }
 
@@ -290,16 +342,21 @@ public class Config implements PKConfiguration {
 
     /** True when a path came from the file/remote values rather than defaults. */
     public boolean containsExplicit(final String path) {
+        Config view = RollbackConfiguration.resolve(this);
+        if (view != this) return view.containsExplicit(path);
         return path != null && this.values.containsKey(path);
     }
 
     /** True when this configuration was loaded with at least one explicit value. */
     public boolean hasLoadedValues() {
+        Config view = RollbackConfiguration.resolve(this);
+        if (view != this) return view.hasLoadedValues();
         return this.loadedWithValues;
     }
 
     /** Adds a newly introduced section to an existing file without copying unrelated defaults. */
     void persistDefaultsInSection(final String section) {
+        requireMutable();
         // Keep new files empty until save() bootstraps the complete default configuration.
         if (!this.loadedWithValues) return;
         final String prefix = section.endsWith(".") ? section : section + ".";
@@ -312,6 +369,7 @@ public class Config implements PKConfiguration {
 
     /** Repairs stock help text whose wrapped continuation was lost by the old line reader. */
     int repairTruncatedAbilityText() {
+        requireMutable();
         int repaired = 0;
         for (final Map.Entry<String, Object> entry : this.defaults.entrySet()) {
             final String path = entry.getKey();
@@ -345,21 +403,27 @@ public class Config implements PKConfiguration {
 
     @Override
     public void set(final String path, final Object value) {
+        requireMutable();
         if (value == null) this.values.remove(path);
         else this.values.put(path, value);
     }
 
     @Override
     public void addDefault(final String path, final Object value) {
+        requireMutable();
         this.defaults.putIfAbsent(path, value);
     }
 
     @Override
     public PKConfigurationOptions options() {
+        Config view = RollbackConfiguration.resolve(this);
+        if (view != this) return view.options();
+        if (this.frozen) throw new IllegalStateException("File configuration options are unavailable during rollback");
         return this.options;
     }
 
     public void removeTree(final String prefix) {
+        requireMutable();
         final String p = prefix.endsWith(".") ? prefix : prefix + ".";
         this.values.keySet().removeIf(key -> key.equals(prefix) || key.startsWith(p));
     }
@@ -444,16 +508,23 @@ public class Config implements PKConfiguration {
     }
 
     private Object raw(final String path) {
+        Config view = RollbackConfiguration.resolve(this);
+        if (view != this) return view.raw(path);
         final Config c = getConfig(path);
         if (c != null && c != this) return c.rawLocal(path);
         return rawLocal(path);
     }
 
     private Object rawLocal(final String path) {
-        return this.values.containsKey(path) ? this.values.get(path) : this.defaults.get(path);
+        Config view = RollbackConfiguration.resolve(this);
+        if (view != this) return view.rawLocal(path);
+        Object value = this.values.containsKey(path) ? this.values.get(path) : this.defaults.get(path);
+        return this.frozen ? RollbackConfiguration.copyValue(value) : value;
     }
 
     private Map<String, Object> mergedFlat() {
+        Config view = RollbackConfiguration.resolve(this);
+        if (view != this) return view.mergedFlat();
         final Map<String, Object> merged = new LinkedHashMap<>(this.defaults);
         merged.putAll(this.values);
         return merged;

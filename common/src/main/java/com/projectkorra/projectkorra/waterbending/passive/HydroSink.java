@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.waterbending.passive;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.ability.PassiveAbility;
@@ -56,7 +58,7 @@ public class HydroSink extends WaterAbility implements PassiveAbility {
 
     @Override
     public void progress() {
-        if (System.currentTimeMillis() - bPlayer.getLastSurgeWaveTime() > minimumSurgeWaveTime) {
+        if (RollbackClock.millis() - bPlayer.getLastSurgeWaveTime() > minimumSurgeWaveTime) {
             bPlayer.resetSurgeWaveDecay(maxSurgeStamina);
         }
 

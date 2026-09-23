@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.mc.Location;
@@ -73,7 +75,7 @@ public class LightManager {
      * This is running periodically, or every 50ms, via the scheduled thread pool executor.
      */
     private void revertExpiredLights() {
-        long currentTime = System.currentTimeMillis();
+        long currentTime = RollbackClock.millis();
         List<LightData> lightsToRevert = new ArrayList<>();
 
         lightMap.forEach((location, lightDataSet) -> {
@@ -238,7 +240,7 @@ public class LightManager {
         if (!modern) return;
 
         location = location.getBlock().getLocation();
-        long expiryTime = System.currentTimeMillis() + expiry;
+        long expiryTime = RollbackClock.millis() + expiry;
 
         if (location.getBlock().getLightLevel() >= brightness ||
                 (!location.getBlock().isEmpty() && !location.getBlock().getType().equals(Material.WATER))) return;

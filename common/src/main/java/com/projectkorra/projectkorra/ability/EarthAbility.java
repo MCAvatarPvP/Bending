@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.ability;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -98,7 +100,7 @@ public abstract class EarthAbility extends ElementalAbility {
         }
         final Information lifecycle = info;
         DirectBlockSync.runEarthLifecycle(lifecycle, () -> block.setType(Material.AIR, false));
-        info.setTime(System.currentTimeMillis());
+        info.setTime(RollbackClock.millis());
         TEMP_AIR_LOCATIONS.put(info.getID(), info);
     }
 
@@ -723,11 +725,11 @@ public abstract class EarthAbility extends ElementalAbility {
         } else {
             info = new Information();
             info.setBlock(source);
-            info.setTime(System.currentTimeMillis());
+            info.setTime(RollbackClock.millis());
             info.setState(source.getState());
         }
         stampPredictionCause(info, this);
-        info.setTime(System.currentTimeMillis());
+        info.setTime(RollbackClock.millis());
         MOVED_EARTH.put(target, info);
 
         Material targetMat = info.getState().getType();

@@ -19,6 +19,8 @@
 
 package me.moros.hyperion.abilities.waterbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
@@ -136,7 +138,7 @@ public class IceBreath extends IceAbility implements AddonAbility {
                 remove();
                 return;
             }
-            if (System.currentTimeMillis() > getStartTime() + chargeTime) {
+            if (RollbackClock.millis() > getStartTime() + chargeTime) {
                 charged = true;
             }
         }

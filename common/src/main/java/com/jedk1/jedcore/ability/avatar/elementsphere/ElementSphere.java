@@ -1,5 +1,8 @@
 package com.jedk1.jedcore.ability.avatar.elementsphere;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
 import com.projectkorra.projectkorra.Element;
@@ -40,7 +43,7 @@ public class ElementSphere extends AvatarAbility implements AddonAbility, MultiA
     public long cooldown;
     @Attribute(Attribute.DURATION)
     public long duration;
-    Random rand = new Random();
+    Random rand = new RollbackRandom();
     private World world;
     @Attribute(Attribute.HEIGHT)
     private double height;
@@ -104,7 +107,7 @@ public class ElementSphere extends AvatarAbility implements AddonAbility, MultiA
 
         if (bPlayer.canBend(this)) {
             world = player.getWorld();
-            endTime = System.currentTimeMillis() + duration;
+            endTime = RollbackClock.millis() + duration;
             start();
             if (!isRemoved()) {
                 MultiAbilityManager.bindMultiAbility(player, "ElementSphere");
@@ -146,7 +149,7 @@ public class ElementSphere extends AvatarAbility implements AddonAbility, MultiA
             remove();
             return;
         }
-        if (System.currentTimeMillis() > endTime && duration > 0) {
+        if (RollbackClock.millis() > endTime && duration > 0) {
             remove();
             return;
         }
@@ -287,10 +290,10 @@ public class ElementSphere extends AvatarAbility implements AddonAbility, MultiA
     }
 
     public void prepareCancel() {
-        if (System.currentTimeMillis() < lastClickTime + 500L) {
+        if (RollbackClock.millis() < lastClickTime + 500L) {
             remove();
         } else {
-            lastClickTime = System.currentTimeMillis();
+            lastClickTime = RollbackClock.millis();
         }
     }
 

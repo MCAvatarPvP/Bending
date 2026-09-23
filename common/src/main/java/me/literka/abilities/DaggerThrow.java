@@ -1,5 +1,7 @@
 package me.literka.abilities;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
@@ -86,7 +88,7 @@ public class DaggerThrow extends ChiAbility implements AddonAbility {
             remove();
             return;
         }
-        if (System.currentTimeMillis() > endTime) {
+        if (RollbackClock.millis() > endTime) {
             bPlayer.addCooldown(this);
             remove();
             return;
@@ -122,7 +124,7 @@ public class DaggerThrow extends ChiAbility implements AddonAbility {
 
         location.getWorld().playSound(location, Sound.ITEM_TRIDENT_THROW, 1, 2);
         arrows.add(arrow);
-        endTime = System.currentTimeMillis() + 500;
+        endTime = RollbackClock.millis() + 500;
         bPlayer.addCooldown("DaggerThrowShot", 100);
     }
 

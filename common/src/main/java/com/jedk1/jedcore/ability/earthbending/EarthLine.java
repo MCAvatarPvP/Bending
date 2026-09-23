@@ -1,5 +1,7 @@
 package com.jedk1.jedcore.ability.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
 import com.jedk1.jedcore.policies.removal.*;
@@ -212,7 +214,7 @@ public class EarthLine extends EarthAbility implements AddonAbility {
     public void shootLine(Location endLocation) {
         if (useCooldown != 0 && bPlayer.getCooldown(this.getName()) < useCooldown)
             bPlayer.addCooldown(this, useCooldown);
-        if (maxDuration > 0) removalTime = System.currentTimeMillis() + maxDuration;
+        if (maxDuration > 0) removalTime = RollbackClock.millis() + maxDuration;
         this.endLocation = endLocation;
         progressing = true;
         breakSourceBlock();
@@ -244,7 +246,7 @@ public class EarthLine extends EarthAbility implements AddonAbility {
             return;
         }
 
-        if (removalTime > -1 && System.currentTimeMillis() > removalTime) {
+        if (removalTime > -1 && RollbackClock.millis() > removalTime) {
             remove();
             return;
         }

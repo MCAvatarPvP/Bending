@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.prediction.movement;
 
+import com.projectkorra.projectkorra.prediction.authority.PredictionServices;
 import com.projectkorra.projectkorra.ability.Ability;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
@@ -19,10 +20,12 @@ public final class VelocitySync {
     }
 
     public static void install(final Listener newListener) {
+        PredictionServices.requireGlobalMutation();
         listener = newListener;
     }
 
     public static void clear(final Listener expected) {
+        PredictionServices.requireGlobalMutation();
         if (listener == expected) {
             listener = null;
             COMMIT_DEPTH.remove();
@@ -31,7 +34,7 @@ public final class VelocitySync {
     }
 
     public static void publish(final Ability ability, final Entity target, final Vector velocity) {
-        final Listener current = listener;
+        final Listener current = PredictionServices.current(Listener.class, listener);
         if (current != null && ability != null && target != null && velocity != null) {
             current.onVelocity(ability, target, velocity.clone());
         }

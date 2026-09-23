@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.waterbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -28,7 +31,7 @@ import com.projectkorra.projectkorra.waterbending.plant.PlantRegrowth;
 import com.projectkorra.projectkorra.waterbending.util.WaterReturn;
 
 import java.util.*;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Random;
 
 public class SurgeWave extends WaterAbility {
 
@@ -147,7 +150,7 @@ public class SurgeWave extends WaterAbility {
             this.knockup *= bPlayer.getSurgeWaveDecay();
 
             this.start();
-            this.time = System.currentTimeMillis();
+            this.time = RollbackClock.millis();
         }
     }
 
@@ -476,7 +479,7 @@ public class SurgeWave extends WaterAbility {
 
                     this.frozenBlocks.put(block, oldType);
 
-                    if (ThreadLocalRandom.current().nextInt(4) == 0) {
+                    if (RollbackRandom.shared().nextInt(4) == 0) {
                         playWaterbendingSound(block.getLocation());
                     }
                 }
@@ -506,7 +509,7 @@ public class SurgeWave extends WaterAbility {
             return;
         }
 
-        if (System.currentTimeMillis() - bPlayer.getLastSurgeWaveTime() < minimumAirBlastTime) {
+        if (RollbackClock.millis() - bPlayer.getLastSurgeWaveTime() < minimumAirBlastTime) {
             bPlayer.increaseSurgeWaveDecay(decayAmount, decayMinimum);
         }
 
@@ -573,8 +576,8 @@ public class SurgeWave extends WaterAbility {
             return;
         }
 
-        if (System.currentTimeMillis() - this.time >= this.interval) {
-            this.time = System.currentTimeMillis();
+        if (RollbackClock.millis() - this.time >= this.interval) {
+            this.time = RollbackClock.millis();
 
             if (!this.progressing && !this.bPlayer.getBoundAbilityName().equals(this.getName())) {
                 this.remove();
@@ -622,13 +625,13 @@ public class SurgeWave extends WaterAbility {
 
                             blocks.add(block);
 
-                            if (isWater(block) && ThreadLocalRandom.current().nextInt(8) == 0) {
+                            if (isWater(block) && RollbackRandom.shared().nextInt(8) == 0) {
                                 ParticleEffect.WATER_BUBBLE.display(
                                         block.getLocation().clone().add(0.5, 0.5, 0.5),
                                         1,
-                                        ThreadLocalRandom.current().nextDouble(0, 0.5),
-                                        ThreadLocalRandom.current().nextDouble(0, 0.5),
-                                        ThreadLocalRandom.current().nextDouble(0, 0.5),
+                                        RollbackRandom.shared().nextDouble(0, 0.5),
+                                        RollbackRandom.shared().nextDouble(0, 0.5),
+                                        RollbackRandom.shared().nextDouble(0, 0.5),
                                         0
                                 );
                             }

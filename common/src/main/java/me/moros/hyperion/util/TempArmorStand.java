@@ -19,6 +19,8 @@
 
 package me.moros.hyperion.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Material;
@@ -57,7 +59,7 @@ public class TempArmorStand {
             entity.getEquipment().setHelmet(new ItemStack(headMaterial));
             entity.setMetadata(CoreMethods.NO_INTERACTION_KEY, new FixedMetadataValue(Hyperion.getPlugin(), ""));
         });
-        expirationTime = System.currentTimeMillis() + delay;
+        expirationTime = RollbackClock.millis() + delay;
         ability = abilityInstance;
         instances.put(armorStand, this);
         tasQueue.add(this);
@@ -78,7 +80,7 @@ public class TempArmorStand {
     }
 
     public static void manage() {
-        final long currentTime = System.currentTimeMillis();
+        final long currentTime = RollbackClock.millis();
         while (!tasQueue.isEmpty()) {
             final TempArmorStand tas = tasQueue.peek();
             if (currentTime > tas.getExpirationTime()) {

@@ -9,6 +9,7 @@ import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.FireAbility;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackDomain;
 
 import java.util.function.Supplier;
 
@@ -21,7 +22,9 @@ import java.util.function.Supplier;
  */
 public enum HitRegistrationPolicy {
     REWIND_ASSISTED,
-    SERVER_CURRENT;
+    SERVER_CURRENT,
+    /** Both loaders resolve contact against the restored simulation tick. */
+    SIMULATION_CURRENT;
 
     private static final ThreadLocal<Integer> TARGET_ACQUISITION_DEPTH =
             ThreadLocal.withInitial(() -> 0);
@@ -33,6 +36,7 @@ public enum HitRegistrationPolicy {
 
     /** The mod flag must come from the server's existing client session. */
     public static HitRegistrationPolicy forTarget(final CoreAbility ability, final boolean targetHasMod) {
+        if (RollbackDomain.active()) return SIMULATION_CURRENT;
         return targetHasMod || ability == null
                 ? REWIND_ASSISTED
                 : resolve(ability.getClass(), ability.getElement());

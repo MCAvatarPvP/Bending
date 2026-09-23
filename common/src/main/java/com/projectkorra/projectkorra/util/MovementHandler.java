@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.platform.mc.Location;
@@ -27,7 +29,7 @@ public class MovementHandler {
         this.entity = entity;
         this.location = entity.getLocation();
         this.ability = ability;
-        this.startTime = System.currentTimeMillis();
+        this.startTime = RollbackClock.millis();
     }
 
     public static void tickAll() {
@@ -71,14 +73,14 @@ public class MovementHandler {
     }
 
     private void tick() {
-        if (duration != -1 && duration >= 0 && System.currentTimeMillis() > startTime + duration) {
+        if (duration != -1 && duration >= 0 && RollbackClock.millis() > startTime + duration) {
             reset();
             return;
         }
         if (entity instanceof Player) {
             Player player = (Player) entity;
             Location loc = player.getLocation();
-            double currTime = (double) (duration - (System.currentTimeMillis() - startTime)) / 1000;
+            double currTime = (double) (duration - (RollbackClock.millis() - startTime)) / 1000;
             ChatUtil.sendActionBar(message.replace("{current_stun_time}", "" + currTime), player);
             if (loc.getX() == location.getX() && loc.getY() == location.getY() && loc.getZ() == location.getZ()) {
                 return;

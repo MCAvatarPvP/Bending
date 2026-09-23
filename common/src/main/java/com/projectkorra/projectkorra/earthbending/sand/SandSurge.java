@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.earthbending.sand;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.SandAbility;
 import com.projectkorra.projectkorra.ability.util.Collision;
@@ -136,7 +138,7 @@ public class SandSurge extends SandAbility {
         }
         if (!this.moving) {
             if (!this.player.isSneaking()
-                    || System.currentTimeMillis() > this.getStartTime() + this.prepareTimeout) {
+                    || RollbackClock.millis() > this.getStartTime() + this.prepareTimeout) {
                 this.remove();
                 return;
             }

@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.waterbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
@@ -27,7 +30,7 @@ import com.projectkorra.projectkorra.waterbending.util.WaterReturn;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Random;
 
 public class SurgeWall extends WaterAbility {
 
@@ -92,11 +95,11 @@ public class SurgeWall extends WaterAbility {
             } else if (this.prepare()) {
                 wall.remove();
                 this.start();
-                this.time = System.currentTimeMillis();
+                this.time = RollbackClock.millis();
             }
         } else if (!this.bPlayer.isOnCooldown("SurgeWall") && this.prepare()) {
             this.start();
-            this.time = System.currentTimeMillis();
+            this.time = RollbackClock.millis();
             return;
         }
 
@@ -352,7 +355,7 @@ public class SurgeWall extends WaterAbility {
         if (!this.bPlayer.canBendIgnoreBindsCooldowns(this)) {
             this.remove();
             return;
-        } else if (this.duration != 0 && System.currentTimeMillis() > this.getStartTime() + this.duration) {
+        } else if (this.duration != 0 && RollbackClock.millis() > this.getStartTime() + this.duration) {
             this.bPlayer.addCooldown(this);
             this.remove();
             return;
@@ -363,8 +366,8 @@ public class SurgeWall extends WaterAbility {
 
         this.locations.clear();
 
-        if (System.currentTimeMillis() - this.time >= this.interval) {
-            this.time = System.currentTimeMillis();
+        if (RollbackClock.millis() - this.time >= this.interval) {
+            this.time = RollbackClock.millis();
             final boolean matchesName = this.bPlayer.getBoundAbilityName().equals(this.getName());
 
             if (!this.progressing && !matchesName) {
@@ -379,7 +382,7 @@ public class SurgeWall extends WaterAbility {
             }
 
             if (this.forming) {
-                if ((new Random()).nextInt(7) == 0) {
+                if ((new RollbackRandom()).nextInt(7) == 0) {
                     playWaterbendingSound(this.location);
                 }
 
@@ -403,7 +406,7 @@ public class SurgeWall extends WaterAbility {
                                 WALL_BLOCKS.put(block, this.player);
                                 this.addWallBlock(block);
                             } else if (isWater(block) && !frozen) {
-                                ParticleEffect.WATER_BUBBLE.display(block.getLocation().clone().add(.5, .5, .5), 1, ThreadLocalRandom.current().nextDouble(0, 0.5), ThreadLocalRandom.current().nextDouble(0, 0.5), ThreadLocalRandom.current().nextDouble(0, 0.5), 0);
+                                ParticleEffect.WATER_BUBBLE.display(block.getLocation().clone().add(.5, .5, .5), 1, RollbackRandom.shared().nextDouble(0, 0.5), RollbackRandom.shared().nextDouble(0, 0.5), RollbackRandom.shared().nextDouble(0, 0.5), 0);
                             }
                             blocks.add(block);
                             this.locations.add(block.getLocation());

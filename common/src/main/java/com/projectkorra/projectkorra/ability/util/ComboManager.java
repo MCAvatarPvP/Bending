@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.ability.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.Element.SubElement;
@@ -87,7 +89,7 @@ public class ComboManager {
             return;
         }
 
-        final AbilityInformation info = new AbilityInformation(abilityName, type, System.currentTimeMillis());
+        final AbilityInformation info = new AbilityInformation(abilityName, type, RollbackClock.millis());
         addRecentAbility(player, info);
         handleComboHelpInput(player, info);
 
@@ -113,6 +115,7 @@ public class ComboManager {
             try {
                 created = ReflectionHandler.instantiateObject(clazz, player);
             } catch (final Exception e) {
+                if (RollbackClock.active() || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) throw new IllegalStateException("Failed rollback combo: " + comboAbil.getName(), e);
                 e.printStackTrace();
             }
         } else {
@@ -149,7 +152,7 @@ public class ComboManager {
             list = new ArrayList<AbilityInformation>();
         }
 
-        pruneExpired(list, System.currentTimeMillis());
+        pruneExpired(list, RollbackClock.millis());
         list.add(info);
         RECENTLY_USED.put(name, list);
     }
@@ -166,7 +169,7 @@ public class ComboManager {
 
             if (list.size() > 0) {
                 AbilityInformation last = list.get(list.size() - 1);
-                if (last.getTime() > System.currentTimeMillis() - 50 && last.getClickType() == type) { //If the ability was within the last tick
+                if (last.getTime() > RollbackClock.millis() - 50 && last.getClickType() == type) { //If the ability was within the last tick
                     list.remove(last);
                 }
             }
@@ -227,7 +230,7 @@ public class ComboManager {
     }
 
     public static void cleanupOldCombos() {
-        final long now = System.currentTimeMillis();
+        final long now = RollbackClock.millis();
         RECENTLY_USED.entrySet().removeIf(entry -> {
             final ArrayList<AbilityInformation> history = entry.getValue();
             pruneExpired(history, now);
@@ -259,7 +262,7 @@ public class ComboManager {
         }
 
         final ArrayList<AbilityInformation> list = RECENTLY_USED.get(name);
-        pruneExpired(list, System.currentTimeMillis());
+        pruneExpired(list, RollbackClock.millis());
         if (list.isEmpty()) {
             RECENTLY_USED.remove(name, list);
             return new ArrayList<AbilityInformation>();
@@ -354,6 +357,7 @@ public class ComboManager {
                         ComboManager.getInstructions().put(ability.getName(), ability.getInstructions());
                     }
                 } catch (Error | Exception e) {
+                    if (RollbackClock.active() || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) throw new IllegalStateException("Failed rollback combo registration: " + ability.getName(), e);
                     e.printStackTrace();
                 }
             }
