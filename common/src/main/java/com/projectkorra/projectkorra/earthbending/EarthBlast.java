@@ -1,11 +1,13 @@
 package com.projectkorra.projectkorra.earthbending;
 
 import com.projectkorra.projectkorra.BendingPlayer;
+import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.EarthAbility;
 import com.projectkorra.projectkorra.ability.util.Collision;
 import com.projectkorra.projectkorra.ability.activation.AbilityActivationManager;
+import com.projectkorra.projectkorra.ability.util.ElementalCollisionEffects;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.earthbending.passive.DensityShift;
 import com.projectkorra.projectkorra.platform.mc.Location;
@@ -16,6 +18,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
+import com.projectkorra.projectkorra.prediction.authority.AuthoritativeEffects;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.*;
 
@@ -201,6 +204,7 @@ public class EarthBlast extends EarthAbility {
             final Vector vector = location.getDirection();
             final Location mloc = blast.location;
             if (mloc.distanceSquared(location) <= this.range * this.range && GeneralMethods.getDistanceFromLine(vector, location, blast.location) < this.deflectRange && mloc.distanceSquared(location.clone().add(vector)) < mloc.distanceSquared(location.clone().add(vector.clone().multiply(-1)))) {
+                AuthoritativeEffects.run(() -> ElementalCollisionEffects.play(blast.location, Element.EARTH, Element.EARTH));
                 blast.remove();
                 this.remove();
                 return;
