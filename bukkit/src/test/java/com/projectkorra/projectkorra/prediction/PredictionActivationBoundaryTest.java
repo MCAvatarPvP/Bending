@@ -250,7 +250,7 @@ class PredictionActivationBoundaryTest {
     }
 
     @Test
-    void airAndFireClaimsUseExistingModSessionAtBothValidationPoints() throws IOException {
+    void airAndFireClaimsAreRejectedAtBothValidationPoints() throws IOException {
         String paper = read("src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java",
                 "bukkit/src/main/java/com/projectkorra/projectkorra/prediction/server/PaperPredictionServer.java");
         String runtime = read("../fabric/src/main/java/com/projectkorra/projectkorra/fabric/client/ExactPredictionRuntime.java",
@@ -259,22 +259,27 @@ class PredictionActivationBoundaryTest {
                 "fabric/src/main/java/com/projectkorra/projectkorra/platform/fabric/FabricPredictionMC.java");
         String targeting = read("../common/src/main/java/com/projectkorra/projectkorra/GeneralMethods.java",
                 "common/src/main/java/com/projectkorra/projectkorra/GeneralMethods.java");
+        String policy = read("../common/src/main/java/com/projectkorra/projectkorra/prediction/hit/HitRegistrationPolicy.java",
+                "common/src/main/java/com/projectkorra/projectkorra/prediction/hit/HitRegistrationPolicy.java");
 
         assertTrue(paper.contains("HitRegistrationPolicy.forTarget(ability, isExactClient(target.getUniqueId()))")
                         && paper.contains("== HitRegistrationPolicy.SERVER_CURRENT")
                         && paper.contains("claims.remove()"),
-                "Fire/Air query augmentation must recheck the target's existing mod session");
+                "server hit queries must reject claims for server-current abilities");
         assertTrue(paper.contains("CoreAbility.getAbility(action.ability)")
                         && paper.contains("HitRegistrationPolicy.forTarget(claimedAbility,")
                         && paper.contains("PaperPredictionServer.isExactClient(target.getUniqueId())"),
-                "Fire/Air claims require a modded target before history validation");
+                "claim intake must check hit authority before history validation");
         assertTrue(runtime.contains("== HitRegistrationPolicy.REWIND_ASSISTED")
                         && runtime.contains("retainsAcceptedPredictedLifecycle("),
-                "reuse the existing client claim and lifecycle paths");
+                "client contact reports must follow the ability's authority policy");
         assertTrue(fabricWorld.contains("HitRegistrationPolicy.includePredictedEntity"),
-                "shared policy controls contact reporting without changing the Fabric adapter");
+                "shared policy controls Fabric collision candidates");
         assertTrue(targeting.contains("HitRegistrationPolicy.targetAcquisition("),
                 "existing aiming queries remain available");
+        assertTrue(policy.contains("return forAbility(ability);")
+                        && policy.contains("return ability == null ? REWIND_ASSISTED : resolve("),
+                "target mod status must not enable Air or Fire client hit claims");
     }
 
     @Test

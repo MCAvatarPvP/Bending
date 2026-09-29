@@ -10,8 +10,7 @@ import com.projectkorra.projectkorra.ability.activation.AbilityActivationManager
 import com.projectkorra.projectkorra.ability.util.ElementalCollisionEffects;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.earthbending.passive.DensityShift;
-import com.projectkorra.projectkorra.platform.mc.Location;
-import com.projectkorra.projectkorra.platform.mc.Material;
+import com.projectkorra.projectkorra.platform.mc.*;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.block.BlockFace;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
@@ -23,6 +22,9 @@ import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.*;
 
 import java.util.ArrayList;
+
+import static com.projectkorra.projectkorra.ability.util.ElementalCollisionEffects.EARTH_DUST;
+import static com.projectkorra.projectkorra.ability.util.ElementalCollisionEffects.spawnBlockBurst;
 
 public class EarthBlast extends EarthAbility {
     private boolean isProgressing;
@@ -204,12 +206,20 @@ public class EarthBlast extends EarthAbility {
             final Vector vector = location.getDirection();
             final Location mloc = blast.location;
             if (mloc.distanceSquared(location) <= this.range * this.range && GeneralMethods.getDistanceFromLine(vector, location, blast.location) < this.deflectRange && mloc.distanceSquared(location.clone().add(vector)) < mloc.distanceSquared(location.clone().add(vector.clone().multiply(-1)))) {
-                AuthoritativeEffects.run(() -> ElementalCollisionEffects.play(blast.location, Element.EARTH, Element.EARTH));
+                AuthoritativeEffects.run(() -> playEarthImpact(mloc, blast.bPlayer.getEarthCosmetic().getMaterial()));
                 blast.remove();
                 this.remove();
                 return;
             }
         }
+    }
+
+    private static void playEarthImpact(final Location location, Material material) {
+        final World world = location.getWorld();
+        world.spawnParticle(Particle.BLOCK, location, 14, 0.24D, 0.16D, 0.24D, 0.07D, material.createBlockData());
+        world.spawnParticle(Particle.DUST, location, 5, 0.2D, 0.14D, 0.2D, 0.0D, EARTH_DUST);
+        spawnBlockBurst(location, material, 4, 0.24D, 0.12F);
+        world.playSound(location, Sound.BLOCK_ROOTED_DIRT_BREAK, 0.85F, 0.75F);
     }
 
     private void focusBlock() {

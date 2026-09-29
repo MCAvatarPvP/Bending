@@ -28,7 +28,7 @@ public final class ElementalCollisionEffects {
     private static final Random RANDOM = new Random();
     private static final Particle.DustOptions AIR_DUST = new Particle.DustOptions(Color.fromRGB(210, 235, 255), 1.25F);
     private static final Particle.DustOptions WATER_DUST = new Particle.DustOptions(Color.fromRGB(70, 165, 255), 1.35F);
-    private static final Particle.DustOptions EARTH_DUST = new Particle.DustOptions(Color.fromRGB(125, 88, 48), 1.25F);
+    public static final Particle.DustOptions EARTH_DUST = new Particle.DustOptions(Color.fromRGB(125, 88, 48), 1.25F);
     private static final Particle.DustOptions FIRE_DUST = new Particle.DustOptions(Color.fromRGB(255, 105, 25), 1.4F);
     private static final Particle.DustOptions STEAM_DUST = new Particle.DustOptions(Color.fromRGB(225, 235, 235), 1.6F);
 
@@ -286,7 +286,7 @@ public final class ElementalCollisionEffects {
         ParticleEffect.FLAME.display(location, amount, offsetX, offsetY, offsetZ, speed);
     }
 
-    private static void spawnBlockBurst(final Location center, final Material material, final int count, final double radius, final float scale) {
+    public static void spawnBlockBurst(final Location center, final Material material, final int count, final double radius, final float scale) {
         if (ProjectKorra.plugin == null || !Platform.scheduler().isPrimaryThread()) {
             return;
         }
@@ -341,7 +341,7 @@ public final class ElementalCollisionEffects {
         return RANDOM.nextBoolean() ? 1.0F : -1.0F;
     }
 
-    private static final class CollisionCosmetics {
+    public static final class CollisionCosmetics {
         private final BendingPlayer airBender;
         private final BendingPlayer fireBender;
         private final BendingPlayer earthBender;
@@ -352,11 +352,11 @@ public final class ElementalCollisionEffects {
             this.earthBender = earthBender;
         }
 
-        private static CollisionCosmetics from(final BendingPlayer bender) {
+        public static CollisionCosmetics from(final BendingPlayer bender) {
             return new CollisionCosmetics(bender, bender, bender);
         }
 
-        private static CollisionCosmetics from(final Collision collision) {
+        public static CollisionCosmetics from(final Collision collision) {
             BendingPlayer airBender = null;
             BendingPlayer fireBender = null;
             BendingPlayer earthBender = null;

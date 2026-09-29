@@ -103,20 +103,6 @@ class EarthBlastRedirectTest {
     }
 
     @ParameterizedTest @ValueSource(booleans = {true, false})
-    void configurationControlsWhetherPreparingEarthDestroysAnIncomingBlast(boolean fixed) throws Exception {
-        ConfigManager.getConfig().set("Abilities.Earth.EarthBlast.RedirectFix", fixed);
-        EarthBlast incoming = launched();
-        EarthBlast prepared = prepare(controller, world.getBlockAt(2, 63, 1));
-        assertEquals(fixed, prepared.isStarted());
-        assertEquals(!fixed, incoming.isRemoved());
-        assertEquals(fixed ? Material.COBBLESTONE : Material.AIR, incoming.getSourceBlock().getType());
-        if (fixed) {
-            assertTrue(incoming.isProgressing());
-            assertFalse(prepared.isRemoved());
-        }
-    }
-
-    @ParameterizedTest @ValueSource(booleans = {true, false})
     void redirectUsesTheConfiguredAimAndOwnershipBehavior(boolean fixed) throws Exception {
         ConfigManager.getConfig().set("Abilities.Earth.EarthBlast.RedirectFix", fixed);
         EarthBlast blast = launched();

@@ -24,7 +24,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.scheduler.BukkitRunnable;
 import com.projectkorra.projectkorra.platform.mc.util.BoundingBox;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
-import com.projectkorra.projectkorra.prediction.hit.ConfirmedHitEffects;
+import com.projectkorra.projectkorra.prediction.authority.AuthoritativeEffects;
 import com.projectkorra.projectkorra.prediction.state.CooldownSync;
 import com.projectkorra.projectkorra.util.DamageHandler;
 import com.projectkorra.projectkorra.util.colliders.AABB;
@@ -414,6 +414,11 @@ public class AirSweep extends AirAbility implements ComboAbility {
         }
         this.affectedEntities.add(entity);
 
+        if (entity instanceof LivingEntity) {
+            final Location hitLocation = entity.getLocation().clone();
+            AuthoritativeEffects.run(() -> playSound(hitLocation, Sound.ENTITY_BREEZE_WIND_BURST, 1, 0.5f));
+        }
+
         if (this.knockback != 0) {
             Vector force = stream.getLocation().getDirection();
             if (this.oldKnockback) {
@@ -429,9 +434,6 @@ public class AirSweep extends AirAbility implements ComboAbility {
         }
 
         DamageHandler.damageEntity(entity, this.damage, this);
-        final Location hitLocation = entity.getLocation().clone();
-        ConfirmedHitEffects.sound(this, entity,
-                () -> playSound(hitLocation, Sound.ENTITY_BREEZE_WIND_BURST, 1, 0.5f));
 
         if (entity instanceof Player entityPlayer) {
             final BendingPlayer otherBP = BendingPlayer.getBendingPlayer(entityPlayer);

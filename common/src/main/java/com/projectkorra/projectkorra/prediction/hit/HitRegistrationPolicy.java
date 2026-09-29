@@ -15,9 +15,8 @@ import java.util.function.Supplier;
 /**
  * Selects which position authority an ability uses for player hit registration.
  *
- * <p>All elements can report client contacts through the existing bounded rewind
- * path. Server validation accepts Fire/Air reports only for modded targets;
- * their other targets retain the current server hit path.</p>
+ * <p>Air and Fire always use the server's current entity positions. Other
+ * elements retain the bounded client contact rewind path.</p>
  */
 public enum HitRegistrationPolicy {
     REWIND_ASSISTED,
@@ -26,16 +25,14 @@ public enum HitRegistrationPolicy {
     private static final ThreadLocal<Integer> TARGET_ACQUISITION_DEPTH =
             ThreadLocal.withInitial(() -> 0);
 
-    /** Client reports share one path; the server checks target eligibility separately. */
+    /** Selects whether a predicted ability may report player contacts. */
     public static HitRegistrationPolicy forAbility(final CoreAbility ability) {
-        return forTarget(ability, true);
+        return ability == null ? REWIND_ASSISTED : resolve(ability.getClass(), ability.getElement());
     }
 
-    /** The mod flag must come from the server's existing client session. */
+    /** The target's mod state does not change Air or Fire hit authority. */
     public static HitRegistrationPolicy forTarget(final CoreAbility ability, final boolean targetHasMod) {
-        return targetHasMod || ability == null
-                ? REWIND_ASSISTED
-                : resolve(ability.getClass(), ability.getElement());
+        return forAbility(ability);
     }
 
     /**
@@ -92,8 +89,8 @@ public enum HitRegistrationPolicy {
     }
 
     /**
-     * Client contact candidates use the shared reporting policy. Target-specific
-     * Fire/Air eligibility is checked when Paper validates the resulting claim.
+     * Keep remote players out of Air/Fire client collision queries. Aiming
+     * queries still need to see them; Paper handles the actual hit collision.
      */
     public static boolean includePredictedEntity(final CoreAbility ability,
                                                  final Entity candidate) {
