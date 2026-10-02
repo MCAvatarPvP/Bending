@@ -49,6 +49,22 @@ state that actually determines those outcomes.
 
 ### October 2, 2026 integration update
 
+`RollbackRound` now lives in the shared ProjectKorra module, so Paper and Fabric
+can use the same provisional defeat, team-survival and attacker-attribution rules.
+It implements `RollbackStateCell`: domain checkpoints rewind provisional results
+without capturing finalized delivery receipts. Neptune's `RollbackRoundEvents` uses
+this shared type; its ordinary damage rule remains available without ProjectKorra,
+and a parity test checks that both lethal-hit thresholds agree. The existing native
+Neptune contract exercises this shared model against actual private Paper damage.
+The production runtime still needs to bind the round to each simulation tick,
+route native damage through it on both loaders, and deliver only confirmed results.
+
+Neptune's saved branch is now checked out separately at
+`build/neptune-rollback`, preserving the main checkout's local changes. Build this
+checkout with `-PprojectKorraJar=<absolute path to the 1.10.30 Bukkit jar>`; its default
+sibling dependency has also been updated to 1.10.30. The isolated checkout is retained
+for the remaining runtime and match-lifecycle integration.
+
 The rollback checkpoint has been updated with `master` at `035d9ecb` (version
 1.10.30). Ordinary Air/Fire combat uses current server positions for both modded
 and unmodded targets. Inside a rollback domain, both ability and target policy

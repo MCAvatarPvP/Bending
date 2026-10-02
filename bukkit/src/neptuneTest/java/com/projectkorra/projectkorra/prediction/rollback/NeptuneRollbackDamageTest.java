@@ -1,7 +1,6 @@
 package com.projectkorra.projectkorra.prediction.rollback;
 
 import com.mojang.authlib.GameProfile;
-import dev.lrxh.neptune.feature.rollback.RollbackRound;
 import dev.lrxh.neptune.feature.rollback.RollbackRoundEvents;
 import com.projectkorra.projectkorra.platform.mc.World;
 import com.projectkorra.projectkorra.platform.mc.inventory.EntityEquipment;
