@@ -159,6 +159,17 @@ public final class RollbackGraphCodec {
     /** Projections select participant-only service state before graph discovery. Direct replacements must be bound. */
     public byte[] encode(Collection<?> roots, Function<Object, RollbackStateTransfer.Replacement> projections) {
         checkThread();
+        return encodeGraph(roots, projections);
+    }
+
+    /** Outgoing copy only, between simulation ticks; decoding remains a detached bootstrap operation. */
+    byte[] encodeExport(Collection<?> roots, Function<Object, RollbackStateTransfer.Replacement> projections) {
+        if (Thread.currentThread() != owner || !RollbackDomain.active() || RollbackClock.active())
+            throw new IllegalStateException("Export graph at a settled owning-domain boundary");
+        return encodeGraph(roots, projections);
+    }
+
+    private byte[] encodeGraph(Collection<?> roots, Function<Object, RollbackStateTransfer.Replacement> projections) {
         Objects.requireNonNull(projections);
         var capture = new Capture(projections);
         int[] rootIds = new int[bounded(roots.size(), limits.maximumReferences(), "roots")];

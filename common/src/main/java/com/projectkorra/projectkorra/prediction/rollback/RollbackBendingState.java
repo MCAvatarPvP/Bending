@@ -70,6 +70,29 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
         return codec.encode(source.roots, source.projections);
     }
 
+    /** Export settled current domain state, replacing startup task/event roots with current registrations. */
+    public byte[] exportState(RollbackGraphCodec codec) {
+        if (Thread.currentThread() != owner || !installed || !RollbackDomain.active()
+                || ProjectKorra.collisionManager != collisions || !BendingPlayer.getPlayers().keySet().equals(players.keySet())
+                || players.entrySet().stream().anyMatch(entry -> BendingPlayer.getPlayers().get(entry.getKey()) != entry.getValue()))
+            throw new IllegalStateException("Export bending state inside its owning installed domain");
+        if (!(com.projectkorra.projectkorra.platform.Platform.scheduler() instanceof RollbackScheduler scheduler))
+            throw new IllegalStateException("Export requires the private gameplay scheduler");
+        var current = new ArrayList<Object>();
+        var tasks = scheduler.exportTasks();
+        var events = RollbackEventBindings.capture(com.projectkorra.projectkorra.platform.Platform.events());
+        boolean foundTasks = false, foundEvents = false;
+        for (Object service : services) {
+            if (service instanceof RollbackTaskBindings) { if (!foundTasks) current.add(tasks); foundTasks = true; }
+            else if (service instanceof RollbackEventBindings) { if (!foundEvents) current.add(events); foundEvents = true; }
+            else current.add(service);
+        }
+        if (!foundTasks) current.add(tasks);
+        if (!foundEvents) current.add(events);
+        Source source = source(players.values(), collisions, current, true);
+        return codec.encodeExport(source.roots, source.projections);
+    }
+
     /** The expected roster comes from the session contract, never from an unvalidated object graph. */
     public static RollbackBendingState decode(Collection<UUID> participants, byte[] bytes, RollbackGraphCodec codec) {
         return fromRoots(participants, codec.decode(bytes));
@@ -80,6 +103,10 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
                           Function<Object, RollbackStateTransfer.Replacement> projections) { }
 
     private static Source source(Collection<BendingPlayer> participants, CollisionManager collisions, Collection<?> services) {
+        return source(participants, collisions, services, false);
+    }
+
+    private static Source source(Collection<BendingPlayer> participants, CollisionManager collisions, Collection<?> services, boolean exporting) {
         Objects.requireNonNull(collisions, "collisions");
         var roster = new TreeMap<UUID, BendingPlayer>();
         for (BendingPlayer player : participants) {
@@ -87,12 +114,13 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
                     || roster.putIfAbsent(player.getUUID(), player) != null) throw new IllegalArgumentException("Bending import roster");
         }
         if (roster.isEmpty() || roster.size() > 128) throw new IllegalArgumentException("Bending import participant count");
-        CoreAbility.RollbackRegistry registry = CoreAbility.captureRollbackRegistry(roster.keySet());
-        Manager.RollbackRegistry managerRegistry = Manager.captureRollbackRegistry();
+        CoreAbility.RollbackRegistry registry = exporting ? CoreAbility.exportRollbackRegistry(roster.keySet()) : CoreAbility.captureRollbackRegistry(roster.keySet());
+        Manager.RollbackRegistry managerRegistry = exporting ? Manager.exportRollbackRegistry() : Manager.captureRollbackRegistry();
         var roots = new ArrayList<Object>(roster.values());
         roots.add(registry);
         roots.add(collisions.rollbackImportSource());
-        roots.add(OfflineBendingPlayer.captureRollbackTemporaryElements(roster.keySet()));
+        roots.add(exporting ? OfflineBendingPlayer.exportRollbackTemporaryElements(roster.keySet())
+                : OfflineBendingPlayer.captureRollbackTemporaryElements(roster.keySet()));
         roots.add(managerRegistry);
         for (Object service : services) roots.add(service instanceof RollbackTaskBindings.Capture tasks ? tasks.bindings() : service);
         // Attribute definitions exist for future activations too. Keep their metadata,
@@ -100,8 +128,10 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
         // not the cache objects, to preserve references held by arbitrary ability fields.
         var projections = new IdentityHashMap<Object, RollbackStateTransfer.Replacement>();
         for (Object service : services) if (service instanceof RollbackTaskBindings.Capture tasks) tasks.projectSources(projections::put);
-        managerRegistry.projectSources(roster.keySet(), (source, view) ->
-                projections.put(source, RollbackStateTransfer.Replacement.fromProjection(view)));
+        java.util.function.BiConsumer<Object, Object> projectManager = (source, view) ->
+                projections.put(source, RollbackStateTransfer.Replacement.fromProjection(view));
+        if (exporting) managerRegistry.projectCurrentSources(roster.keySet(), projectManager);
+        else managerRegistry.projectSources(roster.keySet(), projectManager);
         for (AttributeCache cache : registry.attributes()) {
             projections.put(cache, RollbackStateTransfer.Replacement.fromProjection(cache));
             projectAttributeEntries(cache.getInitialValues(), roster.keySet(), projections);

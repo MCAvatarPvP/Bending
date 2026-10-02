@@ -114,6 +114,16 @@ public class OfflineBendingPlayer {
         if (RollbackClock.active() || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) {
             throw new IllegalStateException("Capture temporary elements before replay");
         }
+        return snapshotRollbackTemporaryElements(participants);
+    }
+
+    public static List<RollbackTemporaryElement> exportRollbackTemporaryElements(Set<UUID> participants) {
+        if (!com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active())
+            throw new IllegalStateException("Export temporary elements inside their replay domain");
+        return snapshotRollbackTemporaryElements(participants);
+    }
+
+    private static List<RollbackTemporaryElement> snapshotRollbackTemporaryElements(Set<UUID> participants) {
         var entries = new ArrayList<RollbackTemporaryElement>();
         for (Pair<Player, Long> entry : TEMP_ELEMENTS) {
             if (participants.contains(entry.getLeft().getUniqueId())) {

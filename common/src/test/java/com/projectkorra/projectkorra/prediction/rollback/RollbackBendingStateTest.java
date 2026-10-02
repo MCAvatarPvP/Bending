@@ -211,6 +211,51 @@ class RollbackBendingStateTest {
                 assertEquals(1.0, CoreAbility.getAttributeCache(pulse).get("Speed").getInitialValues().get(pulse));
                 return null;
             });
+            assertThrows(IllegalStateException.class, () -> imported.exportState(null));
+            Portable[] outgoingCodec = new Portable[1];
+            int constructorsAtExport = Dynamic.constructions + 1;
+            byte[] outgoingBytes = domain.call(() -> {
+                try {
+                    guard.remove();
+                    Pulse createdDuringReplay = new Pulse(imported.players().get(A), privateWorld, 9);
+                    createdDuringReplay.start();
+                    privateBus.unregisterAll(copiedRules);
+                    privateBus.registerListener(new CapturedRule(createdDuringReplay));
+                    temporary.clear(); temporary.add(Pair.of(privateB, 4567L));
+                    imported.players().get(A).getAbilities().put(2, "WaterManipulation");
+                    AttributeCache currentAttribute = CoreAbility.getAttributeCache(pulse).get("Speed");
+                    Portable outgoing = portableTransfer(privateA, privateB, privateWorld, privateA, privateB, privateWorld, currentAttribute);
+                    outgoingCodec[0] = outgoing;
+                    return imported.exportState(outgoing.sender());
+                } catch (Exception failure) { throw new AssertionError(failure); }
+            });
+            var exported = RollbackBendingState.decode(List.of(A, B), outgoingBytes, outgoingCodec[0].receiver());
+            assertEquals(constructorsAtExport, Dynamic.constructions);
+            assertEquals(Set.of(1, 9), exported.abilities().stream().map(CoreAbility::getId).collect(java.util.stream.Collectors.toSet()));
+            Pulse exportedPulse = (Pulse) exported.abilities().stream().filter(ability -> ability.getId() == 1).findFirst().orElseThrow();
+            assertNotSame(pulse, exportedPulse); assertEquals(List.of(1.0, 3.0), exportedPulse.history);
+            assertEquals("WaterManipulation", exported.players().get(A).getAbilities().get(2));
+            var exportedTasks = exported.services().stream().filter(RollbackTaskBindings.class::isInstance)
+                    .map(RollbackTaskBindings.class::cast).findFirst().orElseThrow();
+            assertTrue(exportedTasks.entries().isEmpty(), "Completed startup work must not be resurrected");
+            var exportedRules = exported.services().stream().filter(RollbackEventBindings.class::isInstance)
+                    .map(RollbackEventBindings.class::cast).findFirst().orElseThrow();
+            assertEquals(1, exportedRules.registrations().size());
+            var rule = (CapturedRule) exportedRules.registrations().getFirst().listener();
+            assertEquals(9, rule.ability.getId());
+            assertSame(exported.abilities().stream().filter(ability -> ability.getId() == 9).findFirst().orElseThrow(), rule.ability);
+
+            var exportedCallback = (CapturedTask) exported.services().get(3);
+            assertEquals(1, exportedCallback.calls); assertTrue(exportedCallback.handle.cancelled());
+            assertSame(exportedPulse, exportedCallback.ability);
+            var expiry = (List<?>) field(RollbackBendingState.class, "temporaryElements").get(exported);
+            assertEquals(1, expiry.size());
+            assertSame(privateB, field(OfflineBendingPlayer.RollbackTemporaryElement.class, "player").get(expiry.getFirst()));
+            assertEquals(4567L, field(OfflineBendingPlayer.RollbackTemporaryElement.class, "expiry").getLong(expiry.getFirst()));
+            assertSame(liveGuard, CoreAbility.getAbility(liveB, Guard.class));
+            assertEquals(2, temporary.size());
+            assertNull(bendingA.getAbilities().get(2));
+
         } finally {
             outside.restore();
             attributes.clear();

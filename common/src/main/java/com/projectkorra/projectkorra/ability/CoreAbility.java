@@ -286,6 +286,17 @@ public abstract class CoreAbility implements Ability {
         if (RollbackClock.active() || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) {
             throw new IllegalStateException("Capture live ability registry before replay");
         }
+        return snapshotRollbackRegistry(participants);
+    }
+
+    /** Snapshot the current domain membership for outgoing state transfer. */
+    public static RollbackRegistry exportRollbackRegistry(final Collection<UUID> participants) {
+        if (!com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active())
+            throw new IllegalStateException("Export ability registry inside its replay domain");
+        return snapshotRollbackRegistry(participants);
+    }
+
+    private static RollbackRegistry snapshotRollbackRegistry(final Collection<UUID> participants) {
         Set<UUID> roster = Set.copyOf(participants);
         if (roster.isEmpty() || roster.size() > 128) throw new IllegalArgumentException("Ability import roster");
         List<CoreAbility> selected = new ArrayList<>();

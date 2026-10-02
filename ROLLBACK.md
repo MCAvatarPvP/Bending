@@ -49,6 +49,18 @@ state that actually determines those outcomes.
 
 ### October 2, 2026 integration update
 
+`RollbackBendingState.exportState` now captures the installed domain's current ability,
+manager and temporary-element registries rather than reusing startup membership. It
+replaces initial task/listener roots with the settled scheduler export and current event
+registrations, copying all roots together to preserve aliases. Codec export is explicitly
+allowed only inside the owning domain between simulation ticks; ordinary encode/decode
+retain their bootstrap-only boundary. Integration tests export after late-input replay,
+then add/remove abilities, change listeners, update player/expiry state and decode the
+outgoing graph outside the domain. They verify current membership and aliases, inert
+completed-task handles, no activation/constructor rerun and unchanged live state. Live
+ability/manager registry commits and full native restoration still need integration.
+
+
 Player registry restoration now has a prepared roster-only commit. It requires the exact
 owned participant set, checks the copied players are rebound to their original live body
 handles, validates temporary-element ownership, and verifies both online/offline registry

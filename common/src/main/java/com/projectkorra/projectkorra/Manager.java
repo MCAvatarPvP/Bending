@@ -29,6 +29,11 @@ public abstract class Manager implements Listener {
         return new RollbackRegistry(MANAGERS);
     }
 
+    public static RollbackRegistry exportRollbackRegistry() {
+        if (!RollbackDomain.active()) throw new IllegalStateException("Export managers inside their replay domain");
+        return new RollbackRegistry(MANAGERS);
+    }
+
     /**
      * Select the source containers to import. Values remain source references until
      * the whole bending graph is transferred, preserving aliases held by abilities.
@@ -54,6 +59,15 @@ public abstract class Manager implements Listener {
 
         public void projectSources(Set<UUID> participants, BiConsumer<Object, Object> project) {
             if (RollbackDomain.active() || RollbackClock.active()) throw new IllegalStateException("Manager import during replay");
+            projectState(participants, project);
+        }
+
+        public void projectCurrentSources(Set<UUID> participants, BiConsumer<Object, Object> project) {
+            if (!RollbackDomain.active()) throw new IllegalStateException("Export managers inside their replay domain");
+            projectState(participants, project);
+        }
+
+        private void projectState(Set<UUID> participants, BiConsumer<Object, Object> project) {
             Set<UUID> roster = Set.copyOf(participants);
             for (Manager manager : managers.values()) {
                 project.accept(manager, manager);
