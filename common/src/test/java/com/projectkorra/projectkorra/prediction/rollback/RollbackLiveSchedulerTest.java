@@ -175,6 +175,54 @@ class RollbackLiveSchedulerTest {
         assertEquals(1, callback.calls); assertEquals(2, copy.calls);
     }
 
+    @Test void replayReservationSurvivesWireTransferRewindAndExportWithoutOverlappingLiveWork() {
+        var backend = new Backend(); var live = scheduler(backend);
+        live.runNow(() -> {});
+        var lease = live.prepare(work -> false);
+        var captured = lease.freeze(2);
+        assertSame(captured, lease.freeze(2));
+        assertThrows(IllegalStateException.class, () -> lease.freeze(3));
+        assertEquals(4, live.runNow(() -> {}).legacyId());
+        var codec = new RollbackGraphCodec(new RollbackGraphCodec.Catalog(
+                List.of(RollbackTaskBindings.class, RollbackTaskBindings.Entry.class, RollbackTaskBindings.Handle.class),
+                List.of(), List.of()), new RollbackGraphCodec.Limits(100, 1000, 100_000, 10_000));
+        var bindings = (RollbackTaskBindings) codec.decode(codec.encode(List.of(captured.bindings()), captured::replacement)).getFirst();
+        var replay = new RollbackScheduler(8, 8); bindings.install(replay);
+        assertEquals(2, replay.runNow(() -> {}).legacyId()); replay.advance(1);
+        var checkpoint = replay.captureRollbackState();
+        assertEquals(3, replay.runNow(() -> {}).legacyId());
+        assertThrows(IllegalStateException.class, () -> replay.runNow(() -> {}));
+        assertEquals(1, replay.pendingTasks());
+        replay.restoreRollbackState(checkpoint);
+        var exported = replay.exportTasks();
+        var nextBindings = (RollbackTaskBindings) codec.decode(codec.encode(List.of(exported.bindings()), exported::replacement)).getFirst();
+        var next = new RollbackScheduler(8, 8); nextBindings.install(next);
+        assertEquals(3, next.runNow(() -> {}).legacyId());
+        assertThrows(IllegalStateException.class, () -> next.runNow(() -> {}));
+        lease.restore();
+        assertEquals(5, live.runNow(() -> {}).legacyId(), "Aborted reservations are never recycled");
+    }
+
+    @Test void logicalIdsNeverCancelUnrelatedNativeTasksAfterRestoration() {
+        var backend = new Backend(); backend.next = 100;
+        var scheduler = scheduler(backend); AtomicInteger calls = new AtomicInteger();
+        var first = scheduler.runNow(calls::incrementAndGet);
+        assertEquals(1, first.legacyId());
+        var lease = scheduler.prepare(work -> true); lease.freeze(); lease.restore();
+        var resumed = backend.tasks.values().iterator().next();
+        assertEquals(101, resumed.legacyId());
+        scheduler.cancelTask(101); // Not a handle issued by this scheduler.
+        assertFalse(resumed.cancelled());
+        backend.advance(); assertEquals(1, calls.get());
+        var second = scheduler.runNow(calls::incrementAndGet);
+        assertEquals(2, second.legacyId());
+        scheduler.cancelTask(first.legacyId());
+        backend.advance(); assertEquals(2, calls.get());
+        backend.failAt = backend.submissions + 1;
+        assertThrows(IllegalStateException.class, () -> scheduler.runNow(() -> {}));
+        assertEquals(4, scheduler.runNow(() -> {}).legacyId(), "Failed submission must not recycle a logical ID");
+    }
+
     @Test void selectorMutationIsRejectedBeforeOwnershipChanges() {
         var backend = new Backend(); var scheduler = scheduler(backend); AtomicInteger calls = new AtomicInteger(); scheduler.runNow(calls::incrementAndGet);
         var lease = scheduler.prepare(work -> { scheduler.runNow(() -> {}); return true; });

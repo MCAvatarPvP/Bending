@@ -12,12 +12,14 @@ import java.util.Objects;
 public final class RollbackTaskBindings {
     private final List<Entry> entries;
     private final int minimumNextId;
+    private final int maximumNextId;
     private boolean installed;
 
     public RollbackTaskBindings(List<Entry> entries) { this(entries, 1); }
-    public RollbackTaskBindings(List<Entry> entries, int minimumNextId) {
-        if (minimumNextId < 1) throw new IllegalArgumentException("Task id reservation");
-        this.entries = List.copyOf(entries); this.minimumNextId = minimumNextId;
+    public RollbackTaskBindings(List<Entry> entries, int minimumNextId) { this(entries, minimumNextId, Integer.MAX_VALUE); }
+    public RollbackTaskBindings(List<Entry> entries, int minimumNextId, int maximumNextId) {
+        if (minimumNextId < 1 || maximumNextId < minimumNextId) throw new IllegalArgumentException("Task id reservation");
+        this.entries = List.copyOf(entries); this.minimumNextId = minimumNextId; this.maximumNextId = maximumNextId;
     }
     public List<Entry> entries() { return entries; }
 
@@ -31,7 +33,7 @@ public final class RollbackTaskBindings {
         private final RollbackTaskBindings bindings;
         private final java.util.IdentityHashMap<Object, RollbackStateTransfer.Replacement> projections = new java.util.IdentityHashMap<>();
         private final java.util.function.Function<Object, Integer> inactiveHandles;
-        private Capture(List<Pending> pending, int minimumNextId, java.util.function.Function<Object, Integer> inactiveHandles) {
+        private Capture(List<Pending> pending, int minimumNextId, int maximumNextId, java.util.function.Function<Object, Integer> inactiveHandles) {
             this.inactiveHandles = Objects.requireNonNull(inactiveHandles);
             var entries = new java.util.ArrayList<Entry>();
             var ids = new java.util.HashSet<Integer>();
@@ -43,7 +45,7 @@ public final class RollbackTaskBindings {
                 entries.add(entry);
                 projections.put(task.source(), RollbackStateTransfer.Replacement.fromProjection(entry.handle()));
             }
-            bindings = new RollbackTaskBindings(entries, minimumNextId);
+            bindings = new RollbackTaskBindings(entries, minimumNextId, maximumNextId);
         }
         public RollbackTaskBindings bindings() { return bindings; }
         public RollbackStateTransfer.Replacement replacement(Object value) {
@@ -59,25 +61,31 @@ public final class RollbackTaskBindings {
     /** Supply entries in original scheduling order, including equal-deadline repeating tasks. */
     public static Capture capture(List<Pending> pending) {
         if (RollbackClock.active() || RollbackDomain.active()) throw new IllegalStateException("Capture source tasks before replay");
-        return new Capture(List.copyOf(pending), 1, ignored -> null);
+        return new Capture(List.copyOf(pending), 1, Integer.MAX_VALUE, ignored -> null);
     }
 
     /** Source adapters reserve past IDs and recognize their own completed/cancelled handles on graph traversal. */
     public static Capture capture(List<Pending> pending, int minimumNextId, java.util.function.Function<Object, Integer> inactiveHandles) {
         if (RollbackClock.active() || RollbackDomain.active()) throw new IllegalStateException("Capture source tasks before replay");
-        return new Capture(List.copyOf(pending), minimumNextId, inactiveHandles);
+        return new Capture(List.copyOf(pending), minimumNextId, Integer.MAX_VALUE, inactiveHandles);
+    }
+
+    static Capture captureReserved(List<Pending> pending, int minimumNextId, int maximumNextId,
+            java.util.function.Function<Object, Integer> inactiveHandles) {
+        if (RollbackClock.active() || RollbackDomain.active()) throw new IllegalStateException("Reserve live task IDs before replay");
+        return new Capture(List.copyOf(pending), minimumNextId, maximumNextId, inactiveHandles);
     }
 
     // The private scheduler verifies its owner/thread and tick boundary before exporting.
-    static Capture captureSimulation(List<Pending> pending, int minimumNextId,
+    static Capture captureSimulation(List<Pending> pending, int minimumNextId, int maximumNextId,
             java.util.function.Function<Object, Integer> inactiveHandles) {
-        return new Capture(List.copyOf(pending), minimumNextId, inactiveHandles);
+        return new Capture(List.copyOf(pending), minimumNextId, maximumNextId, inactiveHandles);
     }
 
     /** The private scheduler validates the whole batch before changing membership or handles. */
     public void install(RollbackScheduler scheduler) {
         if (installed) throw new IllegalStateException("Task bindings already installed");
-        Objects.requireNonNull(scheduler).importTasks(entries, minimumNextId);
+        Objects.requireNonNull(scheduler).importTasks(entries, minimumNextId, maximumNextId);
         installed = true;
     }
 

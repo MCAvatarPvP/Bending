@@ -49,14 +49,25 @@ state that actually determines those outcomes.
 
 ### October 2, 2026 integration update
 
+Live scheduler handles now use monotonic logical IDs independent of native backend IDs;
+unknown logical cancellation cannot reach unrelated native tasks. A startup lease can
+reserve a bounded ID range for new replay tasks. Other live scheduling skips that range,
+and aborted reservations are not reused. The transferred task bindings carry both the
+next ID and exclusive limit, so client/server import, rewind and outgoing task export
+retain the same bound. Exhaustion fails before adding work. Reservation tests exercise
+wire transfer, replay rewind/export and continued unrelated live scheduling. Production
+startup must use the capacity-taking freeze overload and keep the lease through final
+restoration; unreserved freeze remains available for abort-only task capture.
+
+
 The private scheduler can now export remaining work at a settled replay tick, including
 updated callback state, relative deadlines, deterministic context, handle aliases and
 reserved IDs. The export is copied with the outgoing gameplay graph and does not retire
 the source before destination preparation succeeds. Regression tests cover a callback
 that has already executed, a second transfer of imported handles, inactive handles and
 rejection during callback execution. This is the task-state export needed for final
-ownership restoration; native rescheduling, namespace allocation alongside unrelated
-live tasks, and committing the full restored gameplay graph are still outstanding.
+ownership restoration; native rescheduling with the reserved IDs
+and committing the full restored gameplay graph are still outstanding.
 
 
 Paper's platform scheduler now tracks callbacks through `RollbackLiveScheduler`.

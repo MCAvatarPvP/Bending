@@ -45,15 +45,14 @@ public final class RollbackLiveScheduler implements PKScheduler {
         }
         var task = new Task(work, Objects.requireNonNull(context.apply(callback)), period);
         task.due = Math.addExact(clock.getAsLong(), Math.max(0, delay));
+        task.id = Math.incrementExact(highestId);
+        if (task.id == Integer.MAX_VALUE) throw new IllegalStateException("Live task ID space exhausted");
+        // Logical handles belong to this scheduler, not to the backend queue.
+        // Retire IDs even when submission fails: the backend may have queued work.
+        highestId = task.id;
         task.generation = new Object();
         try { task.nativeTask = submit(task, task.generation, delay); }
         catch (RuntimeException | Error failure) { task.cancelled = true; throw failure; }
-        task.id = task.nativeTask.legacyId();
-        if (task.id < 1 || tasks.containsKey(task.id)) {
-            task.cancelled = true; task.nativeTask.cancel();
-            throw new IllegalStateException("Backend repeated a live task id");
-        }
-        highestId = Math.max(highestId, task.id);
         tasks.put(task.id, task);
         return task;
     }
@@ -79,7 +78,7 @@ public final class RollbackLiveScheduler implements PKScheduler {
     }
     @Override public synchronized void cancelTask(int id) {
         mutation(); var task = tasks.get(id);
-        if (task == null) backend.cancelTask(id); else task.cancel();
+        if (task != null) task.cancel();
     }
     @Override public synchronized void cancelAll() {
         mutation();
@@ -100,14 +99,22 @@ public final class RollbackLiveScheduler implements PKScheduler {
         private List<Suspended> selected = List.of();
         private final List<PKTask> cleanup = new ArrayList<>();
         private RollbackTaskBindings.Capture capture;
+        private int reservedCapacity;
         private boolean frozen, acquired, closed, invalidated;
         private Lease(Predicate<Work> selector) { this.selector = selector; }
 
         /** Repeated calls can finish cancellation after a backend failure; copied state is not exposed early. */
-        public RollbackTaskBindings.Capture freeze() {
+        public RollbackTaskBindings.Capture freeze() { return freezeInternal(0); }
+        /** Reserve a bounded range for replay-created tasks, disjoint from subsequent live work. */
+        public RollbackTaskBindings.Capture freeze(int newTaskCapacity) {
+            if (newTaskCapacity < 1) throw new IllegalArgumentException("Task ID reservation capacity");
+            return freezeInternal(newTaskCapacity);
+        }
+        private RollbackTaskBindings.Capture freezeInternal(int newTaskCapacity) {
             synchronized (RollbackLiveScheduler.this) {
                 primary(); mutation();
                 if (closed || invalidated) throw new IllegalStateException("Task ownership is no longer current");
+                if (frozen && reservedCapacity != newTaskCapacity) throw new IllegalStateException("Task reservation changed during freeze retry");
                 if (!frozen) {
                     long now = clock.getAsLong();
                     var chosen = new ArrayList<Suspended>(); var pending = new ArrayList<RollbackTaskBindings.Pending>();
@@ -120,7 +127,11 @@ public final class RollbackLiveScheduler implements PKScheduler {
                         pending.add(new RollbackTaskBindings.Pending(task, task.work.callback(), delay, task.period,
                                 task.work.ability(), task.work.action(), task.work.seed()));
                     }
-                    capture = RollbackTaskBindings.capture(pending, Math.incrementExact(highestId), RollbackLiveScheduler.this::inactiveHandle);
+                    int first = Math.incrementExact(highestId);
+                    int limit = newTaskCapacity == 0 ? Integer.MAX_VALUE : Math.addExact(first, newTaskCapacity);
+                    capture = RollbackTaskBindings.captureReserved(pending, first, limit, RollbackLiveScheduler.this::inactiveHandle);
+                    if (newTaskCapacity != 0) highestId = limit - 1;
+                    reservedCapacity = newTaskCapacity;
                     selected = List.copyOf(chosen); frozen = true; leases.add(this);
                     for (var item : selected) item.task.frozen = this;
                 }
