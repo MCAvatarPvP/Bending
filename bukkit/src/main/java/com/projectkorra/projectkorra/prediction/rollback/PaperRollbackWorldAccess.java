@@ -110,6 +110,7 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
     private final PaperRollbackCombatAccess combat;
     private final PaperRollbackScoreboards scoreboards;
     private final PaperRollbackPacketData packetData;
+    private PaperRollbackRoundEvents roundEvents;
 
     public PaperRollbackWorldAccess(Queries<?> queries, int maximumChunks) {
         this(queries, null, maximumChunks);
@@ -242,7 +243,23 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         checkThread();
         if (combatState == null) throw new IllegalStateException("Native event services were not supplied");
         combatState.event(event);
+        if (roundEvents != null && event instanceof org.bukkit.event.entity.EntityDamageEvent damage) roundEvents.accept(damage);
     }
+    /** Install after complete native roster import and before the first checkpoint. */
+    public void bindRound(RollbackRound round) {
+        checkThread(); Objects.requireNonNull(round);
+        if (playersSealed || roundEvents != null || RollbackClock.active() || RollbackDomain.active())
+            throw new IllegalStateException("Bind native round rules before replay/checkpointing");
+        if (combatState == null || round.tick() != 0) throw new IllegalStateException("Round requires native combat and a fresh timeline");
+        var roster = new java.util.TreeMap<java.util.UUID, org.bukkit.entity.Player>();
+        for (var state : playerOrder) {
+            if (!(state.ownedPlayer() instanceof net.minecraft.server.level.ServerPlayer player))
+                throw new IllegalArgumentException("Round requires the private server-player roster");
+            roster.put(player.getUUID(), player.getBukkitEntity());
+        }
+        roundEvents = new PaperRollbackRoundEvents(round, roster);
+    }
+
     boolean damage(Object player, Object source, float amount) {
         checkThread();
         if (combat == null) throw new IllegalStateException("Native combat services were not supplied");
@@ -418,6 +435,7 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         var references = new ArrayList<Object>(playerOrder.size() + 1);
         references.add(queries); references.addAll(playerOrder);
         if (combatState != null) references.add(combatState);
+        if (roundEvents != null) references.add(roundEvents.round());
         if (scoreboards != null) references.add(scoreboards);
         return List.copyOf(references);
     }

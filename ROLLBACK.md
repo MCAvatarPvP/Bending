@@ -52,12 +52,27 @@ state that actually determines those outcomes.
 `RollbackRound` now lives in the shared ProjectKorra module, so Paper and Fabric
 can use the same provisional defeat, team-survival and attacker-attribution rules.
 It implements `RollbackStateCell`: domain checkpoints rewind provisional results
-without capturing finalized delivery receipts. Neptune's `RollbackRoundEvents` uses
+without capturing finalized delivery receipts. Paper's bound native round events use
 this shared type; its ordinary damage rule remains available without ProjectKorra,
 and a parity test checks that both lethal-hit thresholds agree. The existing native
 Neptune contract exercises this shared model against actual private Paper damage.
-The production runtime still needs to bind the round to each simulation tick,
-route native damage through it on both loaders, and deliver only confirmed results.
+`RollbackCombatRuntime.createMatch` and `createMatchReplica` now advance the round
+before inputs/native/bending execution and include it in every checkpoint. The server's
+`deliverConfirmedDefeats` uses the engine's confirmed frontier outside all replay scopes,
+rejects client delivery and reentrant engine operations, and stops further simulation if
+a live callback fails. Tests replay a late defence through the actual collision loop to
+retract a defeat, then verify confirmed results cannot be delivered twice.
+
+`PaperRollbackWorldAccess.bindRound` derives the exact roster from its owned native
+players before checkpointing. Native damage dispatch now runs the bound terminal round
+rule after the captured modifier/cancellation dispatcher. The world automatically
+checkpoints the round; the native contract no longer installs a test-only terminal
+callback or manually checkpoints round state. This covers nonlethal/lethal damage,
+cancellation, totems, attribution, foreign players and late-input defeat retraction.
+Fabric's native damage-event equivalence, complete production runtime assembly,
+ownership handoff and the live match-result sink still need integration before play.
+Validation of this connection passed 616 common tests, 178 native Paper tests and
+9 native Neptune contract tests; Paper and Fabric jars rebuilt successfully.
 
 Neptune's saved branch is now checked out separately at
 `build/neptune-rollback`, preserving the main checkout's local changes. Build this
@@ -1275,7 +1290,8 @@ delivers each defeat once. Restoring a contradictory finalized branch, publishin
 or retrying after a partial delivery failure is rejected. Tests cover late-hit retraction,
 team elimination, attribution, cancellation/totem handling and delivery failure.
 
-`RollbackRoundEvents` connects private Bukkit damage events to that round state after
+`PaperRollbackRoundEvents`, installed through `PaperRollbackWorldAccess.bindRound`,
+connects private Bukkit damage events to that round state after
 captured damage modifiers and cancellation. It checks exact replica identity for victims
 and causing/direct players, reads the current private hand items for the ordinary totem
 exception, and applies Neptune's health reset/cancellation to a provisional defeat.

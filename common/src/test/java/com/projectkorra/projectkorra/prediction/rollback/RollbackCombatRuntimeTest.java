@@ -150,12 +150,70 @@ class RollbackCombatRuntimeTest {
         });
     }
 
+    @Test void lateDefenceRewindsRoundDecisionsAndOnlyConfirmedDefeatsReachLiveCallbacks() {
+        withConfig(() -> {
+            var delayed = scenario(RollbackConfiguration.capture(), true, false);
+            delayed.runtime.submit(A, 1, new Input(List.of(CLICK), false));
+            delayed.runtime.advance(); delayed.runtime.advance();
+            assertEquals(2, delayed.fixture.round.tick());
+            assertTrue(delayed.fixture.round.ended());
+            var delivered = new ArrayList<RollbackRound.Defeat>();
+            delayed.runtime.deliverConfirmedDefeats(delivered::add);
+            assertTrue(delivered.isEmpty());
+            delayed.runtime.submit(B, 1, new Input(List.of(), false, true));
+            delayed.runtime.reconcile();
+            assertFalse(delayed.fixture.round.ended());
+            assertTrue(delayed.fixture.round.provisionalDefeats().isEmpty());
+            for (int i = 0; i < 3; i++) delayed.runtime.advance();
+            delayed.runtime.deliverConfirmedDefeats(delivered::add);
+            assertTrue(delivered.isEmpty());
+
+            var landed = scenario(RollbackConfiguration.capture(), true, false);
+            landed.runtime.submit(A, 1, new Input(List.of(CLICK), false));
+            for (int i = 0; i < 5; i++) landed.runtime.advance();
+            landed.runtime.deliverConfirmedDefeats(defeat -> {
+                assertFalse(RollbackDomain.active()); assertFalse(RollbackClock.active());
+                assertThrows(IllegalStateException.class, landed.runtime::advance);
+                delivered.add(defeat);
+            });
+            assertEquals(List.of(new RollbackRound.Defeat(new UUID(0, 99), 2, B, A)), delivered);
+            landed.runtime.deliverConfirmedDefeats(delivered::add);
+            landed.runtime.advance();
+            landed.runtime.deliverConfirmedDefeats(delivered::add);
+            assertEquals(1, delivered.size());
+        });
+    }
+
+    @Test void failedDeliveryStopsCombatAndClientReplicaCannotPublishLiveResults() {
+        withConfig(() -> {
+            var server = scenario(RollbackConfiguration.capture(), true, false);
+            server.runtime.submit(A, 1, new Input(List.of(CLICK), false));
+            for (int i = 0; i < 5; i++) server.runtime.advance();
+            assertThrows(IllegalStateException.class, () -> server.runtime.deliverConfirmedDefeats(defeat -> {
+                throw new IllegalStateException("match callback failed");
+            }));
+            assertTrue(server.runtime.failed());
+            assertThrows(IllegalStateException.class, server.runtime::advance);
+            assertThrows(IllegalStateException.class, () -> server.runtime.submit(A, 6, EMPTY));
+            assertThrows(IllegalStateException.class, () -> server.runtime.deliverConfirmedDefeats(defeat -> fail("retried result")));
+            var client = scenario(RollbackConfiguration.capture(), true, true);
+            client.runtime.submit(A, 1, new Input(List.of(CLICK), false));
+            client.runtime.advance(); client.runtime.advance();
+            assertTrue(client.fixture.round.ended());
+            client.runtime.confirm(2);
+            assertThrows(IllegalStateException.class, () -> client.runtime.deliverConfirmedDefeats(defeat -> fail("client live result")));
+        });
+    }
+
     private Scenario scenario() {
         return scenario(RollbackConfiguration.capture());
     }
 
-    private Scenario scenario(RollbackConfiguration configuration) {
+    private Scenario scenario(RollbackConfiguration configuration) { return scenario(configuration, false, false); }
+
+    private Scenario scenario(RollbackConfiguration configuration, boolean match, boolean replica) {
         var fixture = new Fixture();
+        if (match) fixture.round = new RollbackRound(new UUID(0, 99), Map.of(A, A, B, B));
         var scheduler = new RollbackScheduler(50, 50);
         var shared = new ArrayList<Field>();
         shared.addAll(RollbackStateGraph.staticFields(CoreAbility.class, root -> root.getName().startsWith("INSTANCES")
@@ -172,7 +230,7 @@ class RollbackCombatRuntimeTest {
                 (ability, external) -> fixture.record("removed")).build();
         var platform = RollbackPlatformTest.platform(directory, fixture.world, List.of(fixture.player, fixture.defender), scheduler);
         var environment = new RollbackCombatRuntime.Environment(graph(), shared, List.of(), platform, null, prediction, configuration);
-        var runtime = RollbackCombatRuntime.create(environment, fixture, () -> {
+        Runnable bootstrap = () -> {
             clearCollections(shared);
             BendingPlayer.getPlayers().put(A, new BendingPlayer(fixture.player));
             ProjectKorra.collisionManager = new CollisionManager();
@@ -186,7 +244,10 @@ class RollbackCombatRuntimeTest {
                 Platform.scheduler().runNow(() -> fixture.record("scheduled:" + PredictionDeterminism.currentAction() + ":" + PredictionDeterminism.currentSeed()));
                 return true;
             });
-        }, Map.of(B, EMPTY, A, EMPTY), LIMITS, 1_000, 10_000);
+        };
+        var runtime = !match ? RollbackCombatRuntime.create(environment, fixture, bootstrap, Map.of(B, EMPTY, A, EMPTY), LIMITS, 1_000, 10_000)
+                : replica ? RollbackCombatRuntime.createMatchReplica(environment, fixture, bootstrap, Map.of(B, EMPTY, A, EMPTY), LIMITS, 1_000, 10_000, fixture.round)
+                : RollbackCombatRuntime.createMatch(environment, fixture, bootstrap, Map.of(B, EMPTY, A, EMPTY), LIMITS, 1_000, 10_000, fixture.round);
         return new Scenario(fixture, runtime);
     }
 
@@ -203,6 +264,7 @@ class RollbackCombatRuntimeTest {
         Fixture() { world.entities().add(player); world.entities().add(defender); }
         final List<String> history = new ArrayList<>();
         RollbackStep<String> effects;
+        RollbackRound round;
         boolean failWorld;
         void record(String value) { history.add(value); effects.emit(value); }
         @Override public Input predict(UUID participant, Input previous) { return EMPTY; }
@@ -251,7 +313,11 @@ class RollbackCombatRuntimeTest {
             location.add(++age * speed, 0, 0); fixture.record("progress:" + age);
             if (speed != 1) fixture.record("position:" + location.getX());
         }
-        @Override public void handleCollision(Collision collision) { fixture.record("collision"); super.handleCollision(collision); }
+        @Override public void handleCollision(Collision collision) {
+            fixture.record("collision");
+            if (fixture.round != null) fixture.round.damage(B, A, 4, 6, false, false);
+            super.handleCollision(collision);
+        }
     }
     private static final class Boundary extends Dynamic {
         Boundary(Fixture fixture) { super(fixture, 3); player = fixture.defender; }

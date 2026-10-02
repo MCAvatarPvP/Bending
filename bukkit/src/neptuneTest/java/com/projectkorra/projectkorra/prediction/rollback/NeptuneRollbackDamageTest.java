@@ -1,7 +1,7 @@
 package com.projectkorra.projectkorra.prediction.rollback;
 
 import com.mojang.authlib.GameProfile;
-import dev.lrxh.neptune.feature.rollback.RollbackRoundEvents;
+import dev.lrxh.neptune.game.match.MatchDamageRules;
 import com.projectkorra.projectkorra.platform.mc.World;
 import com.projectkorra.projectkorra.platform.mc.inventory.EntityEquipment;
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackEntityBody;
@@ -54,6 +54,19 @@ class NeptuneRollbackDamageTest {
             assertEquals(3, target.getHealth()); assertFalse(scene.combat.round.ended());
             scene.combat.round.finalizeThrough(1, delivered::add);
             assertTrue(delivered.isEmpty());
+            return null;
+        });
+    }
+
+    @Test void boundNativeRoundMatchesNeptunesOrdinaryLethalDecision() throws Exception {
+        onTickThread(() -> {
+            var scene = new Scene(); var before = scene.snapshot();
+            for (float health : new float[]{4, 20}) for (float damage : new float[]{3, 6, 25}) {
+                before.restore(); scene.target.setHealth(health); scene.combat.round.beginTick(1);
+                scene.hit(damage);
+                assertEquals(MatchDamageRules.endsLife(health, damage, false), scene.combat.round.ended());
+            }
+            assertThrows(IllegalStateException.class, () -> scene.world.bindRound(scene.combat.round));
             return null;
         });
     }
@@ -175,17 +188,14 @@ class NeptuneRollbackDamageTest {
     @Test void bridgeRejectsForeignReplicasEvenWhenTheirParticipantIdsMatch() throws Exception {
         onTickThread(() -> {
             var scene = new Scene(); var foreign = new Scene();
-            assertThrows(IllegalArgumentException.class, () -> new RollbackRoundEvents(scene.combat.round,
+            assertThrows(IllegalArgumentException.class, () -> new PaperRollbackRoundEvents(scene.combat.round,
                     Map.of(TARGET, scene.target.getBukkitEntity())));
-            foreign.combat.events = scene.combat.events;
             scene.combat.round.beginTick(1); foreign.combat.round.beginTick(1);
-            assertThrows(IllegalArgumentException.class, () -> foreign.hit(25));
+            // The bound world derives its roster from owned native bodies; callers cannot substitute wrappers.
+            assertThrows(IllegalArgumentException.class, () -> scene.targetState.damage(
+                    scene.world.world().damageSources().playerAttack(foreign.attacker), 25));
             assertEquals(20, scene.target.getHealth()); assertTrue(scene.combat.round.provisionalDefeats().isEmpty());
-            // Also reject a foreign causing player when the victim is owned.
-            scene.combat.events = new RollbackRoundEvents(scene.combat.round,
-                    Map.of(TARGET, scene.target.getBukkitEntity(), ATTACKER, foreign.attacker.getBukkitEntity()));
-            assertThrows(IllegalArgumentException.class, () -> scene.hit(25));
-            assertEquals(20, scene.target.getHealth()); assertTrue(scene.combat.round.provisionalDefeats().isEmpty());
+            assertEquals(20, foreign.target.getHealth()); assertTrue(foreign.combat.round.provisionalDefeats().isEmpty());
             return null;
         });
     }
@@ -234,7 +244,7 @@ class NeptuneRollbackDamageTest {
             target.setId(901); attacker.setId(902);
             target.setPos(1, 1, 0); attacker.setPos(0, 1, 0); target.setOnGround(true);
             target.setYRot(0); target.setXRot(0); attacker.setYRot(0); attacker.setXRot(0);
-            combat.events = new RollbackRoundEvents(combat.round, Map.of(TARGET, target.getBukkitEntity(), ATTACKER, attacker.getBukkitEntity()));
+            world.bindRound(combat.round);
         }
         PaperRollbackNativePlayerState player(UUID id, String name, long seed) {
             return PaperRollbackNativePlayerState.serverPlayer(world, new GameProfile(id, name),
@@ -244,10 +254,9 @@ class NeptuneRollbackDamageTest {
         RollbackStateGraph.Snapshot snapshot() { return new RollbackStateGraph(value -> false, field -> true, 200_000).capture(List.of(targetState), List.of()); }
     }
 
-    private static final class Combat implements PaperRollbackWorldAccess.Combat<RollbackRound.Checkpoint> {
+    private static final class Combat implements PaperRollbackWorldAccess.Combat<Void> {
         final PaperRollbackDamageNativeTest.Combat delegate = new PaperRollbackDamageNativeTest.Combat();
         final RollbackRound round = new RollbackRound(SESSION, Map.of(TARGET, TARGET, ATTACKER, ATTACKER));
-        RollbackRoundEvents events;
         @Override public Object registryAccess() { return delegate.registryAccess(); }
         @Override public Object difficulty() { return delegate.difficulty(); }
         @Override public Object random() { return delegate.random(); }
@@ -267,12 +276,11 @@ class NeptuneRollbackDamageTest {
         @Override public boolean parrotsStayOnShoulder() { return delegate.parrotsStayOnShoulder(); }
         @Override public void event(Event event) {
             delegate.event(event);
-            if (event instanceof EntityDamageEvent damage) events.accept(damage);
         }
         @Override public void gameEvent(Object event, Object position, Object context) { delegate.gameEvent(event, position, context); }
         @Override public void output(PaperRollbackCombatAccess.Output output) { delegate.output(output); }
-        @Override public RollbackRound.Checkpoint captureRollbackState() { return round.snapshot(); }
-        @Override public void restoreRollbackState(RollbackRound.Checkpoint saved) { round.restore(saved); }
+        @Override public Void captureRollbackState() { return null; }
+        @Override public void restoreRollbackState(Void saved) { }
         @Override public List<?> rollbackReferences() { return List.of(delegate); }
     }
 }

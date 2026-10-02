@@ -83,7 +83,7 @@ public final class PaperRollbackCombatAccess {
         worldConfiguration.entities = allocator.newInstance(WorldConfiguration.Entities.class);
         worldConfiguration.entities.behavior = allocator.newInstance(WorldConfiguration.Entities.Behavior.class);
         var builder = new RollbackNativeMethods();
-        events = new PaperRollbackNativeEvents(state::event, world::ownsWrapper);
+        events = new PaperRollbackNativeEvents(world::event, world::ownsWrapper);
         events.bind(builder); events.bindDamageSources(builder, source -> requireSource((DamageSource) source));
         world.scoreboards().bind(builder, events.server());
         new PaperRollbackStatusEffects(registries).bind(builder);

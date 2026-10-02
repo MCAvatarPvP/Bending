@@ -53,10 +53,13 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
         void end();
     }
 
+    private final RollbackRound round;
+    private boolean delivering, deliveryFailed;
     private final RollbackDomain domain;
     private final RollbackEngine<RollbackDomain.Checkpoint, I, E> engine;
 
-    private RollbackCombatRuntime(RollbackDomain domain, RollbackEngine<RollbackDomain.Checkpoint, I, E> engine) {
+    private RollbackCombatRuntime(RollbackDomain domain, RollbackEngine<RollbackDomain.Checkpoint, I, E> engine, RollbackRound round) {
+        this.round = round;
         this.domain = domain;
         this.engine = engine;
     }
@@ -69,17 +72,30 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
     public static <I, E> RollbackCombatRuntime<I, E> create(Environment environment, Execution<I, E> execution,
                                                           Runnable bootstrap, Map<UUID, I> initialInputs,
                                                           RollbackEngine.Limits limits, long epochMillis, long epochNanos) {
-        return create(environment, execution, bootstrap, initialInputs, limits, epochMillis, epochNanos, false);
+        return create(environment, execution, bootstrap, initialInputs, limits, epochMillis, epochNanos, false, null);
     }
 
     /** Same native/ability simulation; confirmation and replacements are owned by the server revision stream. */
     public static <I, E> RollbackCombatRuntime<I, E> createReplica(Environment environment, Execution<I, E> execution,
             Runnable bootstrap, Map<UUID, I> initialInputs, RollbackEngine.Limits limits, long epochMillis, long epochNanos) {
-        return create(environment, execution, bootstrap, initialInputs, limits, epochMillis, epochNanos, true);
+        return create(environment, execution, bootstrap, initialInputs, limits, epochMillis, epochNanos, true, null);
+    }
+
+    /** Match state uses the same tick and checkpoint as native movement and ability progression. */
+    public static <I, E> RollbackCombatRuntime<I, E> createMatch(Environment environment, Execution<I, E> execution,
+            Runnable bootstrap, Map<UUID, I> initialInputs, RollbackEngine.Limits limits,
+            long epochMillis, long epochNanos, RollbackRound round) {
+        return create(environment, execution, bootstrap, initialInputs, limits, epochMillis, epochNanos, false, Objects.requireNonNull(round));
+    }
+
+    public static <I, E> RollbackCombatRuntime<I, E> createMatchReplica(Environment environment, Execution<I, E> execution,
+            Runnable bootstrap, Map<UUID, I> initialInputs, RollbackEngine.Limits limits,
+            long epochMillis, long epochNanos, RollbackRound round) {
+        return create(environment, execution, bootstrap, initialInputs, limits, epochMillis, epochNanos, true, Objects.requireNonNull(round));
     }
 
     private static <I, E> RollbackCombatRuntime<I, E> create(Environment environment, Execution<I, E> execution,
-            Runnable bootstrap, Map<UUID, I> initialInputs, RollbackEngine.Limits limits, long epochMillis, long epochNanos, boolean replica) {
+            Runnable bootstrap, Map<UUID, I> initialInputs, RollbackEngine.Limits limits, long epochMillis, long epochNanos, boolean replica, RollbackRound round) {
         Objects.requireNonNull(execution, "execution");
         Objects.requireNonNull(bootstrap, "bootstrap");
         Objects.requireNonNull(limits, "limits");
@@ -93,9 +109,13 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
         var orderedInputs = Map.copyOf(initialInputs);
         if (orderedInputs.isEmpty() || orderedInputs.size() > 128) throw new IllegalArgumentException("Participant count");
 
+        if (round != null && (round.tick() != 0 || !round.participants().equals(orderedInputs.keySet()))) {
+            throw new IllegalArgumentException("Combat requires a fresh round with the same roster");
+        }
         var state = new RuntimeState<>(scheduler, execution);
         var local = new ArrayList<Object>(environment.local());
         local.add(state);
+        if (round != null) local.add(round);
         var shared = new LinkedHashSet<>(environment.shared());
         shared.addAll(RollbackStateGraph.staticFields(BendingManager.class, field -> true));
         shared.addAll(RollbackStateGraph.staticFields(ProjectKorra.class,
@@ -117,6 +137,7 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
                 @Override public void step(long tick, Map<UUID, I> inputs, RollbackStep<E> effects) {
                     Throwable failure = null;
                     try {
+                        if (round != null) round.beginTick(tick);
                         execution.begin(effects);
                         scheduler.advance(tick);
                         // The engine supplies UUID order, independent of network arrival order.
@@ -138,36 +159,58 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
             return replica ? RollbackEngine.replica(simulation, orderedInputs, limits, epochMillis, epochNanos)
                     : new RollbackEngine<>(simulation, orderedInputs, limits, epochMillis, epochNanos);
         });
-        return new RollbackCombatRuntime<>(domain, engine);
+        return new RollbackCombatRuntime<>(domain, engine, round);
     }
 
     public RollbackEngine.Submission submit(UUID participant, long tick, I input) {
+        requireUsable();
         return domain.call(() -> engine.submit(participant, tick, input));
     }
 
     public RollbackEngine.Update<RollbackDomain.Checkpoint, I, E> advance() {
+        requireUsable();
         return domain.call(engine::advance);
     }
 
     public RollbackEngine.Update<RollbackDomain.Checkpoint, I, E> reconcile() {
+        requireUsable();
         return domain.call(engine::reconcile);
     }
 
     @Override public boolean replica() { return engine.replica(); }
     @Override public RollbackEngine.Submission correct(UUID participant, long tick, I input) {
+        requireUsable();
         return domain.call(() -> engine.correct(participant, tick, input));
     }
     @Override public RollbackEngine.Update<RollbackDomain.Checkpoint, I, E> confirm(long tick) {
+        requireUsable();
         return domain.call(() -> engine.confirm(tick));
     }
     @Override public List<RollbackEngine.Frame<RollbackDomain.Checkpoint, I, E>> frames(long from, long through) {
+        requireUsable();
         return domain.call(() -> engine.frames(from, through));
     }
 
     public RollbackEngine.Diagnostics diagnostics() { return engine.diagnostics(); }
     @Override public List<UUID> participants() { return engine.participants(); }
     @Override public RollbackEngine.Limits limits() { return engine.limits(); }
-    public boolean failed() { return domain.failed() || engine.diagnostics().failed(); }
+    public boolean failed() { return deliveryFailed || domain.failed() || engine.diagnostics().failed(); }
+
+    /** Called by the authority transport after publishing its confirmed frontier, outside replay. */
+    public void deliverConfirmedDefeats(java.util.function.Consumer<RollbackRound.Defeat> delivery) {
+        requireUsable(); Objects.requireNonNull(delivery);
+        if (round == null || engine.replica()) throw new IllegalStateException("Only an authoritative match delivers live defeats");
+        if (RollbackDomain.active() || RollbackClock.active()) throw new IllegalStateException("Live results cannot be delivered during replay");
+        long confirmed = engine.diagnostics().confirmedTick();
+        delivering = true;
+        try { round.finalizeThrough(confirmed, delivery); }
+        catch (RuntimeException | Error failure) { deliveryFailed = true; throw failure; }
+        finally { delivering = false; }
+    }
+
+    private void requireUsable() {
+        if (delivering || failed()) throw new IllegalStateException("Combat runtime is delivering results or has failed");
+    }
 
     private static final class RuntimeState<I, E> implements RollbackStateCell<Void> {
         private final RollbackScheduler scheduler;

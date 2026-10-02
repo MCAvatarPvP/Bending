@@ -66,6 +66,7 @@ public final class RollbackRound implements RollbackStateCell<RollbackRound.Chec
 
     public Set<UUID> participants() { check(); return sides.keySet(); }
     public boolean active(UUID player) { check(); participant(player); return !ended && !defeated.contains(player); }
+    public long tick() { check(); return tick; }
     public boolean ended() { check(); return ended; }
     public List<Defeat> provisionalDefeats() { check(); return List.copyOf(defeats.subList(finalized.size(), defeats.size())); }
 
