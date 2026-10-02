@@ -929,7 +929,7 @@ public class TempBlock {
 
     /** @deprecated a plain {@link Runnable} is equivalent. */
     @Deprecated
-    public interface RevertTask extends Runnable {
+    public interface RevertTask extends com.projectkorra.projectkorra.platform.PKRunnable {
     }
 
     public record VisibleBlock(int x, int y, int z, BlockData data) {

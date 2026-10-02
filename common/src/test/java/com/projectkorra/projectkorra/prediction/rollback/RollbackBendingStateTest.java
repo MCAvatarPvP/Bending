@@ -82,8 +82,8 @@ class RollbackBendingStateTest {
                 @Override public int legacyId() { return 44; }
             };
             var taskCapture = RollbackTaskBindings.capture(List.of(new RollbackTaskBindings.Pending(
-                    liveCallback.handle, liveCallback, 1, 2, livePulse, 71, 93)));
-            var serviceRoots = List.of(sourceService, RollbackEventBindings.capture(liveBus), taskCapture);
+                    liveCallback.handle, (com.projectkorra.projectkorra.platform.PKRunnable) liveCallback::run, 1, 2, livePulse, 71, 93)));
+            var serviceRoots = List.of(sourceService, RollbackEventBindings.capture(liveBus), taskCapture, liveCallback);
             var privateA = PrivateCombatRollbackTest.player(privateWorld, 1);
             var privateB = PrivateCombatRollbackTest.player(privateWorld, 2);
             Map<Object, Object> replacements = new IdentityHashMap<>();
@@ -134,7 +134,8 @@ class RollbackBendingStateTest {
                         throw new AssertionError(method);
                     });
             var domain = RollbackDomain.create(graph, shared, List.of(imported, privateBus, privateScheduler), privatePlatform, null, prediction, imported::install);
-            var copiedTask = (CapturedTask) ((RollbackTaskBindings) imported.services().get(2)).entries().getFirst().callback();
+            var copiedTask = (CapturedTask) imported.services().get(3);
+            assertInstanceOf(RollbackCallback.class, ((RollbackTaskBindings) imported.services().get(2)).entries().getFirst().callback());
             assertSame(pulse, copiedTask.ability); assertEquals(1, privateScheduler.pendingTasks());
             var copiedRules = (CapturedRule) privateBus.commonRegistrations().getFirst().listener();
             assertNotSame(liveRules, copiedRules);
@@ -234,11 +235,12 @@ class RollbackBendingStateTest {
         List<Class<?>> objects = List.of(BendingPlayer.class, Pulse.class, Guard.class, Location.class, Cooldown.class,
                 CoreAbility.RollbackRegistry.class, Manager.RollbackRegistry.class, CollisionManager.class, Collision.class,
                 OfflineBendingPlayer.RollbackTemporaryElement.class, AttributeCache.class,
-                CapturedRule.class, CapturedTask.class, RollbackTaskBindings.class, RollbackTaskBindings.Entry.class, RollbackTaskBindings.Handle.class,
+                CapturedRule.class, CapturedTask.class, RollbackCallback.class, RollbackTaskBindings.class, RollbackTaskBindings.Entry.class, RollbackTaskBindings.Handle.class,
                 RollbackEventBindings.class, PKEventBus.Registration.class,
                 com.projectkorra.projectkorra.util.IndexedMap.class, field(CoreAbility.class, "predictionAncestry").getType(),
                 sourceAttribute.getCurrentModifications().values().stream().map(value -> ((TreeSet<?>) value).comparator().getClass()).findFirst().orElseThrow());
         var symbols = new ArrayList<Class<?>>();
+        symbols.add(RollbackBendingStateTest.class);
         for (var field : OfflineBendingPlayer.class.getDeclaredFields()) if (field.getType().isEnum()) symbols.add(field.getType());
         Object metadata = field(AttributeCache.class, "metadata").get(sourceAttribute);
         Object targetMetadata = field(AttributeCache.class, "metadata").get(new AttributeCache(sourceAttribute.getField(), sourceAttribute.getAttribute()));

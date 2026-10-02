@@ -107,8 +107,11 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
             projectAttributeEntries(cache.getInitialValues(), roster.keySet(), projections);
             projectAttributeEntries(cache.getCurrentModifications(), roster.keySet(), projections);
         }
-        return new Source(roster, registry, managerRegistry, roots, value -> AttributeCache.isRollbackMetadata(value)
-                ? new RollbackStateTransfer.Replacement(value) : projections.get(value));
+        return new Source(roster, registry, managerRegistry, roots, value -> {
+            if (AttributeCache.isRollbackMetadata(value)) return new RollbackStateTransfer.Replacement(value);
+            var projection = projections.get(value);
+            return projection != null ? projection : RollbackCallback.project(value);
+        });
     }
 
     private static RollbackBendingState fromRoots(Collection<UUID> participants, List<Object> copied) {

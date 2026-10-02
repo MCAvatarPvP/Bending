@@ -2065,5 +2065,29 @@ counters rewind together. Tests exercise both direct copy and portable decoding 
 the actual bending-state bootstrap, then late-input replay with the imported task.
 The live scheduler adapter must still enumerate/freeze the selected pending tasks,
 supply them in original scheduling order, and restore live ownership on teardown.
-Hidden callback classes still require portable representations; this handoff does
-not silently retain their live captures or enable a live session.
+The portable callback representation below covers newly compiled scheduler lambdas;
+other opaque callbacks still require explicit adapters. This handoff does not enable
+a live session.
+
+
+`PKScheduler` now prefers the serializable `PKRunnable` functional target for lambda
+and method-reference call sites, delegating unchanged to each loader's existing
+Runnable implementation. This exposes the compiler's `SerializedLambda` descriptor;
+no Java object serialization is used. Bending-state capture projects these hidden
+implementations into `RollbackCallback` data containing the registered capturing
+class, compiler descriptor and graph-copied arguments. The compiler-generated local
+factory validates/reconstructs a short-lived callable from those private references.
+It never loads an arbitrary class named by wire data or caches a source lambda.
+
+Nested callbacks retain their functional interface, receiver aliases and cycles.
+Tests cover actual scheduler overload selection, lambda captures, method references,
+nested capturing classes, replay restoration and both bending bootstrap transfer
+modes. Missing catalog classes and ordinary undescribed hidden callbacks fail import.
+Existing Runnable objects remain source/binary compatible; precompiled call sites
+using opaque hidden Runnables need a rebuild or an explicit callback adapter.
+
+Temporary terrain's existing `RevertTask` interface uses the same describable
+contract, including nested references from scheduled work. The carrier retains
+that interface to preserve typed captures. Task import validates the compiler
+factory and captured argument compatibility before committing any task or handle;
+a bad late callback leaves the whole scheduler batch uninstalled.
