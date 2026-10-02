@@ -320,7 +320,7 @@ public final class PaperRollbackNativePlayerState implements RollbackPlayerState
 
     @Override public Checkpoint captureRollbackState() {
         requireIdle();
-        world.sealPlayers();
+        world.beginCheckpoint();
         var roots = serverServices == null ? List.of(player, bukkitState)
                 : List.of(player, bukkitState, serverServices.statistics(), serverServices.advancements(), serverServices.connection());
         return new Checkpoint(this, graph.capture(roots, List.of()), healthGraph.capture(List.of(bukkit), List.of()));

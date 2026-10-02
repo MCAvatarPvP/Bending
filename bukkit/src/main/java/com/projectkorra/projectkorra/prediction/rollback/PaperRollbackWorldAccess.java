@@ -104,7 +104,7 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
     private final Map<Object, PaperRollbackNativePlayerState> players = new IdentityHashMap<>();
     private final Map<Object, Boolean> playerWrappers = new IdentityHashMap<>();
     private final List<PaperRollbackNativePlayerState> playerOrder = new ArrayList<>();
-    private boolean playersSealed;
+    private boolean playersSealed, checkpointed;
     private final ServerLevel world;
     private final Combat<?> combatState;
     private final PaperRollbackCombatAccess combat;
@@ -248,7 +248,7 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
     /** Install after complete native roster import and before the first checkpoint. */
     public void bindRound(RollbackRound round) {
         checkThread(); Objects.requireNonNull(round);
-        if (playersSealed || roundEvents != null || RollbackClock.active() || RollbackDomain.active())
+        if (checkpointed || roundEvents != null || RollbackClock.active() || RollbackDomain.active())
             throw new IllegalStateException("Bind native round rules before replay/checkpointing");
         if (combatState == null || round.tick() != 0) throw new IllegalStateException("Round requires native combat and a fresh timeline");
         var roster = new java.util.TreeMap<java.util.UUID, org.bukkit.entity.Player>();
@@ -258,6 +258,7 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
             roster.put(player.getUUID(), player.getBukkitEntity());
         }
         roundEvents = new PaperRollbackRoundEvents(round, roster);
+        sealPlayers();
     }
 
     boolean damage(Object player, Object source, float amount) {
@@ -347,6 +348,7 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         players.put(player, state); playerWrappers.put(wrapper, true); playerOrder.add(state);
     }
     void sealPlayers() { checkThread(); playersSealed = true; }
+    void beginCheckpoint() { sealPlayers(); checkpointed = true; }
     boolean ownsPlayer(Object player) { checkThread(); return players.containsKey(player); }
     boolean ownsWrapper(Object wrapper) { checkThread(); return playerWrappers.containsKey(wrapper); }
 
@@ -428,7 +430,7 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
     private void checkThread() {
         if (thread != Thread.currentThread()) throw new IllegalStateException("Native world query crossed threads");
     }
-    @Override public Void captureRollbackState() { sealPlayers(); return null; }
+    @Override public Void captureRollbackState() { beginCheckpoint(); return null; }
     @Override public void restoreRollbackState(Void state) { checkThread(); }
     @Override public List<?> rollbackReferences() {
         checkThread();

@@ -71,6 +71,34 @@ class NeptuneRollbackDamageTest {
         });
     }
 
+    @Test void roundBindingAcceptsASealedRosterAndPreventsLaterPlayers() throws Exception {
+        onTickThread(() -> {
+            var scene = new Scene(false);
+            // Spatial queries seal the imported roster before combat is assembled.
+            scene.world.sealPlayers();
+            scene.world.bindRound(scene.combat.round);
+            assertThrows(IllegalStateException.class, () -> scene.player(new UUID(0, 93), "late_player", 109));
+            scene.combat.round.beginTick(1);
+            assertFalse(scene.hit(25));
+            assertTrue(scene.combat.round.ended());
+            var boundFirst = new Scene();
+            assertThrows(IllegalStateException.class, () -> boundFirst.player(new UUID(0, 94), "late_player", 111));
+            return null;
+        });
+    }
+
+    @Test void roundBindingCannotChangeWorldOrPlayerCheckpointLayout() throws Exception {
+        onTickThread(() -> {
+            var worldSaved = new Scene(false);
+            worldSaved.world.captureRollbackState();
+            assertThrows(IllegalStateException.class, () -> worldSaved.world.bindRound(worldSaved.combat.round));
+            var playerSaved = new Scene(false);
+            playerSaved.targetState.captureRollbackState();
+            assertThrows(IllegalStateException.class, () -> playerSaved.world.bindRound(playerSaved.combat.round));
+            return null;
+        });
+    }
+
     private static RollbackLivingEntity logical(PaperRollbackNativePlayerState state, World world) {
         var rules = new RollbackEntityBody.Rules() {
             @Override public RollbackEntityBody.Pose teleport(RollbackEntityBody body, RollbackEntityBody.Pose destination) { return destination; }
@@ -240,11 +268,12 @@ class NeptuneRollbackDamageTest {
         final PaperRollbackNativePlayerState attackerState = player(ATTACKER, "rollback_attacker", 107);
         final ServerPlayer target = targetState.use(value -> (ServerPlayer) value);
         final ServerPlayer attacker = attackerState.use(value -> (ServerPlayer) value);
-        Scene() {
+        Scene() { this(true); }
+        Scene(boolean bindRound) {
             target.setId(901); attacker.setId(902);
             target.setPos(1, 1, 0); attacker.setPos(0, 1, 0); target.setOnGround(true);
             target.setYRot(0); target.setXRot(0); attacker.setYRot(0); attacker.setXRot(0);
-            world.bindRound(combat.round);
+            if (bindRound) world.bindRound(combat.round);
         }
         PaperRollbackNativePlayerState player(UUID id, String name, long seed) {
             return PaperRollbackNativePlayerState.serverPlayer(world, new GameProfile(id, name),

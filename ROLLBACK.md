@@ -69,10 +69,15 @@ rule after the captured modifier/cancellation dispatcher. The world automaticall
 checkpoints the round; the native contract no longer installs a test-only terminal
 callback or manually checkpoints round state. This covers nonlethal/lethal damage,
 cancellation, totems, attribution, foreign players and late-input defeat retraction.
+Round binding seals the native roster against later player imports. Roster sealing by
+spatial queries still permits round binding until the first world or player checkpoint;
+checkpoint creation permanently closes that setup boundary. Native contract regressions
+cover both assembly orders and reject binding after either checkpoint path.
 Fabric's native damage-event equivalence, complete production runtime assembly,
 ownership handoff and the live match-result sink still need integration before play.
 Validation of this connection passed 616 common tests, 178 native Paper tests and
-9 native Neptune contract tests; Paper and Fabric jars rebuilt successfully.
+11 native Neptune contract tests; the roster-binding follow-up reran both native
+suites and rebuilt Paper. Paper and Fabric jars also built for the initial connection.
 
 Neptune's saved branch is now checked out separately at
 `build/neptune-rollback`, preserving the main checkout's local changes. Build this
