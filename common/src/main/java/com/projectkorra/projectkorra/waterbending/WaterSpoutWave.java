@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.waterbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
@@ -121,7 +123,7 @@ public class WaterSpoutWave extends WaterAbility {
             return;
         }
 
-        this.time = System.currentTimeMillis();
+        this.time = RollbackClock.millis();
         this.type = type;
 
         if (type == AbilityType.CLICK && CoreAbility.getAbility(player, WaterSpoutWave.class) != null) {
@@ -300,7 +302,7 @@ public class WaterSpoutWave extends WaterAbility {
 
             this.removeOldType(this.player, AbilityType.CLICK);
             if (!this.player.isSneaking()) {
-                if (System.currentTimeMillis() - this.time > this.chargeTime) {
+                if (RollbackClock.millis() - this.time > this.chargeTime) {
                     this.setType(AbilityType.RELEASE);
                     this.setAnimation(AnimateState.SHRINK);
                 } else {
@@ -353,19 +355,19 @@ public class WaterSpoutWave extends WaterAbility {
 
                 if (this.radius < 1) {
                     this.revertBlocks();
-                    this.time = System.currentTimeMillis();
+                    this.time = RollbackClock.millis();
                     this.animation = null;
                 }
             } else {
                 this.moving = true;
                 this.collidable = true;
-                if ((System.currentTimeMillis() - this.time > this.flightDuration) || this.player.isSneaking()) {
+                if ((RollbackClock.millis() - this.time > this.flightDuration) || this.player.isSneaking()) {
                     this.remove();
                     return;
                 }
 
                 this.player.setFallDistance(0f);
-                double currentSpeed = this.speed - (this.speed * (System.currentTimeMillis() - this.time) / this.flightDuration);
+                double currentSpeed = this.speed - (this.speed * (RollbackClock.millis() - this.time) / this.flightDuration);
 
                 GeneralMethods.setVelocity(this, this.player, this.player.getEyeLocation().getDirection().normalize().multiply(currentSpeed));
                 for (final Block block : GeneralMethods.getBlocksAroundPoint(this.player.getLocation().add(0, -1, 0), this.waveRadius)) {

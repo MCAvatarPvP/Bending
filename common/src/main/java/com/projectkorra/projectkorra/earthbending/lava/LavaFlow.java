@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.earthbending.lava;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -89,7 +92,7 @@ public class LavaFlow extends LavaAbility {
         }
 
         this.world = player.getWorld();
-        this.time = System.currentTimeMillis();
+        this.time = RollbackClock.millis();
         this.type = type;
         this.shiftCounter = 0;
         this.currentRadius = 0;
@@ -286,7 +289,7 @@ public class LavaFlow extends LavaAbility {
         }
 
         if (this.type == AbilityType.SHIFT) {
-            if (System.currentTimeMillis() - this.time > this.shiftRemoveDelay) {
+            if (RollbackClock.millis() - this.time > this.shiftRemoveDelay) {
                 this.removeSlowly();
                 return;
             }
@@ -347,15 +350,15 @@ public class LavaFlow extends LavaAbility {
                                     }
                                 }
                             }
-                        } else if (Math.random() < this.particleDensity && dSquared < Math.pow(this.currentRadius + this.particleDensity, 2) && this.currentRadius + this.particleDensity < this.shiftMaxRadius && Math.random() < (1D / 3D)) {
-                            ParticleEffect.LAVA.display(loc, 1, Math.random(), Math.random(), Math.random());
+                        } else if (RollbackRandom.fraction() < this.particleDensity && dSquared < Math.pow(this.currentRadius + this.particleDensity, 2) && this.currentRadius + this.particleDensity < this.shiftMaxRadius && RollbackRandom.fraction() < (1D / 3D)) {
+                            ParticleEffect.LAVA.display(loc, 1, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction());
                         }
                     }
                 }
 
                 if (!this.shiftIsFinished) {
-                    if (Math.random() < 0.1D) {
-                        ParticleEffect.LAVA.display(this.player.getLocation(), 1, Math.random(), Math.random(), Math.random());
+                    if (RollbackRandom.fraction() < 0.1D) {
+                        ParticleEffect.LAVA.display(this.player.getLocation(), 1, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction());
                     }
                 }
 
@@ -375,7 +378,7 @@ public class LavaFlow extends LavaAbility {
              * most of the time making lava will have longer delays and longer
              * cooldowns.
              */
-            final long curTime = System.currentTimeMillis() - this.time;
+            final long curTime = RollbackClock.millis() - this.time;
             final double delay = this.makeLava ? this.clickLavaDelay : this.clickLandDelay;
 
             if (this.makeLava && curTime > this.clickLavaCleanupDelay) {
@@ -393,9 +396,9 @@ public class LavaFlow extends LavaAbility {
                         final Location loc = this.origin.clone().add(x, 0, z);
                         final Block tempBlock = GeneralMethods.getTopBlock(loc, this.upwardFlow, this.downwardFlow);
                         if (!isWater(tempBlock)) {
-                            if (tempBlock != null && !isLava(tempBlock) && Math.random() < this.particleDensity && tempBlock.getLocation().distanceSquared(this.origin) <= Math.pow(this.clickLavaRadius, 2)) {
-                                if (Math.random() < 0.2D) {
-                                    ParticleEffect.LAVA.display(loc, 1, Math.random(), Math.random(), Math.random());
+                            if (tempBlock != null && !isLava(tempBlock) && RollbackRandom.fraction() < this.particleDensity && tempBlock.getLocation().distanceSquared(this.origin) <= Math.pow(this.clickLavaRadius, 2)) {
+                                if (RollbackRandom.fraction() < 0.2D) {
+                                    ParticleEffect.LAVA.display(loc, 1, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction());
                                 }
                             }
                         }
@@ -446,12 +449,12 @@ public class LavaFlow extends LavaAbility {
                                         }
                                     }
                                 } else {
-                                    if (Math.random() < 0.25D) {
+                                    if (RollbackRandom.fraction() < 0.25D) {
                                         final Block block = loc.getBlock();
                                         final Block above = block.getRelative(BlockFace.UP);
 
                                         if ((isEarth(block) || isSand(block) || isMetal(block)) && !isWater(above)) {
-                                            ParticleEffect.LAVA.display(loc, 1, Math.random(), Math.random(), Math.random(), 0);
+                                            ParticleEffect.LAVA.display(loc, 1, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0);
                                         }
                                     }
                                 }

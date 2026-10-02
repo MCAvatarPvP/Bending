@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.fabric.prediction.protocol;
 
 import com.projectkorra.projectkorra.prediction.authority.RegionProtectionAuthority;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackInputPacket;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.minecraft.network.RegistryByteBuf;
 import net.minecraft.network.codec.PacketCodec;
@@ -23,6 +24,22 @@ public final class PredictionPayloads {
     private static boolean registered;
 
     private PredictionPayloads() { }
+
+    /** Uses the exact bounded common codec consumed by Paper; no additional length prefix. */
+    public record RollbackInput(RollbackInputPacket input) implements CustomPayload {
+        public static final Id<RollbackInput> ID = new Id<>(Identifier.of(RollbackInputPacket.CHANNEL));
+        public static final PacketCodec<RegistryByteBuf, RollbackInput> CODEC = PacketCodec.of(RollbackInput::write, RollbackInput::read);
+        public RollbackInput { java.util.Objects.requireNonNull(input, "input"); }
+        private void write(RegistryByteBuf buf) { buf.writeBytes(input.encode()); }
+        private static RollbackInput read(RegistryByteBuf buf) {
+            int length = buf.readableBytes();
+            if (length > RollbackInputPacket.MAXIMUM_BYTES) throw new IllegalArgumentException("Rollback input byte budget");
+            byte[] bytes = new byte[length];
+            buf.readBytes(bytes);
+            return new RollbackInput(RollbackInputPacket.decode(bytes));
+        }
+        @Override public Id<RollbackInput> getId() { return ID; }
+    }
 
     public enum InputKind { LEFT_CLICK, RIGHT_CLICK, RIGHT_CLICK_BLOCK, RIGHT_CLICK_ENTITY, SNEAK_START, SNEAK_STOP, SWAP_HANDS }
     public enum VisualKind { CAST, PROJECTILE, AREA, TEMP_BLOCK, SELF }
@@ -683,6 +700,10 @@ public final class PredictionPayloads {
         if (registered) return;
         registered = true;
         PayloadTypeRegistry.playC2S().register(ClientHello.ID, ClientHello.CODEC);
+        PayloadTypeRegistry.playC2S().register(RollbackInput.ID, RollbackInput.CODEC);
+        RollbackStartPayloads.registerTypes();
+        RollbackBootstrapPayloads.registerTypes();
+        PayloadTypeRegistry.playS2C().register(RollbackAuthorityPayload.ID, RollbackAuthorityPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(ClientDisabled.ID, ClientDisabled.CODEC);
         PayloadTypeRegistry.playC2S().register(ClientReady.ID, ClientReady.CODEC);
         PayloadTypeRegistry.playC2S().register(InputVeto.ID, InputVeto.CODEC);

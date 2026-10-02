@@ -8,6 +8,7 @@ import com.projectkorra.projectkorra.ability.util.MultiAbilityManager;
 import com.projectkorra.projectkorra.platform.mc.GameMode;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.util.ClickType;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -225,6 +226,13 @@ public final class AbilityActivationManager {
                 handled |= activated;
                 if (activated) markHandled();
             } catch (final Throwable throwable) {
+                // A handler can have already mutated the provisional world. Continuing
+                // would finalize a partial action instead of aborting the failed step.
+                if (RollbackClock.active() || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) {
+                    if (throwable instanceof Error error) throw error;
+                    throw new IllegalStateException("Failed rollback activation: " + context.getAbilityName()
+                            + " / " + context.getClickType(), throwable);
+                }
                 ProjectKorra.log.warning("Failed to activate " + context.getAbilityName() + " for " + context.getClickType() + ": " + throwable.getMessage());
                 throwable.printStackTrace();
             }

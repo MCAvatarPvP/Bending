@@ -693,6 +693,11 @@ public final class FabricMC {
         }
         net.minecraft.block.Block block = material(data.getMaterial());
         BlockState state = block.getDefaultState();
+        return applyBlockDataProperties(state, data);
+    }
+
+    /** Apply the mutable common facade over a caller-validated native base, preserving other native properties. */
+    public static BlockState applyBlockDataProperties(BlockState state, BlockData data) {
         if (data instanceof Levelled levelled) {
             state = withBestLevel(state, levelled.getLevel());
             if (state.contains(Properties.WATERLOGGED)) {

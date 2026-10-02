@@ -2,8 +2,11 @@ package me.moros.hyperion.configuration;
 
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.platform.Platform;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackConfiguration;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackStateCell;
 
 import java.io.File;
+import java.util.*;
 
 public class Config extends com.projectkorra.projectkorra.configuration.Config {
     private BendingPlayer bPlayer;
@@ -12,11 +15,30 @@ public class Config extends com.projectkorra.projectkorra.configuration.Config {
         super(Platform.dataFolder().resolve("hyperion").resolve(name).toFile());
     }
 
+    private Config(RollbackConfiguration.Settings settings) { super(settings); }
+
+    @Override public Config createRollbackView(RollbackConfiguration.Settings settings) { return new Frozen(settings); }
+    @Override public List<BendingPlayer> captureRollbackContext() {
+        return Collections.unmodifiableList(Arrays.asList(super.captureRollbackContext().getFirst(), bPlayer));
+    }
+    @Override public void restoreRollbackContext(List<BendingPlayer> context) {
+        if (context.size() != 2) throw new IllegalArgumentException("Hyperion config reader context");
+        super.restoreRollbackContext(context.subList(0, 1)); bPlayer = context.get(1);
+    }
+    private static final class Frozen extends Config implements RollbackStateCell<List<BendingPlayer>> {
+        private Frozen(RollbackConfiguration.Settings settings) { super(settings); }
+        @Override public List<BendingPlayer> captureRollbackState() { return captureRollbackContext(); }
+        @Override public void restoreRollbackState(List<BendingPlayer> context) { restoreRollbackContext(context); }
+        @Override public Collection<?> rollbackReferences() { return captureRollbackContext().stream().filter(Objects::nonNull).toList(); }
+    }
+
     public Config getConfig() {
-        return this;
+        return (Config) RollbackConfiguration.resolve(this);
     }
 
     public Config getConfig(final BendingPlayer bPlayer) {
+        Config view = (Config) RollbackConfiguration.resolve(this);
+        if (view != this) return view.getConfig(bPlayer);
         this.bPlayer = bPlayer;
         return this;
     }
@@ -30,6 +52,8 @@ public class Config extends com.projectkorra.projectkorra.configuration.Config {
     }
 
     private com.projectkorra.projectkorra.configuration.Config styleConfig(final String path) {
+        Config view = (Config) RollbackConfiguration.resolve(this);
+        if (view != this) return view.styleConfig(path);
         if (this.bPlayer == null) {
             return null;
         }

@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
@@ -26,7 +28,7 @@ public class BendingManager implements Runnable {
 
     public BendingManager() {
         instance = this;
-        this.time = System.currentTimeMillis();
+        this.time = RollbackClock.millis();
 
         times.clear();
 
@@ -115,8 +117,8 @@ public class BendingManager implements Runnable {
     @Override
     public void run() {
         MovementHandler.tickAll();
-        this.interval = System.currentTimeMillis() - this.time;
-        this.time = System.currentTimeMillis();
+        this.interval = RollbackClock.millis() - this.time;
+        this.time = RollbackClock.millis();
         ProjectKorra.time_step = this.interval;
 
         CoreAbility.progressAll();
@@ -148,7 +150,7 @@ public class BendingManager implements Runnable {
             while (!BendingPlayer.TEMP_ELEMENTS.isEmpty()) { //We use a while loop so if multiple expire in the same tick, all are done together
                 Pair<Player, Long> pair = BendingPlayer.TEMP_ELEMENTS.peek();
 
-                if (System.currentTimeMillis() > pair.getRight()) { //Check if the top temp element has expired
+                if (RollbackClock.millis() > pair.getRight()) { //Check if the top temp element has expired
                     BendingPlayer.TEMP_ELEMENTS.poll(); //And if it has, remove from the queue, and recalculate temp elements for that player
                     BendingPlayer.getBendingPlayer(pair.getLeft()).recalculateTempElements(false);
                 } else {

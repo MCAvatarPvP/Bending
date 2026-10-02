@@ -9,24 +9,29 @@ import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.FireAbility;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackDomain;
 
 import java.util.function.Supplier;
 
 /**
  * Selects which position authority an ability uses for player hit registration.
  *
- * <p>Air and Fire always use the server's current entity positions. Other
- * elements retain the bounded client contact rewind path.</p>
+ * <p>Outside rollback, Air and Fire use the server's current entity positions.
+ * Other elements retain the bounded client contact rewind path. Inside rollback,
+ * every element resolves contact against the restored simulation tick.</p>
  */
 public enum HitRegistrationPolicy {
     REWIND_ASSISTED,
-    SERVER_CURRENT;
+    SERVER_CURRENT,
+    /** Both loaders resolve contact against the restored simulation tick. */
+    SIMULATION_CURRENT;
 
     private static final ThreadLocal<Integer> TARGET_ACQUISITION_DEPTH =
             ThreadLocal.withInitial(() -> 0);
 
     /** Selects whether a predicted ability may report player contacts. */
     public static HitRegistrationPolicy forAbility(final CoreAbility ability) {
+        if (RollbackDomain.active()) return SIMULATION_CURRENT;
         return ability == null ? REWIND_ASSISTED : resolve(ability.getClass(), ability.getElement());
     }
 

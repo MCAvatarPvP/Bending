@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.object;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.Ability;
@@ -52,7 +54,7 @@ public class HorizontalVelocityTracker {
         remove(e);
         this.entity = e;
         this.instigator = instigator;
-        this.fireTime = System.currentTimeMillis();
+        this.fireTime = RollbackClock.millis();
         this.delay = delay;
         this.thisVelocity = e.getVelocity().clone();
         this.launchLocation = e.getLocation().clone();
@@ -89,7 +91,7 @@ public class HorizontalVelocityTracker {
     }
 
     public void update() {
-        if (System.currentTimeMillis() < this.fireTime + this.delay) {
+        if (RollbackClock.millis() < this.fireTime + this.delay) {
             return;
         }
 
@@ -98,7 +100,7 @@ public class HorizontalVelocityTracker {
             return;
         }
 
-        if (System.currentTimeMillis() > (this.fireTime + 30000)) {
+        if (RollbackClock.millis() > (this.fireTime + 30000)) {
             ProjectKorra.log.info("removed HorizontalVelocityTracker lasting over 30 seconds: " + this.instigator.getName() + " using " + this.abil.getName() + " on " + this.entity);
             this.remove();
             return;

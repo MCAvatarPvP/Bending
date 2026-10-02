@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.command;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.google.common.collect.Lists;
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.OfflineBendingPlayer;
@@ -72,7 +74,7 @@ public class CooldownCommand extends PKCommand {
                         .sorted(Comparator.comparingLong(entry -> entry.getValue().getCooldown()))
                         .filter(entry -> entry.getValue().getCooldown() > 0)
                         .map(entry -> ChatColor.YELLOW + entry.getKey() + ": " + ChatColor.RED +
-                                TimeUtil.formatTime(entry.getValue().getCooldown() - System.currentTimeMillis()))
+                                TimeUtil.formatTime(entry.getValue().getCooldown() - RollbackClock.millis()))
                         .collect(Collectors.toList());
 
                 if (cooldowns.isEmpty()) {
@@ -198,7 +200,7 @@ public class CooldownCommand extends PKCommand {
             }
 
             Cooldown cooldownObject = bPlayer.getCooldowns().get(fixedCooldown);
-            cooldownObject = new Cooldown(time + System.currentTimeMillis(), cooldownObject != null && cooldownObject.isDatabase());
+            cooldownObject = new Cooldown(time + RollbackClock.millis(), cooldownObject != null && cooldownObject.isDatabase());
             bPlayer.getCooldowns().put(fixedCooldown, cooldownObject);
             return fixedCooldown;
         }

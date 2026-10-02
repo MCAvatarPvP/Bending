@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.waterbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
@@ -71,7 +74,7 @@ public class WaterSpout extends WaterAbility {
         this.height = getConfig().getDouble("Abilities.Water.WaterSpout.Height");
         this.interval = getConfig().getLong("Abilities.Water.WaterSpout.Interval");
         this.duration = getConfig().getLong("Abilities.Water.WaterSpout.Duration");
-        this.startTime = System.currentTimeMillis();
+        this.startTime = RollbackClock.millis();
 
         this.canSpoutHop = getConfig().getBoolean("Abilities.Water.WaterSpout.SpoutHop.Enabled");
         this.spoutHopPower = getConfig().getDouble("Abilities.Water.WaterSpout.SpoutHop.Power");
@@ -185,7 +188,7 @@ public class WaterSpout extends WaterAbility {
         if (this.player.isDead() || !this.player.isOnline() || !this.bPlayer.canBendIgnoreBindsCooldowns(this)) {
             this.remove();
             return;
-        } else if (this.duration != 0 && System.currentTimeMillis() > this.startTime + this.duration) {
+        } else if (this.duration != 0 && RollbackClock.millis() > this.startTime + this.duration) {
             this.bPlayer.addCooldown(this);
             this.remove();
             if (this.isRemoved()) return;
@@ -193,7 +196,7 @@ public class WaterSpout extends WaterAbility {
         this.blocks.clear();
         this.player.setFallDistance(0);
         this.player.setSprinting(false);
-        if ((new Random()).nextInt(10) == 0) {
+        if ((new RollbackRandom()).nextInt(10) == 0) {
             playWaterbendingSound(this.player.getLocation());
         }
 
@@ -309,8 +312,8 @@ public class WaterSpout extends WaterAbility {
             return;
         }
 
-        if (System.currentTimeMillis() >= this.time + this.interval) {
-            this.time = System.currentTimeMillis();
+        if (RollbackClock.millis() >= this.time + this.interval) {
+            this.time = RollbackClock.millis();
 
             Location location = block.getLocation();
             final Location playerLoc = this.player.getLocation();

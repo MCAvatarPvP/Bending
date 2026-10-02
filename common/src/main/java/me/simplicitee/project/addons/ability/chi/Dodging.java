@@ -1,5 +1,7 @@
 package me.simplicitee.project.addons.ability.chi;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.ChiAbility;
 import com.projectkorra.projectkorra.ability.PassiveAbility;
@@ -20,7 +22,7 @@ public class Dodging extends ChiAbility implements AddonAbility, PassiveAbility 
     }
 
     public boolean check() {
-        return Math.random() < chance;
+        return RollbackRandom.fraction() < chance;
     }
 
     @Override

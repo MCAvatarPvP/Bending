@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -156,7 +158,7 @@ public final class ActionBarStatusManager {
             return;
         }
 
-        final long now = System.currentTimeMillis();
+        final long now = RollbackClock.millis();
         bPlayer.getCooldowns().entrySet().stream()
                 .filter(entry -> entry.getValue().getCooldown() > now)
                 .map(entry -> new CooldownEntry(CoreAbility.getAbility(entry.getKey()), entry.getValue().getCooldown()))

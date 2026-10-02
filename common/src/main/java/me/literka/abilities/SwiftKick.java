@@ -1,5 +1,7 @@
 package me.literka.abilities;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.ChiAbility;
@@ -74,7 +76,7 @@ public class SwiftKick extends ChiAbility implements AddonAbility {
 
         Vector vector = target.getEyeLocation().toVector().subtract(player.getEyeLocation().toVector());
         Location location = target.getEyeLocation().setDirection(vector);
-        double angleX = -80 + Math.random() * 20;
+        double angleX = -80 + RollbackRandom.fraction() * 20;
         Utils.spawnCircleParticles(location, effect, location.getYaw(), angleX, 4, 0.1);
 
         if (target instanceof Player p) {

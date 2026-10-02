@@ -1,5 +1,7 @@
 package me.simplicitee.project.addons.ability.earth;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
@@ -144,7 +146,7 @@ public class EarthKick extends EarthAbility implements AddonAbility, Listener {
             return;
         }
 
-        if (System.currentTimeMillis() > getStartTime() + duration) {
+        if (RollbackClock.millis() > getStartTime() + duration) {
             remove();
             return;
         }

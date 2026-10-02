@@ -1,5 +1,9 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackScheduler;
+import com.projectkorra.projectkorra.platform.Platform;
+
 import com.projectkorra.projectkorra.Manager;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.platform.mc.GameMode;
@@ -10,6 +14,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.UUID;
+import java.util.Set;
+import java.util.Comparator;
+import java.util.function.BiConsumer;
 
 public class FlightHandler extends Manager {
 
@@ -22,9 +29,34 @@ public class FlightHandler extends Manager {
      * duration. This is used to reduce the number of iterations when cleaning
      * up dead instances.
      */
-    private final PriorityQueue<FlightAbility> CLEANUP = new PriorityQueue<>(100, (f1, f2) -> (int) (f1.duration - f2.duration));
+    private final PriorityQueue<FlightAbility> CLEANUP = new PriorityQueue<>(100, new FlightDurationOrder());
+
+    // Preserve the existing queue order; a named comparator can be checkpointed.
+    private static final class FlightDurationOrder implements Comparator<FlightAbility> {
+        @Override public int compare(FlightAbility first, FlightAbility second) {
+            return (int) (first.duration - second.duration);
+        }
+    }
 
     private FlightHandler() {
+    }
+
+    @Override
+    protected void projectRollbackState(Set<UUID> participants, BiConsumer<Object, Object> project) {
+        if (getClass() != FlightHandler.class) throw new UnsupportedOperationException("Flight manager subclass requires its own rollback import");
+        var instances = new HashMap<UUID, Flight>();
+        this.INSTANCES.forEach((id, flight) -> { if (participants.contains(id)) instances.put(id, flight); });
+        // Clone retains heap ordering, including equal-duration entries, before filtering.
+        var cleanup = new PriorityQueue<>(this.CLEANUP);
+        cleanup.removeIf(ability -> !participants.contains(ability.player.getUniqueId()));
+        project.accept(this.INSTANCES, instances);
+        project.accept(this.CLEANUP, cleanup);
+    }
+
+    @Override
+    protected void onRollbackInstall() {
+        if (!(Platform.scheduler() instanceof RollbackScheduler)) throw new IllegalStateException("Flight cleanup requires a private scheduler");
+        this.startCleanup();
     }
 
     @Override
@@ -196,7 +228,7 @@ public class FlightHandler extends Manager {
         new BukkitRunnable() {
             @Override
             public void run() {
-                final long currentTime = System.currentTimeMillis();
+                final long currentTime = RollbackClock.millis();
                 while (!FlightHandler.this.CLEANUP.isEmpty()) {
                     final FlightAbility ability = FlightHandler.this.CLEANUP.peek();
                     if (currentTime >= ability.startTime + ability.duration) {
@@ -253,7 +285,7 @@ public class FlightHandler extends Manager {
             this.player = player;
             this.identifier = identifier;
             this.duration = duration;
-            this.startTime = System.currentTimeMillis();
+            this.startTime = RollbackClock.millis();
         }
 
         @Override

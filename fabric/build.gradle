@@ -7,6 +7,10 @@ repositories {
     maven { url = 'https://maven.terraformersmc.com/releases/' }
 }
 
+loom {
+    accessWidenerPath = file('src/main/resources/projectkorra.accesswidener')
+}
+
 dependencies {
     minecraft "com.mojang:minecraft:${minecraft_version}"
     mappings "net.fabricmc:yarn:${yarn_mappings}:v2"
@@ -17,13 +21,19 @@ dependencies {
     include 'org.xerial:sqlite-jdbc:3.49.1.0'
     api project(':common')
     include 'org.yaml:snakeyaml:2.5'
+    include 'net.bytebuddy:byte-buddy:1.15.11'
+    include 'org.objenesis:objenesis:3.3'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testImplementation 'org.objenesis:objenesis:3.3'
+    testImplementation "net.fabricmc:fabric-loader-junit:${fabric_loader_version}"
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
 }
 
 tasks.withType(Test).configureEach {
     useJUnitPlatform()
 }
+
+sourceSets.test.resources.srcDir(rootProject.file('test-fixtures'))
 
 processResources {
     inputs.property 'version', project.version

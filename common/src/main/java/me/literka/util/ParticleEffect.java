@@ -1,11 +1,13 @@
 package me.literka.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Particle;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.util.ParticleUtil;
 
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Random;
 import java.util.function.Consumer;
 
 public class ParticleEffect {
@@ -198,7 +200,7 @@ public class ParticleEffect {
     }
 
     private Location offsettedLocation() {
-        ThreadLocalRandom random = ThreadLocalRandom.current();
+        Random random = RollbackRandom.shared();
         return location.clone().add(
                 offsetX * random.nextGaussian(),
                 offsetY * random.nextGaussian(),

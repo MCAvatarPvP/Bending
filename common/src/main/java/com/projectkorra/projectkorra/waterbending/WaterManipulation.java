@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.waterbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AirAbility;
@@ -94,7 +97,7 @@ public class WaterManipulation extends WaterAbility {
             this.focusBlock();
             this.prepared = true;
             this.start();
-            this.time = System.currentTimeMillis();
+            this.time = RollbackClock.millis();
         }
     }
 
@@ -108,7 +111,7 @@ public class WaterManipulation extends WaterAbility {
             this.focusBlock();
             this.prepared = true;
             this.start();
-            this.time = System.currentTimeMillis();
+            this.time = RollbackClock.millis();
         }
     }
 
@@ -275,7 +278,7 @@ public class WaterManipulation extends WaterAbility {
 
             BendingPlayer limitedPlayer = manip.player.equals(player) ? manip.bPlayer : BendingPlayer.getBendingPlayer(player);
 
-            final boolean redirection = System.currentTimeMillis() - limitedPlayer.getLastWaterManipRedirect() > manip.waterManipRedirectionDelay
+            final boolean redirection = RollbackClock.millis() - limitedPlayer.getLastWaterManipRedirect() > manip.waterManipRedirectionDelay
                     || limitedPlayer.getCps() <= manip.cpsBuffer;
 
             if (manip.player.equals(player) && redirection) {
@@ -292,7 +295,7 @@ public class WaterManipulation extends WaterAbility {
                     && mloc.distanceSquared(location.clone().add(vector))
                     < mloc.distanceSquared(location.clone().add(vector.clone().multiply(-1)))) {
                 manip.redirect(player, getTargetLocation(player, manip.range));
-                manip.getBendingPlayer().setLastWaterManipRedirect(System.currentTimeMillis());
+                manip.getBendingPlayer().setLastWaterManipRedirect(RollbackClock.millis());
                 redirected = true;
             }
         }
@@ -305,7 +308,7 @@ public class WaterManipulation extends WaterAbility {
             final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
             if (bPlayer != null) {
                 final var config = ConfigManager.getConfig(bPlayer);
-                final boolean redirection = System.currentTimeMillis() - bPlayer.getLastWaterManipRedirect()
+                final boolean redirection = RollbackClock.millis() - bPlayer.getLastWaterManipRedirect()
                         > config.getLong("Abilities.Water.WaterManipulation.RedirectionDelay")
                         || bPlayer.getCps() <= config.getInt("Abilities.Water.WaterManipulation.CpsBuffer");
                 if (redirection && config.getBoolean("Abilities.Water.WaterManipulation.OldRedirection")) {
@@ -315,7 +318,7 @@ public class WaterManipulation extends WaterAbility {
                             config.getDouble("Abilities.Water.WaterManipulation.DeflectRange"), true);
                     if (authoritative != null && !RegionProtection.isRegionProtected(
                             player, authoritative.getLocation(), "WaterManipulation")) {
-                        bPlayer.setLastWaterManipRedirect(System.currentTimeMillis());
+                        bPlayer.setLastWaterManipRedirect(RollbackClock.millis());
                         redirected = true;
                     }
                 }
@@ -487,7 +490,7 @@ public class WaterManipulation extends WaterAbility {
             return;
         }
 
-        if (System.currentTimeMillis() - this.time >= this.interval) {
+        if (RollbackClock.millis() - this.time >= this.interval) {
             if (!this.progressing && !this.falling && !this.bPlayer.getBoundAbilityName().equalsIgnoreCase(this.getName())) {
                 this.remove();
                 return;
@@ -532,7 +535,7 @@ public class WaterManipulation extends WaterAbility {
                         }
                     }
                 } else {
-                    if ((new Random()).nextInt(4) == 0) {
+                    if ((new RollbackRandom()).nextInt(4) == 0) {
                         playWaterbendingSound(this.location);
                     }
                     this.location = this.location.clone().add(direction);
@@ -665,7 +668,7 @@ public class WaterManipulation extends WaterAbility {
             this.source = new TempBlock(block, WATER, this);
         } else {
             if (isWater(block) && !AFFECTED_BLOCKS.containsKey(block)) {
-                ParticleEffect.WATER_BUBBLE.display(block.getLocation().clone().add(.5, .5, .5), 5, Math.random(), Math.random(), Math.random(), 0);
+                ParticleEffect.WATER_BUBBLE.display(block.getLocation().clone().add(.5, .5, .5), 5, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0);
             }
         }
     }

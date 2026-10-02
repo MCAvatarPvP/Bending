@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.command;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.Element.SubElement;
@@ -91,7 +93,7 @@ public class ChooseCommand extends PKCommand {
                     if (sender.hasPermission("bending.command.choose.ignorecooldown") || sender.hasPermission("bending.admin.choose")) {
                         bPlayer.removeCooldown("ChooseElement");
                     } else {
-                        ChatUtil.sendBrandingMessage(sender, ChatColor.RED + this.onCooldown.replace("%cooldown%", TimeUtil.formatTime(bPlayer.getCooldown("ChooseElement") - System.currentTimeMillis())));
+                        ChatUtil.sendBrandingMessage(sender, ChatColor.RED + this.onCooldown.replace("%cooldown%", TimeUtil.formatTime(bPlayer.getCooldown("ChooseElement") - RollbackClock.millis())));
                         return;
                     }
                 }

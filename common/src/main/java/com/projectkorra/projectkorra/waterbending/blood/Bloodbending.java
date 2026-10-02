@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.waterbending.blood;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -241,7 +243,7 @@ public class Bloodbending extends BloodAbility {
             bPlayer.addCooldown(this);
             this.remove();
             return;
-        } else if (this.duration > 0 && System.currentTimeMillis() - this.getStartTime() > this.duration) {
+        } else if (this.duration > 0 && RollbackClock.millis() - this.getStartTime() > this.duration) {
             this.remove();
             this.bPlayer.addCooldown(this);
             return;
@@ -373,7 +375,7 @@ public class Bloodbending extends BloodAbility {
     @Override
     public void remove() {
         if (!this.bPlayer.isAvatarState() && this.target != null) {
-            if (System.currentTimeMillis() < this.getStartTime() + 1200) {
+            if (RollbackClock.millis() < this.getStartTime() + 1200) {
                 this.bPlayer.addCooldown(this); // Prevents spamming.
             }
         }

@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.waterbending.ice;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AirAbility;
@@ -178,7 +181,7 @@ public class IceBlast extends IceAbility {
         AirAbility.breakBreathbendingHold(entity);
 
         for (int x = 0; x < 30; x++) {
-            ParticleEffect.ITEM_CRACK.display(this.location, 5, Math.random() / 4, Math.random() / 4, Math.random() / 4, new ItemStack(Material.ICE));
+            ParticleEffect.ITEM_CRACK.display(this.location, 5, RollbackRandom.fraction() / 4, RollbackRandom.fraction() / 4, RollbackRandom.fraction() / 4, new ItemStack(Material.ICE));
         }
     }
 
@@ -248,11 +251,11 @@ public class IceBlast extends IceAbility {
             return;
         }
 
-        if (System.currentTimeMillis() < this.time + this.interval) {
+        if (RollbackClock.millis() < this.time + this.interval) {
             return;
         }
 
-        this.time = System.currentTimeMillis();
+        this.time = RollbackClock.millis();
         if (this.progressing) {
             Vector direction;
             if (this.location.getBlockY() == this.firstDestination.getBlockY()) {
@@ -319,10 +322,10 @@ public class IceBlast extends IceAbility {
             }
 
             for (int x = 0; x < 10; x++) {
-                ParticleEffect.ITEM_CRACK.display(this.location, 5, Math.random() / 2, Math.random() / 2, Math.random() / 2, new ItemStack(Material.ICE));
-                ParticleEffect.SNOW_SHOVEL.display(this.location, 5, Math.random() / 2, Math.random() / 2, Math.random() / 2, 0);
+                ParticleEffect.ITEM_CRACK.display(this.location, 5, RollbackRandom.fraction() / 2, RollbackRandom.fraction() / 2, RollbackRandom.fraction() / 2, new ItemStack(Material.ICE));
+                ParticleEffect.SNOW_SHOVEL.display(this.location, 5, RollbackRandom.fraction() / 2, RollbackRandom.fraction() / 2, RollbackRandom.fraction() / 2, 0);
             }
-            if ((new Random()).nextInt(4) == 0) {
+            if ((new RollbackRandom()).nextInt(4) == 0) {
                 playIcebendingSound(this.location);
             }
             this.location = this.location.add(direction.clone());
@@ -333,8 +336,8 @@ public class IceBlast extends IceAbility {
 
     public void breakParticles(final int amount) {
         for (int x = 0; x < amount; x++) {
-            ParticleEffect.ITEM_CRACK.display(this.location, 2, Math.random(), Math.random(), Math.random(), new ItemStack(Material.ICE));
-            ParticleEffect.SNOW_SHOVEL.display(this.location, 2, Math.random(), Math.random(), Math.random(), 0);
+            ParticleEffect.ITEM_CRACK.display(this.location, 2, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), new ItemStack(Material.ICE));
+            ParticleEffect.SNOW_SHOVEL.display(this.location, 2, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0);
         }
         this.location.getWorld().playSound(this.location, Sound.BLOCK_GLASS_BREAK, 5, 1.3f);
     }

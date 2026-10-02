@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.firebending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.ability.FireAbility;
@@ -56,7 +59,7 @@ public class FireJet extends FireAbility {
         this.speed = getConfig().getDouble("Abilities.Fire.FireJet.Speed");
         this.cooldown = getConfig().getLong("Abilities.Fire.FireJet.Cooldown");
         this.showGliding = getConfig().getBoolean("Abilities.Fire.FireJet.ShowGliding");
-        this.random = new Random();
+        this.random = new RollbackRandom();
         this.particleAmount = 10;
 
         final Block block = player.getLocation().getBlock();
@@ -76,7 +79,7 @@ public class FireJet extends FireAbility {
             this.flightHandler.createInstance(player, this.getName());
             player.setAllowFlight(true);
             player.setFireTicks(0);
-            this.time = System.currentTimeMillis();
+            this.time = RollbackClock.millis();
 
             this.start();
             if (this.showGliding) {
@@ -92,8 +95,8 @@ public class FireJet extends FireAbility {
         if (this.player.isDead() || !this.player.isOnline()) {
             this.remove();
             return;
-        } else if ((isWater(playerBlock) && !canPassThroughWater(playerBlock) && !isTorrentWater(playerBlock)) || System.currentTimeMillis() > this.time + this.duration) {
-            final boolean durationExpired = System.currentTimeMillis() > this.time + this.duration;
+        } else if ((isWater(playerBlock) && !canPassThroughWater(playerBlock) && !isTorrentWater(playerBlock)) || RollbackClock.millis() > this.time + this.duration) {
+            final boolean durationExpired = RollbackClock.millis() > this.time + this.duration;
             this.remove();
             if (this.isRemoved() || !durationExpired || this.duration <= 0) return;
         }
@@ -109,7 +112,7 @@ public class FireJet extends FireAbility {
         if (this.bPlayer.isAvatarState() && this.avatarStateToggled) {
             timefactor = 1;
         } else {
-            timefactor = 1 - (System.currentTimeMillis() - this.time) / (2.0 * this.duration);
+            timefactor = 1 - (RollbackClock.millis() - this.time) / (2.0 * this.duration);
         }
 
         final Vector velocity = this.player.getEyeLocation().getDirection().clone().normalize().multiply(this.speed * timefactor);

@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.EarthAbility;
@@ -89,7 +92,7 @@ public class Catapult extends EarthAbility {
         this.playRegularSound = getConfig().getBoolean("Abilities.Earth.Catapult.RegularSound", false);
         this.activationHandled = false;
         this.stage = 1;
-        this.stageStart = System.currentTimeMillis();
+        this.stageStart = RollbackClock.millis();
         this.up = new Vector(0, 1, 0);
     }
 
@@ -125,10 +128,10 @@ public class Catapult extends EarthAbility {
             if (this.stage == 4 || !this.player.isSneaking()) {
                 this.charging = false;
             } else {
-                if ((System.currentTimeMillis() - this.stageStart) >= ((Math.max(0, this.stageTimeMult * (this.stage - 1))) * 1000)) {
+                if ((RollbackClock.millis() - this.stageStart) >= ((Math.max(0, this.stageTimeMult * (this.stage - 1))) * 1000)) {
                     this.stage++;
-                    this.stageStart = System.currentTimeMillis();
-                    final Random random = new Random();
+                    this.stageStart = RollbackClock.millis();
+                    final Random random = new RollbackRandom();
                     ParticleEffect.BLOCK_DUST.display(this.player.getLocation(), 15, random.nextFloat(), random.nextFloat(), random.nextFloat(), this.bentBlockData);
                     ParticleEffect.BLOCK_DUST.display(this.player.getLocation().add(0, 0.5, 0), 10, random.nextFloat(), random.nextFloat(), random.nextFloat(), this.bentBlockData);
                     if (playRegularSound) {

@@ -1,5 +1,8 @@
 package com.jedk1.jedcore.ability.waterbending.combo;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
 import com.jedk1.jedcore.util.RegenTempBlock;
@@ -114,7 +117,7 @@ public class Maelstrom extends WaterAbility implements AddonAbility, ComboAbilit
             remove();
             return;
         }
-        if (System.currentTimeMillis() > getStartTime() + duration) {
+        if (RollbackClock.millis() > getStartTime() + duration) {
             remove();
             return;
         }
@@ -182,7 +185,7 @@ public class Maelstrom extends WaterAbility implements AddonAbility, ComboAbilit
                 for (int j = 0; j < 2; j++) {
                     wave.add(b.getRelative(BlockFace.DOWN, j));
                     new RegenTempBlock(b.getRelative(BlockFace.DOWN, j), Material.WATER, Material.WATER.createBlockData(bd -> ((Levelled) bd).setLevel(1)), 0);
-                    ParticleEffect.WATER_SPLASH.display(loc, 3, Math.random(), Math.random(), Math.random(), 0);
+                    ParticleEffect.WATER_SPLASH.display(loc, 3, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0);
                 }
             }
             newAngle += 15;

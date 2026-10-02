@@ -423,6 +423,7 @@ public abstract class PaperPredictionSnapshots extends PaperPredictionDelivery {
     }
 
     protected void send(Player player, String channel, byte[] payload) {
+        if (rollbackInputs.blocksLegacy(player.getUniqueId())) return;
         if (payload.length <= Messenger.MAX_MESSAGE_SIZE) player.sendPluginMessage(plugin, channel, payload);
     }
 

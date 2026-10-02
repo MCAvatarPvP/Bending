@@ -19,6 +19,8 @@
 
 package me.moros.hyperion.abilities.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
@@ -52,7 +54,7 @@ import me.moros.hyperion.util.MaterialCheck;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Random;
 
 public class LavaDisk extends LavaAbility implements AddonAbility, MultiAbility {
     private static final String[] colors = {"2F1600", "5E2C00", "8C4200", "B05300", "C45D00", "F05A00", "F0A000", "F0BE00"};
@@ -183,7 +185,7 @@ public class LavaDisk extends LavaAbility implements AddonAbility, MultiAbility 
         if (MaterialCheck.isLeaf(block) || isPlant(block) || materials.contains(block.getType().name()) || isEarthbendable(block)) {
             new TempBlock(block, Material.AIR.createBlockData(), regenDelay);
             ParticleEffect.LAVA.display(block.getLocation(), 1, 0.5, 0.5, 0.5, 0.2);
-            if (ThreadLocalRandom.current().nextInt(5) == 0) {
+            if (RollbackRandom.shared().nextInt(5) == 0) {
                 location.getWorld().playSound(location, Sound.BLOCK_GRINDSTONE_USE, 0.3f, 0.3f);
                 location.getWorld().playSound(location, Sound.BLOCK_FIRE_AMBIENT, 0.3f, 1.5f);
             }
@@ -221,7 +223,7 @@ public class LavaDisk extends LavaAbility implements AddonAbility, MultiAbility 
             return false;
         if (isWater(location.getBlock())) {
             for (int i = 0; i < 10; i++) {
-                ParticleEffect.CLOUD.display(location, 2, ThreadLocalRandom.current().nextDouble(), ThreadLocalRandom.current().nextDouble(), ThreadLocalRandom.current().nextDouble());
+                ParticleEffect.CLOUD.display(location, 2, RollbackRandom.shared().nextDouble(), RollbackRandom.shared().nextDouble(), RollbackRandom.shared().nextDouble());
             }
             location.getWorld().playSound(location, Sound.BLOCK_LAVA_EXTINGUISH, 1, 1);
             return false;

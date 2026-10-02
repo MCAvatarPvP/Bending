@@ -1,5 +1,8 @@
 package me.simplicitee.project.addons.ability.fire;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.LightningAbility;
@@ -56,7 +59,7 @@ public class ArcSpark extends LightningAbility implements AddonAbility {
         this.attractive = ProjectAddons.instance.getConfig(bPlayer).getStringList("Properties.MetallicBlocks");
         this.charged = false;
         this.shoot = false;
-        this.chargedTill = System.currentTimeMillis();
+        this.chargedTill = RollbackClock.millis();
 
         this.charging = new SoundEffect(Sound.ENTITY_CREEPER_PRIMED, 0.3f, 0.6f, 30);
 
@@ -71,21 +74,21 @@ public class ArcSpark extends LightningAbility implements AddonAbility {
         }
 
         if (!charged) {
-            long checkTime = getStartTime() + charge - System.currentTimeMillis();
+            long checkTime = getStartTime() + charge - RollbackClock.millis();
             if (checkTime <= 0) {
                 charged = true;
             } else {
                 Util.playLightningParticles(player.getLocation().add(0, 1, 0), 2, 0.36, 0.21, 0.36);
             }
 
-            chargedTill = System.currentTimeMillis();
+            chargedTill = RollbackClock.millis();
             charging.play(player.getEyeLocation());
         } else if (charged && !shoot) {
             Util.playLightningParticles(player.getEyeLocation().add(player.getLocation().getDirection().multiply(1.3)), 1, 0.001, 0.001, 0.001);
-            chargedTill = System.currentTimeMillis();
+            chargedTill = RollbackClock.millis();
             charging.play(player.getEyeLocation());
         } else if (charged && shoot) {
-            if (chargedTill + duration < System.currentTimeMillis()) {
+            if (chargedTill + duration < RollbackClock.millis()) {
                 remove();
                 return;
             }
@@ -168,7 +171,7 @@ public class ArcSpark extends LightningAbility implements AddonAbility {
         }
 
         Util.playLightningParticles(loc, 1, 0, 0, 0);
-        if (Math.random() < 0.01) {
+        if (RollbackRandom.fraction() < 0.01) {
             playLightningbendingSound(loc);
         }
 

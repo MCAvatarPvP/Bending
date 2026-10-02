@@ -19,6 +19,8 @@
 
 package me.moros.hyperion.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.object.EarthCosmetic;
@@ -59,7 +61,7 @@ public class BendingFallingBlock {
         fallingBlock.setGravity(gravity);
         fallingBlock.setDropItem(false);
 
-        expirationTime = System.currentTimeMillis() + delay;
+        expirationTime = RollbackClock.millis() + delay;
         ability = abilityInstance;
         instances.put(fallingBlock, this);
         bfbQueue.add(this);
@@ -79,7 +81,7 @@ public class BendingFallingBlock {
     }
 
     public static void manage() {
-        final long currentTime = System.currentTimeMillis();
+        final long currentTime = RollbackClock.millis();
         while (!bfbQueue.isEmpty()) {
             final BendingFallingBlock bfb = bfbQueue.peek();
             if (currentTime > bfb.getExpirationTime()) {

@@ -21,7 +21,6 @@ import com.projectkorra.projectkorra.platform.mc.plugin.Plugin;
 
 import javax.net.ssl.HttpsURLConnection;
 import java.io.*;
-import java.lang.reflect.Method;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -147,18 +146,7 @@ public class Metrics {
     }
 
     private int getPlayerAmount() {
-        try {
-            // Around MC 1.8 the return type was changed from an array to a collection,
-            // This fixes java.lang.NoSuchMethodError:
-            // com.projectkorra.projectkorra.platform.mc.Platform.players().<Player>onlinePlayers()Ljava/util/Collection;
-            Method onlinePlayersMethod = Class.forName("com.projectkorra.projectkorra.platform.mc.Server").getMethod("getOnlinePlayers");
-            return onlinePlayersMethod.getReturnType().equals(Collection.class)
-                    ? ((Collection<?>) onlinePlayersMethod.invoke(Platform.server().handle())).size()
-                    : ((Player[]) onlinePlayersMethod.invoke(Platform.server().handle())).length;
-        } catch (Exception e) {
-            // Just use the new method if the reflection failed
-            return Platform.players().<Player>onlinePlayers().size();
-        }
+        return Platform.players().<Player>onlinePlayers().size();
     }
 
     public static class MetricsBase {

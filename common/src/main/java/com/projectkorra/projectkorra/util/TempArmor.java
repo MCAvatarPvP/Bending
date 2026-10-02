@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
@@ -68,7 +70,7 @@ public class TempArmor {
         }
 
         this.entity = entity;
-        this.startTime = System.currentTimeMillis();
+        this.startTime = RollbackClock.millis();
         this.duration = duration;
         this.ability = ability;
         this.oldArmor = new ItemStack[]{new ItemStack(Material.AIR), new ItemStack(Material.AIR), new ItemStack(Material.AIR), new ItemStack(Material.AIR)};
@@ -82,7 +84,7 @@ public class TempArmor {
         if (!INSTANCES.containsKey(entity)) {
             ORIGINAL.put(entity, this.oldArmor);
             final PriorityQueue<TempArmor> queue = new PriorityQueue<>(10, (a, b) -> {
-                final long current = System.currentTimeMillis();
+                final long current = RollbackClock.millis();
                 final long remainingA = a.getStartTime() + a.getDuration() - current;
                 final long remainingB = b.getStartTime() + b.getDuration() - current;
                 return (int) (remainingA - remainingB);
@@ -100,7 +102,7 @@ public class TempArmor {
             final PriorityQueue<TempArmor> queue = INSTANCES.get(entity);
             while (!queue.isEmpty()) {
                 final TempArmor tarmor = queue.peek();
-                if (System.currentTimeMillis() >= tarmor.getStartTime() + tarmor.getDuration()) {
+                if (RollbackClock.millis() >= tarmor.getStartTime() + tarmor.getDuration()) {
                     tarmor.revert();
                 } else {
                     break;

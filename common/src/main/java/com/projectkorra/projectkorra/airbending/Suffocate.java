@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.airbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.AirAbility;
@@ -195,7 +197,7 @@ public class Suffocate extends AirAbility {
             return;
         }
 
-        if (System.currentTimeMillis() - this.getStartTime() < this.chargeTime) {
+        if (RollbackClock.millis() - this.getStartTime() < this.chargeTime) {
             playAirbendingParticles(GeneralMethods.getMainHandLocation(this.player), this.particleCount, 0.1, 0.1, 0.1);
             return;
         }
@@ -218,7 +220,7 @@ public class Suffocate extends AirAbility {
             return;
         }
 
-        if (System.currentTimeMillis() - this.startedAt > this.duration) {
+        if (RollbackClock.millis() - this.startedAt > this.duration) {
             this.breakSuffocateLocal(target);
             this.remove();
             return;
@@ -292,7 +294,7 @@ public class Suffocate extends AirAbility {
         this.targets.clear();
         this.targets.add(target);
         this.started = true;
-        this.startedAt = System.currentTimeMillis();
+        this.startedAt = RollbackClock.millis();
         this.lastDamageTime = this.startedAt;
         this.lastSlowTime = this.startedAt;
         this.lastBlindTime = this.startedAt;
@@ -303,7 +305,7 @@ public class Suffocate extends AirAbility {
     }
 
     private void applySuffocation(final LivingEntity target) {
-        final long now = System.currentTimeMillis();
+        final long now = RollbackClock.millis();
         if (now - this.startedAt >= this.damageDelay * 1000 && now - this.lastDamageTime >= this.damageRepeat * 1000) {
             DamageHandler.damageEntity(target, this.damage, this.ability);
             this.lastDamageTime = now;
@@ -325,7 +327,7 @@ public class Suffocate extends AirAbility {
      */
     public void animate(final LivingEntity target) {
         final int steps = 8 * this.particleCount;
-        final long curTime = System.currentTimeMillis();
+        final long curTime = RollbackClock.millis();
         final long dt = curTime - this.getStartTime() - this.chargeTime;
         final long delay = 2 / this.particleCount;
         final long t1 = (long) (1500 * this.animationSpeed);

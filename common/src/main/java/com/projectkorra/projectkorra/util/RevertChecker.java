@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.EarthAbility;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
@@ -92,7 +94,7 @@ public class RevertChecker implements Runnable {
             return;
         }
 
-        this.time = System.currentTimeMillis();
+        this.time = RollbackClock.millis();
         if (config.getBoolean("Properties.Earth.RevertEarthbending")) {
 
             try {

@@ -1,5 +1,7 @@
 package me.literka.abilities;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -65,9 +67,9 @@ public class StickyBomb extends ModernChiAbility implements AddonAbility {
         int bombCount = abilities.size() + cooldowns.get(player).size();
         if (bombCount >= limit) return;
 
-        if (throwTime.containsKey(player) && System.currentTimeMillis() < throwTime.get(player)) return;
+        if (throwTime.containsKey(player) && RollbackClock.millis() < throwTime.get(player)) return;
         long throwDelay = ChiRework.config().getLong("Abilities.StickyBomb.ThrowDelay");
-        throwTime.put(player, System.currentTimeMillis() + throwDelay);
+        throwTime.put(player, RollbackClock.millis() + throwDelay);
 
         cooldown = ChiRework.config().getLong("Abilities.StickyBomb.Cooldown");
         duration = ChiRework.config().getLong("Abilities.StickyBomb.Duration");
@@ -116,7 +118,7 @@ public class StickyBomb extends ModernChiAbility implements AddonAbility {
 
         if (stuck) {
             location = targetEntity != null ? targetEntity.getLocation().add(targetLoc) : targetLoc.clone();
-            if (duration != 0 && System.currentTimeMillis() >= time + duration) {
+            if (duration != 0 && RollbackClock.millis() >= time + duration) {
                 explode();
                 return;
             }
@@ -186,7 +188,7 @@ public class StickyBomb extends ModernChiAbility implements AddonAbility {
             }
 
             location.getWorld().playSound(location, Sound.BLOCK_HONEY_BLOCK_STEP, SoundCategory.MASTER, 0.5f, 1.7f);
-            time = System.currentTimeMillis();
+            time = RollbackClock.millis();
             location = e.getLocation().add(targetLoc);
             return true;
         }
@@ -209,7 +211,7 @@ public class StickyBomb extends ModernChiAbility implements AddonAbility {
         location = targetLoc.clone();
         location.getWorld().playSound(location, Sound.BLOCK_HONEY_BLOCK_STEP, SoundCategory.MASTER, 0.5f, 1.7f);
         shulkerBullet.remove();
-        time = System.currentTimeMillis();
+        time = RollbackClock.millis();
         return true;
     }
 
@@ -234,7 +236,7 @@ public class StickyBomb extends ModernChiAbility implements AddonAbility {
         location.getWorld().playSound(this.location, Sound.ENTITY_GENERIC_EXPLODE, 1, 1.5f);
         new ParticleEffect().type(Particle.EXPLOSION_EMITTER).location(location).count(1).speed(0).spawn();
         List<Long> list = cooldowns.get(player);
-        if (list != null) list.add(System.currentTimeMillis() + getCooldown());
+        if (list != null) list.add(RollbackClock.millis() + getCooldown());
         remove();
     }
 

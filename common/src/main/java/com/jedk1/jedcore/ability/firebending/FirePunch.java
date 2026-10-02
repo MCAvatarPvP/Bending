@@ -1,5 +1,7 @@
 package com.jedk1.jedcore.ability.firebending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
 import com.jedk1.jedcore.util.FireTick;
@@ -167,7 +169,7 @@ public class FirePunch extends FireAbility implements AddonAbility {
         } else if (verticalOffset < -0.35) {
             baseAngleX = -136;
         }
-        double angleX = baseAngleX + (Math.random() * 14);
+        double angleX = baseAngleX + (RollbackRandom.fraction() * 14);
         spawnCircleParticles(facing, ringParticle, facing.getYaw(), angleX, 12, 0.1, smoke);
     }
 

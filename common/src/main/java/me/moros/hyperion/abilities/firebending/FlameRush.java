@@ -1,5 +1,8 @@
 package me.moros.hyperion.abilities.firebending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.AddonAbility;
@@ -30,7 +33,7 @@ import me.moros.hyperion.util.BendingFallingBlock;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Random;
 
 public class FlameRush extends FireAbility implements AddonAbility {
     private final Set<Entity> affectedEntities = new HashSet<>();
@@ -84,7 +87,7 @@ public class FlameRush extends FireAbility implements AddonAbility {
             if (player.isSneaking()) {
                 Location spawnLoc = getHandLocation();
                 playFirebendingParticles(spawnLoc, 1, 0, 0, 0);
-                if (System.currentTimeMillis() >= getStartTime() + maxChargeTime) {
+                if (RollbackClock.millis() >= getStartTime() + maxChargeTime) {
                     ParticleEffect.SMOKE_LARGE.display(spawnLoc, 1);
                 }
             } else {
@@ -109,7 +112,7 @@ public class FlameRush extends FireAbility implements AddonAbility {
     }
 
     private void launch() {
-        long time = System.currentTimeMillis();
+        long time = RollbackClock.millis();
         double deltaTime = time - getStartTime();
         double factor = 1;
         if (deltaTime >= maxChargeTime) {
@@ -247,7 +250,7 @@ public class FlameRush extends FireAbility implements AddonAbility {
             streamDirection = streamDirection.add(player.getLocation().getDirection().multiply(0.08)).normalize().multiply(speed);
             for (int i = 0; i < 3; i++) {
                 render();
-                if (ThreadLocalRandom.current().nextInt(3) == 0) {
+                if (RollbackRandom.shared().nextInt(3) == 0) {
                     loc.getWorld().playSound(loc, Sound.BLOCK_FIRE_AMBIENT, 2, 1);
                 }
                 checkEntityCollisions();

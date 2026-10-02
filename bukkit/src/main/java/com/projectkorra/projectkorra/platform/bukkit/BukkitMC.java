@@ -4167,7 +4167,21 @@ public final class BukkitMC {
         private DamageEventView(org.bukkit.event.entity.EntityDamageEvent value) {
             this.value = value;
             setEntity(entity(value.getEntity()));
+            setCause(switch (value.getCause()) {
+                case ENTITY_ATTACK -> DamageCause.ENTITY_ATTACK;
+                case ENTITY_SWEEP_ATTACK -> DamageCause.ENTITY_SWEEP_ATTACK;
+                case FIRE -> DamageCause.FIRE;
+                case FIRE_TICK -> DamageCause.FIRE_TICK;
+                case LAVA -> DamageCause.LAVA;
+                case FALL -> DamageCause.FALL;
+                case SUFFOCATION -> DamageCause.SUFFOCATION;
+                case FLY_INTO_WALL -> DamageCause.FLY_INTO_WALL;
+                default -> DamageCause.CUSTOM;
+            });
         }
+
+        @Override public boolean isCancelled() { return value.isCancelled(); }
+        @Override public void setCancelled(boolean cancelled) { value.setCancelled(cancelled); }
 
         private static org.bukkit.event.entity.EntityDamageEvent.DamageModifier nativeModifier(DamageModifier modifier) {
             return switch (modifier) {

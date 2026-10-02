@@ -6,6 +6,9 @@ import org.bukkit.entity.Interaction;
 import org.bukkit.entity.LivingEntity;
 
 import java.lang.reflect.Method;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -19,8 +22,8 @@ final class BetterModelHitboxes {
             try {
                 Method source = api.getMethod("source");
                 Method controller = api.getMethod("mountController");
-                return Optional.of(new Access(source, source.getReturnType().getMethod("uuid"),
-                        api.getMethod("uuid"), controller, controller.getReturnType().getMethod("canMount")));
+                return Optional.of(new Access(bind(source, Object.class), bind(source.getReturnType().getMethod("uuid"), UUID.class),
+                        bind(api.getMethod("uuid"), UUID.class), bind(controller, Object.class), bind(controller.getReturnType().getMethod("canMount"), boolean.class)));
             } catch (ReflectiveOperationException | LinkageError ignored) {
                 return Optional.empty();
             }
@@ -40,10 +43,9 @@ final class BetterModelHitboxes {
         if (access == null || !entity.isValid()) return null;
         try {
             // p_/sp_ mount anchors are not body colliders. Their real riders are queried separately.
-            if (Boolean.TRUE.equals(access.canMount.invoke(access.controller.invoke(entity)))) return null;
-            Object source = access.source.invoke(entity);
-            Object id = access.sourceUuid.invoke(source);
-            if (!(id instanceof UUID uuid) || !(Bukkit.getEntity(uuid) instanceof LivingEntity owner)
+            if (access.mountable(entity)) return null;
+            UUID uuid = access.ownerId(entity);
+            if (uuid == null || !(Bukkit.getEntity(uuid) instanceof LivingEntity owner)
                     || !owner.isValid() || owner.isDead() || !owner.getWorld().equals(entity.getWorld())) return null;
             Entity geometry = entity;
             if (entity instanceof Interaction) {
@@ -51,11 +53,11 @@ final class BetterModelHitboxes {
                 // its actual body hitbox, so the companion cannot enlarge the model's damage area.
                 geometry = entity.getVehicle();
                 if (!isHitbox(geometry) || !geometry.isValid() || !owner.getWorld().equals(geometry.getWorld())
-                        || !access.hitboxUuid.invoke(entity).equals(
-                                ACCESS.get(geometry.getClass()).orElseThrow().hitboxUuid.invoke(geometry))) return null;
+                        || !access.hitboxId(entity).equals(
+                                ACCESS.get(geometry.getClass()).orElseThrow().hitboxId(geometry))) return null;
             }
             return new Part(owner, geometry);
-        } catch (ReflectiveOperationException | LinkageError ignored) {
+        } catch (Throwable ignored) {
             return null;
         }
     }
@@ -70,6 +72,20 @@ final class BetterModelHitboxes {
         return findHitboxInterface(type.getSuperclass());
     }
 
-    private record Access(Method source, Method sourceUuid, Method hitboxUuid,
-                          Method controller, Method canMount) {}
+    private static MethodHandle bind(Method method, Class<?> result) throws IllegalAccessException {
+        return MethodHandles.publicLookup().unreflect(method).asType(MethodType.methodType(result, Object.class));
+    }
+
+    private record Access(MethodHandle source, MethodHandle sourceUuid, MethodHandle hitboxUuid,
+                          MethodHandle controller, MethodHandle canMount) {
+        boolean mountable(Object entity) throws Throwable {
+            Object value = controller.invokeExact(entity);
+            return (boolean) canMount.invokeExact(value);
+        }
+        UUID ownerId(Object entity) throws Throwable {
+            Object value = source.invokeExact(entity);
+            return (UUID) sourceUuid.invokeExact(value);
+        }
+        UUID hitboxId(Object entity) throws Throwable { return (UUID) hitboxUuid.invokeExact(entity); }
+    }
 }

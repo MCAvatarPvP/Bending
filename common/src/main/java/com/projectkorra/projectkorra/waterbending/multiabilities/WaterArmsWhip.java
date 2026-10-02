@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.waterbending.multiabilities;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.WaterAbility;
@@ -143,7 +145,7 @@ public class WaterArmsWhip extends WaterAbility {
         if (this.waterArms != null) {
             this.waterArms.switchPreferredArm();
             this.arm = this.waterArms.getActiveArm();
-            this.time = System.currentTimeMillis() + this.grabDuration;
+            this.time = RollbackClock.millis() + this.grabDuration;
             this.playerHealth = this.player.getHealth();
 
             if (this.arm.equals(Arm.LEFT)) {
@@ -206,7 +208,7 @@ public class WaterArmsWhip extends WaterAbility {
             this.reverting = true;
         }
 
-        if (this.grabbed && (System.currentTimeMillis() > this.time || this.playerHealth > this.player.getHealth())) {
+        if (this.grabbed && (RollbackClock.millis() > this.time || this.playerHealth > this.player.getHealth())) {
             this.grabbed = false;
             this.reverting = true;
         }

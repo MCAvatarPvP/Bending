@@ -1,5 +1,7 @@
 package com.jedk1.jedcore.ability.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
 import com.jedk1.jedcore.util.RegenTempBlock;
@@ -59,8 +61,8 @@ public class Fissure extends LavaAbility implements AddonAbility {
         }
 
         setFields();
-        time = System.currentTimeMillis();
-        step = System.currentTimeMillis() + slapDelay;
+        time = RollbackClock.millis();
+        step = RollbackClock.millis() + slapDelay;
         location = player.getLocation().clone();
         location.setPitch(0);
         direction = location.getDirection();
@@ -94,13 +96,13 @@ public class Fissure extends LavaAbility implements AddonAbility {
             remove();
             return;
         }
-        if (System.currentTimeMillis() > step && slap <= centerSlap.size()) {
-            time = System.currentTimeMillis();
-            step = System.currentTimeMillis() + slapDelay;
+        if (RollbackClock.millis() > step && slap <= centerSlap.size()) {
+            time = RollbackClock.millis();
+            step = RollbackClock.millis() + slapDelay;
             slapCenter();
             slap++;
         }
-        if (System.currentTimeMillis() > time + duration) {
+        if (RollbackClock.millis() > time + duration) {
             remove();
         }
     }

@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.airbending.flight;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
@@ -177,7 +179,7 @@ public class FlightMultiAbility extends FlightAbility implements MultiAbility {
         }
 
         if (this.duration > 0) {
-            if (System.currentTimeMillis() >= this.duration + this.getStartTime()) {
+            if (RollbackClock.millis() >= this.duration + this.getStartTime()) {
                 this.remove();
                 if (this.isRemoved()) return;
             }
@@ -190,13 +192,13 @@ public class FlightMultiAbility extends FlightAbility implements MultiAbility {
                 requestTime.remove(this.player.getUniqueId());
                 this.player.sendMessage(ChatColor.RED + "Requested player no longer found, cancelling request!");
             } else {
-                if (requestTime.get(this.player.getUniqueId()) + 15000 > System.currentTimeMillis()) {
-                    final long start = System.currentTimeMillis();
+                if (requestTime.get(this.player.getUniqueId()) + 15000 > RollbackClock.millis()) {
+                    final long start = RollbackClock.millis();
                     new BukkitRunnable() {
                         @Override
                         public void run() {
                             ChatUtil.sendActionBar(ChatColor.WHITE + FlightMultiAbility.this.player.getName() + ChatColor.GREEN + " has requested to carry you, right-click them to accept!", p2);
-                            if (System.currentTimeMillis() >= start + 300) {
+                            if (RollbackClock.millis() >= start + 300) {
                                 this.cancel();
                             }
                         }
@@ -329,7 +331,7 @@ public class FlightMultiAbility extends FlightAbility implements MultiAbility {
             }
         }
         requestedMap.put(this.player.getUniqueId(), p2.getUniqueId());
-        requestTime.put(this.player.getUniqueId(), System.currentTimeMillis());
+        requestTime.put(this.player.getUniqueId(), RollbackClock.millis());
         this.player.sendMessage(ChatColor.GREEN + "Requested to carry " + ChatColor.WHITE + p2.getName());
     }
 
@@ -366,12 +368,12 @@ public class FlightMultiAbility extends FlightAbility implements MultiAbility {
             this.multiplier = this.baseSpeed;
         }
 
-        final long start = System.currentTimeMillis();
+        final long start = RollbackClock.millis();
         new BukkitRunnable() {
             @Override
             public void run() {
                 ChatUtil.sendActionBar(ChatColor.AQUA + "Flight speed: " + FlightMultiAbility.this.speed(), FlightMultiAbility.this.player);
-                if (System.currentTimeMillis() >= start + 1000) {
+                if (RollbackClock.millis() >= start + 1000) {
                     this.cancel();
                 }
             }
@@ -380,12 +382,12 @@ public class FlightMultiAbility extends FlightAbility implements MultiAbility {
 
     public void cancel(final String reason) {
         if (!MovementHandler.isStopped(this.player) && !this.bPlayer.isChiBlocked()) {
-            final long start = System.currentTimeMillis();
+            final long start = RollbackClock.millis();
             new BukkitRunnable() {
                 @Override
                 public void run() {
                     ChatUtil.sendActionBar(ChatColor.RED + "* Flight cancelled due to " + reason + " *", FlightMultiAbility.this.player);
-                    if (System.currentTimeMillis() >= start + 1000) {
+                    if (RollbackClock.millis() >= start + 1000) {
                         this.cancel();
                     }
                 }

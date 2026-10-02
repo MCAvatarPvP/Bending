@@ -1,5 +1,7 @@
 package me.simplicitee.project.addons.ability.earth;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.EarthAbility;
@@ -145,7 +147,7 @@ public class Bulwark extends EarthAbility implements AddonAbility {
                 return;
             }
         } else {
-            if (launchTime + 3000 <= System.currentTimeMillis()) {
+            if (launchTime + 3000 <= RollbackClock.millis()) {
                 remove();
                 return;
             }
@@ -213,7 +215,7 @@ public class Bulwark extends EarthAbility implements AddonAbility {
             fbs.add(fb);
         }
 
-        launchTime = System.currentTimeMillis();
+        launchTime = RollbackClock.millis();
         blocks.clear();
         bPlayer.addCooldown(this);
     }

@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.prediction.action;
 
+import com.projectkorra.projectkorra.prediction.authority.PredictionServices;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 
 import java.util.UUID;
@@ -16,15 +17,17 @@ public final class AbilityRemovalSync {
     }
 
     public static void install(Listener value) {
+        PredictionServices.requireGlobalMutation();
         listener = value;
     }
 
     public static void clear(Listener value) {
+        PredictionServices.requireGlobalMutation();
         if (listener == value) listener = null;
     }
 
     public static void publish(CoreAbility ability) {
-        Listener current = listener;
+        Listener current = PredictionServices.current(Listener.class, listener);
         if (current != null && ability != null) {
             // A normal range/duration/input close runs inside the ability's
             // own progress context. Collisions, another move, toggles, and
@@ -45,7 +48,7 @@ public final class AbilityRemovalSync {
      */
     public static void ownerTransferred(final CoreAbility ability, final UUID previousOwner,
                                         final UUID nextOwner) {
-        final Listener current = listener;
+        final Listener current = PredictionServices.current(Listener.class, listener);
         if (current != null && ability != null && previousOwner != null
                 && nextOwner != null && !previousOwner.equals(nextOwner)) {
             current.onOwnerTransferred(ability, previousOwner, nextOwner);

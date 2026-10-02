@@ -1,5 +1,7 @@
 package me.simplicitee.project.addons.ability.water;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
@@ -62,10 +64,10 @@ public class LeafStorm extends PlantAbility implements ComboAbility, AddonAbilit
 
         for (int i = 0; i < leaves; i++) {
             Location loc = player.getEyeLocation().clone();
-            loc.add(0, Math.random() * 2 - 1, 0);
+            loc.add(0, RollbackRandom.fraction() * 2 - 1, 0);
 
-            double angle = Math.random() * new Random().nextInt(360);
-            double offset = Math.random() * radius + 0.5;
+            double angle = RollbackRandom.fraction() * new RollbackRandom().nextInt(360);
+            double offset = RollbackRandom.fraction() * radius + 0.5;
 
             leafTracker.add(new Leaf(loc, angle, offset));
         }

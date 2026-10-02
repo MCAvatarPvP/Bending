@@ -17,14 +17,14 @@ class FactionsUUID extends RegionProtectionBase {
         FLocation fLoc = new FLocation(location.getWorld().getName(), location.getBlockX() >> 4, location.getBlockZ() >> 4);
         final Faction faction = Board.getInstance().getFactionAt(fLoc);
 
-        final Object relation;
+        final com.massivecraft.factions.struct.Relation relation;
         try {
-            relation = faction.getClass().getMethod("getRelationTo", Faction.class).invoke(faction, fPlayer.getFaction());
-        } catch (ReflectiveOperationException exception) {
+            relation = faction.getRelationTo(fPlayer.getFaction());
+        } catch (LinkageError exception) {
             return true;
         }
 
-        if (!(faction.isWilderness() || fPlayer.getFaction().equals(faction) || "ALLY".equals(String.valueOf(relation)))) {
+        if (!(faction.isWilderness() || fPlayer.getFaction().equals(faction) || relation == com.massivecraft.factions.struct.Relation.ALLY)) {
             return true;
         }
         return false;

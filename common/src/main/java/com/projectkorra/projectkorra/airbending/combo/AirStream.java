@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.airbending.combo;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.ComboAbility;
@@ -105,7 +107,7 @@ public class AirStream extends AirAbility implements ComboAbility {
             return;
         }
 
-        if (this.maxDuration > 0 && System.currentTimeMillis() - this.getStartTime() >= this.maxDuration) {
+        if (this.maxDuration > 0 && RollbackClock.millis() - this.getStartTime() >= this.maxDuration) {
 
             this.remove();
             return;
@@ -132,7 +134,7 @@ public class AirStream extends AirAbility implements ComboAbility {
             return;
         }
 
-        if (!this.affectedEntities.isEmpty() && System.currentTimeMillis() - this.time >= this.airStreamEntityCarryDuration) {
+        if (!this.affectedEntities.isEmpty() && RollbackClock.millis() - this.time >= this.airStreamEntityCarryDuration) {
 
             this.remove();
             return;
@@ -209,7 +211,7 @@ public class AirStream extends AirAbility implements ComboAbility {
             }
 
             if (this.affectedEntities.isEmpty()) {
-                this.time = System.currentTimeMillis();
+                this.time = RollbackClock.millis();
             }
 
             this.affectedEntities.add(entity);

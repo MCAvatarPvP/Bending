@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.earthbending.lava;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.ability.LavaAbility;
@@ -209,8 +211,8 @@ public class LavaSurgeWall extends LavaAbility {
             return;
         }
 
-        if (System.currentTimeMillis() - this.time >= this.interval) {
-            this.time = System.currentTimeMillis();
+        if (RollbackClock.millis() - this.time >= this.interval) {
+            this.time = RollbackClock.millis();
             if (this.progressing && !this.player.isSneaking()) {
                 this.remove();
                 return;

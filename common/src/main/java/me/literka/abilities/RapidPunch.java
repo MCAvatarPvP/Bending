@@ -1,5 +1,8 @@
 package me.literka.abilities;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
@@ -52,7 +55,7 @@ public class RapidPunch extends ChiAbility implements AddonAbility {
         verticalPush = ChiRework.config().getDouble("Abilities.RapidPunch.Push.Vertical");
         oldChi = bPlayer.getElements().contains(Element.CHI);
 
-        last = System.currentTimeMillis() - interval;
+        last = RollbackClock.millis() - interval;
         effect = new ParticleEffect().type(Particle.WAX_ON).count(1).speed(25);
         this.target = target;
         wasOnGround = Utils.isOnGround(target);
@@ -78,7 +81,7 @@ public class RapidPunch extends ChiAbility implements AddonAbility {
             return;
         }
 
-        if (System.currentTimeMillis() >= last + interval) {
+        if (RollbackClock.millis() >= last + interval) {
             Utils.damage(target, damage, this);
             if (!oldChi) {
                 Utils.punchSound(target.getLocation(), false);
@@ -93,7 +96,7 @@ public class RapidPunch extends ChiAbility implements AddonAbility {
 
             Vector vector = target.getEyeLocation().toVector().subtract(player.getEyeLocation().toVector());
             Location location = target.getEyeLocation().setDirection(vector);
-            double angleX = -120 + Math.random() * 20;
+            double angleX = -120 + RollbackRandom.fraction() * 20;
             Utils.spawnCircleParticles(location, effect, location.getYaw(), angleX, 12, 0.1);
 
             if (target instanceof Player p) {
@@ -107,7 +110,7 @@ public class RapidPunch extends ChiAbility implements AddonAbility {
             }
 
             target.setNoDamageTicks(0);
-            last = System.currentTimeMillis();
+            last = RollbackClock.millis();
             numPunches++;
         }
     }

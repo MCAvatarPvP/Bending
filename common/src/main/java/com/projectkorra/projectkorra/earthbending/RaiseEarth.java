@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.ability.EarthAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
@@ -71,7 +73,7 @@ public class RaiseEarth extends EarthAbility {
 
         if (this.distance != 0 && this.canInstantiate()) {
             this.bPlayer.addCooldown("RaiseEarthPillar", this.cooldown);
-            this.time = System.currentTimeMillis() - this.interval;
+            this.time = RollbackClock.millis() - this.interval;
             this.start();
         } else {
             this.discardUnstartedBlocks();
@@ -96,7 +98,7 @@ public class RaiseEarth extends EarthAbility {
         this.loadAffectedBlocks();
 
         if (this.distance != 0 && this.canInstantiate()) {
-            this.time = System.currentTimeMillis() - this.interval;
+            this.time = RollbackClock.millis() - this.interval;
             this.start();
         } else {
             this.discardUnstartedBlocks();
@@ -118,7 +120,7 @@ public class RaiseEarth extends EarthAbility {
         this.loadAffectedBlocks();
 
         if (this.distance != 0 && this.canInstantiate()) {
-            this.time = System.currentTimeMillis() - this.interval;
+            this.time = RollbackClock.millis() - this.interval;
             this.start();
         } else {
             this.discardUnstartedBlocks();
@@ -327,8 +329,8 @@ public class RaiseEarth extends EarthAbility {
 
     @Override
     public void progress() {
-        if (System.currentTimeMillis() - this.time >= this.interval) {
-            this.time = System.currentTimeMillis();
+        if (RollbackClock.millis() - this.time >= this.interval) {
+            this.time = RollbackClock.millis();
             final Block block = this.location.getBlock();
             this.location = this.location.add(this.direction);
             if (!block.isLiquid()) {

@@ -19,6 +19,8 @@
 
 package me.moros.hyperion.abilities.firebending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.AirAbility;
@@ -105,7 +107,7 @@ public class Bolt extends LightningAbility implements AddonAbility {
                 remove();
                 return;
             }
-            if (System.currentTimeMillis() > getStartTime() + chargeTime) {
+            if (RollbackClock.millis() > getStartTime() + chargeTime) {
                 charged = true;
             }
         }
