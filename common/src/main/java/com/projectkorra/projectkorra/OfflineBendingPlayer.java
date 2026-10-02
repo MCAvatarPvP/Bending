@@ -142,6 +142,72 @@ public class OfflineBendingPlayer {
         for (RollbackTemporaryElement entry : temporaryElements) TEMP_ELEMENTS.add(Pair.of(entry.player, entry.expiry));
     }
 
+    /** Prepare a roster-only registry commit after copying the outgoing graph onto live player handles.
+     * The caller retains whole-roster gameplay ownership through all restoration commits.
+     * No load events, persistence writes, ability activation or task cancellation run here.
+     */
+    public static RollbackPlayerRestoration prepareRollbackPlayerRestoration(
+            Map<UUID, BendingPlayer> expected, Map<UUID, BendingPlayer> restored,
+            List<RollbackTemporaryElement> temporaryElements) {
+        return new RollbackPlayerRestoration(expected, restored, temporaryElements);
+    }
+
+    public static final class RollbackPlayerRestoration {
+        private final Thread owner = Thread.currentThread();
+        private final Map<UUID, BendingPlayer> expected, restored;
+        private final List<RollbackTemporaryElement> temporaryElements;
+        private boolean committed;
+
+        private RollbackPlayerRestoration(Map<UUID, BendingPlayer> expected,
+                Map<UUID, BendingPlayer> restored, List<RollbackTemporaryElement> temporaryElements) {
+            this.expected = Map.copyOf(expected); this.restored = Map.copyOf(restored);
+            this.temporaryElements = List.copyOf(temporaryElements);
+            boundary();
+            if (expected.isEmpty() || expected.size() > 128 || !expected.keySet().equals(restored.keySet()))
+                throw new IllegalArgumentException("Player restoration requires the exact owned roster");
+            for (var entry : this.restored.entrySet()) {
+                var before = this.expected.get(entry.getKey()); var after = entry.getValue();
+                if (!entry.getKey().equals(before.getUUID()) || !entry.getKey().equals(after.getUUID())
+                        || before.getPlayer() == null || after.getPlayer() == null
+                        || after.getPlayer() instanceof com.projectkorra.projectkorra.prediction.rollback.world.RollbackPlayer
+                        || !entry.getKey().equals(after.getPlayer().getUniqueId())
+                        || before.getPlayer().handle() != after.getPlayer().handle())
+                    throw new IllegalArgumentException("Restored player is not bound to its original live body");
+            }
+            for (var entry : this.temporaryElements) {
+                var player = this.restored.get(entry.player.getUniqueId());
+                if (player == null || entry.player.handle() != player.getPlayer().handle())
+                    throw new IllegalArgumentException("Temporary element is outside the restored player graph");
+            }
+            requireCurrent();
+        }
+        private void boundary() {
+            if (Thread.currentThread() != owner || RollbackClock.active()
+                    || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()
+                    || !Platform.scheduler().isPrimaryThread())
+                throw new IllegalStateException("Restore player registries on the live main thread");
+        }
+        public void requireCurrent() {
+            boundary();
+            var selected = committed ? restored : expected;
+            for (var entry : selected.entrySet()) {
+                if (ONLINE_PLAYERS.get(entry.getKey()) != entry.getValue() || PLAYERS.get(entry.getKey()) != entry.getValue())
+                    throw new IllegalStateException("Live player ownership changed before restoration");
+            }
+        }
+        /** Idempotent while the restored roster still owns its live registry entries. */
+        public void commit() {
+            requireCurrent(); if (committed) return;
+            // Build the complete replacement queue before modifying any live registry.
+            var queue = new PriorityQueue<>(TEMP_ELEMENTS);
+            queue.removeIf(entry -> restored.containsKey(entry.getLeft().getUniqueId()));
+            for (var entry : temporaryElements) queue.add(Pair.of(entry.player, entry.expiry));
+            ONLINE_PLAYERS.putAll(restored); PLAYERS.putAll(restored);
+            TEMP_ELEMENTS.clear(); TEMP_ELEMENTS.addAll(queue);
+            committed = true;
+        }
+    }
+
     public OfflineBendingPlayer(@NotNull OfflinePlayer player) {
         this.player = player;
         this.uuid = player.getUniqueId();

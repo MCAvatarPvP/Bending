@@ -49,6 +49,18 @@ state that actually determines those outcomes.
 
 ### October 2, 2026 integration update
 
+Player registry restoration now has a prepared roster-only commit. It requires the exact
+owned participant set, checks the copied players are rebound to their original live body
+handles, validates temporary-element ownership, and verifies both online/offline registry
+identities before any write. Commit replaces only those participants and their temporary
+element entries, preserving unrelated players and expiry entries. It runs on the live
+main thread, invokes no loading/persistence/activation hooks, and is idempotent while the
+restored roster remains current. A regression covers stale ownership, unchanged outsiders,
+updated player state/expiry, foreign body rejection and replay-scope rejection. The complete
+outgoing graph must still be copied and abilities/managers/native bodies restored under the
+same retained gameplay gates before production startup can be enabled.
+
+
 A reserved live scheduler lease can now replace frozen startup callbacks with task
 bindings copied from the final replay state. It validates original/reserved IDs and
 unbound handles before native scheduling, stages every callback behind an execution
