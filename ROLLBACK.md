@@ -63,7 +63,10 @@ Neptune's saved branch is now checked out separately at
 `build/neptune-rollback`, preserving the main checkout's local changes. Build this
 checkout with `-PprojectKorraJar=<absolute path to the 1.10.30 Bukkit jar>`; its default
 sibling dependency has also been updated to 1.10.30. The isolated checkout is retained
-for the remaining runtime and match-lifecycle integration.
+for the remaining runtime and match-lifecycle integration. After moving the round
+model, 614 common tests, 348 Fabric tests, 44 Neptune plugin tests and 8 native
+Neptune damage contract tests passed. Paper, Fabric and Neptune artifacts built;
+these are component/integration checks, not a live duel validation.
 
 The rollback checkpoint has been updated with `master` at `035d9ecb` (version
 1.10.30). Ordinary Air/Fire combat uses current server positions for both modded
@@ -102,7 +105,7 @@ defines the native capture/transfer/ownership boundary; its complete implementat
 not been installed. Neptune leaves ordinary gameplay active when that provider or a
 compatible whole roster is unavailable. The next integration work is implementing that
 provider and client preparation from the complete shared state. No server was started
-or artifact deployed. The saved Neptune checkpoint defaults to the sibling 1.10.29 Paper artifact;
+or artifact deployed. The updated Neptune branch defaults to the sibling 1.10.30 Paper artifact;
 build its `:bukkit:shadowJar` first, or set `-PprojectKorraJar` to a compatible jar.
 
 Neptune's bootstrap request now carries the translated match arena's chunk-aligned
