@@ -49,6 +49,56 @@ class RollbackTaskBindingsTest {
         assertThrows(IllegalStateException.class, () -> imported.install(new RollbackScheduler(8, 8)));
     }
 
+    @Test void exportingSettledReplayTransfersLatestCallbackStateAndRemainingDeadlines() {
+        var source = new RollbackScheduler(8, 8); var callback = new Callback();
+        PredictionDeterminism.run(71, 93, () -> callback.handle = source.runTimer(callback, 2, 5));
+        var completed = source.runNow(() -> {});
+        source.advance(1); source.advance(2); source.advance(3);
+        assertEquals(1, callback.calls);
+        var export = source.exportTasks();
+        assertEquals(4, export.bindings().entries().getFirst().delay());
+        var codec = new RollbackGraphCodec(new RollbackGraphCodec.Catalog(
+                List.of(RollbackTaskBindings.class, RollbackTaskBindings.Entry.class, RollbackTaskBindings.Handle.class, Callback.class),
+                List.of(), List.of()), new RollbackGraphCodec.Limits(100, 1000, 100_000, 10_000));
+        var roots = codec.decode(codec.encode(List.of(export.bindings(), completed), export::replacement));
+        var bindings = (RollbackTaskBindings) roots.getFirst();
+        var copy = (Callback) bindings.entries().getFirst().callback();
+        var destination = new RollbackScheduler(8, 8); bindings.install(destination);
+        assertEquals(3, destination.runLater(() -> {}, 100).legacyId());
+        assertTrue(((PKTask) roots.get(1)).cancelled());
+        for (int tick = 1; tick <= 3; tick++) destination.advance(tick);
+        assertEquals(1, copy.calls); destination.advance(4);
+        assertEquals(2, copy.calls); assertTrue(copy.handle.cancelled());
+        assertEquals(List.of(71L, 93L, 71L, 93L), copy.observed);
+        assertEquals(1, callback.calls); assertFalse(callback.handle.cancelled());
+        // An export doesn't retire the source until the external owner finishes handoff.
+        for (int tick = 4; tick <= 7; tick++) source.advance(tick);
+        assertEquals(2, callback.calls); assertTrue(callback.handle.cancelled());
+    }
+
+    @Test void exportRejectsMidCallbackAndPreservesImportedHandleAliasesAcrossAnotherTransfer() {
+        var source = new RollbackScheduler(8, 8);
+        source.runNow(() -> assertThrows(IllegalStateException.class, source::exportTasks));
+        source.advance(1);
+        var callback = new Callback();
+        var entry = new RollbackTaskBindings.Entry(8, callback, 1, 2, null, 71, 93);
+        callback.handle = entry.handle();
+        var privateScheduler = new RollbackScheduler(8, 8);
+        var original = new RollbackTaskBindings(List.of(entry)); original.install(privateScheduler);
+        privateScheduler.advance(1);
+        var exported = privateScheduler.exportTasks();
+        var codec = new RollbackGraphCodec(new RollbackGraphCodec.Catalog(
+                List.of(RollbackTaskBindings.class, RollbackTaskBindings.Entry.class, RollbackTaskBindings.Handle.class, Callback.class),
+                List.of(), List.of()), new RollbackGraphCodec.Limits(100, 1000, 100_000, 10_000));
+        var copied = (RollbackTaskBindings) codec.decode(codec.encode(List.of(exported.bindings()), exported::replacement)).getFirst();
+        var next = new RollbackScheduler(8, 8); copied.install(next);
+        next.advance(1); next.advance(2);
+        var result = (Callback) copied.entries().getFirst().callback();
+        assertEquals(2, result.calls); assertTrue(result.handle.cancelled());
+        assertTrue(copied.entries().getFirst().handle().cancelled());
+        assertEquals(1, callback.calls); assertFalse(callback.handle.cancelled());
+    }
+
     @Test void equalDeadlinesRetainSourceOrderingInsteadOfSortingLegacyIds() {
         List<Integer> calls = new ArrayList<>();
         var first = new RollbackTaskBindings.Entry(30, () -> calls.add(30), 1, 1, null, 0, 0);

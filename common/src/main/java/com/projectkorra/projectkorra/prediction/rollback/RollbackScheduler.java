@@ -131,6 +131,28 @@ public final class RollbackScheduler implements PKScheduler, RollbackStateCell<R
         for (var entry : entries) entry.handle().bind(imported.get(entry.handle().legacyId()));
     }
 
+    /**
+     * Export remaining work at a settled simulation tick for ownership restoration.
+     * Copy these bindings together with the outgoing gameplay graph while still in its
+     * domain. The source scheduler stays owned until the destination is fully prepared.
+     */
+    public RollbackTaskBindings.Capture exportTasks() {
+        checkUsable();
+        if (running) throw new IllegalStateException("Cannot export a running callback");
+        var pending = new ArrayList<RollbackTaskBindings.Pending>();
+        for (var task : tasks.values()) {
+            pending.add(new RollbackTaskBindings.Pending(task, task.callback,
+                    Math.max(1, Math.subtractExact(task.due, tick)), task.period,
+                    task.ability, task.action, task.seed));
+        }
+        return RollbackTaskBindings.captureSimulation(pending, nextId, value -> {
+            checkUsable();
+            if (running) throw new IllegalStateException("Cannot copy running scheduler handles");
+            if (!(value instanceof RollbackScheduler.Task task) || task.scheduler() != this) return null;
+            return tasks.get(task.id) != task ? task.id : null;
+        });
+    }
+
     @Override public void cancelTask(int taskId) {
         checkThread();
         final Task task = tasks.remove(taskId);
@@ -228,6 +250,7 @@ public final class RollbackScheduler implements PKScheduler, RollbackStateCell<R
         }
         @Override public boolean cancelled() { checkThread(); return tasks.get(id) != this; }
         @Override public int legacyId() { return id; }
+        RollbackScheduler scheduler() { return RollbackScheduler.this; }
     }
 
     private record Immediate<T>(T value, Exception failure) implements Future<T> {

@@ -68,6 +68,12 @@ public final class RollbackTaskBindings {
         return new Capture(List.copyOf(pending), minimumNextId, inactiveHandles);
     }
 
+    // The private scheduler verifies its owner/thread and tick boundary before exporting.
+    static Capture captureSimulation(List<Pending> pending, int minimumNextId,
+            java.util.function.Function<Object, Integer> inactiveHandles) {
+        return new Capture(List.copyOf(pending), minimumNextId, inactiveHandles);
+    }
+
     /** The private scheduler validates the whole batch before changing membership or handles. */
     public void install(RollbackScheduler scheduler) {
         if (installed) throw new IllegalStateException("Task bindings already installed");
