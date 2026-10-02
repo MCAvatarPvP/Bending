@@ -51,5 +51,22 @@ public final class FabricRollbackDamageEvent {
         }
         damage(Modifier.BASE, amount);
     }
+    /** Live view for existing common handlers; the caller supplies the owned logical entity/cause. */
+    public com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent commonEvent(
+            com.projectkorra.projectkorra.platform.mc.entity.Entity entity,
+            com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause cause) {
+        if (!player.getUuid().equals(Objects.requireNonNull(entity).getUniqueId()))
+            throw new IllegalArgumentException("Damage view belongs to another player");
+        return new com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent() {
+            { setEntity(entity); setCause(Objects.requireNonNull(cause)); }
+            @Override public double getDamage() { return damage(); }
+            @Override public void setDamage(double amount) { damage(amount); }
+            @Override public double getDamage(DamageModifier modifier) { return damage(Modifier.valueOf(modifier.name())); }
+            @Override public void setDamage(DamageModifier modifier, double amount) { damage(Modifier.valueOf(modifier.name()), amount); }
+            @Override public boolean isCancelled() { return cancelled(); }
+            @Override public void setCancelled(boolean value) { cancelled(value); }
+        };
+    }
+
     float sum(Modifier... modifiers) { float amount = 0; for (var modifier : modifiers) amount += (float) damage(modifier); return amount; }
 }

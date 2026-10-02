@@ -162,8 +162,13 @@ class FabricRollbackRoundDamageTest {
         record Saved(double scale, boolean cancel, boolean ignoreArmor, int events, int committed) { }
         double scale = 1; boolean cancel, ignoreArmor; int events, committed;
         @Override public void event(FabricRollbackDamageEvent event) {
-            events++; event.damage(event.damage() * scale); event.cancelled(cancel);
-            if (ignoreArmor) event.damage(FabricRollbackDamageEvent.Modifier.ARMOR, 0);
+            events++;
+            var logical = new com.projectkorra.projectkorra.platform.mc.entity.Player() {
+                @Override public UUID getUniqueId() { return event.player().getUuid(); }
+            };
+            var view = event.commonEvent(logical, com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause.ENTITY_ATTACK);
+            view.setDamage(view.getDamage() * scale); view.setCancelled(cancel);
+            if (ignoreArmor) view.setDamage(com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageModifier.ARMOR, 0);
         }
         @Override public void resetAttackCooldown(PlayerEntity attacker, PlayerEntity target) { committed++; attacker.resetTicksSinceLastAttack(); }
         @Override public void exhaustion(PlayerEntity player, DamageSource source, float amount) { player.addExhaustion(amount); }

@@ -2031,3 +2031,12 @@ world RNG for the native component's direct reads. Tests also rewind late defenc
 and retract a provisional defeat. Production damage policy bindings, complete
 native maintenance parity and live bootstrap remain required; these tests do not
 enable live duels.
+
+
+Paper's existing environment, player/passive, protected-fall and entity-hit handlers
+now delegate to `CommonDamageHandler`, retaining their native listener priorities
+and common-event forwarding boundaries. Both native damage adapters expose live
+common event views for base/modifier edits and cancellation; Paper's view preserves
+the native cause. The shared fixture exercises Fabric damage through this view,
+and native tests check bidirectional damage/cancellation. Captured native listener
+ordering and production policy dispatch still need assembly before live replay.

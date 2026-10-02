@@ -32,6 +32,26 @@ class PaperRollbackRoundParityNativeTest {
             }
         }
     }
+    @Test void commonHandlerViewRetainsNativeCauseDamageAndCancellation() throws Exception {
+        onTickThread(() -> {
+            var combat = new PaperRollbackDamageNativeTest.Combat();
+            var world = new PaperRollbackWorldAccess(new PaperRollbackWorldAccessNativeTest.Queries(), combat, 4);
+            var state = PaperRollbackNativePlayerState.serverPlayer(world, new GameProfile(A, "view"), ClientInformation.createDefault(), GameType.SURVIVAL, 103, 200_000);
+            var player = state.use(p -> (net.minecraft.server.level.ServerPlayer) p);
+            for (var cause : org.bukkit.event.entity.EntityDamageEvent.DamageCause.values()) {
+                var nativeEvent = new org.bukkit.event.entity.EntityDamageEvent(player.getBukkitEntity(), cause, PaperRollbackPrivateAccess.damageSource(world.world().damageSources().generic()), 8);
+                var view = com.projectkorra.projectkorra.platform.bukkit.BukkitMC.damageEvent(nativeEvent);
+                if (cause == org.bukkit.event.entity.EntityDamageEvent.DamageCause.FALL)
+                    assertSame(com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause.FALL, view.getCause());
+                view.setCancelled(true); assertTrue(nativeEvent.isCancelled());
+                nativeEvent.setCancelled(false); assertFalse(view.isCancelled());
+                view.setDamage(4); assertEquals(4, nativeEvent.getDamage());
+                nativeEvent.setDamage(2); assertEquals(2, view.getDamage());
+            }
+            return null;
+        });
+    }
+
     private static String run(String[] f) throws Exception {
         var combat = new PaperRollbackDamageNativeTest.Combat();
         var world = new PaperRollbackWorldAccess(new PaperRollbackWorldAccessNativeTest.Queries(), combat, 4);
