@@ -175,6 +175,54 @@ class RollbackLiveSchedulerTest {
         assertEquals(1, callback.calls); assertEquals(2, copy.calls);
     }
 
+    private static RollbackTaskBindings copied(RollbackTaskBindings.Capture capture) {
+        var codec = new RollbackGraphCodec(new RollbackGraphCodec.Catalog(
+                List.of(RollbackTaskBindings.class, RollbackTaskBindings.Entry.class, RollbackTaskBindings.Handle.class,
+                        RollbackTaskBindingsTest.Callback.class), List.of(), List.of()),
+                new RollbackGraphCodec.Limits(100, 1000, 100_000, 10_000));
+        return (RollbackTaskBindings) codec.decode(codec.encode(List.of(capture.bindings()), capture::replacement)).getFirst();
+    }
+
+    @Test void replayedCallbacksReplaceOriginalWorkAtomicallyAfterFailedNativeSubmission() {
+        var backend = new Backend(); var live = scheduler(backend);
+        var original = new RollbackTaskBindingsTest.Callback();
+        PredictionDeterminism.run(71, 93, () -> original.handle = live.runTimer(original, 1, 1));
+        var oldNative = backend.tasks.get(1);
+        var lease = live.prepare(work -> true); var imported = copied(lease.freeze(8));
+        var replay = new RollbackScheduler(8, 8); imported.install(replay); replay.advance(1);
+        var extra = new RollbackTaskBindingsTest.Callback(); extra.handle = replay.runTimer(extra, 1, 1);
+        var outgoing = copied(replay.exportTasks());
+        backend.failAt = backend.submissions + 2; backend.failCleanup = true;
+        assertThrows(IllegalStateException.class, () -> lease.replace(outgoing));
+        assertThrows(IllegalStateException.class, lease::restore);
+        var abandoned = backend.tasks.values().iterator().next(); abandoned.callback.run();
+        var restored = (RollbackTaskBindingsTest.Callback) outgoing.entries().getFirst().callback();
+        assertEquals(1, restored.calls); assertEquals(0, original.calls);
+        assertThrows(IllegalStateException.class, outgoing.entries().getFirst().handle()::cancel);
+        lease.replace(outgoing); lease.replace(outgoing);
+        assertTrue(original.handle.cancelled());
+        oldNative.callback.run(); abandoned.callback.run(); assertEquals(1, restored.calls);
+        backend.advance();
+        assertEquals(2, restored.calls); assertTrue(restored.handle.cancelled());
+        assertEquals(List.of(71L, 93L, 71L, 93L), restored.observed);
+        assertEquals(1, ((RollbackTaskBindingsTest.Callback) outgoing.entries().get(1).callback()).calls);
+        assertEquals(0, original.calls); assertEquals(0, extra.calls);
+        assertThrows(IllegalStateException.class, () -> outgoing.install(new RollbackScheduler(8, 8)));
+    }
+
+    @Test void replacementRejectsForeignIdsAndCannotResurrectAfterShutdownOrDiscard() {
+        var backend = new Backend(); var live = scheduler(backend);
+        var lease = live.prepare(work -> false); lease.freeze(2);
+        var unrelated = live.runNow(() -> {});
+        var bad = new RollbackTaskBindings(List.of(new RollbackTaskBindings.Entry(unrelated.legacyId(), () -> {}, 1, -1, null, 0, 0)), 3, 3);
+        assertThrows(IllegalArgumentException.class, () -> lease.replace(bad));
+        assertFalse(unrelated.cancelled()); lease.requireCurrent();
+        live.cancelAll();
+        assertThrows(IllegalStateException.class, () -> lease.replace(new RollbackTaskBindings(List.of(), 1, 3)));
+        lease.discard();
+        assertThrows(IllegalStateException.class, () -> lease.replace(bad));
+    }
+
     @Test void replayReservationSurvivesWireTransferRewindAndExportWithoutOverlappingLiveWork() {
         var backend = new Backend(); var live = scheduler(backend);
         live.runNow(() -> {});

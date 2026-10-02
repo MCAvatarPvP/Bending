@@ -49,6 +49,19 @@ state that actually determines those outcomes.
 
 ### October 2, 2026 integration update
 
+A reserved live scheduler lease can now replace frozen startup callbacks with task
+bindings copied from the final replay state. It validates original/reserved IDs and
+unbound handles before native scheduling, stages every callback behind an execution
+gate, and binds/releases the batch only after all submissions succeed. Failed native
+submission or cancellation retains retryable cleanup and cannot resume stale startup
+work. Original and abandoned dispatches remain inert. Restored tasks execute on the
+main thread with their captured ability/action/seed context. Shutdown/discard cannot
+resurrect a pending replacement. Tests cover the real live/private/live graph transfer,
+new replay-created tasks, self-cancellation, partial failure and foreign IDs. The outer
+production owner still must copy and commit the full restored gameplay graph and keep
+whole-roster gates closed through this task replacement; no provider is installed yet.
+
+
 Live scheduler handles now use monotonic logical IDs independent of native backend IDs;
 unknown logical cancellation cannot reach unrelated native tasks. A startup lease can
 reserve a bounded ID range for new replay tasks. Other live scheduling skips that range,
@@ -66,8 +79,7 @@ reserved IDs. The export is copied with the outgoing gameplay graph and does not
 the source before destination preparation succeeds. Regression tests cover a callback
 that has already executed, a second transfer of imported handles, inactive handles and
 rejection during callback execution. This is the task-state export needed for final
-ownership restoration; native rescheduling with the reserved IDs
-and committing the full restored gameplay graph are still outstanding.
+ownership restoration; committing the full restored gameplay graph remains outstanding.
 
 
 Paper's platform scheduler now tracks callbacks through `RollbackLiveScheduler`.

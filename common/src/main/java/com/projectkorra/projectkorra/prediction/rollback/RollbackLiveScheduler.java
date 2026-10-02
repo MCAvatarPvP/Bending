@@ -84,7 +84,7 @@ public final class RollbackLiveScheduler implements PKScheduler {
         mutation();
         for (var task : tasks.values()) task.cancelled = true;
         tasks.clear();
-        for (var lease : leases) lease.invalidated = true;
+        for (var lease : leases) { lease.invalidated = true; lease.stopped = true; }
         backend.cancelAll();
     }
     @Override public <T> Future<T> callSync(Callable<T> task) { live(); return backend.callSync(task); }
@@ -100,7 +100,8 @@ public final class RollbackLiveScheduler implements PKScheduler {
         private final List<PKTask> cleanup = new ArrayList<>();
         private RollbackTaskBindings.Capture capture;
         private int reservedCapacity;
-        private boolean frozen, acquired, closed, invalidated;
+        private boolean frozen, acquired, closed, invalidated, stopped, replacementCommitted;
+        private RollbackTaskBindings replacement;
         private Lease(Predicate<Work> selector) { this.selector = selector; }
 
         /** Repeated calls can finish cancellation after a backend failure; copied state is not exposed early. */
@@ -150,6 +151,7 @@ public final class RollbackLiveScheduler implements PKScheduler {
         public void restore() {
             synchronized (RollbackLiveScheduler.this) {
                 primary(); mutation(); if (closed) return;
+                if (replacement != null) throw new IllegalStateException("Cannot restore stale startup tasks after replacement begins");
                 if (!frozen) { closed = true; return; }
                 invalidated = true;
                 cleanStaged();
@@ -175,6 +177,76 @@ public final class RollbackLiveScheduler implements PKScheduler {
                 finish();
             }
         }
+        /**
+         * Install callbacks copied into the restored live gameplay graph. The outer owner
+         * must keep gameplay gates closed until both that graph and these tasks are ready.
+         * All restored callbacks run on the main thread, as they did during private replay.
+         * Retry with the same bindings after native submission/cleanup failure.
+         */
+        public void replace(RollbackTaskBindings bindings) {
+            synchronized (RollbackLiveScheduler.this) {
+                primary(); mutation(); Objects.requireNonNull(bindings);
+                if (closed) {
+                    if (replacementCommitted && replacement == bindings) return;
+                    throw new IllegalStateException("Task lease already closed");
+                }
+                if (stopped || !acquired || reservedCapacity == 0)
+                    throw new IllegalStateException("Replacement requires an active reserved task lease");
+                if (replacement != null && replacement != bindings)
+                    throw new IllegalStateException("Replacement bindings changed during retry");
+                if (replacement == null) requireCurrent();
+                bindings.requireUninstalled();
+                int first = capture.bindings().nextId(), limit = capture.bindings().idLimit();
+                if (bindings.idLimit() != limit || bindings.nextId() < first || bindings.nextId() > limit)
+                    throw new IllegalArgumentException("Replacement task reservation differs");
+                var originals = new HashSet<Integer>();
+                for (var item : selected) originals.add(item.task.id);
+                var ids = new HashSet<Integer>();
+                for (var entry : bindings.entries()) {
+                    int id = entry.handle().legacyId();
+                    if (!entry.handle().unbound() || !ids.add(id)
+                            || !(originals.contains(id) || (id >= first && id < bindings.nextId()))
+                            || (tasks.containsKey(id) && !originals.contains(id)))
+                        throw new IllegalArgumentException("Replacement task identity differs");
+                    if (entry.callback() instanceof RollbackCallback callback) callback.validate();
+                }
+                replacement = bindings; invalidated = true;
+                cleanStaged();
+                for (var item : selected) item.task.nativeTask.cancel();
+                var staged = new ArrayList<Task>();
+                try {
+                    long now = clock.getAsLong();
+                    for (var entry : bindings.entries()) {
+                        Runnable[] contextual = new Runnable[1];
+                        AbilityExecutionContext.run(entry.ability(), () -> PredictionDeterminism.run(entry.action(), entry.seed(),
+                                () -> contextual[0] = Objects.requireNonNull(context.apply(entry.callback()))));
+                        Runnable dispatch = () -> AbilityExecutionContext.run(entry.ability(),
+                                () -> PredictionDeterminism.run(entry.action(), entry.seed(), contextual[0]));
+                        var task = new Task(new Work(entry.callback(), entry.ability(), false, entry.action(), entry.seed()),
+                                dispatch, entry.period() == 0 ? 1 : entry.period());
+                        task.id = entry.handle().legacyId(); task.frozen = this; task.generation = new Object();
+                        long delay = Math.max(1, entry.delay()); task.due = Math.addExact(now, delay);
+                        // Keep the dispatch gated even if submit queues work and then throws.
+                        task.nativeTask = submit(task, task.generation, delay);
+                        staged.add(task);
+                    }
+                    if (stopped) throw new IllegalStateException("Scheduler stopped during task replacement");
+                } catch (RuntimeException | Error failure) {
+                    for (var task : staged) { task.cancelled = true; cleanup.add(task.nativeTask); }
+                    try { cleanStaged(); } catch (RuntimeException | Error cancellation) { failure.addSuppressed(cancellation); }
+                    throw failure;
+                }
+                for (var item : selected) { item.task.cancelled = true; tasks.remove(item.task.id, item.task); }
+                for (int i = 0; i < staged.size(); i++) {
+                    var task = staged.get(i); tasks.put(task.id, task);
+                    bindings.entries().get(i).handle().bind(task);
+                }
+                bindings.installedLive(); replacementCommitted = true;
+                for (var task : staged) task.frozen = null;
+                finish();
+            }
+        }
+
         /** Running-session handoff: discard original callbacks only after replacement state owns their work. */
         public void discard() {
             synchronized (RollbackLiveScheduler.this) {

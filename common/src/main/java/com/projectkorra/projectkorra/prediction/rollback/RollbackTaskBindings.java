@@ -89,6 +89,13 @@ public final class RollbackTaskBindings {
         installed = true;
     }
 
+    int nextId() { return minimumNextId; }
+    int idLimit() { return maximumNextId; }
+    void requireUninstalled() {
+        if (installed) throw new IllegalStateException("Task bindings already installed");
+    }
+    void installedLive() { installed = true; }
+
     /** Ordinary fields intentionally preserve shared identities through the portable graph codec. */
     public static final class Entry {
         private final Handle handle;
