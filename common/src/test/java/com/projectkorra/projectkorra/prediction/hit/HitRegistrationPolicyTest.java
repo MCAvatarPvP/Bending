@@ -20,14 +20,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HitRegistrationPolicyTest {
     @Test
-    void airAndFireReportContactsButServerRequiresModdedTargets() {
+    void airAndFireUseServerHitsForBothModdedAndUnmoddedTargets() {
         for (Element element : List.of(Element.AIR, Element.FIRE, Element.LIGHTNING, Element.FLIGHT)) {
             CoreAbility ability = new TestAbility(element);
-            assertEquals(HitRegistrationPolicy.REWIND_ASSISTED, HitRegistrationPolicy.forAbility(ability),
-                    "use the same client report path as Earth/Water");
-            assertTrue(HitRegistrationPolicy.includePredictedEntity(ability, new Player()),
-                    "remote-player contacts must reach the existing claim reporter");
-            assertEquals(HitRegistrationPolicy.REWIND_ASSISTED, HitRegistrationPolicy.forTarget(ability, true));
+            assertEquals(HitRegistrationPolicy.SERVER_CURRENT, HitRegistrationPolicy.forAbility(ability));
+            assertFalse(HitRegistrationPolicy.includePredictedEntity(ability, new Player()),
+                    "remote players must not enter predicted collision queries");
+            HitRegistrationPolicy.targetAcquisition(() -> {
+                assertTrue(HitRegistrationPolicy.includePredictedEntity(ability, new Player()),
+                        "aiming must still see remote players");
+                return null;
+            });
+            assertEquals(HitRegistrationPolicy.SERVER_CURRENT, HitRegistrationPolicy.forTarget(ability, true));
             assertEquals(HitRegistrationPolicy.SERVER_CURRENT, HitRegistrationPolicy.forTarget(ability, false));
         }
     }
@@ -42,7 +46,7 @@ class HitRegistrationPolicyTest {
     }
 
     @Test
-    void unmoddedTargetsUseCurrentServerPositionsForFireAirAndTheirSubelements() {
+    void fireAirAndTheirSubelementsUseCurrentServerPositions() {
         assertEquals(HitRegistrationPolicy.SERVER_CURRENT,
                 HitRegistrationPolicy.resolve(AirAbility.class, Element.AIR));
         assertEquals(HitRegistrationPolicy.SERVER_CURRENT,

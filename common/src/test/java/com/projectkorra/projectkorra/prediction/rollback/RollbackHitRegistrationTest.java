@@ -85,7 +85,8 @@ class RollbackHitRegistrationTest {
                 return null;
             });
             assertEquals(previous, HitRegistrationPolicy.forTarget(ability, false));
-            assertEquals(HitRegistrationPolicy.REWIND_ASSISTED, HitRegistrationPolicy.forTarget(ability, true));
+            assertEquals(previous, HitRegistrationPolicy.forTarget(ability, true),
+                    "leaving rollback restores normal hit authority for either target type");
         }
     }
 

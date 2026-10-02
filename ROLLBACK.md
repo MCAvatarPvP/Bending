@@ -47,6 +47,31 @@ state that actually determines those outcomes.
 
 ## Current foundation
 
+### October 2, 2026 integration update
+
+The rollback checkpoint has been updated with `master` at `035d9ecb` (version
+1.10.30). Ordinary Air/Fire combat uses current server positions for both modded
+and unmodded targets. Inside a rollback domain, both ability and target policy
+entry points still use the restored simulation tick for every element; leaving
+the domain restores the ordinary rules. `RollbackHitRegistrationTest` covers
+that transition alongside the normal hit-policy suite.
+
+Verification passed with Java 21 and the offline Gradle cache: `:common:test`
+(605 tests), `:bukkit:test` (186), `:fabric:test` (348), and `:bukkit:nativeTest`
+(178), with no failures or skips. `:bukkit:shadowJar` and `:fabric:remapJar`
+produced the 1.10.30 artifacts. Neptune's contract suite and live duels were not
+run during this update.
+
+This merge also brings in master's collision effects and AirSweep hit sound fixes.
+It does not install the missing production bootstrap provider or Fabric importer.
+The next integration work remains complete runtime assembly, listener import,
+native ownership handoff/restoration and client presentation before live duel testing.
+
+The sibling Neptune checkout currently contains separate uncommitted work on
+`main`; it was not switched or modified during this merge. Resume Neptune integration
+from its saved `wip/rollback-2026-09-23` branch in an isolated checkout and build it
+against the 1.10.30 Paper jar using `-PprojectKorraJar=<absolute jar path>`.
+
 Neptune's `RollbackMatchService` now monitors active solo/team rounds and calls the
 actual `PaperPredictionServer.beginRollbackStart` once the complete roster has been
 prepared. It owns the equalization suspension, waits for both queues to drain, checks
@@ -61,7 +86,7 @@ defines the native capture/transfer/ownership boundary; its complete implementat
 not been installed. Neptune leaves ordinary gameplay active when that provider or a
 compatible whole roster is unavailable. The next integration work is implementing that
 provider and client preparation from the complete shared state. No server was started
-or artifact deployed. Neptune now compiles against the sibling 1.10.29 Paper artifact;
+or artifact deployed. The saved Neptune checkpoint defaults to the sibling 1.10.29 Paper artifact;
 build its `:bukkit:shadowJar` first, or set `-PprojectKorraJar` to a compatible jar.
 
 Neptune's bootstrap request now carries the translated match arena's chunk-aligned
