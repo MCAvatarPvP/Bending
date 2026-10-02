@@ -74,10 +74,29 @@ spatial queries still permits round binding until the first world or player chec
 checkpoint creation permanently closes that setup boundary. Native contract regressions
 cover both assembly orders and reject binding after either checkpoint path.
 Fabric's native damage-event equivalence, complete production runtime assembly,
-ownership handoff and the live match-result sink still need integration before play.
+and ownership handoff still need integration before play.
 Validation of this connection passed 616 common tests, 178 native Paper tests and
 11 native Neptune contract tests; the roster-binding follow-up reran both native
 suites and rebuilt Paper. Paper and Fabric jars also built for the initial connection.
+
+`RollbackServerRuntime` now owns the negotiated authority loop and input reservation.
+It advances combat, publishes the whole-roster authority update, then delivers finalized
+outputs and confirmed results outside replay. Failed publication skips those deliveries;
+failed output stops further ticks without retrying a partial external mutation.
+`PaperRollbackMatchRuntime` connects that loop to Paper's existing ingress and transport,
+and routes `deliverConfirmedDefeats` to the callback in the Neptune bootstrap request.
+The native bootstrap still must construct this runtime with the imported combat domain
+and its real output/restoration owner; no provider is installed yet.
+
+Neptune queues that callback during runtime ticks. Once the tick returns, a confirmed
+defeat retires the entire rollback session and restores native ownership before applying
+ordinary match deaths with captured attacker attribution. This prevents match cleanup
+from reentering replay and preserves the whole-roster fallback on death. Provisional or
+retracted defeats, failed ticks, and failed restoration never invoke live deaths. Partial
+match callback failures cannot repeat already applied results. Shutdown now retains
+input gates after failed native restoration until the owner explicitly finishes cleanup.
+The authority loop passed the complete common/Bukkit suites and Neptune native contract;
+Neptune also passed tests covering result order, replay guards and cleanup failure.
 
 Neptune's saved branch is now checked out separately at
 `build/neptune-rollback`, preserving the main checkout's local changes. Build this

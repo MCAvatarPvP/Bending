@@ -101,7 +101,7 @@ public final class RollbackIngress {
             try { registration.stop(StopReason.SHUTDOWN); }
             catch (RuntimeException | Error problem) {
                 if (failure == null) failure = problem; else if (failure != problem) failure.addSuppressed(problem);
-            } finally { registration.finishStop(); }
+            } // Only the native owner may release a successfully restored roster.
         }
         if (failure instanceof RuntimeException runtime) throw runtime;
         if (failure instanceof Error error) throw error;

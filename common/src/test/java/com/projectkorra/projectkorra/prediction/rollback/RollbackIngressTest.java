@@ -78,17 +78,21 @@ class RollbackIngressTest {
         var second = new Fixture(C, D);
         var ingress = new RollbackIngress(20);
         var stopped = new ArrayList<UUID>();
-        ingress.enroll(first.session, value -> { stopped.add(value.sessionId()); throw new IllegalStateException("Teardown failed"); });
+        var failed = ingress.enroll(first.session, value -> { stopped.add(value.sessionId()); throw new IllegalStateException("Teardown failed"); });
         var overlap = new Fixture(B, C);
         assertThrows(IllegalStateException.class, () -> ingress.enroll(overlap.session, ignored -> { }));
         assertFalse(ingress.blocksLegacy(C));
-        ingress.enroll(second.session, value -> stopped.add(value.sessionId()));
+        ingress.enroll(second.session, value -> { stopped.add(value.sessionId()); value.finishStop(); });
         assertThrows(IllegalStateException.class, () -> ingress.stopPlayer(B, RollbackIngress.StopReason.CLIENT_RESET));
         assertTrue(ingress.blocksLegacy(A)); assertTrue(ingress.blocksLegacy(B));
         assertFalse(second.session.closed());
         ingress.shutdown();
         assertEquals(List.of(first.session.id(), second.session.id()), stopped);
-        for (UUID id : List.of(A, B, C, D)) assertFalse(ingress.blocksLegacy(id));
+        assertTrue(ingress.blocksLegacy(A)); assertTrue(ingress.blocksLegacy(B));
+        assertFalse(ingress.blocksLegacy(C)); assertFalse(ingress.blocksLegacy(D));
+        // A later successful native repair is the only authority that can reopen gameplay.
+        failed.finishStop();
+        assertFalse(ingress.blocksLegacy(A)); assertFalse(ingress.blocksLegacy(B));
         assertThrows(IllegalStateException.class, () -> ingress.enroll(new Fixture(A, B).session, ignored -> { }));
     }
 

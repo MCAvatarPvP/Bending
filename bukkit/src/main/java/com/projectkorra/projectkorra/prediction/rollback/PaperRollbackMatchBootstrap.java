@@ -21,10 +21,15 @@ public interface PaperRollbackMatchBootstrap {
      */
     Preparation prepare(Request request);
 
-    record Request(UUID session, UUID match, int round, UUID world, Bounds terrain, Map<UUID, UUID> sides) {
+    /** confirmedDefeats queues results only during Runtime.tick, after authority publication.
+     * The owner restores live ownership after tick returns before applying any match result.
+     * The runtime must use RollbackCombatRuntime.deliverConfirmedDefeats, never provisional results.
+     */
+    record Request(UUID session, UUID match, int round, UUID world, Bounds terrain, Map<UUID, UUID> sides,
+                   java.util.function.Consumer<RollbackRound.Defeat> confirmedDefeats) {
         public Request {
             Objects.requireNonNull(session); Objects.requireNonNull(match); Objects.requireNonNull(world);
-            Objects.requireNonNull(terrain);
+            Objects.requireNonNull(terrain); Objects.requireNonNull(confirmedDefeats);
             sides = Collections.unmodifiableMap(new TreeMap<>(sides));
             if (round < 0 || sides.size() < 2 || sides.size() > 128 || new HashSet<>(sides.values()).size() < 2
                     || sides.containsValue(null)) throw new IllegalArgumentException("Rollback duel roster/round");
