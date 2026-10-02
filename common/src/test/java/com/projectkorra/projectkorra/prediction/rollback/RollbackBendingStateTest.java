@@ -212,7 +212,7 @@ class RollbackBendingStateTest {
                 return null;
             });
             assertThrows(IllegalStateException.class, () -> imported.exportState(null));
-            Portable[] outgoingCodec = new Portable[1];
+            Portable[] outgoingCodec = new Portable[1], liveRestorationCodec = new Portable[1];
             int constructorsAtExport = Dynamic.constructions + 1;
             byte[] outgoingBytes = domain.call(() -> {
                 try {
@@ -226,6 +226,7 @@ class RollbackBendingStateTest {
                     AttributeCache currentAttribute = CoreAbility.getAttributeCache(pulse).get("Speed");
                     Portable outgoing = portableTransfer(privateA, privateB, privateWorld, privateA, privateB, privateWorld, currentAttribute);
                     outgoingCodec[0] = outgoing;
+                    liveRestorationCodec[0] = portableTransfer(privateA, privateB, privateWorld, liveA, liveB, liveWorld, currentAttribute);
                     return imported.exportState(outgoing.sender());
                 } catch (Exception failure) { throw new AssertionError(failure); }
             });
@@ -255,6 +256,41 @@ class RollbackBendingStateTest {
             assertSame(liveGuard, CoreAbility.getAbility(liveB, Guard.class));
             assertEquals(2, temporary.size());
             assertNull(bendingA.getAbilities().get(2));
+            var restored = RollbackBendingState.decodeRestoration(Map.of(A, liveA, B, liveB), outgoingBytes, liveRestorationCodec[0].receiver());
+            assertSame(liveA, restored.players().get(A).getPlayer());
+            assertNotSame(bendingA, restored.players().get(A));
+            assertEquals("WaterManipulation", restored.players().get(A).getAbilities().get(2));
+            Pulse restoredPulse = (Pulse) restored.abilities().instances().stream().filter(ability -> ability.getId() == 1).findFirst().orElseThrow();
+            assertSame(restored.players().get(A), restoredPulse.getBendingPlayer());
+            assertSame(liveA, restoredPulse.getPlayer());
+            assertSame(restoredPulse, ((CapturedTask) restored.services().get(3)).ability);
+            assertSame(bendingA, BendingPlayer.getBendingPlayer(liveA), "Decoding must not install live registries");
+            assertSame(livePulse, CoreAbility.getAbility(liveA, Pulse.class));
+            assertEquals(constructorsAtExport, Dynamic.constructions);
+            assertThrows(IllegalStateException.class, () -> RollbackBendingState.decodeRestoration(
+                    Map.of(A, liveA, B, liveB), outgoingBytes, outgoingCodec[0].receiver()));
+            assertThrows(IllegalArgumentException.class, () -> RollbackBendingState.decodeRestoration(
+                    Map.of(A, privateA, B, privateB), outgoingBytes, outgoingCodec[0].receiver()));
+            assertThrows(IllegalStateException.class, () -> RollbackBendingState.decode(
+                    List.of(A, B), outgoingBytes, liveRestorationCodec[0].receiver()));
+            var liveBackend = new RollbackLiveSchedulerTest.Backend();
+            var restorePlatform = (ProjectKorraPlatform) Proxy.newProxyInstance(ProjectKorraPlatform.class.getClassLoader(),
+                    new Class<?>[]{ProjectKorraPlatform.class}, (proxy, method, args) -> {
+                        if (method.getName().equals("scheduler")) return liveBackend;
+                        throw new AssertionError(method);
+                    });
+            try (var restorationScope = Platform.using(restorePlatform)) {
+                var playerCommit = restored.preparePlayers(Map.of(A, bendingA, B, bendingB));
+                assertSame(bendingA, BendingPlayer.getBendingPlayer(liveA));
+                playerCommit.commit(); playerCommit.commit();
+                assertSame(restored.players().get(A), BendingPlayer.getBendingPlayer(liveA));
+                assertSame(bendingOther, BendingPlayer.getBendingPlayer(other));
+                assertEquals(2, temporary.size());
+                assertTrue(temporary.contains(Pair.of(liveB, 4567L)));
+                assertSame(unrelatedPulse, CoreAbility.getAbility(other, Pulse.class));
+            }
+
+
 
         } finally {
             outside.restore();

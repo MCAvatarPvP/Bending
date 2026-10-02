@@ -7,6 +7,7 @@ import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.util.CollisionManager;
 import com.projectkorra.projectkorra.attribute.AttributeCache;
+import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackPlayer;
 
 import java.lang.reflect.Field;
@@ -98,6 +99,31 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
         return fromRoots(participants, codec.decode(bytes));
     }
 
+    /** Decode outgoing state onto the original live roster without installing or invoking gameplay. */
+    public static Restoration decodeRestoration(Map<UUID, Player> livePlayers, byte[] bytes, RollbackGraphCodec codec) {
+        var expected = Map.copyOf(livePlayers);
+        for (var entry : expected.entrySet()) {
+            if (!entry.getKey().equals(entry.getValue().getUniqueId()) || entry.getValue() instanceof RollbackPlayer)
+                throw new IllegalArgumentException("Restoration requires original live player bindings");
+        }
+        return new Restoration(fromRoots(expected.keySet(), codec.decode(bytes), expected));
+    }
+
+    /** Detached restored graph. Its owner must commit all services before releasing gameplay gates. */
+    public static final class Restoration {
+        private final RollbackBendingState state;
+        private Restoration(RollbackBendingState state) { this.state = state; }
+        public Map<UUID, BendingPlayer> players() { return state.players; }
+        public CoreAbility.RollbackRegistry abilities() { return state.abilities; }
+        public Manager.RollbackRegistry managers() { return state.managers; }
+        public CollisionManager collisions() { return state.collisions; }
+        public List<Object> services() { return state.services; }
+        public OfflineBendingPlayer.RollbackPlayerRestoration preparePlayers(Map<UUID, BendingPlayer> expected) {
+            if (Thread.currentThread() != state.owner) throw new IllegalStateException("Restoration crossed threads");
+            return OfflineBendingPlayer.prepareRollbackPlayerRestoration(expected, state.players, state.temporaryElements);
+        }
+    }
+
     private record Source(SortedMap<UUID, BendingPlayer> roster, CoreAbility.RollbackRegistry abilities,
                           Manager.RollbackRegistry managers, List<Object> roots,
                           Function<Object, RollbackStateTransfer.Replacement> projections) { }
@@ -149,6 +175,10 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
     }
 
     private static RollbackBendingState fromRoots(Collection<UUID> participants, List<Object> copied) {
+        return fromRoots(participants, copied, null);
+    }
+
+    private static RollbackBendingState fromRoots(Collection<UUID> participants, List<Object> copied, Map<UUID, Player> livePlayers) {
         var roster = new TreeSet<>(participants);
         if (roster.isEmpty() || roster.size() > 128 || roster.size() != participants.size() || copied.size() < roster.size() + 4) {
             throw new IllegalArgumentException("Bending import roster/roots");
@@ -157,8 +187,12 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
         int index = 0;
         for (UUID id : roster) {
             BendingPlayer player = root(copied.get(index++), BendingPlayer.class);
-            if (!id.equals(player.getUUID()) || !(player.getPlayer() instanceof RollbackPlayer)
-                    || !id.equals(player.getPlayer().getUniqueId())) throw new IllegalStateException("Bending import player identity/private binding");
+            Player body = player.getPlayer();
+            if (!id.equals(player.getUUID()) || body == null || !id.equals(body.getUniqueId()))
+                throw new IllegalStateException("Bending import player identity");
+            if (livePlayers == null ? !(body instanceof RollbackPlayer)
+                    : body instanceof RollbackPlayer || body.handle() != livePlayers.get(id).handle())
+                throw new IllegalStateException("Bending import player binding differs from its destination");
             players.put(id, player);
         }
         var abilities = root(copied.get(index++), CoreAbility.RollbackRegistry.class);

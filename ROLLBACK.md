@@ -49,6 +49,17 @@ state that actually determines those outcomes.
 
 ### October 2, 2026 integration update
 
+Outgoing bending graphs now have a separate live-restoration decoder. It checks the exact
+original live roster and native body identities while keeping private-domain decoding
+strictly bound to private players. The detached result retains aliases among restored
+players, abilities, listeners and task callbacks, and exposes a prepared participant-only
+player-registry commit. Integration tests export actual reconciled state, decode it onto
+live bodies without constructor/activation or registry effects, then commit player state
+and expiry while preserving outsiders. Wrong private/live destination bindings are
+rejected. Ability/manager/service commits and native state still need to join the retained
+ownership handoff before startup or gameplay can be enabled.
+
+
 `RollbackBendingState.exportState` now captures the installed domain's current ability,
 manager and temporary-element registries rather than reusing startup membership. It
 replaces initial task/listener roots with the settled scheduler export and current event
