@@ -551,7 +551,7 @@ class PaperRollbackDamageNativeTest {
         NativePlayer(Level world, long id) { super(world, new GameProfile(new UUID(0, id), "damage" + id)); }
         @Override public GameType gameMode() { return GameType.SURVIVAL; }
     }
-    static final class Combat implements PaperRollbackWorldAccess.Combat<Combat.Snapshot> {
+    static class Combat implements PaperRollbackWorldAccess.Combat<Combat.Snapshot> {
         record Snapshot(long time, boolean cancel, boolean cancelEquipment, double multiplier, Map<GameRule<?>, Object> rules,
                         boolean cancelResurrection, boolean allowResurrection, boolean cancelEffects, boolean cancelStatistics,
                         boolean cancelAdvancements, boolean replaceAdvancementMessage, boolean pvp, boolean cramming,

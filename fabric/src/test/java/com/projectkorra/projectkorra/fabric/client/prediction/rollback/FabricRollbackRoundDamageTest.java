@@ -88,6 +88,21 @@ class FabricRollbackRoundDamageTest {
         assertTrue(engine.advance().finalizedEffects().isEmpty()); assertTrue(engine.advance().finalizedEffects().isEmpty());
     }
 
+    @Test void rewindRestoresShieldWearCooldownAndActiveUseAfterAxeHit() {
+        var f = new Fixture(); f.target.shield();
+        f.attacker.setStackInHand(Hand.MAIN_HAND, new ItemStack(Items.DIAMOND_AXE));
+        var before = f.snapshot(); f.round.beginTick(1); f.hit(8);
+        assertFalse(f.target.isUsingItem());
+        assertEquals(1F, f.target.getItemCooldownManager().getCooldownProgress(f.target.getOffHandStack(), 0));
+        assertEquals(9, f.target.getOffHandStack().getDamage());
+        before.restore();
+        assertTrue(f.target.isUsingItem());
+        assertEquals(0F, f.target.getItemCooldownManager().getCooldownProgress(f.target.getOffHandStack(), 0));
+        assertEquals(0, f.target.getOffHandStack().getDamage());
+        f.round.beginTick(1); f.hit(8);
+        assertFalse(f.target.isUsingItem()); assertEquals(9, f.target.getOffHandStack().getDamage());
+    }
+
     @Test void onlyOwnedCompleteRostersCanBindBeforeAnyCheckpoint() {
         var f = new Fixture(false); f.world.sealPlayers(); f.world.bindRound(f.round, f.policy);
         assertThrows(IllegalStateException.class, () -> f.world.bindRound(f.round, f.policy));
@@ -128,10 +143,14 @@ class FabricRollbackRoundDamageTest {
         if (values[0].startsWith("shield")) {
             f.target.shield(); f.policy.cancel = values[0].equals("shield-cancelled");
         }
+        f.policy.disableCancel = values[0].equals("shield-axe-disablecancel");
+        f.policy.cooldownCancel = values[0].equals("shield-axe-cooldowncancel");
+        if (values[0].startsWith("shield-axe")) f.attacker.setStackInHand(Hand.MAIN_HAND, new ItemStack(Items.DIAMOND_AXE));
         f.round.beginTick(1); boolean accepted = f.hit(Float.parseFloat(values[1]));
         return accepted + "," + f.target.getHealth() + "," + f.target.getAbsorptionAmount() + "," + chest.getDamage()
                 + "," + f.target.timeUntilRegen + "," + access.rollback$lastDamageTaken() + "," + f.target.getVelocity().x + "," + f.target.getVelocity().y
-                + "," + f.target.getVelocity().z + "," + f.round.ended() + "," + f.target.getOffHandStack().getCount() + "," + f.target.getOffHandStack().getDamage();
+                + "," + f.target.getVelocity().z + "," + f.round.ended() + "," + f.target.getOffHandStack().getCount() + "," + f.target.getOffHandStack().getDamage()
+                + "," + f.target.getItemCooldownManager().getCooldownProgress(f.target.getOffHandStack(), 0) + "," + f.target.isUsingItem();
     }
 
     private static final class Fixture {
@@ -159,8 +178,8 @@ class FabricRollbackRoundDamageTest {
         @Override public GameMode getGameMode() { return GameMode.SURVIVAL; }
     }
     private static final class Policy implements FabricRollbackWorldAccess.DamagePolicy<Policy.Saved> {
-        record Saved(double scale, boolean cancel, boolean ignoreArmor, int events, int committed) { }
-        double scale = 1; boolean cancel, ignoreArmor; int events, committed;
+        record Saved(double scale, boolean cancel, boolean ignoreArmor, boolean disableCancel, boolean cooldownCancel, int events, int committed) { }
+        double scale = 1; boolean cancel, ignoreArmor, disableCancel, cooldownCancel; int events, committed;
         @Override public void event(FabricRollbackDamageEvent event) {
             events++;
             var logical = new com.projectkorra.projectkorra.platform.mc.entity.Player() {
@@ -174,8 +193,10 @@ class FabricRollbackRoundDamageTest {
         @Override public void exhaustion(PlayerEntity player, DamageSource source, float amount) { player.addExhaustion(amount); }
         @Override public void knockback(PlayerEntity player, DamageSource source, double strength, double x, double z) { player.takeKnockback(strength, x, z); }
         @Override public void death(PlayerEntity player, DamageSource source) { throw new AssertionError("Round bypassed native death cancellation"); }
+        @Override public int shieldDisable(PlayerEntity player, net.minecraft.entity.LivingEntity attacker, ItemStack shield, int ticks) { return disableCancel ? -1 : ticks; }
+        @Override public int itemCooldown(PlayerEntity player, ItemStack item, int ticks) { return cooldownCancel ? -1 : ticks; }
         @Override public boolean skipDamageTickWhenShieldBlocked() { return false; }
-        @Override public Saved captureRollbackState() { return new Saved(scale, cancel, ignoreArmor, events, committed); }
-        @Override public void restoreRollbackState(Saved state) { scale = state.scale; cancel = state.cancel; ignoreArmor = state.ignoreArmor; events = state.events; committed = state.committed; }
+        @Override public Saved captureRollbackState() { return new Saved(scale, cancel, ignoreArmor, disableCancel, cooldownCancel, events, committed); }
+        @Override public void restoreRollbackState(Saved state) { scale = state.scale; cancel = state.cancel; ignoreArmor = state.ignoreArmor; disableCancel = state.disableCancel; cooldownCancel = state.cooldownCancel; events = state.events; committed = state.committed; }
     }
 }

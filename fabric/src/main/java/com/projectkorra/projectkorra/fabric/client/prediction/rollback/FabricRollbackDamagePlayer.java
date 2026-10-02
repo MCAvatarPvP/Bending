@@ -142,6 +142,25 @@ abstract class FabricRollbackDamagePlayer extends PlayerEntity {
         return component.getDamageReductionAmount(source, amount, angle);
     }
 
+    private void shieldHit(FabricRollbackWorldAccess owner, ServerWorld world, DamageSource source, LivingEntity attacker) {
+        owner.damagePolicy().knockback(this, source, .5, getX() - attacker.getX(), getZ() - attacker.getZ());
+        ItemStack shield = getBlockingItem();
+        var component = shield == null ? null : shield.get(DataComponentTypes.BLOCKS_ATTACKS);
+        float seconds = attacker.getWeaponDisableBlockingForSeconds();
+        if (seconds <= 0 || component == null) return;
+        int ticks = Math.round(seconds * component.disableCooldownScale() * 20F);
+        if (ticks <= 0) return;
+        ticks = owner.damagePolicy().shieldDisable(this, attacker, shield, ticks);
+        if (ticks < -1) throw new IllegalArgumentException("Invalid shield disable policy result");
+        if (ticks == -1) return;
+        int cooldown = owner.damagePolicy().itemCooldown(this, shield, ticks);
+        if (cooldown < -1) throw new IllegalArgumentException("Invalid item cooldown policy result");
+        if (cooldown >= 0) getItemCooldownManager().set(shield, cooldown);
+        clearActiveItem();
+        component.disableSound().ifPresent(sound -> world.playSound(null, getX(), getY(), getZ(), sound,
+                getSoundCategory(), .8F, .8F + world.getRandom().nextFloat() * .4F));
+    }
+
     private boolean applyEvent(FabricRollbackWorldAccess owner, ServerWorld world, DamageSource source, FabricRollbackDamageEvent event) {
         if (source.getAttacker() instanceof PlayerEntity attacker && (!attacker.isUsingItem() || !attacker.getActiveItem().contains(DataComponentTypes.KINETIC_WEAPON)))
             owner.damagePolicy().resetAttackCooldown(attacker, this);
@@ -157,7 +176,7 @@ abstract class FabricRollbackDamagePlayer extends PlayerEntity {
             if (component != null) {
                 component.onShieldHit(world, item, this, getActiveHand(), blocking);
                 if (!source.isIn(DamageTypeTags.IS_PROJECTILE) && source.getSource() instanceof LivingEntity attacker
-                        && attacker.squaredDistanceTo(this) <= 200D * 200D) takeShieldHit(world, attacker);
+                        && attacker.squaredDistanceTo(this) <= 200D * 200D) shieldHit(owner, world, source, attacker);
             }
         }
         float absorbed = (float) -event.damage(ABSORPTION);

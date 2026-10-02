@@ -53,7 +53,15 @@ class PaperRollbackRoundParityNativeTest {
     }
 
     private static String run(String[] f) throws Exception {
-        var combat = new PaperRollbackDamageNativeTest.Combat();
+        var combat = new PaperRollbackDamageNativeTest.Combat() {
+            @Override public void event(org.bukkit.event.Event event) {
+                super.event(event);
+                if (event instanceof io.papermc.paper.event.player.PlayerShieldDisableEvent shield
+                        && f[0].equals("shield-axe-disablecancel")) shield.setCancelled(true);
+                if (event instanceof io.papermc.paper.event.player.PlayerItemCooldownEvent cooldown
+                        && f[0].equals("shield-axe-cooldowncancel")) cooldown.setCancelled(true);
+            }
+        };
         var world = new PaperRollbackWorldAccess(new PaperRollbackWorldAccessNativeTest.Queries(), combat, 4);
         var attackerState = PaperRollbackNativePlayerState.serverPlayer(world, new GameProfile(A, "parity1"), ClientInformation.createDefault(), GameType.SURVIVAL, 103, 200_000);
         var targetState = PaperRollbackNativePlayerState.serverPlayer(world, new GameProfile(B, "parity2"), ClientInformation.createDefault(), GameType.SURVIVAL, 107, 200_000);
@@ -85,10 +93,21 @@ class PaperRollbackRoundParityNativeTest {
             flags.invoke(target, 1, true); flags.invoke(target, 2, true);
             combat.cancel = f[0].equals("shield-cancelled");
         }
-        var round = new RollbackRound(ID, Map.of(A, A, B, B)); world.bindRound(round); round.beginTick(1);
+        if (f[0].startsWith("shield-axe")) attacker.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.DIAMOND_AXE));
+        var round = new RollbackRound(ID, Map.of(A, A, B, B)); world.bindRound(round);
+        var before = f[0].startsWith("shield-axe") ? targetState.captureRollbackState() : null;
+        round.beginTick(1);
         boolean accepted = targetState.damage(world.world().damageSources().playerAttack(attacker), Float.parseFloat(f[1]));
-        return accepted + "," + target.getHealth() + "," + target.getAbsorptionAmount() + "," + chest.getDamageValue()
+        String result = accepted + "," + target.getHealth() + "," + target.getAbsorptionAmount() + "," + chest.getDamageValue()
                 + "," + target.invulnerableTime + "," + target.lastHurt + "," + target.getDeltaMovement().x + "," + target.getDeltaMovement().y
-                + "," + target.getDeltaMovement().z + "," + round.ended() + "," + target.getOffhandItem().getCount() + "," + target.getOffhandItem().getDamageValue();
+                + "," + target.getDeltaMovement().z + "," + round.ended() + "," + target.getOffhandItem().getCount() + "," + target.getOffhandItem().getDamageValue()
+                + "," + target.getCooldowns().getCooldownPercent(target.getOffhandItem(), 0) + "," + target.isUsingItem();
+        if (before != null) {
+            targetState.restoreRollbackState(before);
+            assertTrue(target.isUsingItem());
+            assertEquals(0, target.getOffhandItem().getDamageValue());
+            assertEquals(0F, target.getCooldowns().getCooldownPercent(target.getOffhandItem(), 0));
+        }
+        return result;
     }
 }

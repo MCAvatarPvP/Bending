@@ -107,6 +107,10 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
         void exhaustion(PlayerEntity player, DamageSource source, float amount);
         void knockback(PlayerEntity player, DamageSource source, double strength, double x, double z);
         void death(PlayerEntity player, DamageSource source);
+        /** Return -1 to cancel disabling entirely; otherwise the event-adjusted cooldown ticks. */
+        int shieldDisable(PlayerEntity player, net.minecraft.entity.LivingEntity attacker, net.minecraft.item.ItemStack shield, int ticks);
+        /** Return -1 to cancel only cooldown installation; shield use still stops. */
+        int itemCooldown(PlayerEntity player, net.minecraft.item.ItemStack item, int ticks);
         boolean skipDamageTickWhenShieldBlocked();
     }
     private RollbackRound round;

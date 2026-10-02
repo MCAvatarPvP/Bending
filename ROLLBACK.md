@@ -2022,7 +2022,7 @@ shared round decision run before equipment wear, absorption, immunity, knockback
 and health changes. The imported Paper immunity duration is checkpointed on the
 private client body. Binding seals the roster before checkpoint capture.
 
-A shared seventeen-case fixture compares actual patched Paper and Fabric results
+A shared twenty-case fixture compares actual patched Paper and Fabric results
 for health, mitigation, event rescaling, immunity, equipment wear, velocity, shield
 blocking/cancellation, totem survival and round outcomes. Paper's copied shield
 call paths retain private statistics, cooldown events and sounds, and route direct
@@ -2040,3 +2040,10 @@ common event views for base/modifier edits and cancellation; Paper's view preser
 the native cause. The shared fixture exercises Fabric damage through this view,
 and native tests check bidirectional damage/cancellation. Captured native listener
 ordering and production policy dispatch still need assembly before live replay.
+
+Shield hits also route knockback, shield-disable cancellation and item-cooldown
+cancellation through captured client policy. Cancelling shield disable keeps the
+shield raised; cancelling only cooldown still stops item use, matching Paper.
+The private Paper connection captures the identifier/duration cooldown packet.
+Both native suites verify shield wear, active use and cooldown restoration after
+an axe hit; the client repeats the hit after rewind.
