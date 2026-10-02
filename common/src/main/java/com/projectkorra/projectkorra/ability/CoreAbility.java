@@ -363,6 +363,25 @@ public abstract class CoreAbility implements Ability {
         public int idLimit() { return maximumId; }
         public List<AttributeCache> attributes() { return attributes.values().stream().flatMap(map -> map.values().stream()).toList(); }
 
+        /** Resolve canonical live caches without replacing shared objects or mutating their entries. */
+        public Map<AttributeCache, AttributeCache> liveAttributeBindings() {
+            if (RollbackClock.active() || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active())
+                throw new IllegalStateException("Resolve live attributes outside replay");
+            var result = new IdentityHashMap<AttributeCache, AttributeCache>();
+            for (var entry : attributes.entrySet()) {
+                var live = ATTRIBUTE_FIELDS.get(entry.getKey());
+                if (live == null || !live.keySet().equals(entry.getValue().keySet()))
+                    throw new IllegalStateException("Live ability attribute definitions changed");
+                for (var attribute : entry.getValue().entrySet()) {
+                    var target = live.get(attribute.getKey());
+                    if (!attribute.getValue().sameRollbackDefinition(target))
+                        throw new IllegalStateException("Live ability attribute definition differs");
+                    result.put(attribute.getValue(), target);
+                }
+            }
+            return result;
+        }
+
         /** Installs transferred instances without activation, attribute or removal callbacks. */
         public void install() {
             if (!com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) {

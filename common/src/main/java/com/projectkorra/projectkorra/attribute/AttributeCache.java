@@ -49,6 +49,18 @@ public class AttributeCache {
         @Override public List<?> rollbackReferences() { return List.of(); }
     }
 
+    /** Definition compatibility for rebinding a detached replay cache to its live identity. */
+    public boolean sameRollbackDefinition(AttributeCache other) {
+        if (other == null || !metadata.field.equals(other.metadata.field)
+                || !metadata.attribute.equals(other.metadata.attribute) || !metadata.markers.equals(other.metadata.markers)
+                || avatarStateModifier.isPresent() != other.avatarStateModifier.isPresent()) return false;
+        if (avatarStateModifier.isEmpty()) return true;
+        var left = avatarStateModifier.get(); var right = other.avatarStateModifier.get();
+        return left.getPriority() == right.getPriority() && left.getModifier() == right.getModifier()
+                && java.util.Objects.equals(left.getModification(), right.getModification())
+                && java.util.Objects.equals(left.getModificationName(), right.getModificationName());
+    }
+
     public static boolean isRollbackMetadata(Object value) { return value instanceof Metadata; }
 
     @NotNull

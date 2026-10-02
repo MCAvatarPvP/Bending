@@ -49,6 +49,18 @@ state that actually determines those outcomes.
 
 ### October 2, 2026 integration update
 
+Live-restoration decoding now rebinds shared attribute caches and their entry maps to
+canonical live identities, while carrying outgoing participant values in separate detached
+maps. The local second copy uses the already negotiated codec layouts/bindings and preserves
+ability/listener/task aliases. Attribute commit validates current cache ownership and
+definitions before replacing only participant entries; unrelated abilities retain their
+cache/map identities and values. Repeated commit is inert. Integration regressions cover
+aliases held directly by abilities, unchanged live values before commit, changed cache
+ownership rejection, successful participant merge and preserved outsiders. This prevents
+whole-cache replacement during ability restoration. Live ability indices, managers and
+native bodies still need to be committed within the retained ownership handoff.
+
+
 Ability construction now honors a transferable ID bound. Live startup can reserve a
 roster-specific range, then include the source-only reservation in bending capture roots;
 the capture stores its next ID/limit in the transferred ability registry and omits the

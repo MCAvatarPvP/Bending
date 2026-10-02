@@ -196,6 +196,15 @@ public final class RollbackGraphCodec {
         } catch (IOException exception) { throw new IllegalStateException(exception); }
     }
 
+    /** Recopy a validated detached graph with local shared-service identities. Never writes replacements. */
+    List<Object> rebind(Collection<?> roots, Function<Object, RollbackStateTransfer.Replacement> replacements) {
+        checkThread();
+        var transfer = new RollbackStateTransfer(catalog.layouts::containsKey, value ->
+                catalog.external.containsKey(value) ? new RollbackStateTransfer.Replacement(value) : null,
+                new RollbackStateTransfer.Limits(limits.maximumObjects(), limits.maximumReferences()));
+        return transfer.copy(roots, replacements);
+    }
+
     public List<Object> decode(byte[] bytes) {
         checkThread();
         if (bytes.length > limits.maximumWireBytes()) throw invalid("wire budget");

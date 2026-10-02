@@ -106,13 +106,67 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
             if (!entry.getKey().equals(entry.getValue().getUniqueId()) || entry.getValue() instanceof RollbackPlayer)
                 throw new IllegalArgumentException("Restoration requires original live player bindings");
         }
-        return new Restoration(fromRoots(expected.keySet(), codec.decode(bytes), expected));
+        var roots = codec.decode(bytes);
+        var initial = fromRoots(expected.keySet(), roots, expected);
+        var bindings = initial.abilities.liveAttributeBindings();
+        var projections = new IdentityHashMap<Object, RollbackStateTransfer.Replacement>();
+        var definitions = new ArrayList<AttributeCache>();
+        var updates = new ArrayList<Object>();
+        for (var binding : bindings.entrySet()) {
+            var source = binding.getKey(); var target = binding.getValue(); definitions.add(source);
+            projections.put(source, new RollbackStateTransfer.Replacement(target));
+            projections.put(target, new RollbackStateTransfer.Replacement(target));
+            projections.put(source.getInitialValues(), new RollbackStateTransfer.Replacement(target.getInitialValues()));
+            projections.put(source.getCurrentModifications(), new RollbackStateTransfer.Replacement(target.getCurrentModifications()));
+            // Distinct snapshot maps retain outgoing values while aliases to the cache maps rebind live.
+            updates.add(List.of(target, new WeakHashMap<>(source.getInitialValues()), new WeakHashMap<>(source.getCurrentModifications())));
+        }
+        var combined = new ArrayList<Object>(roots); combined.add(updates);
+        var rebound = codec.rebind(combined, projections::get);
+        return new Restoration(fromRoots(expected.keySet(), rebound.subList(0, roots.size()), expected),
+                definitions, (List<?>) rebound.getLast());
     }
 
     /** Detached restored graph. Its owner must commit all services before releasing gameplay gates. */
     public static final class Restoration {
         private final RollbackBendingState state;
-        private Restoration(RollbackBendingState state) { this.state = state; }
+        private final List<AttributeCache> definitions;
+        private final List<?> attributeUpdates;
+        private boolean attributesCommitted;
+        private Restoration(RollbackBendingState state, List<AttributeCache> definitions, List<?> updates) {
+            this.state = state; this.definitions = List.copyOf(definitions); attributeUpdates = List.copyOf(updates);
+        }
+        /** Merge only participant entries into canonical cache maps; the owner retains gameplay gates. */
+        @SuppressWarnings("unchecked")
+        public void commitAttributes() {
+            if (Thread.currentThread() != state.owner || RollbackDomain.active() || RollbackClock.active()
+                    || !com.projectkorra.projectkorra.platform.Platform.scheduler().isPrimaryThread())
+                throw new IllegalStateException("Restore attributes on the live main thread");
+            var current = state.abilities.liveAttributeBindings();
+            for (int i = 0; i < attributeUpdates.size(); i++) {
+                var update = (List<?>) attributeUpdates.get(i); var cache = (AttributeCache) update.get(0);
+                if (current.get(cache) != cache || !definitions.get(i).sameRollbackDefinition(cache))
+                    throw new IllegalStateException("Live attribute ownership changed before restoration");
+                for (int map = 1; map <= 2; map++) for (Object key : ((Map<?, ?>) update.get(map)).keySet()) {
+                    if (!(key instanceof CoreAbility ability) || ability.getPlayer() == null
+                            || state.players.get(ability.getPlayer().getUniqueId()) != ability.getBendingPlayer())
+                        throw new IllegalStateException("Restored attribute entry is outside the participant graph");
+                }
+            }
+            if (attributesCommitted) return;
+            for (Object value : attributeUpdates) {
+                var update = (List<?>) value; var cache = (AttributeCache) update.get(0);
+                removeParticipantAttributes(cache.getInitialValues());
+                removeParticipantAttributes(cache.getCurrentModifications());
+                cache.getInitialValues().putAll((Map<CoreAbility, Object>) update.get(1));
+                cache.getCurrentModifications().putAll((Map) update.get(2));
+            }
+            attributesCommitted = true;
+        }
+        private void removeParticipantAttributes(Map<CoreAbility, ?> entries) {
+            entries.keySet().removeIf(ability -> ability != null && ability.getPlayer() != null
+                    && state.players.containsKey(ability.getPlayer().getUniqueId()));
+        }
         public Map<UUID, BendingPlayer> players() { return state.players; }
         public CoreAbility.RollbackRegistry abilities() { return state.abilities; }
         public Manager.RollbackRegistry managers() { return state.managers; }

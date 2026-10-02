@@ -61,7 +61,9 @@ class RollbackBendingStateTest {
             liveGuard.start();
             unrelatedPulse.start();
             livePulse.linkedCache = sourceAttribute;
+            livePulse.linkedValues = sourceAttribute.getInitialValues();
             unrelatedPulse.linkedCache = sourceAttribute;
+            unrelatedPulse.linkedValues = sourceAttribute.getInitialValues();
             var collisions = new CollisionManager();
             collisions.addCollision(new Collision(livePulse, liveGuard, true, false));
             var liveTask = new BukkitRunnable() { @Override public void run() { throw new AssertionError("Live task ran"); } };
@@ -152,6 +154,7 @@ class RollbackBendingStateTest {
                 AttributeCache privateAttribute = CoreAbility.getAttributeCache(pulse).get("Speed");
                 assertNotSame(sourceAttribute, privateAttribute);
                 assertSame(privateAttribute, pulse.linkedCache);
+                assertSame(privateAttribute.getInitialValues(), pulse.linkedValues);
                 assertSame(sourceAttribute.getField(), privateAttribute.getField());
                 assertEquals(Set.of(pulse), privateAttribute.getInitialValues().keySet());
                 assertFalse(privateAttribute.getInitialValues().containsKey(unrelatedPulse));
@@ -265,6 +268,10 @@ class RollbackBendingStateTest {
             Pulse restoredPulse = (Pulse) restored.abilities().instances().stream().filter(ability -> ability.getId() == 1).findFirst().orElseThrow();
             assertSame(restored.players().get(A), restoredPulse.getBendingPlayer());
             assertSame(liveA, restoredPulse.getPlayer());
+            assertSame(sourceAttribute, restoredPulse.linkedCache);
+            assertSame(sourceAttribute.getInitialValues(), restoredPulse.linkedValues);
+            assertSame(unrelatedPulse.linkedValues, restoredPulse.linkedValues);
+            assertFalse(sourceAttribute.getInitialValues().containsKey(restoredPulse));
             assertSame(restoredPulse, ((CapturedTask) restored.services().get(3)).ability);
             assertSame(bendingA, BendingPlayer.getBendingPlayer(liveA), "Decoding must not install live registries");
             assertSame(livePulse, CoreAbility.getAbility(liveA, Pulse.class));
@@ -285,6 +292,18 @@ class RollbackBendingStateTest {
                 var playerCommit = restored.preparePlayers(Map.of(A, bendingA, B, bendingB));
                 assertSame(bendingA, BendingPlayer.getBendingPlayer(liveA));
                 playerCommit.commit(); playerCommit.commit();
+                var liveAttributeDefinitions = (Map<String, AttributeCache>) attributes.get(Pulse.class);
+                liveAttributeDefinitions.put("Speed", new AttributeCache(sourceAttribute.getField(), sourceAttribute.getAttribute()));
+                assertThrows(IllegalStateException.class, restored::commitAttributes);
+                assertEquals(Set.of(livePulse, unrelatedPulse), sourceAttribute.getInitialValues().keySet());
+                liveAttributeDefinitions.put("Speed", sourceAttribute);
+                restored.commitAttributes(); restored.commitAttributes();
+                assertFalse(sourceAttribute.getInitialValues().containsKey(livePulse));
+                assertTrue(sourceAttribute.getInitialValues().containsKey(restoredPulse));
+                assertTrue(sourceAttribute.getInitialValues().containsKey(unrelatedPulse));
+                assertSame(sourceAttribute.getInitialValues(), unrelatedPulse.linkedValues);
+                assertEquals(1.0, restoredPulse.linkedValues.get(restoredPulse));
+
                 assertSame(restored.players().get(A), BendingPlayer.getBendingPlayer(liveA));
                 assertSame(bendingOther, BendingPlayer.getBendingPlayer(other));
                 assertEquals(2, temporary.size());
@@ -399,6 +418,7 @@ class RollbackBendingStateTest {
     }
     private static final class Pulse extends Dynamic {
         AttributeCache linkedCache;
+        Map<CoreAbility, Object> linkedValues;
         final List<Double> history = new ArrayList<>();
         int age;
         double speed = 1;
