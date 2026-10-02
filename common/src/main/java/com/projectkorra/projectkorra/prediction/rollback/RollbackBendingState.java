@@ -94,11 +94,12 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
         roots.add(collisions.rollbackImportSource());
         roots.add(OfflineBendingPlayer.captureRollbackTemporaryElements(roster.keySet()));
         roots.add(managerRegistry);
-        roots.addAll(services);
+        for (Object service : services) roots.add(service instanceof RollbackTaskBindings.Capture tasks ? tasks.bindings() : service);
         // Attribute definitions exist for future activations too. Keep their metadata,
         // but import only this roster's per-instance cache entries. Project the maps,
         // not the cache objects, to preserve references held by arbitrary ability fields.
         var projections = new IdentityHashMap<Object, RollbackStateTransfer.Replacement>();
+        for (Object service : services) if (service instanceof RollbackTaskBindings.Capture tasks) tasks.projectSources(projections::put);
         managerRegistry.projectSources(roster.keySet(), (source, view) ->
                 projections.put(source, RollbackStateTransfer.Replacement.fromProjection(view)));
         for (AttributeCache cache : registry.attributes()) {
@@ -173,6 +174,14 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
             if (!(com.projectkorra.projectkorra.platform.Platform.events() instanceof RollbackEventBus bus))
                 throw new IllegalStateException("Imported event rules require a private event bus");
             events.getFirst().install(bus);
+        }
+        var tasks = services.stream().filter(RollbackTaskBindings.class::isInstance)
+                .map(RollbackTaskBindings.class::cast).toList();
+        if (tasks.size() > 1) throw new IllegalArgumentException("Duplicate task binding roots");
+        if (!tasks.isEmpty()) {
+            if (!(com.projectkorra.projectkorra.platform.Platform.scheduler() instanceof RollbackScheduler scheduler))
+                throw new IllegalStateException("Imported callbacks require a private scheduler");
+            tasks.getFirst().install(scheduler);
         }
         abilities.install();
         OfflineBendingPlayer.installRollbackPlayers(players, temporaryElements);

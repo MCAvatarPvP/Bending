@@ -75,7 +75,15 @@ class RollbackBendingStateTest {
             var liveRules = new CapturedRule(livePulse);
             var liveBus = new RollbackEventBus(100, 10);
             liveBus.registerListener(liveRules);
-            var serviceRoots = List.of(sourceService, RollbackEventBindings.capture(liveBus));
+            var liveCallback = new CapturedTask(livePulse);
+            liveCallback.handle = new com.projectkorra.projectkorra.platform.PKTask() {
+                @Override public void cancel() { fail("Imported callback cancelled a live task"); }
+                @Override public boolean cancelled() { return false; }
+                @Override public int legacyId() { return 44; }
+            };
+            var taskCapture = RollbackTaskBindings.capture(List.of(new RollbackTaskBindings.Pending(
+                    liveCallback.handle, liveCallback, 1, 2, livePulse, 71, 93)));
+            var serviceRoots = List.of(sourceService, RollbackEventBindings.capture(liveBus), taskCapture);
             var privateA = PrivateCombatRollbackTest.player(privateWorld, 1);
             var privateB = PrivateCombatRollbackTest.player(privateWorld, 2);
             Map<Object, Object> replacements = new IdentityHashMap<>();
@@ -118,12 +126,16 @@ class RollbackBendingStateTest {
             var prediction = PredictionServices.builder().bind(AbilityRemovalSync.Listener.class,
                     (ability, external) -> removals.add(ability.getId() + ":" + external)).build();
             var privateBus = new RollbackEventBus(100, 10);
+            var privateScheduler = new RollbackScheduler(100, 100);
             var privatePlatform = (ProjectKorraPlatform) Proxy.newProxyInstance(ProjectKorraPlatform.class.getClassLoader(),
                     new Class<?>[]{ProjectKorraPlatform.class}, (proxy, method, args) -> {
                         if (method.getName().equals("events")) return privateBus;
+                        if (method.getName().equals("scheduler")) return privateScheduler;
                         throw new AssertionError(method);
                     });
-            var domain = RollbackDomain.create(graph, shared, List.of(imported, privateBus), privatePlatform, null, prediction, imported::install);
+            var domain = RollbackDomain.create(graph, shared, List.of(imported, privateBus, privateScheduler), privatePlatform, null, prediction, imported::install);
+            var copiedTask = (CapturedTask) ((RollbackTaskBindings) imported.services().get(2)).entries().getFirst().callback();
+            assertSame(pulse, copiedTask.ability); assertEquals(1, privateScheduler.pendingTasks());
             var copiedRules = (CapturedRule) privateBus.commonRegistrations().getFirst().listener();
             assertNotSame(liveRules, copiedRules);
             assertSame(pulse, copiedRules.ability);
@@ -153,6 +165,7 @@ class RollbackBendingStateTest {
                 @Override public void restore(RollbackDomain.Checkpoint checkpoint) { domain.restore(checkpoint); }
                 @Override public Double predict(UUID participant, Double previous) { return previous; }
                 @Override public void step(long tick, Map<UUID, Double> inputs, RollbackStep<String> effects) {
+                    privateScheduler.advance(tick);
                     guard.location.setY(inputs.get(B));
                     CoreAbility.progressAll();
                     ProjectKorra.collisionManager.detectCollisions();
@@ -175,6 +188,8 @@ class RollbackBendingStateTest {
             assertEquals(0, copiedRules.collisions);
             assertTrue(removals.isEmpty());
             assertEquals(List.of(1.0, 3.0), pulse.history);
+            assertEquals(1, copiedTask.calls); assertTrue(copiedTask.handle.cancelled());
+            assertEquals(0, liveCallback.calls); assertFalse(liveCallback.handle.cancelled());
             domain.call(() -> { assertSame(pulse, CoreAbility.getAbility(privateA, Pulse.class)); return null; });
 
             assertSame(livePulse, CoreAbility.getAbility(liveA, Pulse.class));
@@ -219,7 +234,8 @@ class RollbackBendingStateTest {
         List<Class<?>> objects = List.of(BendingPlayer.class, Pulse.class, Guard.class, Location.class, Cooldown.class,
                 CoreAbility.RollbackRegistry.class, Manager.RollbackRegistry.class, CollisionManager.class, Collision.class,
                 OfflineBendingPlayer.RollbackTemporaryElement.class, AttributeCache.class,
-                CapturedRule.class, RollbackEventBindings.class, PKEventBus.Registration.class,
+                CapturedRule.class, CapturedTask.class, RollbackTaskBindings.class, RollbackTaskBindings.Entry.class, RollbackTaskBindings.Handle.class,
+                RollbackEventBindings.class, PKEventBus.Registration.class,
                 com.projectkorra.projectkorra.util.IndexedMap.class, field(CoreAbility.class, "predictionAncestry").getType(),
                 sourceAttribute.getCurrentModifications().values().stream().map(value -> ((TreeSet<?>) value).comparator().getClass()).findFirst().orElseThrow());
         var symbols = new ArrayList<Class<?>>();
@@ -250,6 +266,19 @@ class RollbackBendingStateTest {
         return (ProjectKorraPlatform) Proxy.newProxyInstance(ProjectKorraPlatform.class.getClassLoader(), new Class<?>[]{ProjectKorraPlatform.class},
                 (proxy, method, args) -> { if (method.getName().equals("events")) return bus; throw new AssertionError(method); });
     }
+    private static final class CapturedTask implements Runnable {
+        final Pulse ability;
+        com.projectkorra.projectkorra.platform.PKTask handle;
+        int calls;
+        CapturedTask(Pulse ability) { this.ability = ability; }
+        @Override public void run() {
+            assertSame(ability, com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext.current());
+            assertEquals(71, com.projectkorra.projectkorra.prediction.action.PredictionDeterminism.currentAction());
+            assertEquals(93, com.projectkorra.projectkorra.prediction.action.PredictionDeterminism.currentSeed());
+            calls++; handle.cancel();
+        }
+    }
+
     private static final class CapturedRule {
         final Pulse ability;
         int collisions;

@@ -2047,3 +2047,23 @@ shield raised; cancelling only cooldown still stops item use, matching Paper.
 The private Paper connection captures the identifier/duration cooldown packet.
 Both native suites verify shield wear, active use and cooldown restoration after
 an axe hit; the client repeats the hit after rewind.
+
+
+### Pending task transfer
+
+`RollbackTaskBindings` carries frozen pending callbacks in the same portable graph
+as abilities and common event handlers. Its source capture projects native task
+handles to portable handles, preserving references held by callbacks and abilities
+without transferring a live scheduler. Bending-state bootstrap installs the copied
+batch into the private scheduler. Relative deadlines, repetition, original ordering,
+legacy IDs, ability context, action and random seed survive transfer. New task IDs
+start beyond the imported range; equal-deadline order is independent of legacy IDs.
+
+Import validates the complete batch before changing scheduler membership or binding
+handles. Callback self-cancellation, completion, mutable callback state and ordering
+counters rewind together. Tests exercise both direct copy and portable decoding via
+the actual bending-state bootstrap, then late-input replay with the imported task.
+The live scheduler adapter must still enumerate/freeze the selected pending tasks,
+supply them in original scheduling order, and restore live ownership on teardown.
+Hidden callback classes still require portable representations; this handoff does
+not silently retain their live captures or enable a live session.

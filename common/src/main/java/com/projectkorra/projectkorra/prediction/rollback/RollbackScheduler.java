@@ -31,11 +31,13 @@ public final class RollbackScheduler implements PKScheduler, RollbackStateCell<R
     private final int maximumCallbacks;
     private final Map<Integer, Task> tasks = new LinkedHashMap<>();
     private final PriorityQueue<Task> queue = new PriorityQueue<>(Comparator
-            .comparingLong((Task task) -> task.due).thenComparingInt(task -> task.id));
+            .comparingLong((Task task) -> task.due).thenComparingLong(task -> task.order));
     private int nextId = 1;
+    private long nextOrder = 1;
     private long tick;
     private boolean running;
     private boolean failed;
+    private boolean imported;
 
     public RollbackScheduler(int maximumTasks, int maximumCallbacks) {
         if (maximumTasks < 1 || maximumCallbacks < 1) throw new IllegalArgumentException("Scheduler budgets");
@@ -95,11 +97,35 @@ public final class RollbackScheduler implements PKScheduler, RollbackStateCell<R
         final int id = nextId;
         final int followingId = Math.incrementExact(id);
         final long due = Math.addExact(tick, Math.max(1, delay));
-        final Task task = new Task(id, callback, due, period);
+        final long followingOrder = Math.incrementExact(nextOrder);
+        final Task task = new Task(id, callback, due, period, nextOrder);
         tasks.put(id, task);
         queue.add(task);
         nextId = followingId;
+        nextOrder = followingOrder;
         return task;
+    }
+
+    /** Bootstrap-only batch: retain legacy ids, equal-deadline order and captured execution context. */
+    void importTasks(List<RollbackTaskBindings.Entry> entries) {
+        checkUsable();
+        if (imported || tick != 0 || nextId != 1 || !tasks.isEmpty() || running)
+            throw new IllegalStateException("Task import requires a fresh private scheduler");
+        if (entries.size() > maximumTasks) throw new IllegalArgumentException("Imported task budget exceeded");
+        var imported = new LinkedHashMap<Integer, Task>();
+        int followingId = 1;
+        for (var entry : entries) {
+            Objects.requireNonNull(entry, "task entry");
+            var handle = Objects.requireNonNull(entry.handle(), "task handle");
+            int id = handle.legacyId();
+            if (id < 1 || id == Integer.MAX_VALUE || !handle.unbound() || imported.containsKey(id))
+                throw new IllegalArgumentException("Invalid or already bound imported task handle");
+            var task = new Task(id, Objects.requireNonNull(entry.callback(), "task callback"), Math.max(1, entry.delay()),
+                    entry.period() == 0 ? 1 : entry.period(), imported.size() + 1L, entry.ability(), entry.action(), entry.seed());
+            imported.put(id, task); followingId = Math.max(followingId, Math.incrementExact(id));
+        }
+        tasks.putAll(imported); queue.addAll(imported.values()); nextId = followingId; nextOrder = entries.size() + 1L; this.imported = true;
+        for (var entry : entries) entry.handle().bind(imported.get(entry.handle().legacyId()));
     }
 
     @Override public void cancelTask(int taskId) {
@@ -124,11 +150,15 @@ public final class RollbackScheduler implements PKScheduler, RollbackStateCell<R
         private final RollbackScheduler owner;
         private final long tick;
         private final int nextId;
+        private final long nextOrder;
+        private final boolean imported;
         private final List<SavedTask> tasks;
         private State(RollbackScheduler owner, long tick, int nextId, List<SavedTask> tasks) {
             this.owner = owner;
+            this.imported = owner.imported;
             this.tick = tick;
             this.nextId = nextId;
+            this.nextOrder = owner.nextOrder;
             this.tasks = List.copyOf(tasks);
         }
     }
@@ -147,6 +177,8 @@ public final class RollbackScheduler implements PKScheduler, RollbackStateCell<R
         if (state.owner != this) throw new IllegalArgumentException("Snapshot belongs to another scheduler");
         tick = state.tick;
         nextId = state.nextId;
+        nextOrder = state.nextOrder;
+        imported = state.imported;
         tasks.clear();
         queue.clear();
         for (SavedTask saved : state.tasks) {
@@ -168,13 +200,19 @@ public final class RollbackScheduler implements PKScheduler, RollbackStateCell<R
 
     private final class Task implements PKTask {
         final int id;
+        final long order;
         final Runnable callback;
         final long period;
-        final CoreAbility ability = AbilityExecutionContext.current();
-        final long action = PredictionDeterminism.currentAction();
-        final long seed = PredictionDeterminism.currentSeed();
+        final CoreAbility ability;
+        final long action;
+        final long seed;
         long due;
-        Task(int id, Runnable callback, long due, long period) {
+        Task(int id, Runnable callback, long due, long period, long order) {
+            this(id, callback, due, period, order, AbilityExecutionContext.current(), PredictionDeterminism.currentAction(), PredictionDeterminism.currentSeed());
+        }
+        Task(int id, Runnable callback, long due, long period, long order, CoreAbility ability, long action, long seed) {
+            this.order = order;
+            this.ability = ability; this.action = action; this.seed = seed;
             this.id = id;
             this.callback = callback;
             this.due = due;
