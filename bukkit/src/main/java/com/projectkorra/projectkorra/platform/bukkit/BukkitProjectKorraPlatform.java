@@ -40,7 +40,9 @@ import java.util.logging.Logger;
  */
 public final class BukkitProjectKorraPlatform implements ProjectKorraPlatform {
     private final JavaPlugin plugin;
-    private final PKScheduler scheduler = new BukkitSchedulerFacade();
+    private final com.projectkorra.projectkorra.prediction.rollback.RollbackLiveScheduler scheduler =
+            new com.projectkorra.projectkorra.prediction.rollback.RollbackLiveScheduler(new BukkitSchedulerFacade(),
+                    () -> Integer.toUnsignedLong(Bukkit.getCurrentTick()), PaperPredictionServer::contextual);
     private final PKEventBus events = new BukkitEventBusFacade();
     private final PKPlayers players = new BukkitPlayersFacade();
     private final PKWorlds worlds = new BukkitWorldsFacade();
@@ -82,6 +84,9 @@ public final class BukkitProjectKorraPlatform implements ProjectKorraPlatform {
     public PKScheduler scheduler() {
         return this.scheduler;
     }
+
+    /** Native startup owns this lease until pre-start restoration or running-state handoff completes. */
+    public com.projectkorra.projectkorra.prediction.rollback.RollbackLiveScheduler rollbackScheduler() { return scheduler; }
 
     @Override
     public PKEventBus events() {
@@ -456,37 +461,37 @@ public final class BukkitProjectKorraPlatform implements ProjectKorraPlatform {
     private final class BukkitSchedulerFacade implements PKScheduler {
         @Override
         public PKTask runNow(final Runnable task) {
-            return new BukkitTaskHandle(Bukkit.getScheduler().runTask(plugin, predictionContext(task)));
+            return new BukkitTaskHandle(Bukkit.getScheduler().runTask(plugin, task));
         }
 
         @Override
         public PKTask runAsync(final Runnable task) {
-            return new BukkitTaskHandle(Bukkit.getScheduler().runTaskAsynchronously(plugin, predictionContext(task)));
+            return new BukkitTaskHandle(Bukkit.getScheduler().runTaskAsynchronously(plugin, task));
         }
 
         @Override
         public PKTask runLater(final Runnable task, final long delayTicks) {
-            return new BukkitTaskHandle(Bukkit.getScheduler().runTaskLater(plugin, predictionContext(task), delayTicks));
+            return new BukkitTaskHandle(Bukkit.getScheduler().runTaskLater(plugin, task, delayTicks));
         }
 
         @Override
         public PKTask runAsyncLater(final Runnable task, final long delayTicks) {
-            return new BukkitTaskHandle(Bukkit.getScheduler().runTaskLaterAsynchronously(plugin, predictionContext(task), delayTicks));
+            return new BukkitTaskHandle(Bukkit.getScheduler().runTaskLaterAsynchronously(plugin, task, delayTicks));
         }
 
         @Override
         public PKTask runTimer(final Runnable task, final long delayTicks, final long periodTicks) {
-            return new BukkitTaskHandle(Bukkit.getScheduler().runTaskTimer(plugin, predictionContext(task), delayTicks, periodTicks));
+            return new BukkitTaskHandle(Bukkit.getScheduler().runTaskTimer(plugin, task, delayTicks, periodTicks));
         }
 
         @Override
         public PKTask runTimerAsync(final Runnable task, final long delayTicks, final long periodTicks) {
-            return new BukkitTaskHandle(Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, predictionContext(task), delayTicks, periodTicks));
+            return new BukkitTaskHandle(Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, task, delayTicks, periodTicks));
         }
 
         @Override
         public int scheduleRepeating(final Runnable task, final long delayTicks, final long periodTicks) {
-            return Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, predictionContext(task), delayTicks, periodTicks);
+            return Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, task, delayTicks, periodTicks);
         }
 
         @Override
@@ -516,9 +521,6 @@ public final class BukkitProjectKorraPlatform implements ProjectKorraPlatform {
             return Bukkit.isPrimaryThread();
         }
 
-        private Runnable predictionContext(final Runnable task) {
-            return PaperPredictionServer.contextual(task);
-        }
     }
 
     private final class BukkitEventBusFacade implements PKEventBus {

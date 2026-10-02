@@ -49,6 +49,21 @@ state that actually determines those outcomes.
 
 ### October 2, 2026 integration update
 
+Paper's platform scheduler now tracks callbacks through `RollbackLiveScheduler`.
+A preparation receives its cleanup lease before freezing selected gameplay work;
+selection uses captured work/context rather than an element or ability-name list.
+Freeze rejects callbacks already executing, retains scheduling order and relative
+remaining delays, and projects pending handles into the portable bending graph.
+Completed/cancelled handles become inert private handles and their IDs stay reserved.
+Private replay can self-cancel and rewind copied callbacks without reaching native tasks.
+Aborted startup restores original contextual callbacks with stable logical handles;
+stale queued dispatches cannot execute after restoration. Partial cancellation and
+rescheduling failures retain ownership for cleanup retries. Paper now routes its
+platform scheduling calls through this tracker. `callSync`, direct external Bukkit
+scheduling, complete cohort task selection and running-session task restoration still
+need production ownership integration; this does not install a bootstrap provider.
+
+
 `RollbackRound` now lives in the shared ProjectKorra module, so Paper and Fabric
 can use the same provisional defeat, team-survival and attacker-attribution rules.
 It implements `RollbackStateCell`: domain checkpoints rewind provisional results

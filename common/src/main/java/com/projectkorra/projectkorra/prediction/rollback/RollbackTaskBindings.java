@@ -11,9 +11,14 @@ import java.util.Objects;
  */
 public final class RollbackTaskBindings {
     private final List<Entry> entries;
+    private final int minimumNextId;
     private boolean installed;
 
-    public RollbackTaskBindings(List<Entry> entries) { this.entries = List.copyOf(entries); }
+    public RollbackTaskBindings(List<Entry> entries) { this(entries, 1); }
+    public RollbackTaskBindings(List<Entry> entries, int minimumNextId) {
+        if (minimumNextId < 1) throw new IllegalArgumentException("Task id reservation");
+        this.entries = List.copyOf(entries); this.minimumNextId = minimumNextId;
+    }
     public List<Entry> entries() { return entries; }
 
     /** Live adapter input at a frozen tick boundary; never itself placed in the portable graph. */
@@ -25,7 +30,9 @@ public final class RollbackTaskBindings {
     public static final class Capture {
         private final RollbackTaskBindings bindings;
         private final java.util.IdentityHashMap<Object, RollbackStateTransfer.Replacement> projections = new java.util.IdentityHashMap<>();
-        private Capture(List<Pending> pending) {
+        private final java.util.function.Function<Object, Integer> inactiveHandles;
+        private Capture(List<Pending> pending, int minimumNextId, java.util.function.Function<Object, Integer> inactiveHandles) {
+            this.inactiveHandles = Objects.requireNonNull(inactiveHandles);
             var entries = new java.util.ArrayList<Entry>();
             var ids = new java.util.HashSet<Integer>();
             for (var task : pending) {
@@ -36,22 +43,35 @@ public final class RollbackTaskBindings {
                 entries.add(entry);
                 projections.put(task.source(), RollbackStateTransfer.Replacement.fromProjection(entry.handle()));
             }
-            bindings = new RollbackTaskBindings(entries);
+            bindings = new RollbackTaskBindings(entries, minimumNextId);
         }
         public RollbackTaskBindings bindings() { return bindings; }
-        public RollbackStateTransfer.Replacement replacement(Object value) { return projections.get(value); }
+        public RollbackStateTransfer.Replacement replacement(Object value) {
+            var found = projections.get(value);
+            if (found != null) return found;
+            Integer id = inactiveHandles.apply(value);
+            if (id == null) return null;
+            var replacement = RollbackStateTransfer.Replacement.fromProjection(new Handle(id, true));
+            projections.put(value, replacement); return replacement;
+        }
         void projectSources(java.util.function.BiConsumer<Object, RollbackStateTransfer.Replacement> target) { projections.forEach(target); }
     }
     /** Supply entries in original scheduling order, including equal-deadline repeating tasks. */
     public static Capture capture(List<Pending> pending) {
         if (RollbackClock.active() || RollbackDomain.active()) throw new IllegalStateException("Capture source tasks before replay");
-        return new Capture(List.copyOf(pending));
+        return new Capture(List.copyOf(pending), 1, ignored -> null);
+    }
+
+    /** Source adapters reserve past IDs and recognize their own completed/cancelled handles on graph traversal. */
+    public static Capture capture(List<Pending> pending, int minimumNextId, java.util.function.Function<Object, Integer> inactiveHandles) {
+        if (RollbackClock.active() || RollbackDomain.active()) throw new IllegalStateException("Capture source tasks before replay");
+        return new Capture(List.copyOf(pending), minimumNextId, inactiveHandles);
     }
 
     /** The private scheduler validates the whole batch before changing membership or handles. */
     public void install(RollbackScheduler scheduler) {
         if (installed) throw new IllegalStateException("Task bindings already installed");
-        Objects.requireNonNull(scheduler).importTasks(entries);
+        Objects.requireNonNull(scheduler).importTasks(entries, minimumNextId);
         installed = true;
     }
 
@@ -77,19 +97,21 @@ public final class RollbackTaskBindings {
     /** Project source handle references here before graph encoding; bind only after decoding. */
     public static final class Handle implements PKTask {
         private final int id;
+        private final boolean inactive;
         private PKTask delegate;
-        private Handle(int id) {
+        private Handle(int id) { this(id, false); }
+        private Handle(int id, boolean inactive) {
             if (id < 1 || id == Integer.MAX_VALUE) throw new IllegalArgumentException("Imported task id");
-            this.id = id;
+            this.id = id; this.inactive = inactive;
         }
-        boolean unbound() { return delegate == null; }
+        boolean unbound() { return delegate == null && !inactive; }
         void bind(PKTask task) { delegate = task; }
         private PKTask task() {
             if (delegate == null) throw new IllegalStateException("Imported task is not installed");
             return delegate;
         }
-        @Override public void cancel() { task().cancel(); }
-        @Override public boolean cancelled() { return task().cancelled(); }
+        @Override public void cancel() { if (!inactive) task().cancel(); }
+        @Override public boolean cancelled() { return inactive || task().cancelled(); }
         @Override public int legacyId() { return id; }
     }
 }

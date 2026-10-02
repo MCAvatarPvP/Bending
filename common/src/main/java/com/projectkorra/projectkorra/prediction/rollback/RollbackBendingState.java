@@ -110,7 +110,11 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
         return new Source(roster, registry, managerRegistry, roots, value -> {
             if (AttributeCache.isRollbackMetadata(value)) return new RollbackStateTransfer.Replacement(value);
             var projection = projections.get(value);
-            return projection != null ? projection : RollbackCallback.project(value);
+            if (projection != null) return projection;
+            for (Object service : services) if (service instanceof RollbackTaskBindings.Capture tasks) {
+                var task = tasks.replacement(value); if (task != null) return task;
+            }
+            return RollbackCallback.project(value);
         });
     }
 

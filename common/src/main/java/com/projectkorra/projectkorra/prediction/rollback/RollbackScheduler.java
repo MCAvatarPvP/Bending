@@ -107,13 +107,14 @@ public final class RollbackScheduler implements PKScheduler, RollbackStateCell<R
     }
 
     /** Bootstrap-only batch: retain legacy ids, equal-deadline order and captured execution context. */
-    void importTasks(List<RollbackTaskBindings.Entry> entries) {
+    void importTasks(List<RollbackTaskBindings.Entry> entries, int minimumNextId) {
         checkUsable();
         if (imported || tick != 0 || nextId != 1 || !tasks.isEmpty() || running)
             throw new IllegalStateException("Task import requires a fresh private scheduler");
         if (entries.size() > maximumTasks) throw new IllegalArgumentException("Imported task budget exceeded");
+        if (minimumNextId < 1) throw new IllegalArgumentException("Invalid imported task id reservation");
         var imported = new LinkedHashMap<Integer, Task>();
-        int followingId = 1;
+        int followingId = minimumNextId;
         for (var entry : entries) {
             Objects.requireNonNull(entry, "task entry");
             var handle = Objects.requireNonNull(entry.handle(), "task handle");
