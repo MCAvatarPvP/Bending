@@ -22,6 +22,7 @@
     "client.LivingEntityRollbackCombatAccess",
     "client.ItemStackRollbackAccess",
     "client.EntityRollbackControlAccess",
+    "client.WorldRollbackRandomAccess",
     "client.HungerManagerRollbackAccess",
     "client.AreaEffectCloudEntityAccessor",
     "client.BlockCollisionSpliteratorPredictionMixin",

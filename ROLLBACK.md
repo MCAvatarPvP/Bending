@@ -2012,3 +2012,22 @@ a rollback session in a live duel.
 Ability names may be used in regression scenarios, not to select which gameplay gets
 rollback. Normal live transport delays and hit registration remain unchanged; the private
 domain hit-registration policy described above applies only during rollback execution.
+
+
+### Private native round damage parity
+
+The private Fabric player now supports Paper's damage-modifier/event ordering when
+bound to a complete round roster and captured damage policy. Cancellation and the
+shared round decision run before equipment wear, absorption, immunity, knockback,
+and health changes. The imported Paper immunity duration is checkpointed on the
+private client body. Binding seals the roster before checkpoint capture.
+
+A shared seventeen-case fixture compares actual patched Paper and Fabric results
+for health, mitigation, event rescaling, immunity, equipment wear, velocity, shield
+blocking/cancellation, totem survival and round outcomes. Paper's copied shield
+call paths retain private statistics, cooldown events and sounds, and route direct
+world RNG reads to captured state. Fabric initializes only its privately allocated
+world RNG for the native component's direct reads. Tests also rewind late defence
+and retract a provisional defeat. Production damage policy bindings, complete
+native maintenance parity and live bootstrap remain required; these tests do not
+enable live duels.

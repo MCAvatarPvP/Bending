@@ -14,6 +14,11 @@ final class FabricRollbackGliding {
         try { return operation.apply(player); }
         finally { if (previous == null) ACTIVE.remove(); else ACTIVE.set(previous); }
     }
+    static FabricRollbackWorldAccess owner(PlayerEntity player) {
+        var world = ACTIVE.get();
+        if (world == null || !world.ownsPlayer(player)) throw new IllegalStateException("Native damage outside private execution");
+        return world;
+    }
     static boolean allowed(PlayerEntity player, boolean gliding) {
         var world = ACTIVE.get();
         if (world == null) throw new IllegalStateException("Native glide event outside private execution");

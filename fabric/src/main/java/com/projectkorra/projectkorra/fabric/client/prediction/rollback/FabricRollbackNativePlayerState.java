@@ -209,7 +209,7 @@ public final class FabricRollbackNativePlayerState implements RollbackPlayerStat
 
     @Override public Checkpoint captureRollbackState() {
         requireIdle();
-        world.sealPlayers();
+        world.beginCheckpoint();
         return new Checkpoint(this, graph.capture(List.of(player), List.of()));
     }
 

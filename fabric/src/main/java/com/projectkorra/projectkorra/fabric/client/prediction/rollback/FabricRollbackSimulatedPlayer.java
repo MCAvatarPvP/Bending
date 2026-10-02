@@ -11,7 +11,7 @@ import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 
 /** Owned replica body: use the client's input factors at the native input phase, followed by ordinary native travel. */
-public abstract class FabricRollbackSimulatedPlayer extends PlayerEntity {
+public abstract class FabricRollbackSimulatedPlayer extends FabricRollbackDamagePlayer {
     protected FabricRollbackSimulatedPlayer(World world, GameProfile profile) { super(world, profile); }
     @Override public void startGliding() {
         if (FabricRollbackGliding.allowed(this, true)) super.startGliding();

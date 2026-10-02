@@ -41,7 +41,7 @@ final class FabricRollbackLivingAccess {
     RollbackLivingState.Vitals read() {
         var p = player.get();
         return new RollbackLivingState.Vitals(p.getHealth(), p.getAbsorptionAmount(), p.getStandingEyeHeight(), p.getAir(),
-                p.getMaxAir(), p.timeUntilRegen, NATIVE_DAMAGE_COOLDOWN,
+                p.getMaxAir(), p.timeUntilRegen, p instanceof FabricRollbackDamagePlayer owned ? owned.rollbackInvulnerableDuration : NATIVE_DAMAGE_COOLDOWN,
                 ((LivingEntityRollbackCombatAccess) p).rollback$lastDamageTaken(), false);
     }
 

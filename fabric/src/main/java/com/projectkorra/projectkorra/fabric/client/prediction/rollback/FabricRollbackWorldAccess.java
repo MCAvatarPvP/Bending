@@ -2,6 +2,8 @@ package com.projectkorra.projectkorra.fabric.client.prediction.rollback;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackStateCell;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRound;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackDomain;
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackMovementSolver;
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackNativeQueryShell;
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore;
@@ -98,6 +100,51 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
         }
     }
 
+    /** Captured Paper event policy. Every causal callback remains in the private domain. */
+    public interface DamagePolicy<S> extends RollbackStateCell<S> {
+        void event(FabricRollbackDamageEvent event);
+        void resetAttackCooldown(PlayerEntity attacker, PlayerEntity target);
+        void exhaustion(PlayerEntity player, DamageSource source, float amount);
+        void knockback(PlayerEntity player, DamageSource source, double strength, double x, double z);
+        void death(PlayerEntity player, DamageSource source);
+        boolean skipDamageTickWhenShieldBlocked();
+    }
+    private RollbackRound round;
+    private DamagePolicy<?> damagePolicy;
+    boolean hasRound() { checkThread(); return round != null; }
+    DamagePolicy<?> damagePolicy() { checkThread(); return Objects.requireNonNull(damagePolicy, "Private damage policy"); }
+    public void bindRound(RollbackRound round, DamagePolicy<?> policy) {
+        checkThread(); Objects.requireNonNull(round); Objects.requireNonNull(policy);
+        if (checkpointed || this.round != null || RollbackClock.active() || RollbackDomain.active())
+            throw new IllegalStateException("Bind native round before checkpoint/replay");
+        var ids = new java.util.HashSet<UUID>();
+        for (var state : playerOrder) {
+            if (!(state.ownedPlayer() instanceof FabricRollbackSimulatedPlayer)) throw new IllegalArgumentException("Round requires simulated player bodies");
+            ids.add(state.identity().uuid());
+        }
+        if (round.tick() != 0 || !ids.equals(round.participants())) throw new IllegalArgumentException("Native round roster/tick differs");
+        this.round = round; damagePolicy = policy; sealPlayers();
+    }
+    void damageEvent(FabricRollbackDamageEvent event) {
+        checkThread();
+        var victim = event.player();
+        if (!ownsPlayer(victim)) throw new IllegalArgumentException("Foreign damage target");
+        requireDamageSource(event.source());
+        damagePolicy().event(event);
+        double finalDamage = event.finalDamage();
+        if (!Double.isFinite(finalDamage) || !Float.isFinite((float) finalDamage)) throw new IllegalArgumentException("Damage event overflow");
+        UUID attacker = event.source().getAttacker() instanceof PlayerEntity player ? player.getUuid()
+                : event.source().getSource() instanceof PlayerEntity player ? player.getUuid() : null;
+        boolean totem = !event.cancelled() && RollbackRound.endsLife(victim.getHealth(), finalDamage, false)
+                && (victim.getMainHandStack().isOf(net.minecraft.item.Items.TOTEM_OF_UNDYING)
+                || victim.getOffHandStack().isOf(net.minecraft.item.Items.TOTEM_OF_UNDYING));
+        switch (round.damage(victim.getUuid(), attacker, victim.getHealth(), finalDamage, totem, event.cancelled())) {
+            case ALLOW -> { }
+            case CANCEL -> event.cancelled(true);
+            case DEFEAT -> { victim.setHealth(20); event.cancelled(true); }
+        }
+    }
+
     private final Queries<?> queries;
     boolean flightAllowed(PlayerEntity player, boolean flying, boolean cancelled) {
         if (!ownsPlayer(player)) throw new IllegalArgumentException("Foreign flight input player");
@@ -112,7 +159,7 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
     private final Thread thread = Thread.currentThread();
     private final Map<PlayerEntity, FabricRollbackNativePlayerState> players = new IdentityHashMap<>();
     private final List<FabricRollbackNativePlayerState> playerOrder = new ArrayList<>();
-    private boolean playersSealed;
+    private boolean playersSealed, checkpointed;
 
     public FabricRollbackWorldAccess(Queries<?> queries) {
         this.queries = Objects.requireNonNull(queries, "queries");
@@ -145,6 +192,9 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
                 .outputQuery(value -> value.sendToOtherNearbyPlayers(null, null), args -> trackedPacket((Entity) args[0], (net.minecraft.network.packet.Packet<?>) args[1], false))
                 .outputQuery(value -> value.sendToNearbyPlayers(null, null), args -> trackedPacket((Entity) args[0], (net.minecraft.network.packet.Packet<?>) args[1], true)).instance();
         world = RollbackNativeQueryShell.create(ServerWorld.class)
+                .nativeAction(value -> ((com.projectkorra.projectkorra.fabric.mixin.client.WorldRollbackRandomAccess) value).rollback$random(null), args -> {
+                    if (args[0] != queries.random()) throw new IllegalArgumentException("Foreign world RNG");
+                })
                 .constant(World::isClient, false)
                 .constant(World::getEnvironmentAttributes, environment)
                 .constant(World::getServer, server)
@@ -232,6 +282,8 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
                     return queries.findSupportingBlockPos((Entity) args[0], (Box) args[1]);
                 })
                 .instance();
+        ((com.projectkorra.projectkorra.fabric.mixin.client.WorldRollbackRandomAccess) world)
+                .rollback$random(Objects.requireNonNull(queries.random(), "private world random"));
     }
 
     // Only native adapters in this package may retain the shell. No world constructor ran.
@@ -252,6 +304,7 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
         players.put(player, state); playerOrder.add(state);
     }
     void sealPlayers() { checkThread(); playersSealed = true; }
+    void beginCheckpoint() { sealPlayers(); checkpointed = true; }
     boolean ownsPlayer(Entity player) { checkThread(); return players.containsKey(player); }
 
     private PlayerEntity importedPlayer(UUID id) {
@@ -380,12 +433,14 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
         }
     }
 
-    @Override public Void captureRollbackState() { sealPlayers(); return null; }
+    @Override public Void captureRollbackState() { beginCheckpoint(); return null; }
     @Override public void restoreRollbackState(Void state) { checkThread(); }
     @Override public List<?> rollbackReferences() {
         checkThread();
         var references = new ArrayList<Object>(playerOrder.size() + 1);
-        references.add(queries); references.addAll(playerOrder);
+        references.add(queries);
+        if (round != null) { references.add(round); references.add(damagePolicy); }
+        references.addAll(playerOrder);
         return List.copyOf(references);
     }
 

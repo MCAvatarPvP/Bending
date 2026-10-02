@@ -88,13 +88,14 @@ public final class PaperRollbackCombatAccess {
         world.scoreboards().bind(builder, events.server());
         new PaperRollbackStatusEffects(registries).bind(builder);
         Set<String> livingBodies = Set.of("hurtServer", "handleEntityDamage", "actuallyHurt", "knockback", "hurtArmor", "hurtHelmet", "doHurtEquipment",
+                "applyItemBlocking", "blockingItemEffects", "blockUsingItem", "blockedByItem", "stopUsingItem",
                 "checkTotemDeathProtection", "addEffect", "removeEffect", "removeEffectNoUpdate", "removeAllEffects",
                 "aiStep", "travel", "travelFallFlying", "handleFallFlyingCollisions", "updateFallFlying", "stopFallFlying", "pushEntities", "isImmobile", "jumpFromGround",
                 "tick", "baseTick", "tickEffects", "detectEquipmentUpdates", "collectEquipmentChanges", "onBelowWorld", "heal");
         for (Method method : LivingEntity.class.getDeclaredMethods()) if (livingBodies.contains(method.getName())) builder.copy(method);
         for (Method method : Player.class.getDeclaredMethods()) {
             if (Set.of("hurtServer", "actuallyHurt", "causeFoodExhaustion", "hurtArmor", "hurtHelmet", "awardStat", "resetStat", "canHarmPlayer", "aiStep", "isImmobile",
-                    "tick", "updatePlayerPose", "updateSwimming", "detectEquipmentUpdates", "turtleHelmetTick",
+                    "blockUsingItem", "tick", "updatePlayerPose", "updateSwimming", "detectEquipmentUpdates", "turtleHelmetTick",
                     "tryToStartFallFlying", "startFallFlying", "travel").contains(method.getName())) builder.copy(method);
         }
         for (Method method : Entity.class.getDeclaredMethods()) {
@@ -105,8 +106,22 @@ public final class PaperRollbackCombatAccess {
         for (Method method : ItemStack.class.getDeclaredMethods()) {
             if (method.getName().equals("hurtAndBreak")) builder.copy(method);
         }
+        // Shield wear/disable enters item-component and cooldown methods. Copy the
+        // entire causal call path so its statistics, events and packets stay private.
+        for (Method method : net.minecraft.world.item.component.BlocksAttacks.class.getDeclaredMethods()) {
+            if (Set.of("hurtBlockingItem", "disable", "onBlocked").contains(method.getName())) builder.copy(method);
+            else if ((method.getName().startsWith("lambda$disable$") || method.getName().startsWith("lambda$onBlocked$"))) builder.copyLambda(method);
+        }
+        for (Class<?> type : new Class<?>[]{net.minecraft.world.item.ItemCooldowns.class, net.minecraft.world.item.ServerItemCooldowns.class}) {
+            for (Method method : type.getDeclaredMethods()) {
+                if (Set.of("addCooldown", "onCooldownStarted").contains(method.getName())) builder.copy(method);
+            }
+        }
         try {
             var lookup = MethodHandles.lookup();
+            builder.read(net.minecraft.world.level.Level.class.getDeclaredField("random"),
+                    lookup.findVirtual(PaperRollbackCombatAccess.class, "worldRandom",
+                            MethodType.methodType(RandomSource.class, net.minecraft.world.level.Level.class)).bindTo(this));
             builder.dispatch(Entity.class.getDeclaredMethod("hurtServer", ServerLevel.class, DamageSource.class, float.class));
             builder.dispatch(Entity.class.getDeclaredMethod("onBelowWorld"));
             // This final listener method cannot be intercepted by a query shell.
@@ -212,6 +227,7 @@ public final class PaperRollbackCombatAccess {
                 .outputQuery(value -> value.broadcastDamageEvent(null, null), args -> damageOutput((Entity) args[0], (DamageSource) args[1]))
                 .outputQuery(value -> value.broadcastEntityEvent(null, (byte) 0), args -> state.output(new StatusOutput(ownedId((Entity) args[0]), (byte) args[1])))
                 .outputQuery(value -> value.playSound(null, 0, 0, 0, SoundEvents.PLAYER_HURT, SoundSource.PLAYERS, 1F, 1F), args -> sound(args, false))
+                .outputQuery(value -> value.playSound(null, 0, 0, 0, Holder.direct(SoundEvents.PLAYER_HURT), SoundSource.PLAYERS, 1F, 1F), args -> sound(args, false))
                 .nativeAction(value -> value.playSound(null, net.minecraft.core.BlockPos.ZERO, SoundEvents.PLAYER_HURT, SoundSource.PLAYERS, 1F, 1F), args -> nullableOwnedId((Entity) args[0]))
                 .outputQuery(value -> value.playSeededSound(null, 0, 0, 0, Holder.direct(SoundEvents.PLAYER_HURT), SoundSource.PLAYERS, 1F, 1F, 0L), args -> sound(args, true))
                 .nativeAction(value -> value.gameEvent((Entity) null, GameEvent.ENTITY_DAMAGE, Vec3.ZERO), args -> nullableOwnedId((Entity) args[0]))
@@ -410,7 +426,7 @@ public final class PaperRollbackCombatAccess {
     }
 
     private void sound(Object[] args, boolean seeded) {
-        SoundEvent event = seeded ? (SoundEvent) ((Holder<?>) args[4]).value() : (SoundEvent) args[4];
+        SoundEvent event = args[4] instanceof Holder<?> ? (SoundEvent) ((Holder<?>) args[4]).value() : (SoundEvent) args[4];
         state.output(new SoundOutput(nullableOwnedId((Entity) args[0]), checkedPosition((double) args[1], (double) args[2], (double) args[3]),
                 event.location().toString(), ((SoundSource) args[5]).getName(), (float) args[6], (float) args[7], seeded ? (long) args[8] : state.nextSoundSeed()));
     }
@@ -425,6 +441,10 @@ public final class PaperRollbackCombatAccess {
     private UUID ownedId(Entity entity) {
         if (!world.ownsPlayer(entity) || entity.level() != world.world()) throw new IllegalArgumentException("Native combat entity belongs to another simulation");
         return entity.getUUID();
+    }
+    private RandomSource worldRandom(net.minecraft.world.level.Level level) {
+        if (level != world.world()) throw new IllegalArgumentException("Foreign combat world");
+        return (RandomSource) state.random();
     }
     private double randomDouble() { return ((RandomSource) state.random()).nextDouble(); }
     private boolean disconnected(ServerGamePacketListenerImpl listener) {

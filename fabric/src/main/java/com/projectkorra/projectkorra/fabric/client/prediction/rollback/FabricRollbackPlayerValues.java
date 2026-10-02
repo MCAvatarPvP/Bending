@@ -234,6 +234,8 @@ public final class FabricRollbackPlayerValues {
             requireBootstrap();
             state.use(player -> {
                 for (int i = 0; i < FIELDS.size(); i++) FIELDS.get(i).write(player, nativeValues.get(i));
+                if (player instanceof FabricRollbackDamagePlayer owned)
+                    owned.rollbackInvulnerableDuration = (Integer) retained.fields().get("living.invulnerableDuration").value();
                 return null;
             });
         }
@@ -242,6 +244,8 @@ public final class FabricRollbackPlayerValues {
             requireBootstrap();
             return state.use(player -> {
                 var result = new TreeMap<>(retained.fields());
+                if (player instanceof FabricRollbackDamagePlayer owned)
+                    result.put("living.invulnerableDuration", new RollbackPlayerValues.Cell(Kind.INT, owned.rollbackInvulnerableDuration));
                 for (Field field : FIELDS) result.put(field.key, FabricRollbackNativeValues.encode(field.type, field.read(player)));
                 return new RollbackPlayerValues(result);
             });

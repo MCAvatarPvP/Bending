@@ -235,3 +235,16 @@ this same fixture. The document is equivalent to:
 The fixture exercises registry references, formatted text, opaque nested data and a
 removed default component. Encoders may emit compound keys in a different order;
 the tests compare native item/component equality after decoding.
+
+## Native round damage
+
+`round-damage.csv` compares actual patched Paper damage with the private Fabric
+Paper-compatible event boundary. Each row contains the scenario name, damage,
+health, armor attribute, absorption, resistance level, protection level, event base
+multiplier, previous damage, and offhand totem flag. Shield scenarios begin with
+an active offhand shield facing the attacker. The remaining columns record accepted
+hit, health, absorption, chest wear, immunity ticks, previous damage, velocity X/Y/Z,
+round ended, offhand count, and offhand wear. Expected results come from Paper's
+native method; both suites assert exact values, including floating-point output.
+The cases cover event rescaling, mitigation, immunity, lethal round cancellation,
+totem survival, zero damage, and shield blocking/cancellation.
