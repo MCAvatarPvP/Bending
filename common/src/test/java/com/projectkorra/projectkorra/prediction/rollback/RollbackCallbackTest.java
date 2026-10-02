@@ -37,6 +37,38 @@ class RollbackCallbackTest {
         scheduler.runNow(original); assertSame(original, seen.get(1));
     }
 
+    @Test void legacySchedulerFacadePreservesTransferableCallbacksForEverySchedulingMode() {
+        var backend = new RollbackLiveSchedulerTest.Backend();
+        var live = RollbackLiveSchedulerTest.scheduler(backend);
+        var platform = (ProjectKorraPlatform) Proxy.newProxyInstance(ProjectKorraPlatform.class.getClassLoader(),
+                new Class<?>[]{ProjectKorraPlatform.class}, (proxy, method, args) -> {
+                    if (method.getName().equals("scheduler")) return live;
+                    throw new AssertionError(method);
+                });
+        var state = new State();
+        try (var scope = Platform.using(platform)) {
+            var legacy = new com.projectkorra.projectkorra.platform.mc.Server().getScheduler();
+            legacy.runTaskLater(null, () -> state.count++, 1);
+            legacy.runTaskTimer(null, state::increment, 1, 2);
+            legacy.runTaskTimerAsynchronously(null, state::increment, 1, 2);
+            legacy.runTaskAsynchronously(null, state::increment);
+            legacy.scheduleSyncRepeatingTask(null, state::increment, 1, 2);
+            var lease = live.prepare(work -> true);
+            try {
+                var pending = lease.freeze().bindings().entries();
+                assertEquals(5, pending.size());
+                for (var entry : pending) {
+                    assertInstanceOf(PKRunnable.class, entry.callback());
+                    var copied = codec().decode(codec().encode(List.of(entry.callback(), state), RollbackCallback::project));
+                    ((Runnable) copied.getFirst()).run();
+                    assertEquals(1, ((State) copied.get(1)).count);
+                    assertEquals(0, state.count);
+                }
+            } finally { lease.restore(); }
+            backend.advance(); assertEquals(5, state.count);
+        }
+    }
+
     @Test void cyclesNestedCallbacksAndMutableCapturesAreCopiedAndRewindTogether() {
         var source = new State();
         PKRunnable inner = source::increment;

@@ -59,7 +59,10 @@ Private replay can self-cancel and rewind copied callbacks without reaching nati
 Aborted startup restores original contextual callbacks with stable logical handles;
 stale queued dispatches cannot execute after restoration. Partial cancellation and
 rescheduling failures retain ownership for cleanup retries. Paper now routes its
-platform scheduling calls through this tracker. `callSync`, direct external Bukkit
+platform scheduling calls through this tracker. The compatibility server scheduler
+also preserves compiler callback descriptors for lambdas/method references in every
+asynchronous, delayed and repeating scheduling overload; existing Runnable objects
+keep the same dispatch path. `callSync`, direct external Bukkit
 scheduling, complete cohort task selection and running-session task restoration still
 need production ownership integration; this does not install a bootstrap provider.
 
