@@ -49,6 +49,19 @@ state that actually determines those outcomes.
 
 ### October 2, 2026 integration update
 
+Restored bending graphs now prepare a participant-only live ability-index commit using
+the original registry and the owned ID reservation. It validates roster, retained/new
+ability identity, canonical cache bindings, unrelated ID overlap and unchanged original
+membership before mutation. Initial commit requires matching simulation/live ability ticks;
+it does not reset the global tick or ID allocator. All three active-instance indices are
+updated in place without activation/removal hooks, preserving unrelated per-player maps
+and class sets. Repeated commit remains inert across later live ticks. Integration tests
+cover actual outgoing graph/player/attribute/ability restoration, removed and replay-created
+instances, unchanged outsiders, mismatched ticks and stale ownership rejection. Production
+ownership still must freeze live progression and align the replay tick before committing,
+and manager/native/service restoration and startup assembly remain outstanding.
+
+
 Live-restoration decoding now rebinds shared attribute caches and their entry maps to
 canonical live identities, while carrying outgoing participant values in separate detached
 maps. The local second copy uses the already negotiated codec layouts/bindings and preserves

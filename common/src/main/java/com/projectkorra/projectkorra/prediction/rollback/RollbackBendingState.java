@@ -172,6 +172,11 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
         public Manager.RollbackRegistry managers() { return state.managers; }
         public CollisionManager collisions() { return state.collisions; }
         public List<Object> services() { return state.services; }
+        public CoreAbility.RollbackAbilityRestoration prepareAbilities(CoreAbility.RollbackIdReservation reservation,
+                CoreAbility.RollbackRegistry expected) {
+            if (Thread.currentThread() != state.owner) throw new IllegalStateException("Restoration crossed threads");
+            return CoreAbility.prepareRollbackAbilityRestoration(reservation, expected, state.abilities, state.players);
+        }
         public OfflineBendingPlayer.RollbackPlayerRestoration preparePlayers(Map<UUID, BendingPlayer> expected) {
             if (Thread.currentThread() != state.owner) throw new IllegalStateException("Restoration crossed threads");
             return OfflineBendingPlayer.prepareRollbackPlayerRestoration(expected, state.players, state.temporaryElements);

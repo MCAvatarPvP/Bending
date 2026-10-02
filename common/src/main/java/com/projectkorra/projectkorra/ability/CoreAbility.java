@@ -302,6 +302,78 @@ public abstract class CoreAbility implements Ability {
         }
     }
 
+    /** Prepared participant index replacement. The owner retains gameplay gates through all commits. */
+    public static final class RollbackAbilityRestoration {
+        private final RollbackIdReservation reservation;
+        private final RollbackRegistry expected, restored;
+        private final Map<UUID, BendingPlayer> players;
+        private boolean committed;
+        private RollbackAbilityRestoration(RollbackIdReservation reservation, RollbackRegistry expected,
+                RollbackRegistry restored, Map<UUID, BendingPlayer> players) {
+            this.reservation = Objects.requireNonNull(reservation); this.expected = Objects.requireNonNull(expected);
+            this.restored = Objects.requireNonNull(restored); this.players = Map.copyOf(players);
+            if (!reservation.roster.equals(players.keySet()) || restored.maximumId != reservation.limit
+                    || restored.nextId < reservation.first || restored.nextId > reservation.limit)
+                throw new IllegalArgumentException("Restored ability reservation differs");
+            var original = new HashMap<Integer, CoreAbility>();
+            for (var ability : expected.instances) {
+                if (ability.player == null || !reservation.roster.contains(ability.player.getUniqueId())
+                        || ability.id >= reservation.first || original.putIfAbsent(ability.id, ability) != null)
+                    throw new IllegalArgumentException("Expected ability registry differs from the reserved roster");
+            }
+            var ids = new HashSet<Integer>();
+            for (var ability : restored.instances) {
+                var player = ability.player == null ? null : this.players.get(ability.player.getUniqueId());
+                var previous = original.get(ability.id);
+                boolean retained = previous != null && ability.player != null && previous.getClass() == ability.getClass()
+                        && previous.player.getUniqueId().equals(ability.player.getUniqueId());
+                boolean created = ability.id >= reservation.first && ability.id < restored.nextId;
+                if (!ability.started || ability.removed || player == null || player != ability.bPlayer
+                        || player.getPlayer().handle() != ability.player.handle() || !ids.add(ability.id)
+                        || !(retained || created)) throw new IllegalArgumentException("Restored active ability identity differs");
+            }
+            requireCurrent();
+        }
+        public void requireCurrent() {
+            if (Thread.currentThread() != reservation.owner || RollbackClock.active()
+                    || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active() || !Platform.scheduler().isPrimaryThread())
+                throw new IllegalStateException("Restore ability indices on the live main thread");
+            if ((!committed && currentTick != restored.tick) || idCounter < reservation.limit)
+                throw new IllegalStateException("Restored ability timeline or ID ownership differs from live state");
+            var owned = committed ? restored.instances : expected.instances;
+            var actual = new ArrayList<CoreAbility>();
+            for (var ability : INSTANCES) if (ability.player != null && reservation.roster.contains(ability.player.getUniqueId())) actual.add(ability);
+            var identities = Collections.newSetFromMap(new IdentityHashMap<CoreAbility, Boolean>()); identities.addAll(owned);
+            if (actual.size() != identities.size() || actual.stream().anyMatch(ability -> !identities.contains(ability)))
+                throw new IllegalStateException("Participant ability ownership changed before restoration");
+            var incomingIds = new HashSet<Integer>(); restored.instances.forEach(ability -> incomingIds.add(ability.id));
+            for (var ability : INSTANCES) if ((ability.player == null || !reservation.roster.contains(ability.player.getUniqueId()))
+                    && incomingIds.contains(ability.id)) throw new IllegalStateException("Restored ability ID overlaps unrelated gameplay");
+            restored.liveAttributeBindings().forEach((source, target) -> {
+                if (source != target) throw new IllegalStateException("Restored abilities must use canonical live attributes");
+            });
+        }
+        public void commit() {
+            requireCurrent(); if (committed) return;
+            // Keep all shared index containers and unrelated per-player maps in place.
+            INSTANCES.removeAll(expected.instances); INSTANCES.addAll(restored.instances);
+            INSTANCES_BY_PLAYER.values().forEach(byPlayer -> reservation.roster.forEach(byPlayer::remove));
+            INSTANCES_BY_CLASS.values().forEach(byClass -> byClass.removeIf(ability -> ability.player != null
+                    && reservation.roster.contains(ability.player.getUniqueId())));
+            for (var ability : restored.instances) {
+                INSTANCES_BY_PLAYER.computeIfAbsent(ability.getClass(), ignored -> new ConcurrentHashMap<>())
+                        .computeIfAbsent(ability.player.getUniqueId(), ignored -> new ConcurrentHashMap<>()).put(ability.id, ability);
+                INSTANCES_BY_CLASS.computeIfAbsent(ability.getClass(), ignored -> Collections.newSetFromMap(new ConcurrentHashMap<>())).add(ability);
+            }
+            committed = true;
+        }
+    }
+
+    public static RollbackAbilityRestoration prepareRollbackAbilityRestoration(RollbackIdReservation reservation,
+            RollbackRegistry expected, RollbackRegistry restored, Map<UUID, BendingPlayer> players) {
+        return new RollbackAbilityRestoration(reservation, expected, restored, players);
+    }
+
     /** IDs are never recycled on abort because outside gameplay may already have advanced. */
     public static RollbackIdReservation reserveRollbackIds(Collection<UUID> participants, int capacity) {
         if (RollbackClock.active() || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()
@@ -361,6 +433,7 @@ public abstract class CoreAbility implements Ability {
         public List<CoreAbility> instances() { return instances; }
         public int nextId() { return nextId; }
         public int idLimit() { return maximumId; }
+        public long tick() { return tick; }
         public List<AttributeCache> attributes() { return attributes.values().stream().flatMap(map -> map.values().stream()).toList(); }
 
         /** Resolve canonical live caches without replacing shared objects or mutating their entries. */

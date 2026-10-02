@@ -85,7 +85,9 @@ class RollbackBendingStateTest {
             };
             var taskCapture = RollbackTaskBindings.capture(List.of(new RollbackTaskBindings.Pending(
                     liveCallback.handle, (com.projectkorra.projectkorra.platform.PKRunnable) liveCallback::run, 1, 2, livePulse, 71, 93)));
-            var serviceRoots = List.of(sourceService, RollbackEventBindings.capture(liveBus), taskCapture, liveCallback, CoreAbility.reserveRollbackIds(List.of(A, B), 10));
+            var abilityReservation = CoreAbility.reserveRollbackIds(List.of(A, B), 10);
+            var expectedLiveAbilities = CoreAbility.captureRollbackRegistry(List.of(A, B), abilityReservation);
+            var serviceRoots = List.of(sourceService, RollbackEventBindings.capture(liveBus), taskCapture, liveCallback, abilityReservation);
             var privateA = PrivateCombatRollbackTest.player(privateWorld, 1);
             var privateB = PrivateCombatRollbackTest.player(privateWorld, 2);
             Map<Object, Object> replacements = new IdentityHashMap<>();
@@ -222,6 +224,7 @@ class RollbackBendingStateTest {
                     guard.remove();
                     Pulse createdDuringReplay = new Pulse(imported.players().get(A), privateWorld, 9);
                     createdDuringReplay.start();
+                    field(CoreAbility.class, "idCounter").setInt(null, 10); // Fixture constructed explicit ID 9.
                     privateBus.unregisterAll(copiedRules);
                     privateBus.registerListener(new CapturedRule(createdDuringReplay));
                     temporary.clear(); temporary.add(Pair.of(privateB, 4567L));
@@ -261,7 +264,7 @@ class RollbackBendingStateTest {
             assertNull(bendingA.getAbilities().get(2));
             var restored = RollbackBendingState.decodeRestoration(Map.of(A, liveA, B, liveB), outgoingBytes, liveRestorationCodec[0].receiver());
             assertEquals(14, restored.abilities().idLimit());
-            assertEquals(4, restored.abilities().nextId());
+            assertEquals(10, restored.abilities().nextId());
             assertSame(liveA, restored.players().get(A).getPlayer());
             assertNotSame(bendingA, restored.players().get(A));
             assertEquals("WaterManipulation", restored.players().get(A).getAbilities().get(2));
@@ -289,6 +292,14 @@ class RollbackBendingStateTest {
                         throw new AssertionError(method);
                     });
             try (var restorationScope = Platform.using(restorePlatform)) {
+                assertThrows(IllegalStateException.class, () -> restored.prepareAbilities(abilityReservation, expectedLiveAbilities));
+                field(CoreAbility.class, "currentTick").setLong(null, restored.abilities().tick()); // Owner aligns to the live tick before handoff.
+                var abilityCommit = restored.prepareAbilities(abilityReservation, expectedLiveAbilities);
+                var instances = (Collection<CoreAbility>) field(CoreAbility.class, "INSTANCES").get(null);
+                instances.remove(liveGuard);
+                assertThrows(IllegalStateException.class, abilityCommit::commit);
+                assertSame(livePulse, CoreAbility.getAbility(liveA, Pulse.class));
+                instances.add(liveGuard);
                 var playerCommit = restored.preparePlayers(Map.of(A, bendingA, B, bendingB));
                 assertSame(bendingA, BendingPlayer.getBendingPlayer(liveA));
                 playerCommit.commit(); playerCommit.commit();
@@ -298,6 +309,18 @@ class RollbackBendingStateTest {
                 assertEquals(Set.of(livePulse, unrelatedPulse), sourceAttribute.getInitialValues().keySet());
                 liveAttributeDefinitions.put("Speed", sourceAttribute);
                 restored.commitAttributes(); restored.commitAttributes();
+                int eventsAtCommit = events.size(), constructorsAtCommit = Dynamic.constructions;
+                abilityCommit.commit(); abilityCommit.commit();
+                field(CoreAbility.class, "currentTick").setLong(null, restored.abilities().tick() + 1);
+                abilityCommit.commit(); // Cleanup retries after another live tick do not reinstall indices.
+                assertEquals(eventsAtCommit, events.size()); assertEquals(constructorsAtCommit, Dynamic.constructions);
+                assertNull(CoreAbility.getAbility(liveB, Guard.class));
+                assertTrue(CoreAbility.getAbilities(liveA, Pulse.class).contains(restoredPulse));
+                assertEquals(Set.of(1, 9), CoreAbility.getAbilities(liveA, Pulse.class).stream()
+                        .map(CoreAbility::getId).collect(java.util.stream.Collectors.toSet()));
+                assertSame(unrelatedPulse, CoreAbility.getAbility(other, Pulse.class));
+                assertEquals(14, field(CoreAbility.class, "idCounter").getInt(null));
+
                 assertFalse(sourceAttribute.getInitialValues().containsKey(livePulse));
                 assertTrue(sourceAttribute.getInitialValues().containsKey(restoredPulse));
                 assertTrue(sourceAttribute.getInitialValues().containsKey(unrelatedPulse));
