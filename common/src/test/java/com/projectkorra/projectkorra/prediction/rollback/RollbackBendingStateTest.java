@@ -83,7 +83,7 @@ class RollbackBendingStateTest {
             };
             var taskCapture = RollbackTaskBindings.capture(List.of(new RollbackTaskBindings.Pending(
                     liveCallback.handle, (com.projectkorra.projectkorra.platform.PKRunnable) liveCallback::run, 1, 2, livePulse, 71, 93)));
-            var serviceRoots = List.of(sourceService, RollbackEventBindings.capture(liveBus), taskCapture, liveCallback);
+            var serviceRoots = List.of(sourceService, RollbackEventBindings.capture(liveBus), taskCapture, liveCallback, CoreAbility.reserveRollbackIds(List.of(A, B), 10));
             var privateA = PrivateCombatRollbackTest.player(privateWorld, 1);
             var privateB = PrivateCombatRollbackTest.player(privateWorld, 2);
             Map<Object, Object> replacements = new IdentityHashMap<>();
@@ -257,6 +257,8 @@ class RollbackBendingStateTest {
             assertEquals(2, temporary.size());
             assertNull(bendingA.getAbilities().get(2));
             var restored = RollbackBendingState.decodeRestoration(Map.of(A, liveA, B, liveB), outgoingBytes, liveRestorationCodec[0].receiver());
+            assertEquals(14, restored.abilities().idLimit());
+            assertEquals(4, restored.abilities().nextId());
             assertSame(liveA, restored.players().get(A).getPlayer());
             assertNotSame(bendingA, restored.players().get(A));
             assertEquals("WaterManipulation", restored.players().get(A).getAbilities().get(2));
@@ -344,10 +346,11 @@ class RollbackBendingStateTest {
         return field;
     }
     private static ProjectKorraPlatform platform(List<String> events) {
+        var scheduler = new RollbackLiveSchedulerTest.Backend();
         PKEventBus bus = (PKEventBus) Proxy.newProxyInstance(PKEventBus.class.getClassLoader(), new Class<?>[]{PKEventBus.class},
                 (proxy, method, args) -> { events.add(method.getName()); return null; });
         return (ProjectKorraPlatform) Proxy.newProxyInstance(ProjectKorraPlatform.class.getClassLoader(), new Class<?>[]{ProjectKorraPlatform.class},
-                (proxy, method, args) -> { if (method.getName().equals("events")) return bus; throw new AssertionError(method); });
+                (proxy, method, args) -> { if (method.getName().equals("events")) return bus; if (method.getName().equals("scheduler")) return scheduler; throw new AssertionError(method); });
     }
     private static final class CapturedTask implements Runnable {
         final Pulse ability;

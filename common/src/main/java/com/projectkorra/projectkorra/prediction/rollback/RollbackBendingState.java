@@ -140,7 +140,12 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
                     || roster.putIfAbsent(player.getUUID(), player) != null) throw new IllegalArgumentException("Bending import roster");
         }
         if (roster.isEmpty() || roster.size() > 128) throw new IllegalArgumentException("Bending import participant count");
-        CoreAbility.RollbackRegistry registry = exporting ? CoreAbility.exportRollbackRegistry(roster.keySet()) : CoreAbility.captureRollbackRegistry(roster.keySet());
+        var reservations = services.stream().filter(CoreAbility.RollbackIdReservation.class::isInstance)
+                .map(CoreAbility.RollbackIdReservation.class::cast).toList();
+        if (reservations.size() > 1 || (exporting && !reservations.isEmpty())) throw new IllegalArgumentException("Duplicate or exported live ability reservation");
+        CoreAbility.RollbackRegistry registry = exporting ? CoreAbility.exportRollbackRegistry(roster.keySet())
+                : reservations.isEmpty() ? CoreAbility.captureRollbackRegistry(roster.keySet())
+                : CoreAbility.captureRollbackRegistry(roster.keySet(), reservations.getFirst());
         Manager.RollbackRegistry managerRegistry = exporting ? Manager.exportRollbackRegistry() : Manager.captureRollbackRegistry();
         var roots = new ArrayList<Object>(roster.values());
         roots.add(registry);
@@ -148,7 +153,8 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
         roots.add(exporting ? OfflineBendingPlayer.exportRollbackTemporaryElements(roster.keySet())
                 : OfflineBendingPlayer.captureRollbackTemporaryElements(roster.keySet()));
         roots.add(managerRegistry);
-        for (Object service : services) roots.add(service instanceof RollbackTaskBindings.Capture tasks ? tasks.bindings() : service);
+        for (Object service : services) if (!(service instanceof CoreAbility.RollbackIdReservation))
+            roots.add(service instanceof RollbackTaskBindings.Capture tasks ? tasks.bindings() : service);
         // Attribute definitions exist for future activations too. Keep their metadata,
         // but import only this roster's per-instance cache entries. Project the maps,
         // not the cache objects, to preserve references held by arbitrary ability fields.
@@ -227,7 +233,7 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
         fields.addAll(RollbackStateGraph.staticFields(OfflineBendingPlayer.class,
                 field -> Set.of("PLAYERS", "ONLINE_PLAYERS", "TEMP_ELEMENTS").contains(field.getName())));
         fields.addAll(RollbackStateGraph.staticFields(CoreAbility.class, field -> field.getName().startsWith("INSTANCES")
-                || Set.of("idCounter", "currentTick", "ATTRIBUTE_FIELDS").contains(field.getName())));
+                || Set.of("idCounter", "idLimit", "currentTick", "ATTRIBUTE_FIELDS").contains(field.getName())));
         fields.addAll(RollbackStateGraph.staticFields(ProjectKorra.class, field -> field.getName().equals("collisionManager")));
         fields.addAll(RollbackStateGraph.staticFields(Manager.class, field -> field.getName().equals("MANAGERS")));
         return List.copyOf(fields);

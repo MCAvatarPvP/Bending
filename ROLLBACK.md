@@ -49,6 +49,18 @@ state that actually determines those outcomes.
 
 ### October 2, 2026 integration update
 
+Ability construction now honors a transferable ID bound. Live startup can reserve a
+roster-specific range, then include the source-only reservation in bending capture roots;
+the capture stores its next ID/limit in the transferred ability registry and omits the
+live reservation object. Ordinary live ability creation skips the reserved range. Domain
+checkpoints rewind allocation and exhaustion fails without recycling IDs; outgoing graph
+export keeps the bound for restoration. Reservation capture rejects another roster or
+participant abilities created after reservation. Tests use real ability construction to
+verify disjoint live/private allocation and rewind, and transfer the bound through both
+bending import paths and live-restoration decoding. The production owner still must
+reserve before capture and validate the bound when committing restored ability indices.
+
+
 Outgoing bending graphs now have a separate live-restoration decoder. It checks the exact
 original live roster and native body identities while keeping private-domain decoding
 strictly bound to private players. The detached result retains aliases among restored

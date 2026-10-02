@@ -71,6 +71,7 @@ public abstract class CoreAbility implements Ability {
     private static final Map<Class<? extends CoreAbility>, Map<String, AttributeCache>> ATTRIBUTE_FIELDS = new HashMap<>();
 
     private static int idCounter;
+    private static int idLimit = Integer.MAX_VALUE;
     private static long currentTick;
 
     protected Player player;
@@ -152,7 +153,9 @@ public abstract class CoreAbility implements Ability {
         this.flightHandler = Manager.getManager(FlightHandler.class);
         this.startTime = RollbackClock.millis();
         this.started = false;
-        this.id = idCounter++;
+        if (idCounter >= idLimit) throw new IllegalStateException("Ability ID reservation exhausted");
+        this.id = idCounter;
+        idCounter = Math.incrementExact(idCounter);
     }
 
     /**
@@ -289,6 +292,39 @@ public abstract class CoreAbility implements Ability {
         return snapshotRollbackRegistry(participants);
     }
 
+    /** Source-only reservation; include it in the bending capture service roots. */
+    public static final class RollbackIdReservation {
+        private final Thread owner = Thread.currentThread();
+        private final Set<UUID> roster;
+        private final int first, limit;
+        private RollbackIdReservation(Set<UUID> roster, int first, int limit) {
+            this.roster = roster; this.first = first; this.limit = limit;
+        }
+    }
+
+    /** IDs are never recycled on abort because outside gameplay may already have advanced. */
+    public static RollbackIdReservation reserveRollbackIds(Collection<UUID> participants, int capacity) {
+        if (RollbackClock.active() || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()
+                || !Platform.scheduler().isPrimaryThread()) throw new IllegalStateException("Reserve ability IDs on the live main thread");
+        var roster = Set.copyOf(participants);
+        if (roster.isEmpty() || roster.size() > 128 || capacity < 1) throw new IllegalArgumentException("Ability ID reservation");
+        int limit = Math.addExact(idCounter, capacity);
+        if (limit > idLimit) throw new IllegalStateException("Ability ID space exhausted");
+        var reservation = new RollbackIdReservation(roster, idCounter, limit);
+        idCounter = limit;
+        return reservation;
+    }
+
+    public static RollbackRegistry captureRollbackRegistry(Collection<UUID> participants, RollbackIdReservation reservation) {
+        Objects.requireNonNull(reservation);
+        if (Thread.currentThread() != reservation.owner || !Set.copyOf(participants).equals(reservation.roster))
+            throw new IllegalArgumentException("Ability reservation roster/thread differs");
+        var current = captureRollbackRegistry(participants);
+        if (current.instances.stream().anyMatch(ability -> ability.id >= reservation.first))
+            throw new IllegalStateException("Participant abilities changed after ID reservation");
+        return new RollbackRegistry(current.instances, current.attributes, reservation.first, reservation.limit, current.tick);
+    }
+
     /** Snapshot the current domain membership for outgoing state transfer. */
     public static RollbackRegistry exportRollbackRegistry(final Collection<UUID> participants) {
         if (!com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active())
@@ -303,25 +339,28 @@ public abstract class CoreAbility implements Ability {
         for (CoreAbility ability : orderedInstances(INSTANCES)) {
             if (ability.player != null && roster.contains(ability.player.getUniqueId())) selected.add(ability);
         }
-        return new RollbackRegistry(selected, new HashMap<>(ATTRIBUTE_FIELDS), idCounter, currentTick);
+        return new RollbackRegistry(selected, new HashMap<>(ATTRIBUTE_FIELDS), idCounter, idLimit, currentTick);
     }
 
     /** Registry data is copied as part of the same graph as its instance objects. */
     public static final class RollbackRegistry {
         private final List<CoreAbility> instances;
         private final Map<Class<? extends CoreAbility>, Map<String, AttributeCache>> attributes;
-        private final int nextId;
+        private final int nextId, maximumId;
         private final long tick;
 
         private RollbackRegistry(List<CoreAbility> instances, Map<Class<? extends CoreAbility>, Map<String, AttributeCache>> attributes,
-                                 int nextId, long tick) {
+                                 int nextId, int maximumId, long tick) {
             this.instances = List.copyOf(instances);
             this.attributes = attributes;
             this.nextId = nextId;
+            this.maximumId = maximumId;
             this.tick = tick;
         }
 
         public List<CoreAbility> instances() { return instances; }
+        public int nextId() { return nextId; }
+        public int idLimit() { return maximumId; }
         public List<AttributeCache> attributes() { return attributes.values().stream().flatMap(map -> map.values().stream()).toList(); }
 
         /** Installs transferred instances without activation, attribute or removal callbacks. */
@@ -329,6 +368,7 @@ public abstract class CoreAbility implements Ability {
             if (!com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) {
                 throw new IllegalStateException("Ability registry import requires a private domain");
             }
+            if (nextId < 0 || maximumId < nextId) throw new IllegalArgumentException("Ability ID reservation");
             Set<Integer> ids = new HashSet<>();
             Map<Class<? extends CoreAbility>, Map<UUID, Map<Integer, CoreAbility>>> byPlayer = new ConcurrentHashMap<>();
             Map<Class<? extends CoreAbility>, Set<CoreAbility>> byClass = new ConcurrentHashMap<>();
@@ -351,6 +391,7 @@ public abstract class CoreAbility implements Ability {
             ATTRIBUTE_FIELDS.clear();
             ATTRIBUTE_FIELDS.putAll(attributes);
             idCounter = nextId;
+            idLimit = maximumId;
             currentTick = tick;
         }
     }
