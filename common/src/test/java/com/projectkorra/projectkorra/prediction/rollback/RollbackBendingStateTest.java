@@ -72,6 +72,10 @@ class RollbackBendingStateTest {
             temporary.add(Pair.of(other, 500L));
             var sourceService = new HashMap<CoreAbility, String>();
             sourceService.put(livePulse, "shared service entry");
+            var liveRules = new CapturedRule(livePulse);
+            var liveBus = new RollbackEventBus(100, 10);
+            liveBus.registerListener(liveRules);
+            var serviceRoots = List.of(sourceService, RollbackEventBindings.capture(liveBus));
             var privateA = PrivateCombatRollbackTest.player(privateWorld, 1);
             var privateB = PrivateCombatRollbackTest.player(privateWorld, 2);
             Map<Object, Object> replacements = new IdentityHashMap<>();
@@ -88,12 +92,12 @@ class RollbackBendingStateTest {
             RollbackBendingState imported;
             if (portable) {
                 Portable codecs = portableTransfer(liveA, liveB, liveWorld, privateA, privateB, privateWorld, sourceAttribute);
-                byte[] bytes = RollbackBendingState.encode(List.of(bendingB, bendingA), collisions, List.of(sourceService), codecs.sender());
+                byte[] bytes = RollbackBendingState.encode(List.of(bendingB, bendingA), collisions, serviceRoots, codecs.sender());
                 imported = RollbackBendingState.decode(List.of(B, A), bytes, codecs.receiver());
                 assertThrows(IllegalStateException.class, () -> RollbackBendingState.decode(List.of(A, OUTSIDE), bytes, codecs.receiver()));
                 assertThrows(IllegalArgumentException.class, () -> RollbackBendingState.decode(List.of(A, A), bytes, codecs.receiver()));
                 assertThrows(IllegalArgumentException.class, () -> RollbackBendingState.decode(List.of(A, B), codecs.sender().encode(List.of("wrong root")), codecs.receiver()));
-            } else imported = RollbackBendingState.capture(List.of(bendingB, bendingA), collisions, List.of(sourceService), transfer);
+            } else imported = RollbackBendingState.capture(List.of(bendingB, bendingA), collisions, serviceRoots, transfer);
             assertEquals(eventsBefore, events.size());
             assertEquals(constructorsBefore, Dynamic.constructions);
             assertEquals(List.of(A, B), new ArrayList<>(imported.players().keySet()));
@@ -113,7 +117,16 @@ class RollbackBendingStateTest {
             var removals = new ArrayList<String>();
             var prediction = PredictionServices.builder().bind(AbilityRemovalSync.Listener.class,
                     (ability, external) -> removals.add(ability.getId() + ":" + external)).build();
-            var domain = RollbackDomain.create(graph, shared, List.of(imported), platform, null, prediction, imported::install);
+            var privateBus = new RollbackEventBus(100, 10);
+            var privatePlatform = (ProjectKorraPlatform) Proxy.newProxyInstance(ProjectKorraPlatform.class.getClassLoader(),
+                    new Class<?>[]{ProjectKorraPlatform.class}, (proxy, method, args) -> {
+                        if (method.getName().equals("events")) return privateBus;
+                        throw new AssertionError(method);
+                    });
+            var domain = RollbackDomain.create(graph, shared, List.of(imported, privateBus), privatePlatform, null, prediction, imported::install);
+            var copiedRules = (CapturedRule) privateBus.commonRegistrations().getFirst().listener();
+            assertNotSame(liveRules, copiedRules);
+            assertSame(pulse, copiedRules.ability);
             assertEquals(eventsBefore, events.size()); // Registry installation does not replay activation hooks.
             domain.call(() -> {
                 assertSame(pulse, CoreAbility.getAbility(privateA, Pulse.class));
@@ -150,6 +163,8 @@ class RollbackBendingStateTest {
             assertFalse(domain.call(engine::advance).head().effects().isEmpty());
             assertTrue(pulse.isRemoved());
             assertEquals(1, pulse.contacts);
+            assertEquals(1, copiedRules.collisions);
+            assertEquals(0, liveRules.collisions);
             assertEquals(List.of("1:true"), removals);
             assertFalse(livePulse.isRemoved());
             assertEquals(0, livePulse.location.getX());
@@ -157,6 +172,7 @@ class RollbackBendingStateTest {
             assertTrue(domain.call(engine::reconcile).head().effects().isEmpty());
             assertFalse(pulse.isRemoved());
             assertEquals(0, pulse.contacts);
+            assertEquals(0, copiedRules.collisions);
             assertTrue(removals.isEmpty());
             assertEquals(List.of(1.0, 3.0), pulse.history);
             domain.call(() -> { assertSame(pulse, CoreAbility.getAbility(privateA, Pulse.class)); return null; });
@@ -203,6 +219,7 @@ class RollbackBendingStateTest {
         List<Class<?>> objects = List.of(BendingPlayer.class, Pulse.class, Guard.class, Location.class, Cooldown.class,
                 CoreAbility.RollbackRegistry.class, Manager.RollbackRegistry.class, CollisionManager.class, Collision.class,
                 OfflineBendingPlayer.RollbackTemporaryElement.class, AttributeCache.class,
+                CapturedRule.class, RollbackEventBindings.class, PKEventBus.Registration.class,
                 com.projectkorra.projectkorra.util.IndexedMap.class, field(CoreAbility.class, "predictionAncestry").getType(),
                 sourceAttribute.getCurrentModifications().values().stream().map(value -> ((TreeSet<?>) value).comparator().getClass()).findFirst().orElseThrow());
         var symbols = new ArrayList<Class<?>>();
@@ -232,6 +249,13 @@ class RollbackBendingStateTest {
                 (proxy, method, args) -> { events.add(method.getName()); return null; });
         return (ProjectKorraPlatform) Proxy.newProxyInstance(ProjectKorraPlatform.class.getClassLoader(), new Class<?>[]{ProjectKorraPlatform.class},
                 (proxy, method, args) -> { if (method.getName().equals("events")) return bus; throw new AssertionError(method); });
+    }
+    private static final class CapturedRule {
+        final Pulse ability;
+        int collisions;
+        CapturedRule(Pulse ability) { this.ability = ability; }
+        @com.projectkorra.projectkorra.platform.mc.event.EventHandler
+        public void collided(com.projectkorra.projectkorra.event.AbilityCollisionEvent event) { collisions++; }
     }
     private abstract static class Dynamic extends CoreAbility {
         static int constructions;

@@ -52,7 +52,11 @@ public record PaperRollbackDuelSeed(PaperRollbackRosterSeed nativeRoster, Rollba
         var access = PaperRollbackPlayerAccess.capture(nativePlayers.values().stream().map(ServerPlayer::getBukkitEntity).toList(),
                 org.bukkit.Bukkit.getPluginManager().getPermissions(), permissionNodes);
         var worldSeed = PaperRollbackWorldSeed.capture(world, request.terrain(), randomSeed, soundSeed, terrainLimits);
-        var graph = RollbackBendingState.encode(bending.values(), collisions, gameplayServices, sourceCodec);
+        var services = new ArrayList<Object>(gameplayServices);
+        if (services.stream().anyMatch(RollbackEventBindings.class::isInstance))
+            throw new IllegalArgumentException("Duel capture owns event registration capture");
+        services.add(RollbackEventBindings.capture(com.projectkorra.projectkorra.platform.Platform.events()));
+        var graph = RollbackBendingState.encode(bending.values(), collisions, services, sourceCodec);
         var portable = new RollbackBootstrapData(request.session(), challenge, request.match(), request.round(), millis, nanos, definitions,
                 request.sides(), worldSeed, nativeRoster.portable(playerServices), configuration, access, graph);
         if (world.getGameTime() != tick) throw new IllegalStateException("World advanced during duel capture");

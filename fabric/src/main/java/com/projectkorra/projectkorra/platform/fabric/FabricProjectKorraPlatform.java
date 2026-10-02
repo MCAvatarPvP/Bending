@@ -258,6 +258,10 @@ public final class FabricProjectKorraPlatform implements ProjectKorraPlatform {
             }
         }
         @Override public void unregisterAll(final Object target) { this.handlers.removeIf(handler->handler.listener()==target||handler.owner()==target); }
+        @Override public List<Registration> commonRegistrations() {
+            return handlers.stream().map(handler -> new Registration(handler.listener(), handler.owner(),
+                    Registration.key(handler.method()), handler.priority(), handler.ignoreCancelled())).toList();
+        }
         private record Handler(Object listener,Object owner,Method method,Class<?> type,int priority,boolean ignoreCancelled){
             void invoke(Event event){
                 if(ignoreCancelled&&event instanceof Cancellable cancellable&&cancellable.isCancelled())return;

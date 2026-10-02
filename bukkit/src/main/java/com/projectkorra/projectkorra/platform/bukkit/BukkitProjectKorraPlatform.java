@@ -565,7 +565,7 @@ public final class BukkitProjectKorraPlatform implements ProjectKorraPlatform {
                 } else if (com.projectkorra.projectkorra.platform.mc.event.Event.class.isAssignableFrom(eventType) && (bukkitAnnotation != null || commonAnnotation != null)) {
                     final int priority = commonAnnotation != null ? commonAnnotation.priority().ordinal() : bukkitAnnotation.priority().ordinal();
                     final boolean ignoreCancelled = commonAnnotation != null ? commonAnnotation.ignoreCancelled() : bukkitAnnotation.ignoreCancelled();
-                    this.neutralHandlers.add(new NeutralHandler(listener, owner, ListenerCall.bind(listener, method), eventType, priority, ignoreCancelled));
+                    this.neutralHandlers.add(new NeutralHandler(listener, owner, ListenerCall.bind(listener, method), eventType, priority, ignoreCancelled, Registration.key(method)));
                 }
             }
         }
@@ -587,11 +587,16 @@ public final class BukkitProjectKorraPlatform implements ProjectKorraPlatform {
                     handler.listener() == target || handler.owner() == target);
         }
 
+        @Override public List<Registration> commonRegistrations() {
+            return neutralHandlers.stream().map(handler -> new Registration(handler.listener(), handler.owner(),
+                    handler.method(), handler.priority(), handler.ignoreCancelled())).toList();
+        }
+
         private record OwnedListener(Object listener, Object owner) {
         }
 
         private record NeutralHandler(Object listener, Object owner, ListenerCall target, Class<?> eventType, int priority,
-                                      boolean ignoreCancelled) {
+                                      boolean ignoreCancelled, String method) {
             private void invoke(final com.projectkorra.projectkorra.platform.mc.event.Event event) {
                 if (ignoreCancelled && event instanceof Cancellable cancellable && cancellable.isCancelled()) return;
                 target.invoke(event);

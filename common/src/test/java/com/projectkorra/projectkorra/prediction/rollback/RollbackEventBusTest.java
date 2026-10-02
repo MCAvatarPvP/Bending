@@ -48,6 +48,58 @@ class RollbackEventBusTest {
         assertThrows(IllegalArgumentException.class, () -> new RollbackEventBus(100, 10).restoreRollbackState(bus.captureRollbackState()));
     }
 
+    @Test void portableRegistrationsPreserveSharedListenerIdentityAndRewindWithoutTouchingSource() {
+        var source = new RollbackEventBus(100, 10);
+        var counter = new Counter();
+        source.registerListener(counter, "plugin");
+        source.registerListener(counter, "plugin");
+        var codec = new RollbackGraphCodec(new RollbackGraphCodec.Catalog(
+                List.of(Counter.class, RollbackEventBindings.class, com.projectkorra.projectkorra.platform.PKEventBus.Registration.class),
+                List.of(), List.of()), new RollbackGraphCodec.Limits(1000, 10000, 100000, 1000));
+        var roots = codec.decode(codec.encode(List.of(RollbackEventBindings.capture(source), counter)));
+        var bindings = (RollbackEventBindings) roots.getFirst();
+        var copied = (Counter) roots.get(1);
+        assertNotSame(counter, copied);
+        assertSame(copied, bindings.registrations().getFirst().listener());
+        assertSame(copied, bindings.registrations().get(1).listener());
+        var target = new RollbackEventBus(100, 10);
+        bindings.install(target);
+        var before = new RollbackStateGraph(value -> false, field -> true, 1000).capture(List.of(target), List.of());
+        target.call(new Hit());
+        assertEquals(2, copied.hits);
+        assertEquals(0, counter.hits);
+        target.unregisterAll(bindings.registrations().getFirst().owner());
+        target.call(new Hit());
+        assertEquals(2, copied.hits);
+        before.restore();
+        assertEquals(0, copied.hits);
+        target.call(new Hit());
+        assertEquals(2, copied.hits);
+        source.call(new Hit());
+        assertEquals(2, counter.hits);
+    }
+
+    @Test void importedOrderIsPreservedAndInvalidMetadataCannotPartiallyRegister() {
+        var rules = new Rules();
+        var source = new RollbackEventBus(100, 10);
+        source.registerListener(rules);
+        var registrations = source.commonRegistrations();
+        var invalid = new ArrayList<>(registrations);
+        var original = registrations.getLast();
+        invalid.set(invalid.size() - 1, new com.projectkorra.projectkorra.platform.PKEventBus.Registration(
+                original.listener(), original.owner(), original.method(), original.priority(), !original.ignoreCancelled()));
+        var target = new RollbackEventBus(100, 10);
+        assertThrows(IllegalArgumentException.class, () -> target.importRegistrations(invalid));
+        assertTrue(target.commonRegistrations().isEmpty());
+        var ordered = new ArrayList<>(registrations);
+        Collections.reverse(ordered);
+        target.importRegistrations(ordered);
+        assertEquals(ordered.stream().map(value -> value.method()).toList(),
+                target.commonRegistrations().stream().map(value -> value.method()).toList());
+        assertThrows(IllegalStateException.class, () -> target.importRegistrations(ordered));
+        assertThrows(IllegalStateException.class, () -> new RollbackEventBus(1, 10).importRegistrations(ordered));
+    }
+
     static final class Mutating {
         final RollbackEventBus bus; final Counter extra;
         Mutating(RollbackEventBus bus, Counter extra) { this.bus = bus; this.extra = extra; }

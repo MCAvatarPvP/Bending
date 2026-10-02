@@ -140,7 +140,24 @@ together. The complete common bending-loop tests now use these owned services in
 an empty world list/no-op event bus; delayed defence registration cancels the actual
 `AbilityCollisionEvent` when replayed. Native registry, plugin, permission,
 presentation and model-adapter bindings are still mandatory importer services, and the
-production capture/import of existing listener registrations is still outstanding.
+common listener capture/import is now connected to `PaperRollbackDuelSeed` and
+`RollbackBendingState.install`. `PKEventBus.commonRegistrations` exports exact handler
+metadata in source registration order on Paper and both Fabric platforms. The seed
+includes `RollbackEventBindings` in the same portable graph as active abilities, so
+listeners that reference those abilities resolve to their imported instances. Private
+installation validates handler definitions and budgets before publishing any handlers.
+Native-only event hooks still use the native adapters; unsupported listener definitions
+or missing catalog/owner bindings fail import rather than silently dropping rules.
+
+The imported-bending regression now transfers a live collision listener with an active
+ability through both in-process and portable graph import. Late input removes the
+collision and rewinds the copied listener count while the source stays untouched.
+Loader and common tests also check registration order, ownership removal, duplicate
+registrations, metadata mismatch, and atomic failure. The production graph catalog must
+include `RollbackEventBindings`, `PKEventBus.Registration`, all relevant listener types,
+and private replacements for lifecycle owner tokens. All 1,320 common, Bukkit, Fabric,
+and native Paper tests pass after this change; both 1.10.30 artifacts rebuild. Full
+native/runtime assembly and live-duel verification remain unfinished.
 
 `PaperRollbackRosterViews` and `FabricRollbackRosterViews` now bind the imported native
 cohort to the ability API through `RollbackRosterViews`. Movement, health, controls,

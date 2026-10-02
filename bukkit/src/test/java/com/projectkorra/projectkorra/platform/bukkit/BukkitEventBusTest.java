@@ -29,6 +29,32 @@ class BukkitEventBusTest {
         assertEquals("listener failure", failure.getCause().getMessage());
     }
 
+    @Test void capturedCommonHandlersKeepActualOrderAndCanPopulatePrivateBus() {
+        var source = new BukkitProjectKorraPlatform(null).events();
+        var calls = new ArrayList<String>();
+        var first = new CommonRule(calls, "first");
+        var second = new CommonRule(calls, "second");
+        Object owner = new Object();
+        source.registerListener(first, owner);
+        source.registerListener(second, owner);
+        var registrations = source.commonRegistrations();
+        assertEquals(2, registrations.size());
+        assertSame(first, registrations.getFirst().listener());
+        assertSame(owner, registrations.getFirst().owner());
+        // Graph detachment is covered by the portable common suite; this checks loader metadata.
+        var target = new com.projectkorra.projectkorra.prediction.rollback.RollbackEventBus(100, 10);
+        target.importRegistrations(registrations);
+        source.call(new TestEvent());
+        target.call(new TestEvent());
+        assertEquals(List.of("first", "second", "first", "second"), calls);
+        source.unregisterAll(owner);
+        assertTrue(source.commonRegistrations().isEmpty());
+        assertEquals(2, registrations.size());
+    }
+    private record CommonRule(List<String> calls, String name) {
+        @EventHandler public void call(TestEvent event) { calls.add(name); }
+    }
+
     private static final class TestEvent extends Event implements Cancellable {
         private boolean cancelled;
         @Override public boolean isCancelled() { return cancelled; }

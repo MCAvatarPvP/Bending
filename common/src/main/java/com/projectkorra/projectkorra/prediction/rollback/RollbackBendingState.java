@@ -166,6 +166,14 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
         if (Thread.currentThread() != owner || !RollbackDomain.active() || installed) {
             throw new IllegalStateException("Bending import requires one bootstrap on its owning thread");
         }
+        var events = services.stream().filter(RollbackEventBindings.class::isInstance)
+                .map(RollbackEventBindings.class::cast).toList();
+        if (events.size() > 1) throw new IllegalArgumentException("Duplicate event registration roots");
+        if (!events.isEmpty()) {
+            if (!(com.projectkorra.projectkorra.platform.Platform.events() instanceof RollbackEventBus bus))
+                throw new IllegalStateException("Imported event rules require a private event bus");
+            events.getFirst().install(bus);
+        }
         abilities.install();
         OfflineBendingPlayer.installRollbackPlayers(players, temporaryElements);
         ProjectKorra.collisionManager = collisions;

@@ -107,6 +107,31 @@ public final class RollbackEventBus implements PKEventBus, RollbackStateCell<Rol
         registered.sort(ORDER);
         handlers = List.copyOf(registered); sequence = next;
     }
+    @Override public List<Registration> commonRegistrations() {
+        checkBoundary();
+        return handlers.stream().sorted(Comparator.comparingLong(Handler::sequence))
+                .map(handler -> new Registration(handler.listener, handler.owner, handler.definition.key,
+                        handler.definition.priority, handler.definition.ignoreCancelled)).toList();
+    }
+
+    /** Import copied listeners atomically, retaining source ordering even within one priority. */
+    public void importRegistrations(List<Registration> registrations) {
+        checkBoundary();
+        if (!handlers.isEmpty() || sequence != 0) throw new IllegalStateException("Import requires a fresh event bus");
+        if (registrations.size() > maximumHandlers) throw new IllegalStateException("Rollback event handler budget exceeded");
+        var imported = new ArrayList<Handler>();
+        for (Registration registration : registrations) {
+            Definition definition = DEFINITIONS.get(registration.listener().getClass()).stream()
+                    .filter(value -> value.key.equals(registration.method())).findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("Missing common event handler: " + registration.method()));
+            if (definition.priority != registration.priority() || definition.ignoreCancelled != registration.ignoreCancelled())
+                throw new IllegalArgumentException("Event handler definition differs: " + registration.method());
+            imported.add(new Handler(registration.listener(), registration.owner(), definition, imported.size()));
+        }
+        imported.sort(ORDER);
+        handlers = List.copyOf(imported); sequence = imported.size();
+    }
+
     @Override public void unregisterAll(Object target) {
         checkThread();
         handlers = handlers.stream().filter(handler -> handler.listener != target && handler.owner != target).toList();
