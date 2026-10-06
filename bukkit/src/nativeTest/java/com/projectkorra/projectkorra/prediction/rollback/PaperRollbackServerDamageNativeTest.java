@@ -246,6 +246,28 @@ class PaperRollbackServerDamageNativeTest {
         });
     }
 
+    @Test void packetJournalDecoderRejectsMismatchTrailingBytesAndReplayDelivery() throws Exception {
+        onTickThread(() -> {
+            var scene = new Scene();
+            scene.target.connection.send(new ClientboundSetHealthPacket(7, 8, 2));
+            var output = (PaperRollbackConnection.PacketOutput) scene.combat.outputs.getFirst();
+            var decoder = new PaperRollbackPacketDecoder((RegistryAccess) scene.combat.registryAccess());
+            var health = (ClientboundSetHealthPacket) decoder.decode(output);
+            assertEquals(7, health.getHealth()); assertEquals(8, health.getFood());
+            assertNotSame(health, decoder.decode(output));
+            assertThrows(IllegalArgumentException.class, () -> decoder.decode(new PaperRollbackConnection.PacketOutput(output.target(), "wrong", output.payload())));
+            var raw = Base64.getDecoder().decode(output.payload());
+            var trailing = Base64.getEncoder().encodeToString(java.util.Arrays.copyOf(raw, raw.length + 1));
+            assertThrows(IllegalArgumentException.class, () -> decoder.decode(new PaperRollbackConnection.PacketOutput(output.target(), output.type(), trailing)));
+            assertThrows(IllegalArgumentException.class, () -> decoder.decode(new PaperRollbackConnection.PacketOutput(output.target(), output.type(), "!")));
+            assertThrows(IllegalArgumentException.class, () -> decoder.decode(new PaperRollbackConnection.PacketOutput(output.target(), output.type(), "A".repeat(1_398_105))));
+            try (var clock = RollbackClock.at(1000, 1, 50_000_000)) {
+                assertThrows(IllegalStateException.class, () -> decoder.decode(output));
+            }
+            assertEquals(1, scene.combat.outputs.size()); assertNull(Bukkit.getServer()); return null;
+        });
+    }
+
     @Test void packetsAreDetachedAtSendAndUnimplementedNetworkCallbacksFailBeforeOutput() throws Exception {
         onTickThread(() -> {
             var scene = new Scene();
@@ -348,10 +370,7 @@ class PaperRollbackServerDamageNativeTest {
             return combat.outputs.stream().filter(PaperRollbackConnection.PacketOutput.class::isInstance)
                     .map(PaperRollbackConnection.PacketOutput.class::cast).<Packet<?>>map(output -> {
                         assertEquals(target.getUUID(), output.target());
-                        var bytes = Unpooled.wrappedBuffer(Base64.getDecoder().decode(output.payload()));
-                        try {
-                            return (Packet<?>) GameProtocols.CLIENTBOUND_TEMPLATE.bind(RegistryFriendlyByteBuf.decorator((RegistryAccess) combat.registryAccess())).codec().decode(bytes);
-                        } finally { bytes.release(); }
+                        return new PaperRollbackPacketDecoder((RegistryAccess) combat.registryAccess()).decode(output);
                     }).toList();
         }
     }

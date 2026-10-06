@@ -29,6 +29,7 @@ public final class PaperRollbackConnection implements RollbackStateCell<Boolean>
             ClientboundPlayerAbilitiesPacket.class, ClientboundCooldownPacket.class);
     /** Includes the play-protocol packet id, encoded against the session's captured registries. */
     public record PacketOutput(UUID target, String type, String payload) implements PaperRollbackCombatAccess.Output { }
+    static boolean auditedPacket(Class<?> type) { return AUDITED_PACKETS.contains(type); }
     private final PaperRollbackWorldAccess world;
     private final ServerPlayer player;
     private final ServerGamePacketListenerImpl listener;

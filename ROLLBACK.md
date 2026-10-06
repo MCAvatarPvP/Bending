@@ -3079,3 +3079,21 @@ run without a live Bukkit server and assert that reconstruction emits no output.
 Continue production runtime/startup and output integration without making complete
 vanilla item-drop behavior a prerequisite. The scope at the top of this document still
 applies; outstanding item-adapter work does not expand the Neptune bending-duel goal.
+
+
+### Audited native packet journal decoder
+
+PaperRollbackPacketDecoder reconstructs the primitive native packet journal using the
+session's supplied registries. It requires the owning thread outside replay, bounds
+the encoded/decoded payload, consumes the entire packet and checks both the decoded
+class against PaperRollbackConnection's audited set and the recorded packet type.
+Each call reconstructs fresh native data and never writes to a connection. This is
+for trusted server-internal PacketOutput records, not a decoder for client wire input.
+
+The native server damage tests now use this production decoder instead of their own
+ad-hoc codec invocation. Additional tests cover payload/type mismatch, trailing bytes,
+malformed Base64, size limits, fresh packet instances and replay rejection with no
+live Bukkit server. Audience selection, session/connection identity checks, native
+entity-ID compatibility and revision/finalization ownership remain required at the
+production publisher boundary. Decoder completion does not prove packet delivery or
+client reconciliation installation.
