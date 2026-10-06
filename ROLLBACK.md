@@ -101,6 +101,14 @@ roster gates, and this resolver does not discover work hidden exclusively in sta
 registries. The native roster integration fixture now uses this resolver instead of
 callback identity selection. Production infrastructure boundaries/service roots remain
 to be assembled with the full bootstrap; this does not enable duels by itself.
+Native sky and block light now have a separate bounded `RollbackLightSeed` snapshot
+and strict binary codec. `PaperRollbackLightCapture` preflights loaded chunks and
+reads each native light layer directly without using combined brightness or loading
+terrain. Tests distinguish sunlight from emitted block light, check transfer detachment
+and budgets, and reject missing chunks. This is initial capture only: it is not yet
+included in the duel bootstrap payload, and private light propagation/replay after
+terrain changes remains unimplemented. Do not substitute the immutable seed for a
+dynamic light engine once blocks change.
 Live scheduler restoration/replacement now accepts a synchronous whole-state commit.
 Native callback submissions are staged while dispatch remains gated; only a successful
 external commit activates callbacks and publishes replacement handles. Failed state

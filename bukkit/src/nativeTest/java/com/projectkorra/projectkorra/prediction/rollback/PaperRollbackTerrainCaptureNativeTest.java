@@ -143,6 +143,22 @@ class PaperRollbackTerrainCaptureNativeTest {
         assertThrows(IllegalArgumentException.class, () -> adapter.decode(Material.STONE, "minecraft:oak_slab[type=top]"));
     }
 
+    @Test void capturesDistinctLightLayersWithoutLoadingMissingChunks() throws Exception {
+        onTickThread(() -> {
+            var fixture = new Fixture();
+            var seed = PaperRollbackLightCapture.capture(fixture.world, BOUNDS, 8);
+            assertEquals(4, fixture.chunkReads); assertEquals(0, fixture.blockReads);
+            assertEquals(15, seed.sky(new Position(0, 0, 0)));
+            assertEquals(3, seed.sky(new Position(1, 0, 0)));
+            assertEquals(10, seed.block(new Position(0, 0, 0)));
+            var copy = com.projectkorra.projectkorra.prediction.rollback.world.RollbackLightSeed.decode(seed.encode(), 8);
+            assertEquals(3, copy.sky(new Position(1, 0, 0)));
+            fixture.missing = true;
+            assertThrows(IllegalStateException.class, () -> PaperRollbackLightCapture.capture(fixture.world, BOUNDS, 8));
+            assertEquals(15, seed.sky(new Position(0, 0, 0)));
+            return null;
+        });
+    }
     private static Position position(BlockPos position) { return new Position(position.getX(), position.getY(), position.getZ()); }
     private static CompoundTag tag(byte[] bytes) throws Exception {
         return NbtIo.read(new DataInputStream(new ByteArrayInputStream(bytes)), NbtAccounter.create(1_048_576));
@@ -173,6 +189,8 @@ class PaperRollbackTerrainCaptureNativeTest {
                     .constant(ServerLevel::getGameTime, 100L).constant(ServerLevel::getSeaLevel, 63)
                     .query(value -> value.getNoiseBiome(0, 0, 0), null, args -> biome)
                     .query(value -> value.getBiome(BlockPos.ZERO), null, args -> smoothed)
+                    .query(value -> value.getBrightness(net.minecraft.world.level.LightLayer.SKY, BlockPos.ZERO), 0,
+                            args -> args[0] == net.minecraft.world.level.LightLayer.BLOCK ? 10 : ((BlockPos) args[1]).getX() == 0 ? 15 : 3)
                     .query(value -> value.getMaxLocalRawBrightness(BlockPos.ZERO), 0, args -> 7).instance();
         }
     }
