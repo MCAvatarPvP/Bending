@@ -27,7 +27,7 @@ class RollbackBlockReferenceTest {
     }
     private static final class AddonBlock extends Block { int extra = 23; }
     private static RollbackGraphCodec codec(World world) {
-        var catalog = new RollbackGraphCodec.Catalog(List.of(RollbackBlockReference.class, AddonBlock.class), List.of(),
+        var catalog = new RollbackGraphCodec.Catalog(List.of(RollbackBlockReference.class, RollbackBlockSnapshot.class, AddonBlock.class, com.projectkorra.projectkorra.platform.mc.block.data.BlockData.class, com.projectkorra.projectkorra.platform.mc.block.data.Levelled.class), List.of(Material.class),
                 List.of(new RollbackGraphCodec.Binding("world", World.class, world)));
         return new RollbackGraphCodec(catalog, new RollbackGraphCodec.Limits(1000, 10000, 1000000, 10000),
                 ignored -> null, new RollbackGraphViews());
@@ -62,4 +62,34 @@ class RollbackBlockReferenceTest {
         var roundTrip = (Block) codec(source).decode(codec(target).encode(List.of(reference))).getFirst();
         assertEquals(block, roundTrip); assertEquals(roundTrip, block);
     }
-}
+    @Test void savedContentsTransferAndRestoreWithoutRewindingCurrentEnvironment() {
+        var source = new Arena(Material.CHEST); var target = new Arena(Material.DIRT);
+        var position = new Position(0, 0, 0);
+        byte[] tile = {1, 2, 3};
+        source.terrain.replace(position, new Cell(Material.CHEST.createBlockData(), tile, Biome.DESERT, (byte) 3, 0.8, 0.4), false);
+        var snapshot = source.getBlockAt(0, 0, 0).getState();
+        source.getBlockAt(0, 0, 0).setType(Material.AIR, false);
+        var copies = codec(target).decode(codec(source).encode(List.of(snapshot, snapshot)));
+        var copy = (BlockState) copies.getFirst();
+        assertSame(copy, copies.get(1)); assertTrue(copy.hasBlockEntity());
+        assertEquals(Material.CHEST, copy.getType());
+        assertFalse(copy.update(false, false)); assertEquals(Material.DIRT, target.getBlockAt(0, 0, 0).getType());
+        var before = target.terrain.captureRollbackState();
+        assertTrue(copy.update(true, false));
+        assertArrayEquals(tile, target.terrain.cell(position).blockEntity());
+        assertEquals((byte) 7, target.getBlockAt(0, 0, 0).getLightLevel());
+        assertEquals(Material.AIR, source.getBlockAt(0, 0, 0).getType());
+        target.terrain.restoreRollbackState(before);
+        assertEquals(Material.DIRT, target.getBlockAt(0, 0, 0).getType());
+        assertTrue(copy.update(true, false));
+        assertArrayEquals(tile, target.terrain.cell(position).blockEntity());
+        var fluid = new com.projectkorra.projectkorra.platform.mc.block.data.Levelled(Material.WATER);
+        fluid.setLevel(5); fluid.setExactState("minecraft:water[level=5]");
+        var detached = new RollbackBlockSnapshot(target.getBlockAt(0, 0, 0), fluid, null);
+        fluid.setLevel(7);
+        var data = detached.getBlockData();
+        assertEquals(5, ((com.projectkorra.projectkorra.platform.mc.block.data.Levelled) data).getLevel());
+        assertEquals("minecraft:water[level=5]", data.getExactState());
+        ((com.projectkorra.projectkorra.platform.mc.block.data.Levelled) data).setLevel(9);
+        assertEquals(5, ((com.projectkorra.projectkorra.platform.mc.block.data.Levelled) detached.getBlockData()).getLevel());
+    }}

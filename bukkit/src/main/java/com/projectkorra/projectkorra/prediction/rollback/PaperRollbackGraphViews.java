@@ -12,8 +12,12 @@ public final class PaperRollbackGraphViews implements Supplier<Function<Object, 
     @Override public Function<Object, RollbackStateTransfer.Replacement> get() {
         var locations = new IdentityHashMap<org.bukkit.Location, Location>();
         var blocks = new IdentityHashMap<org.bukkit.block.Block, RollbackBlockReference>();
+        var snapshots = new IdentityHashMap<org.bukkit.block.BlockState, com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockSnapshot>();
         var common = new RollbackGraphViews().get();
         return value -> {
+            var nativeSnapshot = BukkitMC.nativeBlockStateView(value);
+            if (nativeSnapshot != null) return RollbackStateTransfer.Replacement.fromProjection(
+                    snapshots.computeIfAbsent(nativeSnapshot, PaperRollbackBlockSnapshots::capture));
             var nativeBlock = BukkitMC.nativeBlockView(value);
             if (nativeBlock != null) return RollbackStateTransfer.Replacement.fromProjection(blocks.computeIfAbsent(nativeBlock,
                     source -> new RollbackBlockReference(BukkitMC.world(source.getWorld()), source.getX(), source.getY(), source.getZ())));

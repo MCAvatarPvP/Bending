@@ -262,7 +262,7 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
     private void requireInside(Position position) {
         if (!bounds.contains(position)) throw new IllegalStateException("Terrain was not captured at " + position);
     }
-    private static BlockData copyData(BlockData data) {
+    static BlockData copyData(BlockData data) {
         Objects.requireNonNull(data, "data");
         BlockData copy = data.clone();
         if (copy == data) throw new IllegalArgumentException("BlockData clone must be detached");
@@ -276,7 +276,7 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
         return value instanceof RollbackBlockStore.View view ? view.reference() : null;
     }
 
-    private final class View extends Block implements RollbackStateCell<Void>, com.projectkorra.projectkorra.platform.mc.block.BlockValue {
+    private final class View extends Block implements RollbackStateCell<Void>, com.projectkorra.projectkorra.platform.mc.block.BlockValue, RollbackBlockSnapshot.Target {
         private RollbackBlockReference reference() {
             checkThread(); return new RollbackBlockReference(world, position.x, position.y, position.z);
         }
@@ -300,6 +300,16 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
             BlockData copy = copyData(data);
             boolean tile = rules.geometry(RollbackBlockStore.this, position, copy).blockEntity;
             replace(position, cell(position).withData(copy, tile), physics);
+        }
+        @Override public boolean restoreBlockSnapshot(BlockData data, byte[] blockEntity, boolean force, boolean physics) {
+            checkThread();
+            if (!force && getType() != data.getMaterial()) return false;
+            if (blockEntity != null && blockEntity.length > RollbackBlockSnapshot.MAXIMUM_BLOCK_ENTITY_BYTES)
+                throw new IllegalArgumentException("Block snapshot exceeds budget");
+            var current = cell(position);
+            replace(position, new Cell(data, blockEntity, current.biome, current.biomeKey, current.noiseBiomeKey,
+                    current.light, current.temperature, current.humidity), physics);
+            return true;
         }
         @Override public BlockState getState() { return new SavedBlock(this, cell(position)); }
         @Override public boolean isLiquid() { return geometry(position).liquid; }
@@ -339,17 +349,26 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
         @Override public Collection<?> rollbackReferences() { return List.of(RollbackBlockStore.this); }
     }
 
+    public static RollbackBlockSnapshot portableSnapshot(Object value) {
+        if (!(value instanceof RollbackBlockStore.SavedBlock saved)) return null;
+        return saved.portable();
+    }
+
     private final class SavedBlock extends BlockState implements RollbackStateCell<Void> {
         private final View block;
         private final Cell value;
         private SavedBlock(View block, Cell value) { this.block = block; this.value = value; }
+        private RollbackBlockSnapshot portable() {
+            checkThread();
+            return new RollbackBlockSnapshot(block.reference(), value.data(), value.blockEntity());
+        }
         @Override public Material getType() { return value.data.getMaterial(); }
         @Override public BlockData getBlockData() { return value.data(); }
         @Override public Block getBlock() { return block; }
         @Override public boolean hasBlockEntity() { return value.hasBlockEntity(); }
         @Override public boolean update(boolean force, boolean physics) {
             if (!force && getType() != block.getType()) return false;
-            replace(block.position, value, physics);
+            block.restoreBlockSnapshot(value.data(), value.blockEntity(), force, physics);
             return true;
         }
         @Override public Void captureRollbackState() { return null; }

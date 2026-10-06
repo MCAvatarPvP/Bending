@@ -10,7 +10,7 @@ import com.projectkorra.projectkorra.platform.mc.util.BoundingBox;
 import java.util.*;
 
 /** Portable block identity. Contents and mutations always resolve through the rebound world's current terrain. */
-public final class RollbackBlockReference extends Block implements BlockValue {
+public final class RollbackBlockReference extends Block implements BlockValue, RollbackBlockSnapshot.Target {
     private final World world;
     private final int x, y, z;
     public RollbackBlockReference(World world, int x, int y, int z) {
@@ -20,6 +20,11 @@ public final class RollbackBlockReference extends Block implements BlockValue {
         Block block = Objects.requireNonNull(world.getBlockAt(x, y, z));
         if (block instanceof RollbackBlockReference) throw new IllegalStateException("Block reference has no backing world view");
         return block;
+    }
+    @Override public boolean restoreBlockSnapshot(BlockData data, byte[] blockEntity, boolean force, boolean physics) {
+        if (!(view() instanceof RollbackBlockSnapshot.Target target))
+            throw new IllegalStateException("World cannot restore a block snapshot");
+        return target.restoreBlockSnapshot(data, blockEntity, force, physics);
     }
     @Override public World getWorld() { return world; }
     @Override public Location getLocation() { return new Location(world, x, y, z); }

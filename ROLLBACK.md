@@ -123,7 +123,7 @@ Tests cover round-trip alias preservation, foreign/replaced/disconnected identit
 and the actual BukkitMC player/offline wrapper entrypoints. Bukkit's world wrapper
 cache now replaces its cached entry when the native world instance changes, while
 leaving previously captured views untouched; a same-UUID world replacement therefore
-fails roster capture. Other native views, including block snapshots, still need
+fails roster capture. Other unsupported native views still need
 their own portable graph handling as part of production bootstrap assembly.
 
 Paper's graph value-view adapter now snapshots its exact native Location wrappers
@@ -2660,3 +2660,22 @@ fresh wrappers, private-world isolation, terrain mutation/rewind and return tran
 private graphs. Production bootstrap still needs to install these factories. Block
 snapshots and other unsupported native values remain separate transfer work; this
 change does not enable a live rollback match.
+
+### Portable block snapshots
+
+Placed Paper block-state wrappers and private terrain snapshots now project to
+`RollbackBlockSnapshot`. This saves detached block data and bounded block-entity NBT,
+with a rebound block reference. Update honors the force/type check and physics flag;
+private restoration changes saved block contents while retaining current environment
+values. Snapshot export does not read the current live block to reconstruct old contents.
+Exact native state strings survive typed facade cloning. Addon snapshot classes retain
+their ordinary graph handling rather than being flattened as loader wrappers.
+
+The native Paper chest test transfers a real saved chest after its source inventory
+changes, restores the original items into private terrain, and verifies aliases and
+source isolation. Common tests cover forced/non-forced updates, repeat restoration
+after rewind, and mutable data isolation. Paper live restoration reconstructs a native
+snapshot and uses the existing synchronization boundary, with replay/thread guards;
+actual live-server teardown restoration remains unverified. Unplaced native snapshots
+and Paper block entities with snapshotting disabled are explicitly rejected. Production
+bootstrap wiring and two-client duel validation remain required.

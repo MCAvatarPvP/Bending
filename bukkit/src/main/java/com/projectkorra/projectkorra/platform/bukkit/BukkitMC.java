@@ -255,6 +255,14 @@ public final class BukkitMC {
     }
 
     /** Capture-facing accessor for the exact native block view. */
+    public static org.bukkit.block.BlockState nativeBlockStateView(Object value) {
+        return value instanceof BlockStateView view ? view.value : null;
+    }
+
+    public static BlockState blockState(org.bukkit.block.BlockState value) {
+        return new BlockStateView(value);
+    }
+
     public static org.bukkit.block.Block nativeBlockView(Object value) {
         return value instanceof BlockView block ? block.value : null;
     }
@@ -1081,7 +1089,11 @@ public final class BukkitMC {
         }
     }
 
-    private static final class BlockView extends Block implements com.projectkorra.projectkorra.platform.mc.block.BlockValue {
+    private static final class BlockView extends Block implements com.projectkorra.projectkorra.platform.mc.block.BlockValue,
+            com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockSnapshot.Target {
+        @Override public boolean restoreBlockSnapshot(BlockData data, byte[] tile, boolean force, boolean physics) {
+            return com.projectkorra.projectkorra.prediction.rollback.PaperRollbackBlockSnapshots.restore(value, data, tile, force, physics);
+        }
         private final org.bukkit.block.Block value;
 
         private BlockView(org.bukkit.block.Block value) {
