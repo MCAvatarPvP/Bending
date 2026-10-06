@@ -102,6 +102,16 @@ public final class PaperPredictionServer extends PaperPredictionSnapshots {
         return rollbackLifecycle.reserve(players, stop);
     }
 
+    /** Prepare against the installed lifecycle listener; caller retains this handle before acquisition. */
+    public com.projectkorra.projectkorra.prediction.rollback.PaperRollbackLiveOwnership prepareRollbackOwnership(
+            java.util.Collection<net.minecraft.server.level.ServerPlayer> players,
+            com.projectkorra.projectkorra.prediction.rollback.RollbackLiveScheduler scheduler,
+            java.util.function.Predicate<com.projectkorra.projectkorra.prediction.rollback.RollbackLiveScheduler.Work> selectTasks,
+            int taskCapacity, Runnable stop) {
+        if (active != this) throw new IllegalStateException("Prediction server is not active");
+        return com.projectkorra.projectkorra.prediction.rollback.PaperRollbackLiveOwnership.prepare(
+                players, scheduler, selectTasks, taskCapacity, rollbackLifecycle, stop);
+    }
     public boolean supportsRollbackBootstrap(Set<UUID> players) { return active == this && rollbackBootstraps.supports(players); }
 
     /** Native preparation owns this handle before poll sends any snapshot or mutates client ownership. */

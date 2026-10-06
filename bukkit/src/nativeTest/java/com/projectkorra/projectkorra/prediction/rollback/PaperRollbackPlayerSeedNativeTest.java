@@ -715,6 +715,112 @@ class PaperRollbackPlayerSeedNativeTest {
         });
     }
 
+    @Test void coordinatedRosterKeepsTasksAndCommonOwnershipUntilNativeRestorationSucceeds() throws Exception {
+        onTickThread(() -> {
+            var configField = io.papermc.paper.configuration.GlobalConfiguration.class.getDeclaredField("instance");
+            configField.setAccessible(true); var previousConfig = configField.get(null);
+            var config = new io.papermc.paper.configuration.GlobalConfiguration();
+            config.misc = config.new Misc(); config.packetLimiter = config.new PacketLimiter(); configField.set(null, config);
+            var channels = new java.util.ArrayList<io.netty.channel.embedded.EmbeddedChannel>();
+            try {
+                for (boolean simulate : List.of(false, true)) {
+                    var scene = new Scene();
+                    var a = (ServerPlayer) scene.create().ownedPlayer();
+                    var b = (ServerPlayer) scene.create(new UUID(0, 452)).ownedPlayer();
+                    var worldField = net.minecraft.server.level.ServerLevel.class.getDeclaredField("entityTickList"); worldField.setAccessible(true);
+                    var ticks = new net.minecraft.world.level.entity.EntityTickList(); ticks.add(a); ticks.add(b); worldField.set(a.level(), ticks);
+                    var originals = new java.util.ArrayList<MaintenanceProbe>();
+                    for (var player : List.of(a, b)) {
+                        var original = nativeOwnershipConnection(player); originals.add(original);
+                        var channel = new io.netty.channel.embedded.EmbeddedChannel(); channels.add(channel); original.connection.channel = channel;
+                    }
+                    var backend = new RollbackScheduler(100, 100);
+                    var now = new java.util.concurrent.atomic.AtomicLong();
+                    var scheduler = new RollbackLiveScheduler(backend, now::get, callback -> callback);
+                    var platform = (com.projectkorra.projectkorra.platform.ProjectKorraPlatform) java.lang.reflect.Proxy.newProxyInstance(
+                            getClass().getClassLoader(), new Class<?>[]{com.projectkorra.projectkorra.platform.ProjectKorraPlatform.class},
+                            (proxy, method, args) -> { if (method.getName().equals("scheduler")) return scheduler; throw new UnsupportedOperationException(method.getName()); });
+                    try (var scope = com.projectkorra.projectkorra.platform.Platform.using(platform)) {
+                        var history = new java.util.ArrayList<String>();
+                        Runnable originalTask = () -> history.add("original");
+                        scheduler.runLater(originalTask, 1);
+                        scheduler.runLater(() -> history.add("outsider"), 1);
+                        var lifecycle = new PaperRollbackLifecycle(() -> true);
+                        var group = PaperRollbackLiveOwnership.prepare(List.of(a, b), scheduler,
+                                work -> work.callback() == originalTask, 8, lifecycle, () -> fail("Unexpected lifecycle stop"));
+                        assertFalse(RollbackLiveOwnership.blocks(a.getUUID()));
+                        group.acquire();
+                        assertTrue(RollbackLiveOwnership.blocks(a.getUUID())); assertTrue(RollbackLiveOwnership.blocks(b.getUUID()));
+                        assertThrows(IllegalStateException.class, group::capturedTasks);
+                        backend.advance(1); now.set(1);
+                        assertEquals(List.of("outsider"), history);
+                        var processor = new net.minecraft.network.PacketProcessor(Thread.currentThread());
+                        var queue = new java.util.ArrayDeque<Runnable>(); java.util.concurrent.Executor executor = queue::add;
+                        assertFalse(group.pollReady(processor, executor));
+                        channels.forEach(io.netty.channel.embedded.EmbeddedChannel::runPendingTasks);
+                        while (!queue.isEmpty()) queue.remove().run();
+                        assertTrue(group.pollReady(processor, executor)); group.requireReady();
+                        var captured = group.capturedTasks().bindings();
+                        var entry = captured.entries().getFirst();
+                        var outgoing = new RollbackTaskBindings(List.of(new RollbackTaskBindings.Entry(entry.handle().legacyId(),
+                                () -> history.add("outgoing"), 1, -1, null, 0, 0)), captured.nextId(), captured.idLimit());
+                        if (simulate) {
+                            group.beginSimulation();
+                            assertThrows(IllegalStateException.class, () -> group.abort(() -> fail("Stale startup restore")));
+                        } else assertThrows(IllegalStateException.class, () -> group.restoreAndRelease(outgoing, () -> fail("Not running")));
+                        java.util.function.Consumer<Runnable> restore = callback -> {
+                            if (simulate) group.restoreAndRelease(outgoing, callback); else group.abort(callback);
+                        };
+                        assertThrows(IllegalArgumentException.class, () -> restore.accept(() -> {
+                            assertTrue(RollbackLiveOwnership.blocks(a.getUUID()));
+                            originals.forEach(original -> assertNotSame(original, original.connection.getPacketListener()));
+                            throw new IllegalArgumentException("State restore failed");
+                        }));
+                        assertThrows(IllegalStateException.class, group::requireReady);
+                        backend.advance(2); now.set(2);
+                        assertEquals(List.of("outsider"), history);
+                        assertTrue(RollbackLiveOwnership.blocks(a.getUUID())); assertTrue(RollbackLiveOwnership.blocks(b.getUUID()));
+                        assertTrue(group.pollCleanup(processor, executor));
+                        restore.accept(() -> {
+                            assertTrue(RollbackLiveOwnership.blocks(a.getUUID()));
+                            originals.forEach(original -> assertNotSame(original, original.connection.getPacketListener()));
+                            history.add("restored");
+                        });
+                        assertFalse(RollbackLiveOwnership.blocks(a.getUUID())); assertFalse(RollbackLiveOwnership.blocks(b.getUUID()));
+                        originals.forEach(original -> assertSame(original, original.connection.getPacketListener()));
+                        assertSame(ticks, worldField.get(a.level()));
+                        lifecycle.close();
+                        restore.accept(() -> fail("Restoration repeated"));
+                        backend.advance(3); now.set(3);
+                        assertEquals(List.of("outsider", "restored", simulate ? "outgoing" : "original"), history);
+                        // Startup can fail after tasks freeze but before common/native acquisition.
+                        var blocker = RollbackLiveOwnership.prepare(java.util.Set.of(a.getUUID())); blocker.acquire();
+                        var partialEvents = new PaperRollbackLifecycle(() -> true);
+                        var partial = PaperRollbackLiveOwnership.prepare(List.of(a, b), scheduler, work -> false,
+                                8, partialEvents, () -> fail("Unexpected partial stop"));
+                        assertThrows(IllegalStateException.class, partial::acquire);
+                        partial.abort(() -> fail("Native state was never acquired"));
+                        blocker.requireCurrent();
+                        assertTrue(RollbackLiveOwnership.blocks(a.getUUID())); assertFalse(RollbackLiveOwnership.blocks(b.getUUID()));
+                        originals.forEach(original -> assertSame(original, original.connection.getPacketListener()));
+                        partialEvents.close(); blocker.restoreAndRelease(() -> { });
+
+                        // The installed lifecycle owner must stop the whole roster even before readiness.
+                        var stoppingEvents = new PaperRollbackLifecycle(() -> true);
+                        var pending = new PaperRollbackLiveOwnership[1];
+                        pending[0] = PaperRollbackLiveOwnership.prepare(List.of(a, b), scheduler, work -> false, 8,
+                                stoppingEvents, () -> pending[0].abort(() -> history.add("startup-aborted")));
+                        pending[0].acquire(); stoppingEvents.close();
+                        assertFalse(RollbackLiveOwnership.blocks(a.getUUID())); assertFalse(RollbackLiveOwnership.blocks(b.getUUID()));
+                        originals.forEach(original -> assertSame(original, original.connection.getPacketListener()));
+                        assertEquals("startup-aborted", history.getLast());
+                        assertThrows(IllegalStateException.class, pending[0]::beginSimulation);
+                    }
+                }
+                return null;
+            } finally { channels.forEach(io.netty.channel.embedded.EmbeddedChannel::finishAndReleaseAll); configField.set(null, previousConfig); }
+        });
+    }
     private static MaintenanceProbe nativeOwnershipConnection(ServerPlayer player) throws Exception {
         player.joining = true;
         new PaperRollbackPlayerFields.Field<Long>(ServerPlayer.class, "lastActionTime", long.class).set(player, 0L);

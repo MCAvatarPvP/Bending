@@ -55,6 +55,16 @@ implemented by the plugin and verified against the packaged Paper version.
 
 ### October 5, 2026 integration update
 
+The Paper live ownership coordinator now acquires lifecycle, scheduled callback,
+common gameplay and native player gates as one roster. It waits for every connection
+handoff before exposing captured tasks or allowing private simulation. Startup abort
+resumes original callbacks; once simulation starts, restoration requires outgoing
+bindings. Both paths stage callbacks until native restoration, common release and
+lifecycle release succeed. Native failures retain task/common ownership and expose
+packet-drain cleanup retry. Native fixture coverage includes outsiders, failed restore,
+retry, partial common acquisition failure and lifecycle shutdown before readiness.
+This coordinator does not yet assemble terrain capture, graph catalogs, client transfer
+or the complete production match bootstrap, and does not enable real rollback duels.
 Live scheduler restoration/replacement now accepts a synchronous whole-state commit.
 Native callback submissions are staged while dispatch remains gated; only a successful
 external commit activates callbacks and publishes replacement handles. Failed state
