@@ -140,6 +140,18 @@ world service installation and Fabric parity remain missing. Paper environment n
 exposes the native sky-darkness calculation from captured dimension attributes. The
 spatial integration test supplies it to block lighting and verifies night brightness,
 unchanged open-sky visibility and restoration to daytime; this adapter does not yet enable live duels.
+`FabricRollbackLighting` now uses the native client LightingProvider over detached
+ProtoChunks. It imports separate sky/block layers, propagates mutations with a captured
+horizontal halo, and restores copied chunk sections plus light arrays into a newly
+settled private engine before publishing it. Captured sections remain allocated even
+when all-air: vanilla empty-section extrusion otherwise replaces imported sky values.
+Its logical block rules participate in the checkpoint graph just like Paper's adapter.
+Native tests cover the same source/roof/cross-chunk/alternate-timeline cases as Paper,
+plus preservation of distinct imported layer values and graph-root restoration. The
+Fabric artifact builds. This is component coverage, not proof of complete lighting
+parity in arbitrary arenas; client spatial service installation and the complete duel
+bootstrap remain required.
+
 Live scheduler restoration/replacement now accepts a synchronous whole-state commit.
 Native callback submissions are staged while dispatch remains gated; only a successful
 external commit activates callbacks and publishes replacement handles. Failed state
