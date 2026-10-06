@@ -112,6 +112,14 @@ requires exact matching terrain bounds. Version 1 remains readable for legacy
 captures, but requireLight rejects absent lighting instead of inventing values.
 Private light propagation/replay after terrain changes remains unimplemented. Do not substitute the immutable seed for a
 dynamic light engine once blocks change.
+A native lighting feasibility test now runs Paper's actual BlockStarLightEngine and
+SkyStarLightEngine against detached ProtoChunk sections and a strict private Level
+query shell. Adding/removing glowstone propagates/retracts block light; adding/removing
+a roof reduces/restores sky light. No live world or server light queue is used. Native
+height section maxima are inclusive. Sky queries must use StarLight's reader because
+null/empty nibble sections can represent extruded sunlight; reading a nibble directly
+can incorrectly return zero. This proves the isolated native calls are usable, not
+that a production rewindable lighting adapter or Fabric parity is implemented.
 Live scheduler restoration/replacement now accepts a synchronous whole-state commit.
 Native callback submissions are staged while dispatch remains gated; only a successful
 external commit activates callbacks and publishes replacement handles. Failed state
