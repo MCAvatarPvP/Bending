@@ -34,7 +34,7 @@ public final class PaperRollbackCombatSeed {
             "lastDamageTime", "combatStartTime", "combatEndTime", "inCombat", "takingDamage");
 
     private final RollbackPlayerCombatData data;
-    private PaperRollbackCombatSeed(RollbackPlayerCombatData data) { this.data = Objects.requireNonNull(data); }
+    PaperRollbackCombatSeed(RollbackPlayerCombatData data) { this.data = Objects.requireNonNull(data); }
     public RollbackPlayerCombatData data() { return data; }
 
     @SuppressWarnings("unchecked")
@@ -101,7 +101,7 @@ public final class PaperRollbackCombatSeed {
             return new PaperRollbackCombatSeed(player).data;
         });
     }
-    private Runnable prepare(ServerPlayer target, Map<UUID, ServerPlayer> roster) {
+    Runnable prepare(ServerPlayer target, Map<UUID, ServerPlayer> roster) {
         if (!target.getUUID().equals(data.owner()) || roster.get(data.owner()) != target) throw new IllegalArgumentException("Combat import target is not in its roster");
         validate(roster.keySet(), target.registryAccess());
         var damage = data.sources().stream().map(source -> instantiate(source, target.registryAccess(), roster)).toList();

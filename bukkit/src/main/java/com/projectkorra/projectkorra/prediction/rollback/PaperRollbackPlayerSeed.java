@@ -127,16 +127,22 @@ public final class PaperRollbackPlayerSeed {
     /** Validate/decode the entire component before modifying the private, unstarted replica. */
     public static void applyValues(PaperRollbackNativePlayerState state, RollbackPlayerValues values) {
         requireCaptureThread();
+        state.use(nativePlayer -> {
+            if (!(nativePlayer instanceof ServerPlayer target)) throw new IllegalArgumentException("Player value target requires a private server player");
+            prepareValues(target, values).run();
+            return null;
+        });
+    }
+
+    static Runnable prepareValues(ServerPlayer target, RollbackPlayerValues values) {
         var remaining = new TreeMap<>(values.fields());
         Object[] entity = ENTITY.prepare("entity", remaining), living = LIVING.prepare("living", remaining), player = PLAYER.prepare("player", remaining),
                 server = SERVER.prepare("server", remaining), food = FOOD.prepare("food", remaining), walk = WALK.prepare("walk", remaining), health = HEALTH.prepare("health", remaining);
         if (!remaining.isEmpty()) throw new IllegalArgumentException("Unknown player value fields " + remaining.keySet());
-        state.use(nativePlayer -> {
-            if (!(nativePlayer instanceof ServerPlayer target)) throw new IllegalArgumentException("Player value target requires a private server player");
+        return () -> {
             ENTITY.apply(target, entity); LIVING.apply(target, living); PLAYER.apply(target, player); SERVER.apply(target, server);
             FOOD.apply(target.getFoodData(), food); WALK.apply(target.walkAnimation, walk); HEALTH.apply(target.getBukkitEntity(), health);
-            return null;
-        });
+        };
     }
 
     void validateRoster(PaperRollbackWorldAccess world, Set<UUID> roster) {

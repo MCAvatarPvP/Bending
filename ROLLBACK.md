@@ -49,6 +49,17 @@ state that actually determines those outcomes.
 
 ### October 5, 2026 integration update
 
+Paper now stages intrinsic roster components as one prepared commit: scalar values,
+tracked state, attributes/effects, inventory aliases/cooldowns, controls/contact caches,
+and combat references. Every participant is decoded before any writes, destination
+identities/world/connections are rechecked, and completed writes are not repeated on
+retry. The native test rejects malformed data for a later participant without touching
+earlier players, rejects a changed destination identity, verifies native state and
+cross-player references after commit, and checks idempotence without events/packets.
+This is a component commit, not complete live restoration: the loader must still hold
+native ownership, update spatial tracking, resynchronize clients, and restore world,
+RNG/services and bending state before releasing the entire roster.
+
 The combat runtime now exposes a detached export boundary at a settled replay tick.
 A loader can encode native bodies, terrain and bending state in one installed private
 scope, with the payload tagged by tick, confirmed tick and revision. Export rejects

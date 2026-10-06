@@ -72,6 +72,10 @@ public final class PaperRollbackPlayerVitals {
     private record NativeAttribute(RollbackPlayerVitals.Attribute value, Holder<Attribute> type, List<AttributeModifier> modifiers) { }
 
     static void applyTo(ServerPlayer player, RollbackPlayerVitals vitals) {
+        prepare(player, vitals).run();
+    }
+
+    static Runnable prepare(ServerPlayer player, RollbackPlayerVitals vitals) {
         Objects.requireNonNull(vitals);
         var expected = player.getEntityData().packAll();
         var tracked = new ArrayList<SynchedEntityData.DataValue<?>>();
@@ -100,21 +104,23 @@ public final class PaperRollbackPlayerVitals {
                     AttributeModifier.Operation.valueOf(modifier.operation().name()))).toList();
             attributes.add(new NativeAttribute(value, type, modifiers));
         }
-        // Everything above is detached and validated. Below only owned native state is initialized.
-        var target = player.getAttributes();
-        ATTRIBUTES.get(target).clear(); target.getAttributesToSync().clear(); target.getAttributesToUpdate().clear();
-        for (var entry : attributes) {
-            if (!target.hasAttribute(entry.type())) target.registerAttribute(entry.type());
-            var instance = target.getInstance(entry.type());
-            instance.removeModifiers(); instance.setBaseValue(entry.value().base());
-            for (int i = 0; i < entry.modifiers().size(); i++) {
-                if (entry.value().modifiers().get(i).permanent()) instance.addPermanentModifier(entry.modifiers().get(i));
-                else instance.addTransientModifier(entry.modifiers().get(i));
+        return () -> {
+            // Everything above is detached and validated. Below only owned native state is initialized.
+            var target = player.getAttributes();
+            ATTRIBUTES.get(target).clear(); target.getAttributesToSync().clear(); target.getAttributesToUpdate().clear();
+            for (var entry : attributes) {
+                if (!target.hasAttribute(entry.type())) target.registerAttribute(entry.type());
+                var instance = target.getInstance(entry.type());
+                instance.removeModifiers(); instance.setBaseValue(entry.value().base());
+                for (int i = 0; i < entry.modifiers().size(); i++) {
+                    if (entry.value().modifiers().get(i).permanent()) instance.addPermanentModifier(entry.modifiers().get(i));
+                    else instance.addTransientModifier(entry.modifiers().get(i));
+                }
             }
-        }
-        player.getActiveEffectsMap().clear();
-        for (var effect : effects) player.getActiveEffectsMap().put(effect.getEffect(), effect);
-        for (var value : tracked) assign(player.getEntityData(), value);
+            player.getActiveEffectsMap().clear();
+            for (var effect : effects) player.getActiveEffectsMap().put(effect.getEffect(), effect);
+            for (var value : tracked) assign(player.getEntityData(), value);
+        };
     }
 
     private static <T> SynchedEntityData.DataValue<T> readTracked(RegistryFriendlyByteBuf buffer, SynchedEntityData.DataValue<T> schema) {

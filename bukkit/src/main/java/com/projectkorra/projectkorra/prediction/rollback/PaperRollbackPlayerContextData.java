@@ -48,6 +48,10 @@ public final class PaperRollbackPlayerContextData {
     }
     @SuppressWarnings("unchecked")
     static void applyTo(ServerPlayer player, RollbackPlayerContext context, long initialNanos) {
+        prepare(player, context, initialNanos).run();
+    }
+
+    static Runnable prepare(ServerPlayer player, RollbackPlayerContext context, long initialNanos) {
         var clocks = context.rebase(initialNanos);
         var fluids = new HashMap<TagKey<Fluid>, Double>(); var eyes = new HashSet<TagKey<Fluid>>();
         context.fluidHeights().forEach((key, value) -> fluids.put(TagKey.create(Registries.FLUID, Identifier.parse(key)), value));
@@ -56,11 +60,13 @@ public final class PaperRollbackPlayerContextData {
         var i = context.input(); var input = new Input(i.forward(), i.backward(), i.left(), i.right(), i.jump(), i.shift(), i.sprint());
         var m = context.clientMovement(); var movement = new Vec3(m.x(), m.y(), m.z());
         var pistons = PISTONS.get(player); if (pistons.length != 3) throw new IllegalStateException("Native piston schema changed");
-        LAST_JUMP.set(player, clocks.lastJump()); EAT_START.set(player, clocks.eatingStart());
-        player.getAbilities().apply(abilities); player.setLastClientInput(input); player.setKnownMovement(movement);
-        player.getTags().clear(); player.getTags().addAll(context.tags());
-        player.collidableExemptions.clear(); player.collidableExemptions.addAll(context.collisionExemptions());
-        FLUIDS.get(player).clear(); FLUIDS.get(player).putAll(fluids); EYES.get(player).clear(); EYES.get(player).addAll(eyes);
-        pistons[0] = context.pistons().x(); pistons[1] = context.pistons().y(); pistons[2] = context.pistons().z();
+        return () -> {
+            LAST_JUMP.set(player, clocks.lastJump()); EAT_START.set(player, clocks.eatingStart());
+            player.getAbilities().apply(abilities); player.setLastClientInput(input); player.setKnownMovement(movement);
+            player.getTags().clear(); player.getTags().addAll(context.tags());
+            player.collidableExemptions.clear(); player.collidableExemptions.addAll(context.collisionExemptions());
+            FLUIDS.get(player).clear(); FLUIDS.get(player).putAll(fluids); EYES.get(player).clear(); EYES.get(player).addAll(eyes);
+            pistons[0] = context.pistons().x(); pistons[1] = context.pistons().y(); pistons[2] = context.pistons().z();
+        };
     }
 }

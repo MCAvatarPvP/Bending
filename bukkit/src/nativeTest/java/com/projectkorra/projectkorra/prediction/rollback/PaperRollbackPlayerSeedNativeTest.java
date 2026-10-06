@@ -350,6 +350,57 @@ class PaperRollbackPlayerSeedNativeTest {
         });
     }
 
+    @Test void rosterComponentsValidateAllPlayersBeforeWritesAndCommitOnlyOnce() throws Exception {
+        onTickThread(() -> {
+            var source = new Scene();
+            var first = (ServerPlayer) source.create().ownedPlayer();
+            var second = (ServerPlayer) source.create(new UUID(0, 452)).ownedPlayer();
+            configure(first); configure(second);
+            first.lastHurtByMob = net.minecraft.world.entity.EntityReference.of(second);
+            var firstSeed = PaperRollbackPlayerSeed.capture(first, EPOCH).portable(45);
+            var secondSeed = PaperRollbackPlayerSeed.capture(second, EPOCH).portable(46);
+            var outgoing = new RollbackRosterData(first.level().getGameTime(), java.util.Map.of(first.getUUID(), firstSeed, second.getUUID(), secondSeed));
+            var target = new Scene();
+            var targetA = (ServerPlayer) target.create().ownedPlayer();
+            var targetB = (ServerPlayer) target.create(new UUID(0, 452)).ownedPlayer();
+            targetA.setId(first.getId()); targetB.setId(second.getId());
+            targetA.setHealth(3); targetB.setHealth(4);
+            var roster = java.util.Map.of(targetA.getUUID(), targetA, targetB.getUUID(), targetB);
+            var beforeA = PaperRollbackPlayerSeed.capture(targetA, EPOCH).portable(45);
+            var beforeB = PaperRollbackPlayerSeed.capture(targetB, EPOCH).portable(46);
+            var brokenItems = new java.util.ArrayList<>(secondSeed.items().items());
+            brokenItems.set(0, new RollbackPlayerItems.Item(new com.projectkorra.projectkorra.prediction.rollback.world.RollbackItemData(new byte[]{99}), 0));
+            var items = secondSeed.items();
+            var invalidItems = new RollbackPlayerItems(brokenItems, items.inventory(), items.enderChest(), items.selected(), items.maximumStack(),
+                    items.useItem(), items.lastItem(), items.spinItem(), items.lastEquipment(), items.cooldownTick(), items.cooldowns());
+            var broken = new RollbackRosterData.Player(secondSeed.identity(), secondSeed.randomSeed(), secondSeed.values(), secondSeed.vitals(),
+                    invalidItems, secondSeed.context(), secondSeed.combat());
+            assertThrows(RuntimeException.class, () -> PaperRollbackRosterComponents.prepare(roster,
+                    new RollbackRosterData(outgoing.worldTime(), java.util.Map.of(first.getUUID(), firstSeed, second.getUUID(), broken)), EPOCH));
+            assertArrayEquals(beforeA.vitals().encode(), PaperRollbackPlayerVitals.capture(targetA).encode());
+            assertArrayEquals(beforeB.vitals().encode(), PaperRollbackPlayerVitals.capture(targetB).encode());
+            var prepared = PaperRollbackRosterComponents.prepare(roster, outgoing, EPOCH);
+            assertEquals(3, targetA.getHealth()); assertEquals(4, targetB.getHealth());
+            targetB.setId(second.getId() + 1);
+            assertThrows(IllegalStateException.class, prepared::commit);
+            assertEquals(3, targetA.getHealth());
+            targetB.setId(second.getId());
+            int events = target.combat.events.size(), outputs = target.combat.outputs.size();
+            prepared.commit();
+            assertEquals(17, targetA.getHealth()); assertEquals(17, targetB.getHealth());
+            assertArrayEquals(firstSeed.values().encode(), PaperRollbackPlayerSeed.capture(targetA, EPOCH).values().encode());
+            assertArrayEquals(firstSeed.items().encode(), PaperRollbackPlayerItems.capture(targetA).encode());
+            assertArrayEquals(firstSeed.context().encode(), PaperRollbackPlayerContextData.capture(targetA, EPOCH).encode());
+            assertSame(targetB, targetA.lastHurtByMob.getEntity(targetA.level(), LivingEntity.class));
+            assertEquals(events, target.combat.events.size()); assertEquals(outputs, target.combat.outputs.size());
+            targetA.setHealth(9);
+            prepared.commit();
+            assertEquals(9, targetA.getHealth(), "Retry must not replay an already completed restoration");
+            assertEquals(17, first.getHealth());
+            return null;
+        });
+    }
+
     private static void configure(ServerPlayer player) {
         player.setPos(.5, 1, .5); player.setOnGround(true); player.setYRot(20); player.setXRot(-12);
         player.setDeltaMovement(.05, 0, .08); player.setHealth(17);
@@ -372,8 +423,9 @@ class PaperRollbackPlayerSeedNativeTest {
         final PaperRollbackWorldAccessNativeTest.Queries queries = new PaperRollbackWorldAccessNativeTest.Queries(new RollbackBlockStore.Bounds(-5, -4, -5, 12, 12, 16));
         final PaperRollbackWorldAccess world = new PaperRollbackWorldAccess(queries, combat, 4);
         Scene() { for (int x = -3; x < 8; x++) for (int z = -3; z < 10; z++) queries.block(x, 0, z, Material.STONE, "minecraft:stone"); }
-        PaperRollbackNativePlayerState create() {
-            var state = PaperRollbackNativePlayerState.serverPlayer(world, new GameProfile(new UUID(0, 451), "imported"),
+        PaperRollbackNativePlayerState create() { return create(new UUID(0, 451)); }
+        PaperRollbackNativePlayerState create(UUID id) {
+            var state = PaperRollbackNativePlayerState.serverPlayer(world, new GameProfile(id, "imported"),
                     ClientInformation.createDefault(), GameType.SURVIVAL, 45, 300_000);
             state.ownedPlayer().valid = true;
             return state;

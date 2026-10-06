@@ -45,6 +45,10 @@ public final class PaperRollbackPlayerItems {
     }
     @SuppressWarnings("unchecked")
     static void applyTo(ServerPlayer player, RollbackPlayerItems seed) {
+        prepare(player, seed).run();
+    }
+
+    static Runnable prepare(ServerPlayer player, RollbackPlayerItems seed) {
         if (player.getInventory().getContainerSize() != seed.inventory().size() || player.getEnderChestInventory().getContainerSize() != seed.enderChest().size()) {
             throw new IllegalArgumentException("Native inventory layout changed");
         }
@@ -54,12 +58,14 @@ public final class PaperRollbackPlayerItems {
         seed.lastEquipment().forEach((key, index) -> equipment.put(EquipmentSlot.valueOf(key), items.get(index)));
         var cooldowns = new HashMap<Identifier, ItemCooldowns.CooldownInstance>();
         seed.cooldowns().forEach((key, value) -> cooldowns.put(Identifier.parse(key), new ItemCooldowns.CooldownInstance(value.startTick(), value.endTick())));
-        for (int slot = 0; slot < seed.inventory().size(); slot++) player.getInventory().setItem(slot, items.get(seed.inventory().get(slot)));
-        for (int slot = 0; slot < seed.enderChest().size(); slot++) player.getEnderChestInventory().setItem(slot, items.get(seed.enderChest().get(slot)));
-        player.getInventory().setSelectedSlot(seed.selected()); player.getInventory().setMaxStackSize(seed.maximumStack());
-        USE.set(player, items.get(seed.useItem())); LAST.set(player, items.get(seed.lastItem())); SPIN.set(player, seed.spinItem() == -1 ? null : items.get(seed.spinItem()));
-        EQUIPMENT.get(player).clear(); EQUIPMENT.get(player).putAll(equipment);
-        player.getCooldowns().cooldowns.clear(); player.getCooldowns().cooldowns.putAll(cooldowns); player.getCooldowns().tickCount = seed.cooldownTick();
+        return () -> {
+            for (int slot = 0; slot < seed.inventory().size(); slot++) player.getInventory().setItem(slot, items.get(seed.inventory().get(slot)));
+            for (int slot = 0; slot < seed.enderChest().size(); slot++) player.getEnderChestInventory().setItem(slot, items.get(seed.enderChest().get(slot)));
+            player.getInventory().setSelectedSlot(seed.selected()); player.getInventory().setMaxStackSize(seed.maximumStack());
+            USE.set(player, items.get(seed.useItem())); LAST.set(player, items.get(seed.lastItem())); SPIN.set(player, seed.spinItem() == -1 ? null : items.get(seed.spinItem()));
+            EQUIPMENT.get(player).clear(); EQUIPMENT.get(player).putAll(equipment);
+            player.getCooldowns().cooldowns.clear(); player.getCooldowns().cooldowns.putAll(cooldowns); player.getCooldowns().tickCount = seed.cooldownTick();
+        };
     }
 
     private static final class Items {
