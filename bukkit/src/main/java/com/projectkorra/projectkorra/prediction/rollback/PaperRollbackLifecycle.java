@@ -2,8 +2,7 @@ package com.projectkorra.projectkorra.prediction.rollback;
 
 import org.bukkit.Bukkit;
 import org.bukkit.event.*;
-import org.bukkit.event.entity.EntityMountEvent;
-import org.bukkit.event.entity.EntityDismountEvent;
+import org.bukkit.event.entity.*;
 import org.bukkit.event.player.*;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -33,8 +32,19 @@ public final class PaperRollbackLifecycle implements Listener, AutoCloseable {
     public final class Lease {
         private final Set<UUID> roster;
         private final Runnable stop;
-        private boolean stopping, released;
+        private boolean stopping, released, nativeEffectsSuspended;
         private Lease(Set<UUID> roster, Runnable stop) { this.roster = roster; this.stop = stop; }
+        /**
+         * Arm after the native packet/tick handoff, before capture. During private
+         * simulation, ordinary live damage/status events must not apply a second
+         * copy to the original body. Releasing the lease restores normal events.
+         */
+        public void suspendNativeEffects() {
+            boundary();
+            if (released || stopping || closing || roster.stream().anyMatch(player -> owners.get(player) != this))
+                throw new IllegalStateException("Lifecycle roster cannot suspend native effects");
+            nativeEffectsSuspended = true;
+        }
         /** Call only after native/common/terrain restoration and release have succeeded. */
         public void release() {
             boundary();
@@ -64,6 +74,24 @@ public final class PaperRollbackLifecycle implements Listener, AutoCloseable {
         for (UUID player : players) { var lease = owners.get(player); if (lease != null) selected.add(lease); }
         for (var lease : selected) lease.stop();
     }
+    private void suppressNativeEffect(Cancellable event, UUID player) {
+        if (RollbackDomain.active() || RollbackClock.active()) return;
+        boundary();
+        var lease = owners.get(player);
+        if (lease != null && lease.nativeEffectsSuspended) event.setCancelled(true);
+    }
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void damage(EntityDamageEvent event) { suppressNativeEffect(event, event.getEntity().getUniqueId()); }
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void regainHealth(EntityRegainHealthEvent event) { suppressNativeEffect(event, event.getEntity().getUniqueId()); }
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void potionEffect(EntityPotionEffectEvent event) { suppressNativeEffect(event, event.getEntity().getUniqueId()); }
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void combust(EntityCombustEvent event) { suppressNativeEffect(event, event.getEntity().getUniqueId()); }
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void food(FoodLevelChangeEvent event) { suppressNativeEffect(event, event.getEntity().getUniqueId()); }
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void air(EntityAirChangeEvent event) { suppressNativeEffect(event, event.getEntity().getUniqueId()); }
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void command(PlayerCommandPreprocessEvent event) { before(event, event.getPlayer().getUniqueId()); }
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
@@ -85,7 +113,7 @@ public final class PaperRollbackLifecycle implements Listener, AutoCloseable {
         Throwable failure = null;
         for (var lease : new LinkedHashSet<>(owners.values())) {
             try { lease.stop(); }
-            catch (RuntimeException | Error problem) { if (failure == null) failure = problem; else failure.addSuppressed(problem); }
+            catch (RuntimeException | Error problem) { if (failure == null) failure = problem; else if (failure != problem) failure.addSuppressed(problem); }
         }
         if (failure instanceof RuntimeException runtime) throw runtime;
         if (failure instanceof Error error) throw error;

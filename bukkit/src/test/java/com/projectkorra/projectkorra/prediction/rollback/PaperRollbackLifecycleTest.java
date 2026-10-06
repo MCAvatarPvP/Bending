@@ -64,6 +64,44 @@ class PaperRollbackLifecycleTest {
         assertFalse(mount.isCancelled()); assertEquals(List.of("first", "second"), stopped);
         lifecycle.close();
     }
+    @Test void nativeEffectsAreSuppressedOnlyAfterHandoffAndNeverInsideReplay() {
+        var lifecycle = new PaperRollbackLifecycle(() -> true);
+        var a = player(UUID.randomUUID()); var b = player(UUID.randomUUID()); var outsider = player(UUID.randomUUID());
+        var lease = lifecycle.reserve(Set.of(a.getUniqueId(), b.getUniqueId()), () -> fail("Effects must not stop the duel"));
+        var before = new org.bukkit.event.entity.EntityRegainHealthEvent(a, 3, org.bukkit.event.entity.EntityRegainHealthEvent.RegainReason.CUSTOM);
+        lifecycle.regainHealth(before); assertFalse(before.isCancelled());
+        lease.suspendNativeEffects();
+        var damageSource = (org.bukkit.damage.DamageSource) Proxy.newProxyInstance(Player.class.getClassLoader(),
+                new Class<?>[]{org.bukkit.damage.DamageSource.class}, (proxy, method, args) -> { throw new UnsupportedOperationException(method.getName()); });
+        for (var participant : List.of(a, b)) {
+            var damage = new org.bukkit.event.entity.EntityDamageEvent(participant,
+                    org.bukkit.event.entity.EntityDamageEvent.DamageCause.FALL, damageSource, 4);
+            lifecycle.damage(damage); assertTrue(damage.isCancelled()); assertEquals(4, damage.getDamage());
+            var potion = new org.bukkit.event.entity.EntityPotionEffectEvent(participant, null, null,
+                    org.bukkit.event.entity.EntityPotionEffectEvent.Cause.PLUGIN,
+                    org.bukkit.event.entity.EntityPotionEffectEvent.Action.CLEARED, false);
+            lifecycle.potionEffect(potion); assertTrue(potion.isCancelled());
+            var healing = new org.bukkit.event.entity.EntityRegainHealthEvent(participant, 3, org.bukkit.event.entity.EntityRegainHealthEvent.RegainReason.CUSTOM);
+            lifecycle.regainHealth(healing); assertTrue(healing.isCancelled());
+            var fire = new org.bukkit.event.entity.EntityCombustEvent(participant, 4F);
+            lifecycle.combust(fire); assertTrue(fire.isCancelled());
+            var food = new org.bukkit.event.entity.FoodLevelChangeEvent(participant, 10, null);
+            lifecycle.food(food); assertTrue(food.isCancelled());
+            var air = new org.bukkit.event.entity.EntityAirChangeEvent(participant, 20);
+            lifecycle.air(air); assertTrue(air.isCancelled());
+        }
+        var outsiderHealing = new org.bukkit.event.entity.EntityRegainHealthEvent(outsider, 3, org.bukkit.event.entity.EntityRegainHealthEvent.RegainReason.CUSTOM);
+        lifecycle.regainHealth(outsiderHealing); assertFalse(outsiderHealing.isCancelled());
+        var replayHealing = new org.bukkit.event.entity.EntityRegainHealthEvent(a, 3, org.bukkit.event.entity.EntityRegainHealthEvent.RegainReason.CUSTOM);
+        try (var clock = RollbackClock.at(1, 1, 1, 1)) { lifecycle.regainHealth(replayHealing); }
+        assertFalse(replayHealing.isCancelled());
+        lease.release();
+        var after = new org.bukkit.event.entity.EntityRegainHealthEvent(b, 3, org.bukkit.event.entity.EntityRegainHealthEvent.RegainReason.CUSTOM);
+        lifecycle.regainHealth(after); assertFalse(after.isCancelled());
+        assertThrows(IllegalStateException.class, lease::suspendNativeEffects);
+        lifecycle.close();
+    }
+
     @Test void shutdownAttemptsEveryDuelAndRetainsFailedOwnerForRetry() {
         var lifecycle = new PaperRollbackLifecycle(() -> true);
         var first = new AtomicReference<PaperRollbackLifecycle.Lease>(); var second = new AtomicReference<PaperRollbackLifecycle.Lease>();

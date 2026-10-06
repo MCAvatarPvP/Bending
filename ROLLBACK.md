@@ -65,8 +65,15 @@ private simulation do not trigger teardown. Tests cover whole-roster release,
 outside players, cancelled mutation, two affected duels, replay bypass and failed
 shutdown retry. The production bootstrap still must reserve this listener and
 release its reservation only after native/common/terrain restoration succeeds.
-Native death/damage, asynchronous plugin mutations and live listener integration
-remain to be completed and verified; installing the empty listener enables no duels.
+After native handoff, the lifecycle lease can suspend live native effects for its
+whole roster: damage, healing, potion changes, combustion, food and air events are
+cancelled on the original bodies. Reservation alone does not suppress effects,
+private simulation bypasses this guard, and release restores ordinary events.
+Tests exercise each event family, both roster members, outsiders, replay and release.
+The production bootstrap must arm this guard before state capture. Native mutations
+that bypass events (including direct velocity/health setters), death fallback and
+live listener integration remain to be completed and verified; installing the empty
+listener enables no duels.
 
 `PaperRollbackNativeOwnership` now composes the world tick gate and every roster
 connection gate behind one preparation/cleanup owner. Acquisition failures retain
