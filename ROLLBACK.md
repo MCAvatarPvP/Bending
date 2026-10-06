@@ -17,6 +17,12 @@ for the Neptune runtime. Existing scoreboard adapter experiments below do not ex
 scope. Focus startup work on movement, abilities, collisions, damage, knockback and the
 state that actually determines those outcomes.
 
+## Server compatibility
+
+The user requires stock Paper with plugins only. A custom Paper patch or mandatory
+server fork is not an acceptable integration dependency. Native ownership must be
+implemented by the plugin and verified against the packaged Paper version.
+
 ## Completion requirements
 
 - Capture and restore all causally relevant simulation state, including mutable ability
@@ -48,6 +54,17 @@ state that actually determines those outcomes.
 ## Current foundation
 
 ### October 5, 2026 integration update
+
+Native ownership audit: the local Paper development bundle calls `ServerPlayer.tick`
+from the world's entity tick list and `ServerPlayer.doTick` from
+`ServerGamePacketListenerImpl.tickPlayer`. Client-load state gates movement and some
+damage but does not suspend these ticks. Freezing only inputs, cancelling movement,
+or toggling client-load state is insufficient. Paper's `EntityTickList` supports
+individual removal/reinsertion, but connection tick interception still needs an
+implementation preserving keepalive, chat, disconnect and protocol transitions.
+Any listener handoff must account for already queued packets and restore original
+listener identity; it must not drop normal connection handling or freeze outsiders.
+No native freeze implementation has been enabled from this audit.
 
 Paper now stages intrinsic roster components as one prepared commit: scalar values,
 tracked state, attributes/effects, inventory aliases/cooldowns, controls/contact caches,
