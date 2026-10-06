@@ -335,6 +335,12 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         if (combat == null) throw new IllegalStateException("Native combat services were not supplied");
         combat.tickPlayerBody(player);
     }
+    void startItemUse(net.minecraft.world.entity.player.Player player, boolean offHand) {
+        checkThread();
+        if (combat == null || !ownsPlayer(player) || player.level() != world)
+            throw new IllegalArgumentException("Item use requires an owned combat player");
+        combat.startItemUse(player, offHand);
+    }
     boolean selectSlot(net.minecraft.world.entity.player.Player player, int slot, boolean cancelled) {
         checkThread();
         if (combat == null || !ownsPlayer(player) || player.level() != world)

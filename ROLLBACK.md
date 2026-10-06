@@ -3003,3 +3003,19 @@ relative hit coordinates, and independent initial block/item cancellation. The t
 run with Bukkit.getServer() null, so success cannot come from a live global dispatcher.
 This supplies the interaction-event boundary needed by native item use; it does not
 yet install the complete use-item action, inventory resynchronization, or live runtime.
+
+
+### Private native item-use start timing
+
+Paper's native startUsingItem overloads now participate in the copied combat method
+graph. Their System.nanoTime call resolves to RollbackClock.nanos, so accepted item
+use cannot inject a wall-clock timestamp into replay through this entry. An owned
+native-player start operation requires simulation time and retains native hand/item
+aliasing, duration and no-op behavior. It is a transition for an already accepted use,
+not a replacement for ItemStack.use or the interaction event/cooldown policy.
+
+Native tests cover both hands, exact simulated start timestamps across rewind,
+use-item alias identity, duration/count, rejection without a simulation clock, empty
+hands, and attempting another nonempty hand while already using an item. Native item
+selection/dispatch, completion/release callbacks and cancellation resynchronization
+still need the remaining production action integration.

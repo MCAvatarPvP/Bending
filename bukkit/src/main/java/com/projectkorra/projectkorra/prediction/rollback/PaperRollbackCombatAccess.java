@@ -63,7 +63,7 @@ public final class PaperRollbackCombatAccess {
     private final MethodHandle addEffect, removeEffect, setAir, setSwimming, movementStep, playerBodyTick;
     private final MethodHandle serverTick, serverBodyTick, serverJump;
     private final MethodHandle tryGlide, stopGlide;
-    private final MethodHandle stopItemUse, equipmentChanges, playerImmobile, serverImmobile;
+    private final MethodHandle startItemUse, stopItemUse, equipmentChanges, playerImmobile, serverImmobile;
     private final GlobalConfiguration globalConfiguration;
     private final WorldConfiguration worldConfiguration;
     private final PaperRollbackNativeEvents events;
@@ -89,7 +89,7 @@ public final class PaperRollbackCombatAccess {
         world.scoreboards().bind(builder, events.server());
         new PaperRollbackStatusEffects(registries).bind(builder);
         Set<String> livingBodies = Set.of("hurtServer", "handleEntityDamage", "actuallyHurt", "knockback", "hurtArmor", "hurtHelmet", "doHurtEquipment",
-                "applyItemBlocking", "blockingItemEffects", "blockUsingItem", "blockedByItem", "stopUsingItem",
+                "applyItemBlocking", "blockingItemEffects", "blockUsingItem", "blockedByItem", "startUsingItem", "stopUsingItem",
                 "checkTotemDeathProtection", "addEffect", "removeEffect", "removeEffectNoUpdate", "removeAllEffects",
                 "aiStep", "travel", "travelFallFlying", "handleFallFlyingCollisions", "updateFallFlying", "stopFallFlying", "pushEntities", "isImmobile", "jumpFromGround",
                 "tick", "baseTick", "tickEffects", "detectEquipmentUpdates", "collectEquipmentChanges", "onBelowWorld", "heal");
@@ -176,6 +176,7 @@ public final class PaperRollbackCombatAccess {
             var copied = builder.build();
             playerImmobile = copied.get(Player.class.getDeclaredMethod("isImmobile"));
             serverImmobile = copied.get(ServerPlayer.class.getDeclaredMethod("isImmobile"));
+            startItemUse = copied.get(LivingEntity.class.getDeclaredMethod("startUsingItem", net.minecraft.world.InteractionHand.class));
             stopItemUse = copied.get(stopUse); equipmentChanges = copied.get(equipment);
             damage = copied.get(entry); serverDamage = copied.get(serverEntry); awardStatistic = copied.get(award); resetStatistic = copied.get(reset);
             addEffect = copied.get(add); removeEffect = copied.get(remove); setAir = copied.get(air);
@@ -327,6 +328,15 @@ public final class PaperRollbackCombatAccess {
         try { playerBodyTick.invokeExact(player); }
         catch (RuntimeException | Error failure) { throw failure; }
         catch (Throwable failure) { throw new IllegalStateException("Private native player body tick failed", failure); }
+    }
+    /** Native item implementations enter this transition only after their interaction policy accepts use. */
+    void startItemUse(Player player, boolean offHand) {
+        ownedId(player);
+        if (!RollbackClock.active()) throw new IllegalStateException("Item use requires simulation time");
+        var hand = offHand ? net.minecraft.world.InteractionHand.OFF_HAND : net.minecraft.world.InteractionHand.MAIN_HAND;
+        try { startItemUse.invokeExact((LivingEntity) player, hand); }
+        catch (RuntimeException | Error failure) { throw failure; }
+        catch (Throwable failure) { throw new IllegalStateException("Private native item-use start failed", failure); }
     }
     boolean selectSlot(Player player, int slot, boolean cancelled) {
         ownedId(player);

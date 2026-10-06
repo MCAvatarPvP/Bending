@@ -48,6 +48,46 @@ class PaperRollbackDamageNativeTest {
         }
     }
 
+    @Test void itemUseStartUsesSimulationTimeAndRewindsBothHandsWithoutRefreshingActiveUse() throws Exception {
+        onTickThread(() -> {
+            var start = net.minecraft.world.entity.LivingEntity.class.getDeclaredField("eatStartTime");
+            start.setAccessible(true);
+            for (boolean offHand : new boolean[]{false, true}) {
+                var scene = new Scene();
+                var hand = offHand ? net.minecraft.world.InteractionHand.OFF_HAND : net.minecraft.world.InteractionHand.MAIN_HAND;
+                var item = new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.APPLE, 3);
+                scene.target.setItemInHand(hand, item);
+                scene.target.setItemInHand(offHand ? net.minecraft.world.InteractionHand.MAIN_HAND : net.minecraft.world.InteractionHand.OFF_HAND,
+                        new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.SHIELD));
+                assertThrows(IllegalStateException.class, () -> scene.targetState.startItemUse(offHand));
+                assertFalse(scene.target.isUsingItem());
+                var saved = new RollbackStateGraph(value -> false, field -> true, 300_000)
+                        .capture(List.of(scene.targetState), List.of());
+                for (int replay = 0; replay < 2; replay++) {
+                    try (var clock = RollbackClock.at(1000, 2000, 3, 50_000_000)) {
+                        scene.targetState.startItemUse(offHand);
+                        assertEquals(RollbackClock.nanos(), start.getLong(scene.target));
+                        assertTrue(scene.target.isUsingItem()); assertEquals(hand, scene.target.getUsedItemHand());
+                        assertSame(scene.target.getItemInHand(hand), scene.target.getUseItem());
+                        assertEquals(3, scene.target.getUseItem().getCount());
+                        assertEquals(item.getUseDuration(scene.target), scene.target.getUseItemRemainingTicks());
+                    }
+                    try (var clock = RollbackClock.at(1000, 2000, 4, 50_000_000)) {
+                        scene.targetState.startItemUse(!offHand);
+                        assertEquals(150_002_000L, start.getLong(scene.target));
+                        assertEquals(hand, scene.target.getUsedItemHand());
+                    }
+                    saved.restore(); assertFalse(scene.target.isUsingItem());
+                }
+                scene.target.setItemInHand(hand, net.minecraft.world.item.ItemStack.EMPTY);
+                try (var clock = RollbackClock.at(1000, 2000, 3, 50_000_000)) {
+                    scene.targetState.startItemUse(offHand); assertFalse(scene.target.isUsingItem());
+                }
+            }
+            return null;
+        });
+    }
+
     @Test void hotbarSelectionCancelsAndRewindsNativeItemUseAndEquipment() throws Exception {
         onTickThread(() -> {
             var scene = new Scene();
