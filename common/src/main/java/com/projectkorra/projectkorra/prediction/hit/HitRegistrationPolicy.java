@@ -47,7 +47,8 @@ public enum HitRegistrationPolicy {
      */
     public static HitRegistrationPolicy resolve(final Class<?> abilityType,
                                                 final Element element) {
-        // Avatar is an explicit non-reactive exception and must win first.
+        if (RollbackDomain.active()) return SIMULATION_CURRENT;
+        // Outside rollback, retain the existing Avatar contact policy.
         if ((abilityType != null && AvatarAbility.class.isAssignableFrom(abilityType))
                 || element == Element.AVATAR) {
             return REWIND_ASSISTED;

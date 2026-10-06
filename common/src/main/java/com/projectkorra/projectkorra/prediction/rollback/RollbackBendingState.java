@@ -121,10 +121,12 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
             // Distinct snapshot maps retain outgoing values while aliases to the cache maps rebind live.
             updates.add(List.of(target, new WeakHashMap<>(source.getInitialValues()), new WeakHashMap<>(source.getCurrentModifications())));
         }
-        var combined = new ArrayList<Object>(roots); combined.add(updates);
+        var managers = initial.managers.restorationSources(expected.keySet(),
+                (source, target) -> projections.put(source, new RollbackStateTransfer.Replacement(target)));
+        var combined = new ArrayList<Object>(roots); combined.add(updates); combined.add(managers.roots());
         var rebound = codec.rebind(combined, projections::get);
         return new Restoration(fromRoots(expected.keySet(), rebound.subList(0, roots.size()), expected),
-                definitions, (List<?>) rebound.getLast());
+                definitions, (List<?>) rebound.get(roots.size()), managers.prepare((List<?>) rebound.getLast()));
     }
 
     /** Detached restored graph. Its owner must commit all services before releasing gameplay gates. */
@@ -133,7 +135,9 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
         private final List<AttributeCache> definitions;
         private final List<?> attributeUpdates;
         private boolean attributesCommitted;
-        private Restoration(RollbackBendingState state, List<AttributeCache> definitions, List<?> updates) {
+        private final Manager.RestorationStep managerCommit;
+        private Restoration(RollbackBendingState state, List<AttributeCache> definitions, List<?> updates, Manager.RestorationStep managerCommit) {
+            this.managerCommit = managerCommit;
             this.state = state; this.definitions = List.copyOf(definitions); attributeUpdates = List.copyOf(updates);
         }
         /** Merge only participant entries into canonical cache maps; the owner retains gameplay gates. */
@@ -172,6 +176,7 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
         public Manager.RollbackRegistry managers() { return state.managers; }
         public CollisionManager collisions() { return state.collisions; }
         public List<Object> services() { return state.services; }
+        public void commitManagers() { managerCommit.commit(); }
         public CoreAbility.RollbackAbilityRestoration prepareAbilities(CoreAbility.RollbackIdReservation reservation,
                 CoreAbility.RollbackRegistry expected) {
             if (Thread.currentThread() != state.owner) throw new IllegalStateException("Restoration crossed threads");

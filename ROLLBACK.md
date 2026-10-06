@@ -60,7 +60,20 @@ manager uses this path for expiry cleanup; its existing live counterpart already
 that timer. Ordinary callbacks still transfer with their state and reserved IDs. Tests
 exercise real flight expiry through late-input replay and export, plus mixed service and
 gameplay timers. This prevents a duplicate cleanup timer during manager restoration;
-manager state merging and the complete production handoff remain to be integrated.
+current participant manager state now merges into the existing live managers. Flight and
+statistics restoration preserves shared manager/container identities, copies outgoing
+participant entries with the ability graph, and retains unrelated players. Every manager
+is validated before any commit; changed manager ownership or statistic definitions reject
+the merge. Repeated commits do not overwrite subsequent live progress or start service
+timers. Tests cover late-input replay followed by restoration, shared references, outsider
+preservation and rejection before mutation. The complete production handoff remains to
+be integrated.
+
+Rollback contact authority is element-independent through every public hit-policy entry
+point, including direct class/element resolution. Regressions cover all main elements,
+subelements, an addon element and absent metadata. `AirFireCombat` is absent from this
+branch; the shared rollback domain determines contact time. The existing element-specific
+policy outside enrolled rollback sessions remains unchanged.
 
 
 ### October 2, 2026 integration update

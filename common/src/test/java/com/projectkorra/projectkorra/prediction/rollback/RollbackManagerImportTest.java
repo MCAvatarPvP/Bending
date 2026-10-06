@@ -4,6 +4,7 @@ import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Manager;
 import com.projectkorra.projectkorra.ability.util.CollisionManager;
 import com.projectkorra.projectkorra.platform.ProjectKorraPlatform;
+import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.mc.World;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackPlayerState;
@@ -132,6 +133,51 @@ class RollbackManagerImportTest {
             assertEquals(10, sourceStats.getStatisticCurrent(A, 1));
             assertEquals(0, sourceStats.getStatisticDelta(A, 1));
             assertEquals(99, sourceStats.getStatisticCurrent(OTHER, 1));
+
+            // Restore current replay state together with aliases held by the gameplay graph.
+            var outgoing = domain.call(Manager::exportRollbackRegistry);
+            var aliases = domain.call(() -> List.of(Manager.getManager(FlightHandler.class),
+                    Manager.getManager(FlightHandler.class).getInstance(privateA),
+                    Manager.getManager(StatisticsManager.class).getStatisticsMap(A)));
+            var liveScheduler = new RollbackScheduler(10, 10);
+            try (var live = Platform.using(platform(liveScheduler))) {
+                var bindings = new IdentityHashMap<Object, Object>();
+                bindings.put(privateA, liveA); bindings.put(privateB, liveB);
+                var plan = outgoing.restorationSources(Set.of(A, B), bindings::put);
+                var copied = transfer(bindings).copy(List.of(plan.roots(), aliases));
+                var commit = plan.prepare((List<?>) copied.get(0));
+                var restoredAliases = (List<?>) copied.get(1);
+                var originalFlight = sourceFlight.getInstance(liveA);
+                var outsideFlight = sourceFlight.getInstance(other);
+                var outsideStatistics = sourceStats.getStatisticsMap(OTHER);
+                assertSame(originalFlight, sourceFlight.getInstance(liveA));
+                assertEquals(10, sourceStats.getStatisticCurrent(A, 1));
+                // All definitions are checked before the first manager writes anything.
+                sourceStats.getKeysByName().put("changed", 2);
+                assertThrows(IllegalStateException.class, commit::commit);
+                assertSame(originalFlight, sourceFlight.getInstance(liveA));
+                assertEquals(10, sourceStats.getStatisticCurrent(A, 1));
+                sourceStats.getKeysByName().remove("changed");
+                managers().put(FlightHandler.class, construct(FlightHandler.class));
+                assertThrows(IllegalStateException.class, commit::commit);
+                managers().put(FlightHandler.class, sourceFlight);
+                commit.commit();
+                assertSame(sourceFlight, restoredAliases.get(0));
+                assertSame(restoredAliases.get(1), sourceFlight.getInstance(liveA));
+                assertSame(liveA, sourceFlight.getInstance(liveA).getPlayer());
+                assertSame(liveB, sourceFlight.getInstance(liveA).getSource());
+                assertTrue(sourceFlight.hasOtherInstance(liveA, "timed"));
+                assertSame(restoredAliases.get(2), sourceStats.getStatisticsMap(A));
+                assertEquals(14, sourceStats.getStatisticCurrent(A, 1));
+                assertEquals(4, sourceStats.getStatisticDelta(A, 1));
+                assertSame(outsideFlight, sourceFlight.getInstance(other));
+                assertSame(outsideStatistics, sourceStats.getStatisticsMap(OTHER));
+                assertEquals(99, sourceStats.getStatisticCurrent(OTHER, 1));
+                assertEquals(0, liveScheduler.pendingTasks(), "Restoration must not start duplicate service timers");
+                sourceStats.addStatistic(A, 1, 1);
+                commit.commit();
+                assertEquals(15, sourceStats.getStatisticCurrent(A, 1), "Retry cannot overwrite continued live progress");
+            }
         } finally { outside.restore(); }
     }
 

@@ -58,6 +58,34 @@ public class StatisticsManager extends Manager implements Runnable {
         // publishing statistics belongs to finalized session effects.
     }
 
+    @Override
+    protected List<?> projectRollbackRestoration(Set<UUID> participants, Manager live, BiConsumer<Object, Object> bind) {
+        if (getClass() != StatisticsManager.class || live.getClass() != StatisticsManager.class) throw new UnsupportedOperationException("Statistics restoration subclass");
+        var target = (StatisticsManager) live;
+        bind.accept(STATISTICS, target.STATISTICS); bind.accept(DELTA, target.DELTA); bind.accept(STORAGE, target.STORAGE);
+        bind.accept(KEYS_BY_NAME, target.KEYS_BY_NAME); bind.accept(KEYS_BY_ID, target.KEYS_BY_ID);
+        return List.of(new HashMap<>(STATISTICS), new HashMap<>(DELTA), new HashSet<>(STORAGE), new HashMap<>(KEYS_BY_NAME), new HashMap<>(KEYS_BY_ID));
+    }
+
+    @Override @SuppressWarnings("unchecked")
+    protected RestorationStep prepareRollbackRestoration(Set<UUID> participants, List<?> roots) {
+        if (roots.size() != 5) throw new IllegalArgumentException("Statistics restoration roots");
+        var statistics = (Map<UUID, Map<Integer, Long>>) roots.get(0);
+        var delta = (Map<UUID, Map<Integer, Long>>) roots.get(1); var storage = (Set<UUID>) roots.get(2);
+        if (!participants.containsAll(statistics.keySet()) || !participants.containsAll(delta.keySet()) || !participants.containsAll(storage))
+            throw new IllegalArgumentException("Statistics restoration outside owned roster");
+        return new RestorationStep() {
+            @Override public void validate() {
+                if (!KEYS_BY_NAME.equals(roots.get(3)) || !KEYS_BY_ID.equals(roots.get(4))) throw new IllegalStateException("Live statistics definitions changed");
+            }
+            @Override public void commit() {
+                participants.forEach(STATISTICS::remove); STATISTICS.putAll(statistics);
+                participants.forEach(DELTA::remove); DELTA.putAll(delta);
+                STORAGE.removeAll(participants); STORAGE.addAll(storage);
+            }
+        };
+    }
+
     static void requireLiveStorage() {
         if (RollbackDomain.active()) throw new IllegalStateException("Statistics storage is unavailable during rollback");
     }

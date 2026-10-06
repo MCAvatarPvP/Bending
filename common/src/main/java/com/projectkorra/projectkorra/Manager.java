@@ -43,6 +43,49 @@ public abstract class Manager implements Listener {
         throw new UnsupportedOperationException("Manager has no rollback import: " + getClass().getName());
     }
 
+    /** Detached service roots copied with the outgoing ability graph; shared containers are rebound live. */
+    protected List<?> projectRollbackRestoration(Set<UUID> participants, Manager live, BiConsumer<Object, Object> bind) {
+        throw new UnsupportedOperationException("Manager has no rollback restoration: " + getClass().getName());
+    }
+    protected RestorationStep prepareRollbackRestoration(Set<UUID> participants, List<?> roots) {
+        throw new UnsupportedOperationException("Manager has no rollback restoration: " + getClass().getName());
+    }
+    public interface RestorationStep {
+        void validate();
+        void commit();
+    }
+
+    public static final class RestorationSources {
+        private final Thread owner = Thread.currentThread();
+        private final Set<UUID> roster;
+        private final List<Manager> targets;
+        private final List<List<?>> roots;
+        private RestorationSources(Set<UUID> roster, List<Manager> targets, List<List<?>> roots) {
+            this.roster = roster; this.targets = List.copyOf(targets); this.roots = List.copyOf(roots);
+        }
+        public List<List<?>> roots() { return roots; }
+        private void requireCurrent() {
+            if (Thread.currentThread() != owner || RollbackDomain.active() || RollbackClock.active()
+                    || !Platform.scheduler().isPrimaryThread()) throw new IllegalStateException("Restore managers on the live main thread");
+            for (var target : targets) if (MANAGERS.get(target.getClass()) != target)
+                throw new IllegalStateException("Live manager ownership changed before restoration");
+        }
+        public RestorationStep prepare(List<?> copiedRoots) {
+            requireCurrent();
+            if (copiedRoots.size() != targets.size()) throw new IllegalArgumentException("Manager restoration roots");
+            var steps = new ArrayList<RestorationStep>();
+            for (int i = 0; i < targets.size(); i++) steps.add(targets.get(i).prepareRollbackRestoration(roster, (List<?>) copiedRoots.get(i)));
+            return new RestorationStep() {
+                private int completed;
+                @Override public void validate() { requireCurrent(); steps.forEach(RestorationStep::validate); }
+                @Override public void commit() {
+                    validate();
+                    while (completed < steps.size()) { steps.get(completed).commit(); completed++; }
+                }
+            };
+        }
+    }
+
     /** Recreate private tasks only. Never call normal activation or register live listeners. */
     protected void onRollbackInstall() { }
 
@@ -73,6 +116,21 @@ public abstract class Manager implements Listener {
                 project.accept(manager, manager);
                 manager.projectRollbackState(roster, project);
             }
+        }
+
+        public RestorationSources restorationSources(Set<UUID> participants, BiConsumer<Object, Object> bind) {
+            if (RollbackDomain.active() || RollbackClock.active() || !Platform.scheduler().isPrimaryThread())
+                throw new IllegalStateException("Prepare manager restoration on the live main thread");
+            var roster = Set.copyOf(participants);
+            if (roster.isEmpty() || roster.size() > 128) throw new IllegalArgumentException("Manager restoration roster");
+            var targets = new ArrayList<Manager>(); var roots = new ArrayList<List<?>>();
+            for (var entry : managers.entrySet()) {
+                var live = MANAGERS.get(entry.getKey());
+                if (live == null || live.getClass() != entry.getValue().getClass()) throw new IllegalStateException("Live manager definition differs");
+                bind.accept(entry.getValue(), live); bind.accept(live, live);
+                targets.add(live); roots.add(entry.getValue().projectRollbackRestoration(roster, live, bind));
+            }
+            return new RestorationSources(roster, targets, roots);
         }
 
         public void install() {

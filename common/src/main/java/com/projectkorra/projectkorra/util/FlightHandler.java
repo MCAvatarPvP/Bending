@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.util;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.world.RollbackPlayer;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackScheduler;
 import com.projectkorra.projectkorra.platform.Platform;
 
@@ -9,6 +10,8 @@ import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.platform.mc.GameMode;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.PriorityQueue;
@@ -50,6 +53,43 @@ public class FlightHandler extends Manager {
         cleanup.removeIf(ability -> !participants.contains(ability.player.getUniqueId()));
         project.accept(this.INSTANCES, instances);
         project.accept(this.CLEANUP, cleanup);
+    }
+
+    @Override
+    protected List<?> projectRollbackRestoration(Set<UUID> participants, Manager live, BiConsumer<Object, Object> bind) {
+        if (getClass() != FlightHandler.class || live.getClass() != FlightHandler.class) throw new UnsupportedOperationException("Flight manager restoration subclass");
+        var target = (FlightHandler) live;
+        bind.accept(INSTANCES, target.INSTANCES); bind.accept(CLEANUP, target.CLEANUP);
+        return List.of(new HashMap<>(INSTANCES), new ArrayList<>(CLEANUP));
+    }
+
+    @Override @SuppressWarnings("unchecked")
+    protected RestorationStep prepareRollbackRestoration(Set<UUID> participants, List<?> roots) {
+        if (roots.size() != 2) throw new IllegalArgumentException("Flight restoration roots");
+        var restored = (Map<UUID, Flight>) roots.get(0);
+        var cleanup = (List<FlightAbility>) roots.get(1);
+        for (var entry : restored.entrySet()) {
+            if (!participants.contains(entry.getKey()) || !entry.getKey().equals(entry.getValue().player.getUniqueId())
+                    || entry.getValue().player instanceof RollbackPlayer)
+                throw new IllegalArgumentException("Flight restoration participant binding");
+            var flight = entry.getValue();
+            if (flight.source != null && (!participants.contains(flight.source.getUniqueId()) || flight.source instanceof RollbackPlayer))
+                throw new IllegalArgumentException("Flight restoration source binding");
+            for (var ability : flight.abilities.entrySet()) {
+                if (ability.getValue().player.handle() != flight.player.handle() || !ability.getKey().equals(ability.getValue().identifier))
+                    throw new IllegalArgumentException("Flight restoration grant binding");
+            }
+        }
+        for (var ability : cleanup) if (!participants.contains(ability.player.getUniqueId())
+                || ability.player instanceof RollbackPlayer)
+            throw new IllegalArgumentException("Flight expiry outside restored roster");
+        return new RestorationStep() {
+            @Override public void validate() { }
+            @Override public void commit() {
+                participants.forEach(INSTANCES::remove); INSTANCES.putAll(restored);
+                CLEANUP.removeIf(ability -> participants.contains(ability.player.getUniqueId())); CLEANUP.addAll(cleanup);
+            }
+        };
     }
 
     @Override

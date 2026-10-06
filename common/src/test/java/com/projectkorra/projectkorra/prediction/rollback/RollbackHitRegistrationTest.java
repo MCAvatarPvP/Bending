@@ -74,13 +74,17 @@ class RollbackHitRegistrationTest {
 
     @Test void replayHitAuthorityIsIndependentOfElementAndLegacyClientFlag() {
         var domain = RollbackDomain.create(new RollbackStateGraph(value -> false, field -> true, 100), List.of(), List.of(), platform(), () -> { });
-        for (Element element : List.of(Element.AIR, Element.FIRE, Element.WATER, Element.EARTH, Element.CHI, Element.AVATAR)) {
+        for (Element element : List.of(Element.AIR, Element.FIRE, Element.WATER, Element.EARTH, Element.CHI, Element.AVATAR, Element.METAL, Element.BLOOD, Element.LIGHTNING,
+                new Element("RollbackAddon", Element.ElementType.NO_SUFFIX))) {
             var ability = new TestAbility(element);
             HitRegistrationPolicy previous = HitRegistrationPolicy.forTarget(ability, false);
             domain.call(() -> {
                 assertEquals(HitRegistrationPolicy.SIMULATION_CURRENT, HitRegistrationPolicy.forAbility(ability));
                 assertEquals(HitRegistrationPolicy.SIMULATION_CURRENT, HitRegistrationPolicy.forTarget(ability, true));
                 assertEquals(HitRegistrationPolicy.SIMULATION_CURRENT, HitRegistrationPolicy.forTarget(ability, false));
+                assertEquals(HitRegistrationPolicy.SIMULATION_CURRENT, HitRegistrationPolicy.resolve(ability.getClass(), element));
+                assertEquals(HitRegistrationPolicy.SIMULATION_CURRENT, HitRegistrationPolicy.resolve(null, null));
+                assertEquals(HitRegistrationPolicy.SIMULATION_CURRENT, HitRegistrationPolicy.forAbility(null));
                 assertTrue(HitRegistrationPolicy.includePredictedEntity(ability, new Player()));
                 return null;
             });
