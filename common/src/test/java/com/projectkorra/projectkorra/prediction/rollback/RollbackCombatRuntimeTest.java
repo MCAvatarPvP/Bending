@@ -120,6 +120,62 @@ class RollbackCombatRuntimeTest {
         });
     }
 
+    @Test void exportUsesSettledPrivateStateAndRestoresLiveRegistries() {
+        withConfig(() -> {
+            var scenario = scenario();
+            var liveCollisions = ProjectKorra.collisionManager;
+            var livePlayers = new HashMap<>(BendingPlayer.getPlayers());
+            byte[] sourceBytes = {1, 2};
+            var initial = scenario.runtime.exportState(() -> {
+                assertTrue(RollbackDomain.active()); assertFalse(RollbackClock.active());
+                assertNotSame(liveCollisions, ProjectKorra.collisionManager);
+                assertSame(scenario.fixture.player, BendingPlayer.getPlayers().get(A).getPlayer());
+                assertThrows(IllegalStateException.class, () -> scenario.runtime.exportState(() -> new byte[0]));
+                return sourceBytes;
+            });
+            assertEquals(0, initial.tick()); assertEquals(0, initial.confirmedTick());
+            sourceBytes[0] = 9;
+            assertArrayEquals(new byte[]{1, 2}, initial.bytes());
+            initial.bytes()[0] = 8;
+            assertArrayEquals(new byte[]{1, 2}, initial.bytes());
+            scenario.runtime.advance(); scenario.runtime.advance();
+            scenario.runtime.submit(A, 1, new Input(List.of(CLICK), false));
+            assertThrows(IllegalStateException.class, () -> scenario.runtime.exportState(() -> {
+                fail("Cannot export an invalidated branch"); return null;
+            }));
+            assertFalse(scenario.runtime.failed());
+            var update = scenario.runtime.reconcile();
+            var exported = scenario.runtime.exportState(() -> {
+                assertTrue(scenario.fixture.history.contains("action:11:23"));
+                assertTrue(scenario.fixture.history.contains("scheduled:11:23"));
+                assertNull(scenario.fixture.effects);
+                return String.join(",", scenario.fixture.history).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            });
+            assertEquals(2, exported.tick());
+            assertEquals(update.revision(), exported.revision());
+            assertEquals(scenario.runtime.diagnostics().confirmedTick(), exported.confirmedTick());
+            assertTrue(new String(exported.bytes(), java.nio.charset.StandardCharsets.UTF_8).contains("action:11:23"));
+            assertSame(liveCollisions, ProjectKorra.collisionManager);
+            assertEquals(livePlayers, BendingPlayer.getPlayers());
+            assertFalse(RollbackDomain.active());
+            scenario.runtime.advance();
+        });
+    }
+
+    @Test void failedExportRestoresOutsideStateAndFailsTheRuntime() {
+        withConfig(() -> {
+            var scenario = scenario();
+            var outside = ProjectKorra.collisionManager;
+            assertThrows(IllegalArgumentException.class, () -> scenario.runtime.exportState(() -> {
+                throw new IllegalArgumentException("Cannot encode native state");
+            }));
+            assertSame(outside, ProjectKorra.collisionManager);
+            assertFalse(RollbackDomain.active());
+            assertTrue(scenario.runtime.failed());
+            assertThrows(IllegalStateException.class, () -> scenario.runtime.exportState(() -> new byte[0]));
+        });
+    }
+
     @Test void actionsValidateTheirShapeAndCannotRunOutsideReplay() {
         assertThrows(IllegalArgumentException.class, () -> new RollbackInputActions.Action(0, 1, RollbackInputActions.Kind.SWING, -1));
         assertThrows(IllegalArgumentException.class, () -> new RollbackInputActions.Action(1, 0, RollbackInputActions.Kind.SWING, -1));

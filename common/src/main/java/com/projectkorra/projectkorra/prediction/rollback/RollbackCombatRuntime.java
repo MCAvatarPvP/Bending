@@ -191,6 +191,35 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
         return domain.call(() -> engine.frames(from, through));
     }
 
+    /** Detached loader payload paired with the exact replay frontier it describes. */
+    public record Export(long tick, long confirmedTick, long revision, byte[] bytes) {
+        public Export {
+            if (confirmedTick < 0 || tick < confirmedTick || revision < 0)
+                throw new IllegalArgumentException("Export frontier");
+            bytes = Objects.requireNonNull(bytes, "bytes").clone();
+        }
+        @Override public byte[] bytes() { return bytes.clone(); }
+    }
+
+    /**
+     * Read current settled state with this runtime's private registries and services installed.
+     * The loader encodes native bodies, terrain and bending state together in this callback;
+     * it must only read state and return detached bytes, without publishing live effects.
+     * Pending corrections must first be reconciled and published by the authority owner.
+     * This method never silently replays input or advances the confirmation frontier.
+     */
+    public Export exportState(java.util.function.Supplier<byte[]> encoder) {
+        requireUsable();
+        Objects.requireNonNull(encoder, "encoder");
+        if (RollbackDomain.active() || RollbackClock.active())
+            throw new IllegalStateException("Export requires a live tick boundary");
+        var frontier = engine.diagnostics();
+        // Validate before entering the domain: an unreconciled input is recoverable,
+        // and must not poison the private domain or export the superseded branch.
+        engine.frames(frontier.tick(), frontier.tick());
+        return domain.call(() -> new Export(frontier.tick(), frontier.confirmedTick(), frontier.revision(), encoder.get()));
+    }
+
     public RollbackEngine.Diagnostics diagnostics() { return engine.diagnostics(); }
     @Override public List<UUID> participants() { return engine.participants(); }
     @Override public RollbackEngine.Limits limits() { return engine.limits(); }

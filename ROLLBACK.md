@@ -49,6 +49,14 @@ state that actually determines those outcomes.
 
 ### October 5, 2026 integration update
 
+The combat runtime now exposes a detached export boundary at a settled replay tick.
+A loader can encode native bodies, terrain and bending state in one installed private
+scope, with the payload tagged by tick, confirmed tick and revision. Export rejects
+unreconciled corrections without failing the session or silently advancing/publishing
+it. The runtime tests exercise late-input replay before export, private registry access,
+live registry restoration, immutable output bytes and encoder failure. Loader payload
+assembly, failed-session recovery and native restoration remain to be integrated.
+
 Portable graph catalogs now normalize Paper's Commons/SnakeYAML package relocations
 when ordering types and hashing schemas, while retaining each loader's own classes.
 The canonical names survive Shadow's string rewriting. Tests transfer cyclic objects,
