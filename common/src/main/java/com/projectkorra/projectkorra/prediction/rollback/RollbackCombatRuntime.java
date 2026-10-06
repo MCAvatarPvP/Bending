@@ -94,6 +94,39 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
         return create(environment, execution, bootstrap, initialInputs, limits, epochMillis, epochNanos, true, Objects.requireNonNull(round));
     }
 
+    /**
+     * Assemble a decoded duel seed into an authoritative or replica match. Imported
+     * configuration and gameplay roots are mandatory and installed only inside the
+     * domain. Loader/addon shared fields and native services remain explicit in base.
+     */
+    // UUID equality cannot distinguish two replicas with different owned bodies.
+    @SuppressWarnings("WrapperReferenceEquality")
+    public static <I, E> RollbackCombatRuntime<I, E> createImportedMatch(Environment base,
+            RollbackGameplayGraph.Imported imported, Execution<I, E> execution, Runnable afterInstall,
+            Map<UUID, I> initialInputs, RollbackEngine.Limits limits, long epochMillis, long epochNanos,
+            RollbackRound round, boolean replica) {
+        Objects.requireNonNull(base); Objects.requireNonNull(imported); Objects.requireNonNull(afterInstall);
+        Objects.requireNonNull(round);
+        if (RollbackDomain.active() || RollbackClock.active()) throw new IllegalStateException("Import a match before replay");
+        if (!(base.platform() instanceof RollbackPlatform platform))
+            throw new IllegalArgumentException("Imported match requires the private roster platform");
+        var players = imported.bending().players();
+        if (!players.keySet().equals(initialInputs.keySet()) || !players.keySet().equals(round.participants())
+                || platform.players().onlinePlayers().size() != players.size())
+            throw new IllegalArgumentException("Imported match roster differs from runtime");
+        for (var entry : players.entrySet()) {
+            if (platform.players().getPlayer(entry.getKey()) != entry.getValue().getPlayer())
+                throw new IllegalArgumentException("Imported player differs from private platform body");
+        }
+        var shared = new LinkedHashSet<>(base.shared());
+        shared.addAll(RollbackBendingState.sharedFields());
+        var local = new ArrayList<Object>(base.local());
+        local.addAll(imported.roots());
+        var environment = new Environment(base.graph(), shared, local, platform, base.items(), base.prediction(), imported.configuration());
+        return create(environment, execution, () -> { imported.bending().install(); afterInstall.run(); },
+                initialInputs, limits, epochMillis, epochNanos, replica, round);
+    }
+
     private static <I, E> RollbackCombatRuntime<I, E> create(Environment environment, Execution<I, E> execution,
             Runnable bootstrap, Map<UUID, I> initialInputs, RollbackEngine.Limits limits, long epochMillis, long epochNanos, boolean replica, RollbackRound round) {
         Objects.requireNonNull(execution, "execution");

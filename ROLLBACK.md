@@ -2767,3 +2767,26 @@ bootstrap fixture includes this section and exercises multipart client import.
 
 This supplies the material binding for runtime assembly. Other platform bindings,
 concrete runtime factories and live duel validation remain incomplete.
+
+
+### Imported match runtime construction
+
+`RollbackCombatRuntime.createImportedMatch` now connects a decoded gameplay graph
+to authoritative or replica match construction. It validates the exact private
+player identities against the platform and round before installing anything, adds
+mandatory bending shared fields and imported roots, and uses the seed's private
+configuration. Bending registries, imported event registrations and captured tasks
+install inside domain bootstrap before loader-specific completion work runs.
+
+Tests construct both runtime modes from encoded/decoded gameplay state and verify
+configuration isolation, outside registry restoration, roster rejection and failed
+startup restoration. They cover startup and private-state export, not native duel
+advancement. Native factories still need complete services, action/output routing,
+ownership handoff and teardown before this can be enabled for live Neptune rounds.
+
+Startup coverage deliberately suppresses day/night gameplay in its fixture. An
+unresolved integration requirement is importing and isolating shared gameplay
+caches such as ElementalAbility's transparent/bendable material sets: class
+initialization must not derive them from a replica's placeholder platform and
+leak those results outside the domain. The runtime constructor does not claim
+that its mandatory bending roots replace the loader/addon shared-state audit.

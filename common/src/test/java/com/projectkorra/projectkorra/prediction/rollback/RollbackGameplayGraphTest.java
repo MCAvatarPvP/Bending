@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class RollbackGameplayGraphTest {
+    @org.junit.jupiter.api.io.TempDir java.nio.file.Path directory;
     private Map<Class<?>, Object> attributes;
     private Map<Class<?>, Object> previousAttributes;
     @org.junit.jupiter.api.BeforeEach
@@ -27,6 +28,96 @@ class RollbackGameplayGraphTest {
         @Override public World getWorld() { return world; }
         @Override public boolean isOnline() { return true; }
     }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void decodedGameplayCreatesAnIsolatedMatchWithTheImportedConfiguration(boolean replica) {
+        var world = RollbackWorldTest.world(Map.of());
+        var a = PrivateCombatRollbackTest.player(world, 71001); var b = PrivateCombatRollbackTest.player(world, 71002);
+        world.entities().add(a); world.entities().add(b);
+        var platform = RollbackPlatformTest.platform(directory, world, List.of(a, b), new RollbackScheduler(100, 100));
+        var graph = new RollbackStateGraph(value -> java.lang.reflect.Proxy.isProxyClass(value.getClass())
+                || value instanceof CommonAbilityLifecycleListener.Effects, field -> true, 100000);
+        var previousConfig = com.projectkorra.projectkorra.configuration.ConfigManager.defaultConfig;
+        // Preserve registration identities left by other fixtures, without copying their live file-backed configs.
+        var registryGraph = new RollbackStateGraph(value -> value instanceof com.projectkorra.projectkorra.configuration.Config,
+                field -> true, 100000);
+        var configRegistry = registryGraph.capture(List.of(), RollbackStateGraph.staticFields(
+                com.projectkorra.projectkorra.prediction.state.PredictionConfigSync.class, field -> true));
+        try (var scope = com.projectkorra.projectkorra.platform.Platform.using(platform)) {
+            var config = new com.projectkorra.projectkorra.configuration.Config(directory.resolve("import.yml").toFile());
+            config.set("marker", "authoritative");
+            // Startup isolation only: this fixture does not supply day/night gameplay or material policies.
+            config.set("Properties.DisabledWorlds", List.of(world.getName()));
+            com.projectkorra.projectkorra.configuration.ConfigManager.defaultConfig = config;
+            var sources = Map.of("default", config);
+            var settings = RollbackConfiguration.captureData(sources);
+            var configuration = RollbackConfiguration.prepare(settings, sources);
+            var bindings = new RollbackRosterBindings(world, List.of(a, b));
+            var lifecycle = new CommonAbilityLifecycleListener(effect -> { throw new AssertionError("Unexpected effect"); });
+            var installed = RollbackGameplayCatalog.installed(getClass().getClassLoader());
+            var limits = new RollbackGraphCodec.Limits(10000, 100000, 10000000, 10000);
+            var codec = RollbackGameplayGraph.create(installed, limits, RollbackGameplayGraph.Side.LIVE,
+                    bindings, configuration, lifecycle, List.of(), new RollbackGraphViews());
+            var sourceA = new com.projectkorra.projectkorra.BendingPlayer(a);
+            var sourceB = new com.projectkorra.projectkorra.BendingPlayer(b);
+            var encoded = RollbackBendingState.encode(List.of(sourceA, sourceB),
+                    new com.projectkorra.projectkorra.ability.util.CollisionManager(), List.of(), codec);
+            var imported = RollbackGameplayGraph.decode(installed, limits, bindings.participants(), encoded,
+                    settings, sources, bindings, lifecycle, List.of());
+            config.set("marker", "outside");
+            var environment = new RollbackCombatRuntime.Environment(graph, List.of(), List.of(), platform, null,
+                    com.projectkorra.projectkorra.prediction.authority.PredictionServices.empty(), RollbackConfiguration.prepare(settings, sources));
+            var execution = new RollbackCombatRuntime.Execution<Boolean, String>() {
+                public Boolean predict(UUID id, Boolean prior) { return prior; }
+                public void begin(RollbackStep<String> step) { throw new AssertionError("Startup advanced simulation"); }
+                public void input(UUID id, Boolean input) { throw new AssertionError("Startup applied input"); }
+                public void tickWorld(long tick) { throw new AssertionError("Startup ticked world"); }
+                public void end() { }
+            };
+            var sides = Map.of(a.getUniqueId(), a.getUniqueId(), b.getUniqueId(), b.getUniqueId());
+            var initial = Map.of(a.getUniqueId(), false, b.getUniqueId(), false);
+            var round = new RollbackRound(new UUID(0, 99), sides);
+            var engineLimits = new RollbackEngine.Limits(3, 1, 50, 50000000);
+            var outside = com.projectkorra.projectkorra.ProjectKorra.collisionManager;
+            assertThrows(IllegalArgumentException.class, () -> RollbackCombatRuntime.createImportedMatch(environment,
+                    imported, execution, () -> fail("Invalid roster installed"), Map.of(a.getUniqueId(), false),
+                    engineLimits, 1000, 1000000000, round, replica));
+            var foreignBindings = new RollbackRosterBindings(world,
+                    List.of(PrivateCombatRollbackTest.player(world, 71001), b));
+            var foreignImport = RollbackGameplayGraph.decode(installed, limits, bindings.participants(), encoded,
+                    settings, sources, foreignBindings, lifecycle, List.of());
+            assertThrows(IllegalArgumentException.class, () -> RollbackCombatRuntime.createImportedMatch(environment,
+                    foreignImport, execution, () -> fail("Foreign body installed"), initial,
+                    engineLimits, 1000, 1000000000, round, replica));
+            var failedImport = RollbackGameplayGraph.decode(installed, limits, bindings.participants(), encoded,
+                    settings, sources, bindings, lifecycle, List.of());
+            var failure = new IllegalStateException("Native binding failed");
+            assertSame(failure, assertThrows(IllegalStateException.class, () -> RollbackCombatRuntime.createImportedMatch(
+                    environment, failedImport, execution, () -> { throw failure; }, initial,
+                    engineLimits, 1000, 1000000000, round, replica)));
+            assertSame(outside, com.projectkorra.projectkorra.ProjectKorra.collisionManager);
+            assertEquals("outside", config.get().getString("marker"));
+            assertFalse(RollbackDomain.active());
+            var runtime = RollbackCombatRuntime.createImportedMatch(environment, imported, execution, () -> {
+                assertTrue(RollbackDomain.active());
+                assertSame(imported.bending().players().get(a.getUniqueId()), com.projectkorra.projectkorra.BendingPlayer.getBendingPlayer(a));
+                assertEquals("authoritative", config.get().getString("marker"));
+            }, initial, engineLimits, 1000, 1000000000, round, replica);
+            assertEquals(replica, runtime.replica()); assertEquals(0, runtime.diagnostics().tick());
+            runtime.exportState(() -> {
+                assertSame(imported.bending().collisions(), com.projectkorra.projectkorra.ProjectKorra.collisionManager);
+                assertEquals("authoritative", config.get().getString("marker"));
+                return new byte[]{1};
+            });
+            assertSame(outside, com.projectkorra.projectkorra.ProjectKorra.collisionManager);
+            assertEquals("outside", config.get().getString("marker"));
+            assertFalse(RollbackDomain.active());
+        } finally {
+            com.projectkorra.projectkorra.configuration.ConfigManager.defaultConfig = previousConfig;
+            configRegistry.restore();
+        }
+    }
+
     @Test void assembledSchemasRebindRosterEffectsAndExplicitServiceIdentities() {
         var liveWorld = new World(); var privateWorld = new World();
         var liveA = new Person(1, liveWorld); var privateA = new Person(1, privateWorld);
