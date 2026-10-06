@@ -2946,3 +2946,20 @@ body immobility guard. Both native execution fixtures compare on-time and late h
 input, including all emitted effects. Production event-policy installation, correction
 publication and live idle bookkeeping remain loader integration concerns; this does
 not claim the complete native runtime or actual two-client validation is finished.
+
+### Provisional held-slot corrections
+
+Native slot cancellation now records the selected-slot correction as detached output:
+Paper's direct packet journal carries HeldSlot and Fabric carries the corresponding
+target UUID/slot output. Paper's packet capture also recognizes the native held-slot
+packet without reaching a live codec or connection. Slot values are bounded to the
+hotbar. These are journal values, not immediate network writes.
+
+The shared slot transition now passes bending's initial cancellation into the native
+held-slot policy rather than returning before native handling. Both native policies
+therefore retain the cancellation unless an explicit private listener changes it.
+Tests cover correction capture, invalid packet slots, initial bending cancellation,
+rewind discarding cancelled corrections, and on-time versus late cancelled input with
+identical native outputs on both loaders. The production output encoder/publisher and
+client reconciliation still need complete runtime installation; this journal change
+does not establish actual correction delivery or live multiplayer readiness.

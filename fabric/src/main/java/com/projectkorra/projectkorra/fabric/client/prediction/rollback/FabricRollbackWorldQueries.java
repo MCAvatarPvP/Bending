@@ -56,7 +56,7 @@ public final class FabricRollbackWorldQueries implements FabricRollbackWorldAcce
         void output(FabricRollbackWorldAccess.Output output);
         void gameEvent(RegistryEntry<GameEvent> event, Vec3d position, GameEvent.Emitter emitter);
         void waypoint(FabricRollbackWorldAccess.WaypointAction action, Entity entity);
-        default boolean slotAllowed(UUID player, int previous, int selected) {
+        default boolean slotAllowed(UUID player, int previous, int selected, boolean cancelled) {
             throw new UnsupportedOperationException("Private held-slot event policy is not bound");
         }
         default RollbackHandSwap swapHands(UUID player, RollbackItemData main, RollbackItemData off) {
@@ -201,8 +201,8 @@ public final class FabricRollbackWorldQueries implements FabricRollbackWorldAcce
         services.gameEvent(event, position, emitter);
     }
     @Override public void waypoint(FabricRollbackWorldAccess.WaypointAction action, Entity entity) { requireRoster(); requireMember(entity); services.waypoint(action, entity); }
-    @Override public boolean slotAllowed(PlayerEntity player, int previous, int selected) {
-        requireRoster(); requireMember(player); return services.slotAllowed(player.getUuid(), previous, selected);
+    @Override public boolean slotAllowed(PlayerEntity player, int previous, int selected, boolean cancelled) {
+        requireRoster(); requireMember(player); return services.slotAllowed(player.getUuid(), previous, selected, cancelled);
     }
     @Override public RollbackHandSwap swapHands(PlayerEntity player, RollbackItemData main, RollbackItemData off) {
         requireRoster(); requireMember(player); return services.swapHands(player.getUuid(), main, off);

@@ -66,7 +66,7 @@ public abstract class RollbackPlayerExecution<E> implements RollbackCombatRuntim
     /** Loader constructors validate that all logical views share the owned native state. */
     protected abstract void movementInput(RollbackPlayer player, RollbackMovementInput input);
     protected abstract void tickPlayer(RollbackPlayer player);
-    protected abstract boolean selectSlot(RollbackPlayer player, int slot);
+    protected abstract boolean selectSlot(RollbackPlayer player, int slot, boolean cancelled);
     protected abstract void swapHands(RollbackPlayer player);
     protected abstract void swing(RollbackPlayer player, boolean offHand);
 
@@ -98,7 +98,7 @@ public abstract class RollbackPlayerExecution<E> implements RollbackCombatRuntim
         for (var edge : input.actions()) {
             movementInput(participant, new RollbackMovementInput(movement.strafe(), movement.forward(), movement.jump(), edge.yaw(), edge.pitch()));
             PredictionDeterminism.run(edge.action().sequence(), edge.action().seed(), () -> {
-                var result = RollbackInputActions.dispatch(participant, edge.action(), slot -> selectSlot(participant, slot));
+                var result = RollbackInputActions.dispatch(participant, edge.action(), (slot, cancelled) -> selectSlot(participant, slot, cancelled));
                 if (edge.action().kind() == RollbackInputActions.Kind.SWING
                         || edge.action().kind() == RollbackInputActions.Kind.OFF_HAND_SWING) {
                     if (!result.cancelEvent()) swing(participant, edge.action().kind() == RollbackInputActions.Kind.OFF_HAND_SWING);

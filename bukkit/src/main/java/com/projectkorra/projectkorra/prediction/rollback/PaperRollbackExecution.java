@@ -30,7 +30,7 @@ public final class PaperRollbackExecution<E> extends RollbackPlayerExecution<E> 
     @Override protected void movementInput(RollbackPlayer player, RollbackMovementInput input) {
         state(player).movementInput(input);
     }
-    @Override protected boolean selectSlot(RollbackPlayer player, int slot) { return state(player).selectSlot(slot); }
+    @Override protected boolean selectSlot(RollbackPlayer player, int slot, boolean cancelled) { return state(player).selectSlot(slot, cancelled); }
     @Override protected void swapHands(RollbackPlayer player) { state(player).swapHands(); }
     @Override protected void swing(RollbackPlayer player, boolean offHand) { state(player).swing(offHand); }
     @Override protected void tickPlayer(RollbackPlayer player) { state(player).tick(); }

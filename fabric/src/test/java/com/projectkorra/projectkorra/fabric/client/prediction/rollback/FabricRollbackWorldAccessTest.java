@@ -486,10 +486,10 @@ class FabricRollbackWorldAccessTest {
                 com.projectkorra.projectkorra.prediction.rollback.world.RollbackItemData off) {
             return new com.projectkorra.projectkorra.prediction.rollback.RollbackHandSwap(false, main, off);
         }
-        @Override public boolean slotAllowed(PlayerEntity player, int previous, int selected) {
+        @Override public boolean slotAllowed(PlayerEntity player, int previous, int selected, boolean cancelled) {
             assertEquals(previous, player.getInventory().getSelectedSlot());
             events.add(new Event("held:" + previous + ":" + selected, player.getUuid(), 0, 0, 0));
-            return !cancelSlot;
+            return !cancelled && !cancelSlot;
         }
         @Override public boolean updateEquipmentOnActions() { return true; }
         @Override public boolean flightAllowed(PlayerEntity player, boolean flying, boolean cancelled) { return flightAllowed(player.getUuid(), flying, cancelled); }

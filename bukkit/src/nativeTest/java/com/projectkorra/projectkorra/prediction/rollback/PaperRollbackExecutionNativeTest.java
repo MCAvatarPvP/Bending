@@ -175,11 +175,12 @@ class PaperRollbackExecutionNativeTest {
         return session.receive(connection, RollbackInputPacket.decode(packet.encode()));
     }
 
-    @ParameterizedTest @ValueSource(booleans = {false, true})
-    void lateInventoryActionReplaysInventoryAndNativeOutputs(boolean slotChange) throws Exception {
+    @ParameterizedTest @org.junit.jupiter.params.provider.CsvSource({"false,false", "true,false", "true,true"})
+    void lateInventoryActionReplaysInventoryAndNativeOutputs(boolean slotChange, boolean cancelled) throws Exception {
         onTickThread(() -> {
         withConfig(() -> {
             java.util.function.Consumer<Fixture> prepare = fixture -> {
+                fixture.combat.cancel = cancelled;
                 var player = ((PaperRollbackNativePlayerState) fixture.attacker.body().kinematicsSource()).ownedPlayer();
                     player.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.DIAMOND_SWORD));
                     player.setItemInHand(net.minecraft.world.InteractionHand.OFF_HAND, new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.SHIELD));
@@ -194,11 +195,13 @@ class PaperRollbackExecutionNativeTest {
             var replay = late.runtime.reconcile();
             var directBody = ((PaperRollbackNativePlayerState) direct.fixture.attacker.body().kinematicsSource()).ownedPlayer();
             var lateBody = ((PaperRollbackNativePlayerState) late.fixture.attacker.body().kinematicsSource()).ownedPlayer();
-            assertEquals(slotChange ? net.minecraft.world.item.Items.AIR : net.minecraft.world.item.Items.SHIELD, directBody.getMainHandItem().getItem());
+            assertEquals(slotChange ? (cancelled ? net.minecraft.world.item.Items.DIAMOND_SWORD : net.minecraft.world.item.Items.AIR) : net.minecraft.world.item.Items.SHIELD, directBody.getMainHandItem().getItem());
             assertEquals(slotChange ? net.minecraft.world.item.Items.SHIELD : net.minecraft.world.item.Items.DIAMOND_SWORD, directBody.getOffhandItem().getItem());
             assertEquals(directBody.getMainHandItem().getItem(), lateBody.getMainHandItem().getItem());
             assertEquals(directBody.getOffhandItem().getItem(), lateBody.getOffhandItem().getItem());
             assertEquals(expected.head().effects(), replay.head().effects());
+            if (cancelled) assertTrue(replay.head().effects().contains(new PaperRollbackPacketData.Direct(A, new PaperRollbackPacketData.HeldSlot(0))));
+
         }); return null;
         });
     }

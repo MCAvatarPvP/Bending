@@ -12,6 +12,12 @@ import java.util.*;
 
 /** Detached provisional native presentation; never delivers packets or retains mutable native stacks. */
 public final class FabricRollbackPacketData {
+    public record HeldSlot(UUID player, int slot) implements FabricRollbackWorldAccess.Output {
+        public HeldSlot {
+            Objects.requireNonNull(player);
+            if (slot < 0 || slot > 8) throw new IllegalArgumentException("Selected slot outside hotbar");
+        }
+    }
     public record Tracked(UUID entity, boolean includeSelf, Data data) implements FabricRollbackWorldAccess.Output { }
     public sealed interface Data permits Equipment, Status, Animation { int entityId(); }
     public record Equipped(String slot, RollbackItemData item) { }

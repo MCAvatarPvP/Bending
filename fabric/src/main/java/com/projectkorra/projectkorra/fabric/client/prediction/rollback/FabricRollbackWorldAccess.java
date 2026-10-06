@@ -60,7 +60,7 @@ import java.util.function.Predicate;
 public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> {
     public enum WaypointAction { TRACK, UPDATE, UNTRACK }
     /** Detached provisional presentation. Delivery belongs to the session's revision/finalization bridge. */
-    public sealed interface Output permits DamageOutput, StatusOutput, SoundOutput, FabricRollbackPacketData.Tracked { }
+    public sealed interface Output permits DamageOutput, StatusOutput, SoundOutput, FabricRollbackPacketData.HeldSlot, FabricRollbackPacketData.Tracked { }
     public record Position(double x, double y, double z) { }
     public record DamageOutput(UUID entity, String type, UUID source, UUID attacker, Position position) implements Output { }
     public record StatusOutput(UUID entity, byte status) implements Output { }
@@ -97,7 +97,7 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
                 com.projectkorra.projectkorra.prediction.rollback.world.RollbackItemData off) {
             throw new UnsupportedOperationException("Private swap-event policy is not bound");
         }
-        default boolean slotAllowed(PlayerEntity player, int previous, int selected) {
+        default boolean slotAllowed(PlayerEntity player, int previous, int selected, boolean cancelled) {
             throw new UnsupportedOperationException("Private held-slot event policy is not bound");
         }
         default boolean updateEquipmentOnActions() {
@@ -302,13 +302,16 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
 
     // Only native adapters in this package may retain the shell. No world constructor ran.
     World world() { checkThread(); return world; }
-    boolean selectSlot(PlayerEntity player, int slot) {
+    boolean selectSlot(PlayerEntity player, int slot, boolean cancelled) {
         checkThread(); ownedId(player);
         if (slot < 0 || slot > 8) throw new IllegalArgumentException("Selected slot outside hotbar");
         if (player.isImmobile()) return false;
         int previous = player.getInventory().getSelectedSlot();
         if (previous == slot) return true;
-        if (!queries.slotAllowed(player, previous, slot)) return false;
+        if (!queries.slotAllowed(player, previous, slot, cancelled)) {
+            queries.output(new FabricRollbackPacketData.HeldSlot(player.getUuid(), player.getInventory().getSelectedSlot()));
+            return false;
+        }
         boolean equipment = queries.updateEquipmentOnActions();
         if (player.getInventory().getSelectedSlot() != slot && player.getActiveHand() == net.minecraft.util.Hand.MAIN_HAND)
             player.clearActiveItem();

@@ -35,11 +35,13 @@ public final class RollbackInputActions {
      * the native adapter. Predicted missing frames must omit these one-shot actions.
      */
     public static CommonInputHandler.InputResult dispatch(RollbackPlayer player, Action action) {
-        return dispatch(player, action, slot -> { player.getInventory().setHeldItemSlot(slot); return true; });
+        return dispatch(player, action, (slot, cancelled) -> { if (cancelled) return false; player.getInventory().setHeldItemSlot(slot); return true; });
     }
 
+    @FunctionalInterface public interface SlotTransition { boolean select(int slot, boolean cancelled); }
+
     /** Native execution supplies the accepted slot transition, before any inventory write. */
-    public static CommonInputHandler.InputResult dispatch(RollbackPlayer player, Action action, java.util.function.IntPredicate selectSlot) {
+    public static CommonInputHandler.InputResult dispatch(RollbackPlayer player, Action action, SlotTransition selectSlot) {
         Objects.requireNonNull(selectSlot, "slot transition");
         if (!RollbackDomain.active() || !RollbackClock.active()) throw new IllegalStateException("No combat replay tick");
         Objects.requireNonNull(action, "action");
@@ -68,10 +70,10 @@ public final class RollbackInputActions {
         return result;
     }
 
-    private static CommonInputHandler.InputResult slot(RollbackPlayer player, int slot, java.util.function.IntPredicate selectSlot) {
+    private static CommonInputHandler.InputResult slot(RollbackPlayer player, int slot, SlotTransition selectSlot) {
         if (player.getInventory().getHeldItemSlot() == slot) return CommonInputHandler.InputResult.pass();
-        if (!CommonInputHandler.handleSlotChange(player, slot).accepted()) return CommonInputHandler.InputResult.cancel();
-        return selectSlot.test(slot) ? CommonInputHandler.InputResult.pass() : CommonInputHandler.InputResult.cancel();
+        boolean cancelled = !CommonInputHandler.handleSlotChange(player, slot).accepted();
+        return selectSlot.select(slot, cancelled) ? CommonInputHandler.InputResult.pass() : CommonInputHandler.InputResult.cancel();
     }
 
     /** Also used at the native post-movement landing boundary, without inventing a key press. */

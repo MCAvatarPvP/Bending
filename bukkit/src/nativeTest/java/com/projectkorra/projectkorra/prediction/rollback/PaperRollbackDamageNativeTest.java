@@ -68,8 +68,15 @@ class PaperRollbackDamageNativeTest {
             scene.combat.cancel = true;
             assertFalse(scene.targetState.selectSlot(1));
             assertEquals(0, scene.target.getInventory().getSelectedSlot()); assertTrue(scene.target.isUsingItem());
+            assertEquals(List.of(new PaperRollbackPacketData.Direct(scene.target.getUUID(), new PaperRollbackPacketData.HeldSlot(0))), scene.combat.outputs);
+            saved.restore();
+            assertFalse(scene.targetState.selectSlot(1, true));
+            assertEquals(List.of(new PaperRollbackPacketData.Direct(scene.target.getUUID(), new PaperRollbackPacketData.HeldSlot(0))), scene.combat.outputs);
+            var packetData = new PaperRollbackPacketData(registries);
+            assertEquals(new PaperRollbackPacketData.HeldSlot(0), packetData.capture(new net.minecraft.network.protocol.game.ClientboundSetHeldSlotPacket(0)));
+            assertThrows(IllegalArgumentException.class, () -> packetData.capture(new net.minecraft.network.protocol.game.ClientboundSetHeldSlotPacket(9)));
+            saved.restore(); // Cancelled correction must disappear with its discarded branch.
             assertTrue(scene.combat.outputs.isEmpty());
-            scene.combat.cancel = false;
             assertTrue(scene.targetState.selectSlot(1)); assertEquals(output, scene.combat.outputs);
             int events = scene.combat.events.size(), outputs = scene.combat.outputs.size();
             assertTrue(scene.targetState.selectSlot(1));
@@ -685,7 +692,7 @@ class PaperRollbackDamageNativeTest {
         @Override public void event(Event event) {
             events.add(event.getClass().getName());
             if (event instanceof org.bukkit.event.player.PlayerItemHeldEvent held) {
-                events.add("held:" + held.getPreviousSlot() + ":" + held.getNewSlot()); held.setCancelled(cancel);
+                events.add("held:" + held.getPreviousSlot() + ":" + held.getNewSlot()); if (cancel) held.setCancelled(true);
             }
             if (event instanceof org.bukkit.event.player.PlayerSwapHandItemsEvent swap) swap.setCancelled(cancel);
             if (event instanceof EntityDamageEvent damage) { damage.setDamage(damage.getDamage() * multiplier); damage.setCancelled(cancel); }

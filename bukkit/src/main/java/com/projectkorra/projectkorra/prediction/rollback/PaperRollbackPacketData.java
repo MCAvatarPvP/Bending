@@ -28,7 +28,10 @@ public final class PaperRollbackPacketData {
     public sealed interface Output extends PaperRollbackCombatAccess.Output permits Direct, Tracked { }
     public record Direct(UUID player, Data data) implements Output { }
     public record Tracked(UUID entity, boolean includeSelf, Data data) implements Output { }
-    public sealed interface Data permits Slot, Content, Cursor, InventorySlot, Equipment, EntityStatus, Animation, Advancements { }
+    public sealed interface Data permits Slot, HeldSlot, Content, Cursor, InventorySlot, Equipment, EntityStatus, Animation, Advancements { }
+    public record HeldSlot(int slot) implements Data {
+        public HeldSlot { if (slot < 0 || slot > 8) throw new IllegalArgumentException("Selected slot outside hotbar"); }
+    }
     public record Slot(int container, int revision, int slot, RollbackItemData item) implements Data { }
     public record Content(int container, int revision, List<RollbackItemData> items, RollbackItemData carried) implements Data {
         public Content { items = List.copyOf(items); }
@@ -64,6 +67,7 @@ public final class PaperRollbackPacketData {
     /** Null means this packet must use another explicitly audited route. */
     Data capture(Packet<?> packet) {
         var budget = new Budget();
+        if (packet instanceof ClientboundSetHeldSlotPacket value) return new HeldSlot(value.slot());
         if (packet instanceof ClientboundContainerSetSlotPacket value) {
             return new Slot(value.getContainerId(), value.getStateId(), value.getSlot(), item(value.getItem(), budget));
         }

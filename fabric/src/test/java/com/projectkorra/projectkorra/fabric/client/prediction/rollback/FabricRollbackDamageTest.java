@@ -41,8 +41,13 @@ class FabricRollbackDamageTest {
         fixture.queries.cancelSlot = true;
         assertFalse(fixture.targetState.selectSlot(1));
         assertEquals(0, fixture.target.getInventory().getSelectedSlot()); assertTrue(fixture.target.isUsingItem());
+        assertEquals(List.of(new FabricRollbackPacketData.HeldSlot(fixture.target.getUuid(), 0)), fixture.queries.outputs);
+        saved.restore();
+        assertFalse(fixture.targetState.selectSlot(1, true));
+        assertEquals(List.of(new FabricRollbackPacketData.HeldSlot(fixture.target.getUuid(), 0)), fixture.queries.outputs);
+        assertThrows(IllegalArgumentException.class, () -> new FabricRollbackPacketData.HeldSlot(fixture.target.getUuid(), 9));
+        saved.restore();
         assertTrue(fixture.queries.outputs.isEmpty());
-        fixture.queries.cancelSlot = false;
         assertTrue(fixture.targetState.selectSlot(1)); assertEquals(output, fixture.queries.outputs);
         int events = fixture.queries.events.size(), outputs = fixture.queries.outputs.size();
         assertTrue(fixture.targetState.selectSlot(1));

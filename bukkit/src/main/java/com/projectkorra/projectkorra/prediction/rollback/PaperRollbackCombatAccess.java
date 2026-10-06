@@ -328,7 +328,7 @@ public final class PaperRollbackCombatAccess {
         catch (RuntimeException | Error failure) { throw failure; }
         catch (Throwable failure) { throw new IllegalStateException("Private native player body tick failed", failure); }
     }
-    boolean selectSlot(Player player, int slot) {
+    boolean selectSlot(Player player, int slot, boolean cancelled) {
         ownedId(player);
         if (slot < 0 || slot >= net.minecraft.world.entity.player.Inventory.getSelectionSize())
             throw new IllegalArgumentException("Selected slot outside hotbar");
@@ -339,8 +339,12 @@ public final class PaperRollbackCombatAccess {
             int previous = player.getInventory().getSelectedSlot();
             if (previous == slot) return true;
             var event = new org.bukkit.event.player.PlayerItemHeldEvent((org.bukkit.entity.Player) player.getBukkitEntity(), previous, slot);
+            event.setCancelled(cancelled);
             state.event(event);
-            if (event.isCancelled()) return false;
+            if (event.isCancelled()) {
+                state.output(new PaperRollbackPacketData.Direct(player.getUUID(), new PaperRollbackPacketData.HeldSlot(player.getInventory().getSelectedSlot())));
+                return false;
+            }
             if (player.getInventory().getSelectedSlot() != slot && player.getUsedItemHand() == net.minecraft.world.InteractionHand.MAIN_HAND)
                 stopItemUse.invokeExact((LivingEntity) player);
             player.getInventory().setSelectedSlot(slot);

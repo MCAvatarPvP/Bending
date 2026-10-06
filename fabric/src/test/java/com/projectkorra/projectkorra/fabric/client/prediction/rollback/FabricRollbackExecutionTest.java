@@ -256,10 +256,11 @@ class FabricRollbackExecutionTest {
         return java.util.Objects.requireNonNull(delivered);
     }
 
-    @ParameterizedTest @ValueSource(booleans = {false, true})
-    void lateInventoryActionReplaysInventoryAndNativeOutputs(boolean slotChange) throws Exception {
+    @ParameterizedTest @org.junit.jupiter.params.provider.CsvSource({"false,false", "true,false", "true,true"})
+    void lateInventoryActionReplaysInventoryAndNativeOutputs(boolean slotChange, boolean cancelled) throws Exception {
         withConfig(() -> {
             java.util.function.Consumer<Fixture> prepare = fixture -> {
+                fixture.queries.cancelSlot = cancelled;
                 var player = ((FabricRollbackNativePlayerState) fixture.attacker.body().kinematicsSource()).ownedPlayer();
                     player.setStackInHand(net.minecraft.util.Hand.MAIN_HAND, new net.minecraft.item.ItemStack(net.minecraft.item.Items.DIAMOND_SWORD));
                     player.setStackInHand(net.minecraft.util.Hand.OFF_HAND, new net.minecraft.item.ItemStack(net.minecraft.item.Items.SHIELD));
@@ -274,11 +275,13 @@ class FabricRollbackExecutionTest {
             var replay = late.runtime.reconcile();
             var directBody = ((FabricRollbackNativePlayerState) direct.fixture.attacker.body().kinematicsSource()).ownedPlayer();
             var lateBody = ((FabricRollbackNativePlayerState) late.fixture.attacker.body().kinematicsSource()).ownedPlayer();
-            assertEquals(slotChange ? net.minecraft.item.Items.AIR : net.minecraft.item.Items.SHIELD, directBody.getMainHandStack().getItem());
+            assertEquals(slotChange ? (cancelled ? net.minecraft.item.Items.DIAMOND_SWORD : net.minecraft.item.Items.AIR) : net.minecraft.item.Items.SHIELD, directBody.getMainHandStack().getItem());
             assertEquals(slotChange ? net.minecraft.item.Items.SHIELD : net.minecraft.item.Items.DIAMOND_SWORD, directBody.getOffHandStack().getItem());
             assertEquals(directBody.getMainHandStack().getItem(), lateBody.getMainHandStack().getItem());
             assertEquals(directBody.getOffHandStack().getItem(), lateBody.getOffHandStack().getItem());
             assertEquals(expected.head().effects(), replay.head().effects());
+            if (cancelled) assertTrue(replay.head().effects().contains(new FabricRollbackPacketData.HeldSlot(A, 0)));
+
         });
     }
 
