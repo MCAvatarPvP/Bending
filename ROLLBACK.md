@@ -3147,3 +3147,26 @@ and cleanup. This is not a rendered-screen or multiplayer test. Heart style (poi
 wither, freezing), food/air, inventory/equipment and effect icons still need the same
 presentation treatment. Production bootstrap and authority divergence repair remain
 uninstalled; these HUD reads do not establish that the server and client states agree.
+
+
+### Client native scene assembly
+
+FabricRollbackNativeScene now constructs the logical terrain, native lighting,
+geometry queries, spatial environment/border, captured world services and imported
+native roster in dependency order. The native query roster is bound before the scene
+is returned. Captured light, exact roster/world tick agreement and positive budgets
+are mandatory. The scene provides a single checkpoint root containing its private
+world services, lighting and native player states.
+
+Native tests assemble Paper roster/rule fixtures with complete terrain and light,
+resolve the imported players through the assembled native world, change a block to
+glowstone and move a player, then restore one graph checkpoint. Terrain, propagated
+light, player position, day time and native game time restore together; the next tick
+can run again. Missing light and mismatched roster/time reject during assembly.
+
+This is the native scene portion of bootstrap, not an installed bootstrap factory.
+Block mutation/item/world-action callbacks, block-entity services, event policy and
+private scoreboard queries are explicit mandatory bindings. Tests use throwing
+fixtures for unused gameplay actions, so they do not prove those action bindings or
+full bending execution. Ability-facing roster/platform and imported gameplay graph
+assembly, output lifecycle and the actual startup factory still need connection.
