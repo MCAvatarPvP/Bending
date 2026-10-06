@@ -3365,3 +3365,19 @@ continued advancement after export, restored head/registries on failure, local i
 and replay, stale-frontier rejection and authority/replica role separation. Concrete
 portable payload encoding, authenticated transfer and loader import bindings still
 need installation; no network correction or multiplayer readiness is claimed.
+
+
+### Bounded correction envelopes and chunk assembly
+
+RollbackStateCorrection carries session, authority publication, revision, confirmed
+tick, agreed definitions and detached opaque payload bytes. Its codec checks exact
+lengths and a caller-supplied session byte budget. RollbackStateCorrectionChunk splits
+it below the plugin-message size limit; its assembler accepts out-of-order parts and
+identical duplicates, emits only a complete matching envelope and rejects rewrites,
+interleaved publications, definition mismatches and timeouts. Completed publications
+are not emitted twice; repair publications may skip authority update numbers.
+
+Tests cover codec truncation/invalid metadata, detachment, shuffled delivery, duplicates,
+publication gaps, envelope mismatch, budgets and terminal failed assembly. The caller
+must authenticate the server connection before feeding parts. Loader channel handlers,
+portable native/gameplay payloads and frontier-aware import delivery remain uninstalled.
