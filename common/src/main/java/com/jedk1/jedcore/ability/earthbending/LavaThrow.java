@@ -1,5 +1,7 @@
 package com.jedk1.jedcore.ability.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
 import com.jedk1.jedcore.util.RegenTempBlock;
@@ -76,7 +78,7 @@ public class LavaThrow extends LavaAbility implements AddonAbility {
     }
 
     public static Block getRandomSourceBlock(Location location, int radius) {
-        return getRandomSourceBlock(location, radius, new Random());
+        return getRandomSourceBlock(location, radius, new RollbackRandom());
     }
 
     private static Block getRandomSourceBlock(Location location, int radius, final Random rand) {
@@ -204,7 +206,7 @@ public class LavaThrow extends LavaAbility implements AddonAbility {
 
             head = head.add(head.getDirection().multiply(1));
             new RegenTempBlock(l.getBlock(), Material.LAVA, Material.LAVA.createBlockData(bd -> ((Levelled) bd).setLevel(0)), 200);
-            ParticleEffect.LAVA.display(head, 1, Math.random(), Math.random(), Math.random(), 0);
+            ParticleEffect.LAVA.display(head, 1, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0);
 
             boolean hit = false;
 

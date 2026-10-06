@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.region;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.hooks.RegionProtectionHook;
 import com.projectkorra.projectkorra.platform.Platform;
@@ -89,7 +91,7 @@ public class RegionProtection {
         }
 
         final boolean value = isRegionProtectedCached(player, location, ability);
-        blockMap.put(block, new BlockCacheElement(player, block, ability, value, System.currentTimeMillis()));
+        blockMap.put(block, new BlockCacheElement(player, block, ability, value, RollbackClock.millis()));
         return value;
     }
 
@@ -185,7 +187,7 @@ public class RegionProtection {
      */
     public static void startCleanCacheTask(double period) {
         Platform.scheduler().runTimer(() -> {
-            final long currentTime = System.currentTimeMillis();
+            final long currentTime = RollbackClock.millis();
             for (final String playerName : BLOCK_CACHE.keySet()) {
                 final Map<Block, BlockCacheElement> map = BLOCK_CACHE.get(playerName);
                 for (final Block key : map.keySet()) {

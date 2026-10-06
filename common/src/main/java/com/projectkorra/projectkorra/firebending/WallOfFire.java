@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.firebending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -83,7 +86,7 @@ public class WallOfFire extends FireAbility implements EntityHitboxProvider {
         this.duration = getConfig().getLong("Abilities.Fire.WallOfFire.Duration");
         this.fireTicks = getConfig().getDouble("Abilities.Fire.WallOfFire.FireTicks");
 
-        this.random = new Random();
+        this.random = new RollbackRandom();
         this.gameplayRandom = PredictionDeterminism.random(player == null ? null : player.getUniqueId(),
                 getClass().getName() + ":block-drying");
         this.blocks = new ArrayList<>();
@@ -98,7 +101,7 @@ public class WallOfFire extends FireAbility implements EntityHitboxProvider {
 
         this.origin = GeneralMethods.getTargetedLocation(player, this.range);
 
-        this.time = System.currentTimeMillis();
+        this.time = RollbackClock.millis();
         final Block block = this.origin.getBlock();
         if (block.isLiquid() || GeneralMethods.isSolid(block)) {
             return;
@@ -162,7 +165,7 @@ public class WallOfFire extends FireAbility implements EntityHitboxProvider {
         }
         entity.setFireTicks((int) (this.fireTicks * 20));
         new FireDamageTimer(entity, this.player, this);
-        affected.put(entity, System.currentTimeMillis() + damageInterval);
+        affected.put(entity, RollbackClock.millis() + damageInterval);
     }
 
     private void damage() {
@@ -275,7 +278,7 @@ public class WallOfFire extends FireAbility implements EntityHitboxProvider {
 
     @Override
     public void progress() {
-        this.time = System.currentTimeMillis();
+        this.time = RollbackClock.millis();
 
         if (this.time > this.getStartTime() + this.duration) {
             this.remove();

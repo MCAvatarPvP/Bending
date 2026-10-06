@@ -1,5 +1,8 @@
 package com.jedk1.jedcore.ability.earthbending.combo;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
 import com.jedk1.jedcore.util.MaterialUtil;
@@ -195,7 +198,7 @@ public class MagmaBlast extends LavaAbility implements AddonAbility, ComboAbilit
     }
 
     public boolean shouldBlockLavaFlow() {
-        long time = System.currentTimeMillis();
+        long time = RollbackClock.millis();
         return time < canLavaFlowTime;
     }
 
@@ -207,7 +210,7 @@ public class MagmaBlast extends LavaAbility implements AddonAbility, ComboAbilit
             return;
         }
 
-        if (System.currentTimeMillis() > this.getStartTime() + maxDuration) {
+        if (RollbackClock.millis() > this.getStartTime() + maxDuration) {
             remove();
             return;
         }
@@ -318,8 +321,8 @@ public class MagmaBlast extends LavaAbility implements AddonAbility, ComboAbilit
 
     private void playParticles(Location location) {
         location.add(.5, .5, .5);
-        ParticleEffect.LAVA.display(location, 2, Math.random(), Math.random(), Math.random(), 0f);
-        ParticleEffect.SMOKE_NORMAL.display(location, 2, Math.random(), Math.random(), Math.random(), 0f);
+        ParticleEffect.LAVA.display(location, 2, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0f);
+        ParticleEffect.SMOKE_NORMAL.display(location, 2, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0f);
         for (int i = 0; i < 10; i++) {
             GeneralMethods.displayColoredParticle("FFA400", getOffsetLocation(location, 2));
             GeneralMethods.displayColoredParticle("FF8C00", getOffsetLocation(location, 2));
@@ -332,11 +335,11 @@ public class MagmaBlast extends LavaAbility implements AddonAbility, ComboAbilit
     }
 
     private Location getOffsetLocation(Location loc, double offset) {
-        return loc.clone().add((float) ((Math.random() - 0.5) * offset), (float) ((Math.random() - 0.5) * offset), (float) ((Math.random() - 0.5) * offset));
+        return loc.clone().add((float) ((RollbackRandom.fraction() - 0.5) * offset), (float) ((RollbackRandom.fraction() - 0.5) * offset), (float) ((RollbackRandom.fraction() - 0.5) * offset));
     }
 
     private void performAction() {
-        long time = System.currentTimeMillis();
+        long time = RollbackClock.millis();
 
         if (blocks.isEmpty() || stopFiring || time < lastShot + shotCooldown) return;
 

@@ -1,5 +1,8 @@
 package com.jedk1.jedcore.ability.waterbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -120,10 +123,10 @@ public class IceWall extends IceAbility implements AddonAbility {
                         ^ ((long) b.getX() * 341873128712L)
                         ^ ((long) b.getY() * 132897987541L)
                         ^ ((long) b.getZ() * 42317861L);
-                Random deterministic = new Random(seed);
+                Random deterministic = new RollbackRandom(seed);
                 wallHealth = (int) (((deterministic.nextInt((maxHealth - minHealth) + 1)) + minHealth) * getNightFactor(player.getWorld()));
                 loadAffectedBlocks(player, b);
-                lifetime = System.currentTimeMillis() + lifetimeTime;
+                lifetime = RollbackClock.millis() + lifetimeTime;
             }
         }
         start();
@@ -542,17 +545,17 @@ public class IceWall extends IceAbility implements AddonAbility {
             }
         }
 
-        if (System.currentTimeMillis() > lifetime && lifetimeEnabled) {
+        if (RollbackClock.millis() > lifetime && lifetimeEnabled) {
             collapse(player, false);
         }
     }
 
     public void damageWall(Player player, int damage) {
         long noDamageTicks = 1000;
-        if (System.currentTimeMillis() < lastDamageTime + noDamageTicks)
+        if (RollbackClock.millis() < lastDamageTime + noDamageTicks)
             return;
 
-        lastDamageTime = System.currentTimeMillis();
+        lastDamageTime = RollbackClock.millis();
         tankedDamage += damage;
         if (tankedDamage >= wallHealth) {
             collapse(player, true);

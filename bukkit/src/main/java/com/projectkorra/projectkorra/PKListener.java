@@ -11,10 +11,6 @@ import com.projectkorra.projectkorra.airbending.Suffocate;
 import com.projectkorra.projectkorra.airbending.Tornado;
 import com.projectkorra.projectkorra.airbending.flight.FlightMultiAbility;
 import com.projectkorra.projectkorra.airbending.passive.GracefulDescent;
-import com.projectkorra.projectkorra.attribute.Attribute;
-import com.projectkorra.projectkorra.attribute.AttributeModification;
-import com.projectkorra.projectkorra.attribute.AttributeModifier;
-import com.projectkorra.projectkorra.attribute.markers.DayNightFactor;
 import com.projectkorra.projectkorra.avatar.AvatarState;
 import com.projectkorra.projectkorra.board.BendingBoardManager;
 import com.projectkorra.projectkorra.chiblocking.*;
@@ -35,6 +31,8 @@ import com.projectkorra.projectkorra.event.*;
 import com.projectkorra.projectkorra.firebending.*;
 import com.projectkorra.projectkorra.firebending.util.FireDamageTimer;
 import com.projectkorra.projectkorra.listener.CommonInputHandler;
+import com.projectkorra.projectkorra.listener.CommonAbilityLifecycleListener;
+import com.projectkorra.projectkorra.listener.CommonDamageHandler;
 import com.projectkorra.projectkorra.listener.CommonPlayerListenerCore;
 import com.projectkorra.projectkorra.object.HorizontalVelocityTracker;
 import com.projectkorra.projectkorra.platform.Platform;
@@ -85,7 +83,9 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class PKListener implements Listener {
-    private static final HashMap<UUID, Ability> BENDING_ENTITY_DEATH = new HashMap<>(); // Entities killed by Bending.
+    private final com.projectkorra.projectkorra.listener.CommonAbilityCombatListener combatEvents = new com.projectkorra.projectkorra.listener.CommonAbilityCombatListener();
+
+    private static final HashMap<UUID, String> BENDING_ENTITY_DEATH = new HashMap<>(); // Entities killed by Bending.
     private static final HashMap<Player, String> BENDING_PLAYER_DEATH = new HashMap<>(); // Player killed by Bending.
     private static final Set<UUID> RIGHT_CLICK_INTERACT = new HashSet<>(); // Player right click block.
     @Deprecated
@@ -93,6 +93,37 @@ public class PKListener implements Listener {
     private static final Set<UUID> PLAYER_DROPPED_ITEM = new HashSet<>(); // Player dropped an item.
     private static final Map<Player, Integer> JUMPS = new HashMap<>();
     JavaPlugin plugin;
+    private final CommonAbilityLifecycleListener lifecycleEvents = new CommonAbilityLifecycleListener(this::publishLifecycleEffect);
+    public CommonAbilityLifecycleListener lifecycleEvents() { return lifecycleEvents; }
+
+    /** Called by ordinary live events, or by a session's confirmed output publisher. */
+    public void publishLifecycleEffect(CommonAbilityLifecycleListener.Effect effect) {
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()
+                || com.projectkorra.projectkorra.prediction.rollback.RollbackClock.active() || !org.bukkit.Bukkit.isPrimaryThread())
+            throw new IllegalStateException("Cannot publish lifecycle effects during replay");
+        if (effect instanceof CommonAbilityLifecycleListener.ConsoleCommand command) {
+            plugin.getServer().dispatchCommand(plugin.getServer().getConsoleSender(), command.command());
+        } else if (effect instanceof CommonAbilityLifecycleListener.Board board) {
+            Runnable update = () -> {
+                var nativePlayer = plugin.getServer().getPlayer(board.player());
+                if (nativePlayer == null) return;
+                var player = BukkitMC.player(nativePlayer);
+                if (board.allSlots()) BendingBoardManager.updateAllSlots(player);
+                else BendingBoardManager.updateBoard(player, board.ability(), false, board.slot());
+            };
+            if (board.delayed()) plugin.getServer().getScheduler().runTaskLater(plugin, update, 1);
+            else update.run();
+        } else if (effect instanceof CommonAbilityLifecycleListener.Death death) {
+            BENDING_ENTITY_DEATH.put(death.entity(), death.ability());
+            var player = death.player() ? plugin.getServer().getPlayer(death.entity()) : null;
+            if (player != null && death.message() != null) {
+                BENDING_PLAYER_DEATH.put(player, death.message());
+                plugin.getServer().getScheduler().runTaskLater(plugin,
+                        () -> BENDING_PLAYER_DEATH.remove(player, death.message()), 20);
+            }
+        } else throw new IllegalArgumentException("Unknown lifecycle effect");
+    }
+
 
     public PKListener(final JavaPlugin plugin) {
 
@@ -439,34 +470,8 @@ public class PKListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.NORMAL)
     public void onElementChange(final PlayerChangeElementEvent event) {
-        var oPlayer = event.getTarget();
-        if (oPlayer.isOnline()) {
-            final var player = oPlayer.getPlayer();
-            final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-            final boolean chatEnabled = ConfigManager.languageConfig.get().getBoolean("Chat.Enable");
-            if (chatEnabled) {
-                final Element element = event.getElement();
-                String prefix = "";
-
-                if (bPlayer == null) {
-                    return;
-                }
-
-                if (bPlayer.getElements().size() > 1) {
-                    prefix = Element.AVATAR.getPrefix();
-                } else if (element != null) {
-                    prefix = element.getPrefix();
-                } else {
-                    prefix = ChatColor.WHITE + ChatColor.translateAlternateColorCodes('&', ConfigManager.languageConfig.get().getString("Chat.Prefixes.Nonbender")) + " ";
-                }
-
-                player.setDisplayName(player.getName());
-                player.setDisplayName(prefix + ChatColor.RESET + player.getDisplayName());
-            }
-            CommonPlayerListenerCore.handleElementChanged(player);
-        }
+        lifecycleEvents.onElementChange(event);
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
@@ -565,62 +570,7 @@ public class PKListener implements Listener {
             }
         }
 
-        if (event.getCause() == DamageCause.FIRE && FireAbility.getSourcePlayers().containsKey(entity.getLocation().getBlock())) {
-            new FireDamageTimer(entity, FireAbility.getSourcePlayers().get(entity.getLocation().getBlock()));
-        }
-
-        if (FireDamageTimer.isEnflamed(entity) && event.getCause() == DamageCause.FIRE_TICK) {
-            event.setCancelled(true);
-            FireDamageTimer.dealFlameDamage(entity);
-        }
-
-        if (entity instanceof com.projectkorra.projectkorra.platform.mc.entity.Player player) {
-            final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-            if (bPlayer == null) {
-                return;
-            }
-
-            CoreAbility boundAbility = bPlayer.getBoundAbility();
-            Element ele = boundAbility == null ? null : boundAbility.getElement();
-            if (ele != null) {
-                Element element = GeneralMethods.getParentElement(ele);
-                int minFireTicks = ConfigManager.getConfig(bPlayer).getInt("Properties." + element.getName() + ".MinFireTickDuration");
-                int maxFireTicks = ConfigManager.getConfig(bPlayer).getInt("Properties." + element.getName() + ".MaxFireTickDuration");
-                int maxLavaTicks = ConfigManager.getConfig(bPlayer).getInt("Properties." + element.getName() + ".MaxLavaTickDuration");
-                if (event.getCause() == DamageCause.FIRE) {
-                    if (player.getFireTicks() < minFireTicks) player.setFireTicks(minFireTicks);
-                    else if (player.getFireTicks() > maxFireTicks) player.setFireTicks(maxFireTicks);
-
-                    double maxFireDmg = ConfigManager.getConfig(bPlayer).getDouble("Properties.Fire.MaxFireDamage");
-                    if (event.getDamage() > maxFireDmg) event.setDamage(maxFireDmg);
-                } else if (event.getCause() == DamageCause.LAVA) {
-                    if (player.getFireTicks() > maxLavaTicks) player.setFireTicks(maxLavaTicks);
-
-                    double maxLavaDmg = ConfigManager.getConfig(bPlayer).getDouble("Properties.Earth.MaxLavaDamage");
-                    if (event.getDamage() > maxLavaDmg) event.setDamage(maxLavaDmg);
-                }
-            }
-
-            if (CoreAbility.hasAbility(player, EarthGrab.class)) {
-                final EarthGrab abil = CoreAbility.getAbility(player, EarthGrab.class);
-                abil.remove();
-            }
-
-            if (CoreAbility.getAbility(player, FireJet.class) != null && event.getCause() == DamageCause.FLY_INTO_WALL) {
-                event.setCancelled(true);
-            }
-
-            if (bPlayer.isElementToggled(Element.FIRE)) {
-                return;
-            }
-
-            if (bPlayer.getBoundAbilityName().equalsIgnoreCase("HeatControl")) {
-                if (event.getCause() == DamageCause.FIRE || event.getCause() == DamageCause.FIRE_TICK) {
-                    player.setFireTicks(0);
-                    event.setCancelled(true);
-                }
-            }
-        }
+        CommonDamageHandler.environment(BukkitMC.damageEvent(event));
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
@@ -639,9 +589,9 @@ public class PKListener implements Listener {
         final CoreAbility[] cookingFireCombos = {CoreAbility.getAbility("JetBlast"), CoreAbility.getAbility("FireWheel"), CoreAbility.getAbility("FireSpin"), CoreAbility.getAbility("FireKick")};
 
         if (BENDING_ENTITY_DEATH.containsKey(event.getEntity().getUniqueId())) {
-            final CoreAbility coreAbility = (CoreAbility) BENDING_ENTITY_DEATH.remove(event.getEntity().getUniqueId());
+            final String abilityName = BENDING_ENTITY_DEATH.remove(event.getEntity().getUniqueId());
             for (final CoreAbility fireCombo : cookingFireCombos) {
-                if (coreAbility.getName().equalsIgnoreCase(fireCombo.getName())) {
+                if (abilityName.equalsIgnoreCase(fireCombo.getName())) {
                     final List<ItemStack> drops = event.getDrops();
                     final List<ItemStack> newDrops = new ArrayList<>();
                     for (ItemStack cooked : drops) {
@@ -822,38 +772,12 @@ public class PKListener implements Listener {
         }
     }
 
-    @EventHandler
     public void onHorizontalCollision(final HorizontalVelocityChangeEvent e) {
-        if (e.getEntity() instanceof LivingEntity) {
-            if (e.getEntity().getEntityId() != e.getInstigator().getEntityId()) {
-                final double minimumDistance = this.plugin.getConfig().getDouble("Properties.HorizontalCollisionPhysics.WallDamageMinimumDistance");
-                final double maxDamage = this.plugin.getConfig().getDouble("Properties.HorizontalCollisionPhysics.WallDamageCap");
-                final double damage = ((e.getDistanceTraveled() - minimumDistance) < 0 ? 0 : e.getDistanceTraveled() - minimumDistance) / (e.getDifference().length());
-                if (damage > 0) {
-                    DamageHandler.damageEntity(e.getEntity(), Math.min(damage, maxDamage), e.getAbility());
-                }
-            }
-        }
+        combatEvents.onHorizontalCollision(e);
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onAbilityVelocity(AbilityVelocityAffectEntityEvent event) {
-        var entity = event.getAffected();
-        if (entity instanceof FallingBlock fb) {
-            for (String s : ConfigManager.collisionConfig.get().getStringList("FallingBlockCollisions")) {
-                String[] abilities = s.split("\\s*,\\s*");
-                if (abilities.length != 2) continue;
-
-                if (fb.hasMetadata(abilities[0].toLowerCase())
-                        && event.getAbility().getName().equalsIgnoreCase(abilities[1])) {
-                    event.setCancelled(true);
-                }
-            }
-        }
-
-        if (entity instanceof com.projectkorra.projectkorra.platform.mc.entity.Player target) {
-            cancelAirScooterOnHit(target, event.getAbility());
-        }
+        combatEvents.onAbilityVelocity(event);
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
@@ -872,32 +796,8 @@ public class PKListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.NORMAL)
     public void onEntityBendingDeath(final EntityBendingDeathEvent event) {
-        BENDING_ENTITY_DEATH.put(event.getEntity().getUniqueId(), event.getAbility());
-        if (event.getEntity() instanceof com.projectkorra.projectkorra.platform.mc.entity.Player player) {
-            if (ConfigManager.languageConfig.get().getBoolean("DeathMessages.Enabled")) {
-                final Ability ability = event.getAbility();
-                if (ability == null) {
-                    return;
-                }
-
-                BENDING_PLAYER_DEATH.put(BukkitMC.playerHandle(player), ability.getElement().getColor() + ability.getName());
-
-                new BukkitRunnable() {
-                    @Override
-                    public void run() {
-                        BENDING_PLAYER_DEATH.remove(player);
-                    }
-                }.runTaskLater(plugin, 20);
-            }
-            if (event.getAttacker() != null && ProjectKorra.isStatisticsEnabled()) {
-                StatisticsMethods.addStatisticAbility(event.getAttacker().getUniqueId(), CoreAbility.getAbility(event.getAbility().getName()), com.projectkorra.projectkorra.util.Statistic.PLAYER_KILLS, 1);
-            }
-        }
-        if (event.getAttacker() != null && ProjectKorra.isStatisticsEnabled()) {
-            StatisticsMethods.addStatisticAbility(event.getAttacker().getUniqueId(), CoreAbility.getAbility(event.getAbility().getName()), com.projectkorra.projectkorra.util.Statistic.TOTAL_KILLS, 1);
-        }
+        lifecycleEvents.onEntityBendingDeath(event);
     }
 
     @EventHandler
@@ -977,106 +877,12 @@ public class PKListener implements Listener {
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onPlayerDamage(final EntityDamageEvent event) {
-        if (event.getEntity() instanceof org.bukkit.entity.Player nativePlayer) {
-            final var player = BukkitMC.player(nativePlayer);
-            final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-
-            if (bPlayer == null) {
-                return;
-            } else if (bPlayer.isChiBlocked()) {
-                return;
-            }
-
-            if (FlightMultiAbility.getFlyingPlayers().contains(player.getUniqueId())) {
-                final FlightMultiAbility fma = CoreAbility.getAbility(player, FlightMultiAbility.class);
-                fma.cancel("taking damage");
-            }
-
-            Suffocate.remove(player);
-
-            if (bPlayer.hasElement(Element.EARTH) && event.getCause() == DamageCause.FALL) {
-                if (bPlayer.getBoundAbilityName().equalsIgnoreCase("Shockwave")) {
-                    new Shockwave(player, true);
-                } else if (bPlayer.getBoundAbilityName().equalsIgnoreCase("Catapult")) {
-                    new EarthPillars(player, true);
-                }
-            }
-
-            if (bPlayer.hasElement(Element.AIR) && event.getCause() == DamageCause.FALL) {
-                if (bPlayer.getBoundAbilityName().equalsIgnoreCase("AirBurst")) {
-                    new AirBurst(player, true);
-                }
-            }
-
-            CoreAbility gd = CoreAbility.getAbility(GracefulDescent.class);
-            CoreAbility ds = CoreAbility.getAbility(DensityShift.class);
-            CoreAbility hs = CoreAbility.getAbility(HydroSink.class);
-            CoreAbility ab = CoreAbility.getAbility(Acrobatics.class);
-            CoreAbility wa = CoreAbility.getAbility(player, WaterArms.class);
-
-            if (event.getCause() == DamageCause.FALL) {
-                event.setCancelled((gd != null && bPlayer.hasElement(Element.AIR) && bPlayer.canBendPassive(gd) && bPlayer.canUsePassive(gd) && gd.isEnabled() && PassiveManager.hasPassive(player, gd))
-                        || (ds != null && bPlayer.hasElement(Element.EARTH) && bPlayer.canBendPassive(ds) && bPlayer.canUsePassive(ds) && ds.isEnabled() && PassiveManager.hasPassive(player, ds) && DensityShift.softenLanding(player))
-                        || (hs != null && bPlayer.hasElement(Element.WATER) && bPlayer.canBendPassive(hs) && bPlayer.canUsePassive(hs) && hs.isEnabled() && PassiveManager.hasPassive(player, hs) && HydroSink.applyNoFall(player)));
-            }
-
-            boolean fallDamage = ConfigManager.getConfig(bPlayer).getBoolean("Abilities.Water.WaterArms.FallDamage");
-            if (wa != null && bPlayer.hasElement(Element.WATER) && event.getCause() == DamageCause.FALL && !fallDamage) {
-                event.setCancelled(true);
-            }
-
-            boolean ignoreChiBlock = ConfigManager.getConfig(bPlayer).getBoolean("Abilities.Chi.Passive.Acrobatics.IgnoreChiBlock");
-            if (ab != null && bPlayer.hasElement(Element.CHI) && event.getCause() == DamageCause.FALL && bPlayer.canBendPassive(ab) && bPlayer.canUsePassive(ab, ignoreChiBlock) && ab.isEnabled() && PassiveManager.hasPassive(player, ab)) {
-                final double initdamage = event.getDamage();
-                final double newdamage = event.getDamage() * Acrobatics.getFallReductionFactor(bPlayer);
-                final double finaldamage = initdamage - newdamage;
-                event.setDamage(finaldamage);
-                if (finaldamage <= 0.4) {
-                    event.setCancelled(true);
-                }
-            }
-
-            if (event.getCause() == DamageCause.FALL) {
-                double maxFallDamage = ConfigManager.getConfig(bPlayer).getDouble("Properties.MaxFallDamage");
-                if (maxFallDamage >= 0 && event.getDamage() > maxFallDamage) {
-                    event.setDamage(maxFallDamage);
-                }
-
-                final Flight flight = Manager.getManager(FlightHandler.class).getInstance(player);
-                if (flight != null) {
-                    if (flight.getPlayer().equals(flight.getSource())) {
-                        event.setCancelled(true);
-                    }
-                }
-            }
-
-            CoreAbility hc = CoreAbility.getAbility(HeatControl.class);
-
-            if (hc != null && bPlayer.hasElement(Element.FIRE) && bPlayer.canBendPassive(hc) && bPlayer.canUsePassive(hc) && (event.getCause() == DamageCause.FIRE || event.getCause() == DamageCause.FIRE_TICK)) {
-                event.setCancelled(!HeatControl.canBurn(player));
-            }
-
-            if (bPlayer.hasElement(Element.EARTH) && event.getCause() == DamageCause.SUFFOCATION && TempBlock.isTempBlock(player.getEyeLocation().getBlock())) {
-                event.setDamage(0D);
-                event.setCancelled(true);
-            }
-
-            if (CoreAbility.getAbility(player, EarthArmor.class) != null) {
-                final EarthArmor eartharmor = CoreAbility.getAbility(player, EarthArmor.class);
-                eartharmor.updateAbsorbtion();
-            }
-        }
+        CommonDamageHandler.player(BukkitMC.damageEvent(event));
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onFall(EntityDamageEvent event) {
-        if (event.getCause() != DamageCause.FALL || !(event.getEntity() instanceof org.bukkit.entity.Player nativePlayer))
-            return;
-        final var player = BukkitMC.player(nativePlayer);
-        if (!FallHandler.contains(player)) return;
-
-        event.setCancelled(true);
-        FallHandler.removePlayer(player);
+        CommonDamageHandler.fall(BukkitMC.damageEvent(event));
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
@@ -1121,92 +927,7 @@ public class PKListener implements Listener {
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onPlayerDamageByPlayer(final EntityDamageByEntityEvent e) {
-        final var source = BukkitMC.entity(e.getDamager());
-        final var entity = BukkitMC.entity(e.getEntity());
-        final FireBlastCharged fireball = FireBlastCharged.getFireball(source);
-
-        DamageHandler.entityDamageCallback(BukkitMC.damageEvent(e));
-
-        if (fireball != null) {
-            e.setCancelled(true);
-            fireball.dealDamage(entity);
-            return;
-        }
-
-        if (MovementHandler.isStopped(source)) {
-            final CoreAbility ability = (CoreAbility) source.getMetadata("movement:stop").get(0).value();
-            if (!(ability instanceof EarthGrab)) {
-                e.setCancelled(true);
-                return;
-            }
-        }
-
-        if (entity instanceof com.projectkorra.projectkorra.platform.mc.entity.Player target) {
-            Suffocate.remove(target);
-        }
-
-        // DamageHandler raises a nested entity-damage event for the actual
-        // bending damage. Never reinterpret that event as another melee input;
-        // doing so cancels FirePunch's own damage before health is changed.
-        if (entity instanceof LivingEntity livingEntity
-                && DamageHandler.isReceivingDamage(livingEntity)) {
-            return;
-        }
-
-        if (source instanceof com.projectkorra.projectkorra.platform.mc.entity.Player sourcePlayer
-                && entity instanceof LivingEntity targetLiving
-                && CommonInputHandler.handleEntityLeftClick(sourcePlayer, targetLiving)) {
-            e.setCancelled(true);
-            return;
-        }
-
-        if (source instanceof com.projectkorra.projectkorra.platform.mc.entity.Player sourcePlayer) { // This is the player hitting someone.
-            final BendingPlayer sourceBPlayer = BendingPlayer.getBendingPlayer(sourcePlayer);
-            if (sourceBPlayer == null) {
-                return;
-            }
-
-            final Ability boundAbil = sourceBPlayer.getBoundAbility();
-
-            if (sourceBPlayer.getBoundAbility() != null) {
-                if (!sourceBPlayer.isOnCooldown(boundAbil)) {
-                    if (sourceBPlayer.canBendPassive(sourceBPlayer.getBoundAbility())) {
-                        if (e.getCause() == DamageCause.ENTITY_ATTACK) {
-                            if (sourceBPlayer.getBoundAbility() instanceof ChiAbility) {
-                                if (sourceBPlayer.canCurrentlyBendWithWeapons()) {
-                                    if (sourceBPlayer.isElementToggled(Element.CHI)) {
-                                        if (boundAbil.equals(CoreAbility.getAbility(Paralyze.class))) {
-                                            new Paralyze(sourcePlayer, entity);
-                                        } else if (boundAbil.equals(CoreAbility.getAbility(QuickStrike.class))) {
-                                            new QuickStrike(sourcePlayer, entity);
-                                            e.setCancelled(true);
-                                        } else if (boundAbil.equals(CoreAbility.getAbility(SwiftKick.class))) {
-                                            new SwiftKick(sourcePlayer, entity);
-                                            e.setCancelled(true);
-                                        } else if (boundAbil.equals(CoreAbility.getAbility(RapidPunch.class))) {
-                                            new RapidPunch(sourcePlayer, entity);
-                                            e.setCancelled(true);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            } else {
-                if (e.getCause() == DamageCause.ENTITY_ATTACK) {
-                    if (sourceBPlayer.canCurrentlyBendWithWeapons()) {
-                        if (sourceBPlayer.isElementToggled(Element.CHI)) {
-                            if (entity instanceof com.projectkorra.projectkorra.platform.mc.entity.Player targetPlayer) {
-                                if (ChiPassive.willChiBlock(sourcePlayer, targetPlayer)) {
-                                    ChiPassive.blockChi(targetPlayer);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        CommonDamageHandler.byEntity(BukkitMC.damageEvent(e), BukkitMC.entity(e.getDamager()));
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
@@ -1476,56 +1197,8 @@ public class PKListener implements Listener {
         BukkitMC.clearPlayerState(event.getPlayer());
     }
 
-    @EventHandler(priority = EventPriority.LOW)
     public void onAttributeRecalc(AbilityRecalculateAttributeEvent event) {
-        CoreAbility ability = event.getAbility();
-        var player = ability.getPlayer();
-        var location = ability.getLocation();
-        if (event.hasMarker(DayNightFactor.class) && player != null && location != null) {
-            boolean day = FireAbility.isDay(location.getWorld());
-            boolean night = WaterAbility.isNight(location.getWorld());
-            if (ability instanceof WaterAbility && night && player.hasPermission("bending.water.nightfactor")) {
-                DayNightFactor dayNightFactor = event.getMarker(DayNightFactor.class);
-                double factor = dayNightFactor.factor() != -1 ? dayNightFactor.factor() : WaterAbility.getNightFactor();
-                //If the factor isn't the default, use the one in the annotation
-
-                AttributeModifier modifier = dayNightFactor.invert() ? AttributeModifier.DIVISION : AttributeModifier.MULTIPLICATION;
-                AttributeModification mod = AttributeModification.of(modifier, factor, AttributeModification.NIGHT_FACTOR);
-                event.addModification(mod);
-            } else if (ability instanceof FireAbility && day && player.hasPermission("bending.fire.dayfactor")) {
-                DayNightFactor dayNightFactor = event.getMarker(DayNightFactor.class);
-                double factor = dayNightFactor.factor() == -1 ? FireAbility.getDayFactor() : dayNightFactor.factor();
-                //If the factor isn't the default, use the one in the annotation
-
-                AttributeModifier modifier = dayNightFactor.invert() ? AttributeModifier.DIVISION : AttributeModifier.MULTIPLICATION;
-                AttributeModification mod = AttributeModification.of(modifier, factor, AttributeModification.DAY_FACTOR);
-                event.addModification(mod);
-            }
-        }
-
-        //Blue fire has factors for a few attributes. But only do it for pure fire abilities and not combustion/lightning
-        Element element = ability.getElement();
-        BendingPlayer bPlayer = ability.getBendingPlayer();
-        if ((element == Element.FIRE || element == Element.BLUE_FIRE) && bPlayer.hasElement(Element.BLUE_FIRE) && player.hasPermission("bending.fire.bluefirefactor")) {
-            switch (event.getAttribute()) {
-                case Attribute.DAMAGE: {
-                    double factor = BlueFireAbility.getDamageFactor();
-                    event.addModification(AttributeModification.of(AttributeModifier.MULTIPLICATION, factor, AttributeModification.PRIORITY_NORMAL - 50, AttributeModification.BLUE_FIRE_DAMAGE));
-                    break;
-                }
-                case Attribute.COOLDOWN: {
-                    double factor = BlueFireAbility.getCooldownFactor();
-                    event.addModification(AttributeModification.of(AttributeModifier.MULTIPLICATION, factor, AttributeModification.PRIORITY_NORMAL - 50, AttributeModification.BLUE_FIRE_COOLDOWN));
-                    break;
-                }
-                case Attribute.RANGE: {
-                    double factor = BlueFireAbility.getRangeFactor();
-                    event.addModification(AttributeModification.of(AttributeModifier.MULTIPLICATION, factor, AttributeModification.PRIORITY_NORMAL - 50, AttributeModification.BLUE_FIRE_RANGE));
-                    break;
-                }
-                default:
-            }
-        }
+        combatEvents.onAttributeRecalc(event);
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
@@ -1583,17 +1256,7 @@ public class PKListener implements Listener {
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onPlayerToggleFlight(final PlayerToggleFlightEvent event) {
-        final var player = BukkitMC.player(event.getPlayer());
-        if (CoreAbility.hasAbility(player, Tornado.class) || Bloodbending.isBloodbent(player) || Suffocate.isBreathbent(player) || CoreAbility.hasAbility(player, FireJet.class) || CoreAbility.hasAbility(player, AvatarState.class)) {
-            event.setCancelled(player.getGameMode() != GameMode.CREATIVE);
-            return;
-        }
-
-        if (FlightMultiAbility.getFlyingPlayers().contains(player.getUniqueId())) {
-            if (player.isFlying()) {
-                event.setCancelled(true);
-            }
-        }
+        event.setCancelled(CommonInputHandler.handleToggleFlight(BukkitMC.player(event.getPlayer())).cancelEvent());
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
@@ -1601,19 +1264,7 @@ public class PKListener implements Listener {
         if (!(event.getEntity() instanceof org.bukkit.entity.Player nativePlayer)) {
             return;
         }
-        final var player = BukkitMC.player(nativePlayer);
-
-        if (FlightMultiAbility.getFlyingPlayers().contains(player.getUniqueId())) {
-            if (player.isGliding()) {
-                event.setCancelled(true);
-                return;
-            }
-        }
-        if (ConfigManager.getConfig(BendingPlayer.getBendingPlayer(player)).getBoolean("Abilities.Fire.FireJet.ShowGliding")) {
-            if (CoreAbility.getAbility(player, FireJet.class) != null) {
-                event.setCancelled(true);
-            }
-        }
+        event.setCancelled(CommonInputHandler.handleToggleGlide(BukkitMC.player(nativePlayer)).cancelEvent());
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -1739,47 +1390,16 @@ public class PKListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
     public void onBendingSubElementChange(final PlayerChangeSubElementEvent event) {
-        if (!event.isTargetOnline()) return;
-        final var player = event.getTarget().getPlayer();
-        final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-        if (bPlayer == null) return;
-        CommonPlayerListenerCore.handleElementChanged(player);
+        lifecycleEvents.onBendingSubElementChange(event);
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
     public void onBindChange(final PlayerBindChangeEvent event) {
-        if (!event.isOnline()) return;
-        final var player = event.getPlayer().getPlayer();
-        if (player == null) return;
-        if (event.isMultiAbility()) {
-            new BukkitRunnable() {
-
-                @Override
-                public void run() {
-                    BendingBoardManager.updateAllSlots(player);
-                }
-            }.runTaskLater(plugin, 1);
-        } else {
-            if (event.isBinding()) {
-                BendingBoardManager.updateBoard(player, event.getAbility(), false, event.getSlot());
-            } else {
-                BendingBoardManager.updateBoard(player, "", false, event.getSlot());
-            }
-        }
+        lifecycleEvents.onBindChange(event);
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerStanceChange(final PlayerStanceChangeEvent event) {
-        final var player = event.getPlayer();
-        if (player == null) return;
-        if (!event.getOldStance().isEmpty()) {
-            BendingBoardManager.updateBoard(player, event.getOldStance(), false, 0);
-        }
-        if (!event.getNewStance().isEmpty()) {
-            BendingBoardManager.updateBoard(player, event.getNewStance(), false, 0);
-        }
+        lifecycleEvents.onPlayerStanceChange(event);
     }
 
     @EventHandler
@@ -1789,96 +1409,13 @@ public class PKListener implements Listener {
         BendingPlayer.BIND_HOOKS.remove((JavaPlugin) event.getPlugin());
     }
 
-    @EventHandler
     public void onAbilityStart(AbilityStartEvent event) {
-        var player = event.getAbility().getPlayer();
-        if (player.hasPermission("bending.funny.abilstart")) {
-            Server server = plugin.getServer();
-            String cmd = ConfigManager.getConfig().getString("Properties.FunnyCMD").replace("{player}", player.getName());
-            if (cmd.isEmpty()) return;
-            server.dispatchCommand(server.getConsoleSender(), cmd);
-            event.setCancelled(true);
-        }
+        lifecycleEvents.onAbilityStart(event);
     }
 
-    @EventHandler
     public void onAbilityDamage(final AbilityDamageEntityEvent event) {
-        final var source = event.getSource();
-
-        if (source != null) {
-            final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(source);
-
-            if (event.getEntity() instanceof LivingEntity
-                    && !(event.getEntity()
-                    instanceof com.projectkorra.projectkorra.platform.mc.entity.Player)) {
-
-                final double multiplier = ConfigManager.getConfig(bPlayer)
-                        .getDouble("Properties.MobDamageMultiplier");
-
-                event.setDamage(event.getDamage() * multiplier);
-            }
-
-            if (event.getEntity() instanceof LivingEntity target
-                    && event.getAbility().getName().equalsIgnoreCase("FlyingKick")) {
-
-                final CoreAbility boundAbility = bPlayer.getBoundAbility();
-
-                if (boundAbility != null
-                        && bPlayer.canCurrentlyBendWithWeapons()
-                        && bPlayer.canBend(boundAbility)) {
-
-                    /*
-                     * FlyingKick + Paralyze
-                     */
-                    if (boundAbility instanceof Paralyze) {
-                        final boolean allowFusion = ConfigManager.getConfig(bPlayer)
-                                .getBoolean(
-                                        "Abilities.Chi.Paralyze.AllowFlyingKickFusion"
-                                );
-
-                        if (allowFusion) {
-                            new Paralyze(source, target);
-                        }
-                    }
-
-                    /*
-                     * FlyingKick + RapidPunch
-                     */
-                    else if (boundAbility instanceof me.literka.abilities.RapidPunch) {
-                        new me.literka.abilities.RapidPunch(source, target);
-                    }
-                }
-            }
-        }
-
-        if (event.getEntity()
-                instanceof com.projectkorra.projectkorra.platform.mc.entity.Player target) {
-            cancelAirScooterOnHit(target, event.getAbility());
-        }
+        combatEvents.onAbilityDamage(event);
     }
 
-    private void cancelAirScooterOnHit(
-            final com.projectkorra.projectkorra.platform.mc.entity.Player target,
-            final Ability ability) {
-        if (target == null || ability == null) {
-            return;
-        }
 
-        final BendingPlayer targetBPlayer = BendingPlayer.getBendingPlayer(target);
-        final AirScooter scooter = CoreAbility.getAbility(target, AirScooter.class);
-        if (targetBPlayer == null || scooter == null) {
-            return;
-        }
-
-        final String scooterSettings = scooter.isUsingOldScooter() ? "AirScooter" : "AirSurf";
-        final List<String> cancelList = ConfigManager.getConfig(targetBPlayer)
-                .getStringList("Abilities.Air." + scooterSettings + ".CancelOnHit");
-        for (final String cancelAbility : cancelList) {
-            if (cancelAbility.equalsIgnoreCase(ability.getName())) {
-                scooter.stunned = true;
-                scooter.remove();
-                return;
-            }
-        }
-    }
 }

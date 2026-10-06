@@ -4,11 +4,13 @@ import com.projectkorra.projectkorra.Manager;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackDomain;
 import com.projectkorra.projectkorra.storage.DBConnection;
 import com.projectkorra.projectkorra.storage.StatisticsRepository;
 import com.projectkorra.projectkorra.storage.StorageException;
 
 import java.util.*;
+import java.util.function.BiConsumer;
 
 public class StatisticsManager extends Manager implements Runnable {
 
@@ -41,7 +43,56 @@ public class StatisticsManager extends Manager implements Runnable {
     }
 
     @Override
+    protected void projectRollbackState(Set<UUID> participants, BiConsumer<Object, Object> project) {
+        if (getClass() != StatisticsManager.class) throw new UnsupportedOperationException("Statistics manager subclass requires its own rollback import");
+        var statistics = new HashMap<UUID, Map<Integer, Long>>();
+        var delta = new HashMap<UUID, Map<Integer, Long>>();
+        this.STATISTICS.forEach((id, values) -> { if (participants.contains(id)) statistics.put(id, values); });
+        this.DELTA.forEach((id, values) -> { if (participants.contains(id)) delta.put(id, values); });
+        var storage = new HashSet<>(this.STORAGE);
+        storage.retainAll(participants);
+        project.accept(this.STATISTICS, statistics);
+        project.accept(this.DELTA, delta);
+        project.accept(this.STORAGE, storage);
+        // Key catalogs copy normally. The live persistence timer is not installed;
+        // publishing statistics belongs to finalized session effects.
+    }
+
+    @Override
+    protected List<?> projectRollbackRestoration(Set<UUID> participants, Manager live, BiConsumer<Object, Object> bind) {
+        if (getClass() != StatisticsManager.class || live.getClass() != StatisticsManager.class) throw new UnsupportedOperationException("Statistics restoration subclass");
+        var target = (StatisticsManager) live;
+        bind.accept(STATISTICS, target.STATISTICS); bind.accept(DELTA, target.DELTA); bind.accept(STORAGE, target.STORAGE);
+        bind.accept(KEYS_BY_NAME, target.KEYS_BY_NAME); bind.accept(KEYS_BY_ID, target.KEYS_BY_ID);
+        return List.of(new HashMap<>(STATISTICS), new HashMap<>(DELTA), new HashSet<>(STORAGE), new HashMap<>(KEYS_BY_NAME), new HashMap<>(KEYS_BY_ID));
+    }
+
+    @Override @SuppressWarnings("unchecked")
+    protected RestorationStep prepareRollbackRestoration(Set<UUID> participants, List<?> roots) {
+        if (roots.size() != 5) throw new IllegalArgumentException("Statistics restoration roots");
+        var statistics = (Map<UUID, Map<Integer, Long>>) roots.get(0);
+        var delta = (Map<UUID, Map<Integer, Long>>) roots.get(1); var storage = (Set<UUID>) roots.get(2);
+        if (!participants.containsAll(statistics.keySet()) || !participants.containsAll(delta.keySet()) || !participants.containsAll(storage))
+            throw new IllegalArgumentException("Statistics restoration outside owned roster");
+        return new RestorationStep() {
+            @Override public void validate() {
+                if (!KEYS_BY_NAME.equals(roots.get(3)) || !KEYS_BY_ID.equals(roots.get(4))) throw new IllegalStateException("Live statistics definitions changed");
+            }
+            @Override public void commit() {
+                participants.forEach(STATISTICS::remove); STATISTICS.putAll(statistics);
+                participants.forEach(DELTA::remove); DELTA.putAll(delta);
+                STORAGE.removeAll(participants); STORAGE.addAll(storage);
+            }
+        };
+    }
+
+    static void requireLiveStorage() {
+        if (RollbackDomain.active()) throw new IllegalStateException("Statistics storage is unavailable during rollback");
+    }
+
+    @Override
     public void onActivate() {
+        requireLiveStorage();
         if (!ProjectKorra.isStatisticsEnabled() || !DBConnection.isOpen()) {
             return;
         }
@@ -50,6 +101,7 @@ public class StatisticsManager extends Manager implements Runnable {
     }
 
     public void setupStatistics() {
+        requireLiveStorage();
         if (!ProjectKorra.isStatisticsEnabled() || !DBConnection.isOpen()) {
             return;
         }
@@ -73,6 +125,7 @@ public class StatisticsManager extends Manager implements Runnable {
     }
 
     public void load(final UUID uuid) {
+        requireLiveStorage();
         this.STATISTICS.put(uuid, new HashMap<>());
         this.DELTA.put(uuid, new HashMap<>());
         if (!DBConnection.isOpen()) {
@@ -90,6 +143,7 @@ public class StatisticsManager extends Manager implements Runnable {
     }
 
     public void save(final UUID uuid, final boolean async) {
+        requireLiveStorage();
         if (!this.DELTA.containsKey(uuid)) {
             return;
         }
@@ -118,6 +172,7 @@ public class StatisticsManager extends Manager implements Runnable {
     public long getStatisticCurrent(final UUID uuid, final int statId) {
         // If the player is offline, pull value from database.
         if (!this.STATISTICS.containsKey(uuid)) {
+            requireLiveStorage();
             return DBConnection.isOpen() ? DBConnection.getAdapter().statistics().getStat(uuid, statId) : 0;
         } else if (!this.STATISTICS.get(uuid).containsKey(statId)) {
             return 0;
@@ -127,6 +182,7 @@ public class StatisticsManager extends Manager implements Runnable {
 
     public void addStatistic(final UUID uuid, final int statId, final long statDelta) {
         if (!this.STATISTICS.containsKey(uuid) || !this.DELTA.containsKey(uuid)) {
+            requireLiveStorage();
             return;
         }
         this.STATISTICS.get(uuid).put(statId, this.getStatisticCurrent(uuid, statId) + statDelta);
@@ -137,6 +193,7 @@ public class StatisticsManager extends Manager implements Runnable {
         final Map<Integer, Long> map = new HashMap<>();
         // If the player is offline, create a new temporary Map from the database.
         if (!this.STATISTICS.containsKey(uuid)) {
+            requireLiveStorage();
             return DBConnection.isOpen() ? DBConnection.getAdapter().statistics().load(uuid) : map;
         }
         return this.STATISTICS.get(uuid);
@@ -148,6 +205,7 @@ public class StatisticsManager extends Manager implements Runnable {
 
     @Override
     public void run() {
+        requireLiveStorage();
         for (final UUID uuid : this.STORAGE) {
             // Confirm that the player is offline.
             final Player player = ProjectKorra.plugin.getServer().getPlayer(uuid);

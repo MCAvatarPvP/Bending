@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.prediction.action;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackDomain;
+import com.projectkorra.projectkorra.prediction.authority.PredictionServices;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 
 import java.util.function.ToLongFunction;
@@ -14,10 +16,12 @@ public final class PredictionTiming {
     }
 
     public static void install(ToLongFunction<CoreAbility> newProvider) {
+        PredictionServices.requireGlobalMutation();
         provider = newProvider == null ? ignored -> 0L : newProvider;
     }
 
     public static void clear(ToLongFunction<CoreAbility> expected) {
+        PredictionServices.requireGlobalMutation();
         if (provider == expected) provider = ignored -> 0L;
     }
 
@@ -33,6 +37,9 @@ public final class PredictionTiming {
     }
 
     private static long compensation(CoreAbility ability) {
+        // Replay already executes on the input's simulation tick. Applying the live
+        // prediction transport's age again would shorten durations on every replay.
+        if (RollbackDomain.active()) return 0L;
         if (ability == null) return 0L;
         try {
             return Math.max(0L, provider.applyAsLong(ability));

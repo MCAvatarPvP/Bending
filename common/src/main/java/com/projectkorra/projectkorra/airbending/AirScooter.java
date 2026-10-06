@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.airbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -124,7 +127,7 @@ public class AirScooter extends AirAbility {
         this.useslime = getConfig().getBoolean(settings + ".ShowSitting");
         this.disableSprint = getConfig().getBoolean(settings + ".DisableSprint");
         this.damageThreshold = getConfig().getDouble(settings + ".DamageThreshold");
-        this.random = new Random();
+        this.random = new RollbackRandom();
 
         this.recalculateAttributes();
 
@@ -222,7 +225,7 @@ public class AirScooter extends AirAbility {
             this.removalReason = "canBendIgnoreBindsCooldowns returned false";
             this.remove();
             return;
-        } else if (this.duration != 0 && System.currentTimeMillis() > this.getStartTime() + this.duration) {
+        } else if (this.duration != 0 && RollbackClock.millis() > this.getStartTime() + this.duration) {
             this.bPlayer.addCooldown(this);
             this.removalReason = "duration expired";
             this.remove();
@@ -262,7 +265,7 @@ public class AirScooter extends AirAbility {
         /*
          * checks the players speed and ends the move if they are going too slow
          */
-        if (System.currentTimeMillis() > this.getStartTime() + this.interval) {
+        if (RollbackClock.millis() > this.getStartTime() + this.interval) {
             if (this.useslime) {
                 if (this.slime.getVelocity().length() < this.speed * 0.3) {
                     this.remove();
@@ -381,7 +384,7 @@ public class AirScooter extends AirAbility {
             return true;
         }
 
-        final long now = System.currentTimeMillis();
+        final long now = RollbackClock.millis();
         if (this.lastStaminaDrainTime == 0) {
             this.lastStaminaDrainTime = now;
             this.bPlayer.resetAirBlast();
@@ -423,7 +426,7 @@ public class AirScooter extends AirAbility {
         } else {
             this.bPlayer.addCooldown(this);
         }
-        this.bPlayer.setLastScooterUse(System.currentTimeMillis());
+        this.bPlayer.setLastScooterUse(RollbackClock.millis());
     }
 
     private void spinOldScooter() {

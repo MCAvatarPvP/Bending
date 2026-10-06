@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.Element.MultiSubElement;
 import com.projectkorra.projectkorra.Element.SubElement;
 import com.projectkorra.projectkorra.ability.*;
@@ -257,7 +259,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
         Platform.events().call(event);
 
         if (!event.isCancelled()) {
-            Cooldown refCooldown = new Cooldown(event.getCooldown() + System.currentTimeMillis(), database);
+            Cooldown refCooldown = new Cooldown(event.getCooldown() + RollbackClock.millis(), database);
 
             this.cooldowns.put(ability, refCooldown);
             CooldownSync.added(this, ability, refCooldown.getCooldown());
@@ -302,6 +304,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
     }
 
     private boolean canBend(@NotNull final CoreAbility ability, final boolean ignoreBinds, final boolean ignoreCooldowns) {
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership.blocks(this.getUUID())) return false;
 
         final List<String> disabledWorlds = getConfig().getStringList("Properties.DisabledWorlds");
         final Location playerLoc = this.player.getLocation();
@@ -362,6 +365,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
     }
 
     public boolean canBendPassive(final CoreAbility ability) {
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership.blocks(this.getUUID())) return false;
         if (ability == null || !this.isPassiveToggled(ability.getElement()) || !this.isToggledPassives()) {
             return false; // If the passive is disabled.
         }
@@ -390,6 +394,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
     }
 
     public boolean canUsePassive(final CoreAbility ability, boolean ignoreChiBlock) {
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership.blocks(this.getUUID())) return false;
         final Element element = ability.getElement();
         if ((!this.isToggled() && ConfigManager.defaultConfig.get().getBoolean("Properties.TogglePassivesWithAllBending")) || !this.isElementToggled(element) || !this.isPassiveToggled(element) || !this.isToggledPassives()) {
             return false;
@@ -419,7 +424,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
      * @return true If player can be slowed
      */
     public boolean canBeSlowed() {
-        return (System.currentTimeMillis() > this.slowTime);
+        return (RollbackClock.millis() > this.slowTime);
     }
 
     /**
@@ -602,7 +607,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
         }
         if (this.cooldowns.containsKey(ability)) {
             return CooldownSync.effectiveInputTime(this.player.getUniqueId(), ability,
-                    System.currentTimeMillis()) < this.cooldowns.get(ability).getCooldown();
+                    RollbackClock.millis()) < this.cooldowns.get(ability).getCooldown();
         }
 
         return false;
@@ -624,7 +629,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
                 ? Long.MAX_VALUE
                 : cooldown.getCooldown() + globalCooldown;
         return CooldownSync.effectiveInputTime(this.player.getUniqueId(), ability,
-                System.currentTimeMillis()) < expiresAt;
+                RollbackClock.millis()) < expiresAt;
     }
 
     public boolean isParalyzed() {
@@ -742,7 +747,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
         Iterator<Entry<String, Cooldown>> iterator = this.cooldowns.entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<String, Cooldown> entry = iterator.next();
-            if (System.currentTimeMillis() >= entry.getValue().getCooldown()) {
+            if (RollbackClock.millis() >= entry.getValue().getCooldown()) {
                 final PlayerCooldownChangeEvent event = new PlayerCooldownChangeEvent(this.player, entry.getKey(), 0, Result.REMOVED);
                 Platform.events().call(event);
                 if (!event.isCancelled()) {
@@ -772,7 +777,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
      * @param cooldown The amount of time to slow.
      */
     public void slow(final long cooldown) {
-        this.slowTime = System.currentTimeMillis() + cooldown;
+        this.slowTime = RollbackClock.millis() + cooldown;
     }
 
     /**
@@ -822,7 +827,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
 
             String message = expired;
 
-            if (System.currentTimeMillis() >= time) {
+            if (RollbackClock.millis() >= time) {
                 PlayerChangeSubElementEvent subEvent = new PlayerChangeSubElementEvent(null, this.player, subElement, PlayerChangeSubElementEvent.Result.TEMP_EXPIRE);
                 Platform.events().call(subEvent);
                 if (subEvent.isCancelled()) {
@@ -846,7 +851,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
             String message = expired;
             if (element == Element.AVATAR) message = expiredAvatar;
 
-            if (System.currentTimeMillis() >= time) {
+            if (RollbackClock.millis() >= time) {
                 PlayerChangeElementEvent event = new PlayerChangeElementEvent(null, this.player, element, PlayerChangeElementEvent.Result.TEMP_EXPIRE);
                 Platform.events().call(event);
                 if (event.isCancelled()) {
@@ -902,7 +907,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
         if (this.tempElements.size() > 0 || this.tempSubElements.size() > 0) {
             Map<Element, Long> tempMap = new HashMap<>(this.tempElements);
             tempMap.putAll(this.tempSubElements);
-            Optional<Long> shortestTime = tempMap.values().stream().filter(l -> l >= System.currentTimeMillis()).min(Comparator.comparingLong(Long::longValue));
+            Optional<Long> shortestTime = tempMap.values().stream().filter(l -> l >= RollbackClock.millis()).min(Comparator.comparingLong(Long::longValue));
 
             if (!shortestTime.isPresent()) {
                 ProjectKorra.log.severe("Failed to find the shortest time for " + this.player.getName() + "'s temp elements!");
@@ -1060,7 +1065,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
                 continue; //Ignore subelements, we are only fixing the parent elements' subs
             long expireTime = this.tempElements.get(tempElement);
 
-            if (expireTime < System.currentTimeMillis()) { //If it still hasn't expired
+            if (expireTime < RollbackClock.millis()) { //If it still hasn't expired
                 long currentSubs = this.tempElements.keySet().stream()
                         .filter(element -> element instanceof SubElement)
                         .map(element -> (SubElement) element)
@@ -1125,7 +1130,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
      * @param displayDuration how long the status remains visible after a change
      */
     public boolean shouldDisplayChangingAirStamina(final long displayDuration) {
-        final long now = System.currentTimeMillis();
+        final long now = RollbackClock.millis();
         if (Double.isNaN(this.lastDisplayedAirStamina)) {
             this.lastDisplayedAirStamina = this.airBlastDecay;
             return false;
@@ -1138,7 +1143,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
     }
 
     public void resetAirBlast() {
-        lastAirBlastTime = System.currentTimeMillis();
+        lastAirBlastTime = RollbackClock.millis();
         CooldownSync.airBlastReset(this);
     }
 
@@ -1159,7 +1164,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
     }
 
     public void resetSurgeWave() {
-        lastSurgeWaveTime = System.currentTimeMillis();
+        lastSurgeWaveTime = RollbackClock.millis();
     }
 
     public long getLastSurgeWaveTime() {

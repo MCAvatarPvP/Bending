@@ -19,6 +19,9 @@
 
 package me.moros.hyperion.abilities.firebending.combo;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.Element.SubElement;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.*;
@@ -45,7 +48,7 @@ import com.projectkorra.projectkorra.waterbending.SurgeWave;
 import me.moros.hyperion.Hyperion;
 
 import java.util.*;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Random;
 import java.util.stream.Collectors;
 
 public class FireWave extends FireAbility implements AddonAbility, ComboAbility {
@@ -142,7 +145,7 @@ public class FireWave extends FireAbility implements AddonAbility, ComboAbility 
             getAbility(player, WallOfFire.class).remove();
         }
 
-        if (System.currentTimeMillis() > getStartTime() + duration) {
+        if (RollbackClock.millis() > getStartTime() + duration) {
             remove();
             return;
         }
@@ -206,10 +209,10 @@ public class FireWave extends FireAbility implements AddonAbility, ComboAbility 
     private void visualiseWall() {
         for (Block block : blocks) {
             playFirebendingParticles(block.getLocation(), 3, 0.5, 0.5, 0.5);
-            if (ThreadLocalRandom.current().nextInt(3) == 0) {
+            if (RollbackRandom.shared().nextInt(3) == 0) {
                 ParticleEffect.SMOKE_NORMAL.display(block.getLocation(), 1, 0.5, 0.5, 0.5);
             }
-            if (ThreadLocalRandom.current().nextInt(10) == 0) {
+            if (RollbackRandom.shared().nextInt(10) == 0) {
                 playFirebendingSound(block.getLocation());
             }
         }

@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.airbending.passive;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.ability.PassiveAbility;
@@ -51,7 +53,7 @@ public class AirAgility extends AirAbility implements PassiveAbility {
 
     @Override
     public void progress() {
-        final long now = System.currentTimeMillis();
+        final long now = RollbackClock.millis();
         final long regenStartTime = bPlayer.getLastAirBlastTime() + minimumAirBlastTime;
         if (now <= regenStartTime) {
             this.lastAirBlastRegenTime = now;

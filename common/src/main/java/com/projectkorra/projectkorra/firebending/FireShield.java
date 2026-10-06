@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.firebending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.FireAbility;
 import com.projectkorra.projectkorra.ability.util.Collision;
@@ -68,7 +71,7 @@ public class FireShield extends FireAbility {
         this.shieldDuration = getConfig().getLong("Abilities.Fire.FireShield.Shield.Duration");
         this.shieldRadius = getConfig().getDouble("Abilities.Fire.FireShield.Shield.Radius");
         this.shieldFireTicks = getConfig().getDouble("Abilities.Fire.FireShield.Shield.FireTicks");
-        this.random = new Random();
+        this.random = new RollbackRandom();
         this.gameplayRandom = PredictionDeterminism.random(player == null ? null : player.getUniqueId(),
                 getClass().getName() + ":block-drying");
 
@@ -115,11 +118,11 @@ public class FireShield extends FireAbility {
             this.bPlayer.addCooldown(this);
             this.remove();
             return;
-        } else if ((!this.player.isSneaking() && this.shield) || (System.currentTimeMillis() > this.getStartTime() + this.shieldDuration && this.shield && this.shieldDuration > 0)) {
+        } else if ((!this.player.isSneaking() && this.shield) || (RollbackClock.millis() > this.getStartTime() + this.shieldDuration && this.shield && this.shieldDuration > 0)) {
             this.bPlayer.addCooldown(this);
             this.remove();
             return;
-        } else if (System.currentTimeMillis() > this.getStartTime() + this.discDuration && !this.shield) {
+        } else if (RollbackClock.millis() > this.getStartTime() + this.discDuration && !this.shield) {
             this.bPlayer.addCooldown(this);
             this.remove();
             return;

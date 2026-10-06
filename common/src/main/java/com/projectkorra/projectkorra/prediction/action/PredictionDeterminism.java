@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.prediction.action;
 
 import com.projectkorra.projectkorra.ability.CoreAbility;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
 
 import java.util.Random;
 import java.util.UUID;
@@ -58,7 +59,7 @@ public final class PredictionDeterminism {
     }
 
     public static Random random(final UUID owner, final String scope, final long actionSequence) {
-        if (actionSequence <= 0L || owner == null) return new Random();
+        if (actionSequence <= 0L || owner == null) return new RollbackRandom();
         final long sequence = actionSequence;
         long seed = sequence ^ owner.getMostSignificantBits() ^ Long.rotateLeft(owner.getLeastSignificantBits(), 29);
         seed ^= scope == null ? 0L : Integer.toUnsignedLong(scope.hashCode()) * 0x9E3779B97F4A7C15L;
@@ -67,6 +68,6 @@ public final class PredictionDeterminism {
         seed ^= seed >>> 27;
         seed *= 0x94D049BB133111EBL;
         seed ^= seed >>> 31;
-        return new Random(seed);
+        return new RollbackRandom(seed);
     }
 }

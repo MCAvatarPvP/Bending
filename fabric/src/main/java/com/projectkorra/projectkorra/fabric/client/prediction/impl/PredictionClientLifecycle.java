@@ -4,6 +4,7 @@ import com.projectkorra.projectkorra.fabric.client.config.ClientBendingConfig;
 import com.projectkorra.projectkorra.fabric.client.prediction.block.ClientTempBlockAuthority;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads;
 import com.projectkorra.projectkorra.prediction.authority.RegionProtectionAuthority;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackStartPacket;
 import java.util.ArrayList;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientWorldEvents;
@@ -40,6 +41,11 @@ import com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime;
 
 public abstract class PredictionClientLifecycle extends PredictionClientInput {
     protected void reset(MinecraftClient client) {
+        try { rollbackBootstraps.stop(client, RollbackStartPacket.AbortReason.STATE_CHANGED); rollbackStarts.stop(RollbackStartPacket.AbortReason.STATE_CHANGED); }
+        finally { resetLegacy(client); }
+    }
+
+    private void resetLegacy(MinecraftClient client) {
         debug("reset active=" + active + " session=" + sessionId);
         ExactPredictionRuntime.stop(client);
         active = false; sessionId = null; nextSequence = 0;
@@ -122,6 +128,7 @@ public abstract class PredictionClientLifecycle extends PredictionClientInput {
     }
 
     protected boolean startRuntime(final MinecraftClient client, final String reason) {
+        if (rollbackStarts.ownsSession() || rollbackBootstraps.ownsSession()) return false;
         lastRuntimeStartAttemptTick = clientTick;
         if (!ClientBendingConfig.isEnabled() || client == null || client.world == null || client.player == null
                 || client.player.getEntityWorld() != client.world) {

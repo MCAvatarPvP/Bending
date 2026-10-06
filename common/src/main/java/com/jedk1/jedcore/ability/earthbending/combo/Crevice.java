@@ -1,5 +1,7 @@
 package com.jedk1.jedcore.ability.earthbending.combo;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
 import com.jedk1.jedcore.util.RegenTempBlock;
@@ -113,7 +115,7 @@ public class Crevice extends EarthAbility implements AddonAbility, ComboAbility 
             return;
         }
         if (travelled >= range || skip) {
-            if (System.currentTimeMillis() > getStartTime() + regenDelay) {
+            if (RollbackClock.millis() > getStartTime() + regenDelay) {
                 if (verticalRevert) prepareRevertVertical();
                 else prepareRevert();
                 remove();

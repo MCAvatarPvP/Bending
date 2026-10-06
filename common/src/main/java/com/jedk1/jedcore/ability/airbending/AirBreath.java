@@ -1,5 +1,8 @@
 package com.jedk1.jedcore.ability.airbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JCMethods;
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
@@ -104,7 +107,7 @@ public class AirBreath extends AirAbility implements AddonAbility {
             remove();
             return;
         }
-        if (System.currentTimeMillis() < getStartTime() + duration) {
+        if (RollbackClock.millis() < getStartTime() + duration) {
             playAirbendingSound(player.getLocation());
             createBeam();
         } else {
@@ -170,16 +173,16 @@ public class AirBreath extends AirAbility implements AddonAbility {
             }
 
             if (isWater(loc.getBlock())) {
-                ParticleEffect.WATER_BUBBLE.display(loc, particles, Math.random(), Math.random(), Math.random(), size);
+                ParticleEffect.WATER_BUBBLE.display(loc, particles, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), size);
             }
 
             JCMethods.extinguishBlocks(player, "AirBreath", range, 2, extinguishFire, coolLava);
 
             if (getAirbendingParticles() == ParticleEffect.CLOUD) {
-                ParticleEffect.CLOUD.display(loc, particles, Math.random(), Math.random(), Math.random(), size);
-                playAirbendingParticles(loc, particles, Math.random(), Math.random(), Math.random(), size);
+                ParticleEffect.CLOUD.display(loc, particles, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), size);
+                playAirbendingParticles(loc, particles, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), size);
             } else {
-                playAirbendingParticles(loc, particles, Math.random(), Math.random(), Math.random(), size);
+                playAirbendingParticles(loc, particles, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), size);
             }
         }
     }

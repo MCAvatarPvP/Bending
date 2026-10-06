@@ -63,7 +63,9 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
         synchronizeServerEntityInterpolation();
         registerCommands();
         registerPlaceHolderHook();
-        Platform.events().registerListener(new PKListener(this));
+        var listener = new PKListener(this);
+        Platform.events().registerListener(listener);
+        Platform.events().registerListener(listener.lifecycleEvents());
         registerBetonQuestHook();
         registerExternalActionBarHook();
         try {

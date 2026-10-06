@@ -1,5 +1,8 @@
 package com.jedk1.jedcore.ability.waterbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
 import com.projectkorra.projectkorra.ability.AddonAbility;
@@ -25,7 +28,7 @@ public class WakeFishing extends WaterAbility implements AddonAbility {
     private final static Material[] FISH_TYPES = {
             Material.COD, Material.PUFFERFISH, Material.TROPICAL_FISH, Material.SALMON
     };
-    Random rand = new Random();
+    Random rand = new RollbackRandom();
     private Block focusedBlock;
     private Location location;
     private int point;
@@ -90,7 +93,7 @@ public class WakeFishing extends WaterAbility implements AddonAbility {
             remove();
             return;
         }
-        if (System.currentTimeMillis() > getStartTime() + duration) {
+        if (RollbackClock.millis() > getStartTime() + duration) {
             bPlayer.addCooldown(this);
             remove();
             return;

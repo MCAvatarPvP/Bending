@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -45,14 +47,14 @@ public class TempFallingBlock {
         this.metadataKey = ability.getName().toLowerCase(java.util.Locale.ROOT);
         this.fallingblock.setMetadata(this.metadataKey, new FixedMetadataValue(ProjectKorra.plugin, this));
         this.ability = ability;
-        this.creation = System.currentTimeMillis();
+        this.creation = RollbackClock.millis();
         this.expire = expire;
         instances.put(fallingblock, this);
         TempFallingBlockSync.publish(ability, fallingblock, predictionOrdinal);
     }
 
     public static void manage() {
-        long time = System.currentTimeMillis();
+        long time = RollbackClock.millis();
 
         for (TempFallingBlock tfb : instances.values()) {
             FallingBlock fb = tfb.getFallingBlock();

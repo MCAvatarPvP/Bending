@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Particle;
@@ -9,7 +11,7 @@ import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.authority.AuthoritativeEffects;
 import com.projectkorra.projectkorra.util.DisplayBlockUtils;
 
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Random;
 
 /** Short-lived cosmetic rubble for naturally expired walls and pillars. */
 final class RaiseEarthRevertEffects {
@@ -22,7 +24,7 @@ final class RaiseEarthRevertEffects {
             world.spawnParticle(Particle.BLOCK, center, 14, 0.38, 0.36, 0.38, 0.065, data);
             world.spawnParticle(Particle.FALLING_DUST, center, 2, 0.35, 0.25, 0.35, 0.0, data);
 
-            final ThreadLocalRandom random = ThreadLocalRandom.current();
+            final Random random = RollbackRandom.shared();
             final double angle = random.nextDouble(Math.PI * 2.0);
             for (int i = 0; i < 2; i++) {
                 final double side = angle + i * Math.PI;

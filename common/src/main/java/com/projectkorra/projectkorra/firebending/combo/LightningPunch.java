@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.firebending.combo;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.jedk1.jedcore.ability.firebending.FirePunch;
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
@@ -64,7 +66,7 @@ public final class LightningPunch extends LightningAbility implements ComboAbili
         // The finishing input may already have prepared the ordinary FirePunch.
         for (FirePunch punch : getAbilities(player, FirePunch.class)) punch.remove();
         final PendingHit pending = PENDING_HITS.remove(player.getUniqueId());
-        if (pending != null && System.nanoTime() - pending.createdAt < 250_000_000L) queueHit(pending.target);
+        if (pending != null && RollbackClock.nanos() - pending.createdAt < 250_000_000L) queueHit(pending.target);
     }
 
     private static boolean canPrepare(final BendingPlayer bPlayer, final CoreAbility ability) {
@@ -91,7 +93,7 @@ public final class LightningPunch extends LightningAbility implements ComboAbili
     public static boolean reserveFinisherHit(final Player player, final LivingEntity target) {
         final BendingPlayer bending = BendingPlayer.getBendingPlayer(player);
         if (bending == null || !isPendingFinisher(player, bending.getBoundAbilityName(), ClickType.LEFT_CLICK)) return false;
-        final PendingHit pending = new PendingHit(target, System.nanoTime());
+        final PendingHit pending = new PendingHit(target, RollbackClock.nanos());
         PENDING_HITS.put(player.getUniqueId(), pending);
         Platform.scheduler().runLater(() -> PENDING_HITS.remove(player.getUniqueId(), pending), 2);
         return true;

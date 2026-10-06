@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.airbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -105,7 +108,7 @@ public class AirSwipe extends AirAbility {
         this.minimumSpeed = Math.max(0, getConfig().getDouble("Abilities.Air.AirSwipe.PlayerVelocity.MinimumSpeed", 1.0)) * 0.05;
         this.canGoThroughWater = getConfig().getBoolean("Abilities.Air.AirSwipe.CanGoThroughWater", true);
         this.regenAmount = getConfig().getDouble("Abilities.Air.AirSwipe.RegenAmount", 0.25);
-        this.random = new Random();
+        this.random = new RollbackRandom();
         this.streams = new ConcurrentHashMap<>();
         this.affectedEntities = new ArrayList<>();
 
@@ -349,10 +352,10 @@ public class AirSwipe extends AirAbility {
 
             if (!this.player.isSneaking()) {
                 double factor = 1;
-                if (System.currentTimeMillis() >= this.getStartTime() + this.maxChargeTime) {
+                if (RollbackClock.millis() >= this.getStartTime() + this.maxChargeTime) {
                     factor = this.maxChargeFactor;
                 } else {
-                    factor = this.maxChargeFactor * (System.currentTimeMillis() - this.getStartTime()) / this.maxChargeTime;
+                    factor = this.maxChargeFactor * (RollbackClock.millis() - this.getStartTime()) / this.maxChargeTime;
                 }
 
                 this.charging = false;
@@ -360,7 +363,7 @@ public class AirSwipe extends AirAbility {
                 factor = Math.max(1, factor);
                 this.damage *= factor;
                 this.pushFactor *= factor;
-            } else if (System.currentTimeMillis() >= this.getStartTime() + this.maxChargeTime) {
+            } else if (RollbackClock.millis() >= this.getStartTime() + this.maxChargeTime) {
                 playAirbendingParticles(this.player.getEyeLocation(), this.particles);
             }
         }

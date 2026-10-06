@@ -1,5 +1,8 @@
 package com.jedk1.jedcore.ability.firebending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JCMethods;
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
@@ -93,7 +96,7 @@ public class FireComet extends FireAbility implements AddonAbility {
         range = JedCoreConfig.getConfig(this.bPlayer).getInt("Abilities.Fire.FireComet.Range");
         cometOnly = JedCoreConfig.getConfig(this.bPlayer).getBoolean("Abilities.Fire.FireComet.SozinsCometOnly");
         avatarBypass = JedCoreConfig.getConfig(this.bPlayer).getBoolean("Abilities.Fire.FireComet.AvatarStateBypassComet");
-        time = System.currentTimeMillis();
+        time = RollbackClock.millis();
 
         applyModifiers();
     }
@@ -119,7 +122,7 @@ public class FireComet extends FireAbility implements AddonAbility {
             return;
         }
 
-        if (System.currentTimeMillis() > getTime() + getCharge()) {
+        if (RollbackClock.millis() > getTime() + getCharge()) {
             if (RegionProtection.isRegionProtected(this, player.getLocation())) {
                 remove();
                 return;
@@ -211,8 +214,8 @@ public class FireComet extends FireAbility implements AddonAbility {
             }
         }
 
-        playFirebendingParticles(location, 20, Math.random(), Math.random(), Math.random());
-        ParticleEffect.FIREWORKS_SPARK.display(location, 20, Math.random(), Math.random(), Math.random(), 0.5);
+        playFirebendingParticles(location, 20, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction());
+        ParticleEffect.FIREWORKS_SPARK.display(location, 20, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.5);
 
         location.getWorld().playSound(location, (rand.nextBoolean()) ? Sound.ENTITY_FIREWORK_ROCKET_BLAST : Sound.ENTITY_FIREWORK_ROCKET_BLAST_FAR, 5F, 1F);
         location.getWorld().playSound(location, Sound.ENTITY_GENERIC_EXPLODE, 5F, 0.8F);
@@ -266,7 +269,7 @@ public class FireComet extends FireAbility implements AddonAbility {
         }
 
         long init = getTime() + getCharge();
-        int percentage = (int) (((init - System.currentTimeMillis()) * 100) / getCharge());
+        int percentage = (int) (((init - RollbackClock.millis()) * 100) / getCharge());
         double size = (1 - (percentage / 100.0F)) * 1.5;
 
         for (int i = 0; i < 360; i += 45) {
@@ -281,7 +284,7 @@ public class FireComet extends FireAbility implements AddonAbility {
         }
 
         if (size == 1.5) {
-            ParticleEffect.EXPLOSION_LARGE.display(this.location, 3, Math.random(), Math.random(), Math.random(), 0.03);
+            ParticleEffect.EXPLOSION_LARGE.display(this.location, 3, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.03);
         }
     }
 

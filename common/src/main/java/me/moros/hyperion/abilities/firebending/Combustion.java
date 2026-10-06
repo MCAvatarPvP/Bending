@@ -19,6 +19,8 @@
 
 package me.moros.hyperion.abilities.firebending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
@@ -179,7 +181,7 @@ public class Combustion extends CombustionAbility implements AddonAbility {
                 if (charged) {
                     CoreMethods.playFocusParticles(player);
                 } else {
-                    if (System.currentTimeMillis() > getStartTime() + chargeTime) {
+                    if (RollbackClock.millis() > getStartTime() + chargeTime) {
                         charged = true;
                     }
                 }

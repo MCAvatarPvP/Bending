@@ -1,5 +1,7 @@
 package me.macieq.abilities;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.LavaAbility;
@@ -104,7 +106,7 @@ public class Eruption extends LavaAbility implements AddonAbility {
 
    public void progress() {
       if (this.bPlayer.canBendIgnoreBindsCooldowns(this) && (this.state == Eruption.State.PROGRESSING || this.bPlayer.canBend(this))) {
-         if (this.createTime != 0L && System.currentTimeMillis() - this.createTime >= this.poolDuration) {
+         if (this.createTime != 0L && RollbackClock.millis() - this.createTime >= this.poolDuration) {
             this.remove();
          } else {
             if (this.state == Eruption.State.PROGRESSING) {
@@ -120,7 +122,7 @@ public class Eruption extends LavaAbility implements AddonAbility {
    }
 
    private void handleCharging() {
-      long time = System.currentTimeMillis() - this.getStartTime();
+      long time = RollbackClock.millis() - this.getStartTime();
       if ((double)time >= this.bigChargeTime) {
          this.state = Eruption.State.BIG_CHARGED;
       } else if ((double)time >= this.chargeTime) {
@@ -238,7 +240,7 @@ public class Eruption extends LavaAbility implements AddonAbility {
          this.world.spawnParticle(Particle.LAVA, this.center.clone().add((double)0.0F, (double)1.0F, (double)0.0F), (int)Math.floor((double)10.0F * this.radius), this.radius / (double)2.0F, (double)1.0F, this.radius / (double)2.0F);
          this.playEruptionSound();
          this.magmaFormed = true;
-         this.createTime = System.currentTimeMillis();
+         this.createTime = RollbackClock.millis();
       } else {
          while(this.counter >= (double)1.0F) {
             if (this.blocksToAffect.isEmpty()) {
@@ -261,7 +263,7 @@ public class Eruption extends LavaAbility implements AddonAbility {
                this.magmaFormed = true;
                this.world.playSound(this.center, Sound.valueOf("ENTITY_GENERIC_EXPLODE"), SoundCategory.MASTER, 0.5F, 0.5F);
                this.playEruptionSound();
-               this.createTime = System.currentTimeMillis();
+               this.createTime = RollbackClock.millis();
                return;
             }
 

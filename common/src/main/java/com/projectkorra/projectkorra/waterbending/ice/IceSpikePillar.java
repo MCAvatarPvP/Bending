@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.waterbending.ice;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
@@ -115,7 +118,7 @@ public class IceSpikePillar extends IceAbility {
         if (this.height != 0) {
             if (this.canInstantiate()) {
                 this.start();
-                this.time = System.currentTimeMillis() - this.interval;
+                this.time = RollbackClock.millis() - this.interval;
                 this.bPlayer.addCooldown("IceSpikePillar", this.cooldown);
             }
         }
@@ -136,7 +139,7 @@ public class IceSpikePillar extends IceAbility {
         if (this.isIcebendable(this.source_block)) {
             if (this.canInstantiate()) {
                 this.start();
-                this.time = System.currentTimeMillis() - this.interval;
+                this.time = RollbackClock.millis() - this.interval;
             }
         }
     }
@@ -201,14 +204,14 @@ public class IceSpikePillar extends IceAbility {
 
     @Override
     public void progress() {
-        if (System.currentTimeMillis() - this.time >= this.interval) {
-            this.time = System.currentTimeMillis();
+        if (RollbackClock.millis() - this.time >= this.interval) {
+            this.time = RollbackClock.millis();
             if (this.progress < this.height) {
                 this.risePillar();
-                this.removeTimestamp = System.currentTimeMillis();
+                this.removeTimestamp = RollbackClock.millis();
             } else {
                 // If it's time to remove.
-                if (this.removeTimestamp != 0 && this.removeTimestamp + this.duration <= System.currentTimeMillis()) {
+                if (this.removeTimestamp != 0 && this.removeTimestamp + this.duration <= RollbackClock.millis()) {
                     if (!this.sinkPillar()) {
                         this.remove();
                         return;
@@ -243,7 +246,7 @@ public class IceSpikePillar extends IceAbility {
                 affectedBlock, getIceMaterial().createBlockData(), this);
         this.ice_blocks.put(affectedBlock, b);
 
-        if (!this.inField || new Random().nextInt((int) ((this.height + 1) * 1.5)) == 0) {
+        if (!this.inField || new RollbackRandom().nextInt((int) ((this.height + 1) * 1.5)) == 0) {
             playIcebendingSound(this.source_block.getLocation());
         }
 

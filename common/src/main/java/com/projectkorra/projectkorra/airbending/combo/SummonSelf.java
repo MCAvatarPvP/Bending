@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.airbending.combo;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.AirAbility;
@@ -78,7 +80,7 @@ public class SummonSelf extends AirAbility implements ComboAbility {
     private float modelYaw;
     private float modelPitch;
     private final ArrayList<BlockDisplay> modelDisplays = new ArrayList<>(MODEL_PARTS.size());
-    private static final Random random = new Random();
+    private static final Random random = new RollbackRandom();
 
     public SummonSelf(final Player player) {
         super(player);

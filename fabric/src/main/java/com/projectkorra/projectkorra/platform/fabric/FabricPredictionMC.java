@@ -435,7 +435,7 @@ public final class FabricPredictionMC {
         @Override public Difficulty getDifficulty() { return Difficulty.valueOf(value.getDifficulty().name()); }
     }
 
-    public static final class ClientBlockView extends Block implements ClientBacked {
+    public static final class ClientBlockView extends Block implements ClientBacked, com.projectkorra.projectkorra.platform.mc.block.BlockValue {
         private final ClientWorld world;
         private final BlockPos pos;
         private ClientBlockView(ClientWorld world, BlockPos pos) { this.world = world; this.pos = pos; }
@@ -490,8 +490,8 @@ public final class FabricPredictionMC {
         }
         @Override public Object handle() { return new ClientBlockRef(world, pos); }
         @Override public Object nativeHandle() { return handle(); }
-        @Override public boolean equals(Object value) { return value instanceof ClientBlockView block && world == block.world && pos.equals(block.pos); }
-        @Override public int hashCode() { return Objects.hash(pos.getX(), pos.getY(), pos.getZ()); }
+        @Override public boolean equals(Object other) { return com.projectkorra.projectkorra.platform.mc.block.BlockValue.same(this, other); }
+        @Override public int hashCode() { return com.projectkorra.projectkorra.platform.mc.block.BlockValue.hash(this); }
     }
 
     private static final class ClientBlockState extends BlockState {

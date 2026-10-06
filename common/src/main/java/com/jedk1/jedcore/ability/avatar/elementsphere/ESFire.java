@@ -1,5 +1,7 @@
 package com.jedk1.jedcore.ability.avatar.elementsphere;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
 import com.projectkorra.projectkorra.Element;
@@ -116,8 +118,8 @@ public class ESFire extends AvatarAbility implements AddonAbility {
             }
 
             ParticleEffect flame = bPlayer.hasSubElement(Element.BLUE_FIRE) ? ParticleEffect.SOUL_FIRE_FLAME : ParticleEffect.FLAME;
-            flame.display(location, 5, Math.random(), Math.random(), Math.random(), 0.02);
-            ParticleEffect.SMOKE_LARGE.display(location, 2, Math.random(), Math.random(), Math.random(), 0.01);
+            flame.display(location, 5, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.02);
+            ParticleEffect.SMOKE_LARGE.display(location, 2, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.01);
             FireAbility.playFirebendingSound(location);
 
             placeFire();

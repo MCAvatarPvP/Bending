@@ -1,5 +1,7 @@
 package com.jedk1.jedcore.ability.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.collision.CollisionDetector;
 import com.jedk1.jedcore.collision.CollisionUtil;
@@ -78,7 +80,7 @@ public class EarthShard extends EarthAbility implements AddonAbility, EntityHitb
         if (hasAbility(player, EarthShard.class)) {
             for (EarthShard es : EarthShard.getAbilities(player, EarthShard.class)) {
                 if (es.isThrown) {
-                    if (System.currentTimeMillis() - es.getStartTime() >= 20000) {
+                    if (RollbackClock.millis() - es.getStartTime() >= 20000) {
                         // Retain the existing cleanup for stale projectiles.
                         es.remove();
                     }
@@ -650,7 +652,7 @@ public class EarthShard extends EarthAbility implements AddonAbility, EntityHitb
             return;
         }
 
-        bufferedShootUntil = Math.max(bufferedShootUntil, System.currentTimeMillis() + shootBuffer);
+        bufferedShootUntil = Math.max(bufferedShootUntil, RollbackClock.millis() + shootBuffer);
     }
 
     private boolean hasBufferedShoot() {
@@ -658,7 +660,7 @@ public class EarthShard extends EarthAbility implements AddonAbility, EntityHitb
             return false;
         }
 
-        if (System.currentTimeMillis() > bufferedShootUntil) {
+        if (RollbackClock.millis() > bufferedShootUntil) {
             bufferedShootUntil = 0;
             return false;
         }

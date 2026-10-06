@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.EarthAbility;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
@@ -60,7 +62,7 @@ public class EarthTunnel extends EarthAbility {
         this.dropLootIfNotRevert = getConfig().getBoolean("Abilities.Earth.EarthTunnel.DropLootIfNotRevert");
         this.revertTime = getConfig().getLong("Abilities.Earth.EarthTunnel.RevertCheckTime");
 
-        this.time = System.currentTimeMillis();
+        this.time = RollbackClock.millis();
 
         this.location = player.getEyeLocation().clone();
         this.origin = player.getTargetBlock((HashSet<Material>) null, (int) this.range).getLocation();
@@ -104,8 +106,8 @@ public class EarthTunnel extends EarthAbility {
             return;
         }
 
-        if (System.currentTimeMillis() - this.time >= this.interval) {
-            this.time = System.currentTimeMillis();
+        if (RollbackClock.millis() - this.time >= this.interval) {
+            this.time = RollbackClock.millis();
             for (int i = 1; i <= this.blocksPerInterval; i++) {
                 if (Math.abs(Math.toDegrees(this.player.getEyeLocation().getDirection().angle(this.direction))) > 20 || !this.player.isSneaking()) {
                     this.bPlayer.addCooldown(this);

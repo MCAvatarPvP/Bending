@@ -1,15 +1,24 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.world.RollbackPlayer;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackScheduler;
+import com.projectkorra.projectkorra.platform.Platform;
+
 import com.projectkorra.projectkorra.Manager;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.platform.mc.GameMode;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
-import com.projectkorra.projectkorra.platform.mc.scheduler.BukkitRunnable;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.UUID;
+import java.util.Set;
+import java.util.Comparator;
+import java.util.function.BiConsumer;
 
 public class FlightHandler extends Manager {
 
@@ -22,9 +31,71 @@ public class FlightHandler extends Manager {
      * duration. This is used to reduce the number of iterations when cleaning
      * up dead instances.
      */
-    private final PriorityQueue<FlightAbility> CLEANUP = new PriorityQueue<>(100, (f1, f2) -> (int) (f1.duration - f2.duration));
+    private final PriorityQueue<FlightAbility> CLEANUP = new PriorityQueue<>(100, new FlightDurationOrder());
+
+    // Preserve the existing queue order; a named comparator can be checkpointed.
+    private static final class FlightDurationOrder implements Comparator<FlightAbility> {
+        @Override public int compare(FlightAbility first, FlightAbility second) {
+            return (int) (first.duration - second.duration);
+        }
+    }
 
     private FlightHandler() {
+    }
+
+    @Override
+    protected void projectRollbackState(Set<UUID> participants, BiConsumer<Object, Object> project) {
+        if (getClass() != FlightHandler.class) throw new UnsupportedOperationException("Flight manager subclass requires its own rollback import");
+        var instances = new HashMap<UUID, Flight>();
+        this.INSTANCES.forEach((id, flight) -> { if (participants.contains(id)) instances.put(id, flight); });
+        // Clone retains heap ordering, including equal-duration entries, before filtering.
+        var cleanup = new PriorityQueue<>(this.CLEANUP);
+        cleanup.removeIf(ability -> !participants.contains(ability.player.getUniqueId()));
+        project.accept(this.INSTANCES, instances);
+        project.accept(this.CLEANUP, cleanup);
+    }
+
+    @Override
+    protected List<?> projectRollbackRestoration(Set<UUID> participants, Manager live, BiConsumer<Object, Object> bind) {
+        if (getClass() != FlightHandler.class || live.getClass() != FlightHandler.class) throw new UnsupportedOperationException("Flight manager restoration subclass");
+        var target = (FlightHandler) live;
+        bind.accept(INSTANCES, target.INSTANCES); bind.accept(CLEANUP, target.CLEANUP);
+        return List.of(new HashMap<>(INSTANCES), new ArrayList<>(CLEANUP));
+    }
+
+    @Override @SuppressWarnings("unchecked")
+    protected RestorationStep prepareRollbackRestoration(Set<UUID> participants, List<?> roots) {
+        if (roots.size() != 2) throw new IllegalArgumentException("Flight restoration roots");
+        var restored = (Map<UUID, Flight>) roots.get(0);
+        var cleanup = (List<FlightAbility>) roots.get(1);
+        for (var entry : restored.entrySet()) {
+            if (!participants.contains(entry.getKey()) || !entry.getKey().equals(entry.getValue().player.getUniqueId())
+                    || entry.getValue().player instanceof RollbackPlayer)
+                throw new IllegalArgumentException("Flight restoration participant binding");
+            var flight = entry.getValue();
+            if (flight.source != null && (!participants.contains(flight.source.getUniqueId()) || flight.source instanceof RollbackPlayer))
+                throw new IllegalArgumentException("Flight restoration source binding");
+            for (var ability : flight.abilities.entrySet()) {
+                if (ability.getValue().player.handle() != flight.player.handle() || !ability.getKey().equals(ability.getValue().identifier))
+                    throw new IllegalArgumentException("Flight restoration grant binding");
+            }
+        }
+        for (var ability : cleanup) if (!participants.contains(ability.player.getUniqueId())
+                || ability.player instanceof RollbackPlayer)
+            throw new IllegalArgumentException("Flight expiry outside restored roster");
+        return new RestorationStep() {
+            @Override public void validate() { }
+            @Override public void commit() {
+                participants.forEach(INSTANCES::remove); INSTANCES.putAll(restored);
+                CLEANUP.removeIf(ability -> participants.contains(ability.player.getUniqueId())); CLEANUP.addAll(cleanup);
+            }
+        };
+    }
+
+    @Override
+    protected void onRollbackInstall() {
+        if (!(Platform.scheduler() instanceof RollbackScheduler scheduler)) throw new IllegalStateException("Flight cleanup requires a private scheduler");
+        scheduler.runServiceTimer(this::cleanupExpired, 0, 1);
     }
 
     @Override
@@ -193,21 +264,26 @@ public class FlightHandler extends Manager {
     }
 
     public void startCleanup() {
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                final long currentTime = System.currentTimeMillis();
-                while (!FlightHandler.this.CLEANUP.isEmpty()) {
-                    final FlightAbility ability = FlightHandler.this.CLEANUP.peek();
-                    if (currentTime >= ability.startTime + ability.duration) {
-                        FlightHandler.this.CLEANUP.poll();
-                        FlightHandler.this.removeInstance(ability.player, ability.identifier);
-                    } else {
-                        break;
-                    }
+        Platform.scheduler().runTimer(this::cleanupExpired, 0, 1);
+    }
+
+    private void cleanupExpired() {
+        final long currentTime = RollbackClock.millis();
+        var suspended = new ArrayList<FlightAbility>();
+        try {
+            while (!this.CLEANUP.isEmpty()) {
+                final FlightAbility ability = this.CLEANUP.peek();
+                if (currentTime < ability.startTime + ability.duration) break;
+                this.CLEANUP.poll();
+                if (com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership.blocks(ability.player.getUniqueId())) {
+                    suspended.add(ability);
+                    continue;
                 }
+                this.removeInstance(ability.player, ability.identifier);
             }
-        }.runTaskTimer(ProjectKorra.plugin, 0, 1);
+        } finally {
+            this.CLEANUP.addAll(suspended);
+        }
     }
 
     public static class Flight {
@@ -253,7 +329,7 @@ public class FlightHandler extends Manager {
             this.player = player;
             this.identifier = identifier;
             this.duration = duration;
-            this.startTime = System.currentTimeMillis();
+            this.startTime = RollbackClock.millis();
         }
 
         @Override

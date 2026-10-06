@@ -1,5 +1,7 @@
 package me.simplicitee.project.addons.ability.fire;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.FireAbility;
@@ -90,7 +92,7 @@ public class Jets extends FireAbility implements AddonAbility {
             return;
         }
 
-        if (duration > 0 && getStartTime() + duration < System.currentTimeMillis()) {
+        if (duration > 0 && getStartTime() + duration < RollbackClock.millis()) {
             remove();
             return;
         }
@@ -180,7 +182,7 @@ public class Jets extends FireAbility implements AddonAbility {
 
     @Override
     public long getCooldown() {
-        double percent = (System.currentTimeMillis() - getStartTime()) / this.duration;
+        double percent = (RollbackClock.millis() - getStartTime()) / this.duration;
         return minCooldown + (long) ((maxCooldown - minCooldown) * percent);
     }
 

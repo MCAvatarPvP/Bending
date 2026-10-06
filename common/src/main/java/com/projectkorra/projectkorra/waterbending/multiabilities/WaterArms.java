@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.waterbending.multiabilities;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
@@ -162,7 +165,7 @@ public class WaterArms extends WaterAbility {
     private static List<Location> getOffsetLocations(final int amount, final Location location, final double offset) {
         final List<Location> locations = new ArrayList<Location>();
         for (int i = 0; i < amount; i++) {
-            locations.add(location.clone().add((float) (Math.random() * offset), (float) (Math.random() * offset), (float) (Math.random() * offset)));
+            locations.add(location.clone().add((float) (RollbackRandom.fraction() * offset), (float) (RollbackRandom.fraction() * offset), (float) (RollbackRandom.fraction() * offset)));
         }
         return locations;
     }
@@ -436,10 +439,10 @@ public class WaterArms extends WaterAbility {
     }
 
     public void prepareCancel() {
-        if (System.currentTimeMillis() < this.lastClickTime + 500L) {
+        if (RollbackClock.millis() < this.lastClickTime + 500L) {
             this.remove();
         } else {
-            this.lastClickTime = System.currentTimeMillis();
+            this.lastClickTime = RollbackClock.millis();
         }
     }
 

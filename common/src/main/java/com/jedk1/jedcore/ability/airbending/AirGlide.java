@@ -1,5 +1,7 @@
 package com.jedk1.jedcore.ability.airbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.collision.CollisionDetector;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
@@ -60,7 +62,7 @@ public class AirGlide extends AirAbility implements AddonAbility {
     }
 
     public void progress() {
-        long time = System.currentTimeMillis();
+        long time = RollbackClock.millis();
 
         if (this.progressing) {
             update(time);

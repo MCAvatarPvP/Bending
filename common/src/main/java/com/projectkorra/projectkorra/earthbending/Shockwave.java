@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.ability.EarthAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
@@ -88,7 +90,7 @@ public class Shockwave extends EarthAbility {
             return;
         }
 
-        if (System.currentTimeMillis() > this.getStartTime() + this.chargeTime && !this.charged) {
+        if (RollbackClock.millis() > this.getStartTime() + this.chargeTime && !this.charged) {
             this.charged = true;
         }
 

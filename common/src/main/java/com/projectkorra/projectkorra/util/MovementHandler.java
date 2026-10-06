@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership;
+
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.platform.mc.Location;
@@ -27,12 +30,12 @@ public class MovementHandler {
         this.entity = entity;
         this.location = entity.getLocation();
         this.ability = ability;
-        this.startTime = System.currentTimeMillis();
+        this.startTime = RollbackClock.millis();
     }
 
     public static void tickAll() {
-        for (int i = 0; i < handlers.size(); i++) {
-            ((MovementHandler) handlers.toArray()[i]).tick();
+        for (MovementHandler handler : new java.util.ArrayList<>(handlers)) {
+            if (handlers.contains(handler)) handler.tick();
         }
     }
 
@@ -71,14 +74,16 @@ public class MovementHandler {
     }
 
     private void tick() {
-        if (duration != -1 && duration >= 0 && System.currentTimeMillis() > startTime + duration) {
+        if (RollbackLiveOwnership.blocks(entity.getUniqueId())
+                || (ability != null && ability.getPlayer() != null && RollbackLiveOwnership.blocks(ability.getPlayer().getUniqueId()))) return;
+        if (duration != -1 && duration >= 0 && RollbackClock.millis() > startTime + duration) {
             reset();
             return;
         }
         if (entity instanceof Player) {
             Player player = (Player) entity;
             Location loc = player.getLocation();
-            double currTime = (double) (duration - (System.currentTimeMillis() - startTime)) / 1000;
+            double currTime = (double) (duration - (RollbackClock.millis() - startTime)) / 1000;
             ChatUtil.sendActionBar(message.replace("{current_stun_time}", "" + currTime), player);
             if (loc.getX() == location.getX() && loc.getY() == location.getY() && loc.getZ() == location.getZ()) {
                 return;

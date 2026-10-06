@@ -3,6 +3,15 @@ package com.projectkorra.projectkorra.fabric.client.prediction.impl;
 import com.projectkorra.projectkorra.fabric.client.config.ClientBendingConfig;
 import com.projectkorra.projectkorra.fabric.client.prediction.block.ClientTempBlockAuthority;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads;
+import com.projectkorra.projectkorra.fabric.prediction.protocol.RollbackStartPayloads;
+import com.projectkorra.projectkorra.fabric.prediction.protocol.RollbackAuthorityPayload;
+import com.projectkorra.projectkorra.fabric.prediction.protocol.RollbackBootstrapPayloads;
+import com.projectkorra.projectkorra.fabric.client.prediction.rollback.FabricRollbackBootstraps;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackStartClientEndpoint;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClientRuntime;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackReplicaTimeline;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackPlayerInput;
+import com.projectkorra.projectkorra.fabric.client.prediction.rollback.FabricRollbackClientRuntime;
 import com.projectkorra.projectkorra.prediction.authority.RegionProtectionAuthority;
 import java.util.ArrayList;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -43,6 +52,21 @@ public abstract class PredictionClientApi extends PredictionClientLifecycle {
         if (initialized) return;
         initialized = true;
         debug("client prediction networking initialized");
+        ClientPlayNetworking.registerGlobalReceiver(RollbackBootstrapPayloads.ToClient.ID,
+                (payload, context) -> {
+                    PredictionClient owner = PredictionClient.instance();
+                    owner.rollbackBootstraps.receive(context.client(), context.player().networkHandler, payload.message(), owner.clientTick);
+                });
+        ClientPlayNetworking.registerGlobalReceiver(RollbackAuthorityPayload.ID,
+                (payload, context) -> {
+                    PredictionClient owner = PredictionClient.instance();
+                    owner.rollbackStarts.receiveAuthority(context.client(), context.player().networkHandler, payload.chunk(), owner.clientTick);
+                });
+        ClientPlayNetworking.registerGlobalReceiver(RollbackStartPayloads.ToClient.ID,
+                (payload, context) -> {
+                    PredictionClient owner = PredictionClient.instance();
+                    owner.rollbackStarts.receive(context.client(), context.player().networkHandler, payload.message(), owner.clientTick);
+                });
         ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.ServerSnapshot.ID,
                 (payload, context) -> PredictionClient.instance().onSnapshot(context.client(), payload));
         ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.ServerWorldState.ID,
@@ -85,6 +109,50 @@ public abstract class PredictionClientApi extends PredictionClientLifecycle {
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> PredictionClient.instance().reset(client));
         ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register(PredictionClient.instance()::onClientWorldChange);
         ClientTickEvents.END_CLIENT_TICK.register(PredictionClient.instance()::tick);
+    }
+
+    /** Install the complete native importer; absent/incompatible importers reject bootstrap offers. */
+    public void installRollbackBootstrap(FabricRollbackBootstraps.Factory factory) { rollbackBootstraps.install(MinecraftClient.getInstance(), factory); }
+
+    /** Called only after full private state import and suspension of legacy prediction. */
+    public void prepareRollbackStart(UUID session, int timeoutTicks, java.util.function.BooleanSupplier ready,
+                                     RollbackStartClientEndpoint.Runtime runtime) {
+        if (active) throw new IllegalStateException("Legacy prediction still owns the client");
+        rollbackStarts.prepare(MinecraftClient.getInstance(), session, clientTick, timeoutTicks, ready, runtime);
+    }
+
+    /** Bootstrap must already own/freeze native gameplay and import the complete matching private state. */
+    public <S, E> void prepareRollbackClient(UUID session, long seed, int timeoutTicks,
+            java.util.function.BooleanSupplier ready, RollbackReplicaTimeline<S, RollbackPlayerInput, E> timeline,
+            RollbackClientRuntime.Output<S, E> output) {
+        var client = MinecraftClient.getInstance();
+        var runtime = new FabricRollbackClientRuntime<>(session, seed, client.player, timeline, rollbackStarts::sendInput, output);
+        prepareRollbackStart(session, timeoutTicks, ready, runtime);
+    }
+
+    /** Roster-backed presentation and local native ticking share the prepared session; finalized effects retain their separate sink. */
+    public <S, E> void prepareRollbackClient(UUID session, long seed, int timeoutTicks,
+            java.util.function.BooleanSupplier ready, RollbackReplicaTimeline<S, RollbackPlayerInput, E> timeline,
+            com.projectkorra.projectkorra.fabric.client.prediction.rollback.FabricRollbackRoster roster,
+            RollbackClientRuntime.Output<S, E> effects) {
+        var client = MinecraftClient.getInstance();
+        var output = com.projectkorra.projectkorra.fabric.client.prediction.rollback.FabricRollbackPresentation.prepare(client, session, roster, timeline, effects);
+        var runtime = new FabricRollbackClientRuntime<>(session, seed, client.player, timeline, rollbackStarts::sendInput, output,
+                roster.players().get(client.player.getUuid()), () -> client.options.getSprintWindow().getValue(), () -> client.options.getAutoJump().getValue());
+        prepareRollbackStart(session, timeoutTicks, ready, runtime);
+    }
+
+    public static boolean consumeRollbackPacket(MinecraftClient client, net.minecraft.client.network.ClientCommonNetworkHandler source, Packet<?> packet) {
+        if (client == null || source != client.getNetworkHandler()) return false;
+        var owner = PredictionClient.instance();
+        if (owner.rollbackBootstraps.consumePacket(client, client.getNetworkHandler(), packet)) return true;
+        return owner.rollbackStarts.consumePacket(client, client.getNetworkHandler(), packet, owner.clientTick);
+    }
+
+    /** Release retained ownership only after a failed private-runtime stop has been repaired. */
+    public void finishStoppedRollback(UUID session) {
+        rollbackBootstraps.finishStop(MinecraftClient.getInstance(), session);
+        rollbackStarts.finishStop(session);
     }
 
     public static void recordMovementPacket(MinecraftClient client, PlayerMoveC2SPacket packet) {

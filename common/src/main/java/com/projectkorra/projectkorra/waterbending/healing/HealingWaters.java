@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.waterbending.healing;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
@@ -75,7 +77,7 @@ public class HealingWaters extends HealingAbility {
         this.player = player;
         this.origin = player.getLocation().clone().add(player.getLocation().getDirection()).add(0, 1.5, 0);
         this.location = this.origin.clone();
-        this.currTime = System.currentTimeMillis();
+        this.currTime = RollbackClock.millis();
         this.pstage = 0;
         this.tstage1 = 0;
         this.tstage2 = 18;
@@ -107,7 +109,7 @@ public class HealingWaters extends HealingAbility {
         }
 
         if (this.duration != 0) {
-            if (System.currentTimeMillis() >= this.getStartTime() + this.duration) {
+            if (RollbackClock.millis() >= this.getStartTime() + this.duration) {
                 this.bPlayer.addCooldown(this);
                 this.remove();
                 return;
@@ -131,7 +133,7 @@ public class HealingWaters extends HealingAbility {
         }
 
         // If ability is is charged, set charged = true. If not, play charging particles.
-        if (System.currentTimeMillis() >= this.getStartTime() + this.chargeTime) {
+        if (RollbackClock.millis() >= this.getStartTime() + this.chargeTime) {
             if (!this.charged) {
                 this.charged = true;
                 WaterReturn.emptyWaterBottle(this.player);
@@ -151,10 +153,10 @@ public class HealingWaters extends HealingAbility {
             }
 
             // Try to heal themselves/target with 'interval' millisecond intervals.
-            if (System.currentTimeMillis() - this.currTime >= this.interval) {
+            if (RollbackClock.millis() - this.currTime >= this.interval) {
 
                 this.heal(this.player);
-                this.currTime = System.currentTimeMillis();
+                this.currTime = RollbackClock.millis();
             }
 
             // Display healing particles.

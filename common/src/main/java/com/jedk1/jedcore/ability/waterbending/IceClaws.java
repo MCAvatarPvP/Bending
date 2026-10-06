@@ -1,5 +1,8 @@
 package com.jedk1.jedcore.ability.waterbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -98,7 +101,7 @@ public class IceClaws extends IceAbility implements AddonAbility {
             remove();
             return;
         }
-        if (System.currentTimeMillis() > getStartTime() + chargeUp) {
+        if (RollbackClock.millis() > getStartTime() + chargeUp) {
             if (!launched && throwable) {
                 displayClaws();
             } else {
@@ -143,7 +146,7 @@ public class IceClaws extends IceAbility implements AddonAbility {
 
     private void displayChargeUp() {
         Location location = getRightHandPos().toVector().add(player.getEyeLocation().getDirection().clone().multiply(.75D)).toLocation(player.getWorld());
-        ParticleEffect.WATER_SPLASH.display(location, 1, Math.random() / 3, Math.random() / 3, Math.random() / 3, 0.0);
+        ParticleEffect.WATER_SPLASH.display(location, 1, RollbackRandom.fraction() / 3, RollbackRandom.fraction() / 3, RollbackRandom.fraction() / 3, 0.0);
     }
 
     private void freezeEntity(LivingEntity entity) {

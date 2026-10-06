@@ -1,5 +1,8 @@
 package me.simplicitee.project.addons.ability.water;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
@@ -189,7 +192,7 @@ public class PlantArmor extends PlantAbility implements AddonAbility, MultiAbili
     private ItemStack leafLeather(Material type) {
         ItemStack leather = new ItemStack(type);
         LeatherArmorMeta meta = (LeatherArmorMeta) leather.getItemMeta();
-        meta.setColor(Color.fromRGB(72 + (int) (24 * (Math.random() - 0.5)), 181 + (int) (24 * (Math.random() - 0.5)), 24));
+        meta.setColor(Color.fromRGB(72 + (int) (24 * (RollbackRandom.fraction() - 0.5)), 181 + (int) (24 * (RollbackRandom.fraction() - 0.5)), 24));
         leather.setItemMeta(meta);
         return leather;
     }
@@ -211,7 +214,7 @@ public class PlantArmor extends PlantAbility implements AddonAbility, MultiAbili
             return;
         }
 
-        if (duration > 0 && System.currentTimeMillis() >= this.getStartTime() + duration) {
+        if (duration > 0 && RollbackClock.millis() >= this.getStartTime() + duration) {
             remove();
             return;
         }

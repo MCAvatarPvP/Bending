@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.earthbending.metal;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -196,7 +198,7 @@ public class MetalClips extends MetalAbility {
 
             new TempArmor(this.targetEntity, this, metalarmor);
         }
-        this.armorStartTime = System.currentTimeMillis();
+        this.armorStartTime = RollbackClock.millis();
         this.isBeingWorn = true;
     }
 
@@ -350,7 +352,7 @@ public class MetalClips extends MetalAbility {
             }
         }
 
-        if (this.isBeingWorn && System.currentTimeMillis() > this.armorStartTime + this.armorTime) {
+        if (this.isBeingWorn && RollbackClock.millis() > this.armorStartTime + this.armorTime) {
             this.remove();
             return;
         }

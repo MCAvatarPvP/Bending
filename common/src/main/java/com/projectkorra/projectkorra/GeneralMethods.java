@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.google.common.io.Files;
 import com.google.common.reflect.ClassPath;
 import com.projectkorra.projectkorra.ability.*;
@@ -236,9 +238,9 @@ public class GeneralMethods {
         if (red <= 0) {
             red = 1 / 255.0F;
         }
-        loc.setX(loc.getX() + (Math.random() * 2 - 1) * xOffset);
-        loc.setY(loc.getY() + (Math.random() * 2 - 1) * yOffset);
-        loc.setZ(loc.getZ() + (Math.random() * 2 - 1) * zOffset);
+        loc.setX(loc.getX() + (RollbackRandom.fraction() * 2 - 1) * xOffset);
+        loc.setY(loc.getY() + (RollbackRandom.fraction() * 2 - 1) * yOffset);
+        loc.setZ(loc.getZ() + (RollbackRandom.fraction() * 2 - 1) * zOffset);
 
         if (type != ParticleEffect.RED_DUST && type != ParticleEffect.REDSTONE && type != ParticleEffect.SPELL_MOB && type != ParticleEffect.MOB_SPELL && type != ParticleEffect.SPELL_MOB_AMBIENT) {
             type = ParticleEffect.RED_DUST;
@@ -1439,6 +1441,7 @@ public class GeneralMethods {
         }
         Manager.shutdown();
         Manager.startup();
+        Platform.events().registerListener(new com.projectkorra.projectkorra.listener.CommonAbilityCombatListener(), ProjectKorra.plugin);
         BendingPlayer.getOfflinePlayers().clear();
         BendingPlayer.getPlayers().clear();
         OfflineBendingPlayer.TEMP_ELEMENTS.clear();

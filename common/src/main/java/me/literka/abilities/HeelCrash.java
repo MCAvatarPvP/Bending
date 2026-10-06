@@ -1,5 +1,7 @@
 package me.literka.abilities;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
@@ -102,7 +104,7 @@ public class HeelCrash extends ModernChiAbility implements AddonAbility {
 
             ParticleEffect effect = new ParticleEffect().count(2).offset(0.05, 0.05, 0.05);
             effect.type(Particle.POOF).speed(0.35);
-            double angleX = (Math.random() - 0.5) * 20;
+            double angleX = (RollbackRandom.fraction() - 0.5) * 20;
             Utils.spawnCircleParticles(target.getLocation(), effect, origin.getYaw(), angleX, 12, 0.1);
             effect.type(Particle.WAX_ON).speed(22);
             Utils.spawnCircleParticles(target.getLocation(), effect, origin.getYaw(), angleX, 12, 0.1);

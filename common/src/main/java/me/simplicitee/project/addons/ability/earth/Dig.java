@@ -1,5 +1,7 @@
 package me.simplicitee.project.addons.ability.earth;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.EarthAbility;
@@ -51,7 +53,7 @@ public class Dig extends EarthAbility implements AddonAbility {
             return;
         }
 
-        if (duration > 0 && System.currentTimeMillis() > getStartTime() + duration) {
+        if (duration > 0 && RollbackClock.millis() > getStartTime() + duration) {
             remove();
             return;
         }

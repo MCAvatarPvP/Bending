@@ -18,6 +18,10 @@ import com.projectkorra.projectkorra.prediction.block.TempFallingBlockSync;
 import com.projectkorra.projectkorra.prediction.hit.ConfirmedHitEffects;
 import com.projectkorra.projectkorra.prediction.hit.HitRewind;
 import com.projectkorra.projectkorra.prediction.hit.HitRegistrationPolicy;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackInputPacket;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackStartPacket;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackAuthorityChunk;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackBootstrapPacket;
 import com.projectkorra.projectkorra.prediction.movement.VelocitySync;
 import com.projectkorra.projectkorra.prediction.state.AbilityCheckpointSync;
 import com.projectkorra.projectkorra.prediction.state.AbilityStateSync;
@@ -71,6 +75,17 @@ public abstract class PaperPredictionTransport extends PaperPredictionUtilities 
 
     public void stop() {
         if (task != null) task.cancel();
+        try { rollbackStarts.shutdown(); }
+        catch (RuntimeException | Error failure) { plugin.getLogger().log(java.util.logging.Level.SEVERE, "Rollback start/runtime cleanup failed", failure); }
+        try { rollbackLifecycle.close(); }
+        catch (RuntimeException | Error failure) { plugin.getLogger().log(java.util.logging.Level.SEVERE, "Rollback lifecycle cleanup failed", failure); }
+        try { rollbackBootstraps.shutdown(); }
+        catch (RuntimeException | Error failure) { plugin.getLogger().log(java.util.logging.Level.SEVERE, "Rollback bootstrap cleanup failed", failure); }
+        try { rollbackInputs.shutdown(); }
+        catch (RuntimeException | Error failure) { plugin.getLogger().log(java.util.logging.Level.SEVERE, "Rollback teardown failed during shutdown", failure); }
+        Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, RollbackInputPacket.CHANNEL, this);
+        Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, RollbackStartPacket.CLIENT_CHANNEL, this);
+        Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, RollbackBootstrapPacket.CLIENT_CHANNEL, this);
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.HELLO, this);
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.CLIENT_DISABLED, this);
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.READY, this);
@@ -113,6 +128,12 @@ public abstract class PaperPredictionTransport extends PaperPredictionUtilities 
 
     protected void registerChannels() {
         Messenger messenger = Bukkit.getMessenger();
+        messenger.registerIncomingPluginChannel(plugin, RollbackInputPacket.CHANNEL, this);
+        messenger.registerIncomingPluginChannel(plugin, RollbackStartPacket.CLIENT_CHANNEL, this);
+        messenger.registerIncomingPluginChannel(plugin, RollbackBootstrapPacket.CLIENT_CHANNEL, this);
+        messenger.registerOutgoingPluginChannel(plugin, RollbackBootstrapPacket.SERVER_CHANNEL);
+        messenger.registerOutgoingPluginChannel(plugin, RollbackStartPacket.SERVER_CHANNEL);
+        messenger.registerOutgoingPluginChannel(plugin, RollbackAuthorityChunk.CHANNEL);
         messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.HELLO, this);
         messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.CLIENT_DISABLED, this);
         messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.READY, this);
@@ -212,6 +233,9 @@ public abstract class PaperPredictionTransport extends PaperPredictionUtilities 
         Runnable handling = () -> {
             try {
                 switch (channel) {
+                    case RollbackInputPacket.CHANNEL -> rollbackInputs.receive(player, message);
+                    case RollbackStartPacket.CLIENT_CHANNEL -> rollbackStarts.receive(player, message, tick);
+                    case RollbackBootstrapPacket.CLIENT_CHANNEL -> rollbackBootstraps.receive(player, message, tick);
                     case PaperPredictionProtocol.HELLO -> onHello(player, PaperPredictionProtocol.readHello(message));
                     case PaperPredictionProtocol.CLIENT_DISABLED -> onClientDisabled(player,
                             PaperPredictionProtocol.readClientDisabled(message));
@@ -236,6 +260,8 @@ public abstract class PaperPredictionTransport extends PaperPredictionUtilities 
     @Override
     public void run() {
         tick++;
+        rollbackStarts.tick(tick);
+        rollbackInputs.tick();
         recordPlayerHistory();
         uncorrelatedExternalVelocityOrdinals.clear();
         flushTempBlocks();

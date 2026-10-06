@@ -1,5 +1,8 @@
 package me.simplicitee.project.addons.ability.air;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
@@ -45,7 +48,7 @@ public class Deafen extends SoundAbility implements AddonAbility {
             return;
         }
 
-        if (getStartTime() + duration < System.currentTimeMillis()) {
+        if (getStartTime() + duration < RollbackClock.millis()) {
             remove();
             return;
         }
@@ -62,7 +65,7 @@ public class Deafen extends SoundAbility implements AddonAbility {
         }
 
         for (int i = 0; i < 2; i++) {
-            target.playNote(target.getEyeLocation().add(new Vector(Math.random(), Math.random(), Math.random())), Instrument.BASS_GUITAR, Note.sharp(i, Tone.F));
+            target.playNote(target.getEyeLocation().add(new Vector(RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction())), Instrument.BASS_GUITAR, Note.sharp(i, Tone.F));
         }
     }
 

@@ -1,5 +1,8 @@
 package me.literka.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -31,7 +34,7 @@ public class Utils {
         BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
         if (bPlayer == null) return false;
 
-        if (Math.random() > chance / 100.0) return false;
+        if (RollbackRandom.fraction() > chance / 100.0) return false;
         else return !bPlayer.isChiBlocked();
     }
 
@@ -42,7 +45,7 @@ public class Utils {
 
         bPlayer.blockChi();
         player.getWorld().playSound(player.getLocation(), Sound.ENTITY_ENDER_DRAGON_HURT, 1F, 0.0F);
-        chiblocks.put(player, System.currentTimeMillis() + duration);
+        chiblocks.put(player, RollbackClock.millis() + duration);
     }
 
     private static void processChiBlocks() {
@@ -54,7 +57,7 @@ public class Utils {
 
             sendActionBar(Element.CHI.getColor() + "* Chiblocked *", player);
 
-            if (System.currentTimeMillis() >= time) {
+            if (RollbackClock.millis() >= time) {
                 bPlayer.unblockChi();
                 chiblocks.remove(player);
                 sendActionBar("", player);
@@ -69,11 +72,11 @@ public class Utils {
 
             Iterator<Long> iter = entry.getValue().iterator();
             while (iter.hasNext()) {
-                if (System.currentTimeMillis() >= iter.next()) iter.remove();
+                if (RollbackClock.millis() >= iter.next()) iter.remove();
             }
 
             if (!entry.getValue().isEmpty() && bPlayer != null) {
-                long cooldown = entry.getValue().get(0) - System.currentTimeMillis() + 50;
+                long cooldown = entry.getValue().get(0) - RollbackClock.millis() + 50;
                 bPlayer.addCooldown(CoreAbility.getAbility(StickyBomb.class), cooldown);
             }
         }
@@ -136,7 +139,7 @@ public class Utils {
     }
 
     public static void punchSound(Location location, boolean strong) {
-        float random = (float) ((Math.random() * 4 - 0.5) / 10);
+        float random = (float) ((RollbackRandom.fraction() * 4 - 0.5) / 10);
         if (strong) {
             location.getWorld().playSound(location, Sound.ENTITY_HOGLIN_STEP, 1.3f, 1.4f + random);
         } else {

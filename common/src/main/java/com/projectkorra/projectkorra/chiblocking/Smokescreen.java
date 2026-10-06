@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.chiblocking;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.ChiAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
@@ -71,7 +73,7 @@ public class Smokescreen extends ChiAbility {
             final Player p = (Player) entity;
             if (BLINDED_TIMES.containsKey(p.getName())) {
                 final Smokescreen smokescreen = BLINDED_TO_ABILITY.get(p.getName());
-                if (BLINDED_TIMES.get(p.getName()) + smokescreen.duration >= System.currentTimeMillis()) {
+                if (BLINDED_TIMES.get(p.getName()) + smokescreen.duration >= RollbackClock.millis()) {
                     BLINDED_TIMES.remove(p.getName());
                     BLINDED_TO_ABILITY.remove(p.getName());
                 }
@@ -107,7 +109,7 @@ public class Smokescreen extends ChiAbility {
             }
             final Player p = (Player) entity;
             p.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, this.duration * 20, 2));
-            BLINDED_TIMES.put(p.getName(), System.currentTimeMillis());
+            BLINDED_TIMES.put(p.getName(), RollbackClock.millis());
             BLINDED_TO_ABILITY.put(p.getName(), this);
         }
     }

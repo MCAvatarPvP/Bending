@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.ability.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.Element.SubElement;
@@ -28,13 +31,144 @@ public class ComboManager {
     private static final long CLEANUP_DELAY = 20 * 60;
     private static final long COMBO_HISTORY_RETENTION_MILLIS = CLEANUP_DELAY * 50L;
     private static final int MAX_COMBO_HELP_VISIBLE_LENGTH = 72;
-    private static final Map<String, ArrayList<AbilityInformation>> RECENTLY_USED = new ConcurrentHashMap<>();
-    private static final HashMap<String, ComboAbilityInfo> COMBO_ABILITIES = new HashMap<>();
-    private static final HashMap<String, String> AUTHORS = new HashMap<>();
-    private static final HashMap<String, String> DESCRIPTIONS = new HashMap<>();
-    private static final HashMap<String, String> INSTRUCTIONS = new HashMap<>();
-    private static final HashMap<UUID, Set<ClickType>> SCHEDULED_COMBO_ABILITY = new HashMap<>();
-    private static final Map<UUID, ComboHelpSession> COMBO_HELP_SESSIONS = new ConcurrentHashMap<>();
+    private static Map<String, ArrayList<AbilityInformation>> RECENTLY_USED = new ConcurrentHashMap<>();
+    private static HashMap<String, ComboAbilityInfo> COMBO_ABILITIES = new HashMap<>();
+    private static HashMap<String, String> AUTHORS = new HashMap<>();
+    private static HashMap<String, String> DESCRIPTIONS = new HashMap<>();
+    private static HashMap<String, String> INSTRUCTIONS = new HashMap<>();
+    private static HashMap<UUID, Set<ClickType>> SCHEDULED_COMBO_ABILITY = new HashMap<>();
+    private static Map<UUID, ComboHelpSession> COMBO_HELP_SESSIONS = new ConcurrentHashMap<>();
+
+    /** Participant combo state plus shared definitions; copied with the ability graph. */
+    public static final class RollbackRegistry {
+        private final Map<String, ArrayList<AbilityInformation>> recent = new ConcurrentHashMap<>();
+        private final HashMap<UUID, Set<ClickType>> scheduled = new HashMap<>();
+        private final Map<UUID, ComboHelpSession> help = new ConcurrentHashMap<>();
+        private final HashMap<String, ComboAbilityInfo> definitions = COMBO_ABILITIES;
+        private final HashMap<String, String> authors = AUTHORS, descriptions = DESCRIPTIONS, instructions = INSTRUCTIONS;
+        private RollbackRegistry(Collection<Player> players) {
+            var ids = new HashSet<UUID>(); var names = new HashSet<String>();
+            for (var player : players) {
+                if (!ids.add(player.getUniqueId()) || !names.add(player.getName()))
+                    throw new IllegalArgumentException("Duplicate combo roster identity/name");
+                var history = RECENTLY_USED.get(player.getName()); if (history != null) recent.put(player.getName(), history);
+                var pending = SCHEDULED_COMBO_ABILITY.get(player.getUniqueId()); if (pending != null) scheduled.put(player.getUniqueId(), pending);
+                var assistance = COMBO_HELP_SESSIONS.get(player.getUniqueId()); if (assistance != null) help.put(player.getUniqueId(), assistance);
+            }
+        }
+        public void projectSources(java.util.function.BiConsumer<Object, Object> project) {
+            project.accept(RECENTLY_USED, recent); project.accept(SCHEDULED_COMBO_ABILITY, scheduled);
+            project.accept(COMBO_HELP_SESSIONS, help);
+        }
+        public RestorationSources restorationSources(Collection<Player> players, java.util.function.BiConsumer<Object, Object> bind) {
+            var result = new RestorationSources(players, recent, scheduled, help);
+            bind.accept(recent, RECENTLY_USED); bind.accept(scheduled, SCHEDULED_COMBO_ABILITY); bind.accept(help, COMBO_HELP_SESSIONS);
+            bind.accept(definitions, COMBO_ABILITIES); bind.accept(authors, AUTHORS);
+            bind.accept(descriptions, DESCRIPTIONS); bind.accept(instructions, INSTRUCTIONS);
+            definitions.forEach((name, source) -> {
+                var target = COMBO_ABILITIES.get(name);
+                if (target == null) throw new IllegalStateException("Combo definition disappeared: " + name);
+                bind.accept(source, target); bind.accept(source.abilities, target.abilities);
+            });
+            return result;
+        }
+        public void install() {
+            if (!com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active())
+                throw new IllegalStateException("Combo import requires a private domain");
+            RECENTLY_USED = recent; SCHEDULED_COMBO_ABILITY = scheduled; COMBO_HELP_SESSIONS = help;
+            COMBO_ABILITIES = definitions; AUTHORS = authors; DESCRIPTIONS = descriptions; INSTRUCTIONS = instructions;
+        }
+    }
+    /** Read-only restoration plan; outgoing values are rebound with the rest of the ability graph. */
+    public static final class RestorationSources {
+        private final Thread owner = Thread.currentThread();
+        private final Map<UUID, Player> players = new HashMap<>();
+        private final Set<String> names = new HashSet<>();
+        private final Object recentIdentity = RECENTLY_USED, scheduledIdentity = SCHEDULED_COMBO_ABILITY, helpIdentity = COMBO_HELP_SESSIONS;
+        private final List<?> roots, before;
+        private final Map<String, Object> beforeRecent = new HashMap<>();
+        private final Map<UUID, Object> beforeScheduled = new HashMap<>(), beforeHelp = new HashMap<>();
+        private RestorationSources(Collection<Player> roster, Map<String, ArrayList<AbilityInformation>> recent,
+                Map<UUID, Set<ClickType>> scheduled, Map<UUID, ComboHelpSession> help) {
+            boundary();
+            for (var player : roster) {
+                if (players.putIfAbsent(player.getUniqueId(), player) != null || !names.add(player.getName()))
+                    throw new IllegalArgumentException("Duplicate restoration roster");
+            }
+            requireKeys(recent, scheduled, help);
+            roots = List.of(new HashMap<>(recent), new HashMap<>(scheduled), new HashMap<>(help));
+            before = stamp();
+            names.forEach(name -> beforeRecent.put(name, RECENTLY_USED.get(name)));
+            players.keySet().forEach(id -> { beforeScheduled.put(id, SCHEDULED_COMBO_ABILITY.get(id)); beforeHelp.put(id, COMBO_HELP_SESSIONS.get(id)); });
+        }
+        private void boundary() {
+            if (Thread.currentThread() != owner || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()
+                    || com.projectkorra.projectkorra.prediction.rollback.RollbackClock.active() || !Platform.scheduler().isPrimaryThread())
+                throw new IllegalStateException("Restore combos on the live main thread");
+        }
+        private void requireKeys(Map<?, ?> recent, Map<?, ?> scheduled, Map<?, ?> help) {
+            if (!names.containsAll(recent.keySet()) || !players.keySet().containsAll(scheduled.keySet()) || !players.keySet().containsAll(help.keySet()))
+                throw new IllegalArgumentException("Restored combo state contains outsiders");
+        }
+        private List<?> stamp() {
+            var result = new ArrayList<Object>();
+            for (var name : new TreeSet<>(names)) {
+                var value = RECENTLY_USED.get(name);
+                result.add(Arrays.asList(name, value, value == null ? null : value.stream()
+                        .map(info -> Arrays.asList(info.abilityName, info.clickType, info.time)).toList()));
+            }
+            for (var id : new TreeSet<>(players.keySet())) {
+                var pending = SCHEDULED_COMBO_ABILITY.get(id); var session = COMBO_HELP_SESSIONS.get(id);
+                result.add(Arrays.asList(id, pending, pending == null ? null : new HashSet<>(pending), session,
+                        session == null ? null : Arrays.asList(session.player, session.combo, session.progress, session.status, session.taskId)));
+            }
+            return result;
+        }
+        public List<?> roots() { return roots; }
+        @SuppressWarnings("unchecked")
+        public com.projectkorra.projectkorra.Manager.RestorationStep prepare(List<?> rebound) {
+            boundary();
+            if (rebound.size() != 3) throw new IllegalArgumentException("Combo restoration roots");
+            var recent = (Map<String, ArrayList<AbilityInformation>>) rebound.get(0);
+            var scheduled = (Map<UUID, Set<ClickType>>) rebound.get(1);
+            var help = (Map<UUID, ComboHelpSession>) rebound.get(2);
+            requireKeys(recent, scheduled, help);
+            recent.forEach((name, history) -> {
+                for (AbilityInformation info : Objects.requireNonNull(history)) {
+                    Objects.requireNonNull(info); Objects.requireNonNull(info.abilityName); Objects.requireNonNull(info.clickType);
+                }
+            });
+            scheduled.forEach((id, inputs) -> { for (ClickType input : Objects.requireNonNull(inputs)) Objects.requireNonNull(input); });
+            help.forEach((id, session) -> {
+                if (session == null || session.player.handle() != players.get(id).handle())
+                    throw new IllegalArgumentException("Restored combo help has a foreign player");
+            });
+            return new com.projectkorra.projectkorra.Manager.RestorationStep() {
+                private boolean committed;
+                public void validate() {
+                    boundary(); if (committed) return;
+                    if (RECENTLY_USED != recentIdentity || SCHEDULED_COMBO_ABILITY != scheduledIdentity || COMBO_HELP_SESSIONS != helpIdentity
+                            || names.stream().anyMatch(name -> RECENTLY_USED.get(name) != beforeRecent.get(name))
+                            || players.keySet().stream().anyMatch(id -> SCHEDULED_COMBO_ABILITY.get(id) != beforeScheduled.get(id)
+                                    || COMBO_HELP_SESSIONS.get(id) != beforeHelp.get(id))
+                            || !before.equals(stamp())) throw new IllegalStateException("Live combo state changed before restoration");
+                }
+                public void commit() {
+                    validate(); if (committed) return;
+                    names.forEach(RECENTLY_USED::remove); RECENTLY_USED.putAll(recent);
+                    players.keySet().forEach(SCHEDULED_COMBO_ABILITY::remove); SCHEDULED_COMBO_ABILITY.putAll(scheduled);
+                    players.keySet().forEach(COMBO_HELP_SESSIONS::remove); COMBO_HELP_SESSIONS.putAll(help);
+                    committed = true;
+                }
+            };
+        }
+    }
+    public static RollbackRegistry captureRollbackRegistry(Collection<Player> players) { return new RollbackRegistry(players); }
+    public static List<java.lang.reflect.Field> rollbackFields() {
+        return com.projectkorra.projectkorra.prediction.rollback.RollbackStateGraph.staticFields(ComboManager.class,
+                field -> Set.of("RECENTLY_USED", "COMBO_ABILITIES", "AUTHORS", "DESCRIPTIONS", "INSTRUCTIONS",
+                        "SCHEDULED_COMBO_ABILITY", "COMBO_HELP_SESSIONS").contains(field.getName()));
+    }
 
     public ComboManager() {
         COMBO_ABILITIES.clear();
@@ -58,10 +192,12 @@ public class ComboManager {
     }
 
     public static void scheduleComboAbility(final Player player, final ClickType type) {
+        if (player != null && RollbackLiveOwnership.blocks(player.getUniqueId())) return;
         SCHEDULED_COMBO_ABILITY.computeIfAbsent(player.getUniqueId(), uuid -> new HashSet<>()).add(type);
     }
 
     public static void addComboAbilityIfValid(final Player player, final ClickType type) {
+        if (player != null && RollbackLiveOwnership.blocks(player.getUniqueId())) return;
         Set<ClickType> types = SCHEDULED_COMBO_ABILITY.get(player.getUniqueId());
         if (types == null || !types.contains(type)) {
             return;
@@ -83,11 +219,12 @@ public class ComboManager {
 
     /** Slot events can precede the native inventory update; use the selected binding explicitly. */
     public static void addComboAbility(final Player player, final String abilityName, final ClickType type) {
+        if (player != null && RollbackLiveOwnership.blocks(player.getUniqueId())) return;
         if (abilityName == null) {
             return;
         }
 
-        final AbilityInformation info = new AbilityInformation(abilityName, type, System.currentTimeMillis());
+        final AbilityInformation info = new AbilityInformation(abilityName, type, RollbackClock.millis());
         addRecentAbility(player, info);
         handleComboHelpInput(player, info);
 
@@ -107,12 +244,14 @@ public class ComboManager {
     }
 
     private static CoreAbility createComboAbility(final Player player, final ComboAbilityInfo comboAbil) {
+        if (player != null && RollbackLiveOwnership.blocks(player.getUniqueId())) return null;
         Object created = null;
         if (comboAbil.getComboType() instanceof Class) {
             final Class<?> clazz = (Class<?>) comboAbil.getComboType();
             try {
                 created = ReflectionHandler.instantiateObject(clazz, player);
             } catch (final Exception e) {
+                if (RollbackClock.active() || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) throw new IllegalStateException("Failed rollback combo: " + comboAbil.getName(), e);
                 e.printStackTrace();
             }
         } else {
@@ -141,6 +280,7 @@ public class ComboManager {
      * @param info   The AbilityInformation to add
      */
     public static void addRecentAbility(final Player player, final AbilityInformation info) {
+        if (player != null && RollbackLiveOwnership.blocks(player.getUniqueId())) return;
         ArrayList<AbilityInformation> list;
         final String name = player.getName();
         if (RECENTLY_USED.containsKey(name)) {
@@ -149,7 +289,7 @@ public class ComboManager {
             list = new ArrayList<AbilityInformation>();
         }
 
-        pruneExpired(list, System.currentTimeMillis());
+        pruneExpired(list, RollbackClock.millis());
         list.add(info);
         RECENTLY_USED.put(name, list);
     }
@@ -161,12 +301,13 @@ public class ComboManager {
      * @param type   The type of combo to remove
      */
     public static void removeRecentType(final Player player, ClickType type) {
+        if (player != null && RollbackLiveOwnership.blocks(player.getUniqueId())) return;
         if (RECENTLY_USED.containsKey(player.getName())) {
             ArrayList<AbilityInformation> list = RECENTLY_USED.get(player.getName());
 
             if (list.size() > 0) {
                 AbilityInformation last = list.get(list.size() - 1);
-                if (last.getTime() > System.currentTimeMillis() - 50 && last.getClickType() == type) { //If the ability was within the last tick
+                if (last.getTime() > RollbackClock.millis() - 50 && last.getClickType() == type) { //If the ability was within the last tick
                     list.remove(last);
                 }
             }
@@ -174,6 +315,7 @@ public class ComboManager {
     }
 
     public static void removeRecentAbility(final Player player, final AbilityInformation input) {
+        if (player != null && RollbackLiveOwnership.blocks(player.getUniqueId())) return;
         if (player == null || input == null) return;
         final ArrayList<AbilityInformation> history = RECENTLY_USED.get(player.getName());
         if (history == null) return;
@@ -196,6 +338,7 @@ public class ComboManager {
      * no valid combo was found
      */
     public static ComboAbilityInfo checkForValidCombo(final Player player) {
+        if (player != null && RollbackLiveOwnership.blocks(player.getUniqueId())) return null;
         final ArrayList<AbilityInformation> playerCombo = getRecentlyUsedAbilities(player, 8);
         for (final String ability : COMBO_ABILITIES.keySet()) {
             final ComboAbilityInfo customAbility = COMBO_ABILITIES.get(ability);
@@ -227,8 +370,13 @@ public class ComboManager {
     }
 
     public static void cleanupOldCombos() {
-        final long now = System.currentTimeMillis();
+        final Set<String> ownedNames = new HashSet<>();
+        BendingPlayer.getPlayers().forEach((id, player) -> {
+            if (RollbackLiveOwnership.blocks(id)) ownedNames.add(player.getName());
+        });
+        final long now = RollbackClock.millis();
         RECENTLY_USED.entrySet().removeIf(entry -> {
+            if (ownedNames.contains(entry.getKey())) return false;
             final ArrayList<AbilityInformation> history = entry.getValue();
             pruneExpired(history, now);
             return history.isEmpty();
@@ -259,7 +407,7 @@ public class ComboManager {
         }
 
         final ArrayList<AbilityInformation> list = RECENTLY_USED.get(name);
-        pruneExpired(list, System.currentTimeMillis());
+        if (!RollbackLiveOwnership.blocks(player.getUniqueId())) pruneExpired(list, RollbackClock.millis());
         if (list.isEmpty()) {
             RECENTLY_USED.remove(name, list);
             return new ArrayList<AbilityInformation>();
@@ -354,6 +502,7 @@ public class ComboManager {
                         ComboManager.getInstructions().put(ability.getName(), ability.getInstructions());
                     }
                 } catch (Error | Exception e) {
+                    if (RollbackClock.active() || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) throw new IllegalStateException("Failed rollback combo registration: " + ability.getName(), e);
                     e.printStackTrace();
                 }
             }

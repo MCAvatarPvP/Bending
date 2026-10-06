@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.avatar;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.AvatarAbility;
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -91,7 +94,7 @@ public class AvatarState extends AvatarAbility {
         if (showParticles) {
             ParticleUtil.spawn(Particle.FLASH, player.getLocation().add(0, 0.8, 0), 1, 0, 0, 0);
 
-            Random rand = new Random();
+            Random rand = new RollbackRandom();
             for (int i = 0; i < 60; i++) {
                 Particle particle = i % 2 == 0 ? Particle.END_ROD : (darkAvatar ? Particle.WITCH : Particle.FIREWORK);
 
@@ -165,7 +168,7 @@ public class AvatarState extends AvatarAbility {
         }
 
         //Check the duration of the ability
-        if (System.currentTimeMillis() - this.getStartTime() > this.duration) {
+        if (RollbackClock.millis() - this.getStartTime() > this.duration) {
             player.playSound(player.getLocation(), Sound.ENTITY_ARROW_HIT_PLAYER, 0.5F, 0.1F);
             this.remove();
             return;

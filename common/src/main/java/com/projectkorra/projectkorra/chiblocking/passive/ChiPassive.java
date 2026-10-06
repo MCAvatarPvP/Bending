@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.chiblocking.passive;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.ProjectKorra;
@@ -30,7 +33,7 @@ public class ChiPassive {
             newChance += ((AcrobatStance) stance).getChiBlockBoost();
         }
 
-        if (Math.random() > newChance / 100.0) {
+        if (RollbackRandom.fraction() > newChance / 100.0) {
             return false;
         } else if (bPlayer.isChiBlocked()) {
             return false;
@@ -52,12 +55,12 @@ public class ChiPassive {
         bPlayer.blockChi();
         player.getWorld().playSound(player.getLocation(), Sound.ENTITY_ENDER_DRAGON_HURT, 2, 0);
 
-        final long start = System.currentTimeMillis();
+        final long start = RollbackClock.millis();
         new BukkitRunnable() {
             @Override
             public void run() {
                 ChatUtil.sendActionBar(Element.CHI.getColor() + "* Chiblocked *", player);
-                if (System.currentTimeMillis() >= start + getDuration(bPlayer)) {
+                if (RollbackClock.millis() >= start + getDuration(bPlayer)) {
                     bPlayer.unblockChi();
                     this.cancel();
                 }

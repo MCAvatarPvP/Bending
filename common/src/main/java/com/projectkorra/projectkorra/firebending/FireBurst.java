@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.firebending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -155,7 +157,7 @@ public class FireBurst extends FireAbility {
             return;
         }
 
-        if (System.currentTimeMillis() > this.getStartTime() + this.chargeTime && !this.charged) {
+        if (RollbackClock.millis() > this.getStartTime() + this.chargeTime && !this.charged) {
             this.charged = true;
         }
 

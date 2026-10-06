@@ -1,5 +1,8 @@
 package hackathonpack.air;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.AddonAbility;
@@ -55,15 +58,15 @@ public class AirPressureHigh extends AirAbility implements AddonAbility, ComboAb
 
     @Override
     public void progress() {
-        if (System.currentTimeMillis() > getStartTime() + this.duration) {
+        if (RollbackClock.millis() > getStartTime() + this.duration) {
             this.bPlayer.addCooldown(this);
             remove();
             return;
         }
         for (int i = 0; i < this.particlePerTick; i++) {
-            final double angle = Math.toRadians(Math.random() * 360);
-            final double size = Math.random() * 1.5 + 0.001;
-            final Location loc = this.spawnLocation.clone().add(Math.cos(angle) * size, Math.random() * 2 - 1, Math.sin(angle) * size);
+            final double angle = Math.toRadians(RollbackRandom.fraction() * 360);
+            final double size = RollbackRandom.fraction() * 1.5 + 0.001;
+            final Location loc = this.spawnLocation.clone().add(Math.cos(angle) * size, RollbackRandom.fraction() * 2 - 1, Math.sin(angle) * size);
             this.particles.add(loc);
             this.directions.add(loc.toVector().subtract(this.spawnLocation.toVector()).setY(0).normalize().multiply(0.1));
             this.velocities.add(new Vector(0, -0.2, 0));
@@ -89,7 +92,7 @@ public class AirPressureHigh extends AirAbility implements AddonAbility, ComboAb
                 this.velocities.remove(i);
             }
         }
-        if (Math.random() < 0.1) playAirbendingSound(this.spawnLocation);
+        if (RollbackRandom.fraction() < 0.1) playAirbendingSound(this.spawnLocation);
     }
 
     @Override

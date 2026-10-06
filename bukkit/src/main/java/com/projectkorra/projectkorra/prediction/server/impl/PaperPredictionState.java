@@ -63,6 +63,10 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
+import com.projectkorra.projectkorra.prediction.rollback.PaperRollbackIngress;
+import com.projectkorra.projectkorra.prediction.rollback.PaperRollbackStarts;
+import com.projectkorra.projectkorra.prediction.rollback.PaperRollbackBootstraps;
+import com.projectkorra.projectkorra.prediction.rollback.PaperRollbackLifecycle;
 
 public abstract class PaperPredictionState implements PluginMessageListener, Runnable, TempBlockSync.Listener,
         TempFallingBlockSync.Listener, CooldownSync.Listener, VelocitySync.Listener,
@@ -84,6 +88,10 @@ public abstract class PaperPredictionState implements PluginMessageListener, Run
     protected static final ThreadLocal<Long> INPUT_SEQUENCE = new ThreadLocal<>();
 
     protected final JavaPlugin plugin;
+    protected final PaperRollbackIngress rollbackInputs = new PaperRollbackIngress();
+    protected final PaperRollbackStarts rollbackStarts;
+    protected final PaperRollbackBootstraps rollbackBootstraps;
+    protected final PaperRollbackLifecycle rollbackLifecycle = new PaperRollbackLifecycle();
     protected final Map<UUID, Session> sessions = new ConcurrentHashMap<>();
     protected final Map<UUID, Deque<EntityFrame>> playerHistory = new HashMap<>();
     protected final Map<CoreAbility, Action> abilityActions = Collections.synchronizedMap(new IdentityHashMap<>());
@@ -108,6 +116,8 @@ public abstract class PaperPredictionState implements PluginMessageListener, Run
 
     protected PaperPredictionState(final JavaPlugin plugin) {
         this.plugin = plugin;
+        this.rollbackStarts = new PaperRollbackStarts(plugin);
+        this.rollbackBootstraps = new PaperRollbackBootstraps(plugin, () -> tick);
     }
 
     protected abstract void sendState(Player player, Session session, boolean force);

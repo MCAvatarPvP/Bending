@@ -3,6 +3,8 @@ package com.projectkorra.projectkorra.fabric.client.prediction.impl;
 import com.projectkorra.projectkorra.fabric.client.config.ClientBendingConfig;
 import com.projectkorra.projectkorra.fabric.client.prediction.block.ClientTempBlockAuthority;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads;
+import com.projectkorra.projectkorra.fabric.client.prediction.rollback.FabricRollbackStarts;
+import com.projectkorra.projectkorra.fabric.client.prediction.rollback.FabricRollbackBootstraps;
 import com.projectkorra.projectkorra.prediction.authority.RegionProtectionAuthority;
 import java.util.ArrayList;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -39,6 +41,9 @@ import com.projectkorra.projectkorra.fabric.client.PredictionClient;
 import com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime;
 
 public abstract class PredictionClientState {
+    protected final FabricRollbackStarts rollbackStarts = new FabricRollbackStarts();
+    protected final FabricRollbackBootstraps rollbackBootstraps = new FabricRollbackBootstraps(rollbackStarts,
+            client -> { ExactPredictionRuntime.stop(client); this.active = false; });
     protected static final ThreadLocal<Boolean> INPUT_SNEAK_OVERRIDE = new ThreadLocal<>();
     protected static final ThreadLocal<Integer> INPUT_SLOT_OVERRIDE = new ThreadLocal<>();
     protected static final int CAPABILITIES = 1 | 2 | 4 | 8;

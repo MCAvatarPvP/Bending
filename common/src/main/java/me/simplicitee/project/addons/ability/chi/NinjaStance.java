@@ -1,5 +1,7 @@
 package me.simplicitee.project.addons.ability.chi;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
@@ -94,13 +96,13 @@ public class NinjaStance extends ChiAbility implements AddonAbility, StanceAbili
         }
 
         if (stealth) {
-            if (System.currentTimeMillis() >= stealthStart + stealthChargeTime) {
+            if (RollbackClock.millis() >= stealthStart + stealthChargeTime) {
                 stealthReady = true;
             }
 
             if (!stealthStarted) {
                 if (stealthReady && !player.isSneaking()) {
-                    stealthReadyStart = System.currentTimeMillis();
+                    stealthReadyStart = RollbackClock.millis();
                     stealthStarted = true;
                 } else if (!player.isSneaking()) {
                     stopStealth();
@@ -109,7 +111,7 @@ public class NinjaStance extends ChiAbility implements AddonAbility, StanceAbili
 
                 GeneralMethods.displayColoredParticle(stealthReady && player.isSneaking() ? "00ee00" : "000000", player.getEyeLocation().add(player.getEyeLocation().getDirection()));
             } else {
-                if (System.currentTimeMillis() >= stealthReadyStart + stealthDuration) {
+                if (RollbackClock.millis() >= stealthReadyStart + stealthDuration) {
                     stopStealth();
                     bPlayer.addCooldown("ninjastealth", stealthCooldown);
                 } else {
@@ -174,7 +176,7 @@ public class NinjaStance extends ChiAbility implements AddonAbility, StanceAbili
             return;
         }
         stealth = true;
-        stealthStart = System.currentTimeMillis();
+        stealthStart = RollbackClock.millis();
     }
 
     public void stopStealth() {

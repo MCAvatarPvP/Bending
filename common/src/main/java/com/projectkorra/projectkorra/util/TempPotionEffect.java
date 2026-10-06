@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership;
+
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionEffect;
 
@@ -15,7 +18,7 @@ public class TempPotionEffect {
     private int ID = Integer.MIN_VALUE;
 
     public TempPotionEffect(final LivingEntity entity, final PotionEffect effect) {
-        this(entity, effect, System.currentTimeMillis());
+        this(entity, effect, RollbackClock.millis());
     }
 
     public TempPotionEffect(final LivingEntity entity, final PotionEffect effect, final long starttime) {
@@ -45,7 +48,7 @@ public class TempPotionEffect {
                     } else {
                         final int dt = effect.getDuration() - peffect.getDuration();
                         final PotionEffect neweffect = new PotionEffect(effect.getType(), dt, effect.getAmplifier());
-                        new TempPotionEffect(this.entity, neweffect, System.currentTimeMillis() + peffect.getDuration() * tick);
+                        new TempPotionEffect(this.entity, neweffect, RollbackClock.millis() + peffect.getDuration() * tick);
                         return;
                     }
                 } else {
@@ -54,7 +57,7 @@ public class TempPotionEffect {
                         this.entity.addPotionEffect(effect);
                         final int dt = peffect.getDuration() - effect.getDuration();
                         final PotionEffect neweffect = new PotionEffect(peffect.getType(), dt, peffect.getAmplifier());
-                        new TempPotionEffect(this.entity, neweffect, System.currentTimeMillis() + effect.getDuration() * tick);
+                        new TempPotionEffect(this.entity, neweffect, RollbackClock.millis() + effect.getDuration() * tick);
                         return;
                     } else {
                         this.entity.removePotionEffect(peffect.getType());
@@ -68,9 +71,10 @@ public class TempPotionEffect {
     }
 
     private void progress() {
+        if (RollbackLiveOwnership.blocks(this.entity.getUniqueId())) return;
         for (final int id : this.infos.keySet()) {
             final PotionInfo info = this.infos.get(id);
-            if (info.getTime() < System.currentTimeMillis()) {
+            if (info.getTime() < RollbackClock.millis()) {
                 this.addEffect(info.getEffect());
                 this.infos.remove(id);
             }

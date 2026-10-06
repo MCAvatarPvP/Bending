@@ -1,5 +1,8 @@
 package me.simplicitee.project.addons.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.platform.mc.Particle;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
@@ -32,7 +35,7 @@ public class AnimatedBlock {
         this.cycle = cycle;
         this.revert = revert;
         this.block.setBlockData(animation.peek().getBlockData(), false);
-        this.prevTime = System.currentTimeMillis();
+        this.prevTime = RollbackClock.millis();
 
         INSTANCES.put(block, this);
 
@@ -75,12 +78,12 @@ public class AnimatedBlock {
 
         AnimationStep step = animation.peek();
 
-        if (effect != null && Math.random() > 0.5) {
+        if (effect != null && RollbackRandom.fraction() > 0.5) {
             block.getWorld().spawnParticle(effect, block.getLocation().add(0.5, 1, 0.5), 1, 0.4, 0, 0.4);
         }
 
-        if (prevTime + step.getDuration() <= System.currentTimeMillis()) {
-            prevTime = System.currentTimeMillis();
+        if (prevTime + step.getDuration() <= RollbackClock.millis()) {
+            prevTime = RollbackClock.millis();
             animation.poll();
 
             if (cycle) {

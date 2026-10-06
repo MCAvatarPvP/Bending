@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.airbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -95,7 +97,7 @@ public class AirSpout extends AirAbility {
         this.angle = 0;
         this.cooldown = getConfig().getLong("Abilities.Air.AirSpout.Cooldown");
         this.duration = getConfig().getLong("Abilities.Air.AirSpout.Duration");
-        this.animTime = System.currentTimeMillis();
+        this.animTime = RollbackClock.millis();
         this.interval = getConfig().getLong("Abilities.Air.AirSpout.Interval");
         this.height = getConfig().getDouble("Abilities.Air.AirSpout.Height");
         this.staminaDrainRate = getConfig().getDouble("Abilities.Air.AirSpout.StaminaDrainRate", 0.05);
@@ -312,7 +314,7 @@ public class AirSpout extends AirAbility {
         }
 
         if (this.duration != 0
-                && System.currentTimeMillis() > this.getStartTime() + this.duration) {
+                && RollbackClock.millis() > this.getStartTime() + this.duration) {
             this.bPlayer.addCooldown(this);
             this.removalReason = "duration expired";
             this.remove();
@@ -367,7 +369,7 @@ public class AirSpout extends AirAbility {
             return true;
         }
 
-        final long now = System.currentTimeMillis();
+        final long now = RollbackClock.millis();
         if (this.lastStaminaDrainTime == 0) {
             this.lastStaminaDrainTime = now;
             this.bPlayer.resetAirBlast();
@@ -404,7 +406,7 @@ public class AirSpout extends AirAbility {
             return;
         }
 
-        final long nowMillis = System.currentTimeMillis();
+        final long nowMillis = RollbackClock.millis();
         final double deltaSeconds = this.getAnimationDeltaSeconds();
         final Location playerLocation = this.player.getLocation();
         final World world = playerLocation.getWorld();
@@ -469,7 +471,7 @@ public class AirSpout extends AirAbility {
     }
 
     private double getAnimationDeltaSeconds() {
-        final long now = System.nanoTime();
+        final long now = RollbackClock.nanos();
         if (this.lastAnimationNanos == 0L) {
             this.lastAnimationNanos = now;
             return DEFAULT_TICK_SECONDS;
