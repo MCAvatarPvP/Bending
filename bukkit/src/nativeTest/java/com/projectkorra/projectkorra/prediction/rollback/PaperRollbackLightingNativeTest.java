@@ -132,7 +132,34 @@ class PaperRollbackLightingNativeTest {
                     stone, null, cell.biome(), (byte) 0, .8, .4), true);
             checkpoint.restore();
             assertEquals(15, lighting.sky(source));
+            var logical = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackWorld(
+                    new com.projectkorra.projectkorra.prediction.rollback.world.RollbackWorld.Identity("arena",
+                            com.projectkorra.projectkorra.prediction.rollback.world.RollbackWorld.Dimension.NORMAL, 0, 32),
+                    new com.projectkorra.projectkorra.prediction.rollback.world.RollbackWorld.Conditions(0, 0, "NORMAL", false, Set.of()),
+                    terrain, lighting.rules(delegate, () -> 0), 100, 10,
+                    unused(com.projectkorra.projectkorra.prediction.rollback.world.RollbackItems.class),
+                    unused(com.projectkorra.projectkorra.prediction.rollback.world.RollbackWorld.Queries.class),
+                    unused(com.projectkorra.projectkorra.prediction.rollback.world.RollbackWorld.Actions.class));
+            var spatial = new PaperRollbackSpatial(logical, (RegistryAccess.Frozen) registry,
+                    PaperRollbackEnvironmentNativeTest.seed(), PaperRollbackBorder.capture(new net.minecraft.world.level.border.WorldBorder()), lighting);
+            var position = new BlockPos(source.x(), source.y(), source.z());
+            var spatialCheckpoint = graph.capture(List.of(spatial), List.of());
+            assertTrue(spatial.skyVisible(logical.terrain(), position));
+            logical.terrain().replace(roof, new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Cell(
+                    stone, null, cell.biome(), (byte) 0, .8, .4), false);
+            assertFalse(spatial.skyVisible(logical.terrain(), position));
+            spatial.border().setSize(20);
+            spatial.environmentAttributes().weather(new RollbackEnvironmentData.Weather(1, 1));
+            spatialCheckpoint.restore();
+            assertTrue(spatial.skyVisible(logical.terrain(), position));
+            assertTrue(spatial.border().getSize() > 20);
+            assertEquals(0, spatial.environmentAttributes().weather().rain());
+            assertThrows(IllegalArgumentException.class, () -> spatial.skyVisible(store, position));
             return null;
         });
+    }
+    private static <T> T unused(Class<T> type) {
+        return type.cast(java.lang.reflect.Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type},
+                (proxy, method, args) -> { throw new AssertionError("Unexpected service: " + method); }));
     }
 }

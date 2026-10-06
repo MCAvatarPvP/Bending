@@ -129,6 +129,7 @@ public final class PaperRollbackLighting implements RollbackStateCell<PaperRollb
         }
         return result;
     }
+    public Bounds bounds() { check(); return bounds; }
     public int sky(Position position) { check(); return reader.getSkyLightValue(nativePos(position), chunk(position)); }
     public int block(Position position) { check(); return reader.getBlockLightValue(nativePos(position), chunk(position)); }
     private BlockPos nativePos(Position position) { return new BlockPos(position.x(), position.y(), position.z()); }

@@ -66,13 +66,16 @@ true. Do not install these fixture behaviors or advertise bootstrap support from
 Before assembling the production match bootstrap, provide private execution output
 routing and native action remainder handling, plus spatial/event bindings over the
 captured world. `PaperRollbackBorder` and `PaperRollbackEnvironment` already provide
-owned border/environment components. Sky visibility remains a concrete missing
-binding: `PaperRollbackWorldQueries.Services` requires private sky lighting, while
+owned border/environment components. `PaperRollbackSpatial` now combines these with
+private native lighting for the production spatial binding: `PaperRollbackWorldQueries.Services` requires private sky lighting, while
 `RollbackBlockStore.Cell` carries a single generic light level. The world seed now
 also carries distinct native light layers, but these initial values alone do not
 prove correct sky visibility after terrain changes.
-Production assembly must supply the actual private query and its checkpoint state;
-an always-visible answer or a motion-blocking heightmap is insufficient.
+`PaperRollbackSpatial` exposes all of those owned components to the checkpoint graph
+and checks sky visibility using the native sky layer. Its native integration test changes
+terrain, weather and border size, then restores them from the spatial root alone. The
+complete match bootstrap still needs to install this service with real execution/event
+bindings; an always-visible answer or a motion-blocking heightmap is insufficient.
 ### October 5, 2026 integration update
 
 The Paper live ownership coordinator now acquires lifecycle, scheduled callback,
@@ -132,8 +135,8 @@ Paper's lighting rules adapter propagates that change and supplies current combi
 brightness using captured sky darkness. The store exposes stateful rules to the
 checkpoint graph, which reaches the native light state; a native integration test
 restores the graph from the store root alone and verifies both terrain and light.
-Production world service assembly, captured darkness binding and Fabric parity remain
-missing; this adapter does not yet enable live duels.
+The production spatial service now composes lighting, environment and border. Complete
+world service installation, captured darkness binding and Fabric parity remain missing; this adapter does not yet enable live duels.
 Live scheduler restoration/replacement now accepts a synchronous whole-state commit.
 Native callback submissions are staged while dispatch remains gated; only a successful
 external commit activates callbacks and publishes replacement handles. Failed state
