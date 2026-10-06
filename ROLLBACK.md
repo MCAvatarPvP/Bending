@@ -71,8 +71,16 @@ commands, inventory and other plugin payloads) require whole-session teardown be
 native dispatch. Off-thread teardown packets queue against the facade for ownership
 revalidation. Failed or incomplete teardown prevents native dispatch. Tests cover
 movement suppression, exact channel policy, failed cleanup, and command resumption.
-Queued-original-packet drainage, disconnect cleanup and whole-roster composition
-remain required before startup; the gate is not installed in production yet.
+The lease now offers a polled network-event-loop barrier followed by a targeted
+PacketProcessor queue handoff. Original-listener packets queued before the barrier
+are removed as one batch and routed through the facade; duplicate gameplay input
+is discarded even if a preceding command ends ownership or throws. Other players'
+queue entries are untouched. A real PacketProcessor and embedded Netty channel test
+covers waiting for the barrier, late original-listener enqueue, control delivery,
+outsider preservation, teardown failure and stale movement after successful teardown.
+This is not a live socket test. Asynchronous command/plugin executor jobs outside
+PacketProcessor, disconnect cleanup and whole-roster composition still require
+integration before startup; the gate is not installed in production yet.
 
 The connection maintenance component mirrors Paper's paused tick branch without
 calling its native `tickPlayer`/`doTick`: pending block acknowledgements, keepalive,

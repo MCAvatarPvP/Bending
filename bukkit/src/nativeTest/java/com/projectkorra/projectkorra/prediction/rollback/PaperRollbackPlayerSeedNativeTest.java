@@ -484,7 +484,10 @@ class PaperRollbackPlayerSeedNativeTest {
     }
 
     public static class MaintenanceProbe extends net.minecraft.server.network.ServerGamePacketListenerImpl {
-        int keepalives, nativeTicks, movements, commands;
+        int keepalives, nativeTicks, movements, commands, pongs;
+        @Override public boolean shouldHandleMessage(net.minecraft.network.protocol.Packet<?> packet) { return true; }
+        @Override public void onPacketError(net.minecraft.network.protocol.Packet packet, Exception failure) { throw new IllegalStateException(failure); }
+        @Override public void handlePong(net.minecraft.network.protocol.common.ServerboundPongPacket packet) { pongs++; }
         @Override public void handleChatCommand(net.minecraft.network.protocol.game.ServerboundChatCommandPacket packet) { commands++; }
         @Override public void handleMovePlayer(net.minecraft.network.protocol.game.ServerboundMovePlayerPacket packet) { movements++; }
         @Override public void tick() { nativeTicks++; }
@@ -554,15 +557,43 @@ class PaperRollbackPlayerSeedNativeTest {
                 assertThrows(IllegalStateException.class, () -> lease.restoreAndRelease(() -> fail("Foreign listener replacement")));
                 assertSame(original, connection.getPacketListener());
                 listenerField.set(connection, intercepted);
+                var processor = new net.minecraft.network.PacketProcessor(Thread.currentThread());
+                var channel = new io.netty.channel.embedded.EmbeddedChannel(); connection.channel = channel;
+                var outsider = new org.objenesis.ObjenesisStd().newInstance(MaintenanceProbe.class);
+                processor.scheduleIfPossible(original, movement);
+                processor.scheduleIfPossible(outsider, movement);
+                processor.scheduleIfPossible(original, new net.minecraft.network.protocol.common.ServerboundPongPacket(7));
+                assertFalse(lease.pollPacketDrain(processor));
+                assertEquals(0, original.pongs);
+                // Simulate an old listener callback scheduling just before the barrier.
+                processor.scheduleIfPossible(original, movement);
+                channel.runPendingTasks();
+                assertTrue(lease.pollPacketDrain(processor));
+                assertEquals(0, original.movements); assertEquals(1, original.pongs);
+                assertEquals(0, outsider.movements);
+                assertTrue(processor.executeSinglePacket()); assertEquals(1, outsider.movements);
+                assertFalse(processor.executeSinglePacket());
+                assertTrue(lease.pollPacketDrain(processor)); assertEquals(1, original.pongs);
+                assertThrows(IllegalStateException.class,
+                        () -> lease.pollPacketDrain(new net.minecraft.network.PacketProcessor(Thread.currentThread())));
+                channel.finishAndReleaseAll(); connection.channel = null;
                 var command = new net.minecraft.network.protocol.game.ServerboundChatCommandPacket("kill");
                 assertThrows(IllegalStateException.class, () -> intercepted.handleChatCommand(command));
                 assertEquals(0, original.commands); lease.requireCurrent();
+                processor.scheduleIfPossible(original, command);
+                processor.scheduleIfPossible(original, movement);
+                assertThrows(IllegalStateException.class, () -> PaperRollbackQueuedPackets.drain(processor, original, intercepted));
+                assertEquals(0, original.movements); assertFalse(processor.executeSinglePacket());
+                lease.requireCurrent();
                 stop.set(() -> { });
                 assertThrows(IllegalStateException.class, () -> intercepted.handleChatCommand(command));
                 assertEquals(0, original.commands); lease.requireCurrent();
                 stop.set(() -> lease.restoreAndRelease(() -> assertSame(intercepted, connection.getPacketListener())));
-                intercepted.handleChatCommand(command);
-                assertEquals(1, original.commands);
+                processor.scheduleIfPossible(original, command);
+                processor.scheduleIfPossible(original, movement);
+                assertEquals(2, PaperRollbackQueuedPackets.drain(processor, original, intercepted));
+                assertEquals(1, original.commands); assertEquals(0, original.movements);
+                assertFalse(processor.executeSinglePacket());
                 assertSame(original, connection.getPacketListener());
                 connection.tick(); assertEquals(1, original.nativeTicks);
                 // A previously captured facade reference must resume normal delegation after release.

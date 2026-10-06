@@ -9,6 +9,7 @@ import net.bytebuddy.dynamic.scaffold.subclass.ConstructorStrategy;
 import net.bytebuddy.implementation.InvocationHandlerAdapter;
 import net.minecraft.network.Connection;
 import net.minecraft.network.PacketListener;
+import net.minecraft.network.PacketProcessor;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.PacketUtils;
 import net.minecraft.network.protocol.common.*;
@@ -23,6 +24,7 @@ import java.lang.invoke.VarHandle;
 import java.lang.reflect.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
 
 import static net.bytebuddy.matcher.ElementMatchers.*;
 
@@ -89,7 +91,10 @@ public final class PaperRollbackConnectionTickGate {
         private final Layout layout;
         private final Runnable stopBeforeMutation;
         private volatile boolean suspended;
-        private boolean released, restoring;
+        private boolean released, restoring, packetsDrained;
+        private CompletableFuture<Void> networkBarrier;
+        private PacketProcessor packetProcessor;
+        private io.netty.channel.Channel drainChannel;
         private Lease(ServerPlayer player, Runnable stopBeforeMutation) {
             this.player = player;
             this.stopBeforeMutation = stopBeforeMutation;
@@ -113,6 +118,38 @@ public final class PaperRollbackConnectionTickGate {
                 suspended = false; throw new IllegalStateException("Connection listener changed during acquisition");
             }
         }
+        /**
+         * Poll before capturing the initial simulation state. The barrier lets any
+         * network callback that already captured the original listener finish queuing
+         * its packet. This covers PacketProcessor work, not arbitrary plugin/command
+         * executor jobs; the loader must own those separately.
+         */
+        public boolean pollPacketDrain(PacketProcessor processor) {
+            requireCurrent(); Objects.requireNonNull(processor);
+            if (!processor.isSameThread()) throw new IllegalStateException("Foreign packet processor thread");
+            if (packetProcessor != null && packetProcessor != processor)
+                throw new IllegalStateException("Packet processor changed during handoff");
+            if (drainChannel != null && (connection.channel != drainChannel || !drainChannel.isOpen()))
+                throw new IllegalStateException("Connection channel changed/closed during handoff");
+            if (packetsDrained) return true;
+            if (networkBarrier == null) {
+                var channel = Objects.requireNonNull(connection.channel, "Live connection channel");
+                if (!channel.isOpen()) throw new IllegalStateException("Connection closed during handoff");
+                packetProcessor = processor; drainChannel = channel;
+                networkBarrier = new CompletableFuture<>();
+                try { channel.eventLoop().execute(() -> networkBarrier.complete(null)); }
+                catch (RuntimeException failure) { networkBarrier.completeExceptionally(failure); }
+                return false;
+            }
+            if (!networkBarrier.isDone()) return false;
+            networkBarrier.join();
+            PaperRollbackQueuedPackets.drain(processor, original, proxy);
+            // A queued command may have torn the session down. Never start it again.
+            requireCurrent();
+            packetsDrained = true;
+            return true;
+        }
+
         public void requireCurrent() {
             checkThread();
             if (!suspended || released || player.connection != original || original.player != player
