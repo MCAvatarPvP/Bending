@@ -57,6 +57,52 @@ class RollbackEngineTest {
                 new RollbackEngine.Limits(window, 2, 100, STEP), 1_000);
     }
 
+    @Test void authoritativeStateRepairsDivergenceWithoutRepeatingFinalizedEffectsOrLosingInputs() {
+        var simulation = new Simulation();
+        var replica = RollbackEngine.replica(simulation, Map.of(A, Input.idle(), B, Input.idle()),
+                new RollbackEngine.Limits(8, 2, 100, STEP), 1000, 0);
+        replica.submit(A, 1, new Input(1, true)); replica.advance();
+        var finalEffects = replica.confirm(1).finalizedEffects(); assertFalse(finalEffects.isEmpty());
+        replica.submit(A, 2, new Input(2, true)); replica.advance(); replica.advance();
+        replica.correct(B, 2, new Input(3, false)); // Also repair a pending input revision.
+        var baseline = new State(10, 20, 1, 1050, List.of(-10));
+        var update = replica.correctState(1, baseline);
+        assertEquals(2, update.replayedFrom()); assertTrue(update.finalizedEffects().isEmpty());
+        assertEquals(baseline, update.confirmed().state());
+        assertEquals(18, update.head().state().a()); assertEquals(26, update.head().state().b());
+        assertEquals(2, update.head().state().activations());
+        assertEquals(RollbackEngine.Submission.DUPLICATE, replica.submit(A, 2, new Input(2, true)));
+        assertEquals(RollbackEngine.Submission.CONFLICTING_INPUT, replica.submit(A, 2, Input.idle()));
+        assertEquals(-1, replica.reconcile().replayedFrom());
+        var confirmed = replica.confirm(3);
+        assertTrue(confirmed.finalizedEffects().stream().allMatch(effect -> effect.tick() > 1));
+        assertEquals(1, confirmed.finalizedEffects().stream().filter(effect -> effect.value().startsWith("activate:")).count());
+        assertTrue(replica.confirm(3).finalizedEffects().isEmpty());
+        assertThrows(IllegalArgumentException.class, () -> replica.correctState(2, baseline));
+        assertThrows(IllegalArgumentException.class, () -> replica.correctState(4, baseline));
+        assertThrows(IllegalStateException.class, () -> engine(new Simulation(), 4).correctState(0, baseline));
+    }
+
+    @Test void stateRepairAtHeadChangesStateWithoutReplayingAndFailedImportPoisonsSession() {
+        var simulation = new Simulation();
+        var replica = RollbackEngine.replica(simulation, Map.of(A, Input.idle(), B, Input.idle()),
+                new RollbackEngine.Limits(8, 2, 100, STEP), 1000, 0);
+        var corrected = new State(4, 8, 0, 1000, List.of());
+        var update = replica.correctState(0, corrected);
+        assertEquals(corrected, simulation.state); assertEquals(corrected, update.head().state());
+        assertEquals(update.head(), update.confirmed()); assertEquals(-1, update.replayedFrom());
+        assertEquals(1, update.revision()); assertEquals(0, replica.diagnostics().replayedSteps());
+        var broken = RollbackEngine.replica(new Simulation() {
+            @Override public void restore(State state) { throw new IllegalStateException("import failed"); }
+        }, Map.of(A, Input.idle(), B, Input.idle()), new RollbackEngine.Limits(8, 2, 100, STEP), 1000, 0);
+        assertThrows(IllegalArgumentException.class, () -> broken.correctState(1, corrected));
+        assertFalse(broken.diagnostics().failed());
+        assertThrows(IllegalStateException.class, () -> broken.correctState(0, corrected));
+        assertTrue(broken.diagnostics().failed());
+        assertThrows(IllegalStateException.class, broken::advance);
+        assertThrows(IllegalStateException.class, () -> broken.correctState(0, corrected));
+    }
+
     @Test void lateInputReplaysVariableMovementAndReplacesProvisionalEffects() {
         var onTime = engine(new Simulation(), 4);
         var late = engine(new Simulation(), 4);

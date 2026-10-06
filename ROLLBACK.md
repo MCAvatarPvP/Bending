@@ -3332,3 +3332,19 @@ Tests exercise the normal wrapper through a scoped platform, restore both wrappe
 delegate state, verify detached views and reject stale handles after ID reuse.
 Production platform installation, importing pre-existing live bar delegates and
 client/server view delivery still need wiring; this does not establish live UI output.
+
+
+### Replica checkpoint repair
+
+RollbackReplicaTimeline now exposes correctState at the current confirmed frontier.
+The replica restores a trusted locally imported checkpoint, captures its own baseline
+and replays to its previous head using retained accepted inputs, including pending
+input corrections. The operation does not advance confirmation or redeliver finalized
+effects. Authority engines and stale/future frontier checkpoints reject; restoration
+or replay failure makes the session unusable. RollbackCombatRuntime performs it inside
+the private domain. Tests repair deliberately divergent state, verify accepted input
+protection, one-shot effects, no duplicate finalization, head-only repair and failure.
+
+This is the engine repair boundary, not installed network state reconciliation.
+Authoritative checkpoint export, authenticated bounded transfer, native/gameplay import
+and client publication ordering must still connect it before live use.

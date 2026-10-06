@@ -119,6 +119,31 @@ public final class RollbackEngine<S, I, E> implements RollbackReplicaTimeline<S,
         return putInput(participant, tick, input, true);
     }
 
+    /**
+     * Repair replica divergence from an authenticated, locally imported checkpoint at
+     * the confirmed frontier. Never changes accepted input or redelivers committed
+     * effects. The caller must validate the checkpoint's session/schema and frontier
+     * before importing it; an authority engine cannot accept this operation.
+     */
+    @Override public Update<S, I, E> correctState(long tick, S state) {
+        requireReplica(); checkUsable(); Objects.requireNonNull(state, "authority state");
+        if (tick != confirmed.tick()) throw new IllegalArgumentException("State correction must match the confirmed frontier");
+        final long through = head.tick();
+        try {
+            simulation.restore(state);
+            // Snapshot again so the retained frame is owned by this simulation.
+            var baseline = new Frame<S, I, E>(tick, simulation.snapshot(), confirmed.inputs(), confirmed.effects());
+            frames.put(tick, baseline); confirmed = baseline;
+            Frame<S, I, E> previous = baseline;
+            while (previous.tick() < through) {
+                long next = Math.incrementExact(previous.tick());
+                previous = execute(next, previous); frames.put(next, previous); replayedSteps++;
+            }
+            head = previous; revision = Math.incrementExact(revision); dirtyFrom = Long.MAX_VALUE;
+            return new Update<>(head, confirmed, revision, tick < through ? tick + 1 : -1, List.of());
+        } catch (RuntimeException | Error failure) { failed = true; throw failure; }
+    }
+
     private Submission putInput(UUID participant, long tick, I input, boolean replace) {
         checkUsable();
         Objects.requireNonNull(input, "input");

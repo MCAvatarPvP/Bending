@@ -210,6 +210,9 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
         return domain.call(engine::reconcile);
     }
 
+    @Override public RollbackEngine.Update<RollbackDomain.Checkpoint, I, E> correctState(long tick, RollbackDomain.Checkpoint state) {
+        requireUsable(); return domain.call(() -> engine.correctState(tick, state));
+    }
     @Override public boolean replica() { return engine.replica(); }
     @Override public RollbackEngine.Submission correct(UUID participant, long tick, I input) {
         requireUsable();
