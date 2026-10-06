@@ -48,6 +48,37 @@ class PaperRollbackDamageNativeTest {
         }
     }
 
+    @Test void handSwapPreservesItemAliasesAndRewindsEquipmentOutputs() throws Exception {
+        onTickThread(() -> {
+            var scene = new Scene();
+            var main = new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.DIAMOND_SWORD);
+            var off = new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.SHIELD);
+            scene.target.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, main);
+            scene.target.setItemInHand(net.minecraft.world.InteractionHand.OFF_HAND, off);
+            scene.targetState.use(player -> { ((Player) player).startUsingItem(net.minecraft.world.InteractionHand.OFF_HAND); return null; });
+            assertTrue(scene.target.isUsingItem());
+            var saved = scene.snapshot();
+            assertTrue(scene.targetState.swapHands());
+            assertFalse(scene.target.isUsingItem());
+            assertSame(off, scene.target.getMainHandItem());
+            assertSame(main, scene.target.getOffhandItem());
+            var output = List.copyOf(scene.combat.outputs);
+            assertFalse(output.isEmpty());
+            saved.restore();
+            assertTrue(scene.target.isUsingItem());
+            assertSame(main, scene.target.getMainHandItem());
+            assertSame(off, scene.target.getOffhandItem());
+            assertTrue(scene.combat.outputs.isEmpty());
+            scene.combat.cancel = true;
+            assertFalse(scene.targetState.swapHands());
+            assertSame(main, scene.target.getMainHandItem());
+            scene.combat.cancel = false;
+            assertTrue(scene.targetState.swapHands());
+            assertEquals(output, scene.combat.outputs);
+            return null;
+        });
+    }
+
     @Test void nativeHandSwingAndDetachedAnimationRewindTogether() throws Exception {
         onTickThread(() -> {
             var scene = new Scene();
@@ -619,6 +650,7 @@ class PaperRollbackDamageNativeTest {
         @Override public boolean parrotsStayOnShoulder() { return false; }
         @Override public void event(Event event) {
             events.add(event.getClass().getName());
+            if (event instanceof org.bukkit.event.player.PlayerSwapHandItemsEvent swap) swap.setCancelled(cancel);
             if (event instanceof EntityDamageEvent damage) { damage.setDamage(damage.getDamage() * multiplier); damage.setCancelled(cancel); }
             if (event instanceof org.bukkit.event.entity.EntityAirChangeEvent air) { air.setAmount((int) (air.getAmount() * multiplier)); air.setCancelled(cancel); }
             if (event instanceof org.bukkit.event.entity.EntityToggleSwimEvent swim) swim.setCancelled(cancel);

@@ -2736,3 +2736,21 @@ state/output rewind, and the full execution path with on-time versus late accept
 cancelled off-hand input. Missing frames still omit one-shot actions. Remaining native
 item, swap and attack operations, runtime installation and live duel validation are not
 completed by this change.
+
+
+### Native hand-swap input
+
+Accepted `SWAP_HANDS` edges now execute through the owned native player on both
+loaders after the common bending input handler. Paper dispatches its private swap
+event with proposed post-swap stacks, honors cancellation/replacements, preserves
+unchanged item aliases, ends active item use and applies the captured immediate
+equipment-update policy. Fabric routes the detached swap result through the owned
+world services; an unbound event policy fails explicitly. These actions are no
+longer delegated to the generic native remainder callback.
+
+Native tests verify inventory aliases, equipment output rewind, active-item-use
+stopping/restoration and Paper event cancellation. Both execution fixtures also compare late-input replay against an
+on-time swap, including complete tick effects and resulting inventory. Event
+replacement parity, further active-use edge cases and live two-client validation still
+need verification. Runtime factory installation and remaining native actions are
+still incomplete; this does not establish end-to-end rollback completion.

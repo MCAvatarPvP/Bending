@@ -193,6 +193,9 @@ public final class FabricRollbackNativePlayerState implements RollbackPlayerStat
         });
     }
 
+    /** Applies an owned native hand swap through the private event policy. */
+    public boolean swapHands() { return use(world::swapHands); }
+
     /** Native swing state and detached tracking output, after input cancellation has been resolved. */
     public void swing(boolean offHand) {
         use(entity -> {

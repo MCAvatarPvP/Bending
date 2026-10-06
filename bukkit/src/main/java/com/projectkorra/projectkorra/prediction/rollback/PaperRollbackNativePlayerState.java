@@ -260,6 +260,9 @@ public final class PaperRollbackNativePlayerState implements RollbackPlayerState
         return use(entity -> world.damage(entity, nativeSource, amount));
     }
 
+    /** Applies an owned native hand swap through the private event policy. */
+    public boolean swapHands() { return use(entity -> world.swapHands((Player) entity)); }
+
     /** Native swing state and detached tracking output, after input cancellation has been resolved. */
     public void swing(boolean offHand) {
         use(entity -> {

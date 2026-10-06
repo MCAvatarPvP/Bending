@@ -92,7 +92,14 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
         /** Encode detached provisional output immediately; never retain the native entity or deliver live packets. */
         void waypoint(WaypointAction action, Entity entity);
         /** Captured authoritative flight-event policy; initial cancellation is from the shared bending handler. */
-        default boolean flightAllowed(PlayerEntity player, boolean flying, boolean cancelled) {
+        default com.projectkorra.projectkorra.prediction.rollback.RollbackHandSwap swapHands(PlayerEntity player,
+                com.projectkorra.projectkorra.prediction.rollback.world.RollbackItemData main,
+                com.projectkorra.projectkorra.prediction.rollback.world.RollbackItemData off) {
+            throw new UnsupportedOperationException("Private swap-event policy is not bound");
+        }
+        default boolean updateEquipmentOnActions() {
+            throw new UnsupportedOperationException("Private equipment-update policy is not bound");
+        }        default boolean flightAllowed(PlayerEntity player, boolean flying, boolean cancelled) {
             throw new UnsupportedOperationException("Private flight-event policy is not bound");
         }
         default boolean glideAllowed(PlayerEntity player, boolean gliding, boolean cancelled) {
@@ -292,6 +299,23 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
 
     // Only native adapters in this package may retain the shell. No world constructor ran.
     World world() { checkThread(); return world; }
+    boolean swapHands(PlayerEntity player) {
+        checkThread(); ownedId(player);
+        if (player.isSpectator()) return false;
+        var codec = new FabricRollbackItemCodec(queries.registries());
+        var originalMain = player.getMainHandStack(); var originalOff = player.getOffHandStack();
+        var proposedMain = codec.encode(originalOff); var proposedOff = codec.encode(originalMain);
+        var result = Objects.requireNonNull(queries.swapHands(player, proposedMain, proposedOff));
+        if (result.cancelled()) return false;
+        var main = result.mainHand().equals(proposedMain) ? originalOff : codec.decode(result.mainHand());
+        var off = result.offHand().equals(proposedOff) ? originalMain : codec.decode(result.offHand());
+        boolean equipment = queries.updateEquipmentOnActions();
+        player.setStackInHand(net.minecraft.util.Hand.OFF_HAND, off);
+        player.setStackInHand(net.minecraft.util.Hand.MAIN_HAND, main);
+        player.clearActiveItem();
+        if (equipment) player.sendEquipmentChanges();
+        return true;
+    }
     boolean usesQueries(Queries<?> candidate) { checkThread(); return queries == candidate; }
 
     void registerPlayer(PlayerEntity player, FabricRollbackNativePlayerState state) {

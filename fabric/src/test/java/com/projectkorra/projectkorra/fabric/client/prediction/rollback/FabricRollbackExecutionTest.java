@@ -256,6 +256,31 @@ class FabricRollbackExecutionTest {
         return java.util.Objects.requireNonNull(delivered);
     }
 
+    @Test void lateHandSwapReplaysInventoryAndNativeOutputs() throws Exception {
+        withConfig(() -> {
+            java.util.function.Consumer<Fixture> prepare = fixture -> {
+                var player = ((FabricRollbackNativePlayerState) fixture.attacker.body().kinematicsSource()).ownedPlayer();
+                    player.setStackInHand(net.minecraft.util.Hand.MAIN_HAND, new net.minecraft.item.ItemStack(net.minecraft.item.Items.DIAMOND_SWORD));
+                    player.setStackInHand(net.minecraft.util.Hand.OFF_HAND, new net.minecraft.item.ItemStack(net.minecraft.item.Items.SHIELD));
+            };
+            var direct = scenario(false, prepare, fixture -> { }); var late = scenario(false, prepare, fixture -> { });
+            var edge = new RollbackPlayerInput.Edge(new RollbackInputActions.Action(1, 23,
+                    RollbackInputActions.Kind.SWAP_HANDS, -1), 0, 0);
+            var held = input(0, List.of(edge));
+            assertEquals(RollbackEngine.Submission.ACCEPTED, direct.runtime.submit(A, 1, held));
+            var expected = direct.runtime.advance(); late.runtime.advance();
+            assertEquals(RollbackEngine.Submission.ACCEPTED, late.runtime.submit(A, 1, held));
+            var replay = late.runtime.reconcile();
+            var directBody = ((FabricRollbackNativePlayerState) direct.fixture.attacker.body().kinematicsSource()).ownedPlayer();
+            var lateBody = ((FabricRollbackNativePlayerState) late.fixture.attacker.body().kinematicsSource()).ownedPlayer();
+            assertEquals(net.minecraft.item.Items.SHIELD, directBody.getMainHandStack().getItem());
+            assertEquals(net.minecraft.item.Items.DIAMOND_SWORD, directBody.getOffHandStack().getItem());
+            assertEquals(directBody.getMainHandStack().getItem(), lateBody.getMainHandStack().getItem());
+            assertEquals(directBody.getOffHandStack().getItem(), lateBody.getOffHandStack().getItem());
+            assertEquals(expected.head().effects(), replay.head().effects());
+        });
+    }
+
     @ParameterizedTest @ValueSource(booleans = {false, true})
     void offHandSwingRunsAfterBendingCancellationAndReplaysFromLateInput(boolean cancelled) throws Exception {
         withConfig(() -> {

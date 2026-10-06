@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.fabric.client.prediction.rollback;
 
 import com.projectkorra.projectkorra.prediction.rollback.*;
+import com.projectkorra.projectkorra.prediction.rollback.world.RollbackItemData;
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore;
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackWorld;
 import net.minecraft.entity.Entity;
@@ -32,6 +33,9 @@ public final class FabricRollbackWorldServices implements FabricRollbackWorldQue
         void gameEvent(RegistryEntry<GameEvent> event, Vec3d position, GameEvent.Emitter emitter);
         void waypoint(FabricRollbackWorldAccess.WaypointAction action, Entity entity);
         void output(FabricRollbackWorldAccess.Output output);
+        default RollbackHandSwap swapHands(UUID player, RollbackItemData main, RollbackItemData off) {
+            throw new UnsupportedOperationException("Private swap-event policy is not bound");
+        }
         default boolean flightAllowed(UUID player, boolean flying, boolean cancelled) {
             throw new UnsupportedOperationException("Private flight-event policy is not bound");
         }
@@ -114,6 +118,10 @@ public final class FabricRollbackWorldServices implements FabricRollbackWorldQue
     @Override public void output(FabricRollbackWorldAccess.Output output) { checkThread(); events.output(output); }
     @Override public void gameEvent(RegistryEntry<GameEvent> event, Vec3d position, GameEvent.Emitter emitter) { checkThread(); events.gameEvent(event, position, emitter); }
     @Override public void waypoint(FabricRollbackWorldAccess.WaypointAction action, Entity entity) { checkThread(); events.waypoint(action, entity); }
+    @Override public RollbackHandSwap swapHands(UUID player, RollbackItemData main, RollbackItemData off) {
+        checkThread(); return events.swapHands(player, main, off);
+    }
+    @Override public boolean updateEquipmentOnActions() { checkThread(); return settings.policy().updateEquipmentOnActions(); }
     @Override public boolean flightAllowed(UUID player, boolean flying, boolean cancelled) { checkThread(); return events.flightAllowed(player, flying, cancelled); }
     @Override public boolean glideAllowed(UUID player, boolean gliding, boolean cancelled) { checkThread(); return events.glideAllowed(player, gliding, cancelled); }
     @Override public Snapshot captureRollbackState() { checkThread(); return new Snapshot(this); }

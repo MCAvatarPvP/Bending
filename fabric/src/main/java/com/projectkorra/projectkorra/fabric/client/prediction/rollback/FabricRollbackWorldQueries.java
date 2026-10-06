@@ -32,6 +32,8 @@ import net.minecraft.world.border.WorldBorder;
 import net.minecraft.world.event.GameEvent;
 import net.minecraft.world.rule.GameRule;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackHandSwap;
+import com.projectkorra.projectkorra.prediction.rollback.world.RollbackItemData;
 import java.util.*;
 import java.util.function.Predicate;
 
@@ -54,6 +56,12 @@ public final class FabricRollbackWorldQueries implements FabricRollbackWorldAcce
         void output(FabricRollbackWorldAccess.Output output);
         void gameEvent(RegistryEntry<GameEvent> event, Vec3d position, GameEvent.Emitter emitter);
         void waypoint(FabricRollbackWorldAccess.WaypointAction action, Entity entity);
+        default RollbackHandSwap swapHands(UUID player, RollbackItemData main, RollbackItemData off) {
+            throw new UnsupportedOperationException("Private swap-event policy is not bound");
+        }
+        default boolean updateEquipmentOnActions() {
+            throw new UnsupportedOperationException("Private equipment-update policy is not bound");
+        }
         default boolean flightAllowed(UUID player, boolean flying, boolean cancelled) {
             throw new UnsupportedOperationException("Private flight-event policy is not bound");
         }
@@ -190,6 +198,10 @@ public final class FabricRollbackWorldQueries implements FabricRollbackWorldAcce
         services.gameEvent(event, position, emitter);
     }
     @Override public void waypoint(FabricRollbackWorldAccess.WaypointAction action, Entity entity) { requireRoster(); requireMember(entity); services.waypoint(action, entity); }
+    @Override public RollbackHandSwap swapHands(PlayerEntity player, RollbackItemData main, RollbackItemData off) {
+        requireRoster(); requireMember(player); return services.swapHands(player.getUuid(), main, off);
+    }
+    @Override public boolean updateEquipmentOnActions() { requireRoster(); return services.updateEquipmentOnActions(); }
     @Override public boolean flightAllowed(PlayerEntity player, boolean flying, boolean cancelled) {
         requireRoster(); requireMember(player); return services.flightAllowed(player.getUuid(), flying, cancelled);
     }

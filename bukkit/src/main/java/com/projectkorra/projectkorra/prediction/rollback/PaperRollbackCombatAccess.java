@@ -63,6 +63,7 @@ public final class PaperRollbackCombatAccess {
     private final MethodHandle addEffect, removeEffect, setAir, setSwimming, movementStep, playerBodyTick;
     private final MethodHandle serverTick, serverBodyTick, serverJump;
     private final MethodHandle tryGlide, stopGlide;
+    private final MethodHandle stopItemUse, equipmentChanges;
     private final GlobalConfiguration globalConfiguration;
     private final WorldConfiguration worldConfiguration;
     private final PaperRollbackNativeEvents events;
@@ -170,7 +171,10 @@ public final class PaperRollbackCombatAccess {
             builder.copy(swimming);
             builder.copy(air);
             builder.copy(award).copy(reset).copy(serverEntry).copy(ServerPlayer.class.getMethod("canHarmPlayer", Player.class));
+            Method stopUse = LivingEntity.class.getDeclaredMethod("stopUsingItem");
+            Method equipment = Player.class.getDeclaredMethod("detectEquipmentUpdates");
             var copied = builder.build();
+            stopItemUse = copied.get(stopUse); equipmentChanges = copied.get(equipment);
             damage = copied.get(entry); serverDamage = copied.get(serverEntry); awardStatistic = copied.get(award); resetStatistic = copied.get(reset);
             addEffect = copied.get(add); removeEffect = copied.get(remove); setAir = copied.get(air);
             setSwimming = copied.get(swimming);
@@ -321,6 +325,30 @@ public final class PaperRollbackCombatAccess {
         try { playerBodyTick.invokeExact(player); }
         catch (RuntimeException | Error failure) { throw failure; }
         catch (Throwable failure) { throw new IllegalStateException("Private native player body tick failed", failure); }
+    }
+    boolean swapHands(Player player) {
+        ownedId(player);
+        if (player.isSpectator()) return false;
+        var originalMain = player.getMainHandItem(); var originalOff = player.getOffhandItem();
+        var proposedMain = org.bukkit.craftbukkit.inventory.CraftItemStack.asCraftMirror(originalOff);
+        var proposedOff = org.bukkit.craftbukkit.inventory.CraftItemStack.asCraftMirror(originalMain);
+        var event = new org.bukkit.event.player.PlayerSwapHandItemsEvent(
+                (org.bukkit.entity.Player) player.getBukkitEntity(), proposedMain.clone(), proposedOff.clone());
+        state.event(event);
+        if (event.isCancelled()) return false;
+        // Decode both replacements before changing either slot. Unchanged items keep their owned aliases.
+        var main = proposedMain.equals(event.getMainHandItem()) ? originalOff
+                : org.bukkit.craftbukkit.inventory.CraftItemStack.asNMSCopy(event.getMainHandItem());
+        var off = proposedOff.equals(event.getOffHandItem()) ? originalMain
+                : org.bukkit.craftbukkit.inventory.CraftItemStack.asNMSCopy(event.getOffHandItem());
+        player.setItemInHand(net.minecraft.world.InteractionHand.OFF_HAND, off);
+        player.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, main);
+        try {
+            stopItemUse.invokeExact((LivingEntity) player);
+            if (state.updateEquipmentOnPlayerActions()) equipmentChanges.invokeExact(player);
+        } catch (RuntimeException | Error failure) { throw failure; }
+        catch (Throwable failure) { throw new IllegalStateException("Private native hand swap failed", failure); }
+        return true;
     }
     void tickPlayer(ServerPlayer player) {
         ownedId(player);

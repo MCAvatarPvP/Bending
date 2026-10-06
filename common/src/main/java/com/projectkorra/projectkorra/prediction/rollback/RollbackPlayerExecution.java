@@ -21,7 +21,7 @@ public abstract class RollbackPlayerExecution<E> implements RollbackCombatRuntim
      * Owned session services, captured with the execution. begin installs simulation
      * time and output routing before scheduled work/inputs. action handles any native
      * remainder after the common bending handler, honoring cancellation; sneak/slot
-     * transitions have already been applied. Hand swings execute here after bending cancellation.
+     * transitions have already been applied. Hand swings and hand swaps execute here after bending cancellation.
      * Flight/glide input uses the owned native source's
      * control-event adapter and is not passed to action. tickWorld advances remaining world state,
      * excluding the players ticked here. end unbinds outputs even after partial failure.
@@ -66,6 +66,7 @@ public abstract class RollbackPlayerExecution<E> implements RollbackCombatRuntim
     /** Loader constructors validate that all logical views share the owned native state. */
     protected abstract void movementInput(RollbackPlayer player, RollbackMovementInput input);
     protected abstract void tickPlayer(RollbackPlayer player);
+    protected abstract void swapHands(RollbackPlayer player);
     protected abstract void swing(RollbackPlayer player, boolean offHand);
 
     @Override public final RollbackPlayerInput predict(UUID participant, RollbackPlayerInput previous) {
@@ -100,6 +101,10 @@ public abstract class RollbackPlayerExecution<E> implements RollbackCombatRuntim
                 if (edge.action().kind() == RollbackInputActions.Kind.SWING
                         || edge.action().kind() == RollbackInputActions.Kind.OFF_HAND_SWING) {
                     if (!result.cancelEvent()) swing(participant, edge.action().kind() == RollbackInputActions.Kind.OFF_HAND_SWING);
+                    return;
+                }
+                if (edge.action().kind() == RollbackInputActions.Kind.SWAP_HANDS) {
+                    if (!result.cancelEvent()) swapHands(participant);
                     return;
                 }
                 // Flight/glide have their own native control adapters and no item/melee remainder.

@@ -481,6 +481,12 @@ class FabricRollbackWorldAccessTest {
             waypoints.add(new Waypoint(action, entity.getUuid(), entity.getX(), entity.getY(), entity.getZ()));
         }
         @Override public WorldBorder getWorldBorder() { return border; }
+        @Override public com.projectkorra.projectkorra.prediction.rollback.RollbackHandSwap swapHands(PlayerEntity player,
+                com.projectkorra.projectkorra.prediction.rollback.world.RollbackItemData main,
+                com.projectkorra.projectkorra.prediction.rollback.world.RollbackItemData off) {
+            return new com.projectkorra.projectkorra.prediction.rollback.RollbackHandSwap(false, main, off);
+        }
+        @Override public boolean updateEquipmentOnActions() { return true; }
         @Override public boolean flightAllowed(PlayerEntity player, boolean flying, boolean cancelled) { return flightAllowed(player.getUuid(), flying, cancelled); }
         boolean flightAllowed(UUID player, boolean flying, boolean cancelled) {
             events.add(new Event("flight:" + flying + ":" + cancelled, player, 0, 0, 0));

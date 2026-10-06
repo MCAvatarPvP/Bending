@@ -44,3 +44,6 @@ accessible method net/minecraft/entity/LivingEntity knockDownwards ()V
 
 # Read native equipment/contact glide eligibility without starting gliding during physical input sampling.
 accessible method net/minecraft/entity/player/PlayerEntity canGlide ()Z
+
+# Apply Paper's captured immediate equipment-update policy after an owned hand swap.
+accessible method net/minecraft/entity/LivingEntity sendEquipmentChanges ()V

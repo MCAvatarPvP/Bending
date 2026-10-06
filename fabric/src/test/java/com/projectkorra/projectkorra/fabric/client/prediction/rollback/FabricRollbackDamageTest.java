@@ -25,6 +25,30 @@ import static org.junit.jupiter.api.Assertions.*;
 class FabricRollbackDamageTest {
     @BeforeAll static void bootstrap() { FabricRollbackTestRegistry.bootstrap(); }
 
+    @Test void handSwapPreservesItemAliasesAndRewindsEquipmentOutputs() {
+        var fixture = new Fixture();
+        var main = new net.minecraft.item.ItemStack(net.minecraft.item.Items.DIAMOND_SWORD);
+        var off = new net.minecraft.item.ItemStack(net.minecraft.item.Items.SHIELD);
+        fixture.target.setStackInHand(net.minecraft.util.Hand.MAIN_HAND, main);
+        fixture.target.setStackInHand(net.minecraft.util.Hand.OFF_HAND, off);
+        fixture.targetState.use(player -> { player.setCurrentHand(net.minecraft.util.Hand.OFF_HAND); return null; });
+        assertTrue(fixture.target.isUsingItem());
+        var saved = fixture.snapshot();
+        assertTrue(fixture.targetState.swapHands());
+        assertFalse(fixture.target.isUsingItem());
+        assertSame(off, fixture.target.getMainHandStack());
+        assertSame(main, fixture.target.getOffHandStack());
+        var output = List.copyOf(fixture.queries.outputs);
+        assertFalse(output.isEmpty());
+        saved.restore();
+        assertTrue(fixture.target.isUsingItem());
+        assertSame(main, fixture.target.getMainHandStack());
+        assertSame(off, fixture.target.getOffHandStack());
+        assertTrue(fixture.queries.outputs.isEmpty());
+        assertTrue(fixture.targetState.swapHands());
+        assertEquals(output, fixture.queries.outputs);
+    }
+
     @Test void nativeHandSwingAndDetachedAnimationRewindTogether() {
         var fixture = new Fixture(); var before = fixture.snapshot();
         fixture.targetState.swing(false);
