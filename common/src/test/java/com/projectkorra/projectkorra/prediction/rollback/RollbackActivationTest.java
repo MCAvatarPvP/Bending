@@ -25,6 +25,54 @@ class RollbackActivationTest {
     private static final UUID PARTICIPANT = new UUID(0, 1);
     private static final ClickType INPUT = ClickType.LEFT_CLICK;
 
+    @Test void outsideInputCannotInvokeHandlersCapturingAFrozenParticipant() throws Exception {
+        var scheduler = new RollbackLiveSchedulerTest.Backend();
+        var platform = (ProjectKorraPlatform) Proxy.newProxyInstance(ProjectKorraPlatform.class.getClassLoader(),
+                new Class<?>[]{ProjectKorraPlatform.class}, (proxy, method, args) -> {
+                    if (method.getName().equals("scheduler")) return scheduler;
+                    throw new AssertionError(method);
+                });
+        var member = new Player() { @Override public UUID getUniqueId() { return PARTICIPANT; } };
+        var outsider = new Player() { @Override public UUID getUniqueId() { return new UUID(0, 2); } };
+        var receiver = new java.util.concurrent.atomic.AtomicReference<Player>(member);
+        var ownedCalls = new java.util.concurrent.atomic.AtomicInteger();
+        var unrelatedCalls = new java.util.concurrent.atomic.AtomicInteger();
+        var mixedCalls = new java.util.concurrent.atomic.AtomicInteger();
+        var mixedPlayers = List.of(member, outsider);
+        ActivationHandler owned = context -> { receiver.get().getUniqueId(); ownedCalls.incrementAndGet(); return true; };
+        ActivationHandler unrelated = context -> { unrelatedCalls.incrementAndGet(); return true; };
+        ActivationHandler mixed = context -> { mixedPlayers.getFirst().getUniqueId(); mixedCalls.incrementAndGet(); return true; };
+        try (var scope = Platform.using(platform); var registry = new Registry()) {
+            AbilityActivationManager.registerGlobal(INPUT, owned);
+            AbilityActivationManager.registerGlobal(INPUT, unrelated);
+            var input = new ActivationContext(outsider, null, INPUT);
+            assertTrue(AbilityActivationManager.dispatchGlobal(input));
+            assertEquals(1, ownedCalls.get()); assertEquals(1, unrelatedCalls.get());
+            var lease = RollbackLiveOwnership.prepare(Set.of(PARTICIPANT)); lease.acquire();
+            try {
+                AbilityActivationManager.registerGlobal(INPUT, mixed); // New registrations are checked too.
+                assertTrue(AbilityActivationManager.dispatchGlobal(input));
+                assertEquals(1, ownedCalls.get()); assertEquals(2, unrelatedCalls.get()); assertEquals(0, mixedCalls.get());
+                receiver.set(outsider);
+                assertTrue(AbilityActivationManager.dispatchGlobal(input));
+                assertEquals(2, ownedCalls.get()); assertEquals(3, unrelatedCalls.get()); assertEquals(0, mixedCalls.get());
+                receiver.set(member);
+                assertThrows(IllegalStateException.class, () -> lease.restoreAndRelease(() -> { throw new IllegalStateException("Restore failed"); }));
+                assertTrue(AbilityActivationManager.dispatchGlobal(input));
+                assertEquals(2, ownedCalls.get()); assertEquals(4, unrelatedCalls.get());
+                var domain = RollbackDomain.create(new RollbackStateGraph(value -> false, field -> true, 100),
+                        List.of(), List.of(), platform, () -> { });
+                domain.call(() -> {
+                    assertFalse(RollbackLiveOwnership.blocksCallback(owned));
+                    assertFalse(RollbackLiveOwnership.blocksCallback(mixed));
+                    return null;
+                });
+            } finally { lease.restoreAndRelease(() -> { }); }
+            assertTrue(AbilityActivationManager.dispatchGlobal(input));
+            assertEquals(3, ownedCalls.get()); assertEquals(5, unrelatedCalls.get()); assertEquals(1, mixedCalls.get());
+        }
+    }
+
     @Test void registrationCaptureRequiresACompletedInputBoundary() {
         AbilityActivationManager.beginTracking();
         try {

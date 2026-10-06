@@ -405,6 +405,7 @@ public final class AbilityActivationManager {
         for (final ActivationHandler handler : handlers) {
             if (context.getPlayer() != null && RollbackLiveOwnership.blocks(context.getPlayer().getUniqueId())) break;
             try {
+                if (RollbackLiveOwnership.blocksCallback(handler)) continue;
                 final boolean activated = handler.activate(context);
                 handled |= activated;
                 if (activated) markHandled();

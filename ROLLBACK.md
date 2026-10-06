@@ -2893,3 +2893,19 @@ Production startup must also gate participant-owned handlers against invocation 
 outside inputs while their roster is frozen. Those service/ownership boundaries remain
 part of runtime assembly; the full native bootstrap and real two-client test gate are
 still incomplete.
+
+### Live activation ownership gate
+
+Live activation dispatch now checks captured callback references as well as the input
+player. A handler referencing any reserved participant is skipped outside private
+simulation, even when an outsider generated the input or the callback also references
+outsiders. Ownership is reevaluated on each invocation so new registrations and changed
+receivers cannot bypass the gate. Private replay bypasses live reservations, and a
+failed roster restoration retains the callback gate until successful release.
+
+Tests exercise outsider inputs, unrelated callbacks continuing normally, registrations
+added during ownership, mutable captured receivers, mixed-player callbacks, failed
+cleanup and private-domain bypass. This closes the direct activation invocation gap
+above. Opaque shared services still require explicit ownership boundaries; registration
+policy changes during a running match and the complete native bootstrap remain part
+of the production integration audit. These tests do not establish live duel readiness.

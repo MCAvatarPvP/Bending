@@ -22,6 +22,13 @@ public final class RollbackLiveOwnership {
         return player != null && !RollbackDomain.active() && OWNERS.containsKey(player);
     }
 
+    /** Reevaluate captured references: registrations and callback receivers can change while a duel runs. */
+    public static boolean blocksCallback(Object callback) {
+        if (RollbackDomain.active() || OWNERS.isEmpty()) return false;
+        for (var lease : Set.copyOf(OWNERS.values())) if (lease.callbacks.referencesParticipant(callback)) return true;
+        return false;
+    }
+
     /** Return a cleanup owner before acquiring any reservation or native resources. */
     public static Lease prepare(Set<UUID> participants) {
         requireLive();
@@ -33,8 +40,12 @@ public final class RollbackLiveOwnership {
     public static final class Lease {
         private final Thread owner = Thread.currentThread();
         private final Set<UUID> roster;
+        private final RollbackTaskOwnership callbacks;
         private boolean acquired, released, restoring;
-        private Lease(Set<UUID> roster) { this.roster = roster; }
+        private Lease(Set<UUID> roster) {
+            this.roster = roster;
+            callbacks = new RollbackTaskOwnership(roster, java.util.List.of(), value -> false, 100_000);
+        }
         public Set<UUID> participants() { return roster; }
         public void acquire() {
             boundary();
