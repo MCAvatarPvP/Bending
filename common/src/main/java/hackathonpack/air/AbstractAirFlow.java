@@ -93,7 +93,7 @@ abstract class AbstractAirFlow extends AirAbility {
             final Vector velocity = this.flowDirection.clone().rotateAroundY(Math.toRadians(noise(loc) * 90)).normalize();
             for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(loc, 2)) {
                 if (!this.affectedEntities.contains(entity)) {
-                    GeneralMethods.setVelocity(entity, velocity.clone().add(entity.getVelocity()).multiply(0.5));
+                    GeneralMethods.setVelocity(this, entity, velocity.clone().add(entity.getVelocity()).multiply(0.5));
                     this.affectedEntities.add(entity);
                 }
             }
