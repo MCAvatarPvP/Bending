@@ -49,6 +49,29 @@ class RollbackWorldSeedTest {
         assertEquals("minecraft:desert", copy.terrain().cell(position).noiseBiomeKey());
     }
 
+    @Test void nativeLightLayersTravelWithExactTerrainBoundsAndCannotBeInventedForLegacySeeds() {
+        var legacy = seed(20);
+        assertThrows(IllegalStateException.class, legacy::requireLight);
+        var light = RollbackLightSeed.capture(legacy.terrain().bounds(), 256, position -> 3, position -> 15);
+        var current = new RollbackWorldSeed(legacy.world(), legacy.name(), legacy.minimumY(), legacy.maximumY(),
+                legacy.dayTime(), legacy.storm(), legacy.settings(), legacy.border(), legacy.environment(), legacy.terrain(), light);
+        byte[] bytes = current.encode(STATES, LIMITS);
+        assertEquals(2, ByteBuffer.wrap(bytes).getInt());
+        var copy = RollbackWorldSeed.decode(bytes, STATES, LIMITS);
+        assertArrayEquals(bytes, copy.encode(STATES, LIMITS));
+        var position = new RollbackBlockStore.Position(-17, -2, -1);
+        assertEquals(3, copy.requireLight().sky(position)); assertEquals(15, copy.requireLight().block(position));
+        byte[] oldBytes = legacy.encode(STATES, LIMITS);
+        assertEquals(1, ByteBuffer.wrap(oldBytes).getInt());
+        assertThrows(IllegalStateException.class, () -> RollbackWorldSeed.decode(oldBytes, STATES, LIMITS).requireLight());
+        for (int cut = bytes.length - light.encode().length - 4; cut < bytes.length; cut++) {
+            byte[] truncated = Arrays.copyOf(bytes, cut);
+            assertThrows(IllegalArgumentException.class, () -> RollbackWorldSeed.decode(truncated, STATES, LIMITS));
+        }
+        var wrong = RollbackLightSeed.capture(new RollbackBlockStore.Bounds(0, -2, 0, 1, 0, 1), 2, p -> 0, p -> 0);
+        assertThrows(IllegalArgumentException.class, () -> new RollbackWorldSeed(legacy.world(), legacy.name(), legacy.minimumY(),
+                legacy.maximumY(), legacy.dayTime(), legacy.storm(), legacy.settings(), legacy.border(), legacy.environment(), legacy.terrain(), wrong));
+    }
     @Test void truncatedNestedLengthsInvalidFlagsAndUtf8AreRejected() {
         var seed = seed(20); byte[] bytes = seed.encode(STATES, LIMITS);
         for (int i = 0; i < bytes.length; i++) {

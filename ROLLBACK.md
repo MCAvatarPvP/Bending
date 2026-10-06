@@ -68,8 +68,9 @@ routing and native action remainder handling, plus spatial/event bindings over t
 captured world. `PaperRollbackBorder` and `PaperRollbackEnvironment` already provide
 owned border/environment components. Sky visibility remains a concrete missing
 binding: `PaperRollbackWorldQueries.Services` requires private sky lighting, while
-`RollbackBlockStore.Cell` currently carries a single generic light level. That field
-alone does not prove native sky visibility, particularly after terrain changes.
+`RollbackBlockStore.Cell` carries a single generic light level. The world seed now
+also carries distinct native light layers, but these initial values alone do not
+prove correct sky visibility after terrain changes.
 Production assembly must supply the actual private query and its checkpoint state;
 an always-visible answer or a motion-blocking heightmap is insufficient.
 ### October 5, 2026 integration update
@@ -105,9 +106,11 @@ Native sky and block light now have a separate bounded `RollbackLightSeed` snaps
 and strict binary codec. `PaperRollbackLightCapture` preflights loaded chunks and
 reads each native light layer directly without using combined brightness or loading
 terrain. Tests distinguish sunlight from emitted block light, check transfer detachment
-and budgets, and reject missing chunks. This is initial capture only: it is not yet
-included in the duel bootstrap payload, and private light propagation/replay after
-terrain changes remains unimplemented. Do not substitute the immutable seed for a
+and budgets, and reject missing chunks. World-seed version 2 now carries these layers inside the duel bootstrap payload.
+Paper world capture supplies them automatically; the shared client/server decoder
+requires exact matching terrain bounds. Version 1 remains readable for legacy
+captures, but requireLight rejects absent lighting instead of inventing values.
+Private light propagation/replay after terrain changes remains unimplemented. Do not substitute the immutable seed for a
 dynamic light engine once blocks change.
 Live scheduler restoration/replacement now accepts a synchronous whole-state commit.
 Native callback submissions are staged while dispatch remains gated; only a successful

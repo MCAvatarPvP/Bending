@@ -26,10 +26,11 @@ public final class PaperRollbackWorldSeed {
         var environment = PaperRollbackEnvironment.capture(world);
         boolean storm = bukkit.hasStorm();
         var terrain = PaperRollbackTerrainCapture.capture(world, bounds, limits);
+        var light = PaperRollbackLightCapture.capture(world, bounds, limits.maximumCells());
         if (world.getGameTime() != tick || world.getDayTime() != day || settings.gameTime() != tick) {
             throw new IllegalStateException("Match world advanced during bootstrap capture");
         }
         return new RollbackWorldSeed(bukkit.getUID(), bukkit.getName(), bounds.minY(), bounds.maxY(), day, storm,
-                settings, border, environment, terrain);
+                settings, border, environment, terrain, light);
     }
 }
