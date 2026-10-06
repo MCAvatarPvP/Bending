@@ -2679,3 +2679,19 @@ snapshot and uses the existing synchronization boundary, with replay/thread guar
 actual live-server teardown restoration remains unverified. Unplaced native snapshots
 and Paper block entities with snapshotting disabled are explicitly rejected. Production
 bootstrap wiring and two-client duel validation remain required.
+
+### Gameplay codec assembly
+
+`RollbackGameplayGraph` assembles the installed schema with canonical roster bindings,
+captured configuration views, registered attribute metadata, lifecycle output bindings,
+and explicit loader/addon service bindings. Core binding collisions reject assembly.
+The live/private side selects configuration identities without transferring native config
+internals. Loader projections remain explicit: Paper uses `PaperRollbackGraphViews`,
+and outgoing private graphs use `RollbackGraphViews`.
+
+Owned Paper duel capture now accepts `GraphSetup` and builds this codec from the same
+configuration data included in its bootstrap payload, inside the ownership capture
+boundary. The existing explicit-codec entry point remains available. Tests verify roster,
+service and effect rebinding, reserved binding rejection, and configuration isolation plus
+return transfer. The complete match factory and client runtime still need installation;
+this assembly entry point alone does not enable a duel.

@@ -243,4 +243,31 @@ class RollbackConfigurationTest {
         String longType = RollbackConfiguration.captureData(Map.of("hash", config)).fingerprint(); assertNotEquals(explicit, longType);
         assertNotEquals(longType, RollbackConfiguration.captureData(Map.of("hash", config, "alias", config)).fingerprint());
     }
-}
+    @Test void gameplayFactoryBindsCapturedConfigurationInsteadOfCopyingLiveConfigInternals() {
+        var source = config("factory"); source.set("Speed", 2.0);
+        var configuration = prepared(Map.of("main", source));
+        var world = new com.projectkorra.projectkorra.platform.mc.World();
+        var players = new ArrayList<com.projectkorra.projectkorra.platform.mc.entity.Player>();
+        for (int index = 1; index <= 2; index++) {
+            final UUID id = new UUID(0, index);
+            players.add(new com.projectkorra.projectkorra.platform.mc.entity.Player() {
+                @Override public UUID getUniqueId() { return id; }
+                @Override public com.projectkorra.projectkorra.platform.mc.World getWorld() { return world; }
+                @Override public boolean isOnline() { return true; }
+            });
+        }
+        var roster = new RollbackRosterBindings(world, players);
+        var lifecycle = new com.projectkorra.projectkorra.listener.CommonAbilityLifecycleListener(effect -> { });
+        var installed = RollbackGameplayCatalog.installed(getClass().getClassLoader());
+        var limits = new RollbackGraphCodec.Limits(1000, 10000, 1000000, 10000);
+        var live = RollbackGameplayGraph.create(installed, limits, RollbackGameplayGraph.Side.LIVE,
+                roster, configuration, lifecycle, List.of(), new RollbackGraphViews());
+        var replica = RollbackGameplayGraph.create(installed, limits, RollbackGameplayGraph.Side.PRIVATE,
+                roster, configuration, lifecycle, List.of(), new RollbackGraphViews());
+        var privateConfig = (Config) replica.decode(live.encode(List.of(source))).getFirst();
+        assertSame(configuration.bindings().getFirst().value(), privateConfig);
+        assertNotSame(source, privateConfig);
+        source.set("Speed", 9.0);
+        assertEquals(2.0, privateConfig.getDouble("Speed"));
+        assertSame(source, live.decode(replica.encode(List.of(privateConfig))).getFirst());
+    }}
