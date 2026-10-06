@@ -3319,3 +3319,16 @@ After reconciliation they compare player motion and event history, verify one ev
 and item-effect callback, stopped use and zero bending activations. These use real
 native shield state but controlled item-effect callbacks. Production item callbacks
 and match bootstrap remain uninstalled; these are execution tests, not live duel proof.
+
+
+### Private ability boss-bar binding
+
+RollbackBossBars supplies the PKBossBars service used by PlantArmor and other ability
+code through the existing BossBar wrapper. Title, progress, color, visibility and
+private-player membership rewind, with bounded allocation and deterministic IDs.
+Immutable views are available for presentation extraction; replay never calls a live
+boss-bar API. Foreign player identities and discarded-branch delegates reject.
+Tests exercise the normal wrapper through a scoped platform, restore both wrapper and
+delegate state, verify detached views and reject stale handles after ID reuse.
+Production platform installation, importing pre-existing live bar delegates and
+client/server view delivery still need wiring; this does not establish live UI output.
