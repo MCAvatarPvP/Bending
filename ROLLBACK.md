@@ -3208,3 +3208,21 @@ Tests verify detachment from source collections, canonical order, malformed/budg
 rejection, native facade filtering and the updated cross-loader seed fixture. This
 provides the tag service for platform assembly; it does not install the missing
 production bootstrap factory or bind the remaining gameplay/platform services.
+
+
+### Private server facade and native block defaults
+
+RollbackServer supplies PKServer metadata from a mandatory captured Metadata value,
+owned plugin entries and a checkpointed Blocks binding. It never returns a raw live
+server handle. PaperRollbackServerBlocks and FabricRollbackServerBlocks construct
+fresh detached common block-data facades from native registry defaults, including the
+LIGHT properties required by LightManager. Both resolve common material aliases;
+non-blocks and absent native mappings reject rather than silently becoming air.
+Paper construction does not invoke Bukkit.createBlockData or access a live server.
+
+Tests cover metadata, immutable plugin enumeration, checkpointing the block service,
+thread ownership, native LIGHT defaults, independent mutation, snow/air and legacy
+aliases, and rejecting an item material. Native Paper tests run with Bukkit.getServer
+absent. Metadata still needs portable seed transfer and plugin handles need private
+rebinding before this facade can be installed into the production bootstrap; this
+change does not claim that live startup or all raw-server integrations are supported.
