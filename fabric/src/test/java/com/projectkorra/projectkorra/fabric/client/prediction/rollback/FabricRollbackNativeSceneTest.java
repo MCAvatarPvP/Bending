@@ -97,6 +97,3 @@ class FabricRollbackNativeSceneTest {
         @Override public void restoreRollbackState(Void ignored) { }
     }
 }
-
-
-
