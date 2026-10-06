@@ -53,6 +53,25 @@ implemented by the plugin and verified against the packaged Paper version.
 
 ## Current foundation
 
+### Production assembly audit
+
+The current native execution test is not a production assembly template. Its
+`PaperRollbackExecutionNativeTest.Fixture` implements execution services with
+fixture actions, an output list and synthetic world ticks. No production
+`RollbackPlayerExecution.Services` implementation was found in the Paper rollback
+package. Similarly, `PaperRollbackWorldServicesNativeTest.Callbacks` is the only
+combined spatial/events implementation found there; its sky query always returns
+true. Do not install these fixture behaviors or advertise bootstrap support from them.
+
+Before assembling the production match bootstrap, provide private execution output
+routing and native action remainder handling, plus spatial/event bindings over the
+captured world. `PaperRollbackBorder` and `PaperRollbackEnvironment` already provide
+owned border/environment components. Sky visibility remains a concrete missing
+binding: `PaperRollbackWorldQueries.Services` requires private sky lighting, while
+`RollbackBlockStore.Cell` currently carries a single generic light level. That field
+alone does not prove native sky visibility, particularly after terrain changes.
+Production assembly must supply the actual private query and its checkpoint state;
+an always-visible answer or a motion-blocking heightmap is insufficient.
 ### October 5, 2026 integration update
 
 The Paper live ownership coordinator now acquires lifecycle, scheduled callback,
