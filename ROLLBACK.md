@@ -55,6 +55,18 @@ implemented by the plugin and verified against the packaged Paper version.
 
 ### October 5, 2026 integration update
 
+A stock-Paper connection tick lease now installs a native listener subclass facade
+through a compare-and-set on the Connection's listener reference. Tick calls run
+maintenance on the original listener; other virtual calls delegate to that same
+original and no native listener constructor runs. Player.connection remains original.
+The facade preserves the native type/field contracts needed by Paper, checks final
+method compatibility, and restores the exact original listener after successful cleanup.
+A native probe exercises actual Connection.tick dispatch, original state/packet-send
+delegation, failure retention, foreign replacement rejection and resumed ticking.
+The fixture has no socket and does not establish live networking correctness. Gameplay
+packets still delegate normally: their interception, queued-packet drainage, protocol
+transition/disconnect cleanup and whole-roster composition are required before startup.
+
 The connection maintenance component mirrors Paper's paused tick branch without
 calling its native `tickPlayer`/`doTick`: pending block acknowledgements, keepalive,
 all four spam throttlers and idle timeout remain active. It invokes the existing

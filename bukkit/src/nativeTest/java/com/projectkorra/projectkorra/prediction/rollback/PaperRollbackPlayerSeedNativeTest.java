@@ -483,12 +483,78 @@ class PaperRollbackPlayerSeedNativeTest {
         });
     }
 
-    private static final class MaintenanceProbe extends net.minecraft.server.network.ServerGamePacketListenerImpl {
-        int keepalives;
+    public static class MaintenanceProbe extends net.minecraft.server.network.ServerGamePacketListenerImpl {
+        int keepalives, nativeTicks;
+        @Override public void tick() { nativeTicks++; }
         java.util.List<net.minecraft.network.protocol.Packet<?>> sent;
         private MaintenanceProbe() { super(null, null, null, null); }
         @Override protected void keepConnectionAlive() { keepalives++; }
         @Override public void send(net.minecraft.network.protocol.Packet<?> packet) { sent.add(packet); }
+    }
+
+    @Test void connectionTickHandoffUsesOriginalStateAndRestoresListenerAfterSuccessfulCleanup() throws Exception {
+        onTickThread(() -> {
+            var scene = new Scene(); var player = (ServerPlayer) scene.create().ownedPlayer();
+            player.joining = true;
+            new PaperRollbackPlayerFields.Field<Long>(ServerPlayer.class, "lastActionTime", long.class).set(player, 0L);
+            var original = new org.objenesis.ObjenesisStd().newInstance(MaintenanceProbe.class);
+            original.player = player; original.sent = new java.util.ArrayList<>(); player.connection = original;
+            var configField = io.papermc.paper.configuration.GlobalConfiguration.class.getDeclaredField("instance");
+            configField.setAccessible(true); var previousConfig = configField.get(null);
+            var config = new io.papermc.paper.configuration.GlobalConfiguration();
+            config.misc = config.new Misc(); config.packetLimiter = config.new PacketLimiter();
+            configField.set(null, config);
+            try {
+                var connection = new net.minecraft.network.Connection(net.minecraft.network.protocol.PacketFlow.SERVERBOUND);
+                // The disconnected fixture has no channel; exercise Connection.tick without its unrelated disconnect callback.
+                new PaperRollbackPlayerFields.Field<Boolean>(net.minecraft.network.Connection.class, "disconnectionHandled", boolean.class).set(connection, true);
+                var nativeConnection = net.minecraft.server.network.ServerCommonPacketListenerImpl.class.getDeclaredField("connection");
+                nativeConnection.setAccessible(true); nativeConnection.set(original, connection);
+                var listenerField = new PaperRollbackPlayerFields.Field<net.minecraft.network.PacketListener>(net.minecraft.network.Connection.class,
+                        "packetListener", net.minecraft.network.PacketListener.class);
+                listenerField.set(connection, original);
+                for (var name : List.of("chatSpamThrottler", "dropSpamThrottler", "tabSpamThrottler", "recipeSpamPackets")) {
+                    var field = net.minecraft.server.network.ServerGamePacketListenerImpl.class.getDeclaredField(name);
+                    field.setAccessible(true); field.set(original, new net.minecraft.util.TickThrottler(1, 1));
+                }
+                var ack = new PaperRollbackPlayerFields.Field<Integer>(net.minecraft.server.network.ServerGamePacketListenerImpl.class, "ackBlockChangesUpTo", int.class);
+                ack.set(original, -1);
+                var lease = PaperRollbackConnectionTickGate.prepare(player);
+                assertSame(original, connection.getPacketListener());
+                // Native state changes after preparation must still be observed at acquisition.
+                ack.set(original, 25);
+                lease.acquire();
+                var intercepted = (net.minecraft.server.network.ServerGamePacketListenerImpl) connection.getPacketListener();
+                assertNotSame(original, intercepted);
+                assertSame(original, player.connection);
+                assertSame(player, intercepted.player); assertSame(player, intercepted.getPlayer());
+                assertSame(connection, intercepted.connection);
+                assertThrows(IllegalStateException.class, () -> PaperRollbackConnectionTickGate.prepare(player));
+                connection.tick();
+                assertEquals(0, original.nativeTicks); assertEquals(1, original.keepalives);
+                assertEquals(-1, ack.get(original)); assertEquals(1, original.sent.size());
+                intercepted.send(new net.minecraft.network.protocol.game.ClientboundBlockChangedAckPacket(26));
+                assertEquals(2, original.sent.size());
+                assertThrows(IllegalArgumentException.class, () -> lease.restoreAndRelease(() -> {
+                    assertSame(intercepted, connection.getPacketListener());
+                    throw new IllegalArgumentException("restore not complete");
+                }));
+                lease.requireCurrent(); connection.tick();
+                assertEquals(0, original.nativeTicks); assertEquals(2, original.keepalives);
+                listenerField.set(connection, original);
+                assertThrows(IllegalStateException.class, () -> lease.restoreAndRelease(() -> fail("Foreign listener replacement")));
+                assertSame(original, connection.getPacketListener());
+                listenerField.set(connection, intercepted);
+                lease.restoreAndRelease(() -> assertSame(intercepted, connection.getPacketListener()));
+                assertSame(original, connection.getPacketListener());
+                connection.tick(); assertEquals(1, original.nativeTicks);
+                // A previously captured facade reference must resume normal delegation after release.
+                intercepted.tick(); assertEquals(2, original.nativeTicks);
+                lease.restoreAndRelease(() -> fail("Restoration repeated"));
+                assertThrows(IllegalStateException.class, lease::acquire);
+                return null;
+            } finally { configField.set(null, previousConfig); }
+        });
     }
 
     private static void configure(ServerPlayer player) {
