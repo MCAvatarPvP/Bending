@@ -136,10 +136,12 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
                 (source, target) -> projections.put(source, new RollbackStateTransfer.Replacement(target)));
         var combos = initial.combos.restorationSources(expected.values(),
                 (source, target) -> projections.put(source, new RollbackStateTransfer.Replacement(target)));
-        var combined = new ArrayList<Object>(roots); combined.add(updates); combined.add(managers.roots()); combined.add(combos.roots());
+        var activations = initial.activations.restorationSources(expected.keySet(),
+                (source, target) -> projections.put(source, new RollbackStateTransfer.Replacement(target)));
+        var combined = new ArrayList<Object>(roots); combined.add(updates); combined.add(managers.roots()); combined.add(combos.roots()); combined.add(activations.roots());
         var rebound = codec.rebind(combined, projections::get);
         return new Restoration(fromRoots(expected.keySet(), rebound.subList(0, roots.size()), expected),
-                definitions, (List<?>) rebound.get(roots.size()), managers.prepare((List<?>) rebound.get(roots.size() + 1)), combos.prepare((List<?>) rebound.getLast()));
+                definitions, (List<?>) rebound.get(roots.size()), managers.prepare((List<?>) rebound.get(roots.size() + 1)), combos.prepare((List<?>) rebound.get(roots.size() + 2)), activations.prepare((List<?>) rebound.getLast()));
     }
 
     /** Detached restored graph. Its owner must commit all services before releasing gameplay gates. */
@@ -148,9 +150,9 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
         private final List<AttributeCache> definitions;
         private final List<?> attributeUpdates;
         private boolean attributesCommitted;
-        private final Manager.RestorationStep managerCommit, comboCommit;
-        private Restoration(RollbackBendingState state, List<AttributeCache> definitions, List<?> updates, Manager.RestorationStep managerCommit, Manager.RestorationStep comboCommit) {
-            this.managerCommit = managerCommit; this.comboCommit = comboCommit;
+        private final Manager.RestorationStep managerCommit, comboCommit, activationCommit;
+        private Restoration(RollbackBendingState state, List<AttributeCache> definitions, List<?> updates, Manager.RestorationStep managerCommit, Manager.RestorationStep comboCommit, Manager.RestorationStep activationCommit) {
+            this.managerCommit = managerCommit; this.comboCommit = comboCommit; this.activationCommit = activationCommit;
             this.state = state; this.definitions = List.copyOf(definitions); attributeUpdates = List.copyOf(updates);
         }
         /** Validate every cache before any live registry is changed. */
@@ -220,6 +222,7 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
                 validateAttributes();
                 managerCommit.validate();
                 comboCommit.validate();
+                activationCommit.validate();
             }
             public void commit() {
                 validate();
@@ -227,6 +230,7 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
                 commitManagers();
                 commitAttributes();
                 comboCommit.commit();
+                activationCommit.commit();
                 playerCommit.commit();
                 abilityCommit.commit();
             }

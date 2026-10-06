@@ -44,10 +44,15 @@ public final class RollbackTaskOwnership implements Predicate<RollbackLiveSchedu
     }
     @Override public boolean test(RollbackLiveScheduler.Work work) {
         Objects.requireNonNull(work);
+        return ownsReferences(work.ability(), work.callback());
+    }
+    /** Shared by activation teardown; recomputes ownership from current captured references. */
+    public boolean ownsCallback(Object callback) { return ownsReferences(Objects.requireNonNull(callback)); }
+    private boolean ownsReferences(Object... roots) {
         var walk = new Walk();
-        walk.add(work.ability()); walk.add(work.callback());
+        for (var root : roots) walk.add(root);
         while (!walk.pending.isEmpty()) walk.scan(walk.pending.removeFirst());
-        if (walk.member && walk.outsider) throw new IllegalStateException("Scheduled callback spans rollback and outside players");
+        if (walk.member && walk.outsider) throw new IllegalStateException("Callback spans rollback and outside players");
         return walk.member;
     }
     private final class Walk {

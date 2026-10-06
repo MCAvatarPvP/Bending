@@ -88,6 +88,11 @@ class RollbackBendingStateTest {
             var liveActivations = (Map<ClickType, List<ActivationHandler>>) field(AbilityActivationManager.class, "GLOBAL_HANDLERS").get(null);
             liveActivations.clear();
             AbilityActivationManager.registerGlobal(ClickType.LEFT_CLICK, livePulse.activationAlias);
+            AbilityActivationManager.register("Fixture", ClickType.LEFT_CLICK, livePulse.activationAlias);
+            AbilityActivationManager.registerMulti("Fixture", ClickType.LEFT_CLICK, livePulse.activationAlias);
+            var namedActivations = (Map<String, Map<ClickType, List<ActivationHandler>>>) field(AbilityActivationManager.class, "HANDLERS").get(null);
+            var multiActivations = (Map<String, Map<ClickType, List<ActivationHandler>>>) field(AbilityActivationManager.class, "MULTI_HANDLERS").get(null);
+            livePulse.activationGroupAlias = namedActivations.get("fixture");
             var earthField = field(com.projectkorra.projectkorra.ability.ElementalAbility.class, "EARTH_BLOCKS");
             livePulse.materialAlias = (Set<String>) earthField.get(null);
             livePulse.materialAlias.add("SOURCE_MATERIAL");
@@ -363,6 +368,8 @@ class RollbackBendingStateTest {
             assertSame(liveGuard, CoreAbility.getAbility(liveB, Guard.class));
             assertEquals(2, temporary.size());
             assertNull(bendingA.getAbilities().get(2));
+            ActivationHandler outsiderActivation = context -> unrelatedPulse.isStarted();
+            AbilityActivationManager.registerGlobal(ClickType.LEFT_CLICK, outsiderActivation);
             var restored = RollbackBendingState.decodeRestoration(Map.of(A, liveA, B, liveB), outgoingBytes, liveRestorationCodec[0].receiver());
             assertEquals(14, restored.abilities().idLimit());
             assertEquals(10, restored.abilities().nextId());
@@ -372,6 +379,7 @@ class RollbackBendingStateTest {
             Pulse restoredPulse = (Pulse) restored.abilities().instances().stream().filter(ability -> ability.getId() == 1).findFirst().orElseThrow();
             assertSame(livePulse.materialAlias, restoredPulse.materialAlias);
             assertSame(livePulse.comboDefinition, restoredPulse.comboDefinition);
+            assertSame(livePulse.activationGroupAlias, restoredPulse.activationGroupAlias);
             assertFalse(restoredPulse.materialAlias.contains("CORRECTED_MATERIAL"));
             assertSame(restored.players().get(A), restoredPulse.getBendingPlayer());
             assertSame(liveA, restoredPulse.getPlayer());
@@ -400,6 +408,15 @@ class RollbackBendingStateTest {
                 assertThrows(IllegalStateException.class, () -> restored.prepareAbilities(abilityReservation, expectedLiveAbilities));
                 field(CoreAbility.class, "currentTick").setLong(null, restored.abilities().tick()); // Owner aligns to the live tick before handoff.
                 var commit = restored.prepareCommit(Map.of(A, bendingA, B, bendingB), abilityReservation, expectedLiveAbilities);
+                var activationList = liveActivations.get(ClickType.LEFT_CLICK);
+                liveActivations.put(ClickType.LEFT_CLICK, new ArrayList<>(activationList));
+                assertThrows(IllegalStateException.class, commit::commit);
+                liveActivations.put(ClickType.LEFT_CLICK, activationList);
+                activationList.add(livePulse.activationAlias);
+                assertThrows(IllegalStateException.class, commit::commit);
+                activationList.removeLast();
+                ActivationHandler newPolicy = context -> false;
+                activationList.add(newPolicy); // Unrelated additions after preparation must survive.
                 liveHistory.put(liveA.getName(), new ArrayList<>(livePulse.comboAlias));
                 assertThrows(IllegalStateException.class, commit::commit);
                 liveHistory.put(liveA.getName(), livePulse.comboAlias);
@@ -439,11 +456,23 @@ class RollbackBendingStateTest {
                 assertFalse(RollbackLiveOwnership.blocks(A)); assertFalse(RollbackLiveOwnership.blocks(B));
                 commit.commit();
                 field(CoreAbility.class, "currentTick").setLong(null, restored.abilities().tick() + 1);
+                assertSame(restoredPulse.activationAlias, namedActivations.get("fixture").get(ClickType.LEFT_CLICK).getFirst());
+                assertSame(restoredPulse.activationAlias, multiActivations.get("fixture").get(ClickType.LEFT_CLICK).getFirst());
+                assertSame(restoredPulse.activationAlias, liveActivations.get(ClickType.LEFT_CLICK).getFirst());
+                assertEquals(List.of(restoredPulse.activationAlias, outsiderActivation, newPolicy), liveActivations.get(ClickType.LEFT_CLICK));
+                assertEquals(List.of(restoredPulse.activationAlias, restoredPulse.activationAlias), liveActivations.get(ClickType.SHIFT_DOWN));
+                var liveInput = new ActivationContext(liveA, restored.players().get(A), ClickType.LEFT_CLICK);
+                liveInput.put("input", 12.0);
+                assertTrue(AbilityActivationManager.dispatchGlobal(liveInput));
+                assertEquals(List.of(8.0, 8.0, 12.0), restoredPulse.activationHistory);
+                assertTrue(livePulse.activationHistory.isEmpty());
                 assertSame(restoredPulse.comboAlias, liveHistory.get(liveA.getName()));
                 assertSame(restoredPulse.pendingAlias, pending.get(A));
                 assertSame(outsiderHistory, liveHistory.get(other.getName()));
                 restoredPulse.comboAlias.add(unexpectedInput);
+                AbilityActivationManager.registerGlobal(ClickType.LEFT_CLICK, restoredPulse.activationAlias);
                 commit.commit(); // Cleanup retries after another live tick do not reinstall indices.
+                assertEquals(4, liveActivations.get(ClickType.LEFT_CLICK).size());
                 assertSame(unexpectedInput, liveHistory.get(liveA.getName()).getLast());
                 assertEquals(eventsAtCommit, events.size()); assertEquals(constructorsAtCommit, Dynamic.constructions);
                 assertSame(liveStatistics, Manager.getManager(StatisticsManager.class));
@@ -585,6 +614,7 @@ class RollbackBendingStateTest {
     }
     private static final class Pulse extends Dynamic {
         ActivationHandler activationAlias;
+        Map<ClickType, List<ActivationHandler>> activationGroupAlias;
         final List<Double> activationHistory = new ArrayList<>();
         ArrayList<com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation> comboAlias;
         Set<com.projectkorra.projectkorra.util.ClickType> pendingAlias;

@@ -2873,3 +2873,23 @@ registrations and captured ability state remain unchanged. This establishes impo
 and replay isolation, not the settled handler merge back into live registrations;
 that lifecycle integration, native runtime assembly and two-client testing remain
 required before live rollback can be enabled.
+
+### Participant activation restoration
+
+Settled common teardown now merges participant-owned activation callbacks in bound,
+multi-ability and global lists. Ownership is resolved from captured references using
+the same traversal as scheduled work, without ability-name filters. Restored callbacks
+share the restored ability graph; aliases to existing registration maps/lists reconnect
+to live containers. Unrelated callbacks remain current live policy, including additions
+made after restoration preparation. Changed participant membership or replaced list/group
+identities reject validation before common writes; cleanup retries preserve newer input
+and registrations. Replacement keeps unrelated handler ordering.
+
+Both transfer modes test live dispatch after handoff, captured-state continuity, bound
+and multi-handler rebinding, registration conflicts, outsider preservation and idempotent
+cleanup. This is the participant-owned merge, not a general merge of mutable shared
+hook state: participant-free shared captures need explicit ownership/service policy.
+Production startup must also gate participant-owned handlers against invocation by
+outside inputs while their roster is frozen. Those service/ownership boundaries remain
+part of runtime assembly; the full native bootstrap and real two-client test gate are
+still incomplete.
