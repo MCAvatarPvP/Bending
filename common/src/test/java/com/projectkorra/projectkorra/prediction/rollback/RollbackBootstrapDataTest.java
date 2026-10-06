@@ -21,7 +21,7 @@ class RollbackBootstrapDataTest {
         var roster = new RollbackRosterData(rosterTick, Map.of(A, RollbackRosterDataTest.player(A, 101, B, List.of()),
                 B, RollbackRosterDataTest.player(B, 102, A, List.of())));
         return new RollbackBootstrapData(new UUID(0, 3), new UUID(0, 4), new UUID(0, 5), 2, 1_700_000_000_000L, 9_000_000L,
-                DEFINITIONS, sides, seed(20), roster, RollbackConfiguration.captureData(Map.of()), RollbackPlayerAccessTest.access(roster), new RollbackMaterials(Set.of(Material.STONE)), new RollbackTags(Map.of("stone_test", List.of(Material.STONE))), new RollbackServer.Metadata("Paper fixture", "1.21.11", "captured", true, 12), graph().encode(List.of("captured roots", List.of(A, B))));
+                DEFINITIONS, sides, seed(20), roster, RollbackConfiguration.captureData(Map.of()), RollbackPlayerAccessTest.access(roster), new RollbackMaterials(Set.of(Material.STONE)), new RollbackTags(Map.of("stone_test", List.of(Material.STONE))), new RollbackServer.Metadata("Paper fixture", "1.21.11", "captured", true, 12), new RollbackPlugins.Seed(List.of(new RollbackPlugins.Entry("ProjectKorra", true)), Map.of("projectkorra", "ProjectKorra", "bending", "ProjectKorra")), graph().encode(List.of("captured roots", List.of(A, B))));
     }
     private static RollbackBootstrapData data() { return data(20, Map.of(A, A, B, B)); }
 
@@ -37,6 +37,7 @@ class RollbackBootstrapDataTest {
         assertEquals(source.materials(), copy.materials());
         assertEquals(source.tags(), copy.tags());
         assertEquals(source.server(), copy.server());
+        assertEquals(source.plugins(), copy.plugins());
         assertEquals(List.of(Material.STONE), copy.tags().values("blocks", "stone_test", Material.class));
         assertEquals(source.configuration().fingerprint(), copy.configuration().fingerprint());
         assertEquals(List.of("captured roots", List.of(A, B)), graph().decode(copy.bending()));
@@ -69,7 +70,7 @@ class RollbackBootstrapDataTest {
     }
     private static RollbackBootstrapData replaceAccess(RollbackBootstrapData source, RollbackPlayerAccess access) {
         return new RollbackBootstrapData(source.session(), source.challenge(), source.match(), source.round(), source.epochMillis(), source.epochNanos(),
-                source.definitions(), source.sides(), source.world(), source.roster(), source.configuration(), access, source.materials(), source.tags(), source.server(), source.bending());
+                source.definitions(), source.sides(), source.world(), source.roster(), source.configuration(), access, source.materials(), source.tags(), source.server(), source.plugins(), source.bending());
     }
 
     @Test void foreignDefinitionsRejectBeforeNativeDecodeAndMalformedEnvelopesCannotBeAcknowledged() {

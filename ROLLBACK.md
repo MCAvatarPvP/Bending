@@ -3239,3 +3239,26 @@ The shared Paper fixture is updated and the Fabric import test constructs its pr
 server facade directly from that decoded seed, including native LIGHT creation.
 Private plugin rebinding and the rest of production platform/bootstrap installation
 remain outstanding.
+
+
+### Captured plugin lookup and private bindings
+
+RollbackPlugins implements PKPlugins using a captured ordered plugin catalog and
+explicit private handles. Lookup follows Paper's English lowercase/space-to-underscore
+normalization, including provided-name aliases resolved by the real manager at capture.
+Enabled flags are captured separately from presence. Missing plugins return null;
+missing private bindings fail construction rather than masquerading as absent plugins.
+Plugin-name lookup uses private handle identity and rejects foreign handles. Bound
+mutable handles are checkpoint roots and ordered enumeration can feed RollbackServer.
+
+PaperRollbackPlugins captures metadata only and PaperRollbackDuelSeed includes it in
+mandatory RollbackBootstrapData version 6. Tests verify alias collisions through a
+controlled manager, case/space lookups, disabled presence, foreign/duplicate/missing
+bindings, codec validation and handle-state rewind. The shared native seed fixture now
+contains a plugin plus alias and the Fabric import test resolves both to a private
+handle. Native Paper lookup normalization was checked against the bundled source.
+
+This supplies lookup/rebinding infrastructure, not automatic conversion of arbitrary
+Bukkit plugin behavior. Production bootstrap must still construct real private plugin
+adapters and wire the complete platform, events, ability graph and execution. No live
+match startup or multiplayer verification is established by these tests.
