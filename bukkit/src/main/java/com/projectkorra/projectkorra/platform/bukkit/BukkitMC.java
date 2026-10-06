@@ -42,6 +42,7 @@ import com.projectkorra.projectkorra.prediction.action.CapturedInputPose;
 import com.projectkorra.projectkorra.prediction.block.DirectBlockSync;
 import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
 import com.projectkorra.projectkorra.prediction.movement.VelocitySync;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership;
 import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
 import com.projectkorra.projectkorra.prediction.server.ServerEntityInterpolation;
 import com.projectkorra.projectkorra.prediction.state.AbilityStateSync;
@@ -86,11 +87,11 @@ public final class BukkitMC {
     }
 
     private static void applyHitStatus(final Entity target, final Runnable commit) {
-        commit.run();
+        if (!RollbackLiveOwnership.blocks(target.getUniqueId())) commit.run();
     }
 
     private static boolean applyHitStatus(final Entity target, final java.util.function.BooleanSupplier commit) {
-        return commit.getAsBoolean();
+        return !RollbackLiveOwnership.blocks(target.getUniqueId()) && commit.getAsBoolean();
     }
 
     private static void setScoreboard(org.bukkit.entity.Player player, Scoreboard board) {
@@ -1343,6 +1344,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setVelocity(vector(velocity));
         }
 
@@ -1368,6 +1370,7 @@ public final class BukkitMC {
 
         @Override
         public void setFireTicks(int ticks) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setFireTicks(ticks);
         }
 
@@ -1483,6 +1486,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             VelocitySync.applyDirect(AbilityExecutionContext.current(), this, velocity,
                     () -> value.setVelocity(vector(velocity)));
         }
@@ -1509,6 +1513,7 @@ public final class BukkitMC {
 
         @Override
         public void setFireTicks(int ticks) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             applyHitStatus(this, () -> value.setFireTicks(ticks));
         }
 
@@ -1575,6 +1580,7 @@ public final class BukkitMC {
 
         @Override
         public void setHealth(double health) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setHealth(health);
         }
 
@@ -1585,11 +1591,13 @@ public final class BukkitMC {
 
         @Override
         public void damage(double damage) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.damage(damage);
         }
 
         @Override
         public void damage(double damage, Entity source) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.damage(damage, entityHandle(source));
         }
 
@@ -1761,6 +1769,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setVelocity(vector(velocity));
         }
 
@@ -1801,6 +1810,7 @@ public final class BukkitMC {
 
         @Override
         public void setFireTicks(int ticks) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setFireTicks(ticks);
         }
 
@@ -1943,6 +1953,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setVelocity(vector(velocity));
         }
 
@@ -1968,6 +1979,7 @@ public final class BukkitMC {
 
         @Override
         public void setFireTicks(int ticks) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setFireTicks(ticks);
         }
 
@@ -2114,6 +2126,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             VelocitySync.applyDirect(AbilityExecutionContext.current(), this, velocity,
                     () -> value.setVelocity(vector(velocity)));
         }
@@ -2135,6 +2148,7 @@ public final class BukkitMC {
 
         @Override
         public void setFireTicks(int ticks) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             applyHitStatus(this, () -> value.setFireTicks(ticks));
         }
 
@@ -2496,6 +2510,7 @@ public final class BukkitMC {
 
         @Override
         public void setHealth(double health) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setHealth(health);
         }
 
@@ -2506,11 +2521,13 @@ public final class BukkitMC {
 
         @Override
         public void damage(double damage) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.damage(damage);
         }
 
         @Override
         public void damage(double damage, Entity source) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.damage(damage, entityHandle(source));
         }
 
@@ -2886,6 +2903,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setVelocity(vector(velocity));
         }
 
@@ -3005,6 +3023,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setVelocity(vector(velocity));
         }
 
@@ -3159,6 +3178,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             display.setVelocity(velocity);
         }
 
@@ -3314,6 +3334,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             display.setVelocity(velocity);
         }
 
@@ -3488,6 +3509,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setVelocity(vector(velocity));
         }
 
@@ -3593,6 +3615,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setVelocity(vector(velocity));
         }
 
@@ -3633,6 +3656,7 @@ public final class BukkitMC {
 
         @Override
         public void setFireTicks(int ticks) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setFireTicks(ticks);
         }
 
@@ -3754,6 +3778,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setVelocity(vector(velocity));
         }
 
@@ -3794,6 +3819,7 @@ public final class BukkitMC {
 
         @Override
         public void setFireTicks(int ticks) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setFireTicks(ticks);
         }
 
@@ -3919,6 +3945,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setVelocity(vector(velocity));
         }
 
@@ -3954,6 +3981,7 @@ public final class BukkitMC {
 
         @Override
         public void setFireTicks(int ticks) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setFireTicks(ticks);
         }
 

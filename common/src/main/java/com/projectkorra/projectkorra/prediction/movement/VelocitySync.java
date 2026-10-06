@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.prediction.movement;
 
 import com.projectkorra.projectkorra.prediction.authority.PredictionServices;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership;
 import com.projectkorra.projectkorra.ability.Ability;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
@@ -34,6 +35,7 @@ public final class VelocitySync {
     }
 
     public static void publish(final Ability ability, final Entity target, final Vector velocity) {
+        if (target != null && RollbackLiveOwnership.blocks(target.getUniqueId())) return;
         final Listener current = PredictionServices.current(Listener.class, listener);
         if (current != null && ability != null && target != null && velocity != null) {
             current.onVelocity(ability, target, velocity.clone());
@@ -84,7 +86,7 @@ public final class VelocitySync {
     /** Captures legacy/addon velocity writes which bypass GeneralMethods. */
     public static void applyDirect(final Ability ability, final Entity target,
                                    final Vector velocity, final Runnable write) {
-        if (write == null) return;
+        if (write == null || (target != null && RollbackLiveOwnership.blocks(target.getUniqueId()))) return;
         if (COMMIT_DEPTH.get() > 0 || ability == null || target == null || velocity == null
                 || ability.getPlayer() == null) {
             write.run();

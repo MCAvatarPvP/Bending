@@ -1,6 +1,10 @@
 package com.projectkorra.projectkorra.prediction.rollback;
 
 import com.projectkorra.projectkorra.platform.Platform;
+import com.projectkorra.projectkorra.prediction.movement.VelocitySync;
+import com.projectkorra.projectkorra.prediction.authority.PredictionServices;
+import com.projectkorra.projectkorra.ability.Ability;
+import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.BendingManager;
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.OfflineBendingPlayer;
@@ -105,6 +109,47 @@ class RollbackLiveOwnershipTest {
             }
         }
     }
+    @Test void velocityOwnershipPrecedesCommitScopesAndDoesNotPublishLiveReceipts() {
+        var writes = new AtomicInteger(); var receipts = new AtomicInteger(); var privateReceipts = new AtomicInteger();
+        VelocitySync.Listener listener = (ability, target, velocity) -> receipts.incrementAndGet();
+        var platform = platform(); var owned = player(A); var outsider = player(C);
+        var ability = (Ability) Proxy.newProxyInstance(
+                Ability.class.getClassLoader(), new Class<?>[]{Ability.class},
+                (proxy, method, args) -> { if (method.getName().equals("getPlayer")) return owned; throw new AssertionError(method); });
+        var velocity = new Vector(1, 2, 3);
+        VelocitySync.install(listener);
+        try (var scope = Platform.using(platform)) {
+            var lease = RollbackLiveOwnership.prepare(Set.of(A)); lease.acquire();
+            try {
+                VelocitySync.applyDirect(null, owned, velocity, writes::incrementAndGet);
+                VelocitySync.commit(() ->
+                        VelocitySync.applyDirect(ability, owned, velocity, writes::incrementAndGet));
+                VelocitySync.publish(ability, owned, velocity);
+                assertEquals(0, writes.get()); assertEquals(0, receipts.get());
+                VelocitySync.applyDirect(null, outsider, velocity, writes::incrementAndGet);
+                VelocitySync.publish(ability, outsider, velocity);
+                assertEquals(1, writes.get()); assertEquals(1, receipts.get());
+                var domain = RollbackDomain.create(new RollbackStateGraph(value -> false, field -> true, 100), List.of(), List.of(), platform, () -> { });
+                domain.call(() -> {
+                    var bindings = PredictionServices.builder()
+                            .bind(VelocitySync.Listener.class,
+                                    (source, target, vector) -> privateReceipts.incrementAndGet()).build();
+                    try (var services = PredictionServices.using(bindings)) {
+                        VelocitySync.applyDirect(ability, owned, velocity, writes::incrementAndGet);
+                    }
+                    return null;
+                });
+                assertEquals(2, writes.get()); assertEquals(1, receipts.get()); assertEquals(1, privateReceipts.get());
+                VelocitySync.commitPredictedRemote(owned, () ->
+                        VelocitySync.applyDirect(ability, owned, velocity, writes::incrementAndGet));
+                assertEquals(2, writes.get()); assertEquals(1, receipts.get());
+                lease.restoreAndRelease(() -> { });
+                VelocitySync.applyDirect(ability, owned, velocity, writes::incrementAndGet);
+                assertEquals(3, writes.get()); assertEquals(2, receipts.get());
+            } finally { lease.restoreAndRelease(() -> { }); }
+        } finally { VelocitySync.clear(listener); }
+    }
+
     private static Player player(UUID id) { return new Player() { @Override public UUID getUniqueId() { return id; } }; }
     private static final class ExpiringPlayer extends BendingPlayer {
         int expired;

@@ -55,6 +55,16 @@ implemented by the plugin and verified against the packaged Paper version.
 
 ### October 5, 2026 integration update
 
+The common velocity interception now checks live rollback ownership before either
+publishing a receipt or entering any direct-write/commit shortcut. Paper's wrappers
+also reject direct health, damage, velocity and fire writes to reserved live players;
+shared status callbacks skip invulnerability, potion and air mutations. Private
+rollback domains and outsiders retain their writes, and release restores the normal
+path. Executable wrapper/common tests cover blocked writes, boolean status results,
+commit/predicted-remote scopes, private output routing, outsiders and release. This
+covers ProjectKorra's platform entry points, not arbitrary third-party native setters;
+complete source-body ownership and production bootstrap assembly remain required.
+
 Paper prediction startup now installs `PaperRollbackLifecycle`, with an explicit
 whole-roster reservation API for the pending bootstrap/runtime owner. Commands,
 teleports, mounts/dismounts and kicks request whole-duel teardown before continuing;
