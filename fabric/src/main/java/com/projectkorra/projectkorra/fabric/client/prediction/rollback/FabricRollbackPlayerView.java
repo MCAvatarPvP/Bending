@@ -17,7 +17,11 @@ import java.util.Objects;
 import java.util.UUID;
 
 /** Detached motion/pose presentation. No simulation entity, world, inventory or mutable render state is retained. */
-public record FabricRollbackPlayerView(UUID id, int entityId, Motion motion, Living living, CameraMotion cameraMotion) {
+public record FabricRollbackPlayerView(UUID id, int entityId, Motion motion, Living living, CameraMotion cameraMotion, Health health) {
+    /** Detached values used by the native heart/armor display; never a mutable player reference. */
+    public record Health(float value, double maximum, float absorption, int armor, int regenerationDelay, boolean regenerating) {
+        public Health { finite(value); finite(maximum); finite(absorption); }
+    }
     public record Angle(float previous, float current) {
         public Angle { finite(previous); finite(current); }
         float sample(float delta) { return MathHelper.lerpAngleDegrees(delta, previous, current); }
@@ -58,7 +62,7 @@ public record FabricRollbackPlayerView(UUID id, int entityId, Motion motion, Liv
             Objects.requireNonNull(limbs); Objects.requireNonNull(pose); finite(baseScale); finite(ageScale);
         }
     }
-    public FabricRollbackPlayerView { Objects.requireNonNull(id); Objects.requireNonNull(motion); Objects.requireNonNull(living); Objects.requireNonNull(cameraMotion); }
+    public FabricRollbackPlayerView { Objects.requireNonNull(id); Objects.requireNonNull(motion); Objects.requireNonNull(living); Objects.requireNonNull(cameraMotion); Objects.requireNonNull(health); }
 
     static FabricRollbackPlayerView capture(PlayerEntity player, PlayerEntity viewer) {
         var limbs = player.limbAnimator;
@@ -75,7 +79,9 @@ public record FabricRollbackPlayerView(UUID id, int entityId, Motion motion, Liv
                         player.getScale(), player.getScaleFactor(), player.hurtTime, player.deathTime, player.isAlive(), player.isInvisible(),
                         player.isInvisible() && player.isInvisibleTo(viewer), player.isSneaky(), player.doesRenderOnFire(), player.isFrozen(), player.isBaby(),
                         player.isTouchingWater(), player.isUsingRiptide(), player.hasVehicle(), player.isInSneakingPose(), player.isGliding(), player.isInSwimmingPose()),
-                new CameraMotion(new Vec3d(player.lastX, player.lastY, player.lastZ), new Angle(player.getYaw(0), player.getYaw(1)), player.getStandingEyeHeight(), distance));
+                new CameraMotion(new Vec3d(player.lastX, player.lastY, player.lastZ), new Angle(player.getYaw(0), player.getYaw(1)), player.getStandingEyeHeight(), distance),
+                new Health(player.getHealth(), player.getAttributeValue(EntityAttributes.MAX_HEALTH), player.getAbsorptionAmount(),
+                        player.getArmor(), player.timeUntilRegen, player.hasStatusEffect(net.minecraft.entity.effect.StatusEffects.REGENERATION)));
     }
     public BlockPos blockPos() { return BlockPos.ofFloored(motion.position()); }
     public BlockPos lightPos(float delta) { return BlockPos.ofFloored(motion.sample(delta).add(0, motion.eyeHeight(), 0)); }

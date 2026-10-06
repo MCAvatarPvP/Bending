@@ -3129,3 +3129,21 @@ old finalized health/inventory/movement packets; those values belong in authorit
 reconciliation. Tracked outputs and other effects need their own audience policy,
 and lifecycle cleanup must restore the roster as before. This sender alone neither
 performs that reconciliation nor makes a live rollback session ready.
+
+
+### Replica health HUD presentation
+
+The complete detached player view now carries health, maximum health, absorption,
+armor, regeneration delay and regeneration-heart animation eligibility from the same
+replica head as motion/pose. InGameHud reads these through a native mixin at its
+status-bar boundary. The live player, attributes and network interpolation remain
+untouched. The existing render lease checks UUID/native ID/world and current session;
+corrections replace the detached snapshot and cleanup restores ordinary HUD reads.
+
+Native client tests load the transformed InGameHud, invoke its installed read hooks,
+and verify detached values after the simulation player changes again, same-tick replay
+correction, unrelated attribute/effect fallback, foreign-world rejection, session loss
+and cleanup. This is not a rendered-screen or multiplayer test. Heart style (poison,
+wither, freezing), food/air, inventory/equipment and effect icons still need the same
+presentation treatment. Production bootstrap and authority divergence repair remain
+uninstalled; these HUD reads do not establish that the server and client states agree.

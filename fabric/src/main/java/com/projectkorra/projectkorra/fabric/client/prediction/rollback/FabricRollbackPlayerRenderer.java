@@ -97,6 +97,11 @@ public final class FabricRollbackPlayerRenderer implements AutoCloseable {
         if (EXTRACTION.get() == null) return entity.getBlockPos();
         var owner = active; var view = owner == null ? null : owner.lookup(entity); return view == null ? entity.getBlockPos() : view.blockPos();
     }
+    /** HUD reads the same complete head as the model, independently of world extraction. */
+    public static FabricRollbackPlayerView.Health health(Entity entity) {
+        var owner = active; var view = owner == null ? null : owner.lookup(entity);
+        return view == null ? null : view.health();
+    }
     public record CameraView(FabricRollbackPlayerView player, float previousEyeHeight, boolean localAim) {
         public Vec3d eyePosition(float delta) { return player.cameraMotion().sample(player.motion().position(), previousEyeHeight, delta); }
         public float yaw(float delta) { return player.cameraMotion().yaw().sample(delta); }

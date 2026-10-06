@@ -41,6 +41,7 @@
     "client.EntityRendererRollbackMixin",
     "client.WorldRendererRollbackMixin",
     "client.CameraRollbackMixin",
+    "client.InGameHudRollbackMixin",
     "client.FallingBlockEntityPredictionMixin",
     "client.LivingEntityAirGliderPredictionMixin",
     "client.ProjectileEntityPredictionMixin",

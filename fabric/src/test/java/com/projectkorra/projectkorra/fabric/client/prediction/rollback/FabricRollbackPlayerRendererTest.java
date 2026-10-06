@@ -87,7 +87,7 @@ class FabricRollbackPlayerRendererTest {
             assertThrows(IllegalArgumentException.class, () -> owner.publish(2, 2, views));
             assertThrows(IllegalArgumentException.class, () -> owner.publish(2, 3, Map.of(A, views.get(A))));
             var changed = new HashMap<>(views); var b = views.get(B);
-            changed.put(B, new FabricRollbackPlayerView(B, 999, b.motion(), b.living(), b.cameraMotion()));
+            changed.put(B, new FabricRollbackPlayerView(B, 999, b.motion(), b.living(), b.cameraMotion(), b.health()));
             assertThrows(IllegalArgumentException.class, () -> owner.publish(2, 3, changed));
             var untouched = new PlayerEntityRenderState(); untouched.x = 99;
             FabricRollbackPlayerRenderer.apply(foreign.players().get(B).ownedPlayer(), untouched, 1); assertEquals(99, untouched.x);
