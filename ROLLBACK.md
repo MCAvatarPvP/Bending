@@ -3059,3 +3059,23 @@ or partially insert a stack, so this cannot be replaced with a blanket slot writ
 an output-only marker. Its owned inventory and private dropped-item path must be bound
 before the full post-use component chain is enabled. The cooldown entry alone does
 not establish complete ItemStack.use or production action installation.
+
+
+### Inventory journal reconstruction for delivery
+
+PaperRollbackPacketData can now rebuild native held-slot, container-slot/content,
+cursor, player-inventory-slot and equipment packets from the detached journal outside
+replay. Each reconstruction decodes fresh native item stacks; equipment requires an
+explicit entity-ID mapping and retains Paper's captured sanitization flag. The helper
+does not encode or send packets, choose recipients, or decide which revision is final.
+Those remain responsibilities of the production session publisher.
+
+Native tests round-trip all supported inventory packet records, preserve revisions,
+empty entries and item component damage, verify entity-ID mapping and both sanitization
+modes, and prove mutation of one rebuilt packet cannot alter another or the journal.
+Reconstruction during simulation time and non-inventory records are rejected. Tests
+run without a live Bukkit server and assert that reconstruction emits no output.
+
+Continue production runtime/startup and output integration without making complete
+vanilla item-drop behavior a prerequisite. The scope at the top of this document still
+applies; outstanding item-adapter work does not expand the Neptune bending-duel goal.

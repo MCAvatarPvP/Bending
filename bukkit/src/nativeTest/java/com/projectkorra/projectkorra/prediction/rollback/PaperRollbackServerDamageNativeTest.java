@@ -217,6 +217,35 @@ class PaperRollbackServerDamageNativeTest {
         });
     }
 
+    @Test void inventoryJournalRebuildsDetachedNativeCorrectionsAndPreservesSanitization() throws Exception {
+        onTickThread(() -> {
+            var scene = new Scene();
+            var registry = (RegistryAccess) scene.combat.registryAccess();
+            var codec = new PaperRollbackPacketData(registry);
+            var stack = new ItemStack(Items.DIAMOND_SWORD); stack.setDamageValue(7);
+            var item = new PaperRollbackItemCodec(registry).encode(stack);
+            var empty = com.projectkorra.projectkorra.prediction.rollback.world.RollbackItemData.EMPTY;
+            var data = List.<PaperRollbackPacketData.Data>of(
+                    new PaperRollbackPacketData.HeldSlot(3),
+                    new PaperRollbackPacketData.Slot(0, 42, 5, item),
+                    new PaperRollbackPacketData.Content(0, 43, List.of(item, empty), item),
+                    new PaperRollbackPacketData.Cursor(item), new PaperRollbackPacketData.InventorySlot(5, item),
+                    new PaperRollbackPacketData.Equipment(9, List.of(new PaperRollbackPacketData.Equipped("mainhand", item)), true),
+                    new PaperRollbackPacketData.Equipment(9, List.of(new PaperRollbackPacketData.Equipped("offhand", empty)), false));
+            for (var value : data) assertEquals(value, codec.capture(codec.rebuildInventory(value, id -> id)));
+            var equipment = (ClientboundSetEquipmentPacket) codec.rebuildInventory(data.get(5), id -> id + 100);
+            assertEquals(109, equipment.getEntity()); assertTrue(PaperRollbackPrivateAccess.equipmentSanitized(equipment));
+            equipment.getSlots().getFirst().getSecond().setDamageValue(99);
+            var rebuilt = (ClientboundSetEquipmentPacket) codec.rebuildInventory(data.get(5), id -> id);
+            assertEquals(7, rebuilt.getSlots().getFirst().getSecond().getDamageValue());
+            try (var clock = RollbackClock.at(1000, 1, 50_000_000)) {
+                assertThrows(IllegalStateException.class, () -> codec.rebuildInventory(data.getFirst(), id -> id));
+            }
+            assertThrows(IllegalArgumentException.class, () -> codec.rebuildInventory(new PaperRollbackPacketData.Animation(9, 0), id -> id));
+            assertTrue(scene.combat.outputs.isEmpty()); assertNull(Bukkit.getServer()); return null;
+        });
+    }
+
     @Test void packetsAreDetachedAtSendAndUnimplementedNetworkCallbacksFailBeforeOutput() throws Exception {
         onTickThread(() -> {
             var scene = new Scene();

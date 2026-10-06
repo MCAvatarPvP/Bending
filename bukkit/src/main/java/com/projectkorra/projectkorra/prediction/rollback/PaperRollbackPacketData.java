@@ -64,6 +64,32 @@ public final class PaperRollbackPacketData {
         ops = registries.createSerializationContext(JsonOps.INSTANCE);
     }
 
+    /**
+     * Rebuild inventory corrections outside replay without encoding or sending them.
+     * The session publisher still owns revision/finalization and recipient selection.
+     * Equipment identifiers must be mapped to the receiving world's entity identifiers.
+     * Native serialization later applies Paper's normal item sanitization policy.
+     */
+    Packet<?> rebuildInventory(Data data, java.util.function.IntUnaryOperator entityIds) {
+        if (RollbackDomain.active() || RollbackClock.active())
+            throw new IllegalStateException("Rebuild delivery packets outside replay");
+        java.util.Objects.requireNonNull(data, "packet data");
+        java.util.Objects.requireNonNull(entityIds, "entity identifiers");
+        if (data instanceof HeldSlot value) return new ClientboundSetHeldSlotPacket(value.slot());
+        if (data instanceof Slot value) return new ClientboundContainerSetSlotPacket(
+                value.container(), value.revision(), value.slot(), items.decode(value.item()));
+        if (data instanceof Content value) return new ClientboundContainerSetContentPacket(
+                value.container(), value.revision(), value.items().stream().map(items::decode).toList(), items.decode(value.carried()));
+        if (data instanceof Cursor value) return new ClientboundSetCursorItemPacket(items.decode(value.item()));
+        if (data instanceof InventorySlot value) return new ClientboundSetPlayerInventoryPacket(value.slot(), items.decode(value.item()));
+        if (data instanceof Equipment value) {
+            var slots = value.slots().stream().map(slot -> com.mojang.datafixers.util.Pair.of(
+                    net.minecraft.world.entity.EquipmentSlot.byName(slot.slot()), items.decode(slot.item()))).toList();
+            return new ClientboundSetEquipmentPacket(entityIds.applyAsInt(value.entity()), slots, value.sanitize());
+        }
+        throw new IllegalArgumentException("Not an inventory packet: " + data.getClass().getSimpleName());
+    }
+
     /** Null means this packet must use another explicitly audited route. */
     Data capture(Packet<?> packet) {
         var budget = new Budget();
