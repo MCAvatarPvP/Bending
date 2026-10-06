@@ -171,7 +171,7 @@ final class PaperRollbackNativeEvents {
         return !(event instanceof Cancellable cancellable) || !cancellable.isCancelled();
     }
 
-    private void requireOwned(org.bukkit.entity.Entity entity) {
+    void requireOwned(org.bukkit.entity.Entity entity) {
         if (entity != null && !owned.test(entity)) throw new IllegalArgumentException("Event source does not belong to the private simulation");
     }
 }

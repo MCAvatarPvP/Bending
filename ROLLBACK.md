@@ -3274,3 +3274,19 @@ passes it to the private native action service without activating a bending clic
 Tests cover packet/authority transfer, native interception and no repeated edge.
 This closes the input-transfer gap only: private native release execution (including
 item-specific release effects) still needs binding alongside the other interactions.
+
+
+### Native item-release ordering
+
+PaperRollbackItemRelease executes copied LivingEntity release/stop bodies with the
+private event router. ItemStack.releaseUsing and active-use updates are mandatory
+private callbacks, never calls into unbound native item implementations. The entry
+requires simulation time and an owned player, and callback state is checkpointed.
+The session remains responsible for including private event-listener state.
+
+A native ServerPlayer test verifies the stop-use event precedes the item callback,
+using state is still active in both, cleanup follows them, repeated release does not
+repeat effects, and snapshot restoration repeats the same sequence with Bukkit absent.
+This verifies native ordering using a shield and a controlled callback; it does not
+prove bow/projectile/item-specific behavior. Concrete item callbacks, Fabric parity
+and execution/startup installation remain required.

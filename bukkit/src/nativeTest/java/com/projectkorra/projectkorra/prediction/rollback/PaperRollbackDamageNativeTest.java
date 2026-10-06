@@ -48,6 +48,46 @@ class PaperRollbackDamageNativeTest {
         }
     }
 
+    @Test void nativeReleaseRoutesEventBeforePrivateItemEffectsAndRewinds() throws Exception {
+        onTickThread(() -> {
+            var combat = new Combat();
+            var world = new PaperRollbackWorldAccess(new PaperRollbackWorldAccessNativeTest.Queries(), combat, 4);
+            var state = PaperRollbackNativePlayerState.serverPlayer(world, new GameProfile(new UUID(0, 945), "release"),
+                    net.minecraft.server.level.ClientInformation.createDefault(), GameType.SURVIVAL, 86, 200_000);
+            var player = (net.minecraft.server.level.ServerPlayer) state.ownedPlayer();
+            var calls = new ArrayList<String>();
+            var events = new PaperRollbackNativeEvents(event -> {
+                assertInstanceOf(io.papermc.paper.event.player.PlayerStopUsingItemEvent.class, event);
+                assertTrue(player.isUsingItem()); calls.add("event");
+            }, entity -> entity == player.getBukkitEntity());
+            var release = new PaperRollbackItemRelease(events, new PaperRollbackItemRelease.Items<Void>() {
+                @Override public void release(net.minecraft.world.item.ItemStack stack, Level level,
+                        net.minecraft.world.entity.LivingEntity owner, int remaining) {
+                    assertSame(player, owner); assertSame(world.world(), level);
+                    assertSame(player.getUseItem(), stack); assertTrue(player.isUsingItem()); calls.add("item");
+                }
+                @Override public void update(net.minecraft.world.entity.LivingEntity owner) { fail("Shield has no release update"); }
+                @Override public Void captureRollbackState() { return null; }
+                @Override public void restoreRollbackState(Void ignored) { }
+                @Override public java.util.Collection<?> rollbackReferences() { return List.of(calls); }
+            });
+            player.setItemInHand(net.minecraft.world.InteractionHand.OFF_HAND, new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.SHIELD));
+            try (var clock = RollbackClock.at(1000, 2000, 3, 50_000_000)) { state.startItemUse(true); }
+            var saved = new RollbackStateGraph(value -> false, field -> true, 300_000).capture(List.of(state, release), List.of());
+            assertThrows(IllegalStateException.class, () -> release.release(state));
+            for (int replay = 0; replay < 2; replay++) {
+                try (var clock = RollbackClock.at(1000, 2000, 4, 50_000_000)) {
+                    release.release(state);
+                    assertEquals(List.of("event", "item"), calls);
+                    assertFalse(player.isUsingItem()); assertTrue(player.getUseItem().isEmpty());
+                    release.release(state); assertEquals(2, calls.size());
+                }
+                saved.restore(); assertTrue(player.isUsingItem()); assertTrue(calls.isEmpty());
+            }
+            assertNull(Bukkit.getServer()); return null;
+        });
+    }
+
     @Test void itemUseStartUsesSimulationTimeAndRewindsBothHandsWithoutRefreshingActiveUse() throws Exception {
         onTickThread(() -> {
             var start = net.minecraft.world.entity.LivingEntity.class.getDeclaredField("eatStartTime");
