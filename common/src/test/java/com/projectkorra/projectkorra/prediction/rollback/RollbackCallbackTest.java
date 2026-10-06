@@ -1,6 +1,9 @@
 package com.projectkorra.projectkorra.prediction.rollback;
 
 import com.projectkorra.projectkorra.platform.*;
+import com.projectkorra.projectkorra.ability.activation.ActivationContext;
+import com.projectkorra.projectkorra.ability.activation.ActivationHandler;
+import com.projectkorra.projectkorra.util.ClickType;
 import org.junit.jupiter.api.Test;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
@@ -11,6 +14,7 @@ class RollbackCallbackTest {
     static final class State {
         int count;
         PKRunnable callback;
+        ActivationHandler activation;
         void increment() { count++; }
         PKRunnable nestedFactory() { return this::increment; }
     }
@@ -97,6 +101,73 @@ class RollbackCallbackTest {
         var codec = codec();
         var copied = (State) codec.decode(codec.encode(List.of(source), RollbackCallback::project)).getFirst();
         copied.callback.run(); assertEquals(1, copied.count); assertEquals(0, source.count);
+    }
+
+    @Test void activationHandlersTransferContextResultsAndRewindCapturedState() {
+        var source = new State();
+        ActivationHandler inner = context -> {
+            source.count++;
+            context.cancelEvent();
+            return context.getBoolean("consume", false);
+        };
+        source.activation = context -> inner.activate(context);
+        var codec = codec();
+        var imported = codec.decode(codec.encode(List.of(source, source.activation), RollbackCallback::project));
+        var copy = (State) imported.getFirst();
+        assertSame(copy.activation, imported.get(1));
+        ((RollbackCallback) copy.activation).validate();
+        var before = new RollbackStateGraph(value -> false, field -> true, 200).capture(List.of(copy), List.of());
+        var context = new ActivationContext(null, null, ClickType.LEFT_CLICK);
+        assertFalse(copy.activation.activate(context));
+        assertTrue(context.shouldCancelEvent());
+        assertEquals(1, copy.count); assertEquals(0, source.count);
+        before.restore();
+        assertEquals(0, copy.count);
+        context.put("consume", true);
+        assertTrue(copy.activation.activate(context));
+        assertEquals(1, copy.count); assertEquals(0, source.count);
+        assertThrows(IllegalStateException.class, () -> ((Runnable) copy.activation).run());
+    }
+
+    @Test void annotatedHandlerTransfersItsReceiverWithoutReflectionObjects() throws Exception {
+        var source = new AnnotatedAbility();
+        var handlerType = com.projectkorra.projectkorra.ability.activation.AbilityActivationManager.AnnotatedHandler.class;
+        var constructor = handlerType.getDeclaredConstructor(com.projectkorra.projectkorra.ability.CoreAbility.class, java.lang.reflect.Method.class);
+        constructor.setAccessible(true);
+        ActivationHandler handler = constructor.newInstance(source, AnnotatedAbility.class.getDeclaredMethod("activate", ActivationContext.class));
+        var codec = new RollbackGraphCodec(new RollbackGraphCodec.Catalog(List.of(AnnotatedAbility.class, handlerType, Class.forName("com.projectkorra.projectkorra.ability.CoreAbility$PredictionAncestry")),
+                List.of(ActivationContext.class), List.of()), new RollbackGraphCodec.Limits(200, 2000, 100_000, 10_000));
+        var imported = codec.decode(codec.encode(List.of(source, handler), RollbackCallback::project));
+        var copy = (AnnotatedAbility) imported.getFirst();
+        var copiedHandler = (ActivationHandler) imported.get(1);
+        var before = new RollbackStateGraph(value -> false, field -> true, 200).capture(imported, List.of());
+        var context = new ActivationContext(null, null, ClickType.LEFT_CLICK);
+        assertTrue(copiedHandler.activate(context));
+        assertTrue(context.shouldCancelEvent());
+        assertEquals(1, copy.count); assertEquals(0, source.count);
+        before.restore(); assertEquals(0, copy.count);
+        assertTrue(copiedHandler.activate(context)); assertEquals(1, copy.count);
+        var methodName = handlerType.getDeclaredField("methodName"); methodName.setAccessible(true);
+        methodName.set(copiedHandler, "unannotated");
+        assertThrows(IllegalArgumentException.class, () -> copiedHandler.activate(context));
+        assertEquals(1, copy.count);
+    }
+
+    static final class AnnotatedAbility extends com.projectkorra.projectkorra.ability.CoreAbility {
+        int count;
+        AnnotatedAbility() { super(null); }
+        @com.projectkorra.projectkorra.ability.activation.ActivationMethod(ClickType.LEFT_CLICK)
+        private boolean activate(ActivationContext context) { count++; context.cancelEvent(); return true; }
+        private boolean unannotated(ActivationContext context) { throw new AssertionError("Unannotated method invoked"); }
+        @Override public void progress() { }
+        @Override public boolean isSneakAbility() { return false; }
+        @Override public boolean isHarmlessAbility() { return true; }
+        @Override public boolean isIgniteAbility() { return false; }
+        @Override public boolean isExplosiveAbility() { return false; }
+        @Override public long getCooldown() { return 0; }
+        @Override public String getName() { return "PortableAnnotatedFixture"; }
+        @Override public com.projectkorra.projectkorra.Element getElement() { return null; }
+        @Override public com.projectkorra.projectkorra.platform.mc.Location getLocation() { return null; }
     }
 
     @Test void incompatibleCapturedArgumentsRejectTheWholeTaskBatchBeforeBinding() throws Exception {

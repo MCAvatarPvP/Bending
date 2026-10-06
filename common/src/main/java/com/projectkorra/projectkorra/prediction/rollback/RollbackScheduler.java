@@ -134,7 +134,7 @@ public final class RollbackScheduler implements PKScheduler, RollbackStateCell<R
             if (id < 1 || id >= maximumNextId || !handle.unbound() || imported.containsKey(id))
                 throw new IllegalArgumentException("Invalid or already bound imported task handle");
             var callback = Objects.requireNonNull(entry.callback(), "task callback");
-            if (callback instanceof RollbackCallback portable) portable.validate();
+            if (callback instanceof RollbackCallback portable) portable.validateTask();
             var task = new Task(id, callback, Math.max(1, entry.delay()),
                     entry.period() == 0 ? 1 : entry.period(), imported.size() + 1L, entry.ability(), entry.action(), entry.seed());
             imported.put(id, task); followingId = Math.max(followingId, Math.incrementExact(id));

@@ -2839,3 +2839,20 @@ rebinding, conflicting history replacement and mutation, outsider preservation a
 retry after newer live input. Combo-help task restart still depends on the separate
 captured-task restoration path and needs live integration validation. This closes
 the basic combo merge gap above, not the full native runtime or two-client test gate.
+
+### Portable activation callbacks
+
+ActivationHandler now exposes a serializable lambda contract. The existing graph
+projection records compiler descriptors and copied captures for activation lambdas
+as well as scheduled callbacks; invocation preserves context mutation and the
+handled boolean. Descriptors resolve only through negotiated local compiler
+factories, with contract validation and no retained source lambda. Scheduler
+imports reject activation descriptors before binding any task.
+
+Annotated handlers now hold their ability receiver and method identity rather than
+a reflection Method captured inside a lambda. Invocation resolves an installed
+method and requires its activation annotation. Tests cover copied mutable receivers,
+nested callbacks, rewind, context mutation, handled results and rejection of an
+unannotated target. This supplies portable handlers; importing and isolating the
+activation registration maps is still outstanding, as are full runtime wiring and
+live two-client validation.

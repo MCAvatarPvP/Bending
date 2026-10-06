@@ -102,7 +102,7 @@ public final class AbilityActivationManager {
                 continue;
             }
             method.setAccessible(true);
-            final ActivationHandler handler = context -> invokeAnnotatedActivation(ability, method, context);
+            final ActivationHandler handler = new AnnotatedHandler(ability, method);
             register(ability.getName(), handler, activation.value());
             for (final String alias : activation.aliases()) {
                 register(alias, handler, activation.value());
@@ -283,6 +283,35 @@ public final class AbilityActivationManager {
             return bPlayer.isElementToggled(Element.CHI);
         }
         return true;
+    }
+
+    /** Method identity is portable; reflection objects and live receiver references are not. */
+    public static final class AnnotatedHandler implements ActivationHandler {
+        private final CoreAbility ability;
+        private final String methodName;
+        private final Class<?>[] parameterTypes;
+
+        private AnnotatedHandler(CoreAbility ability, Method method) {
+            this.ability = ability;
+            this.methodName = method.getName();
+            this.parameterTypes = method.getParameterTypes();
+        }
+
+        private Method resolve() {
+            try {
+                Method method = ability.getClass().getDeclaredMethod(methodName, parameterTypes);
+                if (!method.isAnnotationPresent(ActivationMethod.class))
+                    throw new IllegalArgumentException("Activation descriptor requires @ActivationMethod");
+                method.setAccessible(true);
+                return method;
+            } catch (ReflectiveOperationException exception) {
+                throw new IllegalArgumentException("Missing annotated activation method", exception);
+            }
+        }
+
+        @Override public boolean activate(ActivationContext context) {
+            return invokeAnnotatedActivation(ability, resolve(), context);
+        }
     }
 
     private static boolean invokeAnnotatedActivation(final CoreAbility ability, final Method method, final ActivationContext context) {
