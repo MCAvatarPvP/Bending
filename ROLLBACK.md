@@ -3290,3 +3290,16 @@ repeat effects, and snapshot restoration repeats the same sequence with Bukkit a
 This verifies native ordering using a shield and a controlled callback; it does not
 prove bow/projectile/item-specific behavior. Concrete item callbacks, Fabric parity
 and execution/startup installation remain required.
+
+
+### Fabric item-release ordering
+
+FabricRollbackItemRelease uses the copied native release/clear bodies and mandatory
+private item callbacks. A captured Paper stop-use event callback runs at the matching
+boundary; active stack and remaining use time are read again after it returns so
+listener mutations reach the item effect. Only states from the original private
+roster can enter, and both that roster and callback state are checkpoint roots.
+Tests verify event/effect/cleanup ordering, repeated-release suppression, restoration,
+foreign-state rejection and an event clearing the active item before release. These
+controlled callbacks establish ordering, not concrete item/projectile effects;
+production callbacks and execution/bootstrap installation remain outstanding.
