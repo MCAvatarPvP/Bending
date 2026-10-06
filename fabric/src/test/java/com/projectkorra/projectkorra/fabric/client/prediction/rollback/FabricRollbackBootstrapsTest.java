@@ -33,7 +33,7 @@ class FabricRollbackBootstrapsTest {
             f.endpoint.receive(f.client, f.connection, f.offer, 10);
             assertTrue(f.endpoint.ownsSession()); assertTrue(FabricRollbackNativeTick.tick(f.player)); assertEquals(1, f.begins);
             f.endpoint.receive(f.client, f.connection, f.offer, 10); assertEquals(1, f.begins);
-            f.endpoint.receive(f.client, f.connection, new RollbackBootstrapPacket.Part(f.offer.session(), f.offer.challenge(), 0, f.data), 11);
+            for (int i = 0; i < f.offer.parts(); i++) f.endpoint.receive(f.client, f.connection, f.part(i), 11);
             assertEquals(1, f.imports); assertEquals(1, f.stops); assertFalse(f.endpoint.ownsSession());
             assertTrue(f.sent.stream().noneMatch(RollbackBootstrapPacket.Ready.class::isInstance));
             assertFalse(FabricRollbackNativeTick.tick(f.player));
@@ -72,7 +72,8 @@ class FabricRollbackBootstrapsTest {
             f.prepareUnready = true; f.failRuntimeStop = true;
             f.endpoint.receive(f.client, f.connection, f.offer, 10);
             assertThrows(IllegalStateException.class, () -> f.endpoint.finishStop(f.client, f.offer.session()));
-            var part = new RollbackBootstrapPacket.Part(f.offer.session(), f.offer.challenge(), 0, f.data);
+            for (int i = 0; i < f.offer.parts() - 1; i++) f.endpoint.receive(f.client, f.connection, f.part(i), 11);
+            var part = f.part(f.offer.parts() - 1);
             assertThrows(IllegalStateException.class, () -> f.endpoint.receive(f.client, f.connection, part, 11));
             assertTrue(f.endpoint.ownsSession()); assertEquals(1, f.runtimeStops); assertEquals(0, f.stops);
             assertTrue(f.endpoint.consumePacket(f.client, f.connection, new net.minecraft.network.packet.c2s.play.UpdateSelectedSlotC2SPacket(0)));
@@ -94,6 +95,11 @@ class FabricRollbackBootstrapsTest {
         final List<RollbackBootstrapPacket.Message> sent = new ArrayList<>();
         int suspensions, begins, imports, stops, runtimeStops;
         boolean failBegin, failStop, reentrantStop, prepareUnready, failRuntimeStop;
+        RollbackBootstrapPacket.Part part(int index) {
+            int offset = index * RollbackBootstrapPacket.DATA_BYTES;
+            return new RollbackBootstrapPacket.Part(offer.session(), offer.challenge(), index,
+                    Arrays.copyOfRange(data, offset, offset + offer.partSize(index)));
+        }
         Fixture(boolean install) throws Exception {
             var allocator = new ObjenesisStd(); connection = allocator.newInstance(ClientPlayNetworkHandler.class);
             var world = allocator.newInstance(ClientWorld.class);

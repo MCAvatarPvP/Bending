@@ -121,7 +121,7 @@ public record PaperRollbackDuelSeed(PaperRollbackRosterSeed nativeRoster, Rollba
         services.add(RollbackEventBindings.capture(com.projectkorra.projectkorra.platform.Platform.events()));
         var graph = RollbackBendingState.encode(bending.values(), collisions, services, sourceCodec);
         var portable = new RollbackBootstrapData(request.session(), challenge, request.match(), request.round(), millis, nanos, definitions,
-                request.sides(), worldSeed, nativeRoster.portable(playerServices), configuration, access, graph);
+                request.sides(), worldSeed, nativeRoster.portable(playerServices), configuration, access, RollbackMaterials.capture(com.projectkorra.projectkorra.platform.Platform.materials()), graph);
         if (world.getGameTime() != tick) throw new IllegalStateException("World advanced during duel capture");
         return new PaperRollbackDuelSeed(nativeRoster, portable);
     }

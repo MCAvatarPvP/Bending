@@ -37,6 +37,8 @@ class FabricRollbackBootstrapDataTest {
         assertEquals(new RollbackWorldSettings.Flag(false), seed.world().settings().rules().get("minecraft:fire_damage"));
         assertEquals(new RollbackEnvironmentData.Weather(.8f, .4f), seed.world().environment().weather());
         assertEquals(1_000, seed.world().border().size());
+        assertTrue(seed.materials().isSolid(com.projectkorra.projectkorra.platform.mc.Material.STONE));
+        assertFalse(seed.materials().isSolid(com.projectkorra.projectkorra.platform.mc.Material.AIR));
         assertEquals(net.minecraft.block.Blocks.STONE_SLAB, FabricRollbackGeometry.decode(seed.world().terrain().cell(new RollbackBlockStore.Position(0, 0, 0)).data()).getBlock());
         var graph = new RollbackGraphCodec(new RollbackGraphCodec.Catalog(List.of(), List.of(), List.of()),
                 new RollbackGraphCodec.Limits(100, 100, 8_192, 1_024));

@@ -2754,3 +2754,16 @@ on-time swap, including complete tick effects and resulting inventory. Event
 replacement parity, further active-use edge cases and live two-client validation still
 need verification. Runtime factory installation and remaining native actions are
 still incomplete; this does not establish end-to-end rollback completion.
+
+
+### Captured material properties
+
+Duel bootstrap version 3 includes the server's solidity result for every common
+Material. The immutable `RollbackMaterials` service implements the private platform's
+material facade without retaining a live registry or recomputing Paper properties
+on Fabric. Names, order, count, flags and payload bounds are checked on import;
+missing or incompatible definitions reject the seed. The canonical Paper/Fabric
+bootstrap fixture includes this section and exercises multipart client import.
+
+This supplies the material binding for runtime assembly. Other platform bindings,
+concrete runtime factories and live duel validation remain incomplete.

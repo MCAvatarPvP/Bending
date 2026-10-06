@@ -15,13 +15,13 @@ import java.util.*;
 public record RollbackBootstrapData(UUID session, UUID challenge, UUID match, int round,
                                     long epochMillis, long epochNanos, String definitions,
                                     Map<UUID, UUID> sides, RollbackWorldSeed world, RollbackRosterData roster,
-                                    RollbackConfiguration.Data configuration, RollbackPlayerAccess access, byte[] bending) {
-    public static final int VERSION = 2, MAXIMUM_BYTES = 268_435_456, MAXIMUM_GRAPH_BYTES = 134_217_728;
+                                    RollbackConfiguration.Data configuration, RollbackPlayerAccess access, RollbackMaterials materials, byte[] bending) {
+    public static final int VERSION = 3, MAXIMUM_BYTES = 268_435_456, MAXIMUM_GRAPH_BYTES = 134_217_728;
 
     public RollbackBootstrapData {
         Objects.requireNonNull(session); Objects.requireNonNull(challenge); Objects.requireNonNull(match);
         Objects.requireNonNull(world); Objects.requireNonNull(roster); Objects.requireNonNull(configuration);
-        Objects.requireNonNull(access);
+        Objects.requireNonNull(access); Objects.requireNonNull(materials);
         requireHash(definitions);
         sides = Collections.unmodifiableMap(new TreeMap<>(sides));
         if (round < 0 || sides.size() < 2 || sides.size() > RollbackRosterData.MAXIMUM_PLAYERS || sides.containsValue(null)
@@ -38,8 +38,8 @@ public record RollbackBootstrapData(UUID session, UUID challenge, UUID match, in
     @Override public byte[] bending() { return bending.clone(); }
 
     public byte[] encode(RollbackTerrainCodec.BlockStates states, RollbackTerrainCodec.Limits limits) {
-        var worldBytes = world.encode(states, limits); var players = roster.encode(); var config = configuration.encode(); var accessBytes = access.encode();
-        long size = 128L + 32L * sides.size() + worldBytes.length + players.length + config.length + accessBytes.length + bending.length;
+        var worldBytes = world.encode(states, limits); var players = roster.encode(); var config = configuration.encode(); var accessBytes = access.encode(); var materialBytes = materials.encode();
+        long size = 132L + 32L * sides.size() + worldBytes.length + players.length + config.length + accessBytes.length + materialBytes.length + bending.length;
         if (size > MAXIMUM_BYTES) throw invalid("wire budget");
         try {
             var bytes = new ByteArrayOutputStream((int) size); var out = new DataOutputStream(bytes);
@@ -47,7 +47,7 @@ public record RollbackBootstrapData(UUID session, UUID challenge, UUID match, in
             out.writeLong(epochMillis); out.writeLong(epochNanos); out.write(HexFormat.of().parseHex(definitions));
             out.writeInt(sides.size());
             for (var entry : sides.entrySet()) { uuid(out, entry.getKey()); uuid(out, entry.getValue()); }
-            blob(out, worldBytes); blob(out, players); blob(out, config); blob(out, accessBytes); blob(out, bending);
+            blob(out, worldBytes); blob(out, players); blob(out, config); blob(out, accessBytes); blob(out, materialBytes); blob(out, bending);
             return bytes.toByteArray();
         } catch (IOException impossible) { throw new UncheckedIOException(impossible); }
     }
@@ -76,9 +76,10 @@ public record RollbackBootstrapData(UUID session, UUID challenge, UUID match, in
             var roster = RollbackRosterData.decode(blob(in, RollbackRosterData.MAXIMUM_BYTES));
             var config = RollbackConfiguration.Data.decode(blob(in, RollbackConfiguration.MAXIMUM_BYTES));
             var access = RollbackPlayerAccess.decode(blob(in, RollbackPlayerAccess.MAXIMUM_BYTES));
+            var materials = RollbackMaterials.decode(blob(in, RollbackMaterials.MAXIMUM_BYTES));
             var graph = blob(in, MAXIMUM_GRAPH_BYTES);
             if (in.available() != 0) throw invalid("trailing data");
-            return new RollbackBootstrapData(session, challenge, match, round, millis, nanos, expectedDefinitions, sides, world, roster, config, access, graph);
+            return new RollbackBootstrapData(session, challenge, match, round, millis, nanos, expectedDefinitions, sides, world, roster, config, access, materials, graph);
         } catch (IOException malformed) { throw new IllegalArgumentException("Invalid duel bootstrap: truncated/malformed data", malformed); }
     }
 
