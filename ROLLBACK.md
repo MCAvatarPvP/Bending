@@ -3192,3 +3192,19 @@ unused item/actions/events. The assembly therefore does not prove complete gamep
 binding or live startup. PaperRollbackMatchBootstrap and FabricRollbackBootstraps.Factory
 still require production owners that connect these scenes to the ability graph,
 execution services, live ownership leases and reconciliation/output lifecycle.
+
+
+### Captured block-tag platform service
+
+RollbackTags supplies the PKTags binding from an immutable, bounded catalog. It
+preserves BukkitTagsFacade's existing Minecraft block-tag behavior, including AIR
+filtering and empty results for missing tags or unsupported registry/type requests.
+PaperRollbackTags captures the complete matching server catalog at the live seed
+boundary, including datapack edits, and PaperRollbackDuelSeed now includes it.
+RollbackBootstrapData version 4 makes tags mandatory and rejects older envelopes.
+The catalog serializes canonically and is decoded without consulting client tags.
+
+Tests verify detachment from source collections, canonical order, malformed/budget
+rejection, native facade filtering and the updated cross-loader seed fixture. This
+provides the tag service for platform assembly; it does not install the missing
+production bootstrap factory or bind the remaining gameplay/platform services.

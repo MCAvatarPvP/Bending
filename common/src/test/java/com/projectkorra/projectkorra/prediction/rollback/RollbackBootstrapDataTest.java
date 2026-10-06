@@ -21,7 +21,7 @@ class RollbackBootstrapDataTest {
         var roster = new RollbackRosterData(rosterTick, Map.of(A, RollbackRosterDataTest.player(A, 101, B, List.of()),
                 B, RollbackRosterDataTest.player(B, 102, A, List.of())));
         return new RollbackBootstrapData(new UUID(0, 3), new UUID(0, 4), new UUID(0, 5), 2, 1_700_000_000_000L, 9_000_000L,
-                DEFINITIONS, sides, seed(20), roster, RollbackConfiguration.captureData(Map.of()), RollbackPlayerAccessTest.access(roster), new RollbackMaterials(Set.of(Material.STONE)), graph().encode(List.of("captured roots", List.of(A, B))));
+                DEFINITIONS, sides, seed(20), roster, RollbackConfiguration.captureData(Map.of()), RollbackPlayerAccessTest.access(roster), new RollbackMaterials(Set.of(Material.STONE)), new RollbackTags(Map.of("stone_test", List.of(Material.STONE))), graph().encode(List.of("captured roots", List.of(A, B))));
     }
     private static RollbackBootstrapData data() { return data(20, Map.of(A, A, B, B)); }
 
@@ -35,6 +35,8 @@ class RollbackBootstrapDataTest {
         assertArrayEquals(source.roster().encode(), copy.roster().encode());
         assertEquals(source.access(), copy.access());
         assertEquals(source.materials(), copy.materials());
+        assertEquals(source.tags(), copy.tags());
+        assertEquals(List.of(Material.STONE), copy.tags().values("blocks", "stone_test", Material.class));
         assertEquals(source.configuration().fingerprint(), copy.configuration().fingerprint());
         assertEquals(List.of("captured roots", List.of(A, B)), graph().decode(copy.bending()));
         assertEquals(RollbackBootstrapData.fingerprint(bytes), RollbackBootstrapData.fingerprint(copy.encode(STATES, LIMITS)));
@@ -66,7 +68,7 @@ class RollbackBootstrapDataTest {
     }
     private static RollbackBootstrapData replaceAccess(RollbackBootstrapData source, RollbackPlayerAccess access) {
         return new RollbackBootstrapData(source.session(), source.challenge(), source.match(), source.round(), source.epochMillis(), source.epochNanos(),
-                source.definitions(), source.sides(), source.world(), source.roster(), source.configuration(), access, source.materials(), source.bending());
+                source.definitions(), source.sides(), source.world(), source.roster(), source.configuration(), access, source.materials(), source.tags(), source.bending());
     }
 
     @Test void foreignDefinitionsRejectBeforeNativeDecodeAndMalformedEnvelopesCannotBeAcknowledged() {
