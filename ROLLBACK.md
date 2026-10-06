@@ -3019,3 +3019,25 @@ use-item alias identity, duration/count, rejection without a simulation clock, e
 hands, and attempting another nonempty hand while already using an item. Native item
 selection/dispatch, completion/release callbacks and cancellation resynchronization
 still need the remaining production action integration.
+
+
+### Native ItemStack use call-graph audit
+
+The packaged native ItemStack.use copies the pre-use stack, dispatches the concrete
+Item.use override, and for instant successful use invokes applyAfterUseComponentSideEffects.
+That helper processes USE_REMAINDER (including handleExtraItemsCreatedOnUse for a
+nonempty remaining stack) and USE_COOLDOWN. Both are causal inventory/output paths;
+calling the original helper would bypass the copied cooldown routes. Native concrete
+Item.use overrides must be audited or explicitly rejected by the private virtual
+method graph, never silently executed as uncopied callbacks.
+
+The base Item.use checks CONSUMABLE, EQUIPPABLE, BLOCKS_ATTACKS and KINETIC_WEAPON.
+Consumable.startConsuming uses startUsingItem for positive duration, but invokes
+onConsume immediately for zero duration. onConsume publishes particle/sound/game
+outputs, awards statistics and a consume advancement, dispatches ConsumableListener
+components and ConsumeEffect implementations, and consumes the stack. Timed completion
+also has PlayerItemConsumeEvent cancellation/replacement and inventory correction.
+Consequently, positive-duration apple/shield start tests cannot establish complete
+item-use coverage. The next native binding must include these dispatch/component
+boundaries and test instant consumption, extra remainders, cooldowns, cancellation,
+and finish/release behavior before the production item-use remainder is enabled.
