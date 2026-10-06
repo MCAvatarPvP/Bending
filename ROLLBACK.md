@@ -3170,3 +3170,25 @@ private scoreboard queries are explicit mandatory bindings. Tests use throwing
 fixtures for unused gameplay actions, so they do not prove those action bindings or
 full bending execution. Ability-facing roster/platform and imported gameplay graph
 assembly, output lifecycle and the actual startup factory still need connection.
+
+
+### Server native scene assembly
+
+PaperRollbackNativeScene now composes captured terrain/light, geometry, environment,
+border, native world policy and a complete imported ServerPlayer roster in dependency
+order. Per-player private RNG/statistics/advancement services must match the captured
+roster exactly. Native roster queries bind once after import. The resulting scene is
+one checkpoint root, analogous to the client assembly; no source player or live world
+is installed as its simulation body.
+
+A native test imports two real private ServerPlayer captures, verifies native identity
+lookup, changes position and glowstone lighting, advances time and restores the whole
+scene checkpoint. Player position, terrain, propagated light, native game time and day
+time restore together. Source positions and time remain unchanged and Bukkit has no
+live server. Missing light and foreign roster fail during preparation.
+
+Gameplay callbacks are still explicit and mandatory; this test deliberately throws on
+unused item/actions/events. The assembly therefore does not prove complete gameplay
+binding or live startup. PaperRollbackMatchBootstrap and FabricRollbackBootstraps.Factory
+still require production owners that connect these scenes to the ability graph,
+execution services, live ownership leases and reconciliation/output lifecycle.
