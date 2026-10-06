@@ -15,6 +15,7 @@ import com.projectkorra.projectkorra.platform.mc.scheduler.BukkitRunnable;
 import com.projectkorra.projectkorra.prediction.action.AbilityRemovalSync;
 import com.projectkorra.projectkorra.prediction.authority.PredictionServices;
 import com.projectkorra.projectkorra.util.Cooldown;
+import com.projectkorra.projectkorra.util.StatisticsManager;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -48,6 +49,18 @@ class RollbackBendingStateTest {
             var bendingA = new BendingPlayer(liveA);
             var bendingB = new BendingPlayer(liveB);
             var bendingOther = new BendingPlayer(other);
+            var statisticsConstructor = StatisticsManager.class.getDeclaredConstructor();
+            statisticsConstructor.setAccessible(true);
+            var liveStatistics = statisticsConstructor.newInstance();
+            var managers = (Map<Class<? extends Manager>, Manager>) field(Manager.class, "MANAGERS").get(null);
+            managers.clear(); managers.put(StatisticsManager.class, liveStatistics);
+            var statisticValues = (Map<UUID, Map<Integer, Long>>) field(StatisticsManager.class, "STATISTICS").get(liveStatistics);
+            var statisticDelta = (Map<UUID, Map<Integer, Long>>) field(StatisticsManager.class, "DELTA").get(liveStatistics);
+            statisticValues.put(A, new HashMap<>(Map.of(1, 10L)));
+            statisticValues.put(OUTSIDE, new HashMap<>(Map.of(1, 99L)));
+            statisticDelta.put(A, new HashMap<>(Map.of(1, 0L)));
+            liveStatistics.getKeysByName().put("hits", 1); liveStatistics.getKeysById().put(1, "hits");
+            var unrelatedStatistics = statisticValues.get(OUTSIDE);
             BendingPlayer.getPlayers().putAll(Map.of(A, bendingA, B, bendingB, OUTSIDE, bendingOther));
             BendingPlayer.getOfflinePlayers().putAll(BendingPlayer.getPlayers());
             bendingA.getAbilities().put(1, "Pulse");
@@ -87,7 +100,7 @@ class RollbackBendingStateTest {
                     liveCallback.handle, (com.projectkorra.projectkorra.platform.PKRunnable) liveCallback::run, 1, 2, livePulse, 71, 93)));
             var abilityReservation = CoreAbility.reserveRollbackIds(List.of(A, B), 10);
             var expectedLiveAbilities = CoreAbility.captureRollbackRegistry(List.of(A, B), abilityReservation);
-            var serviceRoots = List.of(sourceService, RollbackEventBindings.capture(liveBus), taskCapture, liveCallback, abilityReservation);
+            var serviceRoots = List.of(sourceService, RollbackEventBindings.capture(liveBus), taskCapture, liveCallback, abilityReservation, liveStatistics, liveStatistics.getStatisticsMap(A));
             var privateA = PrivateCombatRollbackTest.player(privateWorld, 1);
             var privateB = PrivateCombatRollbackTest.player(privateWorld, 2);
             Map<Object, Object> replacements = new IdentityHashMap<>();
@@ -172,6 +185,7 @@ class RollbackBendingStateTest {
                 @Override public Double predict(UUID participant, Double previous) { return previous; }
                 @Override public void step(long tick, Map<UUID, Double> inputs, RollbackStep<String> effects) {
                     privateScheduler.advance(tick);
+                    Manager.getManager(StatisticsManager.class).addStatistic(A, 1, inputs.get(B).longValue() + 1);
                     guard.location.setY(inputs.get(B));
                     CoreAbility.progressAll();
                     ProjectKorra.collisionManager.detectCollisions();
@@ -294,26 +308,38 @@ class RollbackBendingStateTest {
             try (var restorationScope = Platform.using(restorePlatform)) {
                 assertThrows(IllegalStateException.class, () -> restored.prepareAbilities(abilityReservation, expectedLiveAbilities));
                 field(CoreAbility.class, "currentTick").setLong(null, restored.abilities().tick()); // Owner aligns to the live tick before handoff.
-                var abilityCommit = restored.prepareAbilities(abilityReservation, expectedLiveAbilities);
+                var commit = restored.prepareCommit(Map.of(A, bendingA, B, bendingB), abilityReservation, expectedLiveAbilities);
+                liveStatistics.getKeysByName().put("changed", 2);
+                assertThrows(IllegalStateException.class, commit::commit);
+                assertSame(bendingA, BendingPlayer.getBendingPlayer(liveA));
+                assertSame(livePulse, CoreAbility.getAbility(liveA, Pulse.class));
+                assertEquals(Set.of(livePulse, unrelatedPulse), sourceAttribute.getInitialValues().keySet());
+                assertEquals(10, liveStatistics.getStatisticCurrent(A, 1));
+                liveStatistics.getKeysByName().remove("changed");
                 var instances = (Collection<CoreAbility>) field(CoreAbility.class, "INSTANCES").get(null);
                 instances.remove(liveGuard);
-                assertThrows(IllegalStateException.class, abilityCommit::commit);
+                assertThrows(IllegalStateException.class, commit::commit);
                 assertSame(livePulse, CoreAbility.getAbility(liveA, Pulse.class));
                 instances.add(liveGuard);
-                var playerCommit = restored.preparePlayers(Map.of(A, bendingA, B, bendingB));
                 assertSame(bendingA, BendingPlayer.getBendingPlayer(liveA));
-                playerCommit.commit(); playerCommit.commit();
                 var liveAttributeDefinitions = (Map<String, AttributeCache>) attributes.get(Pulse.class);
                 liveAttributeDefinitions.put("Speed", new AttributeCache(sourceAttribute.getField(), sourceAttribute.getAttribute()));
-                assertThrows(IllegalStateException.class, restored::commitAttributes);
+                assertThrows(IllegalStateException.class, commit::commit);
+                assertSame(bendingA, BendingPlayer.getBendingPlayer(liveA), "Failed validation must precede all registry writes");
+                assertSame(livePulse, CoreAbility.getAbility(liveA, Pulse.class));
                 assertEquals(Set.of(livePulse, unrelatedPulse), sourceAttribute.getInitialValues().keySet());
                 liveAttributeDefinitions.put("Speed", sourceAttribute);
-                restored.commitAttributes(); restored.commitAttributes();
                 int eventsAtCommit = events.size(), constructorsAtCommit = Dynamic.constructions;
-                abilityCommit.commit(); abilityCommit.commit();
+                commit.commit(); commit.commit();
                 field(CoreAbility.class, "currentTick").setLong(null, restored.abilities().tick() + 1);
-                abilityCommit.commit(); // Cleanup retries after another live tick do not reinstall indices.
+                commit.commit(); // Cleanup retries after another live tick do not reinstall indices.
                 assertEquals(eventsAtCommit, events.size()); assertEquals(constructorsAtCommit, Dynamic.constructions);
+                assertSame(liveStatistics, Manager.getManager(StatisticsManager.class));
+                assertTrue(restored.services().stream().anyMatch(service -> service == liveStatistics));
+                assertTrue(restored.services().stream().anyMatch(service -> service == liveStatistics.getStatisticsMap(A)));
+                assertEquals(28, liveStatistics.getStatisticCurrent(A, 1));
+                assertSame(unrelatedStatistics, liveStatistics.getStatisticsMap(OUTSIDE));
+                assertEquals(99, liveStatistics.getStatisticCurrent(OUTSIDE, 1));
                 assertNull(CoreAbility.getAbility(liveB, Guard.class));
                 assertTrue(CoreAbility.getAbilities(liveA, Pulse.class).contains(restoredPulse));
                 assertEquals(Set.of(1, 9), CoreAbility.getAbilities(liveA, Pulse.class).stream()
@@ -358,7 +384,7 @@ class RollbackBendingStateTest {
                                                                  Player privateA, Player privateB, World privateWorld,
                                                                  AttributeCache sourceAttribute) throws Exception {
         List<Class<?>> objects = List.of(BendingPlayer.class, Pulse.class, Guard.class, Location.class, Cooldown.class,
-                CoreAbility.RollbackRegistry.class, Manager.RollbackRegistry.class, CollisionManager.class, Collision.class,
+                CoreAbility.RollbackRegistry.class, Manager.RollbackRegistry.class, StatisticsManager.class, CollisionManager.class, Collision.class,
                 OfflineBendingPlayer.RollbackTemporaryElement.class, AttributeCache.class,
                 CapturedRule.class, CapturedTask.class, RollbackCallback.class, RollbackTaskBindings.class, RollbackTaskBindings.Entry.class, RollbackTaskBindings.Handle.class,
                 RollbackEventBindings.class, PKEventBus.Registration.class,

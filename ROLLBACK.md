@@ -49,6 +49,16 @@ state that actually determines those outcomes.
 
 ### October 5, 2026 integration update
 
+Common live restoration now exposes a combined prepared commit for player registries,
+ability indices, attribute caches and shared managers. It validates every component before
+writing any live registry and reuses idempotent component commits for cleanup retries. The
+portable and in-process graph regression now includes a real statistics manager through
+late-input replay, export, native-handle rebinding and the combined commit. A changed
+manager catalog or attribute definition leaves player and ability registries untouched;
+unrelated players keep their manager entries and object identities. The loader still must
+retain ownership while restoring native bodies, terrain, listeners and scheduled work;
+this common commit does not by itself enable production startup.
+
 Work continues in the attached `rollback-integration` worktree because the primary
 checkout is on `master` with separate local gameplay changes. The rollback branch and
 push destination remain `wip/rollback-2026-09-23` on MCAvatarPvP/Bending.

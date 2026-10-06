@@ -140,9 +140,8 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
             this.managerCommit = managerCommit;
             this.state = state; this.definitions = List.copyOf(definitions); attributeUpdates = List.copyOf(updates);
         }
-        /** Merge only participant entries into canonical cache maps; the owner retains gameplay gates. */
-        @SuppressWarnings("unchecked")
-        public void commitAttributes() {
+        /** Validate every cache before any live registry is changed. */
+        private void validateAttributes() {
             if (Thread.currentThread() != state.owner || RollbackDomain.active() || RollbackClock.active()
                     || !com.projectkorra.projectkorra.platform.Platform.scheduler().isPrimaryThread())
                 throw new IllegalStateException("Restore attributes on the live main thread");
@@ -157,6 +156,11 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
                         throw new IllegalStateException("Restored attribute entry is outside the participant graph");
                 }
             }
+        }
+        /** Merge only participant entries into canonical cache maps; the owner retains gameplay gates. */
+        @SuppressWarnings("unchecked")
+        public void commitAttributes() {
+            validateAttributes();
             if (attributesCommitted) return;
             for (Object value : attributeUpdates) {
                 var update = (List<?>) value; var cache = (AttributeCache) update.get(0);
@@ -177,6 +181,42 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
         public CollisionManager collisions() { return state.collisions; }
         public List<Object> services() { return state.services; }
         public void commitManagers() { managerCommit.commit(); }
+
+        /** Prepare the common gameplay commit while the loader still holds whole-roster ownership. */
+        public LiveCommit prepareCommit(Map<UUID, BendingPlayer> expectedPlayers,
+                CoreAbility.RollbackIdReservation reservation, CoreAbility.RollbackRegistry expectedAbilities) {
+            return new LiveCommit(preparePlayers(expectedPlayers), prepareAbilities(reservation, expectedAbilities));
+        }
+
+        /**
+         * Validate all common registries before writing any of them. Native bodies, terrain,
+         * listeners and scheduled work must also be restored before the loader releases its
+         * gameplay gates. A failed commit retains those gates; retry uses the same plan.
+         */
+        public final class LiveCommit {
+            private final OfflineBendingPlayer.RollbackPlayerRestoration playerCommit;
+            private final CoreAbility.RollbackAbilityRestoration abilityCommit;
+            private LiveCommit(OfflineBendingPlayer.RollbackPlayerRestoration players,
+                    CoreAbility.RollbackAbilityRestoration abilities) {
+                playerCommit = players; abilityCommit = abilities;
+                validate();
+            }
+            public void validate() {
+                playerCommit.requireCurrent();
+                abilityCommit.requireCurrent();
+                validateAttributes();
+                managerCommit.validate();
+            }
+            public void commit() {
+                validate();
+                // No gameplay hooks run in these steps. Each completed step is idempotent.
+                commitManagers();
+                commitAttributes();
+                playerCommit.commit();
+                abilityCommit.commit();
+            }
+        }
+
         public CoreAbility.RollbackAbilityRestoration prepareAbilities(CoreAbility.RollbackIdReservation reservation,
                 CoreAbility.RollbackRegistry expected) {
             if (Thread.currentThread() != state.owner) throw new IllegalStateException("Restoration crossed threads");
