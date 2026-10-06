@@ -171,9 +171,14 @@ public final class CommonPlayerListenerCore {
     }
 
     public static void handleElementChanged(final Player player) {
+        handleElementChanged(player, true);
+    }
+
+    /** Shared lifecycle replay emits its board refresh separately from gameplay changes. */
+    public static void handleElementChanged(final Player player, final boolean refreshBoard) {
         PassiveManager.registerPassives(player);
         FirePassive.handle(player);
-        BendingBoardManager.updateAllSlots(player);
+        if (refreshBoard) BendingBoardManager.updateAllSlots(player);
     }
 
     public static void handleBindChanged(final Player player) {

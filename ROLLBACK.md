@@ -91,10 +91,23 @@ these are ordinary gameplay rules, not rollback enrollment restrictions.
 
 A portable graph test captures/imports the real listener through the installed catalog
 and verifies falling-block velocity cancellation, null-ability handling and skipping
-already-cancelled events. The remaining Paper-only event handlers include presentation
-and external effects; they still need appropriate transfer/commit handling before
-full production event capture can be installed. This extraction alone does not enable
-live rollback sessions.
+already-cancelled events. Lifecycle presentation and external effects use the explicit boundary described
+below. These shared handlers alone do not install a live rollback session.
+
+The remaining common lifecycle handlers now live in `CommonAbilityLifecycleListener`.
+Element/passive changes and ability-start cancellation remain shared gameplay;
+board refreshes, console commands and death presentation become immutable effect
+values. Its explicit effect-service binding lets private import replace the live
+Paper publisher with the session's provisional output destination. Paper registers
+the shared listener and retains an adapter for ordinary live publication; that
+adapter rejects calls during replay or off the server thread. Death presentation
+carries names/UUIDs rather than retaining mutable ability/player objects.
+
+Tests import the actual listener, replay late input, verify cancellation and effect
+replacement, and publish only finalized output once. This is an effect boundary,
+not an installed production publisher: match bootstrap must supply the binding,
+include it in its output encoding and deliver confirmed effects. Scoreboard state
+itself is still server-owned and is not transferred or made a new completion gate.
 
 ### Production assembly audit
 

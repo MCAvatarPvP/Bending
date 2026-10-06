@@ -31,6 +31,7 @@ import com.projectkorra.projectkorra.event.*;
 import com.projectkorra.projectkorra.firebending.*;
 import com.projectkorra.projectkorra.firebending.util.FireDamageTimer;
 import com.projectkorra.projectkorra.listener.CommonInputHandler;
+import com.projectkorra.projectkorra.listener.CommonAbilityLifecycleListener;
 import com.projectkorra.projectkorra.listener.CommonDamageHandler;
 import com.projectkorra.projectkorra.listener.CommonPlayerListenerCore;
 import com.projectkorra.projectkorra.object.HorizontalVelocityTracker;
@@ -84,7 +85,7 @@ import java.util.stream.Collectors;
 public class PKListener implements Listener {
     private final com.projectkorra.projectkorra.listener.CommonAbilityCombatListener combatEvents = new com.projectkorra.projectkorra.listener.CommonAbilityCombatListener();
 
-    private static final HashMap<UUID, Ability> BENDING_ENTITY_DEATH = new HashMap<>(); // Entities killed by Bending.
+    private static final HashMap<UUID, String> BENDING_ENTITY_DEATH = new HashMap<>(); // Entities killed by Bending.
     private static final HashMap<Player, String> BENDING_PLAYER_DEATH = new HashMap<>(); // Player killed by Bending.
     private static final Set<UUID> RIGHT_CLICK_INTERACT = new HashSet<>(); // Player right click block.
     @Deprecated
@@ -92,6 +93,37 @@ public class PKListener implements Listener {
     private static final Set<UUID> PLAYER_DROPPED_ITEM = new HashSet<>(); // Player dropped an item.
     private static final Map<Player, Integer> JUMPS = new HashMap<>();
     JavaPlugin plugin;
+    private final CommonAbilityLifecycleListener lifecycleEvents = new CommonAbilityLifecycleListener(this::publishLifecycleEffect);
+    public CommonAbilityLifecycleListener lifecycleEvents() { return lifecycleEvents; }
+
+    /** Called by ordinary live events, or by a session's confirmed output publisher. */
+    public void publishLifecycleEffect(CommonAbilityLifecycleListener.Effect effect) {
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()
+                || com.projectkorra.projectkorra.prediction.rollback.RollbackClock.active() || !org.bukkit.Bukkit.isPrimaryThread())
+            throw new IllegalStateException("Cannot publish lifecycle effects during replay");
+        if (effect instanceof CommonAbilityLifecycleListener.ConsoleCommand command) {
+            plugin.getServer().dispatchCommand(plugin.getServer().getConsoleSender(), command.command());
+        } else if (effect instanceof CommonAbilityLifecycleListener.Board board) {
+            Runnable update = () -> {
+                var nativePlayer = plugin.getServer().getPlayer(board.player());
+                if (nativePlayer == null) return;
+                var player = BukkitMC.player(nativePlayer);
+                if (board.allSlots()) BendingBoardManager.updateAllSlots(player);
+                else BendingBoardManager.updateBoard(player, board.ability(), false, board.slot());
+            };
+            if (board.delayed()) plugin.getServer().getScheduler().runTaskLater(plugin, update, 1);
+            else update.run();
+        } else if (effect instanceof CommonAbilityLifecycleListener.Death death) {
+            BENDING_ENTITY_DEATH.put(death.entity(), death.ability());
+            var player = death.player() ? plugin.getServer().getPlayer(death.entity()) : null;
+            if (player != null && death.message() != null) {
+                BENDING_PLAYER_DEATH.put(player, death.message());
+                plugin.getServer().getScheduler().runTaskLater(plugin,
+                        () -> BENDING_PLAYER_DEATH.remove(player, death.message()), 20);
+            }
+        } else throw new IllegalArgumentException("Unknown lifecycle effect");
+    }
+
 
     public PKListener(final JavaPlugin plugin) {
 
@@ -438,34 +470,8 @@ public class PKListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.NORMAL)
     public void onElementChange(final PlayerChangeElementEvent event) {
-        var oPlayer = event.getTarget();
-        if (oPlayer.isOnline()) {
-            final var player = oPlayer.getPlayer();
-            final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-            final boolean chatEnabled = ConfigManager.languageConfig.get().getBoolean("Chat.Enable");
-            if (chatEnabled) {
-                final Element element = event.getElement();
-                String prefix = "";
-
-                if (bPlayer == null) {
-                    return;
-                }
-
-                if (bPlayer.getElements().size() > 1) {
-                    prefix = Element.AVATAR.getPrefix();
-                } else if (element != null) {
-                    prefix = element.getPrefix();
-                } else {
-                    prefix = ChatColor.WHITE + ChatColor.translateAlternateColorCodes('&', ConfigManager.languageConfig.get().getString("Chat.Prefixes.Nonbender")) + " ";
-                }
-
-                player.setDisplayName(player.getName());
-                player.setDisplayName(prefix + ChatColor.RESET + player.getDisplayName());
-            }
-            CommonPlayerListenerCore.handleElementChanged(player);
-        }
+        lifecycleEvents.onElementChange(event);
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
@@ -583,9 +589,9 @@ public class PKListener implements Listener {
         final CoreAbility[] cookingFireCombos = {CoreAbility.getAbility("JetBlast"), CoreAbility.getAbility("FireWheel"), CoreAbility.getAbility("FireSpin"), CoreAbility.getAbility("FireKick")};
 
         if (BENDING_ENTITY_DEATH.containsKey(event.getEntity().getUniqueId())) {
-            final CoreAbility coreAbility = (CoreAbility) BENDING_ENTITY_DEATH.remove(event.getEntity().getUniqueId());
+            final String abilityName = BENDING_ENTITY_DEATH.remove(event.getEntity().getUniqueId());
             for (final CoreAbility fireCombo : cookingFireCombos) {
-                if (coreAbility.getName().equalsIgnoreCase(fireCombo.getName())) {
+                if (abilityName.equalsIgnoreCase(fireCombo.getName())) {
                     final List<ItemStack> drops = event.getDrops();
                     final List<ItemStack> newDrops = new ArrayList<>();
                     for (ItemStack cooked : drops) {
@@ -790,32 +796,8 @@ public class PKListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.NORMAL)
     public void onEntityBendingDeath(final EntityBendingDeathEvent event) {
-        BENDING_ENTITY_DEATH.put(event.getEntity().getUniqueId(), event.getAbility());
-        if (event.getEntity() instanceof com.projectkorra.projectkorra.platform.mc.entity.Player player) {
-            if (ConfigManager.languageConfig.get().getBoolean("DeathMessages.Enabled")) {
-                final Ability ability = event.getAbility();
-                if (ability == null) {
-                    return;
-                }
-
-                BENDING_PLAYER_DEATH.put(BukkitMC.playerHandle(player), ability.getElement().getColor() + ability.getName());
-
-                new BukkitRunnable() {
-                    @Override
-                    public void run() {
-                        BENDING_PLAYER_DEATH.remove(player);
-                    }
-                }.runTaskLater(plugin, 20);
-            }
-            if (event.getAttacker() != null && ProjectKorra.isStatisticsEnabled()) {
-                StatisticsMethods.addStatisticAbility(event.getAttacker().getUniqueId(), CoreAbility.getAbility(event.getAbility().getName()), com.projectkorra.projectkorra.util.Statistic.PLAYER_KILLS, 1);
-            }
-        }
-        if (event.getAttacker() != null && ProjectKorra.isStatisticsEnabled()) {
-            StatisticsMethods.addStatisticAbility(event.getAttacker().getUniqueId(), CoreAbility.getAbility(event.getAbility().getName()), com.projectkorra.projectkorra.util.Statistic.TOTAL_KILLS, 1);
-        }
+        lifecycleEvents.onEntityBendingDeath(event);
     }
 
     @EventHandler
@@ -1408,47 +1390,16 @@ public class PKListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
     public void onBendingSubElementChange(final PlayerChangeSubElementEvent event) {
-        if (!event.isTargetOnline()) return;
-        final var player = event.getTarget().getPlayer();
-        final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-        if (bPlayer == null) return;
-        CommonPlayerListenerCore.handleElementChanged(player);
+        lifecycleEvents.onBendingSubElementChange(event);
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
     public void onBindChange(final PlayerBindChangeEvent event) {
-        if (!event.isOnline()) return;
-        final var player = event.getPlayer().getPlayer();
-        if (player == null) return;
-        if (event.isMultiAbility()) {
-            new BukkitRunnable() {
-
-                @Override
-                public void run() {
-                    BendingBoardManager.updateAllSlots(player);
-                }
-            }.runTaskLater(plugin, 1);
-        } else {
-            if (event.isBinding()) {
-                BendingBoardManager.updateBoard(player, event.getAbility(), false, event.getSlot());
-            } else {
-                BendingBoardManager.updateBoard(player, "", false, event.getSlot());
-            }
-        }
+        lifecycleEvents.onBindChange(event);
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerStanceChange(final PlayerStanceChangeEvent event) {
-        final var player = event.getPlayer();
-        if (player == null) return;
-        if (!event.getOldStance().isEmpty()) {
-            BendingBoardManager.updateBoard(player, event.getOldStance(), false, 0);
-        }
-        if (!event.getNewStance().isEmpty()) {
-            BendingBoardManager.updateBoard(player, event.getNewStance(), false, 0);
-        }
+        lifecycleEvents.onPlayerStanceChange(event);
     }
 
     @EventHandler
@@ -1458,16 +1409,8 @@ public class PKListener implements Listener {
         BendingPlayer.BIND_HOOKS.remove((JavaPlugin) event.getPlugin());
     }
 
-    @EventHandler
     public void onAbilityStart(AbilityStartEvent event) {
-        var player = event.getAbility().getPlayer();
-        if (player.hasPermission("bending.funny.abilstart")) {
-            Server server = plugin.getServer();
-            String cmd = ConfigManager.getConfig().getString("Properties.FunnyCMD").replace("{player}", player.getName());
-            if (cmd.isEmpty()) return;
-            server.dispatchCommand(server.getConsoleSender(), cmd);
-            event.setCancelled(true);
-        }
+        lifecycleEvents.onAbilityStart(event);
     }
 
     public void onAbilityDamage(final AbilityDamageEntityEvent event) {
