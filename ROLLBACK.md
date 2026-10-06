@@ -72,6 +72,16 @@ and prevents simulation/teardown during capture. A failed capture permanently bl
 simulation on that owner while preserving its gates for startup abort. The unowned
 capture API remains for isolated capture callers; production bootstrap must use the
 owned path. Complete production catalogs and bootstrap installation remain outstanding.
+Scheduled callback selection now has a generic reference-based resolver. It recognizes
+captured player/bending-player/ability ownership, participant UUIDs and explicit
+participant-only service identities, including untagged lambdas and cyclic container
+state. It reevaluates references on every selection and rejects a callback shared with
+an outside player. Shared loader infrastructure needs an explicit traversal boundary;
+unknown opaque state fails selection. Global service tickers still need their own live
+roster gates, and this resolver does not discover work hidden exclusively in static
+registries. The native roster integration fixture now uses this resolver instead of
+callback identity selection. Production infrastructure boundaries/service roots remain
+to be assembled with the full bootstrap; this does not enable duels by itself.
 Live scheduler restoration/replacement now accepts a synchronous whole-state commit.
 Native callback submissions are staged while dispatch remains gated; only a successful
 external commit activates callbacks and publishes replacement handles. Failed state

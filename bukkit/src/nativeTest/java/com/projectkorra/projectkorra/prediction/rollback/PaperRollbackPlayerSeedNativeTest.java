@@ -742,12 +742,16 @@ class PaperRollbackPlayerSeedNativeTest {
                             (proxy, method, args) -> { if (method.getName().equals("scheduler")) return scheduler; throw new UnsupportedOperationException(method.getName()); });
                     try (var scope = com.projectkorra.projectkorra.platform.Platform.using(platform)) {
                         var history = new java.util.ArrayList<String>();
-                        Runnable originalTask = () -> history.add("original");
+                        Runnable originalTask = new Runnable() {
+                            final UUID participant = a.getUUID();
+                            @Override public void run() { history.add("original"); }
+                        };
                         scheduler.runLater(originalTask, 1);
                         scheduler.runLater(() -> history.add("outsider"), 1);
                         var lifecycle = new PaperRollbackLifecycle(() -> true);
                         var group = PaperRollbackLiveOwnership.prepare(List.of(a, b), scheduler,
-                                work -> work.callback() == originalTask, 8, lifecycle, () -> fail("Unexpected lifecycle stop"));
+                                new RollbackTaskOwnership(java.util.Set.of(a.getUUID(), b.getUUID()), List.of(),
+                                        value -> value instanceof ServerPlayer, 1_000), 8, lifecycle, () -> fail("Unexpected lifecycle stop"));
                         assertFalse(RollbackLiveOwnership.blocks(a.getUUID()));
                         group.acquire();
                         assertTrue(RollbackLiveOwnership.blocks(a.getUUID())); assertTrue(RollbackLiveOwnership.blocks(b.getUUID()));
