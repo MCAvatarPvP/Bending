@@ -119,6 +119,7 @@ class FabricRollbackExecutionTest {
             assertThrows(IllegalArgumentException.class, scene.runtime::advance);
             assertEquals(2, scene.fixture.activations);
             assertTrue(scene.runtime.failed()); assertNull(scene.fixture.effects);
+            assertThrows(IllegalStateException.class, () -> scene.fixture.output.accept("late callback"));
             assertFalse(RollbackDomain.active()); assertFalse(RollbackClock.active());
             assertEquals(0, PredictionDeterminism.currentAction()); assertEquals(0, PredictionDeterminism.currentSeed());
             assertEquals(0, scene.runtime.diagnostics().confirmedTick());
@@ -266,6 +267,7 @@ class FabricRollbackExecutionTest {
         var fixture = new Fixture();
         prepare.accept(fixture);
         var execution = new FabricRollbackExecution<Object>(List.of(fixture.defender, fixture.attacker), fixture);
+        fixture.output = execution.output();
         var shared = sharedRoots();
         var scheduler = new RollbackScheduler(50, 50);
         var prediction = PredictionServices.builder().bind(AbilityRemovalSync.Listener.class,
@@ -374,6 +376,7 @@ class FabricRollbackExecutionTest {
         final RollbackPlayer attacker = player(A, 0.5), defender = player(B, 2);
         final List<String> history = new ArrayList<>();
         RollbackStep<Object> effects;
+        java.util.function.Consumer<Object> output;
         int activations, worldTicks;
         Fixture() {
             for (int x = -3; x <= 8; x++) for (int z = -3; z <= 10; z++) {
@@ -396,7 +399,7 @@ class FabricRollbackExecutionTest {
                     new RollbackPlayerState.Profile(state.identity().name(), "SURVIVAL", "RIGHT", true, false, true, 100),
                     Set.of(), new com.projectkorra.projectkorra.platform.mc.scoreboard.Scoreboard(), rules, state));
         }
-        void record(String value) { history.add(value); effects.emit(value); }
+        void record(String value) { history.add(value); this.output.accept(value); }
         @Override public void begin(RollbackStep<Object> output) {
             assertNull(effects); effects = output; queries.time = output.tick(); queries.outputs.clear(); queries.events.clear(); queries.waypoints.clear();
         }
@@ -405,16 +408,16 @@ class FabricRollbackExecutionTest {
             assertTrue(result.cancelEvent());
             assertEquals(edge.action().sequence(), PredictionDeterminism.currentAction());
             assertEquals(edge.action().seed(), PredictionDeterminism.currentSeed());
-            effects.emit(new ActionOutput(edge.action().sequence(), player.getLocation().getYaw(), result.cancelEvent()));
+            this.output.accept(new ActionOutput(edge.action().sequence(), player.getLocation().getYaw(), result.cancelEvent()));
         }
         @Override public void tickWorld(long tick) { worldTicks++; record("world:" + tick); }
         @Override public void end() {
             if (effects == null) return;
             try {
-                queries.outputs.forEach(effects::emit);
+                queries.outputs.forEach(this.output::accept);
                 for (var player : List.of(attacker, defender)) {
                     var state = (FabricRollbackNativePlayerState) player.body().kinematicsSource();
-                    effects.emit(new PlayerFrame(player.getUniqueId(), player.body().kinematics(), player.getHealth(),
+                    this.output.accept(new PlayerFrame(player.getUniqueId(), player.body().kinematics(), player.getHealth(),
                             state.use(value -> value.age)));
                 }
             } finally { effects = null; }

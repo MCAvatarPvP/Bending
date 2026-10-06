@@ -20,6 +20,8 @@ public final class RollbackClock {
         return CURRENT.get() != null;
     }
 
+    static Object identity() { return CURRENT.get(); }
+
     static long nextRandomSeed() {
         final Time time = CURRENT.get();
         if (time == null) throw new IllegalStateException("No simulation clock");

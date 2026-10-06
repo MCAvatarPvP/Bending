@@ -63,9 +63,15 @@ package. Similarly, `PaperRollbackWorldServicesNativeTest.Callbacks` is the only
 combined spatial/events implementation found there; its sky query always returns
 true. Do not install these fixture behaviors or advertise bootstrap support from them.
 
-Before assembling the production match bootstrap, provide private execution output
-routing and native action remainder handling, plus spatial/event bindings over the
-captured world. `PaperRollbackBorder` and `PaperRollbackEnvironment` already provide
+Shared player execution now owns a stable `RollbackStepOutput` destination. It binds
+the current provisional buffer before service startup and closes it after service/control
+cleanup even when the tick fails. The destination rejects emissions outside its exact
+clock scope, nested binding and checkpoints during an open tick. Both native execution
+fixtures now forward their effects through it, with late-input replay and failure cleanup
+coverage. Native producers still need production event/output encoding and service
+installation; the router does not by itself assemble those policies.
+Before assembling the production match bootstrap, provide native action remainder
+handling and complete event bindings over the captured world. `PaperRollbackBorder` and `PaperRollbackEnvironment` already provide
 owned border/environment components. `PaperRollbackSpatial` now combines these with
 private native lighting for the production spatial binding: `PaperRollbackWorldQueries.Services` requires private sky lighting, while
 `RollbackBlockStore.Cell` carries a single generic light level. The world seed now

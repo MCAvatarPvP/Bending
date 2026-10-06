@@ -41,6 +41,8 @@ public abstract class RollbackPlayerExecution<E> implements RollbackCombatRuntim
     private long tick = -1;
     private boolean worldTicked;
     private RollbackControlEvents controlEvents;
+    private final RollbackStepOutput<E> output = new RollbackStepOutput<>();
+    private RollbackStepOutput<E>.Binding outputBinding;
 
     protected RollbackPlayerExecution(Collection<RollbackPlayer> participants, Services<E, ?> services) {
         if (RollbackClock.active()) throw new IllegalStateException("Construct player execution before replay");
@@ -57,6 +59,9 @@ public abstract class RollbackPlayerExecution<E> implements RollbackCombatRuntim
         }
     }
 
+    /** Stable destination for detached native effects; it rejects emissions outside this execution's tick. */
+    public final java.util.function.Consumer<E> output() { requireThread(); return output; }
+
     /** Loader constructors validate that all logical views share the owned native state. */
     protected abstract void movementInput(RollbackPlayer player, RollbackMovementInput input);
     protected abstract void tickPlayer(RollbackPlayer player);
@@ -71,6 +76,7 @@ public abstract class RollbackPlayerExecution<E> implements RollbackCombatRuntim
         if (!RollbackDomain.active() || !RollbackClock.active()) throw new IllegalStateException("No combat replay tick");
         tick = Objects.requireNonNull(effects, "effects").tick();
         worldTicked = false; applied.clear();
+        outputBinding = output.open(effects);
         controlEvents = new RollbackControlEvents(players);
         services.begin(effects);
     }
@@ -122,7 +128,10 @@ public abstract class RollbackPlayerExecution<E> implements RollbackCombatRuntim
         try { services.end(); }
         finally {
             try { if (controlEvents != null) controlEvents.close(); }
-            finally { controlEvents = null; tick = -1; applied.clear(); worldTicked = false; }
+            finally {
+                try { if (outputBinding != null) outputBinding.close(); }
+                finally { outputBinding = null; controlEvents = null; tick = -1; applied.clear(); worldTicked = false; }
+            }
         }
     }
 
@@ -136,7 +145,7 @@ public abstract class RollbackPlayerExecution<E> implements RollbackCombatRuntim
     }
     @Override public final List<?> rollbackReferences() {
         requireIdle();
-        var roots = new ArrayList<Object>(); roots.add(services);
+        var roots = new ArrayList<Object>(); roots.add(services); roots.add(output);
         roots.addAll(players.values());
         return List.copyOf(roots);
     }
