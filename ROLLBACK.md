@@ -71,7 +71,14 @@ fixtures now forward their effects through it, with late-input replay and failur
 coverage. Native producers still need production event/output encoding and service
 installation; the router does not by itself assemble those policies.
 Before assembling the production match bootstrap, provide native action remainder
-handling and complete event bindings over the captured world. `PaperRollbackBorder` and `PaperRollbackEnvironment` already provide
+handling and complete event bindings over the captured world.
+Both native world-service adapters now accept the replay tick explicitly. Repeated
+calls for that tick are inert, skipped/backward ticks reject, and the last accepted
+tick rewinds with game time. Daylight advances with the captured native advance_time
+rule, including midnight rollover, while a disabled rule keeps it fixed. Tests on
+both loaders restore world conditions and tick identity together. Production service
+startup must call this before scheduled work and player simulation; it must not tick
+player bodies again in the remaining world phase. `PaperRollbackBorder` and `PaperRollbackEnvironment` already provide
 owned border/environment components. `PaperRollbackSpatial` now combines these with
 private native lighting for the production spatial binding: `PaperRollbackWorldQueries.Services` requires private sky lighting, while
 `RollbackBlockStore.Cell` carries a single generic light level. The world seed now

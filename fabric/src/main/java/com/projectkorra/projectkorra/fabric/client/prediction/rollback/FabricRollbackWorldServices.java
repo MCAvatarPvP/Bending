@@ -41,8 +41,8 @@ public final class FabricRollbackWorldServices implements FabricRollbackWorldQue
     }
     public static final class Snapshot {
         private final FabricRollbackWorldServices owner;
-        private final long time;
-        private Snapshot(FabricRollbackWorldServices owner) { this.owner = owner; time = owner.time; }
+        private final long time, lastTick;
+        private Snapshot(FabricRollbackWorldServices owner) { this.owner = owner; time = owner.time; lastTick = owner.lastTick; }
     }
     private final Thread thread = Thread.currentThread();
     private final RollbackWorldSettings settings;
@@ -53,7 +53,7 @@ public final class FabricRollbackWorldServices implements FabricRollbackWorldQue
     private final Map<GameRule<?>, Object> rules;
     private final Random random;
     private final RollbackRandom soundRandom;
-    private long time;
+    private long time, lastTick;
 
     public FabricRollbackWorldServices(RollbackWorldSettings settings, RollbackWorld logical, DynamicRegistryManager.Immutable registries, FeatureSet features,
                                        Spatial<?> spatial, Events<?> events) {
@@ -82,7 +82,22 @@ public final class FabricRollbackWorldServices implements FabricRollbackWorldQue
     }
     public RollbackWorldSettings settings() { checkThread(); return settings; }
     /** The session owner advances this once per world tick, before ticking its roster. */
-    public void advanceTick() { checkThread(); long next = Math.incrementExact(time); spatial.advanceTick(next); time = next; }
+    public void advanceTick() { advanceTick(Math.incrementExact(lastTick)); }
+    /** Idempotent for this replay tick; skipped/backward ticks require restoring a checkpoint. */
+    public void advanceTick(long tick) {
+        checkThread();
+        if (tick < 1) throw new IllegalArgumentException("Simulation ticks start at one");
+        if (tick == lastTick) return;
+        if (tick != Math.incrementExact(lastTick)) throw new IllegalStateException("World tick skipped or moved backwards without rewind");
+        long next = Math.incrementExact(time);
+        var previous = logical.conditions();
+        long day = (Boolean) rules.get(GameRules.ADVANCE_TIME) ? Math.incrementExact(previous.fullTime()) : previous.fullTime();
+        var conditions = new RollbackWorld.Conditions(Math.floorMod(day, 24_000L), day,
+                previous.difficulty(), previous.storm(), previous.loadedChunks());
+        spatial.advanceTick(next);
+        logical.conditions(conditions);
+        time = next; lastTick = tick;
+    }
     @Override public DynamicRegistryManager.Immutable registries() { checkThread(); return registries; }
     @Override public EnvironmentAttributeAccess environmentAttributes() { checkThread(); return spatial.environmentAttributes(); }
     @Override public WorldBorder border() { checkThread(); return spatial.border(); }
@@ -101,7 +116,7 @@ public final class FabricRollbackWorldServices implements FabricRollbackWorldQue
     @Override public boolean flightAllowed(UUID player, boolean flying, boolean cancelled) { checkThread(); return events.flightAllowed(player, flying, cancelled); }
     @Override public boolean glideAllowed(UUID player, boolean gliding, boolean cancelled) { checkThread(); return events.glideAllowed(player, gliding, cancelled); }
     @Override public Snapshot captureRollbackState() { checkThread(); return new Snapshot(this); }
-    @Override public void restoreRollbackState(Snapshot snapshot) { checkThread(); if (snapshot.owner != this) throw new IllegalArgumentException("Foreign world checkpoint"); time = snapshot.time; }
+    @Override public void restoreRollbackState(Snapshot snapshot) { checkThread(); if (snapshot.owner != this) throw new IllegalArgumentException("Foreign world checkpoint"); time = snapshot.time; lastTick = snapshot.lastTick; }
     @Override public List<?> rollbackReferences() { checkThread(); return List.of(logical, random, soundRandom, spatial, events); }
     private void checkThread() { if (thread != Thread.currentThread()) throw new IllegalStateException("Private world services crossed threads"); }
 }

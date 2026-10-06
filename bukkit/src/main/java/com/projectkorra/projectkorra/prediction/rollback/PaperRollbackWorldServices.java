@@ -30,8 +30,8 @@ public final class PaperRollbackWorldServices implements PaperRollbackWorldAcces
     }
     public static final class Snapshot {
         private final PaperRollbackWorldServices owner;
-        private final long time;
-        private Snapshot(PaperRollbackWorldServices owner) { this.owner = owner; time = owner.time; }
+        private final long time, lastTick;
+        private Snapshot(PaperRollbackWorldServices owner) { this.owner = owner; time = owner.time; lastTick = owner.lastTick; }
     }
     private final Thread thread = Thread.currentThread();
     private final RollbackWorldSettings settings;
@@ -43,7 +43,7 @@ public final class PaperRollbackWorldServices implements PaperRollbackWorldAcces
     private final RandomSource random;
     private final RollbackRandom soundRandom;
     private final PaperRollbackWorldAccess.WorldPolicy worldPolicy;
-    private long time;
+    private long time, lastTick;
 
     public PaperRollbackWorldServices(RollbackWorldSettings settings, RollbackWorld logical, RegistryAccess.Frozen registries, FeatureFlagSet features,
                                       Spatial<?> spatial, Events<?> events) {
@@ -74,7 +74,22 @@ public final class PaperRollbackWorldServices implements PaperRollbackWorldAcces
     }
     public RollbackWorldSettings settings() { checkThread(); return settings; }
     /** The session owner advances this once per world tick, before ticking its roster. */
-    public void advanceTick() { checkThread(); long next = Math.incrementExact(time); spatial.advanceTick(next); time = next; }
+    public void advanceTick() { advanceTick(Math.incrementExact(lastTick)); }
+    /** Idempotent for this replay tick; skipped/backward ticks require restoring a checkpoint. */
+    public void advanceTick(long tick) {
+        checkThread();
+        if (tick < 1) throw new IllegalArgumentException("Simulation ticks start at one");
+        if (tick == lastTick) return;
+        if (tick != Math.incrementExact(lastTick)) throw new IllegalStateException("World tick skipped or moved backwards without rewind");
+        long next = Math.incrementExact(time);
+        var previous = logical.conditions();
+        long day = (Boolean) rules.get(GameRules.ADVANCE_TIME) ? Math.incrementExact(previous.fullTime()) : previous.fullTime();
+        var conditions = new RollbackWorld.Conditions(Math.floorMod(day, 24_000L), day,
+                previous.difficulty(), previous.storm(), previous.loadedChunks());
+        spatial.advanceTick(next);
+        logical.conditions(conditions);
+        time = next; lastTick = tick;
+    }
     @Override public RegistryAccess.Frozen registries() { checkThread(); return registries; }
     @Override public RegistryAccess.Frozen registryAccess() { return registries(); }
     @Override public Difficulty difficulty() { checkThread(); return Difficulty.valueOf(logical.conditions().difficulty()); }
@@ -104,7 +119,7 @@ public final class PaperRollbackWorldServices implements PaperRollbackWorldAcces
     @Override public void gameEvent(Object event, Object position, Object context) { checkThread(); events.gameEvent(event, position, context); }
     @Override public void output(PaperRollbackCombatAccess.Output output) { checkThread(); events.output(output); }
     @Override public Snapshot captureRollbackState() { checkThread(); return new Snapshot(this); }
-    @Override public void restoreRollbackState(Snapshot snapshot) { checkThread(); if (snapshot.owner != this) throw new IllegalArgumentException("Foreign world checkpoint"); time = snapshot.time; }
+    @Override public void restoreRollbackState(Snapshot snapshot) { checkThread(); if (snapshot.owner != this) throw new IllegalArgumentException("Foreign world checkpoint"); time = snapshot.time; lastTick = snapshot.lastTick; }
     @Override public List<?> rollbackReferences() { checkThread(); return List.of(logical, random, soundRandom, spatial, events); }
     private void checkThread() { if (thread != Thread.currentThread()) throw new IllegalStateException("Private world services crossed threads"); }
 }

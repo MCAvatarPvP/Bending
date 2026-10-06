@@ -25,6 +25,38 @@ class PaperRollbackWorldServicesNativeTest {
                 .15F, .3F, 7, 3, false, true, 3.5F, -32.5, OptionalInt.of(125));
         return PaperRollbackWorldSettings.capture(rules, 20, 57, 53, 63, RollbackWorldSettings.Difficulty.HARD, policy);
     }
+    @Test void daylightAndTickIdentityRewindAndHonorTheCapturedTimeRule() throws Exception {
+        onTickThread(() -> {
+            for (boolean advances : new boolean[]{true, false}) {
+                var callbacks = new Callbacks(); var seed = settings();
+                var rules = new TreeMap<>(seed.rules());
+                assertTrue(rules.containsKey("minecraft:advance_time"));
+                rules.put("minecraft:advance_time", new RollbackWorldSettings.Flag(advances));
+                var settings = new RollbackWorldSettings(seed.gameTime(), seed.randomSeed(), seed.soundSeed(), seed.seaLevel(), seed.difficulty(), seed.policy(), rules);
+                var services = services(settings, callbacks);
+                var before = callbacks.logical.conditions();
+                callbacks.logical.conditions(new com.projectkorra.projectkorra.prediction.rollback.world.RollbackWorld.Conditions(
+                        23999, 23999, before.difficulty(), before.storm(), before.loadedChunks()));
+                var snapshot = new RollbackStateGraph(value -> false, field -> true, 100_000).capture(List.of(services), List.of());
+                services.advanceTick(1);
+                assertEquals(21, services.time());
+                assertEquals(advances ? 24000 : 23999, callbacks.logical.getFullTime());
+                assertEquals(advances ? 0 : 23999, callbacks.logical.getTime());
+                var border = callbacks.border.data();
+                services.advanceTick(1);
+                assertEquals(21, services.time()); assertEquals(border, callbacks.border.data());
+                assertThrows(IllegalStateException.class, () -> services.advanceTick(3));
+                services.advanceTick(2);
+                assertThrows(IllegalStateException.class, () -> services.advanceTick(1));
+                snapshot.restore();
+                assertEquals(23999, callbacks.logical.getFullTime());
+                services.advanceTick(1);
+                assertEquals(21, services.time()); assertEquals(border, callbacks.border.data());
+                assertEquals(advances ? 24000 : 23999, callbacks.logical.getFullTime());
+            }
+            return null;
+        });
+    }
     @Test void capturedNativeRulesMatchThePortableReference() throws Exception {
         onTickThread(() -> {
             var data = settings(); var encoded = Base64.getEncoder().encodeToString(data.encode());
