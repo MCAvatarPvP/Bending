@@ -49,6 +49,14 @@ state that actually determines those outcomes.
 
 ### October 5, 2026 integration update
 
+Portable graph catalogs now normalize Paper's Commons/SnakeYAML package relocations
+when ordering types and hashing schemas, while retaining each loader's own classes.
+The canonical names survive Shadow's string rewriting. Tests transfer cyclic objects,
+typed arrays, class symbols and external bindings in both directions; a separate run
+against the freshly shaded Paper jar verifies actual relocated MutablePair instances.
+Common, Paper and Fabric tests and both packaged builds pass. Production catalog/root
+assembly and the loader bootstrap providers remain required before live duels can start.
+
 The shared activation dispatcher, bending/passive checks and combo mutation paths now
 honor live roster ownership. An owned player's live inputs cannot invoke registered
 handlers or combo constructors, schedule/consume combo clicks, or edit recent inputs.

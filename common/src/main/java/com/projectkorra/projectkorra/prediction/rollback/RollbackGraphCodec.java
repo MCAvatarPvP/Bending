@@ -74,7 +74,7 @@ public final class RollbackGraphCodec {
             for (Binding binding : bindings) all.add(binding.type());
             for (Class<?> type : all) {
                 if (type.isHidden() || type == void.class) throw invalid("symbol type");
-                Class<?> previous = sorted.putIfAbsent(type.getName(), type);
+                Class<?> previous = sorted.putIfAbsent(sharedTypeName(type), type);
                 if (previous != null && previous != type) throw invalid("ambiguous class name");
             }
             this.types = List.copyOf(sorted.values());
@@ -95,13 +95,13 @@ public final class RollbackGraphCodec {
                 out.writeInt(VERSION);
                 out.writeInt(types.size());
                 for (Class<?> type : types) {
-                    schemaString(out, type.getName());
+                    schemaString(out, sharedTypeName(type));
                     var layout = layouts.get(type);
                     out.writeInt(layout == null ? -1 : layout.fields.size());
                     if (layout != null) for (var access : layout.fields) {
-                        schemaString(out, access.field.getDeclaringClass().getName());
+                        schemaString(out, sharedTypeName(access.field.getDeclaringClass()));
                         schemaString(out, access.field.getName());
-                        schemaString(out, access.field.getType().getName());
+                        schemaString(out, sharedTypeName(access.field.getType()));
                         out.writeInt(access.field.getModifiers());
                     }
                     Object[] constants = type.isEnum() ? type.getEnumConstants() : new Object[0];
@@ -111,10 +111,29 @@ public final class RollbackGraphCodec {
                 out.writeInt(this.bindings.size());
                 for (Binding binding : this.bindings) {
                     schemaString(out, binding.id());
-                    schemaString(out, binding.type().getName());
+                    schemaString(out, sharedTypeName(binding.type()));
                 }
                 fingerprint = MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray());
             } catch (IOException | NoSuchAlgorithmException exception) { throw new IllegalStateException(exception); }
+        }
+
+        /** Stable schema names for the library relocations used by the Paper artifact. */
+        private static String sharedTypeName(Class<?> type) {
+            String name = type.getName();
+            int dimensions = name.lastIndexOf('[') + 1;
+            if (dimensions > 0) {
+                if (name.charAt(dimensions) != 'L') return name;
+                return name.substring(0, dimensions + 1)
+                        + sharedClassName(name.substring(dimensions + 1, name.length() - 1)) + ";";
+            }
+            return sharedClassName(name);
+        }
+        private static String sharedClassName(String name) {
+            // These are dependency package aliases, never an ability-selection policy.
+            // Build original names at runtime so Shadow does not relocate the canonical strings too.
+            if (name.startsWith("commonslang3.projectkorra.")) return String.join(".", "org", "apache", "commons") + "." + name.substring("commonslang3.projectkorra.".length());
+            if (name.startsWith("com.projectkorra.libs.snakeyaml.")) return String.join(".", "org", "yaml", "snakeyaml") + "." + name.substring("com.projectkorra.libs.snakeyaml.".length());
+            return name;
         }
 
         public byte[] fingerprint() { return fingerprint.clone(); }
