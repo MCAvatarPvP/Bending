@@ -55,6 +55,19 @@ implemented by the plugin and verified against the packaged Paper version.
 
 ### October 5, 2026 integration update
 
+Paper prediction startup now installs `PaperRollbackLifecycle`, with an explicit
+whole-roster reservation API for the pending bootstrap/runtime owner. Commands,
+teleports, mounts/dismounts and kicks request whole-duel teardown before continuing;
+failed or incomplete teardown cancels cancellable events and retains ownership.
+Quit/world-change events also request teardown. Shutdown attempts every reserved
+duel and retains failed reservations for retry. Unreserved players and events inside
+private simulation do not trigger teardown. Tests cover whole-roster release,
+outside players, cancelled mutation, two affected duels, replay bypass and failed
+shutdown retry. The production bootstrap still must reserve this listener and
+release its reservation only after native/common/terrain restoration succeeds.
+Native death/damage, asynchronous plugin mutations and live listener integration
+remain to be completed and verified; installing the empty listener enables no duels.
+
 `PaperRollbackNativeOwnership` now composes the world tick gate and every roster
 connection gate behind one preparation/cleanup owner. Acquisition failures retain
 acquired components for cleanup. Startup polls every participant's network/server

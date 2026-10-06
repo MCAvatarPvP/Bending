@@ -48,6 +48,7 @@ import com.projectkorra.projectkorra.listener.CommonInputHandler;
 import com.projectkorra.projectkorra.platform.bukkit.BukkitMC;
 import com.projectkorra.projectkorra.prediction.rollback.PaperRollbackMatchBootstrap;
 import com.projectkorra.projectkorra.prediction.rollback.PaperRollbackBootstraps;
+import com.projectkorra.projectkorra.prediction.rollback.PaperRollbackLifecycle;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackBootstrapData;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackBootstrapServerEndpoint;
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackTerrainCodec;
@@ -94,6 +95,11 @@ public final class PaperPredictionServer extends PaperPredictionSnapshots {
 
     public PaperRollbackMatchBootstrap rollbackMatchBootstrap() {
         return active == this ? rollbackMatchBootstrap : null;
+    }
+
+    public PaperRollbackLifecycle.Lease reserveRollbackLifecycle(Set<UUID> players, Runnable stop) {
+        if (active != this) throw new IllegalStateException("Prediction server is not active");
+        return rollbackLifecycle.reserve(players, stop);
     }
 
     public boolean supportsRollbackBootstrap(Set<UUID> players) { return active == this && rollbackBootstraps.supports(players); }
@@ -159,6 +165,7 @@ public final class PaperPredictionServer extends PaperPredictionSnapshots {
         PaperPredictionServer server = new PaperPredictionServer(plugin);
         server.registerChannels();
         active = server;
+        server.rollbackLifecycle.install(plugin);
         TempBlockSync.install(server);
         DirectBlockSync.install(server);
         TempFallingBlockSync.install(server);

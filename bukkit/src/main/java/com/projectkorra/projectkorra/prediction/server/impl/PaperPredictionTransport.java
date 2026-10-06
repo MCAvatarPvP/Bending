@@ -77,6 +77,8 @@ public abstract class PaperPredictionTransport extends PaperPredictionUtilities 
         if (task != null) task.cancel();
         try { rollbackStarts.shutdown(); }
         catch (RuntimeException | Error failure) { plugin.getLogger().log(java.util.logging.Level.SEVERE, "Rollback start/runtime cleanup failed", failure); }
+        try { rollbackLifecycle.close(); }
+        catch (RuntimeException | Error failure) { plugin.getLogger().log(java.util.logging.Level.SEVERE, "Rollback lifecycle cleanup failed", failure); }
         try { rollbackBootstraps.shutdown(); }
         catch (RuntimeException | Error failure) { plugin.getLogger().log(java.util.logging.Level.SEVERE, "Rollback bootstrap cleanup failed", failure); }
         try { rollbackInputs.shutdown(); }
