@@ -256,6 +256,20 @@ class PaperRollbackServerDamageNativeTest {
             assertEquals(7, health.getHealth()); assertEquals(8, health.getFood());
             assertNotSame(health, decoder.decode(output));
             assertThrows(IllegalArgumentException.class, () -> decoder.decode(new PaperRollbackConnection.PacketOutput(output.target(), "wrong", output.payload())));
+            int[] unauditedId = {-1};
+            GameProtocols.CLIENTBOUND_TEMPLATE.details().listPackets((type, id) -> {
+                if (type == GamePacketTypes.CLIENTBOUND_CONTAINER_SET_CONTENT) unauditedId[0] = id;
+            });
+            assertTrue(unauditedId[0] >= 0);
+            var header = Unpooled.buffer();
+            try {
+                net.minecraft.network.VarInt.write(header, unauditedId[0]);
+                var headerBytes = new byte[header.readableBytes()]; header.readBytes(headerBytes);
+                var invalid = new PaperRollbackConnection.PacketOutput(output.target(),
+                        GamePacketTypes.CLIENTBOUND_CONTAINER_SET_CONTENT.id().toString(), Base64.getEncoder().encodeToString(headerBytes));
+                assertEquals("Packet output ID/type is not audited", assertThrows(IllegalArgumentException.class,
+                        () -> decoder.decode(invalid)).getMessage(), "Must reject the header before the absent inventory body can be decoded");
+            } finally { header.release(); }
             var raw = Base64.getDecoder().decode(output.payload());
             var trailing = Base64.getEncoder().encodeToString(java.util.Arrays.copyOf(raw, raw.length + 1));
             assertThrows(IllegalArgumentException.class, () -> decoder.decode(new PaperRollbackConnection.PacketOutput(output.target(), output.type(), trailing)));

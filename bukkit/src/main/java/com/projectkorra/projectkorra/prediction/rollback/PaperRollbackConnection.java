@@ -20,16 +20,25 @@ import java.util.Set;
 public final class PaperRollbackConnection implements RollbackStateCell<Boolean> {
     // These native codecs use only primitive packet data and the supplied registry.
     // Other codecs (notably items/chat) still reach live sanitizers or registries.
-    private static final Set<Class<?>> AUDITED_PACKETS = Set.of(ClientboundSetHealthPacket.class,
-            ClientboundUpdateAttributesPacket.class, ClientboundHurtAnimationPacket.class,
-            ClientboundUpdateMobEffectPacket.class, ClientboundRemoveMobEffectPacket.class,
-            ClientboundSoundPacket.class, ClientboundEntityEventPacket.class,
-            ClientboundSetEntityMotionPacket.class, ClientboundSetExperiencePacket.class,
-            ClientboundDamageEventPacket.class, ClientboundPlayerCombatEnterPacket.class, ClientboundPlayerCombatEndPacket.class,
-            ClientboundPlayerAbilitiesPacket.class, ClientboundCooldownPacket.class);
+    private static final java.util.Map<Class<?>, net.minecraft.network.protocol.PacketType<?>> AUDITED_PACKETS = java.util.Map.ofEntries(
+            java.util.Map.entry(ClientboundSetHealthPacket.class, GamePacketTypes.CLIENTBOUND_SET_HEALTH),
+            java.util.Map.entry(ClientboundUpdateAttributesPacket.class, GamePacketTypes.CLIENTBOUND_UPDATE_ATTRIBUTES),
+            java.util.Map.entry(ClientboundHurtAnimationPacket.class, GamePacketTypes.CLIENTBOUND_HURT_ANIMATION),
+            java.util.Map.entry(ClientboundUpdateMobEffectPacket.class, GamePacketTypes.CLIENTBOUND_UPDATE_MOB_EFFECT),
+            java.util.Map.entry(ClientboundRemoveMobEffectPacket.class, GamePacketTypes.CLIENTBOUND_REMOVE_MOB_EFFECT),
+            java.util.Map.entry(ClientboundSoundPacket.class, GamePacketTypes.CLIENTBOUND_SOUND),
+            java.util.Map.entry(ClientboundEntityEventPacket.class, GamePacketTypes.CLIENTBOUND_ENTITY_EVENT),
+            java.util.Map.entry(ClientboundSetEntityMotionPacket.class, GamePacketTypes.CLIENTBOUND_SET_ENTITY_MOTION),
+            java.util.Map.entry(ClientboundSetExperiencePacket.class, GamePacketTypes.CLIENTBOUND_SET_EXPERIENCE),
+            java.util.Map.entry(ClientboundDamageEventPacket.class, GamePacketTypes.CLIENTBOUND_DAMAGE_EVENT),
+            java.util.Map.entry(ClientboundPlayerCombatEnterPacket.class, GamePacketTypes.CLIENTBOUND_PLAYER_COMBAT_ENTER),
+            java.util.Map.entry(ClientboundPlayerCombatEndPacket.class, GamePacketTypes.CLIENTBOUND_PLAYER_COMBAT_END),
+            java.util.Map.entry(ClientboundPlayerAbilitiesPacket.class, GamePacketTypes.CLIENTBOUND_PLAYER_ABILITIES),
+            java.util.Map.entry(ClientboundCooldownPacket.class, GamePacketTypes.CLIENTBOUND_COOLDOWN));
     /** Includes the play-protocol packet id, encoded against the session's captured registries. */
     public record PacketOutput(UUID target, String type, String payload) implements PaperRollbackCombatAccess.Output { }
-    static boolean auditedPacket(Class<?> type) { return AUDITED_PACKETS.contains(type); }
+    static boolean auditedPacket(Class<?> type) { return AUDITED_PACKETS.containsKey(type); }
+    static boolean auditedType(net.minecraft.network.protocol.PacketType<?> type) { return AUDITED_PACKETS.containsValue(type); }
     private final PaperRollbackWorldAccess world;
     private final ServerPlayer player;
     private final ServerGamePacketListenerImpl listener;
@@ -65,7 +74,7 @@ public final class PaperRollbackConnection implements RollbackStateCell<Boolean>
     private void send(Packet<?> packet) {
         check();
         if (packet == null) return;
-        if (!AUDITED_PACKETS.contains(packet.getClass())) {
+        if (!AUDITED_PACKETS.containsKey(packet.getClass())) {
             var detached = packetData.capture(packet);
             if (detached != null) { world.output(new PaperRollbackPacketData.Direct(player.getUUID(), detached)); return; }
             throw new IllegalStateException("Packet codec needs a private-state audit: " + packet.type());

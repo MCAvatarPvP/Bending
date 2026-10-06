@@ -3097,3 +3097,12 @@ live Bukkit server. Audience selection, session/connection identity checks, nati
 entity-ID compatibility and revision/finalization ownership remain required at the
 production publisher boundary. Decoder completion does not prove packet delivery or
 client reconciliation installation.
+
+
+Packet decoding now preflights the native protocol ID as well as the recorded type
+before invoking any body codec. PaperRollbackConnection maintains one class/type map
+for its audited outputs, and the decoder derives numeric IDs from the packaged
+protocol template. A native test supplies only an unaudited inventory-packet header
+and verifies rejection before its absent item body is decoded. This closes an ordering
+gap in the initial decoder; the input remains a trusted internal journal, not client
+traffic, and no live publisher is installed by this change.
