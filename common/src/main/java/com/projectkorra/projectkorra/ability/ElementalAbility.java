@@ -34,13 +34,13 @@ public abstract class ElementalAbility extends CoreAbility {
     private static final PotionEffectType[] POSITIVE_EFFECTS = {PotionEffectType.ABSORPTION, PotionEffectType.RESISTANCE, PotionEffectType.HASTE, PotionEffectType.FIRE_RESISTANCE, PotionEffectType.INSTANT_HEALTH, PotionEffectType.HEALTH_BOOST, PotionEffectType.INSTANT_DAMAGE, PotionEffectType.JUMP_BOOST, PotionEffectType.NIGHT_VISION, PotionEffectType.REGENERATION, PotionEffectType.SATURATION, PotionEffectType.SPEED, PotionEffectType.WATER_BREATHING};
     private static final PotionEffectType[] NEUTRAL_EFFECTS = {PotionEffectType.INVISIBILITY};
     private static final PotionEffectType[] NEGATIVE_EFFECTS = {PotionEffectType.POISON, PotionEffectType.BLINDNESS, PotionEffectType.NAUSEA, PotionEffectType.INSTANT_DAMAGE, PotionEffectType.HUNGER, PotionEffectType.SLOWNESS, PotionEffectType.MINING_FATIGUE, PotionEffectType.WEAKNESS, PotionEffectType.WITHER};
-    private static final Set<Material> TRANSPARENT = new HashSet<>();
-    private static final Set<String> EARTH_BLOCKS = new HashSet<String>();
-    private static final Set<String> ICE_BLOCKS = new HashSet<String>();
-    private static final Set<String> METAL_BLOCKS = new HashSet<String>();
-    private static final Set<String> PLANT_BLOCKS = new HashSet<String>();
-    private static final Set<String> SAND_BLOCKS = new HashSet<String>();
-    private static final Set<String> SNOW_BLOCKS = new HashSet<String>();
+    private static Set<Material> TRANSPARENT = new HashSet<>();
+    private static Set<String> EARTH_BLOCKS = new HashSet<String>();
+    private static Set<String> ICE_BLOCKS = new HashSet<String>();
+    private static Set<String> METAL_BLOCKS = new HashSet<String>();
+    private static Set<String> PLANT_BLOCKS = new HashSet<String>();
+    private static Set<String> SAND_BLOCKS = new HashSet<String>();
+    private static Set<String> SNOW_BLOCKS = new HashSet<String>();
 
     static {
         TRANSPARENT.clear();
@@ -51,6 +51,37 @@ public abstract class ElementalAbility extends CoreAbility {
         }
         clearBendableMaterials();
         setupBendableMaterials();
+    }
+
+    /** Portable cache roots. References remain shared with ability fields during graph transfer. */
+    public static final class RollbackMaterialRegistry {
+        private final Set<Material> transparent;
+        private final Set<String> earth, ice, metal, plant, sand, snow;
+        private RollbackMaterialRegistry() {
+            transparent = TRANSPARENT; earth = EARTH_BLOCKS; ice = ICE_BLOCKS;
+            metal = METAL_BLOCKS; plant = PLANT_BLOCKS; sand = SAND_BLOCKS; snow = SNOW_BLOCKS;
+        }
+        /** Outside the duel, material policy belongs to the live server, not one session. */
+        public void bindLive(java.util.function.BiConsumer<Object, Object> bind) {
+            if (com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active())
+                throw new IllegalStateException("Restore material references outside replay");
+            bind.accept(transparent, TRANSPARENT); bind.accept(earth, EARTH_BLOCKS);
+            bind.accept(ice, ICE_BLOCKS); bind.accept(metal, METAL_BLOCKS);
+            bind.accept(plant, PLANT_BLOCKS); bind.accept(sand, SAND_BLOCKS); bind.accept(snow, SNOW_BLOCKS);
+        }
+        public void install() {
+            if (!com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active())
+                throw new IllegalStateException("Material caches require a private domain");
+            TRANSPARENT = Objects.requireNonNull(transparent); EARTH_BLOCKS = Objects.requireNonNull(earth);
+            ICE_BLOCKS = Objects.requireNonNull(ice); METAL_BLOCKS = Objects.requireNonNull(metal);
+            PLANT_BLOCKS = Objects.requireNonNull(plant); SAND_BLOCKS = Objects.requireNonNull(sand);
+            SNOW_BLOCKS = Objects.requireNonNull(snow);
+        }
+    }
+    public static RollbackMaterialRegistry captureRollbackMaterials() { return new RollbackMaterialRegistry(); }
+    public static List<java.lang.reflect.Field> rollbackMaterialFields() {
+        return com.projectkorra.projectkorra.prediction.rollback.RollbackStateGraph.staticFields(ElementalAbility.class,
+                field -> Set.of("TRANSPARENT", "EARTH_BLOCKS", "ICE_BLOCKS", "METAL_BLOCKS", "PLANT_BLOCKS", "SAND_BLOCKS", "SNOW_BLOCKS").contains(field.getName()));
     }
 
     public ElementalAbility(final Player player) {

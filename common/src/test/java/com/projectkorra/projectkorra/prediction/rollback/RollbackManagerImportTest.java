@@ -19,6 +19,12 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class RollbackManagerImportTest {
+    @org.junit.jupiter.api.BeforeAll static void initializeLiveMaterialCaches() throws Exception {
+        try (var world = new com.projectkorra.projectkorra.support.AbilityWorld()) {
+            com.projectkorra.projectkorra.ability.ElementalAbility.getTransparentMaterials();
+        }
+    }
+
     private static final UUID A = new UUID(0, 1), B = new UUID(0, 2), OTHER = new UUID(0, 3);
     private static final long EPOCH = 10_000;
 

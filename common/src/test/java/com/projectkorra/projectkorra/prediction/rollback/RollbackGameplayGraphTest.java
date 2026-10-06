@@ -8,6 +8,12 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class RollbackGameplayGraphTest {
+    @org.junit.jupiter.api.BeforeAll static void initializeLiveMaterialCaches() throws Exception {
+        try (var world = new com.projectkorra.projectkorra.support.AbilityWorld()) {
+            com.projectkorra.projectkorra.ability.ElementalAbility.getTransparentMaterials();
+        }
+    }
+
     @org.junit.jupiter.api.io.TempDir java.nio.file.Path directory;
     private Map<Class<?>, Object> attributes;
     private Map<Class<?>, Object> previousAttributes;

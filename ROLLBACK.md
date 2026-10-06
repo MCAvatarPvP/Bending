@@ -2790,3 +2790,20 @@ caches such as ElementalAbility's transparent/bendable material sets: class
 initialization must not derive them from a replica's placeholder platform and
 leak those results outside the domain. The runtime constructor does not claim
 that its mandatory bending roots replace the loader/addon shared-state audit.
+
+
+### Elemental material cache isolation
+
+Transparent and bendable-material sets are now mandatory gameplay graph roots.
+Import assigns their private set identities inside the domain, preserving aliases
+held by existing abilities; shared-field checkpoints restore the outside set
+identities and values after every domain call. Both in-process and portable
+transfer tests cover late input replacing cache mutations and verify that those
+mutations never reach live caches. Settled export carries current private values;
+restored ability references rebind to the live server's current material policy
+without publishing a duel's cache changes globally.
+
+This resolves the specific ElementalAbility cache gap noted above. Class startup
+still needs a valid loader platform/configuration, and other shared/static gameplay
+state remains part of the broader runtime audit. Native runtime installation and
+live two-client validation are still outstanding.

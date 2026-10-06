@@ -28,6 +28,12 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class RollbackBendingStateTest {
+    @org.junit.jupiter.api.BeforeAll static void initializeLiveMaterialCaches() throws Exception {
+        try (var world = new com.projectkorra.projectkorra.support.AbilityWorld()) {
+            com.projectkorra.projectkorra.ability.ElementalAbility.getTransparentMaterials();
+        }
+    }
+
     private static final UUID A = new UUID(0, 1), B = new UUID(0, 2), OUTSIDE = new UUID(0, 3);
 
     @ParameterizedTest @ValueSource(booleans = {false, true}) @SuppressWarnings("unchecked")
@@ -71,6 +77,9 @@ class RollbackBendingStateTest {
             field(CoreAbility.class, "currentTick").setLong(null, 40);
             field(CoreAbility.class, "idCounter").setInt(null, 4);
             Pulse livePulse = new Pulse(bendingA, liveWorld, 1);
+            var earthField = field(com.projectkorra.projectkorra.ability.ElementalAbility.class, "EARTH_BLOCKS");
+            livePulse.materialAlias = (Set<String>) earthField.get(null);
+            livePulse.materialAlias.add("SOURCE_MATERIAL");
             Guard liveGuard = new Guard(bendingB, liveWorld, 2);
             Pulse unrelatedPulse = new Pulse(bendingOther, liveWorld, 3);
             livePulse.start();
@@ -133,6 +142,8 @@ class RollbackBendingStateTest {
             Pulse pulse = (Pulse) imported.abilities().stream().filter(Pulse.class::isInstance).findFirst().orElseThrow();
             Guard guard = (Guard) imported.abilities().stream().filter(Guard.class::isInstance).findFirst().orElseThrow();
             assertNotSame(livePulse, pulse);
+            assertNotSame(livePulse.materialAlias, pulse.materialAlias);
+            assertTrue(pulse.materialAlias.contains("SOURCE_MATERIAL"));
             assertTrue(pulse.isStarted());
             assertEquals(livePulse.getStartTime(), pulse.getStartTime());
             assertEquals(40, pulse.getStartTick());
@@ -162,6 +173,7 @@ class RollbackBendingStateTest {
             assertSame(pulse, copiedRules.ability);
             assertEquals(eventsBefore, events.size()); // Registry installation does not replay activation hooks.
             domain.call(() -> {
+                assertEquals(pulse.materialAlias, new HashSet<>(com.projectkorra.projectkorra.ability.ElementalAbility.getEarthbendableBlocks()));
                 assertSame(pulse, CoreAbility.getAbility(privateA, Pulse.class));
                 assertSame(imported.players().get(A), BendingPlayer.getBendingPlayer(privateA));
                 assertFalse(BendingPlayer.getPlayers().containsKey(OUTSIDE));
@@ -187,6 +199,9 @@ class RollbackBendingStateTest {
                 @Override public void restore(RollbackDomain.Checkpoint checkpoint) { domain.restore(checkpoint); }
                 @Override public Double predict(UUID participant, Double previous) { return previous; }
                 @Override public void step(long tick, Map<UUID, Double> inputs, RollbackStep<String> effects) {
+                    pulse.materialAlias.add(inputs.get(B) == 0 ? "PREDICTED_MATERIAL" : "CORRECTED_MATERIAL");
+                    assertTrue(com.projectkorra.projectkorra.ability.ElementalAbility.getEarthbendableBlocks()
+                            .contains(inputs.get(B) == 0 ? "PREDICTED_MATERIAL" : "CORRECTED_MATERIAL"));
                     privateScheduler.advance(tick);
                     Manager.getManager(StatisticsManager.class).addStatistic(A, 1, inputs.get(B).longValue() + 1);
                     guard.location.setY(inputs.get(B));
@@ -206,6 +221,11 @@ class RollbackBendingStateTest {
             assertEquals(0, livePulse.location.getX());
             assertEquals(RollbackEngine.Submission.ACCEPTED, domain.call(() -> engine.submit(B, 1, 8.0)));
             assertTrue(domain.call(engine::reconcile).head().effects().isEmpty());
+            assertFalse(pulse.materialAlias.contains("PREDICTED_MATERIAL"));
+            assertTrue(pulse.materialAlias.contains("CORRECTED_MATERIAL"));
+            assertSame(livePulse.materialAlias, earthField.get(null));
+            assertFalse(livePulse.materialAlias.contains("PREDICTED_MATERIAL"));
+            assertFalse(livePulse.materialAlias.contains("CORRECTED_MATERIAL"));
             assertFalse(pulse.isRemoved());
             assertEquals(0, pulse.contacts);
             assertEquals(0, copiedRules.collisions);
@@ -286,6 +306,8 @@ class RollbackBendingStateTest {
             assertNotSame(bendingA, restored.players().get(A));
             assertEquals("WaterManipulation", restored.players().get(A).getAbilities().get(2));
             Pulse restoredPulse = (Pulse) restored.abilities().instances().stream().filter(ability -> ability.getId() == 1).findFirst().orElseThrow();
+            assertSame(livePulse.materialAlias, restoredPulse.materialAlias);
+            assertFalse(restoredPulse.materialAlias.contains("CORRECTED_MATERIAL"));
             assertSame(restored.players().get(A), restoredPulse.getBendingPlayer());
             assertSame(liveA, restoredPulse.getPlayer());
             assertSame(sourceAttribute, restoredPulse.linkedCache);
@@ -397,7 +419,7 @@ class RollbackBendingStateTest {
                                                                  Player privateA, Player privateB, World privateWorld,
                                                                  AttributeCache sourceAttribute) throws Exception {
         List<Class<?>> objects = List.of(BendingPlayer.class, Pulse.class, Guard.class, Location.class, Cooldown.class,
-                CoreAbility.RollbackRegistry.class, Manager.RollbackRegistry.class, StatisticsManager.class, CollisionManager.class, Collision.class,
+                CoreAbility.RollbackRegistry.class, com.projectkorra.projectkorra.ability.ElementalAbility.RollbackMaterialRegistry.class, Manager.RollbackRegistry.class, StatisticsManager.class, CollisionManager.class, Collision.class,
                 OfflineBendingPlayer.RollbackTemporaryElement.class, AttributeCache.class,
                 CapturedRule.class, CapturedTask.class, RollbackCallback.class, RollbackTaskBindings.class, RollbackTaskBindings.Entry.class, RollbackTaskBindings.Handle.class,
                 RollbackEventBindings.class, PKEventBus.Registration.class,
@@ -405,6 +427,7 @@ class RollbackBendingStateTest {
                 sourceAttribute.getCurrentModifications().values().stream().map(value -> ((TreeSet<?>) value).comparator().getClass()).findFirst().orElseThrow());
         var symbols = new ArrayList<Class<?>>();
         symbols.add(RollbackBendingStateTest.class);
+        symbols.add(com.projectkorra.projectkorra.platform.mc.Material.class);
         for (var field : OfflineBendingPlayer.class.getDeclaredFields()) if (field.getType().isEnum()) symbols.add(field.getType());
         var targetAttribute = new AttributeCache(sourceAttribute.getField(), sourceAttribute.getAttribute());
         var sourceBindings = List.of(new RollbackGraphCodec.Binding("player/A", Player.class, liveA),
@@ -481,6 +504,7 @@ class RollbackBendingStateTest {
         @Override public Location getLocation() { return location; }
     }
     private static final class Pulse extends Dynamic {
+        Set<String> materialAlias;
         AttributeCache linkedCache;
         Map<CoreAbility, Object> linkedValues;
         final List<Double> history = new ArrayList<>();
