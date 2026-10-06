@@ -86,6 +86,12 @@ class RollbackBendingStateTest {
             liveHistory.put(liveA.getName(), livePulse.comboAlias);
             var outsiderHistory = new ArrayList<com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation>();
             liveHistory.put(other.getName(), outsiderHistory);
+            var pending = (Map<UUID, Set<com.projectkorra.projectkorra.util.ClickType>>) field(
+                    com.projectkorra.projectkorra.ability.util.ComboManager.class, "SCHEDULED_COMBO_ABILITY").get(null);
+            livePulse.pendingAlias = new HashSet<>(); pending.put(A, livePulse.pendingAlias);
+            livePulse.comboDefinition = new com.projectkorra.projectkorra.ability.util.ComboManager.ComboAbilityInfo(
+                    "FixtureCombo", new ArrayList<>(), Pulse.class);
+            com.projectkorra.projectkorra.ability.util.ComboManager.getComboAbilities().put("FixtureCombo", livePulse.comboDefinition);
             Guard liveGuard = new Guard(bendingB, liveWorld, 2);
             Pulse unrelatedPulse = new Pulse(bendingOther, liveWorld, 3);
             livePulse.start();
@@ -213,6 +219,8 @@ class RollbackBendingStateTest {
                             new com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation(
                                     inputs.get(B) == 0 ? "Predicted" : "Corrected", com.projectkorra.projectkorra.util.ClickType.LEFT_CLICK,
                                     RollbackClock.millis()));
+                    com.projectkorra.projectkorra.ability.util.ComboManager.scheduleComboAbility(privateA,
+                            inputs.get(B) == 0 ? com.projectkorra.projectkorra.util.ClickType.RIGHT_CLICK : com.projectkorra.projectkorra.util.ClickType.LEFT_CLICK);
                     privateScheduler.advance(tick);
                     Manager.getManager(StatisticsManager.class).addStatistic(A, 1, inputs.get(B).longValue() + 1);
                     guard.location.setY(inputs.get(B));
@@ -235,6 +243,8 @@ class RollbackBendingStateTest {
             assertEquals(List.of("Corrected", "Corrected"), pulse.comboAlias.stream().map(
                     com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation::getAbilityName).toList());
             assertTrue(livePulse.comboAlias.isEmpty());
+            assertTrue(livePulse.pendingAlias.isEmpty());
+            assertEquals(Set.of(com.projectkorra.projectkorra.util.ClickType.LEFT_CLICK), pulse.pendingAlias);
             assertSame(outsiderHistory, liveHistory.get(other.getName()));
             assertFalse(pulse.materialAlias.contains("PREDICTED_MATERIAL"));
             assertTrue(pulse.materialAlias.contains("CORRECTED_MATERIAL"));
@@ -322,6 +332,7 @@ class RollbackBendingStateTest {
             assertEquals("WaterManipulation", restored.players().get(A).getAbilities().get(2));
             Pulse restoredPulse = (Pulse) restored.abilities().instances().stream().filter(ability -> ability.getId() == 1).findFirst().orElseThrow();
             assertSame(livePulse.materialAlias, restoredPulse.materialAlias);
+            assertSame(livePulse.comboDefinition, restoredPulse.comboDefinition);
             assertFalse(restoredPulse.materialAlias.contains("CORRECTED_MATERIAL"));
             assertSame(restored.players().get(A), restoredPulse.getBendingPlayer());
             assertSame(liveA, restoredPulse.getPlayer());
@@ -350,6 +361,14 @@ class RollbackBendingStateTest {
                 assertThrows(IllegalStateException.class, () -> restored.prepareAbilities(abilityReservation, expectedLiveAbilities));
                 field(CoreAbility.class, "currentTick").setLong(null, restored.abilities().tick()); // Owner aligns to the live tick before handoff.
                 var commit = restored.prepareCommit(Map.of(A, bendingA, B, bendingB), abilityReservation, expectedLiveAbilities);
+                liveHistory.put(liveA.getName(), new ArrayList<>(livePulse.comboAlias));
+                assertThrows(IllegalStateException.class, commit::commit);
+                liveHistory.put(liveA.getName(), livePulse.comboAlias);
+                var unexpectedInput = new com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation(
+                        "Unexpected", com.projectkorra.projectkorra.util.ClickType.RIGHT_CLICK, 100);
+                livePulse.comboAlias.add(unexpectedInput);
+                assertThrows(IllegalStateException.class, commit::commit);
+                livePulse.comboAlias.remove(unexpectedInput);
                 liveStatistics.getKeysByName().put("changed", 2);
                 assertThrows(IllegalStateException.class, commit::commit);
                 assertSame(bendingA, BendingPlayer.getBendingPlayer(liveA));
@@ -381,7 +400,12 @@ class RollbackBendingStateTest {
                 assertFalse(RollbackLiveOwnership.blocks(A)); assertFalse(RollbackLiveOwnership.blocks(B));
                 commit.commit();
                 field(CoreAbility.class, "currentTick").setLong(null, restored.abilities().tick() + 1);
+                assertSame(restoredPulse.comboAlias, liveHistory.get(liveA.getName()));
+                assertSame(restoredPulse.pendingAlias, pending.get(A));
+                assertSame(outsiderHistory, liveHistory.get(other.getName()));
+                restoredPulse.comboAlias.add(unexpectedInput);
                 commit.commit(); // Cleanup retries after another live tick do not reinstall indices.
+                assertSame(unexpectedInput, liveHistory.get(liveA.getName()).getLast());
                 assertEquals(eventsAtCommit, events.size()); assertEquals(constructorsAtCommit, Dynamic.constructions);
                 assertSame(liveStatistics, Manager.getManager(StatisticsManager.class));
                 assertTrue(restored.services().stream().anyMatch(service -> service == liveStatistics));
@@ -522,6 +546,8 @@ class RollbackBendingStateTest {
     }
     private static final class Pulse extends Dynamic {
         ArrayList<com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation> comboAlias;
+        Set<com.projectkorra.projectkorra.util.ClickType> pendingAlias;
+        com.projectkorra.projectkorra.ability.util.ComboManager.ComboAbilityInfo comboDefinition;
         Set<String> materialAlias;
         AttributeCache linkedCache;
         Map<CoreAbility, Object> linkedValues;

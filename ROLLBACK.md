@@ -2822,3 +2822,20 @@ predicted combo history, retains the ability's history-list alias, and leaves li
 and unrelated-player histories unchanged. This is startup/replay coverage. The
 settled combo-state merge back into the live roster is not implemented yet, so the
 new registry does not establish complete duel teardown or enable live sessions.
+
+
+### Settled combo-state restoration
+
+Common teardown now prepares a read-only combo merge alongside manager and ability
+restoration. It reconnects registry and definition aliases to the live server,
+then commits outgoing histories, pending triggers and help-session entries only
+for enrolled roster names/UUIDs. Unrelated entries remain untouched. Registry
+replacement, changed selected entry identities and changed selected input contents
+reject the merge before common registry writes. Successful cleanup is idempotent
+and does not overwrite input received after the first commit.
+
+The gameplay transfer tests cover restored history/trigger aliases, definition
+rebinding, conflicting history replacement and mutation, outsider preservation and
+retry after newer live input. Combo-help task restart still depends on the separate
+captured-task restoration path and needs live integration validation. This closes
+the basic combo merge gap above, not the full native runtime or two-client test gate.

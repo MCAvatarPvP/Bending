@@ -60,11 +60,107 @@ public class ComboManager {
             project.accept(RECENTLY_USED, recent); project.accept(SCHEDULED_COMBO_ABILITY, scheduled);
             project.accept(COMBO_HELP_SESSIONS, help);
         }
+        public RestorationSources restorationSources(Collection<Player> players, java.util.function.BiConsumer<Object, Object> bind) {
+            var result = new RestorationSources(players, recent, scheduled, help);
+            bind.accept(recent, RECENTLY_USED); bind.accept(scheduled, SCHEDULED_COMBO_ABILITY); bind.accept(help, COMBO_HELP_SESSIONS);
+            bind.accept(definitions, COMBO_ABILITIES); bind.accept(authors, AUTHORS);
+            bind.accept(descriptions, DESCRIPTIONS); bind.accept(instructions, INSTRUCTIONS);
+            definitions.forEach((name, source) -> {
+                var target = COMBO_ABILITIES.get(name);
+                if (target == null) throw new IllegalStateException("Combo definition disappeared: " + name);
+                bind.accept(source, target); bind.accept(source.abilities, target.abilities);
+            });
+            return result;
+        }
         public void install() {
             if (!com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active())
                 throw new IllegalStateException("Combo import requires a private domain");
             RECENTLY_USED = recent; SCHEDULED_COMBO_ABILITY = scheduled; COMBO_HELP_SESSIONS = help;
             COMBO_ABILITIES = definitions; AUTHORS = authors; DESCRIPTIONS = descriptions; INSTRUCTIONS = instructions;
+        }
+    }
+    /** Read-only restoration plan; outgoing values are rebound with the rest of the ability graph. */
+    public static final class RestorationSources {
+        private final Thread owner = Thread.currentThread();
+        private final Map<UUID, Player> players = new HashMap<>();
+        private final Set<String> names = new HashSet<>();
+        private final Object recentIdentity = RECENTLY_USED, scheduledIdentity = SCHEDULED_COMBO_ABILITY, helpIdentity = COMBO_HELP_SESSIONS;
+        private final List<?> roots, before;
+        private final Map<String, Object> beforeRecent = new HashMap<>();
+        private final Map<UUID, Object> beforeScheduled = new HashMap<>(), beforeHelp = new HashMap<>();
+        private RestorationSources(Collection<Player> roster, Map<String, ArrayList<AbilityInformation>> recent,
+                Map<UUID, Set<ClickType>> scheduled, Map<UUID, ComboHelpSession> help) {
+            boundary();
+            for (var player : roster) {
+                if (players.putIfAbsent(player.getUniqueId(), player) != null || !names.add(player.getName()))
+                    throw new IllegalArgumentException("Duplicate restoration roster");
+            }
+            requireKeys(recent, scheduled, help);
+            roots = List.of(new HashMap<>(recent), new HashMap<>(scheduled), new HashMap<>(help));
+            before = stamp();
+            names.forEach(name -> beforeRecent.put(name, RECENTLY_USED.get(name)));
+            players.keySet().forEach(id -> { beforeScheduled.put(id, SCHEDULED_COMBO_ABILITY.get(id)); beforeHelp.put(id, COMBO_HELP_SESSIONS.get(id)); });
+        }
+        private void boundary() {
+            if (Thread.currentThread() != owner || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()
+                    || com.projectkorra.projectkorra.prediction.rollback.RollbackClock.active() || !Platform.scheduler().isPrimaryThread())
+                throw new IllegalStateException("Restore combos on the live main thread");
+        }
+        private void requireKeys(Map<?, ?> recent, Map<?, ?> scheduled, Map<?, ?> help) {
+            if (!names.containsAll(recent.keySet()) || !players.keySet().containsAll(scheduled.keySet()) || !players.keySet().containsAll(help.keySet()))
+                throw new IllegalArgumentException("Restored combo state contains outsiders");
+        }
+        private List<?> stamp() {
+            var result = new ArrayList<Object>();
+            for (var name : new TreeSet<>(names)) {
+                var value = RECENTLY_USED.get(name);
+                result.add(Arrays.asList(name, value, value == null ? null : value.stream()
+                        .map(info -> Arrays.asList(info.abilityName, info.clickType, info.time)).toList()));
+            }
+            for (var id : new TreeSet<>(players.keySet())) {
+                var pending = SCHEDULED_COMBO_ABILITY.get(id); var session = COMBO_HELP_SESSIONS.get(id);
+                result.add(Arrays.asList(id, pending, pending == null ? null : new HashSet<>(pending), session,
+                        session == null ? null : Arrays.asList(session.player, session.combo, session.progress, session.status, session.taskId)));
+            }
+            return result;
+        }
+        public List<?> roots() { return roots; }
+        @SuppressWarnings("unchecked")
+        public com.projectkorra.projectkorra.Manager.RestorationStep prepare(List<?> rebound) {
+            boundary();
+            if (rebound.size() != 3) throw new IllegalArgumentException("Combo restoration roots");
+            var recent = (Map<String, ArrayList<AbilityInformation>>) rebound.get(0);
+            var scheduled = (Map<UUID, Set<ClickType>>) rebound.get(1);
+            var help = (Map<UUID, ComboHelpSession>) rebound.get(2);
+            requireKeys(recent, scheduled, help);
+            recent.forEach((name, history) -> {
+                for (AbilityInformation info : Objects.requireNonNull(history)) {
+                    Objects.requireNonNull(info); Objects.requireNonNull(info.abilityName); Objects.requireNonNull(info.clickType);
+                }
+            });
+            scheduled.forEach((id, inputs) -> { for (ClickType input : Objects.requireNonNull(inputs)) Objects.requireNonNull(input); });
+            help.forEach((id, session) -> {
+                if (session == null || session.player.handle() != players.get(id).handle())
+                    throw new IllegalArgumentException("Restored combo help has a foreign player");
+            });
+            return new com.projectkorra.projectkorra.Manager.RestorationStep() {
+                private boolean committed;
+                public void validate() {
+                    boundary(); if (committed) return;
+                    if (RECENTLY_USED != recentIdentity || SCHEDULED_COMBO_ABILITY != scheduledIdentity || COMBO_HELP_SESSIONS != helpIdentity
+                            || names.stream().anyMatch(name -> RECENTLY_USED.get(name) != beforeRecent.get(name))
+                            || players.keySet().stream().anyMatch(id -> SCHEDULED_COMBO_ABILITY.get(id) != beforeScheduled.get(id)
+                                    || COMBO_HELP_SESSIONS.get(id) != beforeHelp.get(id))
+                            || !before.equals(stamp())) throw new IllegalStateException("Live combo state changed before restoration");
+                }
+                public void commit() {
+                    validate(); if (committed) return;
+                    names.forEach(RECENTLY_USED::remove); RECENTLY_USED.putAll(recent);
+                    players.keySet().forEach(SCHEDULED_COMBO_ABILITY::remove); SCHEDULED_COMBO_ABILITY.putAll(scheduled);
+                    players.keySet().forEach(COMBO_HELP_SESSIONS::remove); COMBO_HELP_SESSIONS.putAll(help);
+                    committed = true;
+                }
+            };
         }
     }
     public static RollbackRegistry captureRollbackRegistry(Collection<Player> players) { return new RollbackRegistry(players); }
