@@ -406,19 +406,21 @@ class RollbackBendingStateTest {
         var symbols = new ArrayList<Class<?>>();
         symbols.add(RollbackBendingStateTest.class);
         for (var field : OfflineBendingPlayer.class.getDeclaredFields()) if (field.getType().isEnum()) symbols.add(field.getType());
-        Object metadata = field(AttributeCache.class, "metadata").get(sourceAttribute);
-        Object targetMetadata = field(AttributeCache.class, "metadata").get(new AttributeCache(sourceAttribute.getField(), sourceAttribute.getAttribute()));
+        var targetAttribute = new AttributeCache(sourceAttribute.getField(), sourceAttribute.getAttribute());
         var sourceBindings = List.of(new RollbackGraphCodec.Binding("player/A", Player.class, liveA),
                 new RollbackGraphCodec.Binding("player/B", Player.class, liveB),
                 new RollbackGraphCodec.Binding("world", World.class, liveWorld),
-                new RollbackGraphCodec.Binding("attribute/Pulse/Speed", metadata.getClass(), metadata));
+                sourceAttribute.rollbackMetadataBinding(Pulse.class.getName() + "#Speed"));
+        assertTrue(CoreAbility.rollbackAttributeBindings().contains(sourceBindings.getLast()));
         var targetBindings = List.of(new RollbackGraphCodec.Binding("player/A", Player.class, privateA),
                 new RollbackGraphCodec.Binding("player/B", Player.class, privateB),
                 new RollbackGraphCodec.Binding("world", World.class, privateWorld),
-                new RollbackGraphCodec.Binding("attribute/Pulse/Speed", metadata.getClass(), targetMetadata));
+                targetAttribute.rollbackMetadataBinding(Pulse.class.getName() + "#Speed"));
         var limits = new RollbackGraphCodec.Limits(20_000, 100_000, 1_048_576, 65_536);
-        var sender = new RollbackGraphCodec(new RollbackGraphCodec.Catalog(objects, symbols, sourceBindings), limits);
-        var receiver = new RollbackGraphCodec(new RollbackGraphCodec.Catalog(objects, symbols, targetBindings), limits);
+        var installed = new ArrayList<>(RollbackGameplayCatalog.installed(RollbackBendingStateTest.class.getClassLoader()));
+        installed.addAll(objects); installed.addAll(symbols); // Locally registered test addon types.
+        var sender = new RollbackGraphCodec(RollbackGameplayCatalog.create(installed, sourceBindings), limits);
+        var receiver = new RollbackGraphCodec(RollbackGameplayCatalog.create(installed, targetBindings), limits);
         return new Portable(sender, receiver);
     }
     private static Field field(Class<?> owner, String name) throws Exception {

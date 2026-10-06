@@ -118,7 +118,7 @@ public final class RollbackGraphCodec {
         }
 
         /** Stable schema names for the library relocations used by the Paper artifact. */
-        private static String sharedTypeName(Class<?> type) {
+        static String sharedTypeName(Class<?> type) {
             String name = type.getName();
             int dimensions = name.lastIndexOf('[') + 1;
             if (dimensions > 0) {

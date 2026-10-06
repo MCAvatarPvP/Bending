@@ -70,6 +70,16 @@ cover broad inventory construction, stable ordering, and empty-map round trips w
 unrelated initialization. Production bindings, full state roots and bootstrap installation
 remain required before this catalog enables a duel.
 
+Attribute caches now expose production metadata bindings, and
+`CoreAbility.rollbackAttributeBindings()` enumerates the complete registered set,
+including definitions for future activations. Their stable schema includes the local
+field declaration, attribute key and canonical annotation values (including nested
+annotations, arrays, class and enum values), so different client definitions reject
+portable transfer. Mutable per-instance attribute values remain copied graph state.
+The bending-state transfer test now uses the installed gameplay catalog and this
+binding API instead of accessing private metadata through reflection. Production
+bootstrap still needs to collect these bindings alongside player/world/service bindings.
+
 ### Production assembly audit
 
 The current native execution test is not a production assembly template. Its

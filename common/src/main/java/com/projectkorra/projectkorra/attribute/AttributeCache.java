@@ -8,6 +8,8 @@ import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.configuration.PKConfiguration;
 import com.projectkorra.projectkorra.configuration.PKConfigurationSection;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackStateCell;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackGraphCodec;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackDefinitionSchema;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -62,6 +64,19 @@ public class AttributeCache {
     }
 
     public static boolean isRollbackMetadata(Object value) { return value instanceof Metadata; }
+
+    /** A local immutable definition binding; different markers produce a different graph schema. */
+    public RollbackGraphCodec.Binding rollbackMetadataBinding(String key) {
+        java.util.Objects.requireNonNull(key);
+        var markers = metadata.markers.values().stream()
+                .sorted(java.util.Comparator.comparing(marker -> marker.annotationType().getName())).toList();
+        String digest = RollbackDefinitionSchema.fingerprint(
+                key, metadata.field.getDeclaringClass(), metadata.field.getName(), metadata.field.getType(),
+                metadata.field.getModifiers(), metadata.attribute, markers);
+        return new RollbackGraphCodec.Binding(
+                "attribute/" + digest, Metadata.class, metadata);
+    }
+
 
     @NotNull
     public Field getField() {

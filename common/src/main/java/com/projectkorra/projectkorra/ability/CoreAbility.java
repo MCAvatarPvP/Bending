@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.ability;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackGraphCodec;
+
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 
 import com.projectkorra.projectkorra.BendingPlayer;
@@ -1002,6 +1004,16 @@ public abstract class CoreAbility implements Ability {
 
     public static double getDefaultCollisionRadius() {
         return DEFAULT_COLLISION_RADIUS;
+    }
+
+    /** Complete registered attribute metadata for a portable gameplay catalog, including future activations. */
+    public static java.util.List<RollbackGraphCodec.Binding> rollbackAttributeBindings() {
+        var bindings = new java.util.ArrayList<RollbackGraphCodec.Binding>();
+        ATTRIBUTE_FIELDS.entrySet().stream().sorted(java.util.Comparator.comparing(entry -> entry.getKey().getName()))
+                .forEach(entry -> entry.getValue().entrySet().stream().sorted(Map.Entry.comparingByKey())
+                        .forEach(attribute -> bindings.add(attribute.getValue().rollbackMetadataBinding(
+                                entry.getKey().getName() + "#" + attribute.getKey()))));
+        return java.util.List.copyOf(bindings);
     }
 
     public static Map<String, AttributeCache> getAttributeCache(CoreAbility ability) {
