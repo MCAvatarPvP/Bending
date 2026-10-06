@@ -16,7 +16,7 @@ import net.minecraft.world.level.gamerules.GameRules;
 import java.util.*;
 
 /** Captured native services shared by the private spatial and combat adapters. */
-public final class PaperRollbackWorldServices implements PaperRollbackWorldAccess.Combat<PaperRollbackWorldServices.Snapshot>, PaperRollbackWorldQueries.Services<PaperRollbackWorldServices.Snapshot> {
+public final class PaperRollbackWorldServices implements PaperRollbackWorldAccess.Combat<PaperRollbackWorldServices.Snapshot>, PaperRollbackWorldQueries.Services<PaperRollbackWorldServices.Snapshot>, com.projectkorra.projectkorra.prediction.rollback.RollbackTimedExecutionServices.WorldTime<PaperRollbackWorldServices.Snapshot> {
     public interface Spatial<S> extends RollbackStateCell<S> {
         void advanceTick(long tick);
         WorldBorder border();
@@ -72,6 +72,7 @@ public final class PaperRollbackWorldServices implements PaperRollbackWorldAcces
         var p = settings.policy(); worldPolicy = new PaperRollbackWorldAccess.WorldPolicy(org.bukkit.World.Environment.valueOf(p.dimension().name()),
                 p.voidDamage(), p.voidDamageAmount(), p.voidDamageHeightOffset(), p.netherCeilingHeight());
     }
+    public RollbackWorld logicalWorld() { checkThread(); return logical; }
     public RollbackWorldSettings settings() { checkThread(); return settings; }
     /** The session owner advances this once per world tick, before ticking its roster. */
     public void advanceTick() { advanceTick(Math.incrementExact(lastTick)); }

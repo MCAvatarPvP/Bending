@@ -2705,3 +2705,18 @@ verify detached cooldown maps, retain the required domain roots, and reject mism
 rosters and malformed graphs. Native domain construction, complete services and runtime
 factory installation are still required; this entry point does not acknowledge a client
 bootstrap or start gameplay on its own.
+
+### Execution world-time binding
+
+Paper and Fabric execution now offer a constructor that binds their native world
+services through `RollbackTimedExecutionServices`. It advances world time before
+native phase setup, scheduled callbacks and player input, and checks that the clock
+belongs to the players' private world. The clock and native phases remain checkpoint
+roots. Partial begin failures still receive cleanup; snapshots are refused during an
+active phase and nested clocks cannot run that phase's actions.
+
+The shared test verifies time ordering, identical outputs after rewind, and cleanup
+following a failed native begin. Native action/world remainder services are still
+required; this binding does not provide those missing operations or install a runtime.
+A hit-policy test now restores its temporary ability-definition registration, eliminating
+an order-dependent unregistered-test-class failure in full gameplay import tests.

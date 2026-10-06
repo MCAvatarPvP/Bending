@@ -12,6 +12,11 @@ import java.util.Collection;
  * and imported Paper event/configuration policy still require parity before live use.
  */
 public final class FabricRollbackExecution<E> extends RollbackPlayerExecution<E> {
+    public FabricRollbackExecution(Collection<RollbackPlayer> participants, FabricRollbackWorldServices world, Services<E, ?> phases) {
+        this(participants, new com.projectkorra.projectkorra.prediction.rollback.RollbackTimedExecutionServices<>(world, phases));
+        for (var player : participants) if (player.getWorld().handle() != world.logicalWorld().handle())
+            throw new IllegalArgumentException("Execution clock belongs to another private world");
+    }
     public FabricRollbackExecution(Collection<RollbackPlayer> participants, Services<E, ?> services) {
         super(participants, services);
         Object nativeWorld = null;

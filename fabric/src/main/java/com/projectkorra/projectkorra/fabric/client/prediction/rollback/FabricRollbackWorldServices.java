@@ -20,7 +20,7 @@ import net.minecraft.world.rule.GameRules;
 import java.util.*;
 
 /** Client services from the same authoritative rule/policy seed. Paper-only policy is retained for its native adapters. */
-public final class FabricRollbackWorldServices implements FabricRollbackWorldQueries.Services<FabricRollbackWorldServices.Snapshot> {
+public final class FabricRollbackWorldServices implements FabricRollbackWorldQueries.Services<FabricRollbackWorldServices.Snapshot>, com.projectkorra.projectkorra.prediction.rollback.RollbackTimedExecutionServices.WorldTime<FabricRollbackWorldServices.Snapshot> {
     public interface Spatial<S> extends RollbackStateCell<S> {
         void advanceTick(long tick);
         WorldBorder border();
@@ -80,6 +80,7 @@ public final class FabricRollbackWorldServices implements FabricRollbackWorldQue
         rules = Collections.unmodifiableMap(values);
         time = settings.gameTime(); random = new FabricRollbackPaperRandom(settings.randomSeed()); soundRandom = new RollbackRandom(settings.soundSeed());
     }
+    public RollbackWorld logicalWorld() { checkThread(); return logical; }
     public RollbackWorldSettings settings() { checkThread(); return settings; }
     /** The session owner advances this once per world tick, before ticking its roster. */
     public void advanceTick() { advanceTick(Math.incrementExact(lastTick)); }
