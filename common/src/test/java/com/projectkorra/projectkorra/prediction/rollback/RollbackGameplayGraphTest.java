@@ -44,4 +44,36 @@ class RollbackGameplayGraphTest {
                 RollbackGameplayGraph.Side.PRIVATE, replica, configuration, privateListener,
                 List.of(new RollbackGraphCodec.Binding("world", World.class, new World())), new RollbackGraphViews()));
     }
-}
+    @Test void completeBendingImportReturnsUninstalledPrivateRootsAndRejectsRosterMismatch() {
+        var sourceWorld = new World(); var destinationWorld = new World();
+        var a = new Person(70001, sourceWorld); var b = new Person(70002, sourceWorld);
+        var privateA = PrivateCombatRollbackTest.player(destinationWorld, 70001);
+        var privateB = PrivateCombatRollbackTest.player(destinationWorld, 70002);
+        var sourceRoster = new RollbackRosterBindings(sourceWorld, List.of(a, b));
+        var targetRoster = new RollbackRosterBindings(destinationWorld, List.of(privateA, privateB));
+        var data = RollbackConfiguration.captureData(Map.of());
+        var configuration = RollbackConfiguration.prepare(data, Map.of());
+        var lifecycle = new CommonAbilityLifecycleListener(effect -> { throw new AssertionError("Import invoked gameplay"); });
+        var installed = RollbackGameplayCatalog.installed(getClass().getClassLoader());
+        var limits = new RollbackGraphCodec.Limits(10000, 100000, 10000000, 10000);
+        var sender = RollbackGameplayGraph.create(installed, limits, RollbackGameplayGraph.Side.LIVE,
+                sourceRoster, configuration, lifecycle, List.of(), new RollbackGraphViews());
+        var first = new com.projectkorra.projectkorra.BendingPlayer(a);
+        var second = new com.projectkorra.projectkorra.BendingPlayer(b);
+        first.getCooldowns().put("arbitrary-ability", new com.projectkorra.projectkorra.util.Cooldown(12345, false));
+        byte[] bytes = RollbackBendingState.encode(List.of(first, second),
+                new com.projectkorra.projectkorra.ability.util.CollisionManager(), List.of(lifecycle), sender);
+        var imported = RollbackGameplayGraph.decode(installed, limits, sourceRoster.participants(), bytes,
+                data, Map.of(), targetRoster, lifecycle, List.of());
+        assertSame(privateA, imported.bending().players().get(a.getUniqueId()).getPlayer());
+        assertNotSame(first, imported.bending().players().get(a.getUniqueId()));
+        assertEquals(List.of(imported.configuration(), imported.bending()), imported.roots());
+        assertEquals(12345, imported.bending().players().get(a.getUniqueId()).getCooldowns().get("arbitrary-ability").getCooldown());
+        imported.bending().players().get(a.getUniqueId()).getCooldowns().clear();
+        assertTrue(first.getCooldowns().containsKey("arbitrary-ability"));
+        assertFalse(RollbackDomain.active());
+        assertThrows(IllegalArgumentException.class, () -> RollbackGameplayGraph.decode(installed, limits,
+                Set.of(a.getUniqueId()), bytes, data, Map.of(), targetRoster, lifecycle, List.of()));
+        assertThrows(IllegalArgumentException.class, () -> RollbackGameplayGraph.decode(installed, limits,
+                sourceRoster.participants(), new byte[0], data, Map.of(), targetRoster, lifecycle, List.of()));
+    }}

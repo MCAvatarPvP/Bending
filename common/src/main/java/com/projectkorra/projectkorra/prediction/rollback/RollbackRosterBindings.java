@@ -36,6 +36,8 @@ public final class RollbackRosterBindings implements Function<Object, Object> {
         bindings = List.copyOf(entries);
     }
 
+    public Set<UUID> participants() { checkThread(); return players.keySet(); }
+
     public List<RollbackGraphCodec.Binding> bindings() { checkThread(); return bindings; }
 
     /** Returns the local canonical binding, or null for objects outside this adapter's contracts. */

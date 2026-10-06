@@ -2695,3 +2695,13 @@ boundary. The existing explicit-codec entry point remains available. Tests verif
 service and effect rebinding, reserved binding rejection, and configuration isolation plus
 return transfer. The complete match factory and client runtime still need installation;
 this assembly entry point alone does not enable a duel.
+
+The shared graph assembly now also provides an uninstalled import result containing
+the prepared configuration, decoded bending state and matching export codec. It checks
+the negotiated roster against canonical bindings before decoding. Fabric's roster-view
+adapter connects the received bootstrap payload to this import using locally registered
+configuration sources. Tests transfer real BendingPlayer state into private bodies,
+verify detached cooldown maps, retain the required domain roots, and reject mismatched
+rosters and malformed graphs. Native domain construction, complete services and runtime
+factory installation are still required; this entry point does not acknowledge a client
+bootstrap or start gameplay on its own.

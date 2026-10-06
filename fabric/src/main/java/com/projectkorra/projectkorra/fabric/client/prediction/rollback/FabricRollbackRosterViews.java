@@ -1,6 +1,8 @@
 package com.projectkorra.projectkorra.fabric.client.prediction.rollback;
 
-import com.projectkorra.projectkorra.prediction.rollback.RollbackRosterViews;
+import com.projectkorra.projectkorra.prediction.rollback.*;
+import com.projectkorra.projectkorra.listener.CommonAbilityLifecycleListener;
+import com.projectkorra.projectkorra.prediction.state.PredictionConfigSync;
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackNativeItems;
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackWorld;
 import net.minecraft.item.ItemStack;
@@ -10,6 +12,17 @@ import java.util.*;
 /** Ability views over the exact Fabric bodies imported from the authoritative roster. */
 public final class FabricRollbackRosterViews {
     private FabricRollbackRosterViews() { }
+    /** Import after binding the native roster, before constructing/installing the private domain. */
+    public static RollbackGameplayGraph.Imported importGameplay(
+            RollbackBootstrapData data, RollbackRosterViews views,
+            Collection<Class<?>> installed, RollbackGraphCodec.Limits limits,
+            CommonAbilityLifecycleListener lifecycle,
+            Collection<RollbackGraphCodec.Binding> services) {
+        Objects.requireNonNull(data); Objects.requireNonNull(views);
+        return RollbackGameplayGraph.decode(installed, limits,
+                data.sides().keySet(), data.bending(), data.configuration(),
+                PredictionConfigSync.sources(), views.graphBindings(), lifecycle, services);
+    }
     public static RollbackRosterViews bind(RollbackWorld logical, FabricRollbackRoster roster, Set<UUID> expected,
             RollbackNativeItems<ItemStack> items, Map<UUID, RollbackRosterViews.Services> services) {
         Objects.requireNonNull(roster); Objects.requireNonNull(items).requireOwnerThread();
