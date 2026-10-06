@@ -65,6 +65,13 @@ packet-drain cleanup retry. Native fixture coverage includes outsiders, failed r
 retry, partial common acquisition failure and lifecycle shutdown before readiness.
 This coordinator does not yet assemble terrain capture, graph catalogs, client transfer
 or the complete production match bootstrap, and does not enable real rollback duels.
+Owned duel capture now obtains task bindings directly from that coordinator instead
+of trusting callers to add them. It verifies the exact owned roster and readiness
+before/after native and graph capture, rejects duplicate task roots and nested capture,
+and prevents simulation/teardown during capture. A failed capture permanently blocks
+simulation on that owner while preserving its gates for startup abort. The unowned
+capture API remains for isolated capture callers; production bootstrap must use the
+owned path. Complete production catalogs and bootstrap installation remain outstanding.
 Live scheduler restoration/replacement now accepts a synchronous whole-state commit.
 Native callback submissions are staged while dispatch remains gated; only a successful
 external commit activates callbacks and publishes replacement handles. Failed state

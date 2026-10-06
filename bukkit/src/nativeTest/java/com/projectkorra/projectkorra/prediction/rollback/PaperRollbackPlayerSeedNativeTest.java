@@ -760,7 +760,19 @@ class PaperRollbackPlayerSeedNativeTest {
                         channels.forEach(io.netty.channel.embedded.EmbeddedChannel::runPendingTasks);
                         while (!queue.isEmpty()) queue.remove().run();
                         assertTrue(group.pollReady(processor, executor)); group.requireReady();
-                        var captured = group.capturedTasks().bindings();
+                        var roster = java.util.Set.of(a.getUUID(), b.getUUID());
+                        assertThrows(IllegalArgumentException.class, () -> group.capture(java.util.Set.of(a.getUUID()), tasks -> fail("Partial roster capture")));
+                        var captured = group.capture(roster, tasks -> {
+                            assertThrows(IllegalStateException.class, group::beginSimulation);
+                            assertThrows(IllegalStateException.class, () -> group.abort(() -> fail("Teardown inside capture")));
+                            assertThrows(IllegalStateException.class, () -> group.capture(roster, nested -> fail("Nested capture")));
+                            return tasks.bindings();
+                        });
+                        if (!simulate) {
+                            assertThrows(IllegalArgumentException.class, () -> group.capture(roster, tasks -> { throw new IllegalArgumentException("Graph capture failed"); }));
+                            assertThrows(IllegalStateException.class, group::beginSimulation);
+                            assertTrue(RollbackLiveOwnership.blocks(a.getUUID()));
+                        }
                         var entry = captured.entries().getFirst();
                         var outgoing = new RollbackTaskBindings(List.of(new RollbackTaskBindings.Entry(entry.handle().legacyId(),
                                 () -> history.add("outgoing"), 1, -1, null, 0, 0)), captured.nextId(), captured.idLimit());

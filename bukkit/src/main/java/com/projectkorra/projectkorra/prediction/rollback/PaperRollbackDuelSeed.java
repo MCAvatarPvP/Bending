@@ -21,6 +21,24 @@ public record PaperRollbackDuelSeed(PaperRollbackRosterSeed nativeRoster, Rollba
         }
     }
 
+    /** Production capture: include frozen callbacks and verify ownership before and after encoding. */
+    public static PaperRollbackDuelSeed captureOwned(PaperRollbackLiveOwnership ownership,
+            PaperRollbackMatchBootstrap.Request request, UUID challenge, String definitions,
+            Collection<ServerPlayer> players, Map<UUID, PaperRollbackRosterSeed.Services> playerServices,
+            Collection<BendingPlayer> bendingPlayers, CollisionManager collisions, Collection<?> gameplayServices,
+            RollbackGraphCodec sourceCodec, Collection<String> additionalPermissionNodes,
+            long randomSeed, long soundSeed, PaperRollbackTerrainCapture.Limits terrainLimits) {
+        Objects.requireNonNull(request);
+        return Objects.requireNonNull(ownership).capture(request.sides().keySet(), tasks -> {
+            var services = new ArrayList<Object>(gameplayServices);
+            if (services.stream().anyMatch(service -> service instanceof RollbackTaskBindings
+                    || service instanceof RollbackTaskBindings.Capture))
+                throw new IllegalArgumentException("Owned capture supplies its own task bindings");
+            services.add(tasks);
+            return capture(request, challenge, definitions, players, playerServices, bendingPlayers,
+                    collisions, services, sourceCodec, additionalPermissionNodes, randomSeed, soundSeed, terrainLimits);
+        });
+    }
     public static PaperRollbackDuelSeed capture(PaperRollbackMatchBootstrap.Request request, UUID challenge, String definitions,
             Collection<ServerPlayer> players, Map<UUID, PaperRollbackRosterSeed.Services> playerServices,
             Collection<BendingPlayer> bendingPlayers, CollisionManager collisions, Collection<?> gameplayServices,

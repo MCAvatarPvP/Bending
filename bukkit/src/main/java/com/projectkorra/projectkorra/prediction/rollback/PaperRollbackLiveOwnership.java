@@ -19,7 +19,7 @@ public final class PaperRollbackLiveOwnership {
     private final int taskCapacity;
     private PaperRollbackLifecycle.Lease events;
     private RollbackTaskBindings.Capture capturedTasks;
-    private boolean started, acquiring, ready, running, stopping, restoring, released, nativeCleanup;
+    private boolean started, acquiring, ready, running, stopping, restoring, released, nativeCleanup, capturing;
 
     /** Read-only preparation: retain the returned owner before calling acquire. */
     public static PaperRollbackLiveOwnership prepare(Collection<ServerPlayer> players,
@@ -71,6 +71,19 @@ public final class PaperRollbackLiveOwnership {
             events.suspendNativeEffects(); ready = true; return true;
         } catch (RuntimeException | Error failure) { stopping = true; ready = false; throw failure; }
     }
+    /** Capture only while the entire roster is quiescent; any failed capture requires teardown. */
+    public <T> T capture(Set<UUID> participants, java.util.function.Function<RollbackTaskBindings.Capture, T> capture) {
+        requireReady(); Objects.requireNonNull(capture);
+        if (capturing || running) throw new IllegalStateException("Capture requires pre-simulation ownership");
+        if (!roster.equals(participants)) throw new IllegalArgumentException("Capture roster differs from ownership");
+        capturing = true;
+        try {
+            T value = Objects.requireNonNull(capture.apply(capturedTasks), "Captured state");
+            requireReady();
+            return value;
+        } catch (RuntimeException | Error failure) { stopping = true; ready = false; throw failure; }
+        finally { capturing = false; }
+    }
     public RollbackTaskBindings.Capture capturedTasks() { requireReady(); return capturedTasks; }
     public void requireReady() {
         active();
@@ -78,7 +91,11 @@ public final class PaperRollbackLiveOwnership {
         tasks.requireCurrent(); common.requireCurrent(); nativeState.requireReady();
     }
     /** After private simulation starts, outgoing callbacks are mandatory for restoration. */
-    public void beginSimulation() { requireReady(); running = true; }
+    public void beginSimulation() {
+        requireReady();
+        if (capturing) throw new IllegalStateException("Simulation cannot begin inside capture");
+        running = true;
+    }
 
     /** Resume original callbacks only when no private simulation has run. */
     public void abort(Runnable restoreState) {
@@ -93,7 +110,7 @@ public final class PaperRollbackLiveOwnership {
         restore(outgoing, restoreState);
     }
     private void restore(RollbackTaskBindings outgoing, Runnable restoreState) {
-        if (restoring || acquiring) throw new IllegalStateException("Recursive live roster cleanup");
+        if (restoring || acquiring || capturing) throw new IllegalStateException("Recursive live roster cleanup");
         if (released) return;
         stopping = true; ready = false; restoring = true;
         try {
