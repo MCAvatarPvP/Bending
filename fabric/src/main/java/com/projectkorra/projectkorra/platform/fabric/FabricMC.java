@@ -1511,7 +1511,7 @@ public final class FabricMC {
         @Override public int hashCode() { return Objects.hash(world.getRegistryKey(), pos); }
     }
 
-    private static final class BlockView extends Block {
+    private static final class BlockView extends Block implements com.projectkorra.projectkorra.platform.mc.block.BlockValue {
         private final ServerWorld world;
         private final BlockPos pos;
 
@@ -1732,10 +1732,8 @@ public final class FabricMC {
             return new BlockRef(world, pos);
         }
 
-        @Override public boolean equals(Object other) {
-            return other instanceof BlockView view && world.getRegistryKey().equals(view.world.getRegistryKey()) && pos.equals(view.pos);
-        }
-        @Override public int hashCode() { return Objects.hash(world.getRegistryKey(), pos); }
+        @Override public boolean equals(Object other) { return com.projectkorra.projectkorra.platform.mc.block.BlockValue.same(this, other); }
+        @Override public int hashCode() { return com.projectkorra.projectkorra.platform.mc.block.BlockValue.hash(this); }
     }
 
     private static final class BlockStateView extends com.projectkorra.projectkorra.platform.mc.block.BlockState {

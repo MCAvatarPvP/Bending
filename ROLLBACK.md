@@ -123,7 +123,7 @@ Tests cover round-trip alias preservation, foreign/replaced/disconnected identit
 and the actual BukkitMC player/offline wrapper entrypoints. Bukkit's world wrapper
 cache now replaces its cached entry when the native world instance changes, while
 leaving previously captured views untouched; a same-UUID world replacement therefore
-fails roster capture. Other native views, including blocks and block snapshots, still need
+fails roster capture. Other native views, including block snapshots, still need
 their own portable graph handling as part of production bootstrap assembly.
 
 Paper's graph value-view adapter now snapshots its exact native Location wrappers
@@ -2644,3 +2644,19 @@ contract, including nested references from scheduled work. The carrier retains
 that interface to preserve typed captures. Task import validates the compiler
 factory and captured argument compatibility before committing any task or handle;
 a bad late callback leaves the whole scheduler batch uninstalled.
+
+### Portable block references
+
+Known Paper block views and private terrain views now transfer as world/coordinate
+references. Imported reads, neighboring-block lookups and mutations resolve through
+the rebound world's current terrain, so a retained reference follows terrain rewind.
+The graph preserves aliases without copying live native block handles. Known loader
+and private block views share symmetric coordinate equality and stable hashes; addon
+Block subclasses do not implicitly opt into that identity contract or lose their fields.
+
+Tests exercise Paper wrapper transfer without live terrain access, map lookup against
+fresh wrappers, private-world isolation, terrain mutation/rewind and return transfer.
+`PaperRollbackGraphViews` composes the common `RollbackGraphViews` projection for
+private graphs. Production bootstrap still needs to install these factories. Block
+snapshots and other unsupported native values remain separate transfer work; this
+change does not enable a live rollback match.

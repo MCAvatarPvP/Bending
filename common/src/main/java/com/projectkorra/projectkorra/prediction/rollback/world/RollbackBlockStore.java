@@ -271,7 +271,17 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
         return copy;
     }
 
-    private final class View extends Block implements RollbackStateCell<Void> {
+    /** Only this store's owned block view is projected; arbitrary addon block subclasses are untouched. */
+    public static RollbackBlockReference portableReference(Object value) {
+        return value instanceof RollbackBlockStore.View view ? view.reference() : null;
+    }
+
+    private final class View extends Block implements RollbackStateCell<Void>, com.projectkorra.projectkorra.platform.mc.block.BlockValue {
+        private RollbackBlockReference reference() {
+            checkThread(); return new RollbackBlockReference(world, position.x, position.y, position.z);
+        }
+        @Override public boolean equals(Object other) { return com.projectkorra.projectkorra.platform.mc.block.BlockValue.same(this, other); }
+        @Override public int hashCode() { return com.projectkorra.projectkorra.platform.mc.block.BlockValue.hash(this); }
         private final Position position;
         private View(Position position) { this.position = position; }
         @Override public World getWorld() { return world; }

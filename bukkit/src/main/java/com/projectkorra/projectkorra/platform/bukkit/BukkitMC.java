@@ -254,6 +254,11 @@ public final class BukkitMC {
         return value instanceof LocationView location ? location.value : null;
     }
 
+    /** Capture-facing accessor for the exact native block view. */
+    public static org.bukkit.block.Block nativeBlockView(Object value) {
+        return value instanceof BlockView block ? block.value : null;
+    }
+
     public static World world(final org.bukkit.World value) {
         return value == null ? null : WORLDS.compute(value.getUID(), (ignored, current) ->
                 current != null && current.handle() == value ? current : new WorldView(value));
@@ -1076,7 +1081,7 @@ public final class BukkitMC {
         }
     }
 
-    private static final class BlockView extends Block {
+    private static final class BlockView extends Block implements com.projectkorra.projectkorra.platform.mc.block.BlockValue {
         private final org.bukkit.block.Block value;
 
         private BlockView(org.bukkit.block.Block value) {
@@ -1254,11 +1259,7 @@ public final class BukkitMC {
 
         @Override
         public boolean equals(Object other) {
-            return other instanceof BlockView view
-                    && value.getX() == view.value.getX()
-                    && value.getY() == view.value.getY()
-                    && value.getZ() == view.value.getZ()
-                    && value.getWorld().getUID().equals(view.value.getWorld().getUID());
+            return com.projectkorra.projectkorra.platform.mc.block.BlockValue.same(this, other);
         }
 
         @Override
