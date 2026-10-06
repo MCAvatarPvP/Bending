@@ -2909,3 +2909,22 @@ cleanup and private-domain bypass. This closes the direct activation invocation 
 above. Opaque shared services still require explicit ownership boundaries; registration
 policy changes during a running match and the complete native bootstrap remain part
 of the production integration audit. These tests do not establish live duel readiness.
+
+### Native action remainder audit: hotbar selection
+
+Inspection of the packaged Paper ServerGamePacketListenerImpl.handleSetCarriedItem
+shows an unimplemented production action boundary. RollbackInputActions.slot currently
+runs the common bending handler and then writes the selected inventory slot directly.
+PaperRollbackInventory and FabricRollbackInventory forward that write to the native
+inventory setter. That does not perform the native input transition: Paper first rejects
+immobile/no-op selection, calls PlayerItemHeldEvent while the previous slot is still
+selected, honors cancellation, stops main-hand item use on accepted change, then writes
+the slot and performs the captured immediate equipment-update policy.
+
+The execution adapter currently delegates SLOT_CHANGE's remainder to an unimplemented
+production Services.action. Completing that path requires deferring the inventory write
+until a native selection operation has accepted it. Both loaders need the same private
+event policy and main/off-hand item-use behavior, with accepted/cancelled/no-op changes
+and late-input rewind tested. Idle bookkeeping and correction packets must remain at
+the appropriate live/provisional output boundaries. A raw inventory setter or a fixture
+Services.action implementation is not sufficient evidence for this action.
