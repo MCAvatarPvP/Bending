@@ -484,7 +484,9 @@ class PaperRollbackPlayerSeedNativeTest {
     }
 
     public static class MaintenanceProbe extends net.minecraft.server.network.ServerGamePacketListenerImpl {
-        int keepalives, nativeTicks;
+        int keepalives, nativeTicks, movements, commands;
+        @Override public void handleChatCommand(net.minecraft.network.protocol.game.ServerboundChatCommandPacket packet) { commands++; }
+        @Override public void handleMovePlayer(net.minecraft.network.protocol.game.ServerboundMovePlayerPacket packet) { movements++; }
         @Override public void tick() { nativeTicks++; }
         java.util.List<net.minecraft.network.protocol.Packet<?>> sent;
         private MaintenanceProbe() { super(null, null, null, null); }
@@ -519,7 +521,8 @@ class PaperRollbackPlayerSeedNativeTest {
                 }
                 var ack = new PaperRollbackPlayerFields.Field<Integer>(net.minecraft.server.network.ServerGamePacketListenerImpl.class, "ackBlockChangesUpTo", int.class);
                 ack.set(original, -1);
-                var lease = PaperRollbackConnectionTickGate.prepare(player);
+                var stop = new java.util.concurrent.atomic.AtomicReference<Runnable>(() -> { throw new IllegalStateException("stop requested"); });
+                var lease = PaperRollbackConnectionTickGate.prepare(player, () -> stop.get().run());
                 assertSame(original, connection.getPacketListener());
                 // Native state changes after preparation must still be observed at acquisition.
                 ack.set(original, 25);
@@ -529,7 +532,13 @@ class PaperRollbackPlayerSeedNativeTest {
                 assertSame(original, player.connection);
                 assertSame(player, intercepted.player); assertSame(player, intercepted.getPlayer());
                 assertSame(connection, intercepted.connection);
-                assertThrows(IllegalStateException.class, () -> PaperRollbackConnectionTickGate.prepare(player));
+                var movement = new org.objenesis.ObjenesisStd().newInstance(net.minecraft.network.protocol.game.ServerboundMovePlayerPacket.Pos.class);
+                intercepted.handleMovePlayer(movement);
+                assertEquals(0, original.movements);
+                var networkThread = new java.util.concurrent.FutureTask<Void>(() -> { intercepted.handleMovePlayer(movement); return null; });
+                new Thread(networkThread).start(); networkThread.get();
+                assertEquals(0, original.movements);
+                assertThrows(IllegalStateException.class, () -> PaperRollbackConnectionTickGate.prepare(player, () -> { throw new IllegalStateException("stop requested"); }));
                 connection.tick();
                 assertEquals(0, original.nativeTicks); assertEquals(1, original.keepalives);
                 assertEquals(-1, ack.get(original)); assertEquals(1, original.sent.size());
@@ -545,16 +554,51 @@ class PaperRollbackPlayerSeedNativeTest {
                 assertThrows(IllegalStateException.class, () -> lease.restoreAndRelease(() -> fail("Foreign listener replacement")));
                 assertSame(original, connection.getPacketListener());
                 listenerField.set(connection, intercepted);
-                lease.restoreAndRelease(() -> assertSame(intercepted, connection.getPacketListener()));
+                var command = new net.minecraft.network.protocol.game.ServerboundChatCommandPacket("kill");
+                assertThrows(IllegalStateException.class, () -> intercepted.handleChatCommand(command));
+                assertEquals(0, original.commands); lease.requireCurrent();
+                stop.set(() -> { });
+                assertThrows(IllegalStateException.class, () -> intercepted.handleChatCommand(command));
+                assertEquals(0, original.commands); lease.requireCurrent();
+                stop.set(() -> lease.restoreAndRelease(() -> assertSame(intercepted, connection.getPacketListener())));
+                intercepted.handleChatCommand(command);
+                assertEquals(1, original.commands);
                 assertSame(original, connection.getPacketListener());
                 connection.tick(); assertEquals(1, original.nativeTicks);
                 // A previously captured facade reference must resume normal delegation after release.
                 intercepted.tick(); assertEquals(2, original.nativeTicks);
+                intercepted.handleMovePlayer(movement); assertEquals(1, original.movements);
                 lease.restoreAndRelease(() -> fail("Restoration repeated"));
                 assertThrows(IllegalStateException.class, lease::acquire);
                 return null;
             } finally { configField.set(null, previousConfig); }
         });
+    }
+
+    @Test void connectionPacketPolicyOnlyPassesAuditedControlAndRollbackChannels() {
+        var allocator = new org.objenesis.ObjenesisStd();
+        for (var type : List.of(net.minecraft.network.protocol.common.ServerboundKeepAlivePacket.class,
+                net.minecraft.network.protocol.common.ServerboundPongPacket.class,
+                net.minecraft.network.protocol.game.ServerboundChatAckPacket.class,
+                net.minecraft.network.protocol.game.ServerboundChunkBatchReceivedPacket.class)) {
+            assertEquals(PaperRollbackConnectionTickGate.PacketDisposition.PASS,
+                    PaperRollbackConnectionTickGate.packetDisposition(allocator.newInstance(type)), type.getName());
+        }
+        for (var type : List.of(net.minecraft.network.protocol.game.ServerboundContainerClickPacket.class,
+                net.minecraft.network.protocol.game.ServerboundAcceptTeleportationPacket.class,
+                net.minecraft.network.protocol.game.ServerboundConfigurationAcknowledgedPacket.class,
+                net.minecraft.network.protocol.game.ServerboundChatCommandPacket.class)) {
+            assertEquals(PaperRollbackConnectionTickGate.PacketDisposition.STOP,
+                    PaperRollbackConnectionTickGate.packetDisposition(allocator.newInstance(type)), type.getName());
+        }
+        for (var channel : List.of(RollbackInputPacket.CHANNEL, RollbackStartPacket.CLIENT_CHANNEL,
+                RollbackBootstrapPacket.CLIENT_CHANNEL, "other:mutation", "projectkorra:rollback_input_extra")) {
+            var packet = new net.minecraft.network.protocol.common.ServerboundCustomPayloadPacket(
+                    new net.minecraft.network.protocol.common.custom.DiscardedPayload(Identifier.parse(channel), new byte[0]));
+            assertEquals(channel.equals("other:mutation") || channel.endsWith("_extra")
+                            ? PaperRollbackConnectionTickGate.PacketDisposition.STOP : PaperRollbackConnectionTickGate.PacketDisposition.PASS,
+                    PaperRollbackConnectionTickGate.packetDisposition(packet), channel);
+        }
     }
 
     private static void configure(ServerPlayer player) {

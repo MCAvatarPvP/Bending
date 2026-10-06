@@ -57,15 +57,22 @@ implemented by the plugin and verified against the packaged Paper version.
 
 A stock-Paper connection tick lease now installs a native listener subclass facade
 through a compare-and-set on the Connection's listener reference. Tick calls run
-maintenance on the original listener; other virtual calls delegate to that same
+maintenance on the original listener; permitted virtual calls delegate to that same
 original and no native listener constructor runs. Player.connection remains original.
 The facade preserves the native type/field contracts needed by Paper, checks final
 method compatibility, and restores the exact original listener after successful cleanup.
 A native probe exercises actual Connection.tick dispatch, original state/packet-send
 delegation, failure retention, foreign replacement rejection and resumed ticking.
-The fixture has no socket and does not establish live networking correctness. Gameplay
-packets still delegate normally: their interception, queued-packet drainage, protocol
-transition/disconnect cleanup and whole-roster composition are required before startup.
+The fixture has no socket and does not establish live networking correctness.
+Incoming vanilla movement/combat input is discarded while suspended, including on
+network threads. Only audited acknowledgement/keepalive traffic and the three exact
+rollback input/bootstrap/start channels pass directly. Other packets (including
+commands, inventory and other plugin payloads) require whole-session teardown before
+native dispatch. Off-thread teardown packets queue against the facade for ownership
+revalidation. Failed or incomplete teardown prevents native dispatch. Tests cover
+movement suppression, exact channel policy, failed cleanup, and command resumption.
+Queued-original-packet drainage, disconnect cleanup and whole-roster composition
+remain required before startup; the gate is not installed in production yet.
 
 The connection maintenance component mirrors Paper's paused tick branch without
 calling its native `tickPlayer`/`doTick`: pending block acknowledgements, keepalive,
@@ -73,8 +80,8 @@ all four spam throttlers and idle timeout remain active. It invokes the existing
 listener's keepalive method rather than creating another keepalive state. A native
 probe verifies keepalive dispatch, one-time acknowledgement, throttler progress,
 unchanged native player values/items, disconnected short-circuiting and thread/replay
-boundaries. Actual listener interception, packet routing and lifecycle restoration
-are still missing; this helper alone does not suspend a live connection's player tick.
+boundaries. The lease above uses this helper; production lifecycle composition
+is still missing, and the helper alone does not suspend a live connection's player tick.
 
 A plugin-owned world tick gate now wraps Paper's entity tick list. It skips reserved
 native player identities while delegating membership changes and preserving outsider

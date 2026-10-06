@@ -9,6 +9,10 @@ import net.bytebuddy.dynamic.scaffold.subclass.ConstructorStrategy;
 import net.bytebuddy.implementation.InvocationHandlerAdapter;
 import net.minecraft.network.Connection;
 import net.minecraft.network.PacketListener;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.PacketUtils;
+import net.minecraft.network.protocol.common.*;
+import net.minecraft.network.protocol.game.*;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerCommonPacketListenerImpl;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
@@ -23,10 +27,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import static net.bytebuddy.matcher.ElementMatchers.*;
 
 /**
- * Plugin-only interception of Connection.tick's listener call. All other virtual
- * calls retain the original listener and its state. Gameplay packet interception,
- * queued-packet drainage and the world tick gate are separate required ownership
- * components; installing only this component does not freeze a player's gameplay.
+ * Plugin-only interception of native connection ticks and incoming gameplay.
+ * Duplicate vanilla input is discarded; unaudited packets require complete session
+ * teardown before native dispatch. Queued-original-packet drainage and the world
+ * tick gate remain separate required ownership components.
  */
 public final class PaperRollbackConnectionTickGate {
     private static final String HANDLER = "rollback$liveTickHandler";
@@ -74,8 +78,8 @@ public final class PaperRollbackConnectionTickGate {
                 || (method.getDeclaringClass() == ServerCommonPacketListenerImpl.class && method.getName().equals("disconnectAsync")
                     && method.getReturnType() == void.class);
     }
-    public static Lease prepare(ServerPlayer player) {
-        boundary(); return new Lease(Objects.requireNonNull(player));
+    public static Lease prepare(ServerPlayer player, Runnable stopBeforeMutation) {
+        boundary(); return new Lease(Objects.requireNonNull(player), Objects.requireNonNull(stopBeforeMutation));
     }
     public static final class Lease {
         private final Thread owner = Thread.currentThread();
@@ -83,10 +87,12 @@ public final class PaperRollbackConnectionTickGate {
         private final ServerGamePacketListenerImpl original, proxy;
         private final Connection connection;
         private final Layout layout;
+        private final Runnable stopBeforeMutation;
         private volatile boolean suspended;
         private boolean released, restoring;
-        private Lease(ServerPlayer player) {
+        private Lease(ServerPlayer player, Runnable stopBeforeMutation) {
             this.player = player;
+            this.stopBeforeMutation = stopBeforeMutation;
             original = Objects.requireNonNull(player.connection, "Player listener");
             connection = Objects.requireNonNull(original.connection, "Native connection");
             requireOriginal();
@@ -132,6 +138,22 @@ public final class PaperRollbackConnectionTickGate {
                 try { PaperRollbackConnectionMaintenance.tick(original); return null; }
                 finally { proxy.processedDisconnect = original.processedDisconnect; }
             }
+            if (suspended && method.getName().startsWith("handle") && args != null
+                    && args.length == 1 && args[0] instanceof Packet<?> packet) {
+                switch (packetDisposition(packet)) {
+                    case DROP -> { return null; }
+                    case STOP -> {
+                        // Queue against the facade, so main-thread dispatch rechecks ownership.
+                        if (Thread.currentThread() != owner) onMainThread(packet, proxy, player);
+                        requireCurrent();
+                        stopBeforeMutation.run();
+                        if (suspended || !released)
+                            throw new IllegalStateException("Packet teardown did not release connection ownership");
+                        requireOriginal();
+                    }
+                    case PASS -> { }
+                }
+            }
             var callable = layout.methods().computeIfAbsent(method, value -> { value.setAccessible(true); return value; });
             try { return callable.invoke(original, args); }
             catch (InvocationTargetException failure) { throw failure.getCause(); }
@@ -148,6 +170,33 @@ public final class PaperRollbackConnectionTickGate {
             boundary(); if (Thread.currentThread() != owner) throw new IllegalStateException("Connection tick gate crossed threads");
         }
     }
+    enum PacketDisposition { DROP, PASS, STOP }
+
+    static PacketDisposition packetDisposition(Packet<?> packet) {
+        if (packet instanceof ServerboundMovePlayerPacket || packet instanceof ServerboundPlayerInputPacket
+                || packet instanceof ServerboundPlayerActionPacket || packet instanceof ServerboundPlayerCommandPacket
+                || packet instanceof ServerboundPlayerAbilitiesPacket || packet instanceof ServerboundInteractPacket
+                || packet instanceof ServerboundSwingPacket || packet instanceof ServerboundUseItemPacket
+                || packet instanceof ServerboundUseItemOnPacket || packet instanceof ServerboundSetCarriedItemPacket
+                || packet instanceof ServerboundMoveVehiclePacket || packet instanceof ServerboundPaddleBoatPacket
+                || packet instanceof ServerboundClientTickEndPacket) return PacketDisposition.DROP;
+        if (packet instanceof ServerboundKeepAlivePacket || packet instanceof ServerboundPongPacket
+                || packet instanceof ServerboundChatAckPacket || packet instanceof ServerboundChunkBatchReceivedPacket)
+            return PacketDisposition.PASS;
+        if (packet instanceof ServerboundCustomPayloadPacket custom) {
+            String channel = custom.payload().type().id().toString();
+            if (channel.equals(RollbackInputPacket.CHANNEL) || channel.equals(RollbackStartPacket.CLIENT_CHANNEL)
+                    || channel.equals(RollbackBootstrapPacket.CLIENT_CHANNEL)) return PacketDisposition.PASS;
+        }
+        // Includes commands, inventory, teleports, configuration and other plugins' payloads.
+        return PacketDisposition.STOP;
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static void onMainThread(Packet<?> packet, ServerGamePacketListenerImpl listener, ServerPlayer player) {
+        PacketUtils.ensureRunningOnSameThread((Packet) packet, listener, player.level());
+    }
+
     private static void boundary() {
         if (!TickThread.isTickThread() || RollbackClock.active() || RollbackDomain.active())
             throw new IllegalStateException("Change connection tick ownership at the live tick boundary");
