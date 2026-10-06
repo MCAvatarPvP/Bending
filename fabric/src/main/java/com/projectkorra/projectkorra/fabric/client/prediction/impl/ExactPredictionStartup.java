@@ -229,6 +229,7 @@ public abstract class ExactPredictionStartup extends ExactPredictionState {
                 EmbeddedAddonBootstrap.enable();
                 ClientPredictionConfig.apply(entries);
                 AbilityActivationManager.reload();
+                Platform.events().registerListener(new com.projectkorra.projectkorra.listener.CommonAbilityCombatListener(), ProjectKorra.plugin);
                 ComboManager.registerCombos();
                 FallHandler.loadNoFallDamageAbilities();
                 ProjectKorra.collisionInitializer.initializeDefaultCollisions();

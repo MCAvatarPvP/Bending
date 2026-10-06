@@ -1441,6 +1441,7 @@ public class GeneralMethods {
         }
         Manager.shutdown();
         Manager.startup();
+        Platform.events().registerListener(new com.projectkorra.projectkorra.listener.CommonAbilityCombatListener(), ProjectKorra.plugin);
         BendingPlayer.getOfflinePlayers().clear();
         BendingPlayer.getPlayers().clear();
         OfflineBendingPlayer.TEMP_ELEMENTS.clear();

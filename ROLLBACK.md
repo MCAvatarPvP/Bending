@@ -80,6 +80,22 @@ The bending-state transfer test now uses the installed gameplay catalog and this
 binding API instead of accessing private metadata through reflection. Production
 bootstrap still needs to collect these bindings alongside player/world/service bindings.
 
+### Shared combat event handlers
+
+The existing Paper handlers for ability velocity, ability damage, attribute scaling
+and horizontal collision damage now live in `CommonAbilityCombatListener`. Common
+server reload and Fabric prediction startup register that shared listener. Paper's
+old callable methods delegate to it without duplicate event registration. Priorities,
+cancellation behavior and the existing ability-specific gameplay rules are retained;
+these are ordinary gameplay rules, not rollback enrollment restrictions.
+
+A portable graph test captures/imports the real listener through the installed catalog
+and verifies falling-block velocity cancellation, null-ability handling and skipping
+already-cancelled events. The remaining Paper-only event handlers include presentation
+and external effects; they still need appropriate transfer/commit handling before
+full production event capture can be installed. This extraction alone does not enable
+live rollback sessions.
+
 ### Production assembly audit
 
 The current native execution test is not a production assembly template. Its
