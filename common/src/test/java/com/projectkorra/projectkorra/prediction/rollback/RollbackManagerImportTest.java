@@ -117,6 +117,11 @@ class RollbackManagerImportTest {
                 return null;
             });
             assertEquals(1, scheduler.pendingTasks());
+            domain.call(() -> {
+                assertTrue(scheduler.exportTasks().bindings().entries().isEmpty(), "Private flight maintenance must not duplicate the live timer");
+                assertEquals(1, scheduler.pendingTasks(), "Export must leave private cleanup running until ownership ends");
+                return null;
+            });
             assertSame(sourceFlight, Manager.getManager(FlightHandler.class));
             assertSame(sourceStats, Manager.getManager(StatisticsManager.class));
             assertNotNull(sourceFlight.getInstance(liveA));

@@ -91,7 +91,17 @@ public final class RollbackScheduler implements PKScheduler, RollbackStateCell<R
         return runTimer(task, delayTicks, periodTicks).legacyId();
     }
 
+    /** Per-domain service maintenance; its live counterpart already owns an equivalent timer.
+     * Checkpoint and execute normally, but never export another timer during live restoration.
+     */
+    public PKTask runServiceTimer(Runnable callback, long delay, long period) {
+        return schedule(callback, delay, period == 0 ? 1 : period, true);
+    }
+
     private Task schedule(Runnable callback, long delay, long period) {
+        return schedule(callback, delay, period, false);
+    }
+    private Task schedule(Runnable callback, long delay, long period, boolean domainService) {
         checkUsable();
         Objects.requireNonNull(callback, "callback");
         if (tasks.size() >= maximumTasks) throw new IllegalStateException("Simulation task budget exceeded");
@@ -100,7 +110,7 @@ public final class RollbackScheduler implements PKScheduler, RollbackStateCell<R
         final int followingId = Math.incrementExact(id);
         final long due = Math.addExact(tick, Math.max(1, delay));
         final long followingOrder = Math.incrementExact(nextOrder);
-        final Task task = new Task(id, callback, due, period, nextOrder);
+        final Task task = new Task(id, callback, due, period, nextOrder, domainService);
         tasks.put(id, task);
         queue.add(task);
         nextId = followingId;
@@ -144,6 +154,7 @@ public final class RollbackScheduler implements PKScheduler, RollbackStateCell<R
         if (running) throw new IllegalStateException("Cannot export a running callback");
         var pending = new ArrayList<RollbackTaskBindings.Pending>();
         for (var task : tasks.values()) {
+            if (task.domainService) continue;
             pending.add(new RollbackTaskBindings.Pending(task, task.callback,
                     Math.max(1, Math.subtractExact(task.due, tick)), task.period,
                     task.ability, task.action, task.seed));
@@ -152,7 +163,7 @@ public final class RollbackScheduler implements PKScheduler, RollbackStateCell<R
             checkUsable();
             if (running) throw new IllegalStateException("Cannot copy running scheduler handles");
             if (!(value instanceof RollbackScheduler.Task task) || task.scheduler() != this) return null;
-            return tasks.get(task.id) != task ? task.id : null;
+            return task.domainService || tasks.get(task.id) != task ? task.id : null;
         });
     }
 
@@ -237,11 +248,16 @@ public final class RollbackScheduler implements PKScheduler, RollbackStateCell<R
         final CoreAbility ability;
         final long action;
         final long seed;
+        final boolean domainService;
         long due;
-        Task(int id, Runnable callback, long due, long period, long order) {
-            this(id, callback, due, period, order, AbilityExecutionContext.current(), PredictionDeterminism.currentAction(), PredictionDeterminism.currentSeed());
+        Task(int id, Runnable callback, long due, long period, long order, boolean domainService) {
+            this(id, callback, due, period, order, AbilityExecutionContext.current(), PredictionDeterminism.currentAction(), PredictionDeterminism.currentSeed(), domainService);
         }
         Task(int id, Runnable callback, long due, long period, long order, CoreAbility ability, long action, long seed) {
+            this(id, callback, due, period, order, ability, action, seed, false);
+        }
+        Task(int id, Runnable callback, long due, long period, long order, CoreAbility ability, long action, long seed, boolean domainService) {
+            this.domainService = domainService;
             this.order = order;
             this.ability = ability; this.action = action; this.seed = seed;
             this.id = id;

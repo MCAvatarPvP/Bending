@@ -47,6 +47,22 @@ state that actually determines those outcomes.
 
 ## Current foundation
 
+### October 5, 2026 integration update
+
+Work continues in the attached `rollback-integration` worktree because the primary
+checkout is on `master` with separate local gameplay changes. The rollback branch and
+push destination remain `wip/rollback-2026-09-23` on MCAvatarPvP/Bending.
+
+The private scheduler now distinguishes per-domain service timers from transferable
+ability work. Both kinds execute and rewind normally, but outgoing task export excludes
+service timers and projects any retained service handle as inactive. The private flight
+manager uses this path for expiry cleanup; its existing live counterpart already owns
+that timer. Ordinary callbacks still transfer with their state and reserved IDs. Tests
+exercise real flight expiry through late-input replay and export, plus mixed service and
+gameplay timers. This prevents a duplicate cleanup timer during manager restoration;
+manager state merging and the complete production handoff remain to be integrated.
+
+
 ### October 2, 2026 integration update
 
 Restored bending graphs now prepare a participant-only live ability-index commit using

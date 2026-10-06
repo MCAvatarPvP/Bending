@@ -99,6 +99,31 @@ class RollbackTaskBindingsTest {
         assertEquals(1, callback.calls); assertFalse(callback.handle.cancelled());
     }
 
+    @Test void privateServiceTimerStaysInSourceWhileGameplayAndInertServiceHandlesTransfer() {
+        var source = new RollbackScheduler(8, 8);
+        var serviceCalls = new java.util.concurrent.atomic.AtomicInteger();
+        var service = source.runServiceTimer(serviceCalls::incrementAndGet, 1, 1);
+        var callback = new Callback(); callback.handle = source.runTimer(callback, 1, 1);
+        source.advance(1);
+        var exported = source.exportTasks();
+        assertEquals(1, exported.bindings().entries().size());
+        assertEquals(2, source.pendingTasks());
+        var codec = new RollbackGraphCodec(new RollbackGraphCodec.Catalog(
+                List.of(RollbackTaskBindings.class, RollbackTaskBindings.Entry.class, RollbackTaskBindings.Handle.class, Callback.class),
+                List.of(), List.of()), new RollbackGraphCodec.Limits(100, 1000, 100_000, 10_000));
+        var copied = codec.decode(codec.encode(List.of(exported.bindings(), service), exported::replacement));
+        var bindings = (RollbackTaskBindings) copied.getFirst();
+        var destination = new RollbackScheduler(8, 8); bindings.install(destination);
+        var retiredService = (PKTask) copied.get(1);
+        assertTrue(retiredService.cancelled()); retiredService.cancel();
+        assertFalse(service.cancelled());
+        destination.advance(1);
+        assertEquals(2, ((Callback) bindings.entries().getFirst().callback()).calls);
+        assertEquals(1, serviceCalls.get()); assertEquals(1, callback.calls);
+        source.advance(2); assertEquals(2, serviceCalls.get());
+        assertEquals(3, destination.runNow(() -> {}).legacyId());
+    }
+
     @Test void equalDeadlinesRetainSourceOrderingInsteadOfSortingLegacyIds() {
         List<Integer> calls = new ArrayList<>();
         var first = new RollbackTaskBindings.Entry(30, () -> calls.add(30), 1, 1, null, 0, 0);

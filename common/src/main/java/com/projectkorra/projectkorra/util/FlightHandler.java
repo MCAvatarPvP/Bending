@@ -8,7 +8,6 @@ import com.projectkorra.projectkorra.Manager;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.platform.mc.GameMode;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
-import com.projectkorra.projectkorra.platform.mc.scheduler.BukkitRunnable;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -55,8 +54,8 @@ public class FlightHandler extends Manager {
 
     @Override
     protected void onRollbackInstall() {
-        if (!(Platform.scheduler() instanceof RollbackScheduler)) throw new IllegalStateException("Flight cleanup requires a private scheduler");
-        this.startCleanup();
+        if (!(Platform.scheduler() instanceof RollbackScheduler scheduler)) throw new IllegalStateException("Flight cleanup requires a private scheduler");
+        scheduler.runServiceTimer(this::cleanupExpired, 0, 1);
     }
 
     @Override
@@ -225,21 +224,20 @@ public class FlightHandler extends Manager {
     }
 
     public void startCleanup() {
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                final long currentTime = RollbackClock.millis();
-                while (!FlightHandler.this.CLEANUP.isEmpty()) {
-                    final FlightAbility ability = FlightHandler.this.CLEANUP.peek();
-                    if (currentTime >= ability.startTime + ability.duration) {
-                        FlightHandler.this.CLEANUP.poll();
-                        FlightHandler.this.removeInstance(ability.player, ability.identifier);
-                    } else {
-                        break;
-                    }
-                }
+        Platform.scheduler().runTimer(this::cleanupExpired, 0, 1);
+    }
+
+    private void cleanupExpired() {
+        final long currentTime = RollbackClock.millis();
+        while (!this.CLEANUP.isEmpty()) {
+            final FlightAbility ability = this.CLEANUP.peek();
+            if (currentTime >= ability.startTime + ability.duration) {
+                this.CLEANUP.poll();
+                this.removeInstance(ability.player, ability.identifier);
+            } else {
+                break;
             }
-        }.runTaskTimer(ProjectKorra.plugin, 0, 1);
+        }
     }
 
     public static class Flight {
