@@ -43,7 +43,10 @@ class RollbackBendingStateTest {
         attributes.put(Guard.class, Map.of());
         var events = new ArrayList<String>();
         var platform = platform(events);
+        RollbackLiveOwnership.Lease liveOwnership;
+        try (var scope = Platform.using(platform)) { liveOwnership = RollbackLiveOwnership.prepare(Set.of(A, B)); }
         try (var scope = Platform.using(platform)) {
+            liveOwnership.acquire();
             World liveWorld = new World(), privateWorld = new World();
             Player liveA = player(A), liveB = player(B), other = player(OUTSIDE);
             var bendingA = new BendingPlayer(liveA);
@@ -303,6 +306,7 @@ class RollbackBendingStateTest {
             var restorePlatform = (ProjectKorraPlatform) Proxy.newProxyInstance(ProjectKorraPlatform.class.getClassLoader(),
                     new Class<?>[]{ProjectKorraPlatform.class}, (proxy, method, args) -> {
                         if (method.getName().equals("scheduler")) return liveBackend;
+                        if (method.getName().equals("events")) return platform.events();
                         throw new AssertionError(method);
                     });
             try (var restorationScope = Platform.using(restorePlatform)) {
@@ -329,8 +333,16 @@ class RollbackBendingStateTest {
                 assertSame(livePulse, CoreAbility.getAbility(liveA, Pulse.class));
                 assertEquals(Set.of(livePulse, unrelatedPulse), sourceAttribute.getInitialValues().keySet());
                 liveAttributeDefinitions.put("Speed", sourceAttribute);
+                CoreAbility.progressAll();
+                collisions.detectCollisions();
+                assertTrue(livePulse.history.isEmpty(), "Live enrolled abilities must remain frozen");
+                assertEquals(0, livePulse.contacts, "Live collisions must exclude the owned roster");
+                assertEquals(1, unrelatedPulse.history.size(), "Unrelated abilities continue normally");
+                field(CoreAbility.class, "currentTick").setLong(null, restored.abilities().tick());
                 int eventsAtCommit = events.size(), constructorsAtCommit = Dynamic.constructions;
-                commit.commit(); commit.commit();
+                liveOwnership.restoreAndRelease(commit::commit);
+                assertFalse(RollbackLiveOwnership.blocks(A)); assertFalse(RollbackLiveOwnership.blocks(B));
+                commit.commit();
                 field(CoreAbility.class, "currentTick").setLong(null, restored.abilities().tick() + 1);
                 commit.commit(); // Cleanup retries after another live tick do not reinstall indices.
                 assertEquals(eventsAtCommit, events.size()); assertEquals(constructorsAtCommit, Dynamic.constructions);
@@ -363,6 +375,7 @@ class RollbackBendingStateTest {
 
 
         } finally {
+            try (var scope = Platform.using(platform)) { liveOwnership.restoreAndRelease(() -> { }); }
             outside.restore();
             attributes.clear();
             attributes.putAll(previousAttributes);

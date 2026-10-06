@@ -244,7 +244,8 @@ public class CollisionManager {
 
         final ArrayList<CollisionEntry> entries = new ArrayList<CollisionEntry>(instances.size());
         for (final CoreAbility ability : instances) {
-            if (ability.getPlayer() == null || !ability.isCollidable()) {
+            if (ability.getPlayer() == null || !ability.isCollidable()
+                    || com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership.blocks(ability.getPlayer().getUniqueId())) {
                 continue;
             }
 

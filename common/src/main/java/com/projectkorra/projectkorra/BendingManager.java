@@ -57,6 +57,7 @@ public class BendingManager implements Runnable {
 
     public void handleCooldowns() {
         for (Map.Entry<UUID, BendingPlayer> entry : BendingPlayer.getPlayers().entrySet()) {
+            if (com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership.blocks(entry.getKey())) continue;
             BendingPlayer bPlayer = entry.getValue();
             bPlayer.tickCps();
             bPlayer.removeOldCooldowns();
@@ -146,16 +147,20 @@ public class BendingManager implements Runnable {
     public static class TempElementsRunnable implements Runnable {
         @Override
         public void run() {
-            //Manage Temp elements
-            while (!BendingPlayer.TEMP_ELEMENTS.isEmpty()) { //We use a while loop so if multiple expire in the same tick, all are done together
-                Pair<Player, Long> pair = BendingPlayer.TEMP_ELEMENTS.peek();
-
-                if (RollbackClock.millis() > pair.getRight()) { //Check if the top temp element has expired
-                    BendingPlayer.TEMP_ELEMENTS.poll(); //And if it has, remove from the queue, and recalculate temp elements for that player
+            var suspended = new java.util.ArrayList<Pair<Player, Long>>();
+            try {
+                while (!BendingPlayer.TEMP_ELEMENTS.isEmpty()) {
+                    Pair<Player, Long> pair = BendingPlayer.TEMP_ELEMENTS.peek();
+                    if (RollbackClock.millis() <= pair.getRight()) break;
+                    BendingPlayer.TEMP_ELEMENTS.poll();
+                    if (com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership.blocks(pair.getLeft().getUniqueId())) {
+                        suspended.add(pair);
+                        continue;
+                    }
                     BendingPlayer.getBendingPlayer(pair.getLeft()).recalculateTempElements(false);
-                } else {
-                    break; //Break the loop if the top element hasn't expired, as all elements below it won't have either
                 }
+            } finally {
+                BendingPlayer.TEMP_ELEMENTS.addAll(suspended);
             }
         }
     }

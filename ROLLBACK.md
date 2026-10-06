@@ -49,6 +49,17 @@ state that actually determines those outcomes.
 
 ### October 5, 2026 integration update
 
+A common live-roster ownership lease now suspends enrolled ability progression,
+collision participation, cooldown updates, flight expiry and temporary-element expiry.
+It is independent of element/ability type and stays outside replay checkpoints. Private
+domains continue normally. Overlapping rosters reject before acquisition; restoration
+failure retains the entire reservation, and successful idempotent cleanup releases it.
+Expiry queues defer owned entries while processing unrelated players behind them. Tests
+exercise both queues, real ability progress/collision exclusion, private replay, overlapping
+ownership and failed cleanup. Production startup still must acquire this lease and bind
+native movement/input, scheduled callbacks and the remaining shared service update paths;
+these common gates alone do not establish full native ownership.
+
 Common live restoration now exposes a combined prepared commit for player registries,
 ability indices, attribute caches and shared managers. It validates every component before
 writing any live registry and reuses idempotent component commits for cleanup retries. The

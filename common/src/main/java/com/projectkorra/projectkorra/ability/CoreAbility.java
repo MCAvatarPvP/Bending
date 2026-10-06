@@ -172,6 +172,10 @@ public abstract class CoreAbility implements Ability {
                 if (abil.isRemoved()) {
                     continue;
                 }
+                if (abil.getPlayer() != null
+                        && com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership.blocks(abil.getPlayer().getUniqueId())) {
+                    continue;
+                }
                 if (abil instanceof PassiveAbility) {
                     if (!((PassiveAbility) abil).isProgressable()) {
                         continue;

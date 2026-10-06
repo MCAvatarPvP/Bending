@@ -269,14 +269,20 @@ public class FlightHandler extends Manager {
 
     private void cleanupExpired() {
         final long currentTime = RollbackClock.millis();
-        while (!this.CLEANUP.isEmpty()) {
-            final FlightAbility ability = this.CLEANUP.peek();
-            if (currentTime >= ability.startTime + ability.duration) {
+        var suspended = new ArrayList<FlightAbility>();
+        try {
+            while (!this.CLEANUP.isEmpty()) {
+                final FlightAbility ability = this.CLEANUP.peek();
+                if (currentTime < ability.startTime + ability.duration) break;
                 this.CLEANUP.poll();
+                if (com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership.blocks(ability.player.getUniqueId())) {
+                    suspended.add(ability);
+                    continue;
+                }
                 this.removeInstance(ability.player, ability.identifier);
-            } else {
-                break;
             }
+        } finally {
+            this.CLEANUP.addAll(suspended);
         }
     }
 
