@@ -78,8 +78,14 @@ is discarded even if a preceding command ends ownership or throws. Other players
 queue entries are untouched. A real PacketProcessor and embedded Netty channel test
 covers waiting for the barrier, late original-listener enqueue, control delivery,
 outsider preservation, teardown failure and stale movement after successful teardown.
-This is not a live socket test. Asynchronous command/plugin executor jobs outside
-PacketProcessor, disconnect cleanup and whole-roster composition still require
+The barrier also posts a marker to Paper's server task queue, behind commands
+submitted by earlier network callbacks. Readiness waits for that marker as well as
+the network checkpoint and packet drainage. A controlled server queue verifies that
+readiness stays false before those older tasks and the marker finish. Retained
+facades from a previous session route through a newer session's gate, so old queued
+callbacks cannot bypass its movement/command/tick ownership; a native regression
+checks two consecutive leases. This is not a live socket test. Arbitrary asynchronous
+plugin/chat chains, disconnect cleanup and whole-roster composition still require
 integration before startup; the gate is not installed in production yet.
 
 The connection maintenance component mirrors Paper's paused tick branch without

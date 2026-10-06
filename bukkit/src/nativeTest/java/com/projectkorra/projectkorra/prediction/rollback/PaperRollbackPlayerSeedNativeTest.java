@@ -559,23 +559,32 @@ class PaperRollbackPlayerSeedNativeTest {
                 listenerField.set(connection, intercepted);
                 var processor = new net.minecraft.network.PacketProcessor(Thread.currentThread());
                 var channel = new io.netty.channel.embedded.EmbeddedChannel(); connection.channel = channel;
+                var serverTasks = new java.util.ArrayDeque<Runnable>();
+                java.util.concurrent.Executor serverQueue = serverTasks::add;
+                var oldCommandFinished = new java.util.concurrent.atomic.AtomicBoolean();
+                serverTasks.add(() -> oldCommandFinished.set(true));
                 var outsider = new org.objenesis.ObjenesisStd().newInstance(MaintenanceProbe.class);
                 processor.scheduleIfPossible(original, movement);
                 processor.scheduleIfPossible(outsider, movement);
                 processor.scheduleIfPossible(original, new net.minecraft.network.protocol.common.ServerboundPongPacket(7));
-                assertFalse(lease.pollPacketDrain(processor));
+                assertFalse(lease.pollPacketDrain(processor, serverQueue));
                 assertEquals(0, original.pongs);
                 // Simulate an old listener callback scheduling just before the barrier.
                 processor.scheduleIfPossible(original, movement);
                 channel.runPendingTasks();
-                assertTrue(lease.pollPacketDrain(processor));
+                assertFalse(lease.pollPacketDrain(processor, serverQueue));
+                assertFalse(oldCommandFinished.get());
+                serverTasks.remove().run(); assertTrue(oldCommandFinished.get());
+                assertFalse(lease.pollPacketDrain(processor, serverQueue));
+                serverTasks.remove().run();
+                assertTrue(lease.pollPacketDrain(processor, serverQueue));
                 assertEquals(0, original.movements); assertEquals(1, original.pongs);
                 assertEquals(0, outsider.movements);
                 assertTrue(processor.executeSinglePacket()); assertEquals(1, outsider.movements);
                 assertFalse(processor.executeSinglePacket());
-                assertTrue(lease.pollPacketDrain(processor)); assertEquals(1, original.pongs);
+                assertTrue(lease.pollPacketDrain(processor, serverQueue)); assertEquals(1, original.pongs);
                 assertThrows(IllegalStateException.class,
-                        () -> lease.pollPacketDrain(new net.minecraft.network.PacketProcessor(Thread.currentThread())));
+                        () -> lease.pollPacketDrain(new net.minecraft.network.PacketProcessor(Thread.currentThread()), serverQueue));
                 channel.finishAndReleaseAll(); connection.channel = null;
                 var command = new net.minecraft.network.protocol.game.ServerboundChatCommandPacket("kill");
                 assertThrows(IllegalStateException.class, () -> intercepted.handleChatCommand(command));
@@ -601,6 +610,15 @@ class PaperRollbackPlayerSeedNativeTest {
                 intercepted.handleMovePlayer(movement); assertEquals(1, original.movements);
                 lease.restoreAndRelease(() -> fail("Restoration repeated"));
                 assertThrows(IllegalStateException.class, lease::acquire);
+                var nextLease = PaperRollbackConnectionTickGate.prepare(player,
+                        () -> { throw new IllegalStateException("next session stop requested"); });
+                nextLease.acquire();
+                intercepted.handleMovePlayer(movement); assertEquals(1, original.movements);
+                intercepted.tick(); assertEquals(2, original.nativeTicks);
+                assertThrows(IllegalStateException.class, () -> intercepted.handleChatCommand(command));
+                assertEquals(1, original.commands); nextLease.requireCurrent();
+                nextLease.restoreAndRelease(() -> { });
+                intercepted.handleMovePlayer(movement); assertEquals(2, original.movements);
                 return null;
             } finally { configField.set(null, previousConfig); }
         });

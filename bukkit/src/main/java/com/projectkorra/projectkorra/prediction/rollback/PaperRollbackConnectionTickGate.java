@@ -91,8 +91,9 @@ public final class PaperRollbackConnectionTickGate {
         private final Layout layout;
         private final Runnable stopBeforeMutation;
         private volatile boolean suspended;
-        private boolean released, restoring, packetsDrained;
-        private CompletableFuture<Void> networkBarrier;
+        private volatile boolean released;
+        private boolean restoring, packetsDrained;
+        private CompletableFuture<Void> handoffBarrier;
         private PacketProcessor packetProcessor;
         private io.netty.channel.Channel drainChannel;
         private Lease(ServerPlayer player, Runnable stopBeforeMutation) {
@@ -121,28 +122,41 @@ public final class PaperRollbackConnectionTickGate {
         /**
          * Poll before capturing the initial simulation state. The barrier lets any
          * network callback that already captured the original listener finish queuing
-         * its packet. This covers PacketProcessor work, not arbitrary plugin/command
-         * executor jobs; the loader must own those separately.
+         * its packet. A marker then crosses the server task queue, after commands
+         * submitted by those callbacks. Arbitrary asynchronous plugin/chat chains
+         * still require lifecycle interception by the loader.
          */
         public boolean pollPacketDrain(PacketProcessor processor) {
-            requireCurrent(); Objects.requireNonNull(processor);
+            return pollPacketDrain(processor, Objects.requireNonNull(player.level().getServer())::executeIfPossible);
+        }
+
+        boolean pollPacketDrain(PacketProcessor processor, java.util.concurrent.Executor serverQueue) {
+            requireCurrent(); Objects.requireNonNull(processor); Objects.requireNonNull(serverQueue);
             if (!processor.isSameThread()) throw new IllegalStateException("Foreign packet processor thread");
             if (packetProcessor != null && packetProcessor != processor)
                 throw new IllegalStateException("Packet processor changed during handoff");
             if (drainChannel != null && (connection.channel != drainChannel || !drainChannel.isOpen()))
                 throw new IllegalStateException("Connection channel changed/closed during handoff");
             if (packetsDrained) return true;
-            if (networkBarrier == null) {
+            if (handoffBarrier == null) {
                 var channel = Objects.requireNonNull(connection.channel, "Live connection channel");
                 if (!channel.isOpen()) throw new IllegalStateException("Connection closed during handoff");
                 packetProcessor = processor; drainChannel = channel;
-                networkBarrier = new CompletableFuture<>();
-                try { channel.eventLoop().execute(() -> networkBarrier.complete(null)); }
-                catch (RuntimeException failure) { networkBarrier.completeExceptionally(failure); }
+                handoffBarrier = new CompletableFuture<>();
+                try {
+                    channel.eventLoop().execute(() -> {
+                        try {
+                            serverQueue.execute(() -> {
+                                if (Thread.currentThread() == owner) handoffBarrier.complete(null);
+                                else handoffBarrier.completeExceptionally(new IllegalStateException("Handoff marker ran outside the server thread"));
+                            });
+                        } catch (RuntimeException failure) { handoffBarrier.completeExceptionally(failure); }
+                    });
+                } catch (RuntimeException failure) { handoffBarrier.completeExceptionally(failure); }
                 return false;
             }
-            if (!networkBarrier.isDone()) return false;
-            networkBarrier.join();
+            if (!handoffBarrier.isDone()) return false;
+            handoffBarrier.join();
             PaperRollbackQueuedPackets.drain(processor, original, proxy);
             // A queued command may have torn the session down. Never start it again.
             requireCurrent();
@@ -166,7 +180,7 @@ public final class PaperRollbackConnectionTickGate {
                 restore.run(); requireCurrent();
                 if (!LISTENER.compareAndSet(connection, proxy, original))
                     throw new IllegalStateException("Connection listener changed during cleanup");
-                suspended = false; released = true;
+                released = true; suspended = false;
             } finally { restoring = false; }
         }
         private Object invoke(Object receiver, Method method, Object[] args) throws Throwable {
@@ -191,8 +205,19 @@ public final class PaperRollbackConnectionTickGate {
                     case PASS -> { }
                 }
             }
+            Object target = original;
+            if (!suspended && released) {
+                var current = connection.getPacketListener();
+                if (current != original) {
+                    // Queued callbacks can retain an old facade into the next duel.
+                    // They must cross the current gate instead of bypassing it.
+                    if (current == proxy || !layout.proxy().isInstance(current))
+                        throw new IllegalStateException("Stale rollback callback after listener transition");
+                    target = current;
+                }
+            }
             var callable = layout.methods().computeIfAbsent(method, value -> { value.setAccessible(true); return value; });
-            try { return callable.invoke(original, args); }
+            try { return callable.invoke(target, args); }
             catch (InvocationTargetException failure) { throw failure.getCause(); }
             finally { proxy.processedDisconnect = original.processedDisconnect; }
         }
