@@ -249,6 +249,11 @@ public final class BukkitMC {
         return value == null ? null : new LocationView(value);
     }
 
+    /** Capture only our exact native-backed wrapper; arbitrary addon Location subclasses retain their own state. */
+    public static org.bukkit.Location nativeLocationView(Object value) {
+        return value instanceof LocationView location ? location.value : null;
+    }
+
     public static World world(final org.bukkit.World value) {
         return value == null ? null : WORLDS.compute(value.getUID(), (ignored, current) ->
                 current != null && current.handle() == value ? current : new WorldView(value));
@@ -803,13 +808,7 @@ public final class BukkitMC {
 
         @Override
         public boolean equals(Object other) {
-            return other instanceof LocationView view
-                    && Double.compare(value.getX(), view.value.getX()) == 0
-                    && Double.compare(value.getY(), view.value.getY()) == 0
-                    && Double.compare(value.getZ(), view.value.getZ()) == 0
-                    && Float.compare(value.getYaw(), view.value.getYaw()) == 0
-                    && Float.compare(value.getPitch(), view.value.getPitch()) == 0
-                    && value.getWorld().getUID().equals(view.value.getWorld().getUID());
+            return super.equals(other);
         }
 
         @Override

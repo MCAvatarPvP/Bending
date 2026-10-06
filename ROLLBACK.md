@@ -123,8 +123,23 @@ Tests cover round-trip alias preservation, foreign/replaced/disconnected identit
 and the actual BukkitMC player/offline wrapper entrypoints. Bukkit's world wrapper
 cache now replaces its cached entry when the native world instance changes, while
 leaving previously captured views untouched; a same-UUID world replacement therefore
-fails roster capture. Other native views (such as blocks and locations) still need
+fails roster capture. Other native views, including blocks and block snapshots, still need
 their own portable graph handling as part of production bootstrap assembly.
+
+Paper's graph value-view adapter now snapshots its exact native Location wrappers
+into ordinary common Locations. Each capture creates a fresh alias table: wrappers
+sharing one mutable native location become one private location, but a later capture
+reads current coordinates again. Arbitrary addon subclasses are not flattened and
+raw native locations still require an explicit adapter. Existing task/attribute
+projections retain precedence over the loader's value projections.
+
+Common Location hashing now uses a constant world component, matching Paper's
+existing wrapper rule, so separate private world identities do not reorder location
+keys. Location equality also compares exact world handles and is symmetric between
+Paper wrappers and restored common values, preserving live map lookups after teardown.
+A Paper adapter test checks copied coordinates/orientation, shared backing
+aliases, source isolation, hash-map iteration, worldless locations and addon state.
+Bootstrap still needs to supply this adapter when constructing its source codec.
 
 ### Production assembly audit
 

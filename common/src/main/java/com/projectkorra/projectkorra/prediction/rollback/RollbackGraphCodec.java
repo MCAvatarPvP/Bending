@@ -168,6 +168,7 @@ public final class RollbackGraphCodec {
     private final Catalog catalog;
     private final Limits limits;
     private final Function<Object, Object> externalBindings;
+    private final java.util.function.Supplier<? extends Function<Object, RollbackStateTransfer.Replacement>> valueViews;
 
     public RollbackGraphCodec(Catalog catalog, Limits limits) {
         this(catalog, limits, ignored -> null);
@@ -175,9 +176,16 @@ public final class RollbackGraphCodec {
 
     /** Local view normalization may return only objects explicitly bound in this catalog. */
     public RollbackGraphCodec(Catalog catalog, Limits limits, Function<Object, Object> externalBindings) {
+        this(catalog, limits, externalBindings, () -> ignored -> null);
+    }
+
+    /** Fresh local value-view projections per capture preserve backing-object aliases without caching stale values. */
+    public RollbackGraphCodec(Catalog catalog, Limits limits, Function<Object, Object> externalBindings,
+                             java.util.function.Supplier<? extends Function<Object, RollbackStateTransfer.Replacement>> valueViews) {
         this.catalog = Objects.requireNonNull(catalog);
         this.limits = Objects.requireNonNull(limits);
         this.externalBindings = Objects.requireNonNull(externalBindings);
+        this.valueViews = Objects.requireNonNull(valueViews);
     }
 
     public byte[] encode(Collection<?> roots) { return encode(roots, ignored -> null); }
@@ -197,7 +205,11 @@ public final class RollbackGraphCodec {
 
     private byte[] encodeGraph(Collection<?> roots, Function<Object, RollbackStateTransfer.Replacement> projections) {
         Objects.requireNonNull(projections);
-        var capture = new Capture(projections);
+        var views = Objects.requireNonNull(valueViews.get());
+        var capture = new Capture(value -> {
+            var explicit = projections.apply(value);
+            return explicit == null ? views.apply(value) : explicit;
+        });
         int[] rootIds = new int[bounded(roots.size(), limits.maximumReferences(), "roots")];
         int root = 0;
         for (Object value : roots) rootIds[root++] = capture.reference(value);
