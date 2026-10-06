@@ -12,6 +12,14 @@ import java.util.Collection;
  * and imported Paper event/configuration policy still require parity before live use.
  */
 public final class FabricRollbackExecution<E> extends RollbackPlayerExecution<E> {
+    public FabricRollbackExecution(Collection<RollbackPlayer> participants, Services<E, ?> phases,
+            FabricRollbackItemRelease release) {
+        this(participants, new com.projectkorra.projectkorra.prediction.rollback.RollbackItemReleaseServices<>(phases, release));
+    }
+    public FabricRollbackExecution(Collection<RollbackPlayer> participants, FabricRollbackWorldServices world,
+            Services<E, ?> phases, FabricRollbackItemRelease release) {
+        this(participants, world, new com.projectkorra.projectkorra.prediction.rollback.RollbackItemReleaseServices<>(phases, release));
+    }
     public FabricRollbackExecution(Collection<RollbackPlayer> participants, FabricRollbackWorldServices world, Services<E, ?> phases) {
         this(participants, new com.projectkorra.projectkorra.prediction.rollback.RollbackTimedExecutionServices<>(world, phases));
         for (var player : participants) if (player.getWorld().handle() != world.logicalWorld().handle())

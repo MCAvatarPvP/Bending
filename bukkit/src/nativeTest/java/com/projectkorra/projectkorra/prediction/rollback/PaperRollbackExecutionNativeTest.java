@@ -49,6 +49,45 @@ class PaperRollbackExecutionNativeTest {
         return new RollbackPlayerInput.Edge(new RollbackInputActions.Action(sequence, 23, RollbackInputActions.Kind.RIGHT_CLICK, -1), yaw, 0);
     }
 
+    @Test void lateItemReleaseRunsThroughExecutionAndMatchesOnTimeReplay() throws Exception {
+        onTickThread(() -> {
+        withConfig(() -> {
+            java.util.function.Consumer<Fixture> prepare = fixture -> {
+                var attacker = (PaperRollbackNativePlayerState) fixture.attacker.body().kinematicsSource();
+                var defender = (PaperRollbackNativePlayerState) fixture.defender.body().kinematicsSource();
+                attacker.use(player -> {
+                    ((net.minecraft.world.entity.player.Player) player).setItemInHand(net.minecraft.world.InteractionHand.OFF_HAND, new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.SHIELD));
+                    return null;
+                });
+                try (var clock = RollbackClock.at(1000, 1_000_000_000, 0, 50_000_000)) { attacker.startItemUse(true); }
+                fixture.release = new PaperRollbackItemRelease(new PaperRollbackNativeEvents(event -> fixture.record("release-event"),
+                        entity -> entity == attacker.ownedPlayer().getBukkitEntity() || entity == defender.ownedPlayer().getBukkitEntity()), new PaperRollbackItemRelease.Items<Void>() {
+                    @Override public void release(net.minecraft.world.item.ItemStack stack, net.minecraft.world.level.Level world, net.minecraft.world.entity.LivingEntity player, int remaining) { fixture.record("release-item"); }
+                    @Override public void update(net.minecraft.world.entity.LivingEntity player) { fail("Shield has no release update"); }
+                    @Override public Void captureRollbackState() { return null; }
+                    @Override public void restoreRollbackState(Void ignored) { }
+                    @Override public Collection<?> rollbackReferences() { return List.of(fixture); }
+                });
+            };
+            var direct = scenario(prepare, fixture -> { }); var late = scenario(prepare, fixture -> { });
+            var releaseInput = input(0, List.of(new RollbackPlayerInput.Edge(new RollbackInputActions.Action(
+                    1, 23, RollbackInputActions.Kind.RELEASE_USE_ITEM, -1), 0, 0)));
+            assertEquals(RollbackEngine.Submission.ACCEPTED, direct.runtime.submit(A, 1, releaseInput));
+            direct.runtime.advance(); late.runtime.advance();
+            direct.runtime.advance(); late.runtime.advance();
+            assertTrue(((PaperRollbackNativePlayerState) late.fixture.attacker.body().kinematicsSource()).ownedPlayer().isUsingItem());
+            assertEquals(RollbackEngine.Submission.ACCEPTED, late.runtime.submit(A, 1, releaseInput));
+            var corrected = late.runtime.reconcile(); assertEquals(1, corrected.replayedFrom());
+            assertFalse(((PaperRollbackNativePlayerState) late.fixture.attacker.body().kinematicsSource()).ownedPlayer().isUsingItem());
+            assertEquals(direct.fixture.history, late.fixture.history);
+            assertEquals(1, Collections.frequency(late.fixture.history, "release-event"));
+            assertEquals(1, Collections.frequency(late.fixture.history, "release-item"));
+            assertEquals(0, late.fixture.activations);
+            assertEquals(direct.fixture.attacker.body().kinematics(), late.fixture.attacker.body().kinematics());
+        }); return null;
+        });
+    }
+
     @ParameterizedTest @ValueSource(booleans = {false, true})
     void lateDodgeOrJumpRetractsDynamicCollisionDamageAndMatchesOnTimeNativeFrames(boolean jumping) throws Exception {
         onTickThread(() -> {
@@ -241,7 +280,9 @@ class PaperRollbackExecutionNativeTest {
     private Scenario scenario(java.util.function.Consumer<Fixture> prepare, java.util.function.Consumer<Fixture> install) {
         var fixture = new Fixture();
         prepare.accept(fixture);
-        var execution = new PaperRollbackExecution<Object>(List.of(fixture.defender, fixture.attacker), fixture);
+        var execution = fixture.release == null
+                ? new PaperRollbackExecution<Object>(List.of(fixture.defender, fixture.attacker), fixture)
+                : new PaperRollbackExecution<Object>(List.of(fixture.defender, fixture.attacker), fixture, fixture.release);
         fixture.output = execution.output();
         var shared = sharedRoots();
         var scheduler = new RollbackScheduler(50, 50);
@@ -309,6 +350,7 @@ class PaperRollbackExecutionNativeTest {
     }
 
     private static final class Fixture implements PaperRollbackExecution.Services<Object, Fixture.Counters> {
+        PaperRollbackItemRelease release;
         record Counters(int activations, int worldTicks) { }
         final World logical = new World();
         final PaperRollbackDamageNativeTest.Combat combat = new PaperRollbackDamageNativeTest.Combat();

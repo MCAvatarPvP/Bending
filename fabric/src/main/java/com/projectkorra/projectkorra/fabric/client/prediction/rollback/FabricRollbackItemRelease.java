@@ -10,7 +10,7 @@ import java.lang.invoke.*;
 import java.util.*;
 
 /** Native release ordering with the captured Paper event policy and private item effects. */
-public final class FabricRollbackItemRelease implements RollbackStateCell<Void> {
+public final class FabricRollbackItemRelease implements com.projectkorra.projectkorra.prediction.rollback.RollbackItemReleaseServices.Release<Void> {
     public interface Items<S> extends RollbackStateCell<S> {
         /** Paper stop-use event: called while the current used stack is still installed. */
         void stopped(LivingEntity player, ItemStack stack, int usedTicks);
@@ -44,6 +44,14 @@ public final class FabricRollbackItemRelease implements RollbackStateCell<Void> 
         items.stopped(player, stack, player.getItemUseTime());
         // Paper evaluates these arguments after its stop-use event returns.
         items.release(player.getActiveItem(), player.getEntityWorld(), player, player.getItemUseTimeLeft());
+    }
+    @Override public void release(com.projectkorra.projectkorra.prediction.rollback.world.RollbackPlayer player) {
+        checkThread();
+        if (!(Objects.requireNonNull(player).body().kinematicsSource() instanceof FabricRollbackNativePlayerState state)
+                || player.state().controlSource() != state || player.state().living().combatSource() != state
+                || player.state().inventory().nativeOwner() != state)
+            throw new IllegalArgumentException("Release requires the complete owned native player");
+        release(state);
     }
     public void release(FabricRollbackNativePlayerState player) {
         checkThread();

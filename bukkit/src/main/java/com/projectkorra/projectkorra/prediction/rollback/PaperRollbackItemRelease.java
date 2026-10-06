@@ -17,7 +17,7 @@ import java.util.Objects;
  * root, as with every PaperRollbackNativeEvents binding. Item callbacks are roots here.
  * This adapter does not supply item implementations or install an execution service.
  */
-public final class PaperRollbackItemRelease implements RollbackStateCell<Void> {
+public final class PaperRollbackItemRelease implements com.projectkorra.projectkorra.prediction.rollback.RollbackItemReleaseServices.Release<Void> {
     public interface Items<S> extends RollbackStateCell<S> {
         void release(ItemStack stack, Level world, LivingEntity player, int remaining);
         void update(LivingEntity player);
@@ -41,6 +41,14 @@ public final class PaperRollbackItemRelease implements RollbackStateCell<Void> {
             builder.copy(entry).copy(LivingEntity.class.getDeclaredMethod("stopUsingItem"));
             release = builder.build().get(entry);
         } catch (ReflectiveOperationException failure) { throw new IllegalStateException("Native item release changed", failure); }
+    }
+    @Override public void release(com.projectkorra.projectkorra.prediction.rollback.world.RollbackPlayer player) {
+        checkThread();
+        if (!(Objects.requireNonNull(player).body().kinematicsSource() instanceof PaperRollbackNativePlayerState state)
+                || player.state().controlSource() != state || player.state().living().combatSource() != state
+                || player.state().inventory().nativeOwner() != state)
+            throw new IllegalArgumentException("Release requires the complete owned native player");
+        release(state);
     }
     public void release(PaperRollbackNativePlayerState player) {
         checkThread();

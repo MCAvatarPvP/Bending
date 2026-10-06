@@ -48,6 +48,42 @@ class FabricRollbackExecutionTest {
         return new RollbackPlayerInput.Edge(new RollbackInputActions.Action(sequence, 23, RollbackInputActions.Kind.RIGHT_CLICK, -1), yaw, 0);
     }
 
+    @Test void lateItemReleaseRunsThroughExecutionAndMatchesOnTimeReplay() throws Exception {
+        withConfig(() -> {
+            java.util.function.Consumer<Fixture> prepare = fixture -> {
+                var attacker = (FabricRollbackNativePlayerState) fixture.attacker.body().kinematicsSource();
+                var defender = (FabricRollbackNativePlayerState) fixture.defender.body().kinematicsSource();
+                attacker.use(player -> {
+                    player.setStackInHand(net.minecraft.util.Hand.OFF_HAND, new net.minecraft.item.ItemStack(net.minecraft.item.Items.SHIELD));
+                    player.setCurrentHand(net.minecraft.util.Hand.OFF_HAND); return null;
+                });
+                fixture.release = new FabricRollbackItemRelease(List.of(attacker, defender), new FabricRollbackItemRelease.Items<Void>() {
+                    @Override public void stopped(net.minecraft.entity.LivingEntity player, net.minecraft.item.ItemStack stack, int usedTicks) { fixture.record("release-event"); }
+                    @Override public void release(net.minecraft.item.ItemStack stack, net.minecraft.world.World world, net.minecraft.entity.LivingEntity player, int remaining) { fixture.record("release-item"); }
+                    @Override public void update(net.minecraft.entity.LivingEntity player) { fail("Shield has no release update"); }
+                    @Override public Void captureRollbackState() { return null; }
+                    @Override public void restoreRollbackState(Void ignored) { }
+                    @Override public Collection<?> rollbackReferences() { return List.of(fixture); }
+                });
+            };
+            var direct = scenario(false, prepare); var late = scenario(false, prepare);
+            var releaseInput = input(0, List.of(new RollbackPlayerInput.Edge(new RollbackInputActions.Action(
+                    1, 23, RollbackInputActions.Kind.RELEASE_USE_ITEM, -1), 0, 0)));
+            assertEquals(RollbackEngine.Submission.ACCEPTED, direct.runtime.submit(A, 1, releaseInput));
+            direct.runtime.advance(); late.runtime.advance();
+            direct.runtime.advance(); late.runtime.advance();
+            assertTrue(((FabricRollbackNativePlayerState) late.fixture.attacker.body().kinematicsSource()).ownedPlayer().isUsingItem());
+            assertEquals(RollbackEngine.Submission.ACCEPTED, late.runtime.submit(A, 1, releaseInput));
+            var corrected = late.runtime.reconcile(); assertEquals(1, corrected.replayedFrom());
+            assertFalse(((FabricRollbackNativePlayerState) late.fixture.attacker.body().kinematicsSource()).ownedPlayer().isUsingItem());
+            assertEquals(direct.fixture.history, late.fixture.history);
+            assertEquals(1, Collections.frequency(late.fixture.history, "release-event"));
+            assertEquals(1, Collections.frequency(late.fixture.history, "release-item"));
+            assertEquals(0, late.fixture.activations);
+            assertEquals(direct.fixture.attacker.body().kinematics(), late.fixture.attacker.body().kinematics());
+        });
+    }
+
     @ParameterizedTest @ValueSource(booleans = {false, true})
     void lateDodgeOrJumpRetractsDynamicCollisionDamageAndMatchesOnTimeNativeFrames(boolean jumping) throws Exception {
         withConfig(() -> {
@@ -342,7 +378,9 @@ class FabricRollbackExecutionTest {
     private Scenario scenario(boolean replica, java.util.function.Consumer<Fixture> prepare, java.util.function.Consumer<Fixture> install) {
         var fixture = new Fixture();
         prepare.accept(fixture);
-        var execution = new FabricRollbackExecution<Object>(List.of(fixture.defender, fixture.attacker), fixture);
+        var execution = fixture.release == null
+                ? new FabricRollbackExecution<Object>(List.of(fixture.defender, fixture.attacker), fixture)
+                : new FabricRollbackExecution<Object>(List.of(fixture.defender, fixture.attacker), fixture, fixture.release);
         fixture.output = execution.output();
         var shared = sharedRoots();
         var scheduler = new RollbackScheduler(50, 50);
@@ -444,6 +482,7 @@ class FabricRollbackExecutionTest {
     }
 
     private static final class Fixture implements FabricRollbackExecution.Services<Object, Fixture.Counters> {
+        FabricRollbackItemRelease release;
         record Counters(int activations, int worldTicks) { }
         final FabricRollbackWorldAccessTest.Queries queries = new FabricRollbackWorldAccessTest.Queries(new RollbackBlockStore.Bounds(-5, -4, -5, 12, 12, 16));
         final World logical = queries.logical;

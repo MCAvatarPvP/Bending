@@ -3303,3 +3303,19 @@ Tests verify event/effect/cleanup ordering, repeated-release suppression, restor
 foreign-state rejection and an event clearing the active item before release. These
 controlled callbacks establish ordering, not concrete item/projectile effects;
 production callbacks and execution/bootstrap installation remain outstanding.
+
+
+### Release edges connected to combat execution
+
+Both native execution constructors now accept their item-release adapter through
+RollbackItemReleaseServices. Release edges enter that adapter once, honor cancellation
+and do not also enter the remaining action dispatcher. Other phases are delegated,
+including cleanup after partial begin failures, and both services remain checkpoint
+roots. Ability-facing players must share the same native movement/control/combat and
+inventory owner before an adapter accepts them.
+
+Paper and Fabric combat-runtime tests submit the release on time and two ticks late.
+After reconciliation they compare player motion and event history, verify one event
+and item-effect callback, stopped use and zero bending activations. These use real
+native shield state but controlled item-effect callbacks. Production item callbacks
+and match bootstrap remain uninstalled; these are execution tests, not live duel proof.

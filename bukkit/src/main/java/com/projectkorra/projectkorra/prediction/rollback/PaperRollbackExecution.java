@@ -7,6 +7,14 @@ import java.util.Collection;
 
 /** Paper's owned ServerPlayer tick phases within the shared combat execution order. */
 public final class PaperRollbackExecution<E> extends RollbackPlayerExecution<E> {
+    public PaperRollbackExecution(Collection<RollbackPlayer> participants, Services<E, ?> phases,
+            PaperRollbackItemRelease release) {
+        this(participants, new com.projectkorra.projectkorra.prediction.rollback.RollbackItemReleaseServices<>(phases, release));
+    }
+    public PaperRollbackExecution(Collection<RollbackPlayer> participants, PaperRollbackWorldServices world,
+            Services<E, ?> phases, PaperRollbackItemRelease release) {
+        this(participants, world, new com.projectkorra.projectkorra.prediction.rollback.RollbackItemReleaseServices<>(phases, release));
+    }
     public PaperRollbackExecution(Collection<RollbackPlayer> participants, PaperRollbackWorldServices world, Services<E, ?> phases) {
         this(participants, new com.projectkorra.projectkorra.prediction.rollback.RollbackTimedExecutionServices<>(world, phases));
         for (var player : participants) if (player.getWorld().handle() != world.logicalWorld().handle())
