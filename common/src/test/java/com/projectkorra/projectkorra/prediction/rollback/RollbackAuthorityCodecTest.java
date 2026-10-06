@@ -38,11 +38,11 @@ class RollbackAuthorityCodecTest {
             byte[] changed = valid.clone(); changed[offset] = 2;
             assertThrows(IllegalArgumentException.class, () -> RollbackAuthorityCodec.decode(changed));
         }
-        for (int offset : List.of(81, 85, 90, 94, 118, 122)) {
+        for (int offset : List.of(81, 85, 90, 94, 119, 123)) {
             byte[] changed = valid.clone(); ByteBuffer.wrap(changed).putFloat(offset, Float.NaN);
             assertThrows(IllegalArgumentException.class, () -> RollbackAuthorityCodec.decode(changed));
         }
-        for (int offset : List.of(60, 99, 116)) { // Roster, action count, first action kind.
+        for (int offset : List.of(60, 99, 116, 118)) { // Roster, action count, first action kind.
             byte[] changed = valid.clone(); changed[offset] = (byte) 255;
             assertThrows(IllegalArgumentException.class, () -> RollbackAuthorityCodec.decode(changed));
         }
@@ -136,7 +136,7 @@ class RollbackAuthorityCodecTest {
         for (var kind : RollbackInputActions.Kind.values()) {
             long sequence = kind.ordinal() + 1;
             edges.add(new RollbackPlayerInput.Edge(new RollbackInputActions.Action(sequence, sequence * 19, kind,
-                    kind == RollbackInputActions.Kind.SLOT_CHANGE ? 8 : -1), 90 - sequence, 40 - sequence));
+                    kind == RollbackInputActions.Kind.SLOT_CHANGE ? 8 : -1, kind == RollbackInputActions.Kind.RIGHT_CLICK ? RollbackInputActions.Hand.OFF : RollbackInputActions.defaultHand(kind)), 90 - sequence, 40 - sequence));
         }
         return new RollbackPlayerInput(new RollbackMovementInput(-0.5f, 1, true, 87, -42), true, edges);
     }

@@ -68,8 +68,10 @@ public final class FabricRollbackInput {
             return;
         }
         if (packet instanceof PlayerInteractItemC2SPacket item) {
-            if (item.getHand() != Hand.MAIN_HAND) throw unsupported(packet);
-            if (blockUntil <= tick) action(RollbackInputActions.Kind.RIGHT_CLICK, -1, item.getYaw(), item.getPitch());
+            // Block-use fallback still requires its own target-bearing native interaction intent.
+            if (blockUntil > tick && item.getHand() == Hand.OFF_HAND) throw unsupported(packet);
+            if (blockUntil <= tick) runtime.action(RollbackInputActions.Kind.RIGHT_CLICK, -1, item.getYaw(), item.getPitch(),
+                    item.getHand() == Hand.MAIN_HAND ? RollbackInputActions.Hand.MAIN : RollbackInputActions.Hand.OFF);
             return;
         }
         if (packet instanceof PlayerInteractEntityC2SPacket entity) {

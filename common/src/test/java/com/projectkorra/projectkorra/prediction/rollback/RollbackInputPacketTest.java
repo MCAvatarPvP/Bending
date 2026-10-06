@@ -33,7 +33,7 @@ class RollbackInputPacketTest {
         }
         assertThrows(IllegalArgumentException.class, () -> RollbackInputPacket.decode(Arrays.copyOf(valid, valid.length + 1)));
         assertThrows(IllegalArgumentException.class, () -> RollbackInputPacket.decode(new byte[RollbackInputPacket.MAXIMUM_BYTES + 1]));
-        for (var mutation : List.of(new int[]{3, 1}, new int[]{3, 2}, new int[]{3, RollbackInputPacket.VERSION + 1}, new int[]{36, 2}, new int[]{45, 2}, new int[]{46, 65}, new int[]{55, 127}, new int[]{56, 8})) {
+        for (var mutation : List.of(new int[]{3, 1}, new int[]{3, 2}, new int[]{3, RollbackInputPacket.VERSION + 1}, new int[]{36, 2}, new int[]{45, 2}, new int[]{46, 65}, new int[]{55, 127}, new int[]{56, 8}, new int[]{57, 2}, new int[]{57, 1}, new int[]{3, 4})) {
             byte[] invalid = valid.clone(); invalid[mutation[0]] = (byte) mutation[1];
             assertThrows(IllegalArgumentException.class, () -> RollbackInputPacket.decode(invalid));
         }
@@ -41,6 +41,19 @@ class RollbackInputPacketTest {
         assertThrows(IllegalArgumentException.class, () -> RollbackInputPacket.decode(nan));
         byte[] negativeTime = valid.clone(); ByteBuffer.wrap(negativeTime).putLong(20, -1);
         assertThrows(IllegalArgumentException.class, () -> RollbackInputPacket.decode(negativeTime));
+    }
+
+    @Test void interactionHandSurvivesWireAndServerSeedAssignment() {
+        var off = new RollbackInputPacket.Edge(1, RollbackInputActions.Kind.RIGHT_CLICK, -1, 45, 12, RollbackInputActions.Hand.OFF);
+        var source = packet(List.of(off));
+        var decoded = RollbackInputPacket.decode(source.encode());
+        assertEquals(source, decoded);
+        assertEquals(RollbackInputActions.Hand.OFF, decoded.playerInput(PLAYER, 99).actions().getFirst().action().hand());
+        assertTrue(decoded.playerInput(PLAYER, 99).predict().actions().isEmpty());
+        assertThrows(IllegalArgumentException.class, () -> new RollbackInputActions.Action(1, 1,
+                RollbackInputActions.Kind.SLOT_CHANGE, 1, RollbackInputActions.Hand.OFF));
+        assertThrows(IllegalArgumentException.class, () -> new RollbackInputActions.Action(1, 1,
+                RollbackInputActions.Kind.OFF_HAND_SWING, -1, RollbackInputActions.Hand.MAIN));
     }
 
     @Test void serverSeedIsStableAcrossDeliveryOrderAndScopedToSessionAndPlayer() {

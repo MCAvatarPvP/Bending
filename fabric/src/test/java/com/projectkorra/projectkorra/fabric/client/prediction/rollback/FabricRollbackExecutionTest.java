@@ -106,6 +106,24 @@ class FabricRollbackExecutionTest {
         assertThrows(IllegalArgumentException.class, () -> new FabricRollbackExecution<>(List.of(detached), scene));
     }
 
+    @Test void offHandIntentReplaysWithoutActivatingMainHandBendingOrRepeatingOnMissingFrames() throws Exception {
+        withConfig(() -> {
+            var direct = scenario(); var late = scenario();
+            var off = new RollbackPlayerInput.Edge(new RollbackInputActions.Action(1, 73,
+                    RollbackInputActions.Kind.RIGHT_CLICK, -1, RollbackInputActions.Hand.OFF), 30, -10);
+            direct.runtime.submit(A, 1, input(0, List.of(off)));
+            var expected = direct.runtime.advance();
+            late.runtime.advance();
+            late.runtime.submit(A, 1, input(0, List.of(off)));
+            var replayed = late.runtime.reconcile();
+            var actions = replayed.head().effects().stream().filter(ActionOutput.class::isInstance).toList();
+            assertEquals(List.of(new ActionOutput(1, 30, false)), actions);
+            assertEquals(expected.head().effects(), replayed.head().effects());
+            assertEquals(0, direct.fixture.activations); assertEquals(0, late.fixture.activations);
+            assertTrue(late.runtime.advance().head().effects().stream().noneMatch(ActionOutput.class::isInstance));
+        });
+    }
+
     @Test void actionsUseTheirOwnAimAndRepeatedSequencesStopBeforeReactivation() throws Exception {
         withConfig(() -> {
             var scene = scenario();
@@ -462,8 +480,8 @@ class FabricRollbackExecutionTest {
             assertNull(effects); effects = output; queries.time = output.tick(); queries.outputs.clear(); queries.events.clear(); queries.waypoints.clear();
         }
         @Override public void action(RollbackPlayer player, RollbackPlayerInput.Edge edge, CommonInputHandler.InputResult result) {
-            // Fixture actions are bending-only and explicitly cancel the native remainder.
-            assertTrue(result.cancelEvent());
+            // Main-hand fixture actions activate bending; off-hand use passes to the native remainder.
+            assertEquals(edge.action().hand() == RollbackInputActions.Hand.MAIN, result.cancelEvent());
             assertEquals(edge.action().sequence(), PredictionDeterminism.currentAction());
             assertEquals(edge.action().seed(), PredictionDeterminism.currentSeed());
             this.output.accept(new ActionOutput(edge.action().sequence(), player.getLocation().getYaw(), result.cancelEvent()));

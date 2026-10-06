@@ -5,7 +5,7 @@ import java.util.*;
 
 /** Bounded server-to-client input/revision encoding, never a client hit claim or native object graph. */
 public final class RollbackAuthorityCodec {
-    public static final int VERSION = 4;
+    public static final int VERSION = 5;
     public static final int MAXIMUM_BYTES = 1_048_576;
     private RollbackAuthorityCodec() { }
 
@@ -79,7 +79,7 @@ public final class RollbackAuthorityCodec {
         for (var edge : input.actions()) {
             var action = edge.action();
             out.writeLong(action.sequence()); out.writeLong(action.seed()); out.writeByte(action.kind().ordinal());
-            out.writeByte(action.slot()); out.writeFloat(edge.yaw()); out.writeFloat(edge.pitch());
+            out.writeByte(action.slot()); out.writeByte(action.hand().ordinal()); out.writeFloat(edge.yaw()); out.writeFloat(edge.pitch());
         }
     }
     private static RollbackPlayerInput readInput(DataInputStream in) throws IOException {
@@ -90,7 +90,10 @@ public final class RollbackAuthorityCodec {
         for (int index = 0; index < count; index++) {
             long sequence = in.readLong(), seed = in.readLong(); int kind = in.readUnsignedByte(), slot = in.readByte();
             if (kind >= kinds.length) throw new IllegalArgumentException("Unknown authority action");
-            actions.add(new RollbackPlayerInput.Edge(new RollbackInputActions.Action(sequence, seed, kinds[kind], slot), in.readFloat(), in.readFloat()));
+            int hand = in.readUnsignedByte();
+            if (hand >= RollbackInputActions.Hand.values().length) throw new IllegalArgumentException("Unknown authority hand");
+            actions.add(new RollbackPlayerInput.Edge(new RollbackInputActions.Action(sequence, seed, kinds[kind], slot,
+                    RollbackInputActions.Hand.values()[hand]), in.readFloat(), in.readFloat()));
         }
         return new RollbackPlayerInput(movement, sprinting, actions);
     }

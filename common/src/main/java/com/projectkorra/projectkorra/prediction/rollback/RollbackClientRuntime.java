@@ -43,11 +43,14 @@ public final class RollbackClientRuntime<S, E> implements RollbackStartClientEnd
 
     /** Packet-time aim belongs to the edge, independently of the later tick's movement aim. */
     public boolean action(RollbackInputActions.Kind kind, int slot, float yaw, float pitch) {
+        return action(kind, slot, yaw, pitch, RollbackInputActions.defaultHand(kind));
+    }
+    public boolean action(RollbackInputActions.Kind kind, int slot, float yaw, float pitch, RollbackInputActions.Hand hand) {
         checkThread();
         if (phase != Phase.RUNNING) return false;
         try {
             if (actions.size() >= RollbackPlayerInput.MAXIMUM_ACTIONS) throw new IllegalStateException("Local input action budget exceeded");
-            var edge = new RollbackInputPacket.Edge(Math.incrementExact(sequence), kind, slot, yaw, pitch);
+            var edge = new RollbackInputPacket.Edge(Math.incrementExact(sequence), kind, slot, yaw, pitch, hand);
             actions.add(edge); sequence = edge.sequence();
             return true;
         } catch (RuntimeException | Error failure) { fail(); throw failure; }

@@ -2963,3 +2963,23 @@ rewind discarding cancelled corrections, and on-time versus late cancelled input
 identical native outputs on both loaders. The production output encoder/publisher and
 client reconciliation still need complete runtime installation; this journal change
 does not establish actual correction delivery or live multiplayer readiness.
+
+
+### Explicit interaction hands
+
+Input and authority protocol version 5 preserve main/off-hand selection on interaction
+edges, including server-assigned action seeds and authoritative replay. Negotiation
+rejects older peers; codecs reject unknown hands and impossible kind/hand combinations.
+Off-hand interaction intent bypasses the main-hand bending activation handler and is
+forwarded as an uncancelled native remainder. It is not converted into a main-hand click.
+
+Fabric captures standalone off-hand item input before the native interaction body.
+Transformed entry-point tests exercise both hands, assert unchanged item stacks/use
+state, preserve aim/slot/hand metadata, and verify that releasing ownership restores
+the original native entry. Cleanup-failure tests still exercise unsupported operations
+and retain the mutation guard until explicit release. Input/authority codec tests cover
+round trips, validation, server seed assignment and non-repeating predicted edges.
+
+This is intent transport, not a completed native item-use implementation. Block/entity
+target metadata, native item-use execution and production event/output installation
+remain required before live rollback activation and two-client validation.

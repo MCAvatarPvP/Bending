@@ -13,14 +13,17 @@ import java.util.UUID;
  */
 public record RollbackInputPacket(UUID session, long clientTick, RollbackMovementInput movement,
                                   boolean sprinting, List<Edge> actions) {
-    public static final int VERSION = 4;
+    public static final int VERSION = 5;
     public static final String CHANNEL = "projectkorra:rollback_input";
-    public static final int MAXIMUM_BYTES = 47 + 18 * RollbackPlayerInput.MAXIMUM_ACTIONS;
+    public static final int MAXIMUM_BYTES = 47 + 19 * RollbackPlayerInput.MAXIMUM_ACTIONS;
 
-    public record Edge(long sequence, RollbackInputActions.Kind kind, int slot, float yaw, float pitch) {
+    public record Edge(long sequence, RollbackInputActions.Kind kind, int slot, float yaw, float pitch, RollbackInputActions.Hand hand) {
+        public Edge(long sequence, RollbackInputActions.Kind kind, int slot, float yaw, float pitch) {
+            this(sequence, kind, slot, yaw, pitch, RollbackInputActions.defaultHand(kind));
+        }
         public Edge {
             // The same shape validation as a simulation action, without accepting a wire seed.
-            new RollbackInputActions.Action(sequence, 1, kind, slot);
+            new RollbackInputActions.Action(sequence, 1, kind, slot, hand);
             var look = new RollbackMovementInput(0, 0, false, yaw, pitch);
             yaw = look.yaw(); pitch = look.pitch();
         }
@@ -48,13 +51,13 @@ public record RollbackInputPacket(UUID session, long clientTick, RollbackMovemen
             seed = (seed ^ (seed >>> 30)) * 0xBF58476D1CE4E5B9L;
             seed = (seed ^ (seed >>> 27)) * 0x94D049BB133111EBL;
             seed = (seed ^ (seed >>> 31)) & Long.MAX_VALUE;
-            return new RollbackPlayerInput.Edge(new RollbackInputActions.Action(edge.sequence(), seed == 0 ? 1 : seed, edge.kind(), edge.slot()), edge.yaw(), edge.pitch());
+            return new RollbackPlayerInput.Edge(new RollbackInputActions.Action(edge.sequence(), seed == 0 ? 1 : seed, edge.kind(), edge.slot(), edge.hand()), edge.yaw(), edge.pitch());
         }).toList());
     }
 
     public byte[] encode() {
         try {
-            var bytes = new ByteArrayOutputStream(47 + 18 * actions.size());
+            var bytes = new ByteArrayOutputStream(47 + 19 * actions.size());
             var output = new DataOutputStream(bytes);
             output.writeInt(VERSION); output.writeLong(session.getMostSignificantBits()); output.writeLong(session.getLeastSignificantBits());
             output.writeLong(clientTick);
@@ -62,7 +65,7 @@ public record RollbackInputPacket(UUID session, long clientTick, RollbackMovemen
             output.writeFloat(movement.yaw()); output.writeFloat(movement.pitch()); output.writeBoolean(sprinting);
             output.writeByte(actions.size());
             for (var edge : actions) {
-                output.writeLong(edge.sequence()); output.writeByte(edge.kind().ordinal()); output.writeByte(edge.slot());
+                output.writeLong(edge.sequence()); output.writeByte(edge.kind().ordinal()); output.writeByte(edge.slot()); output.writeByte(edge.hand().ordinal());
                 output.writeFloat(edge.yaw()); output.writeFloat(edge.pitch());
             }
             return bytes.toByteArray();
@@ -85,7 +88,9 @@ public record RollbackInputPacket(UUID session, long clientTick, RollbackMovemen
             for (int index = 0; index < count; index++) {
                 long sequence = input.readLong(); int kind = input.readUnsignedByte();
                 if (kind >= kinds.length) throw new IllegalArgumentException("Unknown input action");
-                actions.add(new Edge(sequence, kinds[kind], input.readByte(), input.readFloat(), input.readFloat()));
+                int slot = input.readByte(), hand = input.readUnsignedByte();
+                if (hand >= RollbackInputActions.Hand.values().length) throw new IllegalArgumentException("Unknown input hand");
+                actions.add(new Edge(sequence, kinds[kind], slot, input.readFloat(), input.readFloat(), RollbackInputActions.Hand.values()[hand]));
             }
             if (input.available() != 0) throw new IllegalArgumentException("Trailing input data");
             return new RollbackInputPacket(session, tick, movement, sprinting, actions);

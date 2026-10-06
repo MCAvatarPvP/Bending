@@ -18,10 +18,16 @@ public final class RollbackInputActions {
 
     public enum Kind { SWING, RIGHT_CLICK, RIGHT_CLICK_BLOCK, RIGHT_CLICK_ENTITY, SNEAK_START, SNEAK_STOP, SWAP_HANDS, SLOT_CHANGE, FLIGHT_START, FLIGHT_STOP, GLIDE_START, OFF_HAND_SWING }
 
+    public enum Hand { MAIN, OFF }
+    public static Hand defaultHand(Kind kind) { return kind == Kind.OFF_HAND_SWING ? Hand.OFF : Hand.MAIN; }
+
     /** Slot is present only for SLOT_CHANGE. Seeds and sequences are assigned/validated by the session. */
-    public record Action(long sequence, long seed, Kind kind, int slot) {
+    public record Action(long sequence, long seed, Kind kind, int slot, Hand hand) {
+        public Action(long sequence, long seed, Kind kind, int slot) { this(sequence, seed, kind, slot, defaultHand(kind)); }
         public Action {
-            Objects.requireNonNull(kind, "kind");
+            Objects.requireNonNull(kind, "kind"); Objects.requireNonNull(hand, "hand");
+            if (kind != Kind.RIGHT_CLICK && kind != Kind.RIGHT_CLICK_BLOCK && kind != Kind.RIGHT_CLICK_ENTITY && hand != defaultHand(kind))
+                throw new IllegalArgumentException("Action does not accept this hand");
             if (sequence <= 0 || seed <= 0) throw new IllegalArgumentException("Action identity");
             if (kind == Kind.SLOT_CHANGE ? slot < 0 || slot > 8 : slot != -1) throw new IllegalArgumentException("Action slot");
         }
@@ -49,9 +55,9 @@ public final class RollbackInputActions {
         var result = new CommonInputHandler.InputResult[1];
         PredictionDeterminism.run(action.sequence(), action.seed(), () -> result[0] = switch (action.kind()) {
             case SWING, OFF_HAND_SWING -> CommonInputHandler.handleSwing(player, Set.of(), new HashSet<>());
-            case RIGHT_CLICK -> CommonInputHandler.handleRightClick(player, ClickType.RIGHT_CLICK);
-            case RIGHT_CLICK_BLOCK -> CommonInputHandler.handleRightClick(player, ClickType.RIGHT_CLICK_BLOCK);
-            case RIGHT_CLICK_ENTITY -> CommonInputHandler.handleRightClickEntity(player);
+            case RIGHT_CLICK -> action.hand() == Hand.OFF ? CommonInputHandler.InputResult.pass() : CommonInputHandler.handleRightClick(player, ClickType.RIGHT_CLICK);
+            case RIGHT_CLICK_BLOCK -> action.hand() == Hand.OFF ? CommonInputHandler.InputResult.pass() : CommonInputHandler.handleRightClick(player, ClickType.RIGHT_CLICK_BLOCK);
+            case RIGHT_CLICK_ENTITY -> action.hand() == Hand.OFF ? CommonInputHandler.InputResult.pass() : CommonInputHandler.handleRightClickEntity(player);
             case SNEAK_START, SNEAK_STOP -> sneak(player, action.kind() == Kind.SNEAK_START);
             case SWAP_HANDS -> CommonInputHandler.handleSwapHands(player,
                     empty(player.getInventory().getItemInMainHand()), empty(player.getInventory().getItemInOffHand()));

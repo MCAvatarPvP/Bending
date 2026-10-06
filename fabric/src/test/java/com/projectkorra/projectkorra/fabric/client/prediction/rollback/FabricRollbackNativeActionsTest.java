@@ -31,32 +31,35 @@ import static org.junit.jupiter.api.Assertions.*;
 class FabricRollbackNativeActionsTest {
     @BeforeAll static void bootstrap() { FabricRollbackTestRegistry.bootstrap(); }
 
-    @Test void transformedItemUseCapturesSlotAndAimBeforeNativeUseAndDoesNotRepeatSlotEdges() throws Exception {
+    @ParameterizedTest @org.junit.jupiter.params.provider.EnumSource(Hand.class)
+    void transformedItemUseCapturesSlotAndAimBeforeNativeUseAndDoesNotRepeatSlotEdges(Hand hand) throws Exception {
         var f = new Fixture(); var stack = new ItemStack(Items.APPLE, 4); f.player.getInventory().setStack(3, stack);
+        if (hand == Hand.OFF_HAND) f.player.setStackInHand(hand, stack);
         f.player.getInventory().setSelectedSlot(3); f.player.setYaw(72); f.player.setPitch(-18);
         try (var lease = f.acquire(f.player)) {
             // An uninitialized native manager cannot run its use/packet body. The actual injected entry must intercept first.
-            assertSame(ActionResult.CONSUME, f.manager.interactItem(f.player, Hand.MAIN_HAND));
-            assertSame(stack, f.player.getMainHandStack()); assertEquals(4, stack.getCount()); assertFalse(f.player.isUsingItem());
+            assertSame(ActionResult.CONSUME, f.manager.interactItem(f.player, hand));
+            assertSame(stack, f.player.getStackInHand(hand)); assertEquals(4, stack.getCount()); assertFalse(f.player.isUsingItem());
             f.input.packet(new UpdateSelectedSlotC2SPacket(3), 100, 72, -18); // Later native slot synchronization is redundant.
-            assertSame(ActionResult.CONSUME, f.manager.interactItem(f.player, Hand.MAIN_HAND));
+            assertSame(ActionResult.CONSUME, f.manager.interactItem(f.player, hand));
             f.runtime.tick(101);
             var actions = f.sent.getFirst().actions();
             assertEquals(List.of(RollbackInputActions.Kind.SLOT_CHANGE, RollbackInputActions.Kind.RIGHT_CLICK, RollbackInputActions.Kind.RIGHT_CLICK), actions.stream().map(RollbackInputPacket.Edge::kind).toList());
             assertEquals(3, actions.getFirst().slot()); assertEquals(72, actions.get(1).yaw()); assertEquals(-18, actions.get(1).pitch());
+            assertEquals(hand == Hand.MAIN_HAND ? RollbackInputActions.Hand.MAIN : RollbackInputActions.Hand.OFF, actions.get(1).hand());
+            assertEquals(actions.get(1).hand(), actions.get(2).hand());
             assertTrue(f.failures.isEmpty());
         }
-        assertThrows(NullPointerException.class, () -> f.manager.interactItem(f.player, Hand.MAIN_HAND), "After release the same manager must resume its native body");
+        assertThrows(NullPointerException.class, () -> f.manager.interactItem(f.player, hand), "After release the same manager must resume its native body");
     }
 
-    @ParameterizedTest @ValueSource(strings = {"offhand", "attack", "inventory", "break", "release", "creative"})
+    @ParameterizedTest @ValueSource(strings = {"attack", "inventory", "break", "release", "creative"})
     void unboundInteractionsStopBeforeTouchingNativeItemsEntitiesOrBlocksEvenWhenCleanupReleasesTheLease(String operation) throws Exception {
         var f = new Fixture(); var target = f.roster.players().get(B).ownedPlayer();
         var stack = new ItemStack(Items.APPLE, 4); f.player.getInventory().setStack(0, stack);
         float health = target.getHealth(); var position = target.getEntityPos(); var velocity = target.getVelocity();
         try (var lease = f.acquire(f.player)) {
             switch (operation) {
-                case "offhand" -> assertSame(ActionResult.CONSUME, f.manager.interactItem(f.player, Hand.OFF_HAND));
                 case "attack" -> f.manager.attackEntity(f.player, target);
                 case "inventory" -> f.manager.clickSlot(0, 36, 0, SlotActionType.PICKUP, f.player);
                 case "break" -> assertFalse(f.manager.attackBlock(BlockPos.ORIGIN, Direction.UP));
@@ -114,7 +117,7 @@ class FabricRollbackNativeActionsTest {
         try (var owner = new FabricRollbackNativeActions(f.manager, f.player, f.player.getEntityWorld(), () -> true, f::packet, failure -> { throw cleanup; })) {
             assertSame(cleanup, assertThrows(IllegalStateException.class, () -> f.manager.clickSlot(0, 36, 0, SlotActionType.PICKUP, f.player)));
             assertThrows(IllegalStateException.class, () -> f.acquire(f.player));
-            assertSame(cleanup, assertThrows(IllegalStateException.class, () -> f.manager.interactItem(f.player, Hand.OFF_HAND)));
+            assertSame(cleanup, assertThrows(IllegalStateException.class, () -> f.manager.stopUsingItem(f.player)));
             owner.close();
             try (var replacement = f.acquire(f.player)) {
                 owner.close(); assertSame(ActionResult.CONSUME, f.manager.interactItem(f.player, Hand.MAIN_HAND));

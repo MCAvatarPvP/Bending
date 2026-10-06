@@ -38,6 +38,17 @@ class FabricRollbackInputTest {
         f.runtime.tick(102); assertTrue(f.sent.getLast().actions().isEmpty());
     }
 
+    @Test void offHandItemUseRetainsItsHandAndPacketAimWithoutRepeating() {
+        var f = new Fixture(); f.runtime.start(100);
+        f.input.packet(new PlayerInteractItemC2SPacket(Hand.OFF_HAND, 3, 70, -20), 100, 0, 0);
+        f.runtime.tick(101);
+        var packet = RollbackInputPacket.decode(f.sent.getFirst().encode());
+        assertEquals(List.of(new RollbackInputPacket.Edge(1, RollbackInputActions.Kind.RIGHT_CLICK, -1, 70, -20,
+                RollbackInputActions.Hand.OFF)), packet.actions());
+        assertEquals(RollbackInputActions.Hand.OFF, packet.playerInput(A, 42).actions().getFirst().action().hand());
+        f.runtime.tick(102); assertTrue(f.sent.getLast().actions().isEmpty());
+    }
+
     @Test void blockInteractionDoesNotGenerateDuplicateItemOrSwingAbilityActions() {
         var f = new Fixture(); f.runtime.start(100);
         f.input.packet(new PlayerInteractBlockC2SPacket(Hand.MAIN_HAND,
@@ -70,7 +81,6 @@ class FabricRollbackInputTest {
         var drop = new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.DROP_ITEM, BlockPos.ORIGIN, Direction.DOWN);
         assertTrue(FabricRollbackInput.gameplay(drop));
         assertThrows(UnsupportedOperationException.class, () -> f.input.packet(drop, 100, 0, 0));
-        assertThrows(UnsupportedOperationException.class, () -> f.input.packet(new PlayerInteractItemC2SPacket(Hand.OFF_HAND, 1, 0, 0), 100, 0, 0));
         var keepAlive = new KeepAliveC2SPacket(1);
         assertFalse(FabricRollbackInput.gameplay(keepAlive));
         assertFalse(FabricRollbackInput.gameplay(new CommandExecutionC2SPacket("neptune latency")));
