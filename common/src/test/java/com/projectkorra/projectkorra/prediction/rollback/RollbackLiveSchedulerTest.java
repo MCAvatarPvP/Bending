@@ -210,6 +210,49 @@ class RollbackLiveSchedulerTest {
         assertThrows(IllegalStateException.class, () -> outgoing.install(new RollbackScheduler(8, 8)));
     }
 
+    @Test void abortTasksWaitForExternalCommitAndStayFrozenAfterItFails() {
+        var backend = new Backend(); var live = scheduler(backend); var calls = new ArrayList<String>();
+        live.runNow(() -> calls.add("task")); var lease = live.prepare(work -> true); lease.freeze();
+        assertThrows(IllegalArgumentException.class, () -> lease.restore(() -> {
+            for (var task : List.copyOf(backend.tasks.values())) task.callback.run();
+            assertTrue(calls.isEmpty());
+            assertThrows(IllegalStateException.class, lease::restore);
+            assertThrows(IllegalStateException.class, live::cancelAll);
+            assertThrows(IllegalStateException.class, () -> live.callSync(() -> 42));
+            throw new IllegalArgumentException("native release failed");
+        }));
+        assertTrue(backend.tasks.isEmpty()); backend.advance(); assertTrue(calls.isEmpty());
+        lease.restore(() -> {
+            for (var task : List.copyOf(backend.tasks.values())) task.callback.run();
+            assertTrue(calls.isEmpty()); calls.add("restored");
+        });
+        lease.restore(() -> fail("External commit repeated"));
+        backend.advance(); assertEquals(List.of("restored", "task"), calls);
+    }
+
+    @Test void replacementTasksStayUnboundUntilExternalCommitAndRetryAfterFailure() {
+        var backend = new Backend(); var live = scheduler(backend);
+        var original = new RollbackTaskBindingsTest.Callback(); original.handle = live.runNow(original);
+        var lease = live.prepare(work -> true); var outgoing = copied(lease.freeze(8));
+        var restored = (RollbackTaskBindingsTest.Callback) outgoing.entries().getFirst().callback();
+        assertThrows(IllegalArgumentException.class, () -> lease.replace(outgoing, () -> {
+            for (var task : List.copyOf(backend.tasks.values())) task.callback.run();
+            assertEquals(0, restored.calls); assertFalse(original.handle.cancelled());
+            assertThrows(IllegalStateException.class, outgoing.entries().getFirst().handle()::cancel);
+            assertThrows(IllegalStateException.class, lease::discard);
+            throw new IllegalArgumentException("world restoration failed");
+        }));
+        assertTrue(backend.tasks.isEmpty()); backend.advance(); assertEquals(0, restored.calls);
+        var committed = new AtomicInteger();
+        lease.replace(outgoing, () -> {
+            for (var task : List.copyOf(backend.tasks.values())) task.callback.run();
+            assertEquals(0, restored.calls); committed.incrementAndGet();
+        });
+        lease.replace(outgoing, () -> fail("External commit repeated"));
+        assertEquals(1, committed.get()); assertTrue(original.handle.cancelled());
+        backend.advance(); assertEquals(1, restored.calls); assertEquals(0, original.calls);
+    }
+
     @Test void replacementRejectsForeignIdsAndCannotResurrectAfterShutdownOrDiscard() {
         var backend = new Backend(); var live = scheduler(backend);
         var lease = live.prepare(work -> false); lease.freeze(2);

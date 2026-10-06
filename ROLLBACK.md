@@ -55,6 +55,16 @@ implemented by the plugin and verified against the packaged Paper version.
 
 ### October 5, 2026 integration update
 
+Live scheduler restoration/replacement now accepts a synchronous whole-state commit.
+Native callback submissions are staged while dispatch remains gated; only a successful
+external commit activates callbacks and publishes replacement handles. Failed state
+restoration cancels staged submissions and retains the frozen task lease for retry.
+Reentrant scheduler mutation is rejected during the commit. Tests invoke queued
+callbacks inside the commit to prove they are inert, then cover failed commit, retry,
+unbound replacement handles and activation exactly once. Existing no-argument task
+restoration retains its behavior. The production owner must use this boundary to
+coordinate common/native/terrain restoration; that full owner is not assembled yet.
+
 The common velocity interception now checks live rollback ownership before either
 publishing a receipt or entering any direct-write/commit shortcut. Paper's wrappers
 also reject direct health, damage, velocity and fire writes to reserved live players;
