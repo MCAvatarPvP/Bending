@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.object;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership;
 
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
@@ -66,6 +67,8 @@ public class HorizontalVelocityTracker {
 
     public static void updateAll() {
         for (final Entity e : instances.keySet()) {
+            var tracker = instances.get(e);
+            if (tracker != null && tracker.liveOwned()) continue;
             if (e != null && !e.isDead() && instances.get(e) != null) {
                 instances.get(e).update();
             } else {
@@ -90,7 +93,13 @@ public class HorizontalVelocityTracker {
         return false;
     }
 
+    private boolean liveOwned() {
+        return (this.entity != null && RollbackLiveOwnership.blocks(this.entity.getUniqueId()))
+                || (this.instigator != null && RollbackLiveOwnership.blocks(this.instigator.getUniqueId()));
+    }
+
     public void update() {
+        if (liveOwned()) return;
         if (RollbackClock.millis() < this.fireTime + this.delay) {
             return;
         }

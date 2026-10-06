@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.util;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership;
 
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionEffect;
@@ -70,6 +71,7 @@ public class TempPotionEffect {
     }
 
     private void progress() {
+        if (RollbackLiveOwnership.blocks(this.entity.getUniqueId())) return;
         for (final int id : this.infos.keySet()) {
             final PotionInfo info = this.infos.get(id);
             if (info.getTime() < RollbackClock.millis()) {

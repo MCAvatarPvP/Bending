@@ -49,6 +49,15 @@ state that actually determines those outcomes.
 
 ### October 5, 2026 integration update
 
+Live roster gates now also cover movement restrictions, queued potion effects,
+temporary-armor expiry and horizontal collision-damage trackers. Movement restrictions
+and collision trackers also honor an enrolled source player. The movement-handler tick
+uses a stable snapshot so expiring one handler does not skip another. A behavioral
+regression runs the real shared status updaters with enrolled and unrelated players,
+verifies deferred potion/armor/stun changes and tracker callbacks, then verifies normal
+progress resumes after release. Native entities/terrain, activation, external listeners
+and remaining service paths still need ownership integration before startup is enabled.
+
 A common live-roster ownership lease now suspends enrolled ability progression,
 collision participation, cooldown updates, flight expiry and temporary-element expiry.
 It is independent of element/ability type and stays outside replay checkpoints. Private

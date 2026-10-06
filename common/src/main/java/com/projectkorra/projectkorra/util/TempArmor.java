@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.util;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership;
 
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.platform.mc.Material;
@@ -99,6 +100,7 @@ public class TempArmor {
 
     public static void cleanup() {
         for (final LivingEntity entity : INSTANCES.keySet()) {
+            if (RollbackLiveOwnership.blocks(entity.getUniqueId())) continue;
             final PriorityQueue<TempArmor> queue = INSTANCES.get(entity);
             while (!queue.isEmpty()) {
                 final TempArmor tarmor = queue.peek();

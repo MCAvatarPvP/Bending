@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.util;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership;
 
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -33,8 +34,8 @@ public class MovementHandler {
     }
 
     public static void tickAll() {
-        for (int i = 0; i < handlers.size(); i++) {
-            ((MovementHandler) handlers.toArray()[i]).tick();
+        for (MovementHandler handler : new java.util.ArrayList<>(handlers)) {
+            if (handlers.contains(handler)) handler.tick();
         }
     }
 
@@ -73,6 +74,8 @@ public class MovementHandler {
     }
 
     private void tick() {
+        if (RollbackLiveOwnership.blocks(entity.getUniqueId())
+                || (ability != null && ability.getPlayer() != null && RollbackLiveOwnership.blocks(ability.getPlayer().getUniqueId()))) return;
         if (duration != -1 && duration >= 0 && RollbackClock.millis() > startTime + duration) {
             reset();
             return;
