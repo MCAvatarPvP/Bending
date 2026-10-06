@@ -53,10 +53,10 @@ tasks.register('publishGithubJars') {
             throw new GradleException('Refusing to publish with uncommitted files. Commit the source changes first.')
         }
 
-        String remote = releaseProperty('githubRemote', 'bendng')
+        String remote = releaseProperty('githubRemote', 'bending')
         String branch = releaseProperty('githubBranch', 'master')
         String tag = releaseProperty('releaseTag', "v${project.version}")
-        String releaseName = releaseProperty('releaseName', "ProjectKorra $i{project.version}")
+        String releaseName = releaseProperty('releaseName', "ProjectKorra ${project.version}")
         boolean draft = releaseBoolean('releaseDraft', false)
         boolean prerelease = releaseBoolean('releasePrerelease', false)
         if (!(tag ==~ /[A-Za-z0-9][A-Za-z0-9._-]*/)) {
