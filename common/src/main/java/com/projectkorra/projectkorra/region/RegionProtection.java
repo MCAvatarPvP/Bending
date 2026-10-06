@@ -4,22 +4,19 @@ import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.hooks.RegionProtectionHook;
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.mc.Location;
-import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
-import com.projectkorra.projectkorra.util.BlockCacheElement;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class RegionProtection {
 
     /**
      * Cached region protection
      */
-    private static final Map<String, Map<Block, BlockCacheElement>> BLOCK_CACHE = new ConcurrentHashMap<>();
+    private static volatile RegionProtectionCache BLOCK_CACHE = new RegionProtectionCache(5000);
     /**
      * Registered region protections
      */
@@ -37,10 +34,11 @@ public class RegionProtection {
      */
     public static void registerRegionProtection(@NotNull String pluginName, @NotNull RegionProtectionHook hook) {
         PROTECTIONS.put(pluginName, hook);
+        clearCache();
     }
 
     public static void registerRegionProtection(@NotNull Object plugin, @NotNull RegionProtectionHook hook) {
-        PROTECTIONS.put(Platform.plugins().pluginName(plugin), hook);
+        registerRegionProtection(Platform.plugins().pluginName(plugin), hook);
     }
 
     /**
@@ -50,11 +48,12 @@ public class RegionProtection {
      * @param plugin The plugin
      */
     public static void unloadPlugin(Object plugin) {
-        PROTECTIONS.remove(Platform.plugins().pluginName(plugin));
+        unloadPlugin(Platform.plugins().pluginName(plugin));
     }
 
     public static void unloadPlugin(String pluginName) {
         PROTECTIONS.remove(pluginName);
+        clearCache();
     }
 
     /**
@@ -76,20 +75,19 @@ public class RegionProtection {
      * @return True if the region is protected by other plugins
      */
     public static boolean isRegionProtected(@NotNull Player player, @Nullable Location location, @Nullable CoreAbility ability) {
-        final String playerName = player.getName();
-        final Block block = location != null ? location.getBlock() : player.getLocation().getBlock();
-        final Map<Block, BlockCacheElement> blockMap = BLOCK_CACHE.computeIfAbsent(playerName, name -> new ConcurrentHashMap<>());
-
-        // Both abilities must be equal to each other to use the cache
-        if (blockMap.containsKey(block)) {
-            final BlockCacheElement elem = blockMap.get(block);
-            if ((ability == null && elem.getAbility() == null) || (elem.getAbility() != null && elem.getAbility().equals(ability))) {
-                return elem.isAllowed();
-            }
+        final Location origin = player.getLocation();
+        // Synthetic or not-yet-attached locations have no stable world key.
+        if (origin.getWorld() == null || (location != null && location.getWorld() == null)) {
+            return isRegionProtectedCached(player, location, ability);
         }
+        final RegionProtectionCache cache = BLOCK_CACHE;
+        final RegionProtectionCache.Key key = RegionProtectionCache.Key.of(location, origin);
+        final Boolean cached = cache.get(player.getUniqueId(), key, ability);
+        if (cached != null) return cached;
 
-        final boolean value = isRegionProtectedCached(player, location, ability);
-        blockMap.put(block, new BlockCacheElement(player, block, ability, value, System.currentTimeMillis()));
+        final boolean value = (location != null && checkAll(player, location, ability))
+                || checkAll(player, origin, ability);
+        cache.put(player.getUniqueId(), key, ability, value);
         return value;
     }
 
@@ -157,7 +155,7 @@ public class RegionProtection {
 
     /** Invalidates cached decisions after an authoritative client snapshot changes. */
     public static void clearCache(@Nullable Player player) {
-        if (player != null && player.getName() != null) BLOCK_CACHE.remove(player.getName());
+        if (player != null) BLOCK_CACHE.clear(player.getUniqueId());
     }
 
     /** Clears decisions that may reference pre-reload ability instances or hook configuration. */
@@ -179,30 +177,10 @@ public class RegionProtection {
     }
 
     /**
-     * Internal use only!
-     *
-     * @param period The time, in milliseconds, to clean the cache
+     * Configures the cache lifetime in milliseconds. Kept for API compatibility;
+     * expiration and bounded maintenance now happen on access without a full-map timer sweep.
      */
     public static void startCleanCacheTask(double period) {
-        Platform.scheduler().runTimer(() -> {
-            final long currentTime = System.currentTimeMillis();
-            for (final String playerName : BLOCK_CACHE.keySet()) {
-                final Map<Block, BlockCacheElement> map = BLOCK_CACHE.get(playerName);
-                for (final Block key : map.keySet()) {
-                    final BlockCacheElement value = map.get(key);
-
-                    if (currentTime - value.getTime() > period) {
-                        map.remove(key);
-                    }
-                }
-                if (map.size() == 0) {
-                    BLOCK_CACHE.remove(playerName);
-                }
-            }
-        }, 0, (long) (period / 50));
-    }
-
-    private static boolean enabled(String plugin) {
-        return Platform.plugins().isPluginEnabled(plugin);
+        BLOCK_CACHE = new RegionProtectionCache(Double.isFinite(period) ? Math.max(0, (long) period) : 5000);
     }
 }

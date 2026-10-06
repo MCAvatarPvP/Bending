@@ -9,36 +9,28 @@ import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Guards Tornado's continuous particle funnel and cross-platform ride input. */
+/** Guards Tornado's shared particle renderer and cross-platform ride input. */
 class TornadoParticleRideTest {
     @Test
-    void chargeAndDeployedVisualsUseTheSameSmoothTaperedFunnel() throws IOException {
+    void chargeAndDeployedVisualsUseTheSameParticleRenderer() throws IOException {
         final String source = commonSource("airbending/Tornado.java");
         final String charge = method(source, "private void renderChargeAnimation",
                 "private void updateChargeProgress");
         final String render = method(source, "private void renderTornadoAnimation",
                 "private void renderParticleFunnel");
         final String funnel = method(source, "private void renderParticleFunnel",
-                "private void renderParticleRing");
-        final String radius = method(source, "private double particleRadiusAt",
-                "private void spawnFunnelParticle");
+                "private double particleRadiusAt");
 
-        assertFalse(source.contains("BlockDisplay") || source.contains("Transformation"),
-                "Tornado should be entirely particle-rendered");
+        assertFalse(source.contains("BLINDNESS"),
+                "the storm should pull victims using Tornado physics instead of applying SandStorm blindness");
         assertFalse(source.contains("ComboAbility") || source.contains("getCombination()"),
                 "Tornado should be a normal bound ability, not a combo");
-        assertTrue(charge.contains("this.renderParticleFunnel")
-                        && charge.contains("formingHeight") && charge.contains("formingRadius"),
-                "charging should grow the same funnel instead of emitting detached wisps");
-        assertTrue(render.contains("this.renderParticleFunnel(this.currentLoc")
-                        && render.contains("this.vortexAngle +="),
-                "the deployed funnel should rotate around its grounded center");
-        assertTrue(funnel.contains("verticalSamples")
-                        && funnel.contains("PARTICLE_STREAMS")
-                        && funnel.contains("PARTICLE_INNER_STREAMS"),
-                "normalized vertical samples and inner/outer helices should create a filled silhouette");
-        assertTrue(radius.contains("Math.pow(progress") && radius.contains("maximumRadius"),
-                "the particle envelope should widen smoothly from base to top");
+        assertTrue(charge.contains("this.renderParticleFunnel"),
+                "charging should use the same visual funnel as the deployed tornado");
+        assertTrue(render.contains("this.renderParticleFunnel"),
+                "the deployed tornado should use the shared particle funnel");
+        assertTrue(funnel.contains("TornadoVisuals.render("),
+                "both charge stages should use the bounded SandStorm-style particle renderer");
     }
 
     @Test
@@ -64,7 +56,7 @@ class TornadoParticleRideTest {
     }
 
     @Test
-    void riderIsFasterThanScooterAndTracksHeightWithoutSnapping() throws IOException {
+    void riderUsesTheSlowDefensiveSpeedAndTracksHeightWithoutSnapping() throws IOException {
         final String source = commonSource("airbending/Tornado.java");
         final String config = commonSource("configuration/ConfigManager.java");
         final String control = method(source, "private void controlRiddenTornado",
@@ -74,11 +66,11 @@ class TornadoParticleRideTest {
         final String remove = method(source, "public void remove()",
                 "public boolean isSneakAbility()");
 
-        assertTrue(config.contains("Abilities.Air.Tornado.Ride.Speed\", 0.8")
-                        && config.contains("Abilities.Air.AirScooter.Speed\", 0.675"),
-                "the default Tornado ride should be slightly faster than AirScooter");
-        assertTrue(control.contains("Math.max(this.speed, this.rideSpeed)"),
-                "ride steering should use the configured faster speed");
+        assertTrue(config.contains("Abilities.Air.Tornado.Ride.Speed\", 0.22"),
+                "the default Tornado ride should move at its slow defensive speed");
+        assertTrue(control.contains("facing.multiply(this.rideSpeed)")
+                        && !control.contains("Math.max(this.speed, this.rideSpeed)"),
+                "ride steering should use its own speed independently of throwing speed");
         assertTrue(movement.contains("this.player.getVelocity().getY() * 0.4")
                         && movement.contains("correction.getY() * this.rideVerticalSmoothing")
                         && movement.contains("this.rideMaxVerticalSpeed"),

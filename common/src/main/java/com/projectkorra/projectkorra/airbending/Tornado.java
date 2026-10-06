@@ -6,8 +6,13 @@ import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.command.Commands;
+import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.mc.ChatColor;
 import com.projectkorra.projectkorra.platform.mc.Location;
+import com.projectkorra.projectkorra.platform.mc.Sound;
+import com.projectkorra.projectkorra.platform.mc.GameMode;
+import com.projectkorra.projectkorra.platform.mc.entity.ArmorStand;
+import com.projectkorra.projectkorra.platform.mc.entity.Display;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
@@ -21,11 +26,8 @@ import java.util.*;
 
 public class Tornado extends AirAbility {
 
-    private static final int PARTICLE_STREAMS = 3;
-    private static final int PARTICLE_INNER_STREAMS = 2;
     private static final String RIDE_FLIGHT_ID = "TornadoRide";
     private static final long CHARGE_SOUND_INTERVAL = 200L;
-    private static final long TORNADO_SOUND_INTERVAL = 350L;
     private static final String[] TRAPPED_PLAYER_ABILITIES = {"AirScooter", "AirSpout"};
     private final Map<UUID, Long> lastDamageTimes;
     private final Map<UUID, Long> pullStartTimes;
@@ -34,14 +36,22 @@ public class Tornado extends AirAbility {
     private final Set<UUID> exhaustedPullEntities;
     private final Set<UUID> pulledEntitiesThisTick;
     private final AbilityLagCompensator lagCompensator;
-    private final Set<AirBlast> handledBlasts;
-    private final Set<AirSuction> handledSuctions;
+    private TornadoChargeProfile chargeProfile;
+    private TornadoVisuals.Settings visualSettings;
+    private TornadoDebris debris;
+    private double controlDistance, controlSpeed, controlAcceleration, controlDrag, aimSmoothing;
+    private boolean launched, soundEnabled;
+    private long soundInterval;
+    private float soundVolume, soundPitch;
     @Attribute(Attribute.COOLDOWN)
     private long cooldown;
     @Attribute(Attribute.CHARGE_DURATION)
     private long chargeTime;
     private long damageInterval;
     private long maxPullDuration;
+    private long minimumPullDuration;
+    private Player capturedPlayer;
+    private long capturedAt;
     private long trappedAbilityCooldown;
     private long time;
     private long lastSoundTime;
@@ -61,8 +71,6 @@ public class Tornado extends AirAbility {
     private double tornadoHeight;
     @Attribute(Attribute.RADIUS)
     private double tornadoRadius;
-    private double tornadoDegreeParticles;
-    private double tornadoHeightParticles;
     private double tornadoRemoveDelay;
     @Attribute("Ride" + Attribute.SPEED)
     private double rideSpeed;
@@ -95,11 +103,10 @@ public class Tornado extends AirAbility {
         this.caughtEntities = new HashMap<>();
         this.exhaustedPullEntities = new HashSet<>();
         this.pulledEntitiesThisTick = new HashSet<>();
-        this.lagCompensator = new AbilityLagCompensator((p, snapshot) -> this.pullEntity(p, snapshot.getLocation()));
-        this.handledBlasts = Collections.newSetFromMap(new HashMap<>());
-        this.handledSuctions = Collections.newSetFromMap(new HashMap<>());
+        this.lagCompensator = new AbilityLagCompensator((p, snapshot) ->
+                this.pullEntity(p, snapshot.getLocation().clone().subtract(0, this.tornadoHeight / 2.0, 0)));
 
-        if (CoreAbility.hasAbility(player, Tornado.class) || !this.bPlayer.canBendIgnoreBindsCooldowns(this)) {
+        if (player == null || this.bPlayer == null || CoreAbility.hasAbility(player, Tornado.class) || !this.bPlayer.canBendIgnoreBindsCooldowns(this)) {
             return;
         }
 
@@ -112,25 +119,24 @@ public class Tornado extends AirAbility {
             return;
         }
 
-        this.range = getConfig().getDouble("Abilities.Air.Tornado.Range");
-        this.speed = getConfig().getDouble("Abilities.Air.Tornado.Speed");
-        this.cooldown = getConfig().getLong("Abilities.Air.Tornado.Cooldown");
-        this.chargeTime = getConfig().getLong("Abilities.Air.Tornado.ChargeTime", 750L);
+        this.range = finite(getConfig().getDouble("Abilities.Air.Tornado.Range", 32), 1, 128, 32);
+        this.speed = finite(getConfig().getDouble("Abilities.Air.Tornado.Speed", 0.35), 0.05, 2, 0.35);
+        this.cooldown = getConfig().getLong("Abilities.Air.Tornado.Cooldown", 18000);
+        this.chargeTime = getConfig().getLong("Abilities.Air.Tornado.ChargeTime", 6000L);
         this.damage = getConfig().getDouble("Abilities.Air.Tornado.Damage", 0);
         this.damageInterval = getConfig().getLong("Abilities.Air.Tornado.DamageInterval", 500L);
-        this.maxPullDuration = getConfig().getLong("Abilities.Air.Tornado.MaxPullDuration", 0L);
+        this.maxPullDuration = getConfig().getLong("Abilities.Air.Tornado.MaxPullDuration", 2000L);
+        this.minimumPullDuration = getConfig().getLong("Abilities.Air.Tornado.MinimumPullDuration", 500L);
         this.trappedAbilityCooldown = getConfig().getLong("Abilities.Air.Tornado.TrappedAbilityCooldown", 1500L);
-        this.tornadoHeight = getConfig().getDouble("Abilities.Air.Tornado.Height");
-        this.tornadoRadius = getConfig().getDouble("Abilities.Air.Tornado.Radius");
+        this.tornadoHeight = getConfig().getDouble("Abilities.Air.Tornado.Height", 18);
+        this.tornadoRadius = getConfig().getDouble("Abilities.Air.Tornado.Radius", 7);
         this.pullZoneRadius = getConfig().getDouble("Abilities.Air.Tornado.PullZoneRadius", this.tornadoRadius + 1.75);
         this.pullVelocity = getConfig().getDouble("Abilities.Air.Tornado.PullVelocity", Math.max(0.1, this.speed * 0.9));
-        this.tornadoDegreeParticles = getConfig().getDouble("Abilities.Air.Tornado.DegreesPerParticle");
-        this.tornadoHeightParticles = getConfig().getDouble("Abilities.Air.Tornado.HeightPerParticle");
-        this.tornadoRemoveDelay = getConfig().getLong("Abilities.Air.Tornado.RemoveDelay");
+        this.tornadoRemoveDelay = Math.max(1, getConfig().getLong("Abilities.Air.Tornado.RemoveDelay", 12000));
         this.spinPlayers = getConfig().getBoolean("Abilities.Air.Tornado.SpinPlayers", false);
         this.rideEnabled = getConfig().getBoolean("Abilities.Air.Tornado.Ride.Enabled", true);
         this.rideDuration = getConfig().getLong("Abilities.Air.Tornado.Ride.Duration", 8000L);
-        this.rideSpeed = getConfig().getDouble("Abilities.Air.Tornado.Ride.Speed", 0.8);
+        this.rideSpeed = finite(getConfig().getDouble("Abilities.Air.Tornado.Ride.Speed", 0.22), 0.01, 2, 0.22);
         this.rideHeightPercentage = GeneralMethods.clamp(
                 getConfig().getDouble("Abilities.Air.Tornado.Ride.HeightPercentage", 0.62), 0.2, 0.9);
         this.rideVerticalSmoothing = Math.max(0.01,
@@ -152,7 +158,41 @@ public class Tornado extends AirAbility {
         this.riding = false;
         this.rideStartTime = 0L;
 
+        this.controlDistance = finite(getConfig().getDouble("Abilities.Air.Tornado.Control.CenterDistance", 6), 1, 32, 6);
+        this.controlSpeed = finite(getConfig().getDouble("Abilities.Air.Tornado.Control.Speed", 0.16), 0.01, 2, 0.16);
+        this.controlAcceleration = finite(getConfig().getDouble("Abilities.Air.Tornado.Control.Acceleration", 0.02), 0.001, 1, 0.02);
+        this.controlDrag = finite(getConfig().getDouble("Abilities.Air.Tornado.Control.Drag", 0.88), 0, 0.99, 0.88);
+        this.aimSmoothing = finite(getConfig().getDouble("Abilities.Air.Tornado.Control.AimSmoothing", 0.1), 0.01, 1, 0.1);
+        this.visualSettings = new TornadoVisuals.Settings(
+                getConfig().getInt("Abilities.Air.Tornado.Visuals.Ribbons", 4),
+                getConfig().getInt("Abilities.Air.Tornado.Visuals.RibbonPoints", 32),
+                getConfig().getInt("Abilities.Air.Tornado.Visuals.CloudLobes", 10),
+                getConfig().getInt("Abilities.Air.Tornado.Visuals.GroundTendrils", 7));
+        this.soundEnabled = getConfig().getBoolean("Abilities.Air.Tornado.Sound.Enabled", true);
+        this.soundInterval = Math.max(5, Math.min(200, getConfig().getInt("Abilities.Air.Tornado.Sound.IntervalTicks", 8))) * 50L;
+        this.soundVolume = (float) finite(getConfig().getDouble("Abilities.Air.Tornado.Sound.Volume", 1), 0, 4, 1);
+        this.soundPitch = (float) finite(getConfig().getDouble("Abilities.Air.Tornado.Sound.Pitch", 0.65), 0.1, 2, 0.65);
+        this.debris = new TornadoDebris(getConfig().getInt("Abilities.Air.Tornado.Visuals.GlassPieces", 20),
+                getConfig().getDouble("Abilities.Air.Tornado.Visuals.MinimumGlassScale", 0.18),
+                getConfig().getDouble("Abilities.Air.Tornado.Visuals.MaximumGlassScale", 0.65),
+                getConfig().getDouble("Abilities.Air.Tornado.Visuals.GlassOrbitSpeed", 0.16));
         this.start();
+        this.speed = finite(this.speed, 0.05, 2, 0.35);
+        this.rideSpeed = finite(this.rideSpeed, 0.01, 2, 0.22);
+        // Capture the attribute-adjusted maxima before applying the chosen charge size.
+        this.chargeProfile = new TornadoChargeProfile(
+                getConfig().getLong("Abilities.Air.Tornado.MinimumChargeTime", 500), this.chargeTime,
+                getConfig().getLong("Abilities.Air.Tornado.MinimumCooldown", 3000), this.cooldown,
+                getConfig().getDouble("Abilities.Air.Tornado.MinimumHeight", 4), this.tornadoHeight,
+                getConfig().getDouble("Abilities.Air.Tornado.MinimumRadius", 1.5), this.tornadoRadius,
+                getConfig().getDouble("Abilities.Air.Tornado.MinimumPullZoneRadius", 2.5), this.pullZoneRadius);
+        this.lastChargeUpdateTime = System.currentTimeMillis();
+        this.direction = this.getHorizontalDirection();
+        this.origin = this.getGroundedTornadoLocation(this.player.getLocation().clone()
+                .add(this.direction.clone().multiply(this.controlDistance)));
+        if (this.origin == null || GeneralMethods.isRegionProtectedFromBuild(this, this.origin)) {
+            this.remove();
+        }
     }
 
     @Override
@@ -162,17 +202,18 @@ public class Tornado extends AirAbility {
 
     @Override
     public void progress() {
-        if (this.player.isDead() || !this.player.isOnline()) {
+        if (this.isRemoved()) return;
+        if (this.player.isDead() || !this.player.isOnline()
+                || !this.bPlayer.canBendIgnoreBindsCooldowns(this)
+                || (this.currentLoc != null && !this.player.getWorld().equals(this.currentLoc.getWorld()))) {
             this.remove();
             return;
         }
 
         if (this.state == AbilityState.CHARGING) {
-            if (GeneralMethods.isRegionProtectedFromBuild(this, this.player.getLocation())) {
-                this.remove();
-                return;
-            }
-            if (!this.player.isSneaking()) {
+            if (this.origin == null || !this.player.getWorld().equals(this.origin.getWorld())
+                    || GeneralMethods.isRegionProtectedFromBuild(this, this.origin)
+                    || GeneralMethods.isRegionProtectedFromBuild(this, this.player.getLocation())) {
                 this.remove();
                 return;
             }
@@ -182,9 +223,12 @@ public class Tornado extends AirAbility {
             }
 
             this.updateChargeProgress();
-            this.renderChargeAnimation();
-            if (this.chargedDuration >= this.chargeTime) {
-                this.deployTornado();
+            if (!this.player.isSneaking()) {
+                if (this.chargeProfile.ready(this.chargedDuration)) this.deployTornado();
+                else this.remove();
+            } else {
+                this.renderChargeAnimation();
+                if (this.chargeProfile.complete(this.chargedDuration)) this.deployTornado();
             }
             return;
         }
@@ -199,7 +243,7 @@ public class Tornado extends AirAbility {
 
         final long now = System.currentTimeMillis();
         if ((this.riding && this.rideDuration > 0 && now - this.rideStartTime >= this.rideDuration)
-                || (!this.riding && now - this.time >= this.tornadoRemoveDelay)) {
+                || (this.capturedPlayer == null && !this.riding && now - this.time >= this.tornadoRemoveDelay)) {
             this.remove();
             return;
         }
@@ -210,16 +254,17 @@ public class Tornado extends AirAbility {
                 return;
             }
             this.controlRiddenTornado();
-        } else {
-            this.absorbAirControllerPushes();
+        } else if (this.launched) {
+            this.motion = this.direction.clone().multiply(this.speed);
             this.moveTornado();
+        } else if (this.player.isSneaking()) {
+            this.controlHeldTornado();
+        } else {
+            this.motion.zero();
+            this.velocity.zero();
+            this.state = AbilityState.TORNADO_STATIONARY;
         }
         if (this.isRemoved()) {
-            return;
-        }
-
-        if (!exhaustedPullEntities.isEmpty()) {
-            remove();
             return;
         }
 
@@ -239,30 +284,73 @@ public class Tornado extends AirAbility {
             this.updateRiderMotion(rideTarget);
         }
 
-        this.renderTornadoAnimation();
+        try {
+            this.renderTornadoAnimation();
+            this.debris.update(this.currentLoc, this.tornadoHeight, this.tornadoRadius, this.getRunningTicks());
+        } catch (RuntimeException | Error failure) {
+            try {
+                this.remove();
+            } catch (RuntimeException cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
+            throw failure;
+        }
         this.pullEntitiesInsideTornado();
     }
 
     private void deployTornado() {
-        final Vector facing = this.getHorizontalDirection();
-        if (facing.lengthSquared() == 0) {
+        if (this.state != AbilityState.CHARGING || !this.chargeProfile.ready(this.chargedDuration)) return;
+        final TornadoChargeProfile.Size size = this.chargeProfile.sample(this.chargedDuration);
+        this.tornadoHeight = size.height();
+        this.tornadoRadius = size.radius();
+        this.pullZoneRadius = size.pullRadius();
+        this.cooldown = size.cooldown();
+        this.maxPullDuration = this.chargeProfile.pullDuration(
+                this.chargedDuration, this.minimumPullDuration, this.maxPullDuration);
+        if (this.origin == null || !this.player.getWorld().equals(this.origin.getWorld())) {
             this.remove();
             return;
         }
-
-        final Location deployLocation = this.getGroundedTornadoLocation(this.player.getLocation().add(facing.clone().multiply(2)));
-        if (deployLocation == null) {
+        final Location deployLocation = this.getGroundedTornadoLocation(this.origin);
+        if (deployLocation == null || GeneralMethods.isRegionProtectedFromBuild(this, deployLocation)) {
             this.remove();
             return;
         }
 
         this.origin = deployLocation.clone();
         this.currentLoc = this.origin.clone();
-        this.direction = facing;
         this.motion.zero();
         this.time = System.currentTimeMillis();
         this.state = AbilityState.TORNADO_STATIONARY;
         this.bPlayer.addCooldown(this);
+        this.playStormSound(this.currentLoc, Sound.ENTITY_BREEZE_CHARGE, 0.85F);
+    }
+
+    /** Locks the current charge size and throws the vortex in the caster's aim direction. */
+    public boolean launch() {
+        if (this.isRemoved() || this.riding || this.launched
+                || !this.bPlayer.canBendIgnoreBindsCooldowns(this)) return false;
+        if (this.state == AbilityState.CHARGING) {
+            if (this.wasHitDuringCharge()) { this.remove(); return false; }
+            this.updateChargeProgress();
+            if (!this.chargeProfile.ready(this.chargedDuration)) return false;
+            this.deployTornado();
+        }
+        if (this.isRemoved() || this.currentLoc == null
+                || !this.player.getWorld().equals(this.currentLoc.getWorld())
+                || GeneralMethods.isRegionProtectedFromBuild(this, this.currentLoc)) return false;
+        this.direction = this.getHorizontalDirection();
+        this.motion = this.direction.clone().multiply(this.speed);
+        this.distanceTravelled = 0;
+        this.time = System.currentTimeMillis();
+        this.launched = true;
+        this.state = AbilityState.TORNADO_MOVING;
+        this.playStormSound(this.currentLoc, Sound.ENTITY_BREEZE_WIND_BURST, 1.0F);
+        return true;
+    }
+
+    private static double finite(double value, double min, double max, double fallback) {
+        return Double.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
     }
 
     private Vector getHorizontalDirection() {
@@ -270,13 +358,13 @@ public class Tornado extends AirAbility {
         horizontal.setY(0);
 
         if (horizontal.lengthSquared() == 0) {
-            return new Vector(0, 0, 0);
+            return new Vector(0, 0, 1);
         }
         return horizontal.normalize();
     }
 
     public boolean tryStartRiding() {
-        if (!this.rideEnabled || this.riding || this.isRemoved() || this.state == AbilityState.CHARGING
+        if (!this.rideEnabled || this.riding || this.launched || this.isRemoved() || this.state == AbilityState.CHARGING
                 || this.currentLoc == null || !this.bPlayer.canBendIgnoreBindsCooldowns(this)
                 || !this.isPlayerTargetingTornado()) {
             return false;
@@ -343,7 +431,7 @@ public class Tornado extends AirAbility {
         }
 
         this.direction = facing.clone();
-        this.motion = facing.multiply(Math.max(this.speed, this.rideSpeed));
+        this.motion = facing.multiply(this.rideSpeed);
         this.state = AbilityState.TORNADO_MOVING;
         this.moveTornado();
     }
@@ -378,27 +466,19 @@ public class Tornado extends AirAbility {
     }
 
     private void renderChargeAnimation() {
-        final Vector facing = this.getHorizontalDirection();
-        if (facing.lengthSquared() == 0) {
-            return;
-        }
+        // The charge anchor and orientation are fixed when charging starts.
+        final Location target = this.origin;
+        if (target == null) return;
 
-        final Location target = this.getGroundedTornadoLocation(this.player.getLocation().add(facing.clone().multiply(2)));
-        if (target == null) {
-            return;
-        }
-
-        final double progress = this.chargeTime <= 0 ? 1.0
-                : Math.min(1.0, (double) this.chargedDuration / this.chargeTime);
+        final TornadoChargeProfile.Size size = this.chargeProfile.sample(this.chargedDuration);
+        final double progress = size.progress();
         final Location center = target.clone().add(0, 0.08, 0);
-        final double formingHeight = Math.max(0.6, this.tornadoHeight * (0.12 + progress * 0.88));
-        final double formingRadius = Math.max(0.4, this.tornadoRadius * (0.18 + progress * 0.82));
-
+        final double formingHeight = size.height();
+        final double formingRadius = size.radius();
         this.chargeAngle += 11.0 + progress * 8.0;
         this.renderParticleFunnel(center, formingHeight, formingRadius, this.chargeAngle);
-
         if (System.currentTimeMillis() - this.lastSoundTime >= CHARGE_SOUND_INTERVAL) {
-            playAirbendingSound(center, (float) (1.0 + (progress * 0.2)));
+            this.playStormSound(center, Sound.ENTITY_BREEZE_CHARGE, 0.75F);
             this.lastSoundTime = System.currentTimeMillis();
         }
     }
@@ -410,7 +490,8 @@ public class Tornado extends AirAbility {
             return;
         }
 
-        this.chargedDuration += now - this.lastChargeUpdateTime;
+        final long elapsed = Math.max(0, now - this.lastChargeUpdateTime);
+        this.chargedDuration += Math.min(Long.MAX_VALUE - this.chargedDuration, elapsed);
         this.lastChargeUpdateTime = now;
     }
 
@@ -437,172 +518,48 @@ public class Tornado extends AirAbility {
         this.vortexAngle += Math.max(7.0, this.speed * 45.0 * movementFactor);
         this.renderParticleFunnel(this.currentLoc, this.tornadoHeight, this.tornadoRadius, this.vortexAngle);
 
-        if (System.currentTimeMillis() - this.lastSoundTime >= TORNADO_SOUND_INTERVAL) {
-            playAirbendingSound(this.currentLoc);
+        if (System.currentTimeMillis() - this.lastSoundTime >= this.soundInterval) {
+            this.playStormSound(this.currentLoc, Sound.ENTITY_BREEZE_IDLE_GROUND, 0.8F);
             this.lastSoundTime = System.currentTimeMillis();
         }
     }
 
     private void renderParticleFunnel(final Location base, final double height,
                                       final double maximumRadius, final double rotationDegrees) {
-        if (base == null || base.getWorld() == null) {
-            return;
-        }
-
-        final double safeHeight = Math.max(0.4, height);
-        final double safeRadius = Math.max(0.25, maximumRadius);
-        final double heightStep = GeneralMethods.clamp(this.tornadoHeightParticles * 0.35, 0.32, 0.55);
-        final int verticalSamples = Math.max(4, (int) Math.ceil(safeHeight / heightStep));
-        final double baseRotation = Math.toRadians(rotationDegrees);
-
-        for (int level = 0; level <= verticalSamples; level++) {
-            final double progress = (double) level / verticalSamples;
-            final double y = safeHeight * progress;
-            final double radius = this.particleRadiusAt(progress, safeRadius);
-            final double spiralAngle = baseRotation + progress * Math.PI * 1.65;
-
-            for (int stream = 0; stream < PARTICLE_STREAMS; stream++) {
-                final double angle = spiralAngle + stream * (Math.PI * 2.0 / PARTICLE_STREAMS);
-                this.spawnFunnelParticle(base, y, radius, angle);
-            }
-
-            if (level % 3 == 1) {
-                for (int stream = 0; stream < PARTICLE_INNER_STREAMS; stream++) {
-                    final double angle = spiralAngle + Math.PI / 3.0 + stream * Math.PI;
-                    this.spawnFunnelParticle(base, y, radius * 0.58, angle);
-                }
-            }
-        }
-
-        if ((this.getRunningTicks() & 1L) == 0L) {
-            for (final double progress : new double[]{0.12, 0.56, 0.96}) {
-                this.renderParticleRing(base, safeHeight, safeRadius, baseRotation, progress);
-            }
-        }
-    }
-
-    private void renderParticleRing(final Location base, final double height, final double maximumRadius,
-                                    final double baseRotation, final double progress) {
-        final double radius = this.particleRadiusAt(progress, maximumRadius);
-        final int configuredSamples = (int) Math.ceil(360.0 / Math.max(18.0, this.tornadoDegreeParticles * 3.0));
-        final int circumferenceSamples = (int) Math.ceil(Math.PI * 2.0 * radius / 0.5);
-        final int samples = Math.max(7, Math.min(configuredSamples, circumferenceSamples));
-        final double ringRotation = baseRotation + progress * Math.PI * 1.65;
-
-        for (int point = 0; point < samples; point++) {
-            final double angle = ringRotation + point * (Math.PI * 2.0 / samples);
-            this.spawnFunnelParticle(base, height * progress, radius, angle);
-        }
+        TornadoVisuals.render(base, this.getVisualDirection(), height, maximumRadius,
+                Math.toRadians(rotationDegrees), this.visualSettings,
+                (point, count, spread) -> this.playAirbendingParticles(point, count, spread, spread, spread, 0));
     }
 
     private double particleRadiusAt(final double progress, final double maximumRadius) {
-        return Math.max(0.18, maximumRadius * (0.10 + 0.72 * Math.pow(progress, 0.72)));
+        return maximumRadius * TornadoVisuals.radiusAt(progress);
     }
 
-    private void spawnFunnelParticle(final Location base, final double y,
-                                     final double radius, final double angle) {
-        final Location particle = base.clone().add(
-                Math.cos(angle) * radius,
-                y,
-                Math.sin(angle) * radius
-        );
-        playAirbendingParticles(particle, 1, 0.018, 0.012, 0.018, 0.0);
-    }
-
-    private void absorbAirControllerPushes() {
-        this.absorbAirBlastPushes();
-        this.absorbAirSuctionPushes();
-    }
-
-    private void absorbAirBlastPushes() {
-        for (final AirBlast airBlast : getAbilities(AirBlast.class)) {
-            if (this.handledBlasts.contains(airBlast) || !airBlast.isProgressing() || airBlast.getBendingPlayer() != bPlayer) {
-                continue;
-            }
-
-            if (!this.isWithinAirControllerHitbox(airBlast.getLocation(), airBlast.getRadius())) {
-                continue;
-            }
-
-            final Vector push = airBlast.getDirection();
-            if (push == null) {
-                continue;
-            }
-
-            final Vector horizontalPush = push.clone();
-            horizontalPush.setY(0);
-            if (horizontalPush.lengthSquared() == 0) {
-                continue;
-            }
-
-            this.applyPush(horizontalPush.normalize(), airBlast.getSpeed());
-            this.handledBlasts.add(airBlast);
+    private void playStormSound(Location location, Sound sound, float volume) {
+        if (this.soundEnabled && getConfig().getBoolean("Properties.Air.PlaySound", true)
+                && location != null && location.getWorld() != null) {
+            location.getWorld().playSound(location, sound, volume * this.soundVolume, this.soundPitch);
         }
     }
 
-    private void absorbAirSuctionPushes() {
-        for (final AirSuction airSuction : getAbilities(AirSuction.class)) {
-            if (this.handledSuctions.contains(airSuction) || !airSuction.isProgressing() || airSuction.getBendingPlayer() != bPlayer) {
-                continue;
-            }
-
-            if (!this.isWithinAirControllerHitbox(airSuction.getLocation(), airSuction.getRadius())) {
-                continue;
-            }
-
-            final Vector push = airSuction.getDirection();
-            if (push == null) {
-                continue;
-            }
-
-            final Vector horizontalPush = push.clone();
-            horizontalPush.setY(0);
-            if (horizontalPush.lengthSquared() == 0) {
-                continue;
-            }
-
-            this.applyPush(horizontalPush.normalize(), airSuction.getSpeed());
-            this.handledSuctions.add(airSuction);
-        }
-    }
-
-    private boolean isWithinAirControllerHitbox(final Location abilityLocation, final double abilityRadius) {
-        if (abilityLocation == null || abilityLocation.getWorld() != this.currentLoc.getWorld()) {
-            return false;
-        }
-
-        final Location collisionCenter = this.currentLoc.clone().add(0, Math.min(1.0, this.tornadoHeight * 0.18), 0);
-        final double dx = abilityLocation.getX() - collisionCenter.getX();
-        final double dz = abilityLocation.getZ() - collisionCenter.getZ();
-        final double horizontalDistanceSq = (dx * dx) + (dz * dz);
-        final double maxHorizontalDistance = Math.max(1.0, this.tornadoRadius * 0.55 + abilityRadius);
-        if (horizontalDistanceSq > maxHorizontalDistance * maxHorizontalDistance) {
-            return false;
-        }
-
-        final double verticalDistance = Math.abs(abilityLocation.getY() - collisionCenter.getY());
-        final double maxVerticalDistance = Math.max(1.0, Math.min(2.0, this.tornadoHeight * 0.3));
-        return verticalDistance <= maxVerticalDistance;
-    }
-
-    private void applyPush(final Vector pushDirection, final double airBlastSpeed) {
-        final double baseSpeed = Math.max(0.12, this.speed);
-        final double maxSpeed = Math.max(baseSpeed, this.speed * 1.35);
-        final double blastFactor = Math.max(1.0, airBlastSpeed);
-        final double pushStrength = Math.max(baseSpeed * 0.85, Math.min(maxSpeed, baseSpeed * blastFactor));
-        final double retainedMomentum = Math.max(0.25, Math.min(0.72, 0.35 + (this.speed * 0.55)));
-
-        if (this.motion.lengthSquared() == 0) {
-            this.motion = pushDirection.clone().multiply(pushStrength);
-        } else {
-            this.motion = this.motion.clone().multiply(retainedMomentum).add(pushDirection.clone().multiply(pushStrength));
-            if (this.motion.lengthSquared() > maxSpeed * maxSpeed) {
-                this.motion.normalize().multiply(maxSpeed);
-            }
-        }
-
-        this.direction = pushDirection.clone();
-        this.state = AbilityState.TORNADO_MOVING;
+    private void controlHeldTornado() {
+        final Vector facing = this.getHorizontalDirection();
+        final double currentAngle = Math.atan2(this.direction.getZ(), this.direction.getX());
+        final double targetAngle = Math.atan2(facing.getZ(), facing.getX());
+        final double difference = Math.atan2(Math.sin(targetAngle - currentAngle), Math.cos(targetAngle - currentAngle));
+        final double angle = currentAngle + difference * this.aimSmoothing;
+        this.direction = new Vector(Math.cos(angle), 0, Math.sin(angle));
+        final Location target = this.player.getLocation().clone().add(this.direction.clone().multiply(this.controlDistance));
+        final Vector displacement = target.toVector().subtract(this.currentLoc.toVector()).setY(0);
+        final Vector desired = displacement.clone();
+        if (desired.lengthSquared() > this.controlSpeed * this.controlSpeed) desired.normalize().multiply(this.controlSpeed);
+        this.motion.multiply(this.controlDrag);
+        final Vector steering = desired.subtract(this.motion.clone());
+        if (steering.lengthSquared() > this.controlAcceleration * this.controlAcceleration) steering.normalize().multiply(this.controlAcceleration);
+        this.motion.add(steering);
+        if (this.motion.lengthSquared() > this.controlSpeed * this.controlSpeed) this.motion.normalize().multiply(this.controlSpeed);
+        if (this.motion.lengthSquared() > displacement.lengthSquared()) this.motion = displacement;
+        this.moveTornado();
     }
 
     private void moveTornado() {
@@ -622,11 +579,12 @@ public class Tornado extends AirAbility {
                 this.updateVelocity(previousLocation);
                 this.motion.zero();
                 this.state = AbilityState.TORNADO_STATIONARY;
+                if (this.launched) this.remove();
                 return;
             }
 
             this.distanceTravelled += segment;
-            if (!this.riding && this.distanceTravelled >= this.range) {
+            if (this.launched && this.distanceTravelled >= this.range) {
                 this.remove();
                 return;
             }
@@ -635,15 +593,8 @@ public class Tornado extends AirAbility {
         }
         this.updateVelocity(previousLocation);
 
-        final double drag = Math.max(0.88, Math.min(0.97, 0.91 + (this.speed * 0.08)));
-        this.motion.multiply(drag);
-        if (this.motion.lengthSquared() < 0.0025) {
-            this.motion.zero();
-            this.state = AbilityState.TORNADO_STATIONARY;
-        } else {
-            this.direction = this.motion.clone().normalize();
-            this.state = AbilityState.TORNADO_MOVING;
-        }
+        this.state = this.motion.lengthSquared() > 1.0E-9
+                ? AbilityState.TORNADO_MOVING : AbilityState.TORNADO_STATIONARY;
     }
 
     private void updateVelocity(final Location previousLocation) {
@@ -657,7 +608,7 @@ public class Tornado extends AirAbility {
 
         final Location next = this.currentLoc.clone().add(direction.clone().multiply(distance));
         final Location grounded = this.getGroundedTornadoLocation(next);
-        if (grounded == null) {
+        if (grounded == null || GeneralMethods.isRegionProtectedFromBuild(this, grounded)) {
             return false;
         }
         if (this.riding && grounded.getY() - this.currentLoc.getY() > 1.25) {
@@ -686,13 +637,16 @@ public class Tornado extends AirAbility {
     }
 
     private void pullEntitiesInsideTornado() {
+        if (this.capturedPlayer != null) {
+            this.progressCapturedPlayer();
+            return;
+        }
         this.pulledEntitiesThisTick.clear();
         this.lagCompensator.addSnapshot(this.getLagCompensationCollider());
 
         final Location pullCenter = this.currentLoc.clone().add(0, this.tornadoHeight / 2.0, 0);
-        final double searchRadius = this.pullZoneRadius + 0.75;
-
-        for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(pullCenter, searchRadius)) {
+        final AABB search = new AABB(pullCenter, this.pullZoneRadius + 0.75, this.tornadoHeight / 2.0 + 3);
+        for (final Entity entity : search.getEntities(this::canPullEntity)) {
             if (entity.equals(this.player)) {
                 continue;
             } else if (GeneralMethods.isRegionProtectedFromBuild(this, entity.getLocation())) {
@@ -710,6 +664,7 @@ public class Tornado extends AirAbility {
         }
 
         this.lagCompensator.update();
+        if (this.isRemoved() || this.capturedPlayer != null) return;
         this.pullCaughtEntities();
     }
 
@@ -718,8 +673,20 @@ public class Tornado extends AirAbility {
         return new AABB(center, this.pullZoneRadius, this.tornadoHeight / 2.0 + 0.5);
     }
 
+    private boolean canPullEntity(Entity entity) {
+        return entity != null && entity.isValid() && !entity.isDead() && !entity.equals(this.player)
+                && !(entity instanceof ArmorStand)
+                && !(entity instanceof Display)
+                && (!(entity instanceof Player target) || (target.isOnline()
+                && target.getGameMode() != GameMode.SPECTATOR && !Commands.invincible.contains(target.getName())
+                && !Platform.players().isExternalSpectator(target)))
+                && !GeneralMethods.isRegionProtectedFromBuild(this, entity.getLocation());
+    }
+
     private void pullEntity(final Entity entity, final Location tornadoLocation) {
-        if (!this.isInPullZone(entity, tornadoLocation)) {
+        if (this.isRemoved() || (this.capturedPlayer != null
+                && !this.capturedPlayer.getUniqueId().equals(entity.getUniqueId()))
+                || !this.canPullEntity(entity) || !this.isInPullZone(entity, tornadoLocation)) {
             return;
         }
 
@@ -741,6 +708,27 @@ public class Tornado extends AirAbility {
         }
 
         this.applyPullToEntity(entity, this.currentLoc);
+        // Capture exactly one opponent. Finish that pull before consuming the vortex.
+        if (entity instanceof Player target && this.capturedPlayer == null) {
+            this.capturedPlayer = target;
+            this.capturedAt = now;
+        }
+    }
+
+    private void progressCapturedPlayer() {
+        if (!this.shouldKeepCaughtEntity(this.capturedPlayer)) {
+            this.remove();
+            return;
+        }
+        if (System.currentTimeMillis() - this.capturedAt >= this.maxPullDuration) {
+            try {
+                this.releaseEntity(this.capturedPlayer, this.currentLoc);
+            } finally {
+                this.remove();
+            }
+            return;
+        }
+        this.applyPullToEntity(this.capturedPlayer, this.currentLoc);
     }
 
     private void pullCaughtEntities() {
@@ -777,7 +765,7 @@ public class Tornado extends AirAbility {
     }
 
     private boolean shouldKeepCaughtEntity(final Entity entity) {
-        if (entity == null || !entity.isValid() || entity.getWorld() != this.currentLoc.getWorld()) {
+        if (!this.canPullEntity(entity) || !entity.getWorld().equals(this.currentLoc.getWorld())) {
             return false;
         }
         if (GeneralMethods.isRegionProtectedFromBuild(this, entity.getLocation())) {
@@ -908,14 +896,27 @@ public class Tornado extends AirAbility {
 
     @Override
     public void remove() {
+        if (this.isRemoved()) return;
         super.remove();
         if (!this.isRemoved()) {
             return;
         }
-        if (this.riding) {
-            this.riding = false;
-            this.flightHandler.removeInstance(this.player, RIDE_FLIGHT_ID);
-            this.player.setFallDistance(0);
+        this.capturedPlayer = null;
+        this.caughtEntities.clear();
+        this.lastDamageTimes.clear();
+        this.pullStartTimes.clear();
+        this.lastRestrictedTimes.clear();
+        this.exhaustedPullEntities.clear();
+        this.pulledEntitiesThisTick.clear();
+        try {
+            if (this.debris != null) this.debris.remove();
+            if (this.currentLoc != null) this.playStormSound(this.currentLoc, Sound.ENTITY_BREEZE_LAND, 0.65F);
+        } finally {
+            if (this.riding) {
+                this.riding = false;
+                this.flightHandler.removeInstance(this.player, RIDE_FLIGHT_ID);
+                this.player.setFallDistance(0);
+            }
         }
     }
 

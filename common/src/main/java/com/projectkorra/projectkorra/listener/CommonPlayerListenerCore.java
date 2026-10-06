@@ -74,6 +74,7 @@ public final class CommonPlayerListenerCore {
     }
 
     public static void handleQuit(final Player player) {
+        com.projectkorra.projectkorra.region.RegionProtection.clearCache(player);
         final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
 
         Platform.scheduler().runLater(() -> BendingBoardManager.clean(player), 1);

@@ -110,6 +110,11 @@ public class World {
         return null;
     }
 
+    public Collection<Entity> getNearbyCombatEntities(BoundingBox box, Predicate<Entity> filter) {
+        return com.projectkorra.projectkorra.util.CombatBounds.includeGliders(this, box, filter,
+                getNearbyEntities(box, filter));
+    }
+
     public Collection<Entity> getNearbyEntities(BoundingBox box, Predicate<Entity> filter) {
         return List.of();
     }

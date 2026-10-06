@@ -14,7 +14,7 @@ class AirFlowDurationBoundaryTest {
     void removedFlowDrainsExistingParticlesWithoutEmittingForever() throws IOException {
         final String source = source();
         final String progress = method(source, "public void progress()", "private void tickParticles");
-        final String tick = method(source, "private void tickParticles", "private double noise");
+        final String tick = method(source, "private void tickParticles", "private Vector rotate");
         final String remove = method(source, "public void remove()", "private enum State");
 
         assertTrue(progress.contains("this.launchTime + this.duration")

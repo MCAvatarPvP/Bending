@@ -298,7 +298,7 @@ public class FireSpin extends FireAbility implements ComboAbility {
             }
 
             final LivingEntity livingEntity = (LivingEntity) entity;
-            final BoundingBox bounds = livingEntity.getBoundingBox();
+            final BoundingBox bounds = livingEntity.getCombatBoundingBox();
             if (bounds.getMaxY() < this.origin.getY() - halfHeight || bounds.getMinY() > this.origin.getY() + halfHeight) {
                 continue;
             }

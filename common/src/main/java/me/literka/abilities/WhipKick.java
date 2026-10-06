@@ -111,7 +111,7 @@ public class WhipKick extends ModernChiAbility implements AddonAbility {
             RayTraceResult ray = loc.getWorld().rayTraceBlocks(loc, between.normalize(), distance, FluidCollisionMode.NEVER, true);
             if (ray != null) continue;
 
-            BoundingBox box = le.getBoundingBox();
+            BoundingBox box = le.getCombatBoundingBox();
             Vector v = box.getMax().subtract(box.getMin()).multiply(new Vector(0.5, 0.4, 0.5));
             Location targetLoc = le.getEyeLocation();
             ParticleEffect effect = new ParticleEffect()

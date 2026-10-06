@@ -181,7 +181,7 @@ public class StickyBomb extends ModernChiAbility implements AddonAbility {
             Vector dir = hitLocation.toVector().subtract(prevLocation.toVector()).normalize();
             if (Utils.isFinite(dir)) {
                 Ray ray = new Ray(prevLocation.subtract(dir), dir, dir.length() * 3);
-                Location hit = ray.hitLocation(new AABB(e.getWorld(), e.getBoundingBox()).expand(0.3125));
+                Location hit = ray.hitLocation(new AABB(e.getWorld(), e.getCombatBoundingBox()).expand(0.3125));
                 if (hit != null) targetLoc = hit.subtract(e.getLocation());
             }
 

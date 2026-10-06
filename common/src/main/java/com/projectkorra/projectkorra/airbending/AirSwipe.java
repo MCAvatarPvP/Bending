@@ -256,11 +256,12 @@ public class AirSwipe extends AirAbility {
                             }
                         }
                         if (!AirSwipe.this.affectedEntities.contains(entity)) {
-                            if (entities.size() < MAX_AFFECTABLE_ENTITIES && !AirSwipe.this.shouldSkipKnockback(entity)) {
-                                GeneralMethods.setVelocity(AirSwipe.this, entity, fDirection.multiply(AirSwipe.this.pushFactor));
-                            }
                             if (AirSwipe.this.damage != 0) {
                                 DamageHandler.damageEntity(entity, AirSwipe.this.damage, abil);
+                            }
+
+                            if (entities.size() < MAX_AFFECTABLE_ENTITIES && !AirSwipe.this.shouldSkipKnockback(entity)) {
+                                GeneralMethods.setVelocity(AirSwipe.this, entity, fDirection.multiply(AirSwipe.this.pushFactor));
                             }
 
                             if (entity instanceof Player entityPlayer) {

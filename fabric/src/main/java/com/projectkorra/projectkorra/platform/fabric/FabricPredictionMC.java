@@ -237,6 +237,13 @@ public final class FabricPredictionMC {
         }
 
         @Override
+        public Collection<Entity> getNearbyCombatEntities(BoundingBox box, Predicate<Entity> filter) {
+            return super.getNearbyCombatEntities(box, entity ->
+                    HitRegistrationPolicy.includePredictedEntity(AbilityExecutionContext.current(), entity)
+                            && (filter == null || filter.test(entity)));
+        }
+
+        @Override
         public Collection<Entity> getNearbyEntities(BoundingBox box, Predicate<Entity> filter) {
             Box nativeBox = new Box(box.getMinX(), box.getMinY(), box.getMinZ(), box.getMaxX(), box.getMaxY(), box.getMaxZ());
             List<Entity> result = new ArrayList<>();
@@ -755,6 +762,13 @@ public final class FabricPredictionMC {
                 if (!passThrough.contains(current.getType())) break;
             }
             return List.of(previous, current);
+        }
+        @Override public void hideDisplay(Display display) {
+            final ClientPlayerEntity local = MinecraftClient.getInstance().player;
+            if (local != null && local.getUuid().equals(value.getUuid()) && display != null) {
+                // This display exists only in this client's predicted world.
+                display.setViewRange(0);
+            }
         }
         @Override public boolean hasLineOfSight(Entity entity) {
             Vec3d start = value.getEyePos(), end = nativeVector(entity.getBoundingBox().getCenter());

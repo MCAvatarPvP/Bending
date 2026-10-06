@@ -16,6 +16,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.inventory.ItemStack;
 import com.projectkorra.projectkorra.platform.mc.inventory.meta.SkullMeta;
 import com.projectkorra.projectkorra.platform.mc.util.Transformation;
+import com.projectkorra.projectkorra.platform.mc.util.BoundingBox;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
 import com.projectkorra.projectkorra.prediction.state.AbilityCheckpointSync;
@@ -530,6 +531,7 @@ public class AirGlider extends AirAbility {
             display.setTeleportDuration(MODEL_TELEPORT_DURATION);
             display.setViewRange(32);
             display.setTransformation(this.modelPartTransformation(part, rotation));
+            this.player.hideDisplay(display);
             this.modelDisplays.add(display);
         }
     }
@@ -569,6 +571,33 @@ public class AirGlider extends AirAbility {
         final Vector forward = this.player.getEyeLocation().getDirection().clone();
         if (forward.lengthSquared() > 1.0E-9) forward.normalize().multiply(this.modelForwardOffset);
         return this.player.getLocation().clone().add(0, this.modelHeightOffset, 0).add(forward);
+    }
+
+    /** Includes the rider and the animated model, without changing physical movement bounds. */
+    public BoundingBox getCombatBoundingBox() {
+        final BoundingBox body = this.player.getBoundingBox();
+        if (this.isRemoved() || this.state != State.GLIDING) return body;
+        final Vector min = body.getMin().clone();
+        final Vector max = body.getMax().clone();
+        final Location center = this.modelCenter();
+        final Quaternionf rotation = this.modelRotation();
+        for (final ModelPart part : MODEL_PARTS) {
+            final Location origin = this.modelPartLocation(center, part, rotation);
+            final Transformation transform = this.modelPartTransformation(part, rotation);
+            // FIXED heads occupy half a block before the display scale is applied.
+            final Vector3f half = transform.scale().mul(0.25F);
+            final Quaternionf orientation = transform.leftRotation();
+            for (int x = -1; x <= 1; x += 2) for (int y = -1; y <= 1; y += 2) for (int z = -1; z <= 1; z += 2) {
+                final Vector3f corner = orientation.transform(new Vector3f(half.x * x, half.y * y, half.z * z));
+                min.setX(Math.min(min.getX(), origin.getX() + corner.x));
+                min.setY(Math.min(min.getY(), origin.getY() + corner.y));
+                min.setZ(Math.min(min.getZ(), origin.getZ() + corner.z));
+                max.setX(Math.max(max.getX(), origin.getX() + corner.x));
+                max.setY(Math.max(max.getY(), origin.getY() + corner.y));
+                max.setZ(Math.max(max.getZ(), origin.getZ() + corner.z));
+            }
+        }
+        return new BoundingBox(min, max);
     }
 
     private Location modelPartLocation(final Location center, final ModelPart part, final Quaternionf rotation) {

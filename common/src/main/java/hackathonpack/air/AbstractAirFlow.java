@@ -13,7 +13,7 @@ import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import java.util.ArrayList;
 
 abstract class AbstractAirFlow extends AirAbility {
-    private final ArrayList<Location> particles = new ArrayList<>();
+    private final ArrayList<FlowParticle> particles = new ArrayList<>();
     private final ArrayList<Entity> affectedEntities = new ArrayList<>();
     private long chargeTime;
     private long launchTime;
@@ -25,6 +25,7 @@ abstract class AbstractAirFlow extends AirAbility {
     private Vector flowDirection;
     private State state = State.CHARGING;
     private boolean draining;
+    private final AirFlowPath path = new AirFlowPath();
 
     protected AbstractAirFlow(final Player player) {
         super(player);
@@ -71,6 +72,11 @@ abstract class AbstractAirFlow extends AirAbility {
             }
             return;
         }
+        if (!this.path.isFull(this.range)) {
+            final Location aim = this.player.getEyeLocation();
+            this.flowDirection = aim.getDirection().multiply(directionMultiplier());
+            this.path.extend(this.flowDirection, this.range);
+        }
         tickParticles(true);
         if (Math.random() < 0.05)
             this.player.getWorld().playSound(this.flowLocation, Sound.valueOf("ITEM_ELYTRA_FLYING"), 0.05F, 1);
@@ -79,30 +85,33 @@ abstract class AbstractAirFlow extends AirAbility {
     private void tickParticles(final boolean emitParticles) {
         if (emitParticles) {
             for (int i = 0; i < this.particlePerTick; i++) {
-                this.particles.add(this.flowLocation.clone().add(rotate(new Vector(Math.random() * this.particleSpawnAreaSize - this.particleSpawnAreaSize / 2,
-                        Math.random() * this.particleSpawnAreaSize - this.particleSpawnAreaSize / 2, 0))));
+                this.particles.add(new FlowParticle(this.flowLocation.clone().add(rotate(new Vector(Math.random() * this.particleSpawnAreaSize - this.particleSpawnAreaSize / 2,
+                        Math.random() * this.particleSpawnAreaSize - this.particleSpawnAreaSize / 2, 0)))));
             }
         }
         this.affectedEntities.clear();
         for (int i = this.particles.size() - 1; i >= 0; i--) {
-            final Location loc = this.particles.get(i);
+            final FlowParticle particle = this.particles.get(i);
+            if (particle.segment >= this.path.size()) {
+                this.particles.remove(i);
+                continue;
+            }
+            final Location loc = particle.location;
+            final Vector step = this.path.step(particle.segment++);
             playAirbendingParticles(this.bPlayer, loc, 1);
-            final Vector velocity = this.flowDirection.clone().rotateAroundY(Math.toRadians(noise(loc) * 90)).normalize();
+            final Vector velocity = step.clone().normalize();
             for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(loc, 2)) {
                 if (!this.affectedEntities.contains(entity)) {
-                    GeneralMethods.setVelocity(entity, velocity.clone().add(entity.getVelocity()).multiply(0.5));
+                    GeneralMethods.setVelocity(this, entity, velocity.clone().add(entity.getVelocity()).multiply(0.5));
                     this.affectedEntities.add(entity);
                 }
             }
-            loc.add(velocity.multiply(0.5));
-            if (loc.distance(this.flowLocation) > this.range || GeneralMethods.isSolid(loc.getBlock())) {
+            loc.add(step);
+            if ((this.path.isFull(this.range) && particle.segment >= this.path.size())
+                    || GeneralMethods.isSolid(loc.getBlock())) {
                 this.particles.remove(i);
             }
         }
-    }
-
-    private double noise(final Location location) {
-        return Math.sin(location.getX() * 0.31 + location.getY() * 0.17 + location.getZ() * 0.23);
     }
 
     private Vector rotate(final Vector vector) {
@@ -126,6 +135,15 @@ abstract class AbstractAirFlow extends AirAbility {
                 tickParticles(false);
             }
         }.runTaskTimer(ProjectKorra.plugin, 0, 1);
+    }
+
+    private static final class FlowParticle {
+        private final Location location;
+        private int segment;
+
+        private FlowParticle(final Location location) {
+            this.location = location;
+        }
     }
 
     private enum State {CHARGING, CHARGED, LAUNCHED}

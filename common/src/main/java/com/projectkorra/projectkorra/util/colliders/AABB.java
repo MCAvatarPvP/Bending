@@ -107,7 +107,7 @@ public class AABB implements Collider {
     public Collection<Entity> getEntities(Predicate<Entity> filter) {
         BoundingBox box = toBoundingBox();
         if (box == null) return Collections.emptyList();
-        return min.getWorld().getNearbyEntities(box, filter);
+        return min.getWorld().getNearbyCombatEntities(box, filter);
     }
 
     @Override

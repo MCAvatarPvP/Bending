@@ -184,6 +184,10 @@ public class Player extends LivingEntity implements CommandSender, OfflinePlayer
         return true;
     }
 
+    /** Hides a display from this viewer without changing other viewers. */
+    public void hideDisplay(Display display) {
+    }
+
     public boolean hasLineOfSight(Entity entity) {
         return true;
     }

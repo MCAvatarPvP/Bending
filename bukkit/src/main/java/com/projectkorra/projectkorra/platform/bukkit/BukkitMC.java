@@ -2410,6 +2410,13 @@ public final class BukkitMC {
         }
 
         @Override
+        public void hideDisplay(Display display) {
+            if (display != null && display.handle() instanceof org.bukkit.entity.Display nativeDisplay) {
+                value.hideEntity(JavaPlugin.getPlugin(BukkitProjectKorraPlugin.class), nativeDisplay);
+            }
+        }
+
+        @Override
         public boolean hasLineOfSight(Entity entity) {
             return entity != null && entity.handle() instanceof org.bukkit.entity.Entity nativeEntity && value.hasLineOfSight(nativeEntity);
         }

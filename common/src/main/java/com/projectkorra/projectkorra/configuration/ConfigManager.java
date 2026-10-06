@@ -11,8 +11,10 @@ import java.util.*;
 
 public class ConfigManager {
 
-    private static final String TORNADO_DESCRIPTION = "Create a particle cyclone that travels along the ground and pulls in nearby entities. Aim at your own Tornado and right-click to ride it.";
-    private static final String TORNADO_INSTRUCTIONS = "Hold sneak to charge and deploy Tornado. Once it forms, aim at the funnel and right-click in the air or on a block to ride; sneak to dismount.";
+    private static final String LEGACY_TORNADO_DESCRIPTION = "Create a particle cyclone that travels along the ground and pulls in nearby entities. Aim at your own Tornado and right-click to ride it.";
+    private static final String LEGACY_TORNADO_INSTRUCTIONS = "Hold sneak to charge and deploy Tornado. Once it forms, aim at the funnel and right-click in the air or on a block to ride; sneak to dismount.";
+    private static final String TORNADO_DESCRIPTION = "Gather a slow defensive tornado of swirling wind and light blue glass that pulls nearby entities into its vortex. Charge longer to create a larger funnel with a longer cooldown. Aim at your own Tornado and right-click to ride it.";
+    private static final String TORNADO_INSTRUCTIONS = "Hold sneak to charge a growing tornado. Release after the minimum charge to form a small tornado, or keep charging for a larger one. Once formed, hold sneak to steer it slowly and release sneak to leave it in place. Left click to throw it, including while charging once the minimum charge is ready. Aim at the funnel and right-click to ride, then look to steer its slow defensive movement; sneak to dismount.";
     private static final String WHITE_GLIDER_TEXTURE = "https://textures.minecraft.net/texture/366a5c98928fa5d4b5d5b8efb490155b4dda3956bcaa9371177814532cfc";
 
     static final List<String> DEFAULT_WATER_COSMETICS = List.of(
@@ -83,6 +85,8 @@ public class ConfigManager {
         repairMisplacedAvatarStateConfig();
 
         configCheck(ConfigType.DEFAULT);
+        com.projectkorra.projectkorra.region.RegionProtection.startCleanCacheTask(
+                getConfig().getLong("Properties.RegionProtection.CacheBlockTime"));
         configCheck(ConfigType.LANGUAGE);
         configCheck(ConfigType.PRESETS);
         configCheck(ConfigType.COLLISION);
@@ -538,8 +542,7 @@ public class ConfigManager {
             config.addDefault("Abilities.Air.AirBurst.HorizontalVelocityDeath", "{victim} experienced a fatal collision by {attacker}'s {ability}");
             config.addDefault("Abilities.Air.AirScooter.Description", "AirScooter is a fast means of transportation. It can be used to escape from enemies or confuse them by using air scooter around them.");
             config.addDefault("Abilities.Air.AirScooter.Instructions", "Sprint, jump, and left click while in the air to activate air scooter. You will then move forward in the direction you're looking.");
-            config.addDefault("Abilities.Air.Tornado.Description", TORNADO_DESCRIPTION);
-            config.addDefault("Abilities.Air.Tornado.Instructions", TORNADO_INSTRUCTIONS);
+            configureTornadoLanguage(languageConfig);
             config.addDefault("Abilities.Air.AirShield.Description", "AirShield is one of the most powerful defensive techniques in existence. This ability is mainly used when you are low health and need protection. It's also useful when you're surrounded by mobs.");
             config.addDefault("Abilities.Air.AirShield.Instructions", "Hold sneak and a shield of air will form around you, blocking projectiles and pushing entities back.");
             config.addDefault("Abilities.Air.AirSpout.Description", "This ability gives the airbender limited sustained levitation. It allows an airbender to gain a height advantage to escape from mobs, players or just to dodge from attacks. This ability is also useful for building as it allows you to reach great heights.");
@@ -1382,30 +1385,52 @@ public class ConfigManager {
             config.addDefault("Abilities.Air.Suffocate.ProjectileHitRadius", 1.0);
             config.addDefault("Abilities.Air.Suffocate.ProjectileSteerStrength", 0.35);
 
-            config.addDefault("Abilities.Air.Tornado.Enabled", true);
-            config.addDefault("Abilities.Air.Tornado.Speed", 0.35);
-            config.addDefault("Abilities.Air.Tornado.Range", 16);
-            config.addDefault("Abilities.Air.Tornado.Height", 8);
-            config.addDefault("Abilities.Air.Tornado.Radius", 3.5);
-            config.addDefault("Abilities.Air.Tornado.ChargeTime", 750);
-            config.addDefault("Abilities.Air.Tornado.Damage", 0);
-            config.addDefault("Abilities.Air.Tornado.DamageInterval", 500);
-            config.addDefault("Abilities.Air.Tornado.MaxPullDuration", 0);
-            config.addDefault("Abilities.Air.Tornado.PullZoneRadius", 5.25);
-            config.addDefault("Abilities.Air.Tornado.PullVelocity", 0.315);
-            config.addDefault("Abilities.Air.Tornado.SpinPlayers", false);
-            config.addDefault("Abilities.Air.Tornado.TrappedAbilityCooldown", 1500);
-            config.addDefault("Abilities.Air.Tornado.RemoveDelay", 1500);
-            config.addDefault("Abilities.Air.Tornado.Cooldown", 10000);
-            config.addDefault("Abilities.Air.Tornado.DegreesPerParticle", 7);
-            config.addDefault("Abilities.Air.Tornado.HeightPerParticle", 1.25);
-            config.addDefault("Abilities.Air.Tornado.Ride.Enabled", true);
-            config.addDefault("Abilities.Air.Tornado.Ride.Duration", 8000);
-            config.addDefault("Abilities.Air.Tornado.Ride.Speed", 0.8);
-            config.addDefault("Abilities.Air.Tornado.Ride.HeightPercentage", 0.62);
-            config.addDefault("Abilities.Air.Tornado.Ride.VerticalSmoothing", 0.16);
-            config.addDefault("Abilities.Air.Tornado.Ride.MaxVerticalSpeed", 0.55);
-            config.addDefault("Abilities.Air.Tornado.Ride.TargetingRange", 12.0);
+            migrateTornadoDefaults(defaultConfig);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Enabled", true);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Speed", 0.35);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Range", 32);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Height", 18);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.MinimumHeight", 4);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Radius", 7.0);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.MinimumRadius", 1.5);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.ChargeTime", 6000);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.MinimumChargeTime", 500);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Damage", 0);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.DamageInterval", 500);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.MinimumPullDuration", 500);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.MaxPullDuration", 2000);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.PullZoneRadius", 9.0);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.MinimumPullZoneRadius", 2.5);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.PullVelocity", 0.315);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.SpinPlayers", false);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.TrappedAbilityCooldown", 1500);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.RemoveDelay", 12000);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Cooldown", 18000);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.MinimumCooldown", 3000);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Control.CenterDistance", 6.0);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Control.Speed", 0.16);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Control.Acceleration", 0.02);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Control.Drag", 0.88);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Control.AimSmoothing", 0.1);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Visuals.Ribbons", 4);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Visuals.RibbonPoints", 32);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Visuals.CloudLobes", 10);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Visuals.GroundTendrils", 7);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Visuals.GlassPieces", 20);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Visuals.MinimumGlassScale", 0.18);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Visuals.MaximumGlassScale", 0.65);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Visuals.GlassOrbitSpeed", 0.16);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Sound.Enabled", true);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Sound.IntervalTicks", 8);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Sound.Volume", 1.0);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Sound.Pitch", 0.65);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Ride.Enabled", true);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Ride.Duration", 8000);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Ride.Speed", 0.22);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Ride.HeightPercentage", 0.62);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Ride.VerticalSmoothing", 0.16);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Ride.MaxVerticalSpeed", 0.55);
+            addUpgradeDefault(defaultConfig, "Abilities.Air.Tornado.Ride.TargetingRange", 12.0);
 
             config.addDefault("Abilities.Air.AirStream.Enabled", true);
             config.addDefault("Abilities.Air.AirStream.Speed", 0.5);
@@ -2656,6 +2681,36 @@ public class ConfigManager {
         if (configMigrated || languageMigrated || avatarStateMigrated) {
             Platform.logger().info("Migrated legacy Twister settings into Tornado.");
         }
+    }
+
+    /** Upgrades the original fixed-size Tornado tuning, retaining server overrides. */
+    static void migrateTornadoDefaults(final Config config) {
+        final String prefix = "Abilities.Air.Tornado.";
+        replaceLegacyNumericDefault(config, prefix + "ChargeTime", 750, 6000);
+        replaceLegacyNumericDefault(config, prefix + "Height", 8, 18);
+        replaceLegacyNumericDefault(config, prefix + "Radius", 3.5, 7.0);
+        replaceLegacyNumericDefault(config, prefix + "PullZoneRadius", 5.25, 9.0);
+        replaceLegacyNumericDefault(config, prefix + "Cooldown", 10000, 18000);
+        replaceLegacyNumericDefault(config, prefix + "Range", 16, 32);
+        replaceLegacyNumericDefault(config, prefix + "RemoveDelay", 1500, 12000);
+        replaceLegacyNumericDefault(config, prefix + "Ride.Speed", 0.8, 0.22);
+        replaceLegacyNumericDefault(config, prefix + "MaxPullDuration", 0, 2000);
+    }
+
+    /** Refreshes stock control instructions while preserving customized help text. */
+    static void configureTornadoLanguage(final Config config) {
+        final String description = "Abilities.Air.Tornado.Description";
+        final String instructions = "Abilities.Air.Tornado.Instructions";
+        if (config.containsExplicit(description)
+                && LEGACY_TORNADO_DESCRIPTION.equals(config.getString(description))) {
+            config.set(description, TORNADO_DESCRIPTION);
+        }
+        if (config.containsExplicit(instructions)
+                && LEGACY_TORNADO_INSTRUCTIONS.equals(config.getString(instructions))) {
+            config.set(instructions, TORNADO_INSTRUCTIONS);
+        }
+        addUpgradeDefault(config, description, TORNADO_DESCRIPTION);
+        addUpgradeDefault(config, instructions, TORNADO_INSTRUCTIONS);
     }
 
     /** Renames the old XP-meter settings without discarding server overrides. */

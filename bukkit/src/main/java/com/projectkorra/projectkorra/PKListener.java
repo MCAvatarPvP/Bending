@@ -838,6 +838,8 @@ public class PKListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onAbilityVelocity(AbilityVelocityAffectEntityEvent event) {
+        // Generic velocity updates can omit an ability; named collision rules cannot match them.
+        if (event.getAbility() == null) return;
         var entity = event.getAffected();
         if (entity instanceof FallingBlock fb) {
             for (String s : ConfigManager.collisionConfig.get().getStringList("FallingBlockCollisions")) {

@@ -109,7 +109,7 @@ public class MagmaBlast extends LavaAbility implements AddonAbility, ComboAbilit
             if (!(entity instanceof LivingEntity)) continue;
 
             if (entity instanceof Player) {
-                AABB entityBounds = new AABB(entity.getWorld(), entity.getBoundingBox());
+                AABB entityBounds = new AABB(entity.getWorld(), entity.getCombatBoundingBox());
 
                 if (entityBounds.intersects(blockBounds)) {
                     DamageHandler.damageEntity(entity, mb.getDamage(), mb);
