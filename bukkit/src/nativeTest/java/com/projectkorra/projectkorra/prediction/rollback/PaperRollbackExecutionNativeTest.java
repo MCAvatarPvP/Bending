@@ -175,6 +175,35 @@ class PaperRollbackExecutionNativeTest {
         return session.receive(connection, RollbackInputPacket.decode(packet.encode()));
     }
 
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void offHandSwingRunsAfterBendingCancellationAndReplaysFromLateInput(boolean cancelled) throws Exception {
+        onTickThread(() -> {
+            withConfig(() -> {
+                java.util.function.Consumer<Fixture> install = fixture -> AbilityActivationManager.registerGlobal(ClickType.LEFT_CLICK, context -> {
+                    if (cancelled) context.cancelEvent();
+                    context.stopProcessing(); return true;
+                });
+                var direct = scenario(fixture -> { }, install); var late = scenario(fixture -> { }, install);
+                var edge = new RollbackPlayerInput.Edge(new RollbackInputActions.Action(1, 23,
+                        RollbackInputActions.Kind.OFF_HAND_SWING, -1), 0, 0);
+                var held = input(0, List.of(edge));
+                assertEquals(RollbackEngine.Submission.ACCEPTED, direct.runtime.submit(A, 1, held));
+                var expected = direct.runtime.advance(); late.runtime.advance();
+                assertEquals(RollbackEngine.Submission.ACCEPTED, late.runtime.submit(A, 1, held));
+                var replay = late.runtime.reconcile();
+                var directBody = ((PaperRollbackNativePlayerState) direct.fixture.attacker.body().kinematicsSource()).ownedPlayer();
+                var lateBody = ((PaperRollbackNativePlayerState) late.fixture.attacker.body().kinematicsSource()).ownedPlayer();
+                assertEquals(!cancelled, directBody.swinging); assertEquals(directBody.swinging, lateBody.swinging);
+                assertEquals(directBody.swingTime, lateBody.swingTime);
+                if (!cancelled) assertEquals(net.minecraft.world.InteractionHand.OFF_HAND, lateBody.swingingArm);
+                var expectedAnimations = expected.head().effects().stream().filter(PaperRollbackPacketData.Tracked.class::isInstance).toList();
+                var replayAnimations = replay.head().effects().stream().filter(PaperRollbackPacketData.Tracked.class::isInstance).toList();
+                assertEquals(expectedAnimations, replayAnimations);
+                assertEquals(cancelled ? 0 : 1, expectedAnimations.stream().map(PaperRollbackPacketData.Tracked.class::cast)
+                        .filter(value -> value.data() instanceof PaperRollbackPacketData.Animation).count());
+            }); return null;
+        });
+    }
     private Scenario scenario() {
         return scenario(fixture -> { }, fixture -> { });
     }

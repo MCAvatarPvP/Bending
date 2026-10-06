@@ -48,6 +48,30 @@ class PaperRollbackDamageNativeTest {
         }
     }
 
+    @Test void nativeHandSwingAndDetachedAnimationRewindTogether() throws Exception {
+        onTickThread(() -> {
+            var scene = new Scene();
+            var before = scene.snapshot();
+            scene.targetState.swing(false);
+            assertTrue(scene.target.swinging); assertEquals(-1, scene.target.swingTime);
+            var output = (PaperRollbackPacketData.Tracked) scene.combat.outputs.getLast();
+            assertEquals(scene.target.getUUID(), output.entity()); assertFalse(output.includeSelf());
+            assertEquals(new PaperRollbackPacketData.Animation(scene.target.getId(), 0), output.data());
+            scene.targetState.swing(false);
+            assertEquals(2, scene.combat.outputs.size(), "Native pre-animation swings retain their original cadence");
+            scene.target.swingTime = 0;
+            scene.targetState.swing(false);
+            assertEquals(2, scene.combat.outputs.size(), "An animation in its first half must not restart");
+            before.restore(); assertFalse(scene.target.swinging); assertTrue(scene.combat.outputs.isEmpty());
+            scene.targetState.swing(false);
+            assertEquals(output, scene.combat.outputs.getLast());
+            before.restore(); scene.targetState.swing(true);
+            assertEquals(net.minecraft.world.InteractionHand.OFF_HAND, scene.target.swingingArm);
+            assertEquals(new PaperRollbackPacketData.Animation(scene.target.getId(), 3),
+                    ((PaperRollbackPacketData.Tracked) scene.combat.outputs.getLast()).data());
+            return null;
+        });
+    }
     @Test void nativePaperHitRestoresDamageKnockbackEventsAndLastDamageCauseTogether() throws Exception {
         onTickThread(() -> {
             assertNull(Bukkit.getServer());

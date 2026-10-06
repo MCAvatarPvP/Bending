@@ -2720,3 +2720,19 @@ following a failed native begin. Native action/world remainder services are stil
 required; this binding does not provide those missing operations or install a runtime.
 A hit-policy test now restores its temporary ability-definition registration, eliminating
 an order-dependent unregistered-test-class failure in full gameplay import tests.
+
+### Native hand-swing input
+
+Accepted swing actions now run the native hand-animation method after the common
+bending handler, and cancelled swings produce no native animation. The input stream
+retains off-hand intent as `OFF_HAND_SWING`; input, authority and start protocol versions
+are now 4 so older peers cannot silently interpret the extended action set. Both hand
+kinds retain the existing common swing-handler semantics. This animation phase does
+not stand in for native melee attack intent, which remains separate work.
+
+Paper detaches animation tracking packets into immutable entity/action data, matching
+Fabric's existing packet route. Native tests cover both hands, native animation cadence,
+state/output rewind, and the full execution path with on-time versus late accepted or
+cancelled off-hand input. Missing frames still omit one-shot actions. Remaining native
+item, swap and attack operations, runtime installation and live duel validation are not
+completed by this change.

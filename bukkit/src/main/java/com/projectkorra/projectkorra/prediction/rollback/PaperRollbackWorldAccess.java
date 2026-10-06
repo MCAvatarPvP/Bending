@@ -225,7 +225,8 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         if (!ownsPlayer(entity) || entity.level() != world) throw new IllegalArgumentException("Foreign tracked entity");
         var data = packetData.capture(Objects.requireNonNull(packet, "packet"));
         int target = data instanceof PaperRollbackPacketData.Equipment equipment ? equipment.entity()
-                : data instanceof PaperRollbackPacketData.EntityStatus status ? status.entity() : Integer.MIN_VALUE;
+                : data instanceof PaperRollbackPacketData.EntityStatus status ? status.entity()
+                : data instanceof PaperRollbackPacketData.Animation animation ? animation.entity() : Integer.MIN_VALUE;
         if (target != entity.getId()) throw new IllegalArgumentException("Unsupported packet or mismatched tracked entity");
         output(new PaperRollbackPacketData.Tracked(entity.getUUID(), includeSelf, data));
     }

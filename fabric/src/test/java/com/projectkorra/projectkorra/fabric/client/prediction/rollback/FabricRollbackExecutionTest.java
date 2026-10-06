@@ -256,6 +256,35 @@ class FabricRollbackExecutionTest {
         return java.util.Objects.requireNonNull(delivered);
     }
 
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void offHandSwingRunsAfterBendingCancellationAndReplaysFromLateInput(boolean cancelled) throws Exception {
+        withConfig(() -> {
+            java.util.function.Consumer<Fixture> install = fixture -> AbilityActivationManager.registerGlobal(ClickType.LEFT_CLICK, context -> {
+                if (cancelled) context.cancelEvent();
+                context.stopProcessing();
+                return true;
+            });
+            var direct = scenario(false, fixture -> { }, install);
+            var late = scenario(false, fixture -> { }, install);
+            var edge = new RollbackPlayerInput.Edge(new RollbackInputActions.Action(1, 23,
+                    RollbackInputActions.Kind.OFF_HAND_SWING, -1), 0, 0);
+            var held = input(0, List.of(edge));
+            assertEquals(RollbackEngine.Submission.ACCEPTED, direct.runtime.submit(A, 1, held));
+            var expected = direct.runtime.advance(); late.runtime.advance();
+            assertEquals(RollbackEngine.Submission.ACCEPTED, late.runtime.submit(A, 1, held));
+            var replay = late.runtime.reconcile();
+            var directBody = ((FabricRollbackNativePlayerState) direct.fixture.attacker.body().kinematicsSource()).ownedPlayer();
+            var lateBody = ((FabricRollbackNativePlayerState) late.fixture.attacker.body().kinematicsSource()).ownedPlayer();
+            assertEquals(!cancelled, directBody.handSwinging); assertEquals(directBody.handSwinging, lateBody.handSwinging);
+            assertEquals(directBody.handSwingTicks, lateBody.handSwingTicks);
+            if (!cancelled) assertEquals(net.minecraft.util.Hand.OFF_HAND, lateBody.preferredHand);
+            var expectedAnimations = expected.head().effects().stream().filter(FabricRollbackPacketData.Tracked.class::isInstance).toList();
+            var replayAnimations = replay.head().effects().stream().filter(FabricRollbackPacketData.Tracked.class::isInstance).toList();
+            assertEquals(expectedAnimations, replayAnimations);
+            assertEquals(cancelled ? 0 : 1, expectedAnimations.stream().map(FabricRollbackPacketData.Tracked.class::cast)
+                    .filter(value -> value.data() instanceof FabricRollbackPacketData.Animation).count());
+        });
+    }
     private Scenario scenario() { return scenario(false); }
     private Scenario scenario(boolean replica) {
         return scenario(replica, fixture -> { });

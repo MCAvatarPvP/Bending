@@ -32,7 +32,7 @@ class FabricRollbackInputTest {
         var packet = f.sent.getFirst();
         assertEquals(new RollbackMovementInput(0, 1, true, 90, 5), packet.movement()); assertTrue(packet.sprinting());
         assertEquals(List.of(RollbackInputActions.Kind.SLOT_CHANGE, RollbackInputActions.Kind.RIGHT_CLICK,
-                RollbackInputActions.Kind.SWING, RollbackInputActions.Kind.SNEAK_START), packet.actions().stream().map(RollbackInputPacket.Edge::kind).toList());
+                RollbackInputActions.Kind.OFF_HAND_SWING, RollbackInputActions.Kind.SNEAK_START), packet.actions().stream().map(RollbackInputPacket.Edge::kind).toList());
         assertEquals(List.of(30F, 70F, 80F, 80F), packet.actions().stream().map(RollbackInputPacket.Edge::yaw).toList());
         assertEquals(4, packet.actions().getFirst().slot()); assertEquals(-25, packet.actions().get(1).pitch());
         f.runtime.tick(102); assertTrue(f.sent.getLast().actions().isEmpty());

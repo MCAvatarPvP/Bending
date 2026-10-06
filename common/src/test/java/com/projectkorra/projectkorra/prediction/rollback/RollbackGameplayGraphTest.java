@@ -8,6 +8,18 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class RollbackGameplayGraphTest {
+    private Map<Class<?>, Object> attributes;
+    private Map<Class<?>, Object> previousAttributes;
+    @org.junit.jupiter.api.BeforeEach
+    @SuppressWarnings("unchecked")
+    void isolateDefinitions() throws Exception {
+        // This fixture negotiates only the installed main inventory, not abilities declared by other test classes.
+        var field = com.projectkorra.projectkorra.ability.CoreAbility.class.getDeclaredField("ATTRIBUTE_FIELDS");
+        field.setAccessible(true); attributes = (Map<Class<?>, Object>) field.get(null);
+        previousAttributes = new HashMap<>(attributes); attributes.clear();
+    }
+    @org.junit.jupiter.api.AfterEach
+    void restoreDefinitions() { attributes.clear(); attributes.putAll(previousAttributes); }
     private static final class Person extends Player {
         final UUID id; final World world;
         Person(int id, World world) { this.id = new UUID(0, id); this.world = world; }

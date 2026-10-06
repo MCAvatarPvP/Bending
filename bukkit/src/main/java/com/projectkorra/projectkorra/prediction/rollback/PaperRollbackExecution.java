@@ -30,6 +30,7 @@ public final class PaperRollbackExecution<E> extends RollbackPlayerExecution<E> 
     @Override protected void movementInput(RollbackPlayer player, RollbackMovementInput input) {
         state(player).movementInput(input);
     }
+    @Override protected void swing(RollbackPlayer player, boolean offHand) { state(player).swing(offHand); }
     @Override protected void tickPlayer(RollbackPlayer player) { state(player).tick(); }
     private static PaperRollbackNativePlayerState state(RollbackPlayer player) {
         return (PaperRollbackNativePlayerState) player.body().kinematicsSource();

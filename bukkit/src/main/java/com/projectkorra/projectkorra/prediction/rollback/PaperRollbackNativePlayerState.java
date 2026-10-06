@@ -260,6 +260,14 @@ public final class PaperRollbackNativePlayerState implements RollbackPlayerState
         return use(entity -> world.damage(entity, nativeSource, amount));
     }
 
+    /** Native swing state and detached tracking output, after input cancellation has been resolved. */
+    public void swing(boolean offHand) {
+        use(entity -> {
+            ((Player) entity).swing(offHand ? net.minecraft.world.InteractionHand.OFF_HAND : net.minecraft.world.InteractionHand.MAIN_HAND);
+            return null;
+        });
+    }
+
     public void movementInput(RollbackMovementInput input) {
         Objects.requireNonNull(input, "input");
         var player = ownedPlayer();

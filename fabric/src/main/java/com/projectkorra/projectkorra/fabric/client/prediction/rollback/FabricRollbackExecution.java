@@ -36,6 +36,7 @@ public final class FabricRollbackExecution<E> extends RollbackPlayerExecution<E>
     @Override protected void movementInput(RollbackPlayer player, RollbackMovementInput input) {
         state(player).movementInput(input);
     }
+    @Override protected void swing(RollbackPlayer player, boolean offHand) { state(player).swing(offHand); }
     @Override protected void tickPlayer(RollbackPlayer player) { state(player).tick(); }
     private static FabricRollbackNativePlayerState state(RollbackPlayer player) {
         return (FabricRollbackNativePlayerState) player.body().kinematicsSource();

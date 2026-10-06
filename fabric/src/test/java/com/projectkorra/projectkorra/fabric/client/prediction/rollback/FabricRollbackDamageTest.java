@@ -25,6 +25,25 @@ import static org.junit.jupiter.api.Assertions.*;
 class FabricRollbackDamageTest {
     @BeforeAll static void bootstrap() { FabricRollbackTestRegistry.bootstrap(); }
 
+    @Test void nativeHandSwingAndDetachedAnimationRewindTogether() {
+        var fixture = new Fixture(); var before = fixture.snapshot();
+        fixture.targetState.swing(false);
+        assertTrue(fixture.target.handSwinging); assertEquals(-1, fixture.target.handSwingTicks);
+        var output = (FabricRollbackPacketData.Tracked) fixture.queries.outputs.getLast();
+        assertEquals(fixture.target.getUuid(), output.entity()); assertFalse(output.includeSelf());
+        assertEquals(new FabricRollbackPacketData.Animation(fixture.target.getId(), 0), output.data());
+        fixture.targetState.swing(false);
+        assertEquals(2, fixture.queries.outputs.size());
+        fixture.target.handSwingTicks = 0;
+        fixture.targetState.swing(false);
+        assertEquals(2, fixture.queries.outputs.size());
+        before.restore(); assertFalse(fixture.target.handSwinging); assertTrue(fixture.queries.outputs.isEmpty());
+        fixture.targetState.swing(false); assertEquals(output, fixture.queries.outputs.getLast());
+        before.restore(); fixture.targetState.swing(true);
+        assertEquals(net.minecraft.util.Hand.OFF_HAND, fixture.target.preferredHand);
+        assertEquals(new FabricRollbackPacketData.Animation(fixture.target.getId(), 3),
+                ((FabricRollbackPacketData.Tracked) fixture.queries.outputs.getLast()).data());
+    }
     @Test void nativeHitRewindsHealthImmunityKnockbackSourceAndOutputsTogether() {
         var fixture = new Fixture();
         var saved = fixture.snapshot();

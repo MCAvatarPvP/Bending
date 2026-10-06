@@ -28,7 +28,7 @@ public final class PaperRollbackPacketData {
     public sealed interface Output extends PaperRollbackCombatAccess.Output permits Direct, Tracked { }
     public record Direct(UUID player, Data data) implements Output { }
     public record Tracked(UUID entity, boolean includeSelf, Data data) implements Output { }
-    public sealed interface Data permits Slot, Content, Cursor, InventorySlot, Equipment, EntityStatus, Advancements { }
+    public sealed interface Data permits Slot, Content, Cursor, InventorySlot, Equipment, EntityStatus, Animation, Advancements { }
     public record Slot(int container, int revision, int slot, RollbackItemData item) implements Data { }
     public record Content(int container, int revision, List<RollbackItemData> items, RollbackItemData carried) implements Data {
         public Content { items = List.copyOf(items); }
@@ -40,6 +40,7 @@ public final class PaperRollbackPacketData {
         public Equipment { slots = List.copyOf(slots); }
     }
     public record EntityStatus(int entity, byte status) implements Data { }
+    public record Animation(int entity, int animation) implements Data { }
     public record Definition(String id, String json, float x, float y) { }
     public record Criterion(String name, boolean complete, long obtainedMillis) { }
     public record Advancements(boolean reset, List<Definition> added, List<String> removed,
@@ -76,6 +77,7 @@ public final class PaperRollbackPacketData {
                     .map(slot -> new Equipped(slot.getFirst().getSerializedName(), item(slot.getSecond(), budget))).toList(),
                     PaperRollbackPrivateAccess.equipmentSanitized(value));
         }
+        if (packet instanceof ClientboundAnimatePacket value) return new Animation(value.getId(), value.getAction());
         if (packet instanceof ClientboundEntityEventPacket value) {
             // Its audited codec contains only the entity id and one status byte.
             var buffer = new net.minecraft.network.FriendlyByteBuf(io.netty.buffer.Unpooled.buffer(5, 5));

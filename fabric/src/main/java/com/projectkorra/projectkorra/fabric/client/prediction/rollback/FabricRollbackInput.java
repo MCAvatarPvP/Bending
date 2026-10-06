@@ -49,8 +49,8 @@ public final class FabricRollbackInput {
             if (slot.getSelectedSlot() != selectedSlot && runtime.action(RollbackInputActions.Kind.SLOT_CHANGE, slot.getSelectedSlot(), yaw, pitch)) selectedSlot = slot.getSelectedSlot();
             return;
         }
-        if (packet instanceof HandSwingC2SPacket) {
-            if (blockUntil <= tick) action(RollbackInputActions.Kind.SWING, -1, yaw, pitch);
+        if (packet instanceof HandSwingC2SPacket swing) {
+            if (blockUntil <= tick) action(swing.getHand() == Hand.OFF_HAND ? RollbackInputActions.Kind.OFF_HAND_SWING : RollbackInputActions.Kind.SWING, -1, yaw, pitch);
             return;
         }
         if (packet instanceof PlayerActionC2SPacket action && action.getAction() == PlayerActionC2SPacket.Action.SWAP_ITEM_WITH_OFFHAND) {

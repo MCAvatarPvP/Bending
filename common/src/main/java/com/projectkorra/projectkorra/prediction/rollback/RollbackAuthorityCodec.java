@@ -5,7 +5,7 @@ import java.util.*;
 
 /** Bounded server-to-client input/revision encoding, never a client hit claim or native object graph. */
 public final class RollbackAuthorityCodec {
-    public static final int VERSION = 3;
+    public static final int VERSION = 4;
     public static final int MAXIMUM_BYTES = 1_048_576;
     private RollbackAuthorityCodec() { }
 

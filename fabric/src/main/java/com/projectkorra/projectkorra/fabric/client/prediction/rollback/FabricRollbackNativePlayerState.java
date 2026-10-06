@@ -193,6 +193,14 @@ public final class FabricRollbackNativePlayerState implements RollbackPlayerStat
         });
     }
 
+    /** Native swing state and detached tracking output, after input cancellation has been resolved. */
+    public void swing(boolean offHand) {
+        use(entity -> {
+            entity.swingHand(offHand ? net.minecraft.util.Hand.OFF_HAND : net.minecraft.util.Hand.MAIN_HAND);
+            return null;
+        });
+    }
+
     public void movementInput(RollbackMovementInput input) {
         Objects.requireNonNull(input, "input"); requireOwned();
         player.sidewaysSpeed = input.strafe(); player.forwardSpeed = input.forward(); player.upwardSpeed = 0;

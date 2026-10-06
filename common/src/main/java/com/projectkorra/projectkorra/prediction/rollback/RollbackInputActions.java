@@ -16,7 +16,7 @@ import java.util.Set;
 public final class RollbackInputActions {
     private RollbackInputActions() { }
 
-    public enum Kind { SWING, RIGHT_CLICK, RIGHT_CLICK_BLOCK, RIGHT_CLICK_ENTITY, SNEAK_START, SNEAK_STOP, SWAP_HANDS, SLOT_CHANGE, FLIGHT_START, FLIGHT_STOP, GLIDE_START }
+    public enum Kind { SWING, RIGHT_CLICK, RIGHT_CLICK_BLOCK, RIGHT_CLICK_ENTITY, SNEAK_START, SNEAK_STOP, SWAP_HANDS, SLOT_CHANGE, FLIGHT_START, FLIGHT_STOP, GLIDE_START, OFF_HAND_SWING }
 
     /** Slot is present only for SLOT_CHANGE. Seeds and sequences are assigned/validated by the session. */
     public record Action(long sequence, long seed, Kind kind, int slot) {
@@ -40,7 +40,7 @@ public final class RollbackInputActions {
         RollbackEntityBody.logicalBody(Objects.requireNonNull(player, "player"));
         var result = new CommonInputHandler.InputResult[1];
         PredictionDeterminism.run(action.sequence(), action.seed(), () -> result[0] = switch (action.kind()) {
-            case SWING -> CommonInputHandler.handleSwing(player, Set.of(), new HashSet<>());
+            case SWING, OFF_HAND_SWING -> CommonInputHandler.handleSwing(player, Set.of(), new HashSet<>());
             case RIGHT_CLICK -> CommonInputHandler.handleRightClick(player, ClickType.RIGHT_CLICK);
             case RIGHT_CLICK_BLOCK -> CommonInputHandler.handleRightClick(player, ClickType.RIGHT_CLICK_BLOCK);
             case RIGHT_CLICK_ENTITY -> CommonInputHandler.handleRightClickEntity(player);
