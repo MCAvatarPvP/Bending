@@ -3226,3 +3226,16 @@ aliases, and rejecting an item material. Native Paper tests run with Bukkit.getS
 absent. Metadata still needs portable seed transfer and plugin handles need private
 rebinding before this facade can be installed into the production bootstrap; this
 change does not claim that live startup or all raw-server integrations are supported.
+
+
+### Captured server metadata transfer
+
+RollbackBootstrapData version 5 now requires bounded RollbackServer.Metadata bytes.
+PaperRollbackDuelSeed captures server version, Minecraft version, server name, online
+mode and view distance at the same seed boundary. This resolves the metadata-transfer
+gap recorded above; clients reject older envelopes rather than infer local values.
+The metadata decoder rejects invalid flags, limits, truncated and trailing bytes.
+The shared Paper fixture is updated and the Fabric import test constructs its private
+server facade directly from that decoded seed, including native LIGHT creation.
+Private plugin rebinding and the rest of production platform/bootstrap installation
+remain outstanding.

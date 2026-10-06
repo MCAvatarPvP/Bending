@@ -21,6 +21,10 @@ class FabricRollbackBootstrapDataTest {
         }
         var seed = RollbackBootstrapData.decode(bytes, "12".repeat(32), new FabricRollbackTerrainTransfer(), LIMITS);
         assertArrayEquals(bytes, seed.encode(new FabricRollbackTerrainTransfer(), LIMITS));
+        var server = new RollbackServer(seed.server(), List.of(), new FabricRollbackServerBlocks());
+        assertEquals("Paper fixture", server.version()); assertEquals("1.21.11", server.minecraftVersion());
+        assertEquals("captured", server.name()); assertTrue(server.onlineMode()); assertEquals(12, server.viewDistance());
+        assertEquals(15, ((com.projectkorra.projectkorra.platform.mc.block.data.Levelled) server.createBlockData(com.projectkorra.projectkorra.platform.mc.Material.LIGHT)).getLevel());
         assertEquals(new UUID(0, 902), seed.session()); assertEquals(new UUID(0, 904), seed.match()); assertEquals(3, seed.round());
         assertEquals(1_700_000_000_000L, seed.epochMillis()); assertEquals(5_000_000_000L, seed.epochNanos());
         assertEquals(seed.world().settings().gameTime(), seed.roster().worldTime());

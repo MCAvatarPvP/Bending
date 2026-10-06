@@ -24,6 +24,18 @@ class RollbackServerTest {
         var failure = assertThrows(CompletionException.class, () -> CompletableFuture.supplyAsync(server::viewDistance).join());
         assertInstanceOf(IllegalStateException.class, failure.getCause());
     }
+    @Test void metadataWireRejectsTruncationTrailingBytesAndInvalidFlags() {
+        var value = new RollbackServer.Metadata("Paper fixture", "1.21.11", "captured", false, 12);
+        var bytes = value.encode(); assertEquals(value, RollbackServer.Metadata.decode(bytes));
+        for (int i = 0; i < bytes.length; i++) {
+            var truncated = Arrays.copyOf(bytes, i);
+            assertThrows(IllegalArgumentException.class, () -> RollbackServer.Metadata.decode(truncated));
+        }
+        assertThrows(IllegalArgumentException.class, () -> RollbackServer.Metadata.decode(Arrays.copyOf(bytes, bytes.length + 1)));
+        bytes[bytes.length - 5] = 2;
+        assertThrows(IllegalArgumentException.class, () -> RollbackServer.Metadata.decode(bytes));
+        assertThrows(IllegalArgumentException.class, () -> RollbackServer.Metadata.decode(new byte[RollbackServer.Metadata.MAXIMUM_BYTES + 1]));
+    }
     private static final class Blocks implements RollbackServer.Blocks<Integer> {
         int calls;
         @Override public BlockData create(Material value) { calls++; return new BlockData(value); }

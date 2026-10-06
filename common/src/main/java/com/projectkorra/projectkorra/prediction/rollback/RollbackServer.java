@@ -4,14 +4,38 @@ import com.projectkorra.projectkorra.platform.PKServer;
 import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import java.util.*;
+import java.io.*;
 
 /** Server facade with captured metadata and explicit private plugin/block-data bindings. */
 public final class RollbackServer implements PKServer, RollbackStateCell<Void> {
     public record Metadata(String version, String minecraftVersion, String name, boolean onlineMode, int viewDistance) {
+        public static final int MAXIMUM_BYTES = 16384;
+        private static final int VERSION = 1;
         public Metadata {
             for (var value : List.of(version, minecraftVersion, name))
                 if (value.isBlank() || value.length() > 1024) throw new IllegalArgumentException("Server metadata text");
             if (viewDistance < 0 || viewDistance > 1024) throw new IllegalArgumentException("Server view distance");
+        }
+        public byte[] encode() {
+            try {
+                var bytes = new ByteArrayOutputStream(); var out = new DataOutputStream(bytes);
+                out.writeInt(VERSION); out.writeUTF(version); out.writeUTF(minecraftVersion); out.writeUTF(name);
+                out.writeBoolean(onlineMode); out.writeInt(viewDistance);
+                if (bytes.size() > MAXIMUM_BYTES) throw new IllegalArgumentException("Server metadata byte budget");
+                return bytes.toByteArray();
+            } catch (IOException impossible) { throw new UncheckedIOException(impossible); }
+        }
+        public static Metadata decode(byte[] bytes) {
+            if (bytes.length > MAXIMUM_BYTES) throw new IllegalArgumentException("Server metadata byte budget");
+            try {
+                var in = new DataInputStream(new ByteArrayInputStream(bytes));
+                if (in.readInt() != VERSION) throw new IllegalArgumentException("Server metadata version");
+                String version = in.readUTF(), minecraft = in.readUTF(), name = in.readUTF();
+                int flag = in.readUnsignedByte(); if (flag > 1) throw new IllegalArgumentException("Server metadata boolean");
+                var value = new Metadata(version, minecraft, name, flag == 1, in.readInt());
+                if (in.available() != 0) throw new IllegalArgumentException("Trailing server metadata");
+                return value;
+            } catch (IOException failure) { throw new IllegalArgumentException("Malformed server metadata", failure); }
         }
         public static Metadata capture(PKServer server) {
             if (RollbackDomain.active() || RollbackClock.active()) throw new IllegalStateException("Capture server metadata before replay");
