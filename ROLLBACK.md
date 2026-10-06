@@ -55,6 +55,16 @@ implemented by the plugin and verified against the packaged Paper version.
 
 ### October 5, 2026 integration update
 
+A plugin-owned world tick gate now wraps Paper's entity tick list. It skips reserved
+native player identities while delegating membership changes and preserving outsider
+iteration order. Disjoint rosters share the wrapper; overlapping acquisition rejects
+before reservation, chunk removal/re-addition cannot re-enable an owned player, and
+failed cleanup retains the complete gate. The final release restores the exact original
+list. A native regression verifies these cases against Paper's real EntityTickList.
+Acquisition requires no active passengers and a live tick boundary; loader interception
+of riding/world changes and the separate connection `doTick` path remain required.
+This component is not installed into live gameplay yet.
+
 Native ownership audit: the local Paper development bundle calls `ServerPlayer.tick`
 from the world's entity tick list and `ServerPlayer.doTick` from
 `ServerGamePacketListenerImpl.tickPlayer`. Client-load state gates movement and some

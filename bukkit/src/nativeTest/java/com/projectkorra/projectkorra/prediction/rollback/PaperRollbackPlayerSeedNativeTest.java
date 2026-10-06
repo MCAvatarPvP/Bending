@@ -401,6 +401,48 @@ class PaperRollbackPlayerSeedNativeTest {
         });
     }
 
+    @Test void worldTickGatePreservesOutsidersAndRetainsOwnershipUntilCleanupSucceeds() throws Exception {
+        onTickThread(() -> {
+            var scene = new Scene();
+            var a = (ServerPlayer) scene.create().ownedPlayer();
+            var b = (ServerPlayer) scene.create(new UUID(0, 452)).ownedPlayer();
+            var outsider = (ServerPlayer) scene.create(new UUID(0, 453)).ownedPlayer();
+            var field = net.minecraft.server.level.ServerLevel.class.getDeclaredField("entityTickList");
+            field.setAccessible(true);
+            var original = new net.minecraft.world.level.entity.EntityTickList();
+            original.add(a); original.add(b); original.add(outsider); field.set(a.level(), original);
+            var first = PaperRollbackEntityTickGate.prepare(List.of(a));
+            assertSame(original, field.get(a.level()));
+            first.acquire();
+            var overlap = PaperRollbackEntityTickGate.prepare(List.of(b, a));
+            assertThrows(IllegalStateException.class, overlap::acquire);
+            var ticks = new java.util.ArrayList<Entity>();
+            ((net.minecraft.world.level.entity.EntityTickList) assertDoesNotThrow(() -> field.get(a.level()))).forEach(ticks::add);
+            assertEquals(List.of(b, outsider), ticks);
+            var second = PaperRollbackEntityTickGate.prepare(List.of(b)); second.acquire();
+            // Chunk membership changes must not accidentally re-enable an owned player.
+            ((net.minecraft.world.level.entity.EntityTickList) assertDoesNotThrow(() -> field.get(a.level()))).remove(a); ((net.minecraft.world.level.entity.EntityTickList) assertDoesNotThrow(() -> field.get(a.level()))).add(a);
+            ticks.clear(); ((net.minecraft.world.level.entity.EntityTickList) assertDoesNotThrow(() -> field.get(a.level()))).forEach(ticks::add); assertEquals(List.of(outsider), ticks);
+            assertThrows(IllegalArgumentException.class, () -> first.restoreAndRelease(() -> {
+                assertThrows(IllegalStateException.class, () -> first.restoreAndRelease(() -> {}));
+                throw new IllegalArgumentException("restoration failed");
+            }));
+            first.requireCurrent(); second.requireCurrent();
+            ticks.clear(); ((net.minecraft.world.level.entity.EntityTickList) assertDoesNotThrow(() -> field.get(a.level()))).forEach(ticks::add); assertEquals(List.of(outsider), ticks);
+            first.restoreAndRelease(() -> {
+                ticks.clear(); ((net.minecraft.world.level.entity.EntityTickList) assertDoesNotThrow(() -> field.get(a.level()))).forEach(ticks::add); assertEquals(List.of(outsider), ticks);
+            });
+            assertNotSame(original, field.get(a.level()));
+            ticks.clear(); ((net.minecraft.world.level.entity.EntityTickList) assertDoesNotThrow(() -> field.get(a.level()))).forEach(ticks::add); assertEquals(List.of(outsider, a), ticks);
+            second.restoreAndRelease(() -> {});
+            assertSame(original, field.get(a.level()));
+            first.restoreAndRelease(() -> fail("Cleanup repeated"));
+            ticks.clear(); original.forEach(ticks::add); assertEquals(List.of(b, outsider, a), ticks);
+            overlap.restoreAndRelease(() -> fail("Unacquired owner must not restore"));
+            return null;
+        });
+    }
+
     private static void configure(ServerPlayer player) {
         player.setPos(.5, 1, .5); player.setOnGround(true); player.setYRot(20); player.setXRot(-12);
         player.setDeltaMovement(.05, 0, .08); player.setHealth(17);
