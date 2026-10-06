@@ -97,6 +97,9 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
                 com.projectkorra.projectkorra.prediction.rollback.world.RollbackItemData off) {
             throw new UnsupportedOperationException("Private swap-event policy is not bound");
         }
+        default boolean slotAllowed(PlayerEntity player, int previous, int selected) {
+            throw new UnsupportedOperationException("Private held-slot event policy is not bound");
+        }
         default boolean updateEquipmentOnActions() {
             throw new UnsupportedOperationException("Private equipment-update policy is not bound");
         }        default boolean flightAllowed(PlayerEntity player, boolean flying, boolean cancelled) {
@@ -299,6 +302,20 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
 
     // Only native adapters in this package may retain the shell. No world constructor ran.
     World world() { checkThread(); return world; }
+    boolean selectSlot(PlayerEntity player, int slot) {
+        checkThread(); ownedId(player);
+        if (slot < 0 || slot > 8) throw new IllegalArgumentException("Selected slot outside hotbar");
+        if (player.isImmobile()) return false;
+        int previous = player.getInventory().getSelectedSlot();
+        if (previous == slot) return true;
+        if (!queries.slotAllowed(player, previous, slot)) return false;
+        boolean equipment = queries.updateEquipmentOnActions();
+        if (player.getInventory().getSelectedSlot() != slot && player.getActiveHand() == net.minecraft.util.Hand.MAIN_HAND)
+            player.clearActiveItem();
+        player.getInventory().setSelectedSlot(slot);
+        if (equipment) player.sendEquipmentChanges();
+        return true;
+    }
     boolean swapHands(PlayerEntity player) {
         checkThread(); ownedId(player);
         if (player.isSpectator()) return false;

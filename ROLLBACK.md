@@ -2928,3 +2928,21 @@ event policy and main/off-hand item-use behavior, with accepted/cancelled/no-op 
 and late-input rewind tested. Idle bookkeeping and correction packets must remain at
 the appropriate live/provisional output boundaries. A raw inventory setter or a fixture
 Services.action implementation is not sufficient evidence for this action.
+
+### Native hotbar transition implementation
+
+Native execution now supplies the slot transition to common input dispatch, so the
+inventory index is not written before the private held-slot policy accepts it. Paper
+uses its copied native immobility checks and PlayerItemHeldEvent; Fabric routes the
+corresponding UUID/old-slot/new-slot decision through its required private event policy.
+Accepted changes stop main-hand use, preserve off-hand use, select the native slot and
+apply the captured immediate equipment-update policy. No-op selection does not repeat
+the event or equipment output. Slot input no longer falls through to the generic action
+remainder after this transition.
+
+Native tests on both loaders cover acceptance, cancellation, no-op input, bounds,
+item-use state, equipment output and rewind. Paper additionally tests its uninitialized
+body immobility guard. Both native execution fixtures compare on-time and late hotbar
+input, including all emitted effects. Production event-policy installation, correction
+publication and live idle bookkeeping remain loader integration concerns; this does
+not claim the complete native runtime or actual two-client validation is finished.

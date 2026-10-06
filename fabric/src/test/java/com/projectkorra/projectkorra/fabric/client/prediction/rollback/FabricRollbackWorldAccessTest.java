@@ -394,7 +394,7 @@ class FabricRollbackWorldAccessTest {
     }
     static final class Queries implements FabricRollbackWorldAccess.Queries<Queries.Conditions> {
         record Waypoint(FabricRollbackWorldAccess.WaypointAction action, UUID player, double x, double y, double z) { }
-        record Conditions(boolean raining, boolean skyVisible, boolean loaded, boolean fastLava, boolean cancelFlight, boolean cancelGlide,
+        record Conditions(boolean raining, boolean skyVisible, boolean loaded, boolean fastLava, boolean cancelFlight, boolean cancelGlide, boolean cancelSlot,
                           net.minecraft.registry.entry.RegistryEntry<net.minecraft.world.biome.Biome> biome,
                           long time, net.minecraft.world.Difficulty difficulty,
                           Map<net.minecraft.world.rule.GameRule<?>, Object> rules) { }
@@ -410,7 +410,7 @@ class FabricRollbackWorldAccessTest {
         final Map<net.minecraft.world.rule.GameRule<?>, Object> rules = new java.util.HashMap<>();
         long time;
         net.minecraft.world.Difficulty difficulty = net.minecraft.world.Difficulty.NORMAL;
-        boolean raining, fastLava, cancelFlight, cancelGlide;
+        boolean raining, fastLava, cancelFlight, cancelGlide, cancelSlot;
         boolean loaded = true, skyVisible = true;
         net.minecraft.registry.entry.RegistryEntry<net.minecraft.world.biome.Biome> biome;
         Queries() {
@@ -486,6 +486,11 @@ class FabricRollbackWorldAccessTest {
                 com.projectkorra.projectkorra.prediction.rollback.world.RollbackItemData off) {
             return new com.projectkorra.projectkorra.prediction.rollback.RollbackHandSwap(false, main, off);
         }
+        @Override public boolean slotAllowed(PlayerEntity player, int previous, int selected) {
+            assertEquals(previous, player.getInventory().getSelectedSlot());
+            events.add(new Event("held:" + previous + ":" + selected, player.getUuid(), 0, 0, 0));
+            return !cancelSlot;
+        }
         @Override public boolean updateEquipmentOnActions() { return true; }
         @Override public boolean flightAllowed(PlayerEntity player, boolean flying, boolean cancelled) { return flightAllowed(player.getUuid(), flying, cancelled); }
         boolean flightAllowed(UUID player, boolean flying, boolean cancelled) {
@@ -498,10 +503,10 @@ class FabricRollbackWorldAccessTest {
             return !cancelled && !cancelGlide;
         }
         @Override public List<VoxelShape> getEntityCollisions(Entity except, Box box) { return List.of(); }
-        @Override public Conditions captureRollbackState() { return new Conditions(raining, skyVisible, loaded, fastLava, cancelFlight, cancelGlide, biome, time, difficulty, Map.copyOf(rules)); }
+        @Override public Conditions captureRollbackState() { return new Conditions(raining, skyVisible, loaded, fastLava, cancelFlight, cancelGlide, cancelSlot, biome, time, difficulty, Map.copyOf(rules)); }
         @Override public void restoreRollbackState(Conditions state) {
             raining = state.raining; skyVisible = state.skyVisible; loaded = state.loaded; fastLava = state.fastLava; biome = state.biome;
-            cancelFlight = state.cancelFlight;
+            cancelFlight = state.cancelFlight; cancelSlot = state.cancelSlot;
             cancelGlide = state.cancelGlide;
             time = state.time; difficulty = state.difficulty; rules.clear(); rules.putAll(state.rules);
         }

@@ -256,7 +256,8 @@ class FabricRollbackExecutionTest {
         return java.util.Objects.requireNonNull(delivered);
     }
 
-    @Test void lateHandSwapReplaysInventoryAndNativeOutputs() throws Exception {
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void lateInventoryActionReplaysInventoryAndNativeOutputs(boolean slotChange) throws Exception {
         withConfig(() -> {
             java.util.function.Consumer<Fixture> prepare = fixture -> {
                 var player = ((FabricRollbackNativePlayerState) fixture.attacker.body().kinematicsSource()).ownedPlayer();
@@ -265,7 +266,7 @@ class FabricRollbackExecutionTest {
             };
             var direct = scenario(false, prepare, fixture -> { }); var late = scenario(false, prepare, fixture -> { });
             var edge = new RollbackPlayerInput.Edge(new RollbackInputActions.Action(1, 23,
-                    RollbackInputActions.Kind.SWAP_HANDS, -1), 0, 0);
+                    slotChange ? RollbackInputActions.Kind.SLOT_CHANGE : RollbackInputActions.Kind.SWAP_HANDS, slotChange ? 1 : -1), 0, 0);
             var held = input(0, List.of(edge));
             assertEquals(RollbackEngine.Submission.ACCEPTED, direct.runtime.submit(A, 1, held));
             var expected = direct.runtime.advance(); late.runtime.advance();
@@ -273,8 +274,8 @@ class FabricRollbackExecutionTest {
             var replay = late.runtime.reconcile();
             var directBody = ((FabricRollbackNativePlayerState) direct.fixture.attacker.body().kinematicsSource()).ownedPlayer();
             var lateBody = ((FabricRollbackNativePlayerState) late.fixture.attacker.body().kinematicsSource()).ownedPlayer();
-            assertEquals(net.minecraft.item.Items.SHIELD, directBody.getMainHandStack().getItem());
-            assertEquals(net.minecraft.item.Items.DIAMOND_SWORD, directBody.getOffHandStack().getItem());
+            assertEquals(slotChange ? net.minecraft.item.Items.AIR : net.minecraft.item.Items.SHIELD, directBody.getMainHandStack().getItem());
+            assertEquals(slotChange ? net.minecraft.item.Items.SHIELD : net.minecraft.item.Items.DIAMOND_SWORD, directBody.getOffHandStack().getItem());
             assertEquals(directBody.getMainHandStack().getItem(), lateBody.getMainHandStack().getItem());
             assertEquals(directBody.getOffHandStack().getItem(), lateBody.getOffHandStack().getItem());
             assertEquals(expected.head().effects(), replay.head().effects());

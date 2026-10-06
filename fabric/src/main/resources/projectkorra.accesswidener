@@ -47,3 +47,6 @@ accessible method net/minecraft/entity/player/PlayerEntity canGlide ()Z
 
 # Apply Paper's captured immediate equipment-update policy after an owned hand swap.
 accessible method net/minecraft/entity/LivingEntity sendEquipmentChanges ()V
+
+# Match native hotbar input immobility checks before private slot selection.
+accessible method net/minecraft/entity/player/PlayerEntity isImmobile ()Z

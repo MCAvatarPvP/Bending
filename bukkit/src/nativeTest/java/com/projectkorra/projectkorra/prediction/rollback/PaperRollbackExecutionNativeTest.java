@@ -175,7 +175,8 @@ class PaperRollbackExecutionNativeTest {
         return session.receive(connection, RollbackInputPacket.decode(packet.encode()));
     }
 
-    @Test void lateHandSwapReplaysInventoryAndNativeOutputs() throws Exception {
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void lateInventoryActionReplaysInventoryAndNativeOutputs(boolean slotChange) throws Exception {
         onTickThread(() -> {
         withConfig(() -> {
             java.util.function.Consumer<Fixture> prepare = fixture -> {
@@ -185,7 +186,7 @@ class PaperRollbackExecutionNativeTest {
             };
             var direct = scenario(prepare, fixture -> { }); var late = scenario(prepare, fixture -> { });
             var edge = new RollbackPlayerInput.Edge(new RollbackInputActions.Action(1, 23,
-                    RollbackInputActions.Kind.SWAP_HANDS, -1), 0, 0);
+                    slotChange ? RollbackInputActions.Kind.SLOT_CHANGE : RollbackInputActions.Kind.SWAP_HANDS, slotChange ? 1 : -1), 0, 0);
             var held = input(0, List.of(edge));
             assertEquals(RollbackEngine.Submission.ACCEPTED, direct.runtime.submit(A, 1, held));
             var expected = direct.runtime.advance(); late.runtime.advance();
@@ -193,8 +194,8 @@ class PaperRollbackExecutionNativeTest {
             var replay = late.runtime.reconcile();
             var directBody = ((PaperRollbackNativePlayerState) direct.fixture.attacker.body().kinematicsSource()).ownedPlayer();
             var lateBody = ((PaperRollbackNativePlayerState) late.fixture.attacker.body().kinematicsSource()).ownedPlayer();
-            assertEquals(net.minecraft.world.item.Items.SHIELD, directBody.getMainHandItem().getItem());
-            assertEquals(net.minecraft.world.item.Items.DIAMOND_SWORD, directBody.getOffhandItem().getItem());
+            assertEquals(slotChange ? net.minecraft.world.item.Items.AIR : net.minecraft.world.item.Items.SHIELD, directBody.getMainHandItem().getItem());
+            assertEquals(slotChange ? net.minecraft.world.item.Items.SHIELD : net.minecraft.world.item.Items.DIAMOND_SWORD, directBody.getOffhandItem().getItem());
             assertEquals(directBody.getMainHandItem().getItem(), lateBody.getMainHandItem().getItem());
             assertEquals(directBody.getOffhandItem().getItem(), lateBody.getOffhandItem().getItem());
             assertEquals(expected.head().effects(), replay.head().effects());

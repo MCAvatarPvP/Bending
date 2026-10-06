@@ -21,7 +21,7 @@ public abstract class RollbackPlayerExecution<E> implements RollbackCombatRuntim
      * Owned session services, captured with the execution. begin installs simulation
      * time and output routing before scheduled work/inputs. action handles any native
      * remainder after the common bending handler, honoring cancellation; sneak/slot
-     * transitions have already been applied. Hand swings and hand swaps execute here after bending cancellation.
+     * transitions have already been applied. Hand swings, hand swaps and native slot selection execute here after bending cancellation.
      * Flight/glide input uses the owned native source's
      * control-event adapter and is not passed to action. tickWorld advances remaining world state,
      * excluding the players ticked here. end unbinds outputs even after partial failure.
@@ -66,6 +66,7 @@ public abstract class RollbackPlayerExecution<E> implements RollbackCombatRuntim
     /** Loader constructors validate that all logical views share the owned native state. */
     protected abstract void movementInput(RollbackPlayer player, RollbackMovementInput input);
     protected abstract void tickPlayer(RollbackPlayer player);
+    protected abstract boolean selectSlot(RollbackPlayer player, int slot);
     protected abstract void swapHands(RollbackPlayer player);
     protected abstract void swing(RollbackPlayer player, boolean offHand);
 
@@ -97,7 +98,7 @@ public abstract class RollbackPlayerExecution<E> implements RollbackCombatRuntim
         for (var edge : input.actions()) {
             movementInput(participant, new RollbackMovementInput(movement.strafe(), movement.forward(), movement.jump(), edge.yaw(), edge.pitch()));
             PredictionDeterminism.run(edge.action().sequence(), edge.action().seed(), () -> {
-                var result = RollbackInputActions.dispatch(participant, edge.action());
+                var result = RollbackInputActions.dispatch(participant, edge.action(), slot -> selectSlot(participant, slot));
                 if (edge.action().kind() == RollbackInputActions.Kind.SWING
                         || edge.action().kind() == RollbackInputActions.Kind.OFF_HAND_SWING) {
                     if (!result.cancelEvent()) swing(participant, edge.action().kind() == RollbackInputActions.Kind.OFF_HAND_SWING);
@@ -107,6 +108,7 @@ public abstract class RollbackPlayerExecution<E> implements RollbackCombatRuntim
                     if (!result.cancelEvent()) swapHands(participant);
                     return;
                 }
+                if (edge.action().kind() == RollbackInputActions.Kind.SLOT_CHANGE) return;
                 // Flight/glide have their own native control adapters and no item/melee remainder.
                 if (edge.action().kind() != RollbackInputActions.Kind.FLIGHT_START
                         && edge.action().kind() != RollbackInputActions.Kind.FLIGHT_STOP

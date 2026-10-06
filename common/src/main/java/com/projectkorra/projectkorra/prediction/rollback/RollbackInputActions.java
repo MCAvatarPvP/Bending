@@ -30,11 +30,17 @@ public final class RollbackInputActions {
     /**
      * The adapter installs each action's logical look first. Sneak and selected slot
      * retain their pre-edge values until this dispatcher accepts the transition.
-     * This handles bending cancellation and sneak/slot transitions, not native item use,
+     * This handles bending cancellation and sneak/slot transitions (through the supplied native slot adapter when present), not native item use,
      * hand swapping or melee damage. Those must honor the returned cancellation in
      * the native adapter. Predicted missing frames must omit these one-shot actions.
      */
     public static CommonInputHandler.InputResult dispatch(RollbackPlayer player, Action action) {
+        return dispatch(player, action, slot -> { player.getInventory().setHeldItemSlot(slot); return true; });
+    }
+
+    /** Native execution supplies the accepted slot transition, before any inventory write. */
+    public static CommonInputHandler.InputResult dispatch(RollbackPlayer player, Action action, java.util.function.IntPredicate selectSlot) {
+        Objects.requireNonNull(selectSlot, "slot transition");
         if (!RollbackDomain.active() || !RollbackClock.active()) throw new IllegalStateException("No combat replay tick");
         Objects.requireNonNull(action, "action");
         RollbackEntityBody.logicalBody(Objects.requireNonNull(player, "player"));
@@ -47,7 +53,7 @@ public final class RollbackInputActions {
             case SNEAK_START, SNEAK_STOP -> sneak(player, action.kind() == Kind.SNEAK_START);
             case SWAP_HANDS -> CommonInputHandler.handleSwapHands(player,
                     empty(player.getInventory().getItemInMainHand()), empty(player.getInventory().getItemInOffHand()));
-            case SLOT_CHANGE -> slot(player, action.slot());
+            case SLOT_CHANGE -> slot(player, action.slot(), selectSlot);
             case FLIGHT_START, FLIGHT_STOP -> flight(player, action.kind() == Kind.FLIGHT_START);
             case GLIDE_START -> new CommonInputHandler.InputResult(!player.state().requestGlide());
         });
@@ -62,11 +68,10 @@ public final class RollbackInputActions {
         return result;
     }
 
-    private static CommonInputHandler.InputResult slot(RollbackPlayer player, int slot) {
+    private static CommonInputHandler.InputResult slot(RollbackPlayer player, int slot, java.util.function.IntPredicate selectSlot) {
         if (player.getInventory().getHeldItemSlot() == slot) return CommonInputHandler.InputResult.pass();
         if (!CommonInputHandler.handleSlotChange(player, slot).accepted()) return CommonInputHandler.InputResult.cancel();
-        player.getInventory().setHeldItemSlot(slot);
-        return CommonInputHandler.InputResult.pass();
+        return selectSlot.test(slot) ? CommonInputHandler.InputResult.pass() : CommonInputHandler.InputResult.cancel();
     }
 
     /** Also used at the native post-movement landing boundary, without inventing a key press. */

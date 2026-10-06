@@ -25,6 +25,34 @@ import static org.junit.jupiter.api.Assertions.*;
 class FabricRollbackDamageTest {
     @BeforeAll static void bootstrap() { FabricRollbackTestRegistry.bootstrap(); }
 
+    @Test void hotbarSelectionCancelsAndRewindsNativeItemUseAndEquipment() {
+        var fixture = new Fixture();
+        fixture.target.getInventory().setSelectedSlot(0);
+        fixture.target.getInventory().setStack(0, new net.minecraft.item.ItemStack(net.minecraft.item.Items.SHIELD));
+        fixture.target.getInventory().setStack(1, new net.minecraft.item.ItemStack(net.minecraft.item.Items.DIAMOND_SWORD));
+        fixture.targetState.use(player -> { player.setCurrentHand(net.minecraft.util.Hand.MAIN_HAND); return null; });
+        var saved = fixture.snapshot();
+        assertTrue(fixture.targetState.selectSlot(1));
+        assertEquals(1, fixture.target.getInventory().getSelectedSlot()); assertFalse(fixture.target.isUsingItem());
+        var output = List.copyOf(fixture.queries.outputs); assertFalse(output.isEmpty());
+        saved.restore();
+        assertEquals(0, fixture.target.getInventory().getSelectedSlot()); assertTrue(fixture.target.isUsingItem());
+        assertTrue(fixture.queries.outputs.isEmpty());
+        fixture.queries.cancelSlot = true;
+        assertFalse(fixture.targetState.selectSlot(1));
+        assertEquals(0, fixture.target.getInventory().getSelectedSlot()); assertTrue(fixture.target.isUsingItem());
+        assertTrue(fixture.queries.outputs.isEmpty());
+        fixture.queries.cancelSlot = false;
+        assertTrue(fixture.targetState.selectSlot(1)); assertEquals(output, fixture.queries.outputs);
+        int events = fixture.queries.events.size(), outputs = fixture.queries.outputs.size();
+        assertTrue(fixture.targetState.selectSlot(1));
+        assertEquals(events, fixture.queries.events.size()); assertEquals(outputs, fixture.queries.outputs.size());
+        fixture.target.setStackInHand(net.minecraft.util.Hand.OFF_HAND, new net.minecraft.item.ItemStack(net.minecraft.item.Items.SHIELD));
+        fixture.targetState.use(player -> { player.setCurrentHand(net.minecraft.util.Hand.OFF_HAND); return null; });
+        assertTrue(fixture.targetState.selectSlot(2)); assertTrue(fixture.target.isUsingItem());
+        assertThrows(IllegalArgumentException.class, () -> fixture.targetState.selectSlot(9));
+    }
+
     @Test void handSwapPreservesItemAliasesAndRewindsEquipmentOutputs() {
         var fixture = new Fixture();
         var main = new net.minecraft.item.ItemStack(net.minecraft.item.Items.DIAMOND_SWORD);

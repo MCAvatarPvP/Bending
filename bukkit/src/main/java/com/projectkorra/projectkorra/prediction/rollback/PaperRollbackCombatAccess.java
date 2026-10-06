@@ -63,7 +63,7 @@ public final class PaperRollbackCombatAccess {
     private final MethodHandle addEffect, removeEffect, setAir, setSwimming, movementStep, playerBodyTick;
     private final MethodHandle serverTick, serverBodyTick, serverJump;
     private final MethodHandle tryGlide, stopGlide;
-    private final MethodHandle stopItemUse, equipmentChanges;
+    private final MethodHandle stopItemUse, equipmentChanges, playerImmobile, serverImmobile;
     private final GlobalConfiguration globalConfiguration;
     private final WorldConfiguration worldConfiguration;
     private final PaperRollbackNativeEvents events;
@@ -174,6 +174,8 @@ public final class PaperRollbackCombatAccess {
             Method stopUse = LivingEntity.class.getDeclaredMethod("stopUsingItem");
             Method equipment = Player.class.getDeclaredMethod("detectEquipmentUpdates");
             var copied = builder.build();
+            playerImmobile = copied.get(Player.class.getDeclaredMethod("isImmobile"));
+            serverImmobile = copied.get(ServerPlayer.class.getDeclaredMethod("isImmobile"));
             stopItemUse = copied.get(stopUse); equipmentChanges = copied.get(equipment);
             damage = copied.get(entry); serverDamage = copied.get(serverEntry); awardStatistic = copied.get(award); resetStatistic = copied.get(reset);
             addEffect = copied.get(add); removeEffect = copied.get(remove); setAir = copied.get(air);
@@ -325,6 +327,27 @@ public final class PaperRollbackCombatAccess {
         try { playerBodyTick.invokeExact(player); }
         catch (RuntimeException | Error failure) { throw failure; }
         catch (Throwable failure) { throw new IllegalStateException("Private native player body tick failed", failure); }
+    }
+    boolean selectSlot(Player player, int slot) {
+        ownedId(player);
+        if (slot < 0 || slot >= net.minecraft.world.entity.player.Inventory.getSelectionSize())
+            throw new IllegalArgumentException("Selected slot outside hotbar");
+        try {
+            boolean immobile = player instanceof ServerPlayer server ? (boolean) serverImmobile.invokeExact(server)
+                    : (boolean) playerImmobile.invokeExact(player);
+            if (immobile) return false;
+            int previous = player.getInventory().getSelectedSlot();
+            if (previous == slot) return true;
+            var event = new org.bukkit.event.player.PlayerItemHeldEvent((org.bukkit.entity.Player) player.getBukkitEntity(), previous, slot);
+            state.event(event);
+            if (event.isCancelled()) return false;
+            if (player.getInventory().getSelectedSlot() != slot && player.getUsedItemHand() == net.minecraft.world.InteractionHand.MAIN_HAND)
+                stopItemUse.invokeExact((LivingEntity) player);
+            player.getInventory().setSelectedSlot(slot);
+            if (state.updateEquipmentOnPlayerActions()) equipmentChanges.invokeExact(player);
+            return true;
+        } catch (RuntimeException | Error failure) { throw failure; }
+        catch (Throwable failure) { throw new IllegalStateException("Private native slot selection failed", failure); }
     }
     boolean swapHands(Player player) {
         ownedId(player);

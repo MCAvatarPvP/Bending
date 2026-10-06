@@ -48,6 +48,40 @@ class PaperRollbackDamageNativeTest {
         }
     }
 
+    @Test void hotbarSelectionCancelsAndRewindsNativeItemUseAndEquipment() throws Exception {
+        onTickThread(() -> {
+            var scene = new Scene();
+            assertFalse(scene.targetState.selectSlot(1)); // Unenrolled native test bodies are immobile.
+            scene.target.valid = true;
+            scene.target.getInventory().setSelectedSlot(0);
+            scene.target.getInventory().setItem(0, new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.SHIELD));
+            scene.target.getInventory().setItem(1, new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.DIAMOND_SWORD));
+            scene.targetState.use(player -> { ((Player) player).startUsingItem(net.minecraft.world.InteractionHand.MAIN_HAND); return null; });
+            var saved = scene.snapshot();
+            assertTrue(scene.targetState.selectSlot(1));
+            assertEquals(1, scene.target.getInventory().getSelectedSlot()); assertFalse(scene.target.isUsingItem());
+            var output = List.copyOf(scene.combat.outputs); assertFalse(output.isEmpty());
+            assertTrue(scene.combat.events.contains("held:0:1"));
+            saved.restore();
+            assertEquals(0, scene.target.getInventory().getSelectedSlot()); assertTrue(scene.target.isUsingItem());
+            assertTrue(scene.combat.outputs.isEmpty());
+            scene.combat.cancel = true;
+            assertFalse(scene.targetState.selectSlot(1));
+            assertEquals(0, scene.target.getInventory().getSelectedSlot()); assertTrue(scene.target.isUsingItem());
+            assertTrue(scene.combat.outputs.isEmpty());
+            scene.combat.cancel = false;
+            assertTrue(scene.targetState.selectSlot(1)); assertEquals(output, scene.combat.outputs);
+            int events = scene.combat.events.size(), outputs = scene.combat.outputs.size();
+            assertTrue(scene.targetState.selectSlot(1));
+            assertEquals(events, scene.combat.events.size()); assertEquals(outputs, scene.combat.outputs.size());
+            scene.target.setItemInHand(net.minecraft.world.InteractionHand.OFF_HAND, new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.SHIELD));
+            scene.targetState.use(player -> { ((Player) player).startUsingItem(net.minecraft.world.InteractionHand.OFF_HAND); return null; });
+            assertTrue(scene.targetState.selectSlot(2)); assertTrue(scene.target.isUsingItem());
+            assertThrows(IllegalArgumentException.class, () -> scene.targetState.selectSlot(9));
+            return null;
+        });
+    }
+
     @Test void handSwapPreservesItemAliasesAndRewindsEquipmentOutputs() throws Exception {
         onTickThread(() -> {
             var scene = new Scene();
@@ -650,6 +684,9 @@ class PaperRollbackDamageNativeTest {
         @Override public boolean parrotsStayOnShoulder() { return false; }
         @Override public void event(Event event) {
             events.add(event.getClass().getName());
+            if (event instanceof org.bukkit.event.player.PlayerItemHeldEvent held) {
+                events.add("held:" + held.getPreviousSlot() + ":" + held.getNewSlot()); held.setCancelled(cancel);
+            }
             if (event instanceof org.bukkit.event.player.PlayerSwapHandItemsEvent swap) swap.setCancelled(cancel);
             if (event instanceof EntityDamageEvent damage) { damage.setDamage(damage.getDamage() * multiplier); damage.setCancelled(cancel); }
             if (event instanceof org.bukkit.event.entity.EntityAirChangeEvent air) { air.setAmount((int) (air.getAmount() * multiplier)); air.setCancelled(cancel); }
