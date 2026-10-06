@@ -17,6 +17,11 @@ public final class RollbackClientReplica<S, E> {
     private Map<UUID, Set<Long>> received = Map.of();
     private RollbackAuthorityUpdate latest;
     private boolean failed;
+    private long repairedPublication;
+    private byte[] repairedDigest;
+    @FunctionalInterface public interface StateImporter<S, E> {
+        RollbackEngine.Update<S, RollbackPlayerInput, E> apply(long tick, byte[] payload);
+    }
 
     public RollbackClientReplica(UUID session, UUID localPlayer, RollbackReplicaTimeline<S, RollbackPlayerInput, E> timeline) {
         this.session = Objects.requireNonNull(session); this.localPlayer = Objects.requireNonNull(localPlayer);
@@ -60,6 +65,42 @@ public final class RollbackClientReplica<S, E> {
         if (latest != null && update.publication() < latest.publication()) return null;
         try { return apply(update); }
         catch (RuntimeException | Error failure) { failed = true; throw failure; }
+    }
+
+    /** Apply only after the matching authenticated input publication has been processed. */
+    public RollbackEngine.Update<S, RollbackPlayerInput, E> repair(RollbackStateCorrection correction,
+            String definitions, int maximumBytes, StateImporter<S, E> importer) {
+        check(); Objects.requireNonNull(correction); Objects.requireNonNull(importer);
+        if (!session.equals(correction.session())) return null;
+        if (latest != null && correction.publication() < latest.publication()) return null;
+        try {
+            if (latest == null || correction.publication() != latest.publication()
+                    || correction.revision() != latest.revision() || correction.tick() != latest.finalizedTick()
+                    || !correction.definitions().equals(definitions)
+                    || maximumBytes <= RollbackStateCorrection.HEADER_BYTES || maximumBytes > RollbackStateCorrection.MAXIMUM_BYTES)
+                throw new IllegalArgumentException("State correction does not match current authority");
+            if (correction.payloadBytes() > maximumBytes - RollbackStateCorrection.HEADER_BYTES)
+                throw new IllegalArgumentException("State correction exceeds session budget");
+            byte[] payload = correction.payload();
+            byte[] digest;
+            try { digest = java.security.MessageDigest.getInstance("SHA-256").digest(payload); }
+            catch (java.security.NoSuchAlgorithmException impossible) { throw new AssertionError(impossible); }
+            if (repairedPublication == correction.publication()) {
+                if (!Arrays.equals(repairedDigest, digest)) throw new IllegalArgumentException("State correction publication was rewritten");
+                return null;
+            }
+            var before = timeline.diagnostics();
+            if (before.confirmedTick() != correction.tick()) throw new IllegalArgumentException("State correction frontier has changed");
+            var result = Objects.requireNonNull(importer.apply(correction.tick(), payload));
+            var after = timeline.diagnostics();
+            if (result.head().tick() != before.tick() || result.confirmed().tick() != before.confirmedTick()
+                    || after.tick() != before.tick() || after.confirmedTick() != before.confirmedTick()
+                    || result.revision() != after.revision() || after.revision() <= before.revision()
+                    || after.failed() || !result.finalizedEffects().isEmpty())
+                throw new IllegalStateException("State importer violated replica frontier/effect ownership");
+            repairedPublication = correction.publication(); repairedDigest = digest;
+            return result;
+        } catch (RuntimeException | Error failure) { failed = true; throw failure; }
     }
 
     private RollbackEngine.Update<S, RollbackPlayerInput, E> apply(RollbackAuthorityUpdate update) {

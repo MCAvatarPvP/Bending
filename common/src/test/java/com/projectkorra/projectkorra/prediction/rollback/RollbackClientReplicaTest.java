@@ -16,6 +16,56 @@ class RollbackClientReplicaTest {
     }
     private static RollbackEngine.Limits limits(int history) { return new RollbackEngine.Limits(history, 2, 20, 50_000_000); }
 
+    @Test void repairsRequireMatchingAuthorityAndPreservePredictedHeadAndReceipts() {
+        var f = new Fixture(); f.server.advance(); var authority = f.server.publish(); f.client.receive(authority);
+        f.client.advance();
+        String definitions = "a".repeat(64);
+        var correction = new RollbackStateCorrection(SESSION, authority.publication(), authority.revision(), authority.finalizedTick(), definitions, new byte[]{42});
+        int[] imports = {0};
+        RollbackClientReplica.StateImporter<Integer, Integer> importer = (tick, bytes) -> { imports[0]++; return f.clientEngine.correctState(tick, (int) bytes[0]); };
+        var result = f.client.repair(correction, definitions, 100, importer);
+        assertEquals(2, result.head().tick()); assertEquals(42, result.head().state());
+        assertTrue(result.finalizedEffects().isEmpty()); assertEquals(1, imports[0]);
+        assertNull(f.client.repair(correction, definitions, 100, importer)); assertEquals(1, imports[0]);
+        f.server.advance(); f.client.receive(f.server.publish());
+        assertNull(f.client.repair(correction, definitions, 100, importer)); assertEquals(1, imports[0]);
+        assertFalse(f.client.failed());
+    }
+
+    @Test void mismatchedOrRewrittenStateCannotReachImporterAndFailuresStopReplica() {
+        String definitions = "a".repeat(64);
+        for (int mismatch = 0; mismatch < 5; mismatch++) {
+            var f = new Fixture(); f.server.advance(); var authority = f.server.publish(); f.client.receive(authority);
+            var correction = new RollbackStateCorrection(SESSION, authority.publication() + (mismatch == 0 ? 1 : 0),
+                    authority.revision() + (mismatch == 1 ? 1 : 0), authority.finalizedTick() + (mismatch == 2 ? 1 : 0),
+                    mismatch == 3 ? "b".repeat(64) : definitions, new byte[]{1, 2});
+            int budget = mismatch == 4 ? 81 : 100;
+            assertThrows(IllegalArgumentException.class, () -> f.client.repair(correction, definitions, budget, (tick, bytes) -> { fail("Invalid repair imported"); return null; }));
+            assertTrue(f.client.failed());
+        }
+        var f = new Fixture(); f.server.advance(); var authority = f.server.publish(); f.client.receive(authority);
+        var first = new RollbackStateCorrection(SESSION, authority.publication(), authority.revision(), authority.finalizedTick(), definitions, new byte[]{1});
+        f.client.repair(first, definitions, 100, (tick, bytes) -> f.clientEngine.correctState(tick, 1));
+        var rewritten = new RollbackStateCorrection(SESSION, first.publication(), first.revision(), first.tick(), definitions, new byte[]{2});
+        assertThrows(IllegalArgumentException.class, () -> f.client.repair(rewritten, definitions, 100, (tick, bytes) -> { fail("Rewritten repair imported"); return null; }));
+        assertTrue(f.client.failed());
+    }
+
+    @Test void foreignRepairIsIgnoredAndImporterMustActuallyAdvanceTheStateRevision() {
+        String definitions = "a".repeat(64); var f = new Fixture();
+        var foreign = new RollbackStateCorrection(new UUID(9, 9), 1, 0, 0, definitions, new byte[]{1});
+        assertNull(f.client.repair(foreign, definitions, 100, (tick, bytes) -> { fail("Foreign session imported"); return null; }));
+        assertFalse(f.client.failed());
+        f.server.advance(); var authority = f.server.publish(); f.client.receive(authority);
+        var correction = new RollbackStateCorrection(SESSION, authority.publication(), authority.revision(), authority.finalizedTick(), definitions, new byte[]{1});
+        assertThrows(IllegalStateException.class, () -> f.client.repair(correction, definitions, 100, (tick, bytes) -> f.clientEngine.reconcile()));
+        assertTrue(f.client.failed());
+        var failing = new Fixture(); failing.server.advance(); var update = failing.server.publish(); failing.client.receive(update);
+        var error = new IllegalArgumentException("import failure");
+        assertSame(error, assertThrows(IllegalArgumentException.class, () -> failing.client.repair(correction, definitions, 100, (tick, bytes) -> { throw error; })));
+        assertTrue(failing.client.failed());
+    }
+
     @Test void clientCannotAgeOutUnconfirmedEffectsOrOverrideAuthorityInputs() {
         var server = new RollbackEngine<>(new Simulation(), INITIAL, limits(2), 1000, 1000);
         assertEquals(ACCEPTED, server.submit(A, 1, packet(1, 1).playerInput(A, 99)));

@@ -16,6 +16,7 @@ public record RollbackStateCorrection(UUID session, long publication, long revis
             throw new IllegalArgumentException("State correction bounds");
         payload = payload.clone();
     }
+    public int payloadBytes() { return payload.length; }
     @Override public byte[] payload() { return payload.clone(); }
     @Override public boolean equals(Object value) {
         return value instanceof RollbackStateCorrection other && session.equals(other.session)

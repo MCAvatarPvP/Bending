@@ -3381,3 +3381,17 @@ Tests cover codec truncation/invalid metadata, detachment, shuffled delivery, du
 publication gaps, envelope mismatch, budgets and terminal failed assembly. The caller
 must authenticate the server connection before feeding parts. Loader channel handlers,
 portable native/gameplay payloads and frontier-aware import delivery remain uninstalled.
+
+
+### Repair admission against the authority stream
+
+RollbackClientReplica.repair validates complete corrections against the latest input
+publication before calling a loader importer. Session, publication, revision, finalized
+tick, definitions and session byte budget must match. Foreign/stale messages are ignored,
+identical applied payloads are suppressed using a retained SHA-256 digest, and rewritten
+payloads terminate the replica. Import must preserve head/confirmed ticks, advance the
+local revision and return no finalized effects; importer failure is terminal.
+Tests cover matching repair with a predicted head, duplicate and stale suppression,
+metadata/budget rejection, foreign sessions, no-op import rejection and failure.
+The loader network handlers and concrete importer still need to call this admission
+path; the transport framing alone does not authenticate a connection.
