@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.ability.util;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership;
 
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
@@ -60,10 +61,12 @@ public class ComboManager {
     }
 
     public static void scheduleComboAbility(final Player player, final ClickType type) {
+        if (player != null && RollbackLiveOwnership.blocks(player.getUniqueId())) return;
         SCHEDULED_COMBO_ABILITY.computeIfAbsent(player.getUniqueId(), uuid -> new HashSet<>()).add(type);
     }
 
     public static void addComboAbilityIfValid(final Player player, final ClickType type) {
+        if (player != null && RollbackLiveOwnership.blocks(player.getUniqueId())) return;
         Set<ClickType> types = SCHEDULED_COMBO_ABILITY.get(player.getUniqueId());
         if (types == null || !types.contains(type)) {
             return;
@@ -85,6 +88,7 @@ public class ComboManager {
 
     /** Slot events can precede the native inventory update; use the selected binding explicitly. */
     public static void addComboAbility(final Player player, final String abilityName, final ClickType type) {
+        if (player != null && RollbackLiveOwnership.blocks(player.getUniqueId())) return;
         if (abilityName == null) {
             return;
         }
@@ -109,6 +113,7 @@ public class ComboManager {
     }
 
     private static CoreAbility createComboAbility(final Player player, final ComboAbilityInfo comboAbil) {
+        if (player != null && RollbackLiveOwnership.blocks(player.getUniqueId())) return null;
         Object created = null;
         if (comboAbil.getComboType() instanceof Class) {
             final Class<?> clazz = (Class<?>) comboAbil.getComboType();
@@ -144,6 +149,7 @@ public class ComboManager {
      * @param info   The AbilityInformation to add
      */
     public static void addRecentAbility(final Player player, final AbilityInformation info) {
+        if (player != null && RollbackLiveOwnership.blocks(player.getUniqueId())) return;
         ArrayList<AbilityInformation> list;
         final String name = player.getName();
         if (RECENTLY_USED.containsKey(name)) {
@@ -164,6 +170,7 @@ public class ComboManager {
      * @param type   The type of combo to remove
      */
     public static void removeRecentType(final Player player, ClickType type) {
+        if (player != null && RollbackLiveOwnership.blocks(player.getUniqueId())) return;
         if (RECENTLY_USED.containsKey(player.getName())) {
             ArrayList<AbilityInformation> list = RECENTLY_USED.get(player.getName());
 
@@ -177,6 +184,7 @@ public class ComboManager {
     }
 
     public static void removeRecentAbility(final Player player, final AbilityInformation input) {
+        if (player != null && RollbackLiveOwnership.blocks(player.getUniqueId())) return;
         if (player == null || input == null) return;
         final ArrayList<AbilityInformation> history = RECENTLY_USED.get(player.getName());
         if (history == null) return;
@@ -199,6 +207,7 @@ public class ComboManager {
      * no valid combo was found
      */
     public static ComboAbilityInfo checkForValidCombo(final Player player) {
+        if (player != null && RollbackLiveOwnership.blocks(player.getUniqueId())) return null;
         final ArrayList<AbilityInformation> playerCombo = getRecentlyUsedAbilities(player, 8);
         for (final String ability : COMBO_ABILITIES.keySet()) {
             final ComboAbilityInfo customAbility = COMBO_ABILITIES.get(ability);
@@ -230,8 +239,13 @@ public class ComboManager {
     }
 
     public static void cleanupOldCombos() {
+        final Set<String> ownedNames = new HashSet<>();
+        BendingPlayer.getPlayers().forEach((id, player) -> {
+            if (RollbackLiveOwnership.blocks(id)) ownedNames.add(player.getName());
+        });
         final long now = RollbackClock.millis();
         RECENTLY_USED.entrySet().removeIf(entry -> {
+            if (ownedNames.contains(entry.getKey())) return false;
             final ArrayList<AbilityInformation> history = entry.getValue();
             pruneExpired(history, now);
             return history.isEmpty();
@@ -262,7 +276,7 @@ public class ComboManager {
         }
 
         final ArrayList<AbilityInformation> list = RECENTLY_USED.get(name);
-        pruneExpired(list, RollbackClock.millis());
+        if (!RollbackLiveOwnership.blocks(player.getUniqueId())) pruneExpired(list, RollbackClock.millis());
         if (list.isEmpty()) {
             RECENTLY_USED.remove(name, list);
             return new ArrayList<AbilityInformation>();

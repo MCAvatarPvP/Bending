@@ -304,6 +304,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
     }
 
     private boolean canBend(@NotNull final CoreAbility ability, final boolean ignoreBinds, final boolean ignoreCooldowns) {
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership.blocks(this.getUUID())) return false;
 
         final List<String> disabledWorlds = getConfig().getStringList("Properties.DisabledWorlds");
         final Location playerLoc = this.player.getLocation();
@@ -364,6 +365,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
     }
 
     public boolean canBendPassive(final CoreAbility ability) {
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership.blocks(this.getUUID())) return false;
         if (ability == null || !this.isPassiveToggled(ability.getElement()) || !this.isToggledPassives()) {
             return false; // If the passive is disabled.
         }
@@ -392,6 +394,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
     }
 
     public boolean canUsePassive(final CoreAbility ability, boolean ignoreChiBlock) {
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership.blocks(this.getUUID())) return false;
         final Element element = ability.getElement();
         if ((!this.isToggled() && ConfigManager.defaultConfig.get().getBoolean("Properties.TogglePassivesWithAllBending")) || !this.isElementToggled(element) || !this.isPassiveToggled(element) || !this.isToggledPassives()) {
             return false;

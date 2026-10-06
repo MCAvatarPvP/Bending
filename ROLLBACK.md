@@ -49,6 +49,15 @@ state that actually determines those outcomes.
 
 ### October 5, 2026 integration update
 
+The shared activation dispatcher, bending/passive checks and combo mutation paths now
+honor live roster ownership. An owned player's live inputs cannot invoke registered
+handlers or combo constructors, schedule/consume combo clicks, or edit recent inputs.
+History queries and periodic cleanup preserve owned entries while the live bending roster
+is retained. The same registered callbacks and combo constructors execute inside the
+private domain. A regression exercises live rejection, private activation, preserved live
+history and resumed activation after release. Loader input interception and external
+listener/constructor paths still need integration; this is not complete native ownership.
+
 Live roster gates now also cover movement restrictions, queued potion effects,
 temporary-armor expiry and horizontal collision-damage trackers. Movement restrictions
 and collision trackers also honor an enrolled source player. The movement-handler tick

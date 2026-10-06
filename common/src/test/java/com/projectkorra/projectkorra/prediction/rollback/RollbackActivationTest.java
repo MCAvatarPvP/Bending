@@ -1,6 +1,11 @@
 package com.projectkorra.projectkorra.prediction.rollback;
 
 import com.projectkorra.projectkorra.ability.activation.AbilityActivationManager;
+import com.projectkorra.projectkorra.BendingPlayer;
+import com.projectkorra.projectkorra.platform.Platform;
+import com.projectkorra.projectkorra.platform.ProjectKorraPlatform;
+import java.lang.reflect.Proxy;
+import java.util.Set;
 import com.projectkorra.projectkorra.ability.activation.ActivationContext;
 import com.projectkorra.projectkorra.ability.activation.ActivationHandler;
 import com.projectkorra.projectkorra.ability.util.ComboManager;
@@ -87,6 +92,77 @@ class RollbackActivationTest {
         } finally {
             if (previous == null) combos.remove(name); else combos.put(name, previous);
         }
+    }
+
+    @Test void liveReservationBlocksRegisteredActionsAndComboMutationsButAllowsPrivateInput() throws Exception {
+        var scheduler = new RollbackLiveSchedulerTest.Backend();
+        var platform = (ProjectKorraPlatform) Proxy.newProxyInstance(ProjectKorraPlatform.class.getClassLoader(),
+                new Class<?>[]{ProjectKorraPlatform.class}, (proxy, method, args) -> {
+                    if (method.getName().equals("scheduler")) return scheduler;
+                    throw new AssertionError(method);
+                });
+        var player = new Player() {
+            @Override public UUID getUniqueId() { return PARTICIPANT; }
+            @Override public String getName() { return "RollbackActivationOwner"; }
+        };
+        var context = new ActivationContext(player, null, INPUT).withAbilityName("OwnedAction");
+        var shared = RollbackStateGraph.staticFields(ComboManager.class,
+                field -> Set.of("RECENTLY_USED", "SCHEDULED_COMBO_ABILITY").contains(field.getName()));
+        var graph = new RollbackStateGraph(value -> false, field -> true, 1000);
+        var outside = graph.capture(List.of(), shared);
+        var previousPlayer = BendingPlayer.getPlayers().get(PARTICIPANT);
+        String comboName = "OwnedConstructorFixture";
+        var previousCombo = ComboManager.getComboAbilities().put(comboName,
+                new ComboManager.ComboAbilityInfo(comboName, new ArrayList<>(), CountingCombo.class));
+        try (var scope = Platform.using(platform); var registry = new Registry()) {
+            var bending = new BendingPlayer(player);
+            BendingPlayer.getPlayers().put(PARTICIPANT, bending);
+            var lease = RollbackLiveOwnership.prepare(Set.of(PARTICIPANT));
+            var calls = new ArrayList<String>();
+            AbilityActivationManager.registerGlobal(INPUT, action -> { calls.add(action.getAbilityName()); return true; });
+            var oldInput = new ComboManager.AbilityInformation("Old", INPUT, 1);
+            ComboManager.addRecentAbility(player, oldInput);
+            ComboManager.scheduleComboAbility(player, INPUT);
+            CountingCombo.calls = 0;
+            lease.acquire();
+            try {
+                assertFalse(AbilityActivationManager.dispatch(context));
+                assertFalse(AbilityActivationManager.dispatchGlobal(context));
+                assertFalse(bending.canBend(null)); assertFalse(bending.canBendIgnoreBinds(null));
+                assertFalse(bending.canBendIgnoreCooldowns(null)); assertFalse(bending.canBendIgnoreBindsCooldowns(null));
+                assertFalse(bending.canBendPassive(null)); assertFalse(bending.canUsePassive(null));
+                ComboManager.addComboAbility(player, "New", INPUT);
+                ComboManager.addRecentAbility(player, new ComboManager.AbilityInformation("New", INPUT));
+                ComboManager.removeRecentAbility(player, oldInput);
+                ComboManager.cleanupOldCombos();
+                assertEquals(List.of(oldInput), ComboManager.getRecentlyUsedAbilities(player, 8));
+                assertNull(ComboManager.createComboAbility(player, comboName));
+                assertEquals(0, CountingCombo.calls); assertTrue(calls.isEmpty());
+                var domain = RollbackDomain.create(graph, shared, List.of(calls), platform, () -> { });
+                domain.call(() -> {
+                    assertTrue(AbilityActivationManager.dispatchGlobal(context));
+                    ComboManager.createComboAbility(player, comboName);
+                    ComboManager.addRecentAbility(player, new ComboManager.AbilityInformation("Private", INPUT));
+                    assertEquals("Private", ComboManager.getRecentlyUsedAbilities(player, 8).getLast().getAbilityName());
+                    return null;
+                });
+                assertEquals(1, CountingCombo.calls);
+                assertEquals(List.of("OwnedAction"), calls);
+                assertEquals(List.of(oldInput), ComboManager.getRecentlyUsedAbilities(player, 8));
+                lease.restoreAndRelease(() -> { });
+                assertTrue(AbilityActivationManager.dispatchGlobal(context));
+                ComboManager.cleanupOldCombos();
+                assertTrue(ComboManager.getRecentlyUsedAbilities(player, 8).isEmpty());
+            } finally { lease.restoreAndRelease(() -> { }); }
+        } finally {
+            outside.restore();
+            if (previousPlayer == null) BendingPlayer.getPlayers().remove(PARTICIPANT); else BendingPlayer.getPlayers().put(PARTICIPANT, previousPlayer);
+            if (previousCombo == null) ComboManager.getComboAbilities().remove(comboName); else ComboManager.getComboAbilities().put(comboName, previousCombo);
+        }
+    }
+    public static final class CountingCombo {
+        static int calls;
+        public CountingCombo(Player player) { calls++; }
     }
 
     public static final class ExplodingCombo {

@@ -9,6 +9,7 @@ import com.projectkorra.projectkorra.platform.mc.GameMode;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.util.ClickType;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -221,6 +222,7 @@ public final class AbilityActivationManager {
     private static boolean runHandlers(final List<ActivationHandler> handlers, final ActivationContext context) {
         boolean handled = false;
         for (final ActivationHandler handler : handlers) {
+            if (context.getPlayer() != null && RollbackLiveOwnership.blocks(context.getPlayer().getUniqueId())) break;
             try {
                 final boolean activated = handler.activate(context);
                 handled |= activated;
