@@ -443,6 +443,54 @@ class PaperRollbackPlayerSeedNativeTest {
         });
     }
 
+    @Test void suspendedConnectionMaintenanceKeepsProtocolWorkWithoutTickingPlayer() throws Exception {
+        onTickThread(() -> {
+            var scene = new Scene(); var nativePlayer = scene.create();
+            var player = (ServerPlayer) nativePlayer.ownedPlayer(); configure(player);
+            player.joining = true;
+            new PaperRollbackPlayerFields.Field<Long>(ServerPlayer.class, "lastActionTime", long.class).set(player, 0L);
+            var listener = new org.objenesis.ObjenesisStd().newInstance(MaintenanceProbe.class);
+            listener.player = player; listener.sent = new java.util.ArrayList<>();
+            var throttlers = new java.util.ArrayList<net.minecraft.util.TickThrottler>();
+            for (var name : List.of("chatSpamThrottler", "dropSpamThrottler", "tabSpamThrottler", "recipeSpamPackets")) {
+                var field = net.minecraft.server.network.ServerGamePacketListenerImpl.class.getDeclaredField(name);
+                field.setAccessible(true);
+                var throttler = new net.minecraft.util.TickThrottler(1, 1); throttler.increment();
+                field.set(listener, throttler); throttlers.add(throttler);
+            }
+            var ack = new PaperRollbackPlayerFields.Field<Integer>(net.minecraft.server.network.ServerGamePacketListenerImpl.class, "ackBlockChangesUpTo", int.class);
+            ack.set(listener, 12);
+            var before = PaperRollbackPlayerSeed.capture(player, EPOCH);
+            PaperRollbackConnectionMaintenance.tick(listener);
+            assertEquals(1, listener.keepalives); assertEquals(-1, ack.get(listener));
+            assertEquals(1, listener.sent.size());
+            assertEquals(12, ((net.minecraft.network.protocol.game.ClientboundBlockChangedAckPacket) listener.sent.getFirst()).sequence());
+            assertTrue(throttlers.stream().allMatch(net.minecraft.util.TickThrottler::isUnderThreshold));
+            assertArrayEquals(before.values().encode(), PaperRollbackPlayerSeed.capture(player, EPOCH).values().encode());
+            assertArrayEquals(before.items().encode(), PaperRollbackPlayerItems.capture(player).encode());
+            PaperRollbackConnectionMaintenance.tick(listener);
+            assertEquals(2, listener.keepalives); assertEquals(1, listener.sent.size());
+            listener.processedDisconnect = true; ack.set(listener, 13);
+            PaperRollbackConnectionMaintenance.tick(listener);
+            assertEquals(2, listener.keepalives); assertEquals(13, ack.get(listener));
+            try (var clock = RollbackClock.at(0, 1, 50_000_000)) {
+                assertThrows(IllegalStateException.class, () -> PaperRollbackConnectionMaintenance.tick(listener));
+            }
+            var wrongThread = assertThrows(CompletionException.class, () -> CompletableFuture.runAsync(
+                    () -> PaperRollbackConnectionMaintenance.tick(listener)).join());
+            assertInstanceOf(IllegalStateException.class, wrongThread.getCause());
+            return null;
+        });
+    }
+
+    private static final class MaintenanceProbe extends net.minecraft.server.network.ServerGamePacketListenerImpl {
+        int keepalives;
+        java.util.List<net.minecraft.network.protocol.Packet<?>> sent;
+        private MaintenanceProbe() { super(null, null, null, null); }
+        @Override protected void keepConnectionAlive() { keepalives++; }
+        @Override public void send(net.minecraft.network.protocol.Packet<?> packet) { sent.add(packet); }
+    }
+
     private static void configure(ServerPlayer player) {
         player.setPos(.5, 1, .5); player.setOnGround(true); player.setYRot(20); player.setXRot(-12);
         player.setDeltaMovement(.05, 0, .08); player.setHealth(17);

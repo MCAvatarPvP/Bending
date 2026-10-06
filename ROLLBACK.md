@@ -55,6 +55,15 @@ implemented by the plugin and verified against the packaged Paper version.
 
 ### October 5, 2026 integration update
 
+The connection maintenance component mirrors Paper's paused tick branch without
+calling its native `tickPlayer`/`doTick`: pending block acknowledgements, keepalive,
+all four spam throttlers and idle timeout remain active. It invokes the existing
+listener's keepalive method rather than creating another keepalive state. A native
+probe verifies keepalive dispatch, one-time acknowledgement, throttler progress,
+unchanged native player values/items, disconnected short-circuiting and thread/replay
+boundaries. Actual listener interception, packet routing and lifecycle restoration
+are still missing; this helper alone does not suspend a live connection's player tick.
+
 A plugin-owned world tick gate now wraps Paper's entity tick list. It skips reserved
 native player identities while delegating membership changes and preserving outsider
 iteration order. Disjoint rosters share the wrapper; overlapping acquisition rejects
