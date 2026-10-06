@@ -3041,3 +3041,21 @@ Consequently, positive-duration apple/shield start tests cannot establish comple
 item-use coverage. The next native binding must include these dispatch/component
 boundaries and test instant consumption, extra remainders, cooldowns, cancellation,
 and finish/release behavior before the production item-use remainder is enabled.
+
+
+### Private use-cooldown component
+
+The native UseCooldown.apply method is now in the copied combat graph and has an
+owned-player entry through PaperRollbackWorldAccess. It uses native cooldown group
+selection, item/group event handling and detached correction/output routing already
+provided by that graph. Native ServerPlayer tests cover event-adjusted duration,
+cancellation with correction, no-component no-op, unchanged item count and checkpoint
+restoration of cooldowns/events/outputs. The same accepted application after rewind
+produces identical detached output with no live Bukkit server.
+
+Remainder handling is still outstanding: ServerPlayer.handleExtraItemsCreatedOnUse
+first adds to the native inventory and drops overflow. Native Inventory.add can merge
+or partially insert a stack, so this cannot be replaced with a blanket slot write or
+an output-only marker. Its owned inventory and private dropped-item path must be bound
+before the full post-use component chain is enabled. The cooldown entry alone does
+not establish complete ItemStack.use or production action installation.

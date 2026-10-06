@@ -63,7 +63,7 @@ public final class PaperRollbackCombatAccess {
     private final MethodHandle addEffect, removeEffect, setAir, setSwimming, movementStep, playerBodyTick;
     private final MethodHandle serverTick, serverBodyTick, serverJump;
     private final MethodHandle tryGlide, stopGlide;
-    private final MethodHandle startItemUse, stopItemUse, equipmentChanges, playerImmobile, serverImmobile;
+    private final MethodHandle useCooldown, startItemUse, stopItemUse, equipmentChanges, playerImmobile, serverImmobile;
     private final GlobalConfiguration globalConfiguration;
     private final WorldConfiguration worldConfiguration;
     private final PaperRollbackNativeEvents events;
@@ -173,7 +173,10 @@ public final class PaperRollbackCombatAccess {
             builder.copy(award).copy(reset).copy(serverEntry).copy(ServerPlayer.class.getMethod("canHarmPlayer", Player.class));
             Method stopUse = LivingEntity.class.getDeclaredMethod("stopUsingItem");
             Method equipment = Player.class.getDeclaredMethod("detectEquipmentUpdates");
+            Method cooldownApply = net.minecraft.world.item.component.UseCooldown.class.getDeclaredMethod("apply", ItemStack.class, LivingEntity.class);
+            builder.copy(cooldownApply);
             var copied = builder.build();
+            useCooldown = copied.get(cooldownApply);
             playerImmobile = copied.get(Player.class.getDeclaredMethod("isImmobile"));
             serverImmobile = copied.get(ServerPlayer.class.getDeclaredMethod("isImmobile"));
             startItemUse = copied.get(LivingEntity.class.getDeclaredMethod("startUsingItem", net.minecraft.world.InteractionHand.class));
@@ -329,6 +332,16 @@ public final class PaperRollbackCombatAccess {
         catch (RuntimeException | Error failure) { throw failure; }
         catch (Throwable failure) { throw new IllegalStateException("Private native player body tick failed", failure); }
     }
+    /** Applies the used stack's native component through the private cooldown event/output routes. */
+    void applyUseCooldown(Player player, ItemStack usedStack) {
+        ownedId(player);
+        var component = Objects.requireNonNull(usedStack, "used stack").get(net.minecraft.core.component.DataComponents.USE_COOLDOWN);
+        if (component == null) return;
+        try { useCooldown.invokeExact(component, usedStack, (LivingEntity) player); }
+        catch (RuntimeException | Error failure) { throw failure; }
+        catch (Throwable failure) { throw new IllegalStateException("Private item-use cooldown failed", failure); }
+    }
+
     /** Native item implementations enter this transition only after their interaction policy accepts use. */
     void startItemUse(Player player, boolean offHand) {
         ownedId(player);

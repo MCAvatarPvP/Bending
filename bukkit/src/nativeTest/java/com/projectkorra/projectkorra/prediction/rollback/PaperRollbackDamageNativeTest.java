@@ -88,6 +88,45 @@ class PaperRollbackDamageNativeTest {
         });
     }
 
+    @Test void nativeUseCooldownHonorsPrivateEventsAndRewindsItsOutput() throws Exception {
+        onTickThread(() -> {
+            var combat = new Combat() {
+                @Override public void event(Event event) {
+                    super.event(event);
+                    if (event instanceof io.papermc.paper.event.player.PlayerItemCooldownEvent cooldown) {
+                        cooldown.setCancelled(cancel); cooldown.setCooldown(17);
+                    }
+                }
+            };
+            var world = new PaperRollbackWorldAccess(new PaperRollbackWorldAccessNativeTest.Queries(), combat, 4);
+            var state = PaperRollbackNativePlayerState.serverPlayer(world, new GameProfile(new UUID(0, 944), "itemcooldown"),
+                    net.minecraft.server.level.ClientInformation.createDefault(), GameType.SURVIVAL, 85, 200_000);
+            var player = (net.minecraft.server.level.ServerPlayer) state.ownedPlayer();
+            var item = new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.APPLE, 3);
+            var group = net.minecraft.resources.Identifier.parse("projectkorra:use_test");
+            item.set(net.minecraft.core.component.DataComponents.USE_COOLDOWN,
+                    new net.minecraft.world.item.component.UseCooldown(2F, java.util.Optional.of(group)));
+            player.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, item);
+            var saved = new RollbackStateGraph(value -> false, field -> true, 300_000).capture(List.of(state), List.of());
+            state.use(value -> { world.applyUseCooldown((Player) value, player.getMainHandItem()); return null; });
+            assertEquals(17, player.getCooldowns().cooldowns.get(group).endTime() - player.getCooldowns().cooldowns.get(group).startTime());
+            assertEquals(3, player.getMainHandItem().getCount());
+            assertFalse(combat.outputs.isEmpty()); var output = List.copyOf(combat.outputs);
+            saved.restore(); assertFalse(player.getCooldowns().isOnCooldown(player.getMainHandItem()));
+            assertTrue(combat.outputs.isEmpty());
+            state.use(value -> { world.applyUseCooldown((Player) value, player.getMainHandItem()); return null; });
+            assertEquals(output, combat.outputs);
+            saved.restore(); combat.cancel = true;
+            state.use(value -> { world.applyUseCooldown((Player) value, player.getMainHandItem()); return null; });
+            assertFalse(player.getCooldowns().isOnCooldown(player.getMainHandItem()));
+            assertFalse(combat.outputs.isEmpty()); // Native cancellation journals the current cooldown correction.
+            saved.restore();
+            state.use(value -> { world.applyUseCooldown((Player) value, new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.STICK)); return null; });
+            assertTrue(combat.outputs.isEmpty()); assertTrue(combat.events.isEmpty());
+            assertNull(Bukkit.getServer()); return null;
+        });
+    }
+
     @Test void hotbarSelectionCancelsAndRewindsNativeItemUseAndEquipment() throws Exception {
         onTickThread(() -> {
             var scene = new Scene();
