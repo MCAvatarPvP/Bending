@@ -126,8 +126,14 @@ before publishing chunk state. Mutations require a captured horizontal chunk hal
 queries outside captured terrain and foreign checkpoints are rejected. Native tests
 verify cross-chunk emitted light, sunlight occlusion, repeated restore and an alternate
 terrain timeline. Production capture must provide complete vertical world sections
-and a horizontal halo. Terrain mutation/query wiring and Fabric parity remain missing;
-this adapter does not yet enable live duels.
+and a horizontal halo. The logical block store now notifies derived-state rules on
+every replacement, including writes with physics disabled, before invoking physics.
+Paper's lighting rules adapter propagates that change and supplies current combined
+brightness using captured sky darkness. The store exposes stateful rules to the
+checkpoint graph, which reaches the native light state; a native integration test
+restores the graph from the store root alone and verifies both terrain and light.
+Production world service assembly, captured darkness binding and Fabric parity remain
+missing; this adapter does not yet enable live duels.
 Live scheduler restoration/replacement now accepts a synchronous whole-state commit.
 Native callback submissions are staged while dispatch remains gated; only a successful
 external commit activates callbacks and publishes replacement handles. Failed state

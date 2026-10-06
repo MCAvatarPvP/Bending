@@ -55,7 +55,10 @@ class FabricRollbackTerrainTransferTest {
         assertEquals("minecraft:desert", cell.biomeKey()); assertEquals("minecraft:plains", cell.noiseBiomeKey());
         assertEquals(2.0, cell.temperature()); assertEquals(7, cell.light());
 
-        var unused = (Rules) Proxy.newProxyInstance(Rules.class.getClassLoader(), new Class<?>[]{Rules.class}, (proxy, method, args) -> { throw new AssertionError(method); });
+        var unused = (Rules) Proxy.newProxyInstance(Rules.class.getClassLoader(), new Class<?>[]{Rules.class}, (proxy, method, args) -> {
+            if (method.isDefault()) return java.lang.reflect.InvocationHandler.invokeDefault(proxy, method, args);
+            throw new AssertionError(method);
+        });
         var terrain = new RollbackBlockStore(new World(), seed, unused, 32);
         var shapes = new FabricRollbackGeometry(-64, 320, (store, position, state) -> { throw new AssertionError("No tile query for slab"); });
         var position = new Position(0, 0, 0); var before = terrain.captureRollbackState();

@@ -79,6 +79,10 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
         Geometry geometry(RollbackBlockStore terrain, Position position, BlockData data);
         byte legacyData(RollbackBlockStore terrain, Position position, BlockData data);
         void physics(RollbackBlockStore terrain, Position changed);
+        /** Synchronous derived-state update, including writes which suppress block physics. */
+        default void changed(RollbackBlockStore terrain, Position position) { }
+        /** Platforms with mutable lighting override the immutable capture value. */
+        default byte light(RollbackBlockStore terrain, Position position) { return terrain.cell(position).light(); }
         Collection<ItemStack> drops(RollbackBlockStore terrain, Position position, ItemStack tool);
         boolean breakNaturally(RollbackBlockStore terrain, Position position, ItemStack tool);
     }
@@ -217,6 +221,7 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
         try {
             overlay.put(position, value);
             dirty.add(position);
+            rules.changed(this, position);
             if (physics) rules.physics(this, position);
         } finally { mutationDepth--; }
     }
@@ -244,6 +249,11 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
         dirty.clear();
         dirty.addAll(state.dirty);
         mutations = 0;
+    }
+
+    @Override public Collection<?> rollbackReferences() {
+        checkThread();
+        return rules instanceof RollbackStateCell<?> ? List.of(rules) : List.of();
     }
 
     private void checkThread() {
@@ -292,7 +302,7 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
         @Override public List<BoundingBox> getCollisionBoxes() {
             return geometry(position).collision.stream().map(box -> box.at(position)).toList();
         }
-        @Override public byte getLightLevel() { return cell(position).light; }
+        @Override public byte getLightLevel() { return rules.light(RollbackBlockStore.this, position); }
         @Override public Biome getBiome() { return cell(position).biome; }
         @Override public byte getData() { return rules.legacyData(RollbackBlockStore.this, position, getBlockData()); }
         @Override public Block getRelative(int x, int y, int z) {

@@ -103,6 +103,7 @@ class FabricRollbackWorldQueriesTest {
         var geometry = new FabricRollbackGeometryTest.LogicalWorld().shapes;
         var rules = (Rules) Proxy.newProxyInstance(FabricRollbackWorldQueriesTest.class.getClassLoader(), new Class<?>[]{Rules.class}, (proxy, method, args) -> {
             if (method.getName().equals("geometry")) return geometry.geometry((RollbackBlockStore) args[0], (Position) args[1], (BlockData) args[2]);
+            if (method.isDefault()) return java.lang.reflect.InvocationHandler.invokeDefault(proxy, method, args);
             throw new AssertionError("Native query test did not request block mutation service: " + method);
         });
         var items = (RollbackItems) Proxy.newProxyInstance(FabricRollbackWorldQueriesTest.class.getClassLoader(), new Class<?>[]{RollbackItems.class},

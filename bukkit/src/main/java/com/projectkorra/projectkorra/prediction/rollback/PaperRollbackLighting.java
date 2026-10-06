@@ -82,6 +82,44 @@ public final class PaperRollbackLighting implements RollbackStateCell<PaperRollb
         };
         reader = new LevelLightEngine(getter, true, hasSky).starlight$getLightEngine();
     }
+    /**
+     * Connect to the logical store before constructing its world. The darkness supplier must
+     * read captured simulation time/weather, and its mutable owner must be a graph root.
+     */
+    public Rules rules(Rules delegate, java.util.function.IntSupplier skyDarkness) {
+        check(); return new LitRules(Objects.requireNonNull(delegate), Objects.requireNonNull(skyDarkness));
+    }
+    private final class LitRules implements Rules, RollbackStateCell<Void> {
+        private final Rules delegate;
+        private final java.util.function.IntSupplier darkness;
+        private LitRules(Rules delegate, java.util.function.IntSupplier darkness) { this.delegate = delegate; this.darkness = darkness; }
+        @Override public Geometry geometry(RollbackBlockStore terrain, Position p, BlockData data) { return delegate.geometry(terrain, p, data); }
+        @Override public byte legacyData(RollbackBlockStore terrain, Position p, BlockData data) { return delegate.legacyData(terrain, p, data); }
+        @Override public void physics(RollbackBlockStore terrain, Position p) { delegate.physics(terrain, p); }
+        @Override public java.util.Collection<com.projectkorra.projectkorra.platform.mc.inventory.ItemStack> drops(
+                RollbackBlockStore terrain, Position p, com.projectkorra.projectkorra.platform.mc.inventory.ItemStack tool) { return delegate.drops(terrain, p, tool); }
+        @Override public boolean breakNaturally(RollbackBlockStore terrain, Position p,
+                com.projectkorra.projectkorra.platform.mc.inventory.ItemStack tool) { return delegate.breakNaturally(terrain, p, tool); }
+        @Override public void changed(RollbackBlockStore terrain, Position p) {
+            requireBounds(terrain);
+            apply(Map.of(p, terrain.cell(p).data()));
+            delegate.changed(terrain, p);
+        }
+        @Override public byte light(RollbackBlockStore terrain, Position p) {
+            requireBounds(terrain);
+            int amount = darkness.getAsInt();
+            if (amount < 0 || amount > 15) throw new IllegalStateException("Invalid captured sky darkness");
+            return (byte) Math.max(block(p), sky(p) - amount);
+        }
+        private void requireBounds(RollbackBlockStore terrain) {
+            if (!bounds.equals(terrain.bounds())) throw new IllegalArgumentException("Lighting/terrain bounds mismatch");
+        }
+        @Override public Void captureRollbackState() { check(); return null; }
+        @Override public void restoreRollbackState(Void state) { thread(); }
+        @Override public Collection<?> rollbackReferences() {
+            return delegate instanceof RollbackStateCell<?> ? List.of(PaperRollbackLighting.this, delegate) : List.of(PaperRollbackLighting.this);
+        }
+    }
     private SWMRNibbleArray[] emptyLayers(boolean sky) {
         var result = new SWMRNibbleArray[sectionCount + 2];
         for (int i = 0; i < result.length; i++) {

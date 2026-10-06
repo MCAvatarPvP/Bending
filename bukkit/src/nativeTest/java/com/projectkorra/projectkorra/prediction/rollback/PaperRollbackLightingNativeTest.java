@@ -110,6 +110,28 @@ class PaperRollbackLightingNativeTest {
             var edge = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Position(-16, 8, 8);
             assertThrows(IllegalArgumentException.class, () -> lighting.apply(Map.of(source, glow, edge, glow)));
             assertEquals(0, lighting.block(source));
+            var delegate = (com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Rules)
+                    java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[]{
+                            com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Rules.class},
+                            (proxy, method, args) -> {
+                                if (method.getName().equals("changed")) return null;
+                                if (method.getName().equals("physics")) { assertEquals(14, lighting.sky(source)); return null; }
+                                throw new AssertionError("Unexpected block rule: " + method);
+                            });
+            var store = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore(
+                    new com.projectkorra.projectkorra.platform.mc.World(), terrain, lighting.rules(delegate, () -> 15), 100);
+            var graph = new RollbackStateGraph(value -> false, field -> true, 100);
+            var checkpoint = graph.capture(List.of(store), List.of());
+            store.replace(source, new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Cell(
+                    glow, null, cell.biome(), (byte) 0, .8, .4), false);
+            assertEquals(14, store.block(neighbour.x(), neighbour.y(), neighbour.z()).getLightLevel());
+            checkpoint.restore();
+            assertEquals(air.getMaterial(), store.cell(source).data().getMaterial());
+            assertEquals(0, store.block(neighbour.x(), neighbour.y(), neighbour.z()).getLightLevel());
+            store.replace(roof, new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Cell(
+                    stone, null, cell.biome(), (byte) 0, .8, .4), true);
+            checkpoint.restore();
+            assertEquals(15, lighting.sky(source));
             return null;
         });
     }

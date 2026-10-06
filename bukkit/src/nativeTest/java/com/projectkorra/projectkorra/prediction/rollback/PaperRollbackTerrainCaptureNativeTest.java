@@ -165,7 +165,10 @@ class PaperRollbackTerrainCaptureNativeTest {
     }
     private static Rules unusedRules() {
         return (Rules) Proxy.newProxyInstance(Rules.class.getClassLoader(), new Class<?>[]{Rules.class},
-                (proxy, method, args) -> { throw new AssertionError(method); });
+                (proxy, method, args) -> {
+                    if (method.isDefault()) return java.lang.reflect.InvocationHandler.invokeDefault(proxy, method, args);
+                    throw new AssertionError(method);
+                });
     }
     private static final class Fixture {
         final RegistryAccess registries = (RegistryAccess) new PaperRollbackDamageNativeTest.Combat().registryAccess();
