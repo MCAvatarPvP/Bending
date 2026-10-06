@@ -53,7 +53,20 @@ class FabricRollbackNativeActionsTest {
         assertThrows(NullPointerException.class, () -> f.manager.interactItem(f.player, hand), "After release the same manager must resume its native body");
     }
 
-    @ParameterizedTest @ValueSource(strings = {"attack", "inventory", "break", "release", "creative"})
+    @Test void transformedReleaseCapturesIntentBeforeTheNativeManagerCanMutateItems() throws Exception {
+        var f = new Fixture(); var stack = new ItemStack(Items.APPLE, 4);
+        f.player.getInventory().setStack(0, stack); f.player.setYaw(65); f.player.setPitch(-15);
+        try (var lease = f.acquire(f.player)) {
+            f.manager.stopUsingItem(f.player);
+            assertSame(stack, f.player.getMainHandStack()); assertEquals(4, stack.getCount());
+            assertTrue(f.failures.isEmpty());
+            f.runtime.tick(101);
+            assertEquals(List.of(new RollbackInputPacket.Edge(1, RollbackInputActions.Kind.RELEASE_USE_ITEM, -1, 65, -15)), f.sent.getFirst().actions());
+            f.runtime.tick(102); assertTrue(f.sent.getLast().actions().isEmpty());
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"attack", "inventory", "break", "creative"})
     void unboundInteractionsStopBeforeTouchingNativeItemsEntitiesOrBlocksEvenWhenCleanupReleasesTheLease(String operation) throws Exception {
         var f = new Fixture(); var target = f.roster.players().get(B).ownedPlayer();
         var stack = new ItemStack(Items.APPLE, 4); f.player.getInventory().setStack(0, stack);
@@ -63,7 +76,6 @@ class FabricRollbackNativeActionsTest {
                 case "attack" -> f.manager.attackEntity(f.player, target);
                 case "inventory" -> f.manager.clickSlot(0, 36, 0, SlotActionType.PICKUP, f.player);
                 case "break" -> assertFalse(f.manager.attackBlock(BlockPos.ORIGIN, Direction.UP));
-                case "release" -> f.manager.stopUsingItem(f.player);
                 case "creative" -> f.manager.dropCreativeStack(stack);
                 default -> throw new AssertionError(operation);
             }
@@ -117,7 +129,7 @@ class FabricRollbackNativeActionsTest {
         try (var owner = new FabricRollbackNativeActions(f.manager, f.player, f.player.getEntityWorld(), () -> true, f::packet, failure -> { throw cleanup; })) {
             assertSame(cleanup, assertThrows(IllegalStateException.class, () -> f.manager.clickSlot(0, 36, 0, SlotActionType.PICKUP, f.player)));
             assertThrows(IllegalStateException.class, () -> f.acquire(f.player));
-            assertSame(cleanup, assertThrows(IllegalStateException.class, () -> f.manager.stopUsingItem(f.player)));
+            assertSame(cleanup, assertThrows(IllegalStateException.class, () -> f.manager.attackBlock(BlockPos.ORIGIN, Direction.UP)));
             owner.close();
             try (var replacement = f.acquire(f.player)) {
                 owner.close(); assertSame(ActionResult.CONSUME, f.manager.interactItem(f.player, Hand.MAIN_HAND));

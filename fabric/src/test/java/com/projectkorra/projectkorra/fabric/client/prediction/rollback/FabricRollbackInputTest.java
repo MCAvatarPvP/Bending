@@ -49,6 +49,20 @@ class FabricRollbackInputTest {
         f.runtime.tick(102); assertTrue(f.sent.getLast().actions().isEmpty());
     }
 
+    @Test void itemReleaseIsAnOrderedOneShotIntentWithoutClientTargetCoordinates() {
+        var f = new Fixture(); f.runtime.start(100);
+        f.input.packet(new PlayerInteractItemC2SPacket(Hand.OFF_HAND, 3, 70, -20), 100, 0, 0);
+        f.input.packet(new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.RELEASE_USE_ITEM,
+                new BlockPos(999, 999, 999), Direction.UP), 100, 90, 15);
+        f.runtime.tick(101);
+        var packet = RollbackInputPacket.decode(f.sent.getFirst().encode());
+        assertEquals(List.of(RollbackInputActions.Kind.RIGHT_CLICK, RollbackInputActions.Kind.RELEASE_USE_ITEM),
+                packet.actions().stream().map(RollbackInputPacket.Edge::kind).toList());
+        assertEquals(new RollbackInputPacket.Edge(2, RollbackInputActions.Kind.RELEASE_USE_ITEM, -1, 90, 15), packet.actions().getLast());
+        assertTrue(packet.playerInput(A, 42).predict().actions().isEmpty());
+        f.runtime.tick(102); assertTrue(f.sent.getLast().actions().isEmpty());
+    }
+
     @Test void blockInteractionDoesNotGenerateDuplicateItemOrSwingAbilityActions() {
         var f = new Fixture(); f.runtime.start(100);
         f.input.packet(new PlayerInteractBlockC2SPacket(Hand.MAIN_HAND,

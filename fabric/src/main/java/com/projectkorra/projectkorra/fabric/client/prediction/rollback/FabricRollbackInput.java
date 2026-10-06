@@ -56,6 +56,9 @@ public final class FabricRollbackInput {
         if (packet instanceof PlayerActionC2SPacket action && action.getAction() == PlayerActionC2SPacket.Action.SWAP_ITEM_WITH_OFFHAND) {
             action(RollbackInputActions.Kind.SWAP_HANDS, -1, yaw, pitch); return;
         }
+        if (packet instanceof PlayerActionC2SPacket action && action.getAction() == PlayerActionC2SPacket.Action.RELEASE_USE_ITEM) {
+            action(RollbackInputActions.Kind.RELEASE_USE_ITEM, -1, yaw, pitch); return;
+        }
         if (packet instanceof ClientCommandC2SPacket command
                 && (command.getMode() == ClientCommandC2SPacket.Mode.START_SPRINTING || command.getMode() == ClientCommandC2SPacket.Mode.STOP_SPRINTING)) return;
         if (packet instanceof ClientCommandC2SPacket command && command.getMode() == ClientCommandC2SPacket.Mode.START_FALL_FLYING) {

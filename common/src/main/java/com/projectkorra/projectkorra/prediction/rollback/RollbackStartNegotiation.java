@@ -9,7 +9,7 @@ import java.util.function.BooleanSupplier;
  * The loader sends the returned messages and polls this barrier on its main thread.
  */
 public final class RollbackStartNegotiation {
-    public static final int VERSION = 5;
+    public static final int VERSION = 6;
     public enum Phase { PROBING, SCHEDULING, ARMED, COMMITTED, STARTED, ABORTED }
     public enum Reply { ACCEPTED, DUPLICATE, UNKNOWN_CONNECTION, STALE, WRONG_PHASE, CONFLICT, LATE, ABORTED }
 

@@ -12,6 +12,18 @@ class RollbackAuthorityCodecTest {
     private static final UUID SESSION = new UUID(0, 30), A = new UUID(0, 1), B = new UUID(0, 2);
     private static final RollbackPlayerInput INPUT = input();
 
+    @Test void releaseIntentSurvivesAuthorityAndOlderProtocolIsRejected() {
+        var release = new RollbackPlayerInput(INPUT.movement(), false, List.of(new RollbackPlayerInput.Edge(
+                new RollbackInputActions.Action(1, 123, RollbackInputActions.Kind.RELEASE_USE_ITEM, -1), 70, -20)));
+        var update = new RollbackAuthorityUpdate(SESSION, 1, 0, 1, 0, 1,
+                List.of(Map.of(A, release)), Map.of(A, List.of(1L)));
+        byte[] bytes = RollbackAuthorityCodec.encode(update);
+        assertEquals(update, RollbackAuthorityCodec.decode(bytes));
+        assertTrue(release.predict().actions().isEmpty());
+        ByteBuffer.wrap(bytes).putInt(0, 5);
+        assertThrows(IllegalArgumentException.class, () -> RollbackAuthorityCodec.decode(bytes));
+    }
+
     @Test void canonicalBytesPreserveControlsActionAimSeedsAndGappedReceipts() {
         var first = new LinkedHashMap<UUID, RollbackPlayerInput>(); first.put(B, INPUT.predict()); first.put(A, INPUT);
         var frames = List.<Map<UUID, RollbackPlayerInput>>of(first, Map.of(A, INPUT.predict(), B, INPUT));

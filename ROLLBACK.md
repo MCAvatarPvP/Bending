@@ -3262,3 +3262,15 @@ This supplies lookup/rebinding infrastructure, not automatic conversion of arbit
 Bukkit plugin behavior. Production bootstrap must still construct real private plugin
 adapters and wire the complete platform, events, ability graph and execution. No live
 match startup or multiplayer verification is established by these tests.
+
+
+### Item-release input transfer
+
+Input, authority and start negotiation now use protocol version 6. RELEASE_USE_ITEM
+is an ordered one-shot action, captured by the Fabric native manager interception
+before the live item release body executes. It carries aim but no client block
+position, and missing-frame prediction never repeats it. Common bending dispatch
+passes it to the private native action service without activating a bending click.
+Tests cover packet/authority transfer, native interception and no repeated edge.
+This closes the input-transfer gap only: private native release execution (including
+item-specific release effects) still needs binding alongside the other interactions.

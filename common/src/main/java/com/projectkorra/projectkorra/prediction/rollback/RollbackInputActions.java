@@ -16,7 +16,7 @@ import java.util.Set;
 public final class RollbackInputActions {
     private RollbackInputActions() { }
 
-    public enum Kind { SWING, RIGHT_CLICK, RIGHT_CLICK_BLOCK, RIGHT_CLICK_ENTITY, SNEAK_START, SNEAK_STOP, SWAP_HANDS, SLOT_CHANGE, FLIGHT_START, FLIGHT_STOP, GLIDE_START, OFF_HAND_SWING }
+    public enum Kind { SWING, RIGHT_CLICK, RIGHT_CLICK_BLOCK, RIGHT_CLICK_ENTITY, SNEAK_START, SNEAK_STOP, SWAP_HANDS, SLOT_CHANGE, FLIGHT_START, FLIGHT_STOP, GLIDE_START, OFF_HAND_SWING, RELEASE_USE_ITEM }
 
     public enum Hand { MAIN, OFF }
     public static Hand defaultHand(Kind kind) { return kind == Kind.OFF_HAND_SWING ? Hand.OFF : Hand.MAIN; }
@@ -55,6 +55,8 @@ public final class RollbackInputActions {
         var result = new CommonInputHandler.InputResult[1];
         PredictionDeterminism.run(action.sequence(), action.seed(), () -> result[0] = switch (action.kind()) {
             case SWING, OFF_HAND_SWING -> CommonInputHandler.handleSwing(player, Set.of(), new HashSet<>());
+            // Releasing an item has no bending activation; the native remainder owns its effects.
+            case RELEASE_USE_ITEM -> CommonInputHandler.InputResult.pass();
             case RIGHT_CLICK -> action.hand() == Hand.OFF ? CommonInputHandler.InputResult.pass() : CommonInputHandler.handleRightClick(player, ClickType.RIGHT_CLICK);
             case RIGHT_CLICK_BLOCK -> action.hand() == Hand.OFF ? CommonInputHandler.InputResult.pass() : CommonInputHandler.handleRightClick(player, ClickType.RIGHT_CLICK_BLOCK);
             case RIGHT_CLICK_ENTITY -> action.hand() == Hand.OFF ? CommonInputHandler.InputResult.pass() : CommonInputHandler.handleRightClickEntity(player);
