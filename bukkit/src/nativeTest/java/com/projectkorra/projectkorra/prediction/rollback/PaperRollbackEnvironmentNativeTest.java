@@ -65,14 +65,16 @@ class PaperRollbackEnvironmentNativeTest {
             var logical = PaperRollbackWorldQueriesNativeTest.world(); var env = new PaperRollbackEnvironment(logical, registries(), seed());
             var before = env.getValue(EnvironmentAttributes.FOG_COLOR, POSITION, null);
             float light = env.getValue(EnvironmentAttributes.SKY_LIGHT_LEVEL, POSITION, null);
+            int darkness = env.skyDarkness();
             var saved = new RollbackStateGraph(value -> false, field -> true, 100_000).capture(List.of(env), List.of());
             var conditions = logical.conditions(); logical.conditions(new RollbackWorld.Conditions(18_000, 18_000, conditions.difficulty(), true, conditions.loadedChunks()));
             env.weather(new RollbackEnvironmentData.Weather(.6F, .2F));
             assertNotEquals(light, env.getValue(EnvironmentAttributes.SKY_LIGHT_LEVEL, POSITION, null));
+            assertTrue(env.skyDarkness() > darkness);
             var position = new RollbackBlockStore.Position(0, 0, 0); var cell = logical.terrain().cell(position);
             logical.terrain().replace(position, new RollbackBlockStore.Cell(cell.data(), null, cell.biome(), cell.biomeKey(), "minecraft:soul_sand_valley", cell.light(), cell.temperature(), cell.humidity()), false);
             assertNotEquals(before, env.getValue(EnvironmentAttributes.FOG_COLOR, POSITION, null));
-            saved.restore(); assertEquals(before, env.getValue(EnvironmentAttributes.FOG_COLOR, POSITION, null));
+            saved.restore(); assertEquals(darkness, env.skyDarkness()); assertEquals(before, env.getValue(EnvironmentAttributes.FOG_COLOR, POSITION, null));
             assertEquals(light, env.getValue(EnvironmentAttributes.SKY_LIGHT_LEVEL, POSITION, null)); assertEquals(seed().weather(), env.weather());
             return null;
         });

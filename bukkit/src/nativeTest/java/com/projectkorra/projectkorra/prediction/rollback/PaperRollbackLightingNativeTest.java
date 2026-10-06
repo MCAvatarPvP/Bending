@@ -132,19 +132,28 @@ class PaperRollbackLightingNativeTest {
                     stone, null, cell.biome(), (byte) 0, .8, .4), true);
             checkpoint.restore();
             assertEquals(15, lighting.sky(source));
+            var environment = new PaperRollbackEnvironment[1];
             var logical = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackWorld(
                     new com.projectkorra.projectkorra.prediction.rollback.world.RollbackWorld.Identity("arena",
                             com.projectkorra.projectkorra.prediction.rollback.world.RollbackWorld.Dimension.NORMAL, 0, 32),
                     new com.projectkorra.projectkorra.prediction.rollback.world.RollbackWorld.Conditions(0, 0, "NORMAL", false, Set.of()),
-                    terrain, lighting.rules(delegate, () -> 0), 100, 10,
+                    terrain, lighting.rules(delegate, () -> environment[0].skyDarkness()), 100, 10,
                     unused(com.projectkorra.projectkorra.prediction.rollback.world.RollbackItems.class),
                     unused(com.projectkorra.projectkorra.prediction.rollback.world.RollbackWorld.Queries.class),
                     unused(com.projectkorra.projectkorra.prediction.rollback.world.RollbackWorld.Actions.class));
             var spatial = new PaperRollbackSpatial(logical, (RegistryAccess.Frozen) registry,
                     PaperRollbackEnvironmentNativeTest.seed(), PaperRollbackBorder.capture(new net.minecraft.world.level.border.WorldBorder()), lighting);
+            environment[0] = spatial.environmentAttributes();
             var position = new BlockPos(source.x(), source.y(), source.z());
             var spatialCheckpoint = graph.capture(List.of(spatial), List.of());
             assertTrue(spatial.skyVisible(logical.terrain(), position));
+            var lightView = logical.terrain().block(source.x(), source.y(), source.z());
+            byte daytime = lightView.getLightLevel();
+            var conditions = logical.conditions();
+            logical.conditions(new com.projectkorra.projectkorra.prediction.rollback.world.RollbackWorld.Conditions(
+                    18_000, 18_000, conditions.difficulty(), false, conditions.loadedChunks()));
+            assertTrue(lightView.getLightLevel() < daytime);
+            assertTrue(spatial.skyVisible(logical.terrain(), position), "Night does not occlude the sky");
             logical.terrain().replace(roof, new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Cell(
                     stone, null, cell.biome(), (byte) 0, .8, .4), false);
             assertFalse(spatial.skyVisible(logical.terrain(), position));
@@ -152,6 +161,7 @@ class PaperRollbackLightingNativeTest {
             spatial.environmentAttributes().weather(new RollbackEnvironmentData.Weather(1, 1));
             spatialCheckpoint.restore();
             assertTrue(spatial.skyVisible(logical.terrain(), position));
+            assertEquals(daytime, lightView.getLightLevel());
             assertTrue(spatial.border().getSize() > 20);
             assertEquals(0, spatial.environmentAttributes().weather().rain());
             assertThrows(IllegalArgumentException.class, () -> spatial.skyVisible(store, position));

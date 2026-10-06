@@ -44,6 +44,8 @@ public final class PaperRollbackEnvironment implements EnvironmentAttributeReade
     }
     public void weather(RollbackEnvironmentData.Weather weather) { checkThread(); this.weather = Objects.requireNonNull(weather); evaluator.invalidateTickCache(); }
     public RollbackEnvironmentData.Weather weather() { checkThread(); return weather; }
+    /** Matches Level.updateSkyBrightness, evaluated from this checkpoint's time and weather. */
+    public int skyDarkness() { return (int) (15.0F - getDimensionValue(EnvironmentAttributes.SKY_LIGHT_LEVEL)); }
     @Override public <T> T getDimensionValue(EnvironmentAttribute<T> attribute) { sync(); return evaluator.getDimensionValue(attribute); }
     @Override public <T> T getValue(EnvironmentAttribute<T> attribute, Vec3 position, SpatialAttributeInterpolator interpolation) {
         sync(); cell(position);

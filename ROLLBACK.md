@@ -136,7 +136,10 @@ brightness using captured sky darkness. The store exposes stateful rules to the
 checkpoint graph, which reaches the native light state; a native integration test
 restores the graph from the store root alone and verifies both terrain and light.
 The production spatial service now composes lighting, environment and border. Complete
-world service installation, captured darkness binding and Fabric parity remain missing; this adapter does not yet enable live duels.
+world service installation and Fabric parity remain missing. Paper environment now
+exposes the native sky-darkness calculation from captured dimension attributes. The
+spatial integration test supplies it to block lighting and verifies night brightness,
+unchanged open-sky visibility and restoration to daytime; this adapter does not yet enable live duels.
 Live scheduler restoration/replacement now accepts a synchronous whole-state commit.
 Native callback submissions are staged while dispatch remains gated; only a successful
 external commit activates callbacks and publishes replacement handles. Failed state
