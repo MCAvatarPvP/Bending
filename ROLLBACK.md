@@ -3106,3 +3106,26 @@ protocol template. A native test supplies only an unaudited inventory-packet hea
 and verifies rejection before its absent item body is decoded. This closes an ordering
 gap in the initial decoder; the input remains a trusted internal journal, not client
 traffic, and no live publisher is installed by this change.
+
+
+### Pinned direct packet delivery adapter
+
+PaperRollbackDirectPackets provides a native connection sender for selected finalized
+direct packet effects. Its live binding pins the negotiated whole-roster connection
+identities, world and captured native player IDs, validates them before decoding and
+again before sending, and rejects foreign recipients. It consumes the native journal
+decoder or inventory reconstruction helper. Provisional effects, duplicate/out-of-order
+effect keys and replay/thread misuse are rejected. A send failure makes the adapter
+terminal so a possibly enqueued packet cannot be retried.
+
+Native tests use a controlled audience/sender to verify health and held-slot delivery,
+foreign/stale recipients, provisional/duplicate rejection and failure after enqueue.
+These tests verify the adapter contract, not a real client connection. Bukkit tests
+and the plugin build also pass. The adapter is not installed into a match output yet.
+
+The output coordinator must still classify recipients and state-versus-presentation
+outputs. In particular, it must not overwrite a predicting client's newer head with
+old finalized health/inventory/movement packets; those values belong in authoritative
+reconciliation. Tracked outputs and other effects need their own audience policy,
+and lifecycle cleanup must restore the roster as before. This sender alone neither
+performs that reconciliation nor makes a live rollback session ready.

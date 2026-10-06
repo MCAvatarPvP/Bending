@@ -282,6 +282,52 @@ class PaperRollbackServerDamageNativeTest {
         });
     }
 
+    @Test void directDeliveryRejectsProvisionalDuplicatesForeignRecipientsAndFailedRetries() throws Exception {
+        onTickThread(() -> {
+            var scene = new Scene(); var registry = (RegistryAccess) scene.combat.registryAccess();
+            class Audience implements PaperRollbackDirectPackets.Audience {
+                final List<Packet<?>> sent = new ArrayList<>();
+                boolean current = true, throwAfterSend;
+                @Override public void validate() { if (!current) throw new IllegalStateException("changed connection/world"); }
+                @Override public void send(UUID recipient, Packet<?> packet) {
+                    assertEquals(scene.target.getUUID(), recipient); sent.add(packet);
+                    if (throwAfterSend) throw new IllegalStateException("send failed after enqueue");
+                }
+            }
+            var audience = new Audience();
+            var sender = new PaperRollbackDirectPackets(java.util.Set.of(scene.target.getUUID()), registry, audience);
+            var slot = new PaperRollbackPacketData.Direct(scene.target.getUUID(), new PaperRollbackPacketData.HeldSlot(4));
+            var effect = new RollbackEngine.Effect<PaperRollbackCombatAccess.Output>(1, 0, slot);
+            sender.deliver(effect, 1);
+            assertEquals(4, ((ClientboundSetHeldSlotPacket) audience.sent.getFirst()).slot());
+            assertThrows(IllegalArgumentException.class, () -> sender.deliver(effect, 1));
+            assertThrows(IllegalStateException.class, () -> sender.deliver(new RollbackEngine.Effect<>(2, 0, slot), 2));
+            assertEquals(1, audience.sent.size());
+            for (String failure : List.of("provisional", "foreign", "stale", "send")) {
+                var target = new Audience();
+                var delivery = new PaperRollbackDirectPackets(java.util.Set.of(scene.target.getUUID()), registry, target);
+                var value = failure.equals("foreign") ? new PaperRollbackPacketData.Direct(new UUID(0, 999), new PaperRollbackPacketData.HeldSlot(4)) : slot;
+                target.current = !failure.equals("stale"); target.throwAfterSend = failure.equals("send");
+                assertThrows(RuntimeException.class, () -> delivery.deliver(new RollbackEngine.Effect<>(1, 0, value), failure.equals("provisional") ? 0 : 1));
+                assertEquals(failure.equals("send") ? 1 : 0, target.sent.size());
+                target.current = true; target.throwAfterSend = false;
+                assertThrows(IllegalStateException.class, () -> delivery.deliver(effect, 1));
+                assertEquals(failure.equals("send") ? 1 : 0, target.sent.size());
+            }
+            var rawAudience = new Audience();
+            var rawSender = new PaperRollbackDirectPackets(java.util.Set.of(scene.target.getUUID()), registry, rawAudience);
+            scene.target.connection.send(new ClientboundSetHealthPacket(7, 8, 2));
+            var raw = (PaperRollbackConnection.PacketOutput) scene.combat.outputs.getFirst();
+            try (var clock = RollbackClock.at(1000, 1, 50_000_000)) {
+                assertThrows(IllegalStateException.class, () -> rawSender.deliver(new RollbackEngine.Effect<>(1, 0, raw), 1));
+            }
+            assertTrue(rawAudience.sent.isEmpty());
+            rawSender.deliver(new RollbackEngine.Effect<>(1, 0, raw), 1);
+            assertEquals(7, ((ClientboundSetHealthPacket) rawAudience.sent.getFirst()).getHealth());
+            assertNull(Bukkit.getServer()); return null;
+        });
+    }
+
     @Test void packetsAreDetachedAtSendAndUnimplementedNetworkCallbacksFailBeforeOutput() throws Exception {
         onTickThread(() -> {
             var scene = new Scene();
