@@ -159,6 +159,13 @@ darkness, and its spatial integration test now covers night brightness, persiste
 visibility, terrain occlusion and restoration of weather/border/daytime together.
 Focused native-client tests and the remapped artifact build pass. Installation in the
 complete negotiated client factory remains outstanding.
+World capture now expands the requested arena to complete horizontal chunks plus one
+chunk of light-propagation margin, and to the native world's full build height. The
+expanded volume is checked against the configured cell budget before capture. Existing
+loaded-chunk and storage limits still apply; capture never loads missing chunks. Bounds
+tests cover negative coordinates, exact chunk edges, world height, budget and integer
+overflow. This supplies lighting-compatible terrain to the owned duel capture path;
+it does not install either runtime bootstrap.
 
 Live scheduler restoration/replacement now accepts a synchronous whole-state commit.
 Native callback submissions are staged while dispatch remains gated; only a successful

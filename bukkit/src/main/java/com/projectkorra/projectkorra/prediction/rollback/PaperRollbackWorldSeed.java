@@ -6,7 +6,7 @@ import net.minecraft.server.level.ServerLevel;
 
 import java.util.Objects;
 
-/** Captures the actual match world synchronously without loading chunks or changing live state. */
+/** Captures the arena plus full-height lighting margin without loading chunks or changing live state. */
 public final class PaperRollbackWorldSeed {
     private PaperRollbackWorldSeed() { }
 
@@ -17,9 +17,8 @@ public final class PaperRollbackWorldSeed {
             throw new IllegalStateException("Capture the match world on the live tick thread before replay");
         }
         var bukkit = world.getWorld();
-        if (bounds.minY() != bukkit.getMinHeight() || bounds.maxY() != bukkit.getMaxHeight()) {
-            throw new IllegalArgumentException("Match capture must include the world's full build height");
-        }
+        bounds = com.projectkorra.projectkorra.prediction.rollback.world.RollbackLightingBounds.capture(
+                bounds, bukkit.getMinHeight(), bukkit.getMaxHeight(), limits.maximumCells());
         long tick = world.getGameTime(), day = world.getDayTime();
         var settings = PaperRollbackWorldSettings.capture(world, randomSeed, soundSeed);
         var border = PaperRollbackBorder.capture(world.getWorldBorder());
