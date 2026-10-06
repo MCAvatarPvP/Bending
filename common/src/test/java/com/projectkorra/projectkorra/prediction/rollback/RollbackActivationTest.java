@@ -25,6 +25,16 @@ class RollbackActivationTest {
     private static final UUID PARTICIPANT = new UUID(0, 1);
     private static final ClickType INPUT = ClickType.LEFT_CLICK;
 
+    @Test void registrationCaptureRequiresACompletedInputBoundary() {
+        AbilityActivationManager.beginTracking();
+        try {
+            AbilityActivationManager.markHandled();
+            assertThrows(IllegalStateException.class, AbilityActivationManager::captureRollbackRegistry);
+            assertTrue(AbilityActivationManager.finishTracking());
+            assertNotNull(AbilityActivationManager.captureRollbackRegistry());
+        } finally { AbilityActivationManager.finishTracking(); }
+    }
+
     @Test void lateOneShotInputReplaysExistingRegisteredHandlersWithoutRepeatingTheAction() throws Exception {
         try (var registry = new Registry()) {
             List<Long> activations = new ArrayList<>();

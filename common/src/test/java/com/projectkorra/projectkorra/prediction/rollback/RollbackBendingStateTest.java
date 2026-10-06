@@ -2,6 +2,10 @@ package com.projectkorra.projectkorra.prediction.rollback;
 
 import com.projectkorra.projectkorra.*;
 import com.projectkorra.projectkorra.ability.CoreAbility;
+import com.projectkorra.projectkorra.ability.activation.AbilityActivationManager;
+import com.projectkorra.projectkorra.ability.activation.ActivationContext;
+import com.projectkorra.projectkorra.ability.activation.ActivationHandler;
+import com.projectkorra.projectkorra.util.ClickType;
 import com.projectkorra.projectkorra.ability.util.Collision;
 import com.projectkorra.projectkorra.ability.util.CollisionManager;
 import com.projectkorra.projectkorra.attribute.AttributeCache;
@@ -77,6 +81,13 @@ class RollbackBendingStateTest {
             field(CoreAbility.class, "currentTick").setLong(null, 40);
             field(CoreAbility.class, "idCounter").setInt(null, 4);
             Pulse livePulse = new Pulse(bendingA, liveWorld, 1);
+            livePulse.activationAlias = context -> {
+                livePulse.activationHistory.add((Double) context.get("input"));
+                return true;
+            };
+            var liveActivations = (Map<ClickType, List<ActivationHandler>>) field(AbilityActivationManager.class, "GLOBAL_HANDLERS").get(null);
+            liveActivations.clear();
+            AbilityActivationManager.registerGlobal(ClickType.LEFT_CLICK, livePulse.activationAlias);
             var earthField = field(com.projectkorra.projectkorra.ability.ElementalAbility.class, "EARTH_BLOCKS");
             livePulse.materialAlias = (Set<String>) earthField.get(null);
             livePulse.materialAlias.add("SOURCE_MATERIAL");
@@ -156,6 +167,7 @@ class RollbackBendingStateTest {
             assertNotSame(livePulse, pulse);
             assertNotSame(livePulse.materialAlias, pulse.materialAlias);
             assertNotSame(livePulse.comboAlias, pulse.comboAlias);
+            assertNotSame(livePulse.activationAlias, pulse.activationAlias);
             assertTrue(pulse.materialAlias.contains("SOURCE_MATERIAL"));
             assertTrue(pulse.isStarted());
             assertEquals(livePulse.getStartTime(), pulse.getStartTime());
@@ -178,6 +190,16 @@ class RollbackBendingStateTest {
                         throw new AssertionError(method);
                     });
             var domain = RollbackDomain.create(graph, shared, List.of(imported, privateBus, privateScheduler), privatePlatform, null, prediction, imported::install);
+            AbilityActivationManager.beginTracking();
+            try {
+                domain.call(() -> {
+                    AbilityActivationManager.beginTracking();
+                    AbilityActivationManager.markHandled();
+                    assertTrue(AbilityActivationManager.finishTracking());
+                    return null;
+                });
+                assertFalse(AbilityActivationManager.finishTracking());
+            } finally { AbilityActivationManager.finishTracking(); }
             var copiedTask = (CapturedTask) imported.services().get(3);
             assertInstanceOf(RollbackCallback.class, ((RollbackTaskBindings) imported.services().get(2)).entries().getFirst().callback());
             assertSame(pulse, copiedTask.ability); assertEquals(1, privateScheduler.pendingTasks());
@@ -212,6 +234,10 @@ class RollbackBendingStateTest {
                 @Override public void restore(RollbackDomain.Checkpoint checkpoint) { domain.restore(checkpoint); }
                 @Override public Double predict(UUID participant, Double previous) { return previous; }
                 @Override public void step(long tick, Map<UUID, Double> inputs, RollbackStep<String> effects) {
+                    var activation = new ActivationContext(privateA, imported.players().get(A), ClickType.LEFT_CLICK);
+                    activation.put("input", inputs.get(B));
+                    assertTrue(AbilityActivationManager.dispatchGlobal(activation));
+                    AbilityActivationManager.registerGlobal(inputs.get(B) == 0 ? ClickType.RIGHT_CLICK : ClickType.SHIFT_DOWN, pulse.activationAlias);
                     pulse.materialAlias.add(inputs.get(B) == 0 ? "PREDICTED_MATERIAL" : "CORRECTED_MATERIAL");
                     assertTrue(com.projectkorra.projectkorra.ability.ElementalAbility.getEarthbendableBlocks()
                             .contains(inputs.get(B) == 0 ? "PREDICTED_MATERIAL" : "CORRECTED_MATERIAL"));
@@ -242,6 +268,19 @@ class RollbackBendingStateTest {
             assertTrue(domain.call(engine::reconcile).head().effects().isEmpty());
             assertEquals(List.of("Corrected", "Corrected"), pulse.comboAlias.stream().map(
                     com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation::getAbilityName).toList());
+            domain.call(() -> {
+                try {
+                    var privateActivations = (Map<ClickType, List<ActivationHandler>>) field(AbilityActivationManager.class, "GLOBAL_HANDLERS").get(null);
+                    assertFalse(privateActivations.containsKey(ClickType.RIGHT_CLICK));
+                    assertEquals(List.of(pulse.activationAlias, pulse.activationAlias), privateActivations.get(ClickType.SHIFT_DOWN));
+                    assertSame(pulse.activationAlias, privateActivations.get(ClickType.LEFT_CLICK).getFirst());
+                } catch (Exception failure) { throw new AssertionError(failure); }
+                return null;
+            });
+            assertEquals(Set.of(ClickType.LEFT_CLICK), liveActivations.keySet());
+            assertEquals(List.of(8.0, 8.0), pulse.activationHistory);
+            assertTrue(livePulse.activationHistory.isEmpty());
+            assertSame(livePulse.activationAlias, liveActivations.get(ClickType.LEFT_CLICK).getFirst());
             assertTrue(livePulse.comboAlias.isEmpty());
             assertTrue(livePulse.pendingAlias.isEmpty());
             assertEquals(Set.of(com.projectkorra.projectkorra.util.ClickType.LEFT_CLICK), pulse.pendingAlias);
@@ -458,7 +497,7 @@ class RollbackBendingStateTest {
                                                                  Player privateA, Player privateB, World privateWorld,
                                                                  AttributeCache sourceAttribute) throws Exception {
         List<Class<?>> objects = List.of(BendingPlayer.class, Pulse.class, Guard.class, Location.class, Cooldown.class,
-                com.projectkorra.projectkorra.ability.util.ComboManager.RollbackRegistry.class, com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation.class, com.projectkorra.projectkorra.ability.util.ComboManager.ComboAbilityInfo.class,
+                com.projectkorra.projectkorra.ability.util.ComboManager.RollbackRegistry.class, com.projectkorra.projectkorra.ability.activation.AbilityActivationManager.RollbackRegistry.class, com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation.class, com.projectkorra.projectkorra.ability.util.ComboManager.ComboAbilityInfo.class,
                 CoreAbility.RollbackRegistry.class, com.projectkorra.projectkorra.ability.ElementalAbility.RollbackMaterialRegistry.class, Manager.RollbackRegistry.class, StatisticsManager.class, CollisionManager.class, Collision.class,
                 OfflineBendingPlayer.RollbackTemporaryElement.class, AttributeCache.class,
                 CapturedRule.class, CapturedTask.class, RollbackCallback.class, RollbackTaskBindings.class, RollbackTaskBindings.Entry.class, RollbackTaskBindings.Handle.class,
@@ -545,6 +584,8 @@ class RollbackBendingStateTest {
         @Override public Location getLocation() { return location; }
     }
     private static final class Pulse extends Dynamic {
+        ActivationHandler activationAlias;
+        final List<Double> activationHistory = new ArrayList<>();
         ArrayList<com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation> comboAlias;
         Set<com.projectkorra.projectkorra.util.ClickType> pendingAlias;
         com.projectkorra.projectkorra.ability.util.ComboManager.ComboAbilityInfo comboDefinition;

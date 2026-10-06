@@ -17,18 +17,66 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class AbilityActivationManager {
-    private static final Map<String, EnumMap<ClickType, List<ActivationHandler>>> HANDLERS = new ConcurrentHashMap<>();
-    private static final Map<String, EnumMap<ClickType, List<ActivationHandler>>> MULTI_HANDLERS = new ConcurrentHashMap<>();
-    private static final EnumMap<ClickType, List<ActivationHandler>> GLOBAL_HANDLERS = new EnumMap<>(ClickType.class);
-    private static final Set<Class<?>> DISCOVERED = ConcurrentHashMap.newKeySet();
+    private static Map<String, EnumMap<ClickType, List<ActivationHandler>>> HANDLERS = new ConcurrentHashMap<>();
+    private static Map<String, EnumMap<ClickType, List<ActivationHandler>>> MULTI_HANDLERS = new ConcurrentHashMap<>();
+    private static EnumMap<ClickType, List<ActivationHandler>> GLOBAL_HANDLERS = new EnumMap<>(ClickType.class);
+    private static Map<Class<?>, Boolean> DISCOVERED = new ConcurrentHashMap<>();
     private static final ThreadLocal<ArrayDeque<TrackingFrame>> HANDLED_TRACKING =
             ThreadLocal.withInitial(ArrayDeque::new);
+
+    private static ArrayDeque<TrackingFrame> PRIVATE_TRACKING;
+
+    /** Captured with the common graph, including handler receivers and their shared aliases. */
+    public static final class RollbackRegistry {
+        private final Map<String, EnumMap<ClickType, List<ActivationHandler>>> handlers = HANDLERS;
+        private final Map<String, EnumMap<ClickType, List<ActivationHandler>>> multi = MULTI_HANDLERS;
+        private final EnumMap<ClickType, List<ActivationHandler>> global = GLOBAL_HANDLERS;
+        private final Map<Class<?>, Boolean> discovered = DISCOVERED;
+        private final ArrayDeque<TrackingFrame> tracking = new ArrayDeque<>();
+        private RollbackRegistry() {
+            if (!trackingStack().isEmpty()) throw new IllegalStateException("Activation capture requires an input boundary");
+        }
+        public void validate() {
+            if (!tracking.isEmpty()) throw new IllegalStateException("Imported activation tracking is not at an input boundary");
+            for (var group : handlers.values()) validateHandlers(group);
+            for (var group : multi.values()) validateHandlers(group);
+            validateHandlers(global);
+            for (var type : discovered.keySet()) Objects.requireNonNull(type, "discovered activation type");
+        }
+        private static void validateHandlers(Map<ClickType, List<ActivationHandler>> groups) {
+            groups.forEach((click, entries) -> {
+                Objects.requireNonNull(click, "activation click");
+                for (var handler : entries) {
+                    Objects.requireNonNull(handler, "activation handler");
+                    if (handler instanceof com.projectkorra.projectkorra.prediction.rollback.RollbackCallback portable) portable.validateActivation();
+                    if (handler instanceof AnnotatedHandler annotated) annotated.resolve();
+                }
+            });
+        }
+        public void install() {
+            if (!com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active())
+                throw new IllegalStateException("Activation import requires a private domain");
+            validate();
+            HANDLERS = handlers; MULTI_HANDLERS = multi; GLOBAL_HANDLERS = global; DISCOVERED = discovered;
+            PRIVATE_TRACKING = tracking;
+        }
+    }
+
+    public static RollbackRegistry captureRollbackRegistry() { return new RollbackRegistry(); }
+    public static List<java.lang.reflect.Field> rollbackFields() {
+        return com.projectkorra.projectkorra.prediction.rollback.RollbackStateGraph.staticFields(AbilityActivationManager.class,
+                field -> Set.of("HANDLERS", "MULTI_HANDLERS", "GLOBAL_HANDLERS", "DISCOVERED", "PRIVATE_TRACKING").contains(field.getName()));
+    }
+    private static ArrayDeque<TrackingFrame> trackingStack() {
+        return com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active() && PRIVATE_TRACKING != null
+                ? PRIVATE_TRACKING : HANDLED_TRACKING.get();
+    }
 
     private AbilityActivationManager() {
     }
 
     public static void beginTracking() {
-        HANDLED_TRACKING.get().push(new TrackingFrame());
+        trackingStack().push(new TrackingFrame());
     }
 
     public static boolean finishTracking() {
@@ -36,9 +84,9 @@ public final class AbilityActivationManager {
     }
 
     public static TrackingResult finishTrackingResult() {
-        final ArrayDeque<TrackingFrame> stack = HANDLED_TRACKING.get();
+        final ArrayDeque<TrackingFrame> stack = trackingStack();
         final TrackingFrame frame = stack.isEmpty() ? null : stack.pop();
-        if (stack.isEmpty()) HANDLED_TRACKING.remove();
+        if (stack.isEmpty() && stack != PRIVATE_TRACKING) HANDLED_TRACKING.remove();
         return frame == null
                 ? new TrackingResult(false, List.of())
                 : new TrackingResult(frame.handled, List.copyOf(frame.affectedAbilities));
@@ -49,7 +97,7 @@ public final class AbilityActivationManager {
     }
 
     public static void markHandled(final CoreAbility affectedAbility) {
-        final ArrayDeque<TrackingFrame> stack = HANDLED_TRACKING.get();
+        final ArrayDeque<TrackingFrame> stack = trackingStack();
         if (!stack.isEmpty()) {
             final TrackingFrame frame = stack.peek();
             frame.handled = true;
@@ -83,7 +131,7 @@ public final class AbilityActivationManager {
     }
 
     public static void discover(final CoreAbility ability) {
-        if (ability == null || !DISCOVERED.add(ability.getClass())) {
+        if (ability == null || DISCOVERED.putIfAbsent(ability.getClass(), Boolean.TRUE) != null) {
             return;
         }
 

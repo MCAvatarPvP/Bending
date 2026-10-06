@@ -2856,3 +2856,20 @@ nested callbacks, rewind, context mutation, handled results and rejection of an
 unannotated target. This supplies portable handlers; importing and isolating the
 activation registration maps is still outstanding, as are full runtime wiring and
 live two-client validation.
+
+### Private activation registration state
+
+The mandatory bending graph now carries bound, multi-ability and global activation
+registrations together with discovery membership and their captured object aliases.
+Installation validates portable callbacks before swapping private registry identities.
+Discovery uses a concurrent map directly rather than an unsupported backed key-set
+view. Private handled-input tracking has its own checkpointed stack, so replay does
+not mark an outer live input as handled; capture rejects an unfinished input boundary.
+
+Both transfer modes now exercise the real imported registry during late-input replay.
+Corrected input replaces predicted captured-state mutations and dynamic registrations,
+while ability-held callback aliases remain shared with the private registry. Live
+registrations and captured ability state remain unchanged. This establishes import
+and replay isolation, not the settled handler merge back into live registrations;
+that lifecycle integration, native runtime assembly and two-client testing remain
+required before live rollback can be enabled.

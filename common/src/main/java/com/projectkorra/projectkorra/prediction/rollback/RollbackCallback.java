@@ -84,6 +84,11 @@ public final class RollbackCallback implements com.projectkorra.projectkorra.uti
         for (Object value : captured) if (value instanceof RollbackCallback nested) nested.validate(visited);
     }
 
+    public void validateActivation() {
+        if (!ACTIVATION_INTERFACE.equals(functionalInterface)) throw new IllegalStateException("Scheduled callback is not an activation handler");
+        validate();
+    }
+
     public void validateTask() {
         if (ACTIVATION_INTERFACE.equals(functionalInterface)) throw new IllegalStateException("Activation callback is not a scheduled task");
         validate();
