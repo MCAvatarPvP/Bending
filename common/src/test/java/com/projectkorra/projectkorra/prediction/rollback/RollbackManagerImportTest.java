@@ -283,6 +283,7 @@ class RollbackManagerImportTest {
         private boolean flying, allowed;
         LivePlayer(UUID id) { this.id = id; }
         @Override public UUID getUniqueId() { return id; }
+        @Override public String getName() { return "player-" + id.getLeastSignificantBits(); }
         @Override public boolean isFlying() { return flying; }
         @Override public boolean getAllowFlight() { return allowed; }
         @Override public void setFlying(boolean value) { flying = value; }

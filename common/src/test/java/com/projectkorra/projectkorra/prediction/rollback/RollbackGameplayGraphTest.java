@@ -31,6 +31,7 @@ class RollbackGameplayGraphTest {
         final UUID id; final World world;
         Person(int id, World world) { this.id = new UUID(0, id); this.world = world; }
         @Override public UUID getUniqueId() { return id; }
+        @Override public String getName() { return "player-" + id.getLeastSignificantBits(); }
         @Override public World getWorld() { return world; }
         @Override public boolean isOnline() { return true; }
     }

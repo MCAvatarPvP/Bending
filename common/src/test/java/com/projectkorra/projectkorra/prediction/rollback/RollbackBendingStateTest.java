@@ -80,6 +80,12 @@ class RollbackBendingStateTest {
             var earthField = field(com.projectkorra.projectkorra.ability.ElementalAbility.class, "EARTH_BLOCKS");
             livePulse.materialAlias = (Set<String>) earthField.get(null);
             livePulse.materialAlias.add("SOURCE_MATERIAL");
+            var comboField = field(com.projectkorra.projectkorra.ability.util.ComboManager.class, "RECENTLY_USED");
+            var liveHistory = (Map<String, ArrayList<com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation>>) comboField.get(null);
+            livePulse.comboAlias = new ArrayList<>();
+            liveHistory.put(liveA.getName(), livePulse.comboAlias);
+            var outsiderHistory = new ArrayList<com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation>();
+            liveHistory.put(other.getName(), outsiderHistory);
             Guard liveGuard = new Guard(bendingB, liveWorld, 2);
             Pulse unrelatedPulse = new Pulse(bendingOther, liveWorld, 3);
             livePulse.start();
@@ -143,6 +149,7 @@ class RollbackBendingStateTest {
             Guard guard = (Guard) imported.abilities().stream().filter(Guard.class::isInstance).findFirst().orElseThrow();
             assertNotSame(livePulse, pulse);
             assertNotSame(livePulse.materialAlias, pulse.materialAlias);
+            assertNotSame(livePulse.comboAlias, pulse.comboAlias);
             assertTrue(pulse.materialAlias.contains("SOURCE_MATERIAL"));
             assertTrue(pulse.isStarted());
             assertEquals(livePulse.getStartTime(), pulse.getStartTime());
@@ -202,6 +209,10 @@ class RollbackBendingStateTest {
                     pulse.materialAlias.add(inputs.get(B) == 0 ? "PREDICTED_MATERIAL" : "CORRECTED_MATERIAL");
                     assertTrue(com.projectkorra.projectkorra.ability.ElementalAbility.getEarthbendableBlocks()
                             .contains(inputs.get(B) == 0 ? "PREDICTED_MATERIAL" : "CORRECTED_MATERIAL"));
+                    com.projectkorra.projectkorra.ability.util.ComboManager.addRecentAbility(privateA,
+                            new com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation(
+                                    inputs.get(B) == 0 ? "Predicted" : "Corrected", com.projectkorra.projectkorra.util.ClickType.LEFT_CLICK,
+                                    RollbackClock.millis()));
                     privateScheduler.advance(tick);
                     Manager.getManager(StatisticsManager.class).addStatistic(A, 1, inputs.get(B).longValue() + 1);
                     guard.location.setY(inputs.get(B));
@@ -221,6 +232,10 @@ class RollbackBendingStateTest {
             assertEquals(0, livePulse.location.getX());
             assertEquals(RollbackEngine.Submission.ACCEPTED, domain.call(() -> engine.submit(B, 1, 8.0)));
             assertTrue(domain.call(engine::reconcile).head().effects().isEmpty());
+            assertEquals(List.of("Corrected", "Corrected"), pulse.comboAlias.stream().map(
+                    com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation::getAbilityName).toList());
+            assertTrue(livePulse.comboAlias.isEmpty());
+            assertSame(outsiderHistory, liveHistory.get(other.getName()));
             assertFalse(pulse.materialAlias.contains("PREDICTED_MATERIAL"));
             assertTrue(pulse.materialAlias.contains("CORRECTED_MATERIAL"));
             assertSame(livePulse.materialAlias, earthField.get(null));
@@ -413,12 +428,13 @@ class RollbackBendingStateTest {
         assertThrows(IllegalArgumentException.class, () -> RollbackBendingState.capture(List.of(source, source), new CollisionManager(), List.of(), transfer));
     }
 
-    private static Player player(UUID id) { return new Player() { @Override public UUID getUniqueId() { return id; } }; }
+    private static Player player(UUID id) { return new Player() { @Override public UUID getUniqueId() { return id; } @Override public String getName() { return "player-" + id.getLeastSignificantBits(); } }; }
     private record Portable(RollbackGraphCodec sender, RollbackGraphCodec receiver) { }
     private static Portable portableTransfer(Player liveA, Player liveB, World liveWorld,
                                                                  Player privateA, Player privateB, World privateWorld,
                                                                  AttributeCache sourceAttribute) throws Exception {
         List<Class<?>> objects = List.of(BendingPlayer.class, Pulse.class, Guard.class, Location.class, Cooldown.class,
+                com.projectkorra.projectkorra.ability.util.ComboManager.RollbackRegistry.class, com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation.class, com.projectkorra.projectkorra.ability.util.ComboManager.ComboAbilityInfo.class,
                 CoreAbility.RollbackRegistry.class, com.projectkorra.projectkorra.ability.ElementalAbility.RollbackMaterialRegistry.class, Manager.RollbackRegistry.class, StatisticsManager.class, CollisionManager.class, Collision.class,
                 OfflineBendingPlayer.RollbackTemporaryElement.class, AttributeCache.class,
                 CapturedRule.class, CapturedTask.class, RollbackCallback.class, RollbackTaskBindings.class, RollbackTaskBindings.Entry.class, RollbackTaskBindings.Handle.class,
@@ -428,6 +444,7 @@ class RollbackBendingStateTest {
         var symbols = new ArrayList<Class<?>>();
         symbols.add(RollbackBendingStateTest.class);
         symbols.add(com.projectkorra.projectkorra.platform.mc.Material.class);
+        symbols.add(com.projectkorra.projectkorra.util.ClickType.class);
         for (var field : OfflineBendingPlayer.class.getDeclaredFields()) if (field.getType().isEnum()) symbols.add(field.getType());
         var targetAttribute = new AttributeCache(sourceAttribute.getField(), sourceAttribute.getAttribute());
         var sourceBindings = List.of(new RollbackGraphCodec.Binding("player/A", Player.class, liveA),
@@ -504,6 +521,7 @@ class RollbackBendingStateTest {
         @Override public Location getLocation() { return location; }
     }
     private static final class Pulse extends Dynamic {
+        ArrayList<com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation> comboAlias;
         Set<String> materialAlias;
         AttributeCache linkedCache;
         Map<CoreAbility, Object> linkedValues;

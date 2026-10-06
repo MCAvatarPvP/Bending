@@ -7,6 +7,7 @@ import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.ability.util.CollisionManager;
+import com.projectkorra.projectkorra.ability.util.ComboManager;
 import com.projectkorra.projectkorra.attribute.AttributeCache;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackPlayer;
@@ -29,18 +30,20 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
     private final Manager.RollbackRegistry managers;
     private final CollisionManager collisions;
     private final ElementalAbility.RollbackMaterialRegistry materials;
+    private final ComboManager.RollbackRegistry combos;
     private final List<OfflineBendingPlayer.RollbackTemporaryElement> temporaryElements;
     private final List<Object> services;
     private boolean installed;
 
     private RollbackBendingState(Map<UUID, BendingPlayer> players, CoreAbility.RollbackRegistry abilities,
                                  Manager.RollbackRegistry managers, CollisionManager collisions, List<OfflineBendingPlayer.RollbackTemporaryElement> temporaryElements,
-                                 ElementalAbility.RollbackMaterialRegistry materials, List<Object> services) {
+                                 ElementalAbility.RollbackMaterialRegistry materials, ComboManager.RollbackRegistry combos, List<Object> services) {
         this.players = Collections.unmodifiableMap(players);
         this.abilities = abilities;
         this.managers = managers;
         this.collisions = collisions;
         this.materials = Objects.requireNonNull(materials);
+        this.combos = Objects.requireNonNull(combos);
         this.temporaryElements = List.copyOf(temporaryElements);
         this.services = List.copyOf(services);
     }
@@ -263,12 +266,15 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
                 : OfflineBendingPlayer.captureRollbackTemporaryElements(roster.keySet()));
         roots.add(managerRegistry);
         roots.add(ElementalAbility.captureRollbackMaterials());
+        var combos = ComboManager.captureRollbackRegistry(roster.values().stream().map(BendingPlayer::getPlayer).toList());
+        roots.add(combos);
         for (Object service : services) if (!(service instanceof CoreAbility.RollbackIdReservation))
             roots.add(service instanceof RollbackTaskBindings.Capture tasks ? tasks.bindings() : service);
         // Attribute definitions exist for future activations too. Keep their metadata,
         // but import only this roster's per-instance cache entries. Project the maps,
         // not the cache objects, to preserve references held by arbitrary ability fields.
         var projections = new IdentityHashMap<Object, RollbackStateTransfer.Replacement>();
+        combos.projectSources((source, view) -> projections.put(source, RollbackStateTransfer.Replacement.fromProjection(view)));
         for (Object service : services) if (service instanceof RollbackTaskBindings.Capture tasks) tasks.projectSources(projections::put);
         java.util.function.BiConsumer<Object, Object> projectManager = (source, view) ->
                 projections.put(source, RollbackStateTransfer.Replacement.fromProjection(view));
@@ -296,7 +302,7 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
 
     private static RollbackBendingState fromRoots(Collection<UUID> participants, List<Object> copied, Map<UUID, Player> livePlayers) {
         var roster = new TreeSet<>(participants);
-        if (roster.isEmpty() || roster.size() > 128 || roster.size() != participants.size() || copied.size() < roster.size() + 5) {
+        if (roster.isEmpty() || roster.size() > 128 || roster.size() != participants.size() || copied.size() < roster.size() + 6) {
             throw new IllegalArgumentException("Bending import roster/roots");
         }
         var players = new LinkedHashMap<UUID, BendingPlayer>();
@@ -319,13 +325,14 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
                 .map(value -> root(value, OfflineBendingPlayer.RollbackTemporaryElement.class)).toList();
         var managers = root(copied.get(index++), Manager.RollbackRegistry.class);
         var materials = root(copied.get(index++), ElementalAbility.RollbackMaterialRegistry.class);
+        var combos = root(copied.get(index++), ComboManager.RollbackRegistry.class);
         for (CoreAbility ability : abilities.instances()) {
             BendingPlayer player = ability.getPlayer() == null ? null : players.get(ability.getPlayer().getUniqueId());
             if (player == null || ability.getBendingPlayer() != player || ability.getPlayer().handle() != player.getPlayer().handle()) {
                 throw new IllegalStateException("Imported ability does not reference the participant bending graph");
             }
         }
-        return new RollbackBendingState(players, abilities, managers, collisions, temporaryElements, materials, copied.subList(index, copied.size()));
+        return new RollbackBendingState(players, abilities, managers, collisions, temporaryElements, materials, combos, copied.subList(index, copied.size()));
     }
 
     private static <T> T root(Object value, Class<T> type) {
@@ -341,6 +348,7 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
     /** Include these roots in addition to every other shared service used by the session. */
     public static List<Field> sharedFields() {
         var fields = new ArrayList<Field>(ElementalAbility.rollbackMaterialFields());
+        fields.addAll(ComboManager.rollbackFields());
         fields.addAll(RollbackStateGraph.staticFields(OfflineBendingPlayer.class,
                 field -> Set.of("PLAYERS", "ONLINE_PLAYERS", "TEMP_ELEMENTS").contains(field.getName())));
         fields.addAll(RollbackStateGraph.staticFields(CoreAbility.class, field -> field.getName().startsWith("INSTANCES")
@@ -372,6 +380,7 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
             tasks.getFirst().install(scheduler);
         }
         materials.install();
+        combos.install();
         abilities.install();
         OfflineBendingPlayer.installRollbackPlayers(players, temporaryElements);
         ProjectKorra.collisionManager = collisions;
@@ -387,6 +396,7 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
         roots.add(managers);
         roots.add(collisions);
         roots.add(materials);
+        roots.add(combos);
         roots.addAll(temporaryElements);
         roots.addAll(services);
         return roots;

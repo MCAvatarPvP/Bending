@@ -2807,3 +2807,18 @@ This resolves the specific ElementalAbility cache gap noted above. Class startup
 still needs a valid loader platform/configuration, and other shared/static gameplay
 state remains part of the broader runtime audit. Native runtime installation and
 live two-client validation are still outstanding.
+
+
+### Combo registry import and replay
+
+The bending graph now includes combo definitions and metadata plus the enrolled
+players' recent input histories, pending one-tick triggers and combo-help sessions.
+Capture filters player-owned maps by the exact roster names/UUIDs. Projection
+preserves ability-held aliases to the filtered registries, and installation swaps
+the private registry identities with the domain's shared-field checkpoints.
+
+Both transfer paths have a late-input history test: corrected replay removes the
+predicted combo history, retains the ability's history-list alias, and leaves live
+and unrelated-player histories unchanged. This is startup/replay coverage. The
+settled combo-state merge back into the live roster is not implemented yet, so the
+new registry does not establish complete duel teardown or enable live sessions.

@@ -31,13 +31,48 @@ public class ComboManager {
     private static final long CLEANUP_DELAY = 20 * 60;
     private static final long COMBO_HISTORY_RETENTION_MILLIS = CLEANUP_DELAY * 50L;
     private static final int MAX_COMBO_HELP_VISIBLE_LENGTH = 72;
-    private static final Map<String, ArrayList<AbilityInformation>> RECENTLY_USED = new ConcurrentHashMap<>();
-    private static final HashMap<String, ComboAbilityInfo> COMBO_ABILITIES = new HashMap<>();
-    private static final HashMap<String, String> AUTHORS = new HashMap<>();
-    private static final HashMap<String, String> DESCRIPTIONS = new HashMap<>();
-    private static final HashMap<String, String> INSTRUCTIONS = new HashMap<>();
-    private static final HashMap<UUID, Set<ClickType>> SCHEDULED_COMBO_ABILITY = new HashMap<>();
-    private static final Map<UUID, ComboHelpSession> COMBO_HELP_SESSIONS = new ConcurrentHashMap<>();
+    private static Map<String, ArrayList<AbilityInformation>> RECENTLY_USED = new ConcurrentHashMap<>();
+    private static HashMap<String, ComboAbilityInfo> COMBO_ABILITIES = new HashMap<>();
+    private static HashMap<String, String> AUTHORS = new HashMap<>();
+    private static HashMap<String, String> DESCRIPTIONS = new HashMap<>();
+    private static HashMap<String, String> INSTRUCTIONS = new HashMap<>();
+    private static HashMap<UUID, Set<ClickType>> SCHEDULED_COMBO_ABILITY = new HashMap<>();
+    private static Map<UUID, ComboHelpSession> COMBO_HELP_SESSIONS = new ConcurrentHashMap<>();
+
+    /** Participant combo state plus shared definitions; copied with the ability graph. */
+    public static final class RollbackRegistry {
+        private final Map<String, ArrayList<AbilityInformation>> recent = new ConcurrentHashMap<>();
+        private final HashMap<UUID, Set<ClickType>> scheduled = new HashMap<>();
+        private final Map<UUID, ComboHelpSession> help = new ConcurrentHashMap<>();
+        private final HashMap<String, ComboAbilityInfo> definitions = COMBO_ABILITIES;
+        private final HashMap<String, String> authors = AUTHORS, descriptions = DESCRIPTIONS, instructions = INSTRUCTIONS;
+        private RollbackRegistry(Collection<Player> players) {
+            var ids = new HashSet<UUID>(); var names = new HashSet<String>();
+            for (var player : players) {
+                if (!ids.add(player.getUniqueId()) || !names.add(player.getName()))
+                    throw new IllegalArgumentException("Duplicate combo roster identity/name");
+                var history = RECENTLY_USED.get(player.getName()); if (history != null) recent.put(player.getName(), history);
+                var pending = SCHEDULED_COMBO_ABILITY.get(player.getUniqueId()); if (pending != null) scheduled.put(player.getUniqueId(), pending);
+                var assistance = COMBO_HELP_SESSIONS.get(player.getUniqueId()); if (assistance != null) help.put(player.getUniqueId(), assistance);
+            }
+        }
+        public void projectSources(java.util.function.BiConsumer<Object, Object> project) {
+            project.accept(RECENTLY_USED, recent); project.accept(SCHEDULED_COMBO_ABILITY, scheduled);
+            project.accept(COMBO_HELP_SESSIONS, help);
+        }
+        public void install() {
+            if (!com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active())
+                throw new IllegalStateException("Combo import requires a private domain");
+            RECENTLY_USED = recent; SCHEDULED_COMBO_ABILITY = scheduled; COMBO_HELP_SESSIONS = help;
+            COMBO_ABILITIES = definitions; AUTHORS = authors; DESCRIPTIONS = descriptions; INSTRUCTIONS = instructions;
+        }
+    }
+    public static RollbackRegistry captureRollbackRegistry(Collection<Player> players) { return new RollbackRegistry(players); }
+    public static List<java.lang.reflect.Field> rollbackFields() {
+        return com.projectkorra.projectkorra.prediction.rollback.RollbackStateGraph.staticFields(ComboManager.class,
+                field -> Set.of("RECENTLY_USED", "COMBO_ABILITIES", "AUTHORS", "DESCRIPTIONS", "INSTRUCTIONS",
+                        "SCHEDULED_COMBO_ABILITY", "COMBO_HELP_SESSIONS").contains(field.getName()));
+    }
 
     public ComboManager() {
         COMBO_ABILITIES.clear();
