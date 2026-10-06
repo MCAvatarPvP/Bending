@@ -73,4 +73,44 @@ class PaperRollbackLightingNativeTest {
             return null;
         });
     }
+    @Test void productionLightingRewindsNativePropagationAndRejectsMutationsWithoutHalo() throws Exception {
+        onTickThread(() -> {
+            var bounds = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Bounds(-16, 0, -16, 32, 32, 32);
+            var air = new com.projectkorra.projectkorra.platform.mc.block.data.BlockData(com.projectkorra.projectkorra.platform.mc.Material.AIR);
+            air.setExactState("minecraft:air");
+            var cell = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Cell(air, null,
+                    com.projectkorra.projectkorra.platform.mc.block.Biome.DESERT, (byte) 15, .8, .4);
+            var builder = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackTerrainSeed.Builder(bounds, 1_048_576);
+            builder.append(cell, 48 * 48 * 32);
+            var terrain = builder.finish();
+            var light = com.projectkorra.projectkorra.prediction.rollback.world.RollbackLightSeed.capture(bounds, 48 * 48 * 32, p -> 15, p -> 0);
+            var registry = (RegistryAccess) new PaperRollbackDamageNativeTest.Combat().registryAccess();
+            var lighting = new PaperRollbackLighting(terrain, light, registry, true);
+            var initial = lighting.captureRollbackState();
+            var source = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Position(15, 8, 8);
+            var neighbour = source.offset(1, 0, 0); var roof = source.offset(0, 1, 0);
+            var glow = new com.projectkorra.projectkorra.platform.mc.block.data.BlockData(com.projectkorra.projectkorra.platform.mc.Material.GLOWSTONE);
+            glow.setExactState("minecraft:glowstone");
+            var stone = new com.projectkorra.projectkorra.platform.mc.block.data.BlockData(com.projectkorra.projectkorra.platform.mc.Material.STONE);
+            stone.setExactState("minecraft:stone");
+            lighting.apply(Map.of(source, glow, roof, stone));
+            assertEquals(14, lighting.block(neighbour));
+            assertEquals(0, lighting.sky(source));
+            var changed = lighting.captureRollbackState();
+            lighting.apply(Map.of(source, air, roof, air));
+            assertEquals(0, lighting.block(neighbour)); assertEquals(15, lighting.sky(source));
+            lighting.restoreRollbackState(changed);
+            assertEquals(14, lighting.block(neighbour)); assertEquals(0, lighting.sky(source));
+            lighting.restoreRollbackState(initial);
+            assertEquals(0, lighting.block(neighbour)); assertEquals(15, lighting.sky(source));
+            lighting.apply(Map.of(roof, stone));
+            assertEquals(14, lighting.sky(source));
+            lighting.restoreRollbackState(initial);
+            assertEquals(15, lighting.sky(source));
+            var edge = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Position(-16, 8, 8);
+            assertThrows(IllegalArgumentException.class, () -> lighting.apply(Map.of(source, glow, edge, glow)));
+            assertEquals(0, lighting.block(source));
+            return null;
+        });
+    }
 }
