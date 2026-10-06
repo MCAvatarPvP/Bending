@@ -17,3 +17,26 @@ dependencies {
 tasks.withType(Test).configureEach {
     useJUnitPlatform()
 }
+
+// Both loaders package this same locally generated gameplay type inventory.
+def rollbackCatalogDirectory = layout.buildDirectory.dir('generated/rollbackCatalog')
+tasks.register('generateRollbackGameplayCatalog') {
+    dependsOn tasks.named('compileJava')
+    inputs.files(sourceSets.main.output.classesDirs)
+    outputs.dir(rollbackCatalogDirectory)
+    doLast {
+        def names = new TreeSet<String>()
+        sourceSets.main.output.classesDirs.files.each { root ->
+            if (root.exists()) fileTree(root).matching { include '**/*.class' }.files.each { compiled ->
+                def name = root.toPath().relativize(compiled.toPath()).toString().replace('\\', '.').replace('/', '.')
+                name = name.substring(0, name.length() - 6)
+                if (!name.endsWith('package-info') && name != 'module-info') names.add(name)
+            }
+        }
+        def target = rollbackCatalogDirectory.get().file('META-INF/projectkorra/rollback-gameplay.types').asFile
+        target.parentFile.mkdirs()
+        target.setText(names.join('\n') + '\n', 'UTF-8')
+    }
+}
+sourceSets.main.resources.srcDir(rollbackCatalogDirectory)
+tasks.named('processResources') { dependsOn tasks.named('generateRollbackGameplayCatalog') }

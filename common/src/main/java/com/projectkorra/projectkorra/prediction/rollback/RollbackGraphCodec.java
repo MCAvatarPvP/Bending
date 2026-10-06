@@ -104,9 +104,9 @@ public final class RollbackGraphCodec {
                         schemaString(out, sharedTypeName(access.field.getType()));
                         out.writeInt(access.field.getModifiers());
                     }
-                    Object[] constants = type.isEnum() ? type.getEnumConstants() : new Object[0];
-                    out.writeInt(constants.length);
-                    for (Object constant : constants) schemaString(out, ((Enum<?>) constant).name());
+                    List<String> constants = type.isEnum() ? RollbackEnumSchema.names(type) : List.of();
+                    out.writeInt(constants.size());
+                    for (String constant : constants) schemaString(out, constant);
                 }
                 out.writeInt(this.bindings.size());
                 for (Binding binding : this.bindings) {
@@ -302,7 +302,12 @@ public final class RollbackGraphCodec {
             if (source instanceof Character) return leaf(Kind.CHAR, source);
             if (source instanceof UUID) return leaf(Kind.UUID, source);
             if (source instanceof Class<?> value) return new Entry(Kind.CLASS, catalog.id(value), null, NO_REFERENCES);
-            if (source instanceof Enum<?> value) return new Entry(Kind.ENUM, catalog.id(value.getDeclaringClass()), value.ordinal(), NO_REFERENCES);
+            if (source instanceof Enum<?> value) {
+                var names = RollbackEnumSchema.names(value.getDeclaringClass());
+                if (value.ordinal() >= names.size() || !names.get(value.ordinal()).equals(value.name()))
+                    throw invalid("enum declaration order");
+                return new Entry(Kind.ENUM, catalog.id(value.getDeclaringClass()), value.ordinal(), NO_REFERENCES);
+            }
             if (source instanceof OptionalInt) return leaf(Kind.OPTIONAL_INT, source);
             if (source instanceof OptionalLong) return leaf(Kind.OPTIONAL_LONG, source);
             if (source instanceof OptionalDouble) return leaf(Kind.OPTIONAL_DOUBLE, source);
@@ -391,17 +396,10 @@ public final class RollbackGraphCodec {
             return new Entry(Kind.OBJECT, id, null, references(children));
         }
 
-        @SuppressWarnings({"rawtypes", "unchecked"})
         int enumType(EnumMap<?, ?> map) {
-            if (!map.isEmpty()) return catalog.id(((Enum<?>) map.keySet().iterator().next()).getDeclaringClass());
-            // Public EnumMap operations expose the empty map's key contract without JDK reflection.
-            EnumMap probe = map.clone();
-            for (Class<?> type : catalog.types) if (type.isEnum() && type.getEnumConstants().length > 0) {
-                try { probe.put(type.getEnumConstants()[0], null); return catalog.id(type); }
-                catch (ClassCastException ignored) { }
-            }
-            throw invalid("empty enum map requires a registered nonempty enum");
+            return catalog.id(RollbackEnumSchema.keyType(map));
         }
+
     }
 
     private void write(DataOutputStream out, Entry entry) throws IOException {
@@ -504,7 +502,7 @@ public final class RollbackGraphCodec {
             if (entry.kind == Kind.ENUM || entry.kind == Kind.ENUM_MAP || entry.kind == Kind.ENUM_SET) {
                 Class<?> type = catalog.type(entry.type);
                 if (!type.isEnum()) throw invalid("enum type");
-                if (entry.kind == Kind.ENUM) bounded((Integer) entry.value, type.getEnumConstants().length - 1, "enum constant");
+                if (entry.kind == Kind.ENUM) bounded((Integer) entry.value, RollbackEnumSchema.names(type).size() - 1, "enum constant");
             }
             if (sorted(entry.kind)) requireAssignable(Comparator.class, entries.get(entry.references[n - 1]));
             int size = n - (sorted(entry.kind) ? 1 : 0);
@@ -551,7 +549,7 @@ public final class RollbackGraphCodec {
                 case DOUBLE -> new Double((Double) entry.value);
                 case CHAR -> new Character((Character) entry.value);
                 case STRING, UUID, OPTIONAL_INT, OPTIONAL_LONG, OPTIONAL_DOUBLE, PRIMITIVE_ARRAY -> entry.value;
-                case ENUM -> catalog.type(entry.type).getEnumConstants()[(Integer) entry.value];
+                case ENUM -> RollbackEnumSchema.constants(catalog.type(entry.type))[(Integer) entry.value];
                 case CLASS -> catalog.type(entry.type);
                 case ARRAY -> Array.newInstance(catalog.type(entry.type), n);
                 case OBJECT -> catalog.layout(entry.type).allocator.newInstance();

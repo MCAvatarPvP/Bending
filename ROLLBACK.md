@@ -53,6 +53,23 @@ implemented by the plugin and verified against the packaged Paper version.
 
 ## Current foundation
 
+### Installed gameplay catalog
+
+Both artifacts now package the same generated common gameplay class inventory.
+`RollbackGameplayCatalog` builds the portable schema from these local resources;
+wire input cannot introduce class names. Addons can supply the same local inventory
+resource. The inventory covers the common artifact rather than a selected ability list.
+Unsupported object forms remain explicit symbols and still require bindings or
+projections when reached by capture; the catalog does not silently omit their state.
+
+Enum schema discovery reads local bytecode without initializing unrelated gameplay
+classes. Empty enum maps use their own declared key type, including zero-constant
+enums, through a fixed read-only JDK field accessor. This avoids trying every enum's
+constants and triggering platform access during catalog creation or capture. Tests
+cover broad inventory construction, stable ordering, and empty-map round trips without
+unrelated initialization. Production bindings, full state roots and bootstrap installation
+remain required before this catalog enables a duel.
+
 ### Production assembly audit
 
 The current native execution test is not a production assembly template. Its
