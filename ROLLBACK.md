@@ -55,6 +55,19 @@ implemented by the plugin and verified against the packaged Paper version.
 
 ### October 5, 2026 integration update
 
+`PaperRollbackNativeOwnership` now composes the world tick gate and every roster
+connection gate behind one preparation/cleanup owner. Acquisition failures retain
+acquired components for cleanup. Startup polls every participant's network/server
+queue handoff and exposes readiness only for the full roster. Native world, passenger
+and removal changes invalidate readiness. Restoration runs before any connection is
+released; a failed final world-gate release reinstalls detached connection facades.
+Such a failed release requires a fresh packet handoff before cleanup can be retried,
+and this owner cannot resume simulation once cleanup starts. Native fixtures cover
+two-player readiness, outsider world ticking, failed restoration, recovered facades,
+stale queued input on retry, partial acquisition and idempotent release. This owner
+still needs common/task/terrain ownership and lifecycle event interception, and is
+not yet installed by a production bootstrap.
+
 A stock-Paper connection tick lease now installs a native listener subclass facade
 through a compare-and-set on the Connection's listener reference. Tick calls run
 maintenance on the original listener; permitted virtual calls delegate to that same

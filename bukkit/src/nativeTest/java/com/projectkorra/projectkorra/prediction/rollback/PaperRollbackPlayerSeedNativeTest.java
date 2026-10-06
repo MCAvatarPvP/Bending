@@ -624,6 +624,116 @@ class PaperRollbackPlayerSeedNativeTest {
         });
     }
 
+    @Test void nativeRosterWaitsForEveryPeerAndRecoversGatesAfterFailedWorldRelease() throws Exception {
+        onTickThread(() -> {
+            var configField = io.papermc.paper.configuration.GlobalConfiguration.class.getDeclaredField("instance");
+            configField.setAccessible(true); var previousConfig = configField.get(null);
+            var config = new io.papermc.paper.configuration.GlobalConfiguration();
+            config.misc = config.new Misc(); config.packetLimiter = config.new PacketLimiter(); configField.set(null, config);
+            var channels = new java.util.ArrayList<io.netty.channel.embedded.EmbeddedChannel>();
+            try {
+                var scene = new Scene();
+                var a = (ServerPlayer) scene.create().ownedPlayer();
+                var b = (ServerPlayer) scene.create(new UUID(0, 452)).ownedPlayer();
+                var outsider = (ServerPlayer) scene.create(new UUID(0, 453)).ownedPlayer();
+                var worldField = net.minecraft.server.level.ServerLevel.class.getDeclaredField("entityTickList"); worldField.setAccessible(true);
+                var originalTicks = new net.minecraft.world.level.entity.EntityTickList();
+                originalTicks.add(a); originalTicks.add(b); originalTicks.add(outsider); worldField.set(a.level(), originalTicks);
+                var originals = new java.util.ArrayList<MaintenanceProbe>();
+                for (var player : List.of(a, b)) {
+                    var original = nativeOwnershipConnection(player); originals.add(original);
+                    var channel = new io.netty.channel.embedded.EmbeddedChannel(); channels.add(channel); original.connection.channel = channel;
+                }
+                var group = PaperRollbackNativeOwnership.prepare(List.of(a, b), () -> { throw new IllegalStateException("stop requested"); });
+                assertSame(originalTicks, worldField.get(a.level()));
+                assertSame(originals.getFirst(), originals.getFirst().connection.getPacketListener());
+                assertThrows(IllegalStateException.class, group::requireReady);
+                group.acquire();
+                var gatedTicks = worldField.get(a.level());
+                var visible = new java.util.ArrayList<Entity>();
+                ((net.minecraft.world.level.entity.EntityTickList) gatedTicks).forEach(visible::add);
+                assertEquals(List.of(outsider), visible);
+                originals.forEach(original -> ((net.minecraft.server.network.ServerGamePacketListenerImpl) original.connection.getPacketListener()).tick());
+                originals.forEach(original -> assertEquals(0, original.nativeTicks));
+                var processor = new net.minecraft.network.PacketProcessor(Thread.currentThread());
+                var tasks = new java.util.ArrayDeque<Runnable>(); java.util.concurrent.Executor executor = tasks::add;
+                assertFalse(group.pollReady(processor, executor));
+                channels.getFirst().runPendingTasks(); tasks.remove().run();
+                assertFalse(group.pollReady(processor, executor));
+                assertThrows(IllegalStateException.class, group::requireReady);
+                channels.getLast().runPendingTasks(); tasks.remove().run();
+                assertTrue(group.pollReady(processor, executor)); group.requireReady();
+                assertThrows(IllegalArgumentException.class, () -> group.restoreAndRelease(() -> { throw new IllegalArgumentException("restore failed"); }));
+                assertThrows(IllegalStateException.class, group::requireReady);
+                assertThrows(IllegalStateException.class, () -> group.pollReady(processor, executor));
+                originals.forEach(original -> assertNotSame(original, original.connection.getPacketListener()));
+                // Fail the world release after connection detach, then verify both facades are recovered.
+                assertThrows(IllegalStateException.class, () -> group.restoreAndRelease(() -> {
+                    assertDoesNotThrow(() -> worldField.set(a.level(), originalTicks));
+                }));
+                originals.forEach(original -> assertNotSame(original, original.connection.getPacketListener()));
+                worldField.set(a.level(), gatedTicks);
+                assertThrows(IllegalStateException.class, () -> group.restoreAndRelease(() -> fail("Retry requires packet handoff")));
+                var move = new org.objenesis.ObjenesisStd().newInstance(net.minecraft.network.protocol.game.ServerboundMovePlayerPacket.Pos.class);
+                processor.scheduleIfPossible(originals.getFirst(), move);
+                assertFalse(group.pollCleanup(processor, executor));
+                channels.forEach(io.netty.channel.embedded.EmbeddedChannel::runPendingTasks);
+                while (!tasks.isEmpty()) tasks.remove().run();
+                assertTrue(group.pollCleanup(processor, executor));
+                assertEquals(0, originals.getFirst().movements); assertFalse(processor.executeSinglePacket());
+                group.restoreAndRelease(() -> {
+                    originals.forEach(original -> assertNotSame(original, original.connection.getPacketListener()));
+                    assertSame(gatedTicks, assertDoesNotThrow(() -> worldField.get(a.level())));
+                });
+                assertSame(originalTicks, worldField.get(a.level()));
+                originals.forEach(original -> {
+                    assertSame(original, original.connection.getPacketListener());
+                    ((net.minecraft.server.network.ServerGamePacketListenerImpl) original.connection.getPacketListener()).tick(); assertEquals(1, original.nativeTicks);
+                });
+                group.restoreAndRelease(() -> fail("Cleanup repeated"));
+                assertThrows(IllegalStateException.class, group::acquire);
+                var partial = PaperRollbackNativeOwnership.prepare(List.of(a, b), () -> fail("Unexpected stop"));
+                var listenerField = new PaperRollbackPlayerFields.Field<net.minecraft.network.PacketListener>(net.minecraft.network.Connection.class,
+                        "packetListener", net.minecraft.network.PacketListener.class);
+                var secondConnection = originals.getLast().connection;
+                listenerField.set(secondConnection, originals.getFirst());
+                assertThrows(IllegalStateException.class, partial::acquire);
+                assertNotSame(originals.getFirst(), originals.getFirst().connection.getPacketListener());
+                partial.restoreAndRelease(() -> {
+                    assertNotSame(originals.getFirst(), originals.getFirst().connection.getPacketListener());
+                    assertSame(originals.getFirst(), secondConnection.getPacketListener());
+                });
+                assertSame(originalTicks, worldField.get(a.level()));
+                assertSame(originals.getFirst(), originals.getFirst().connection.getPacketListener());
+                assertSame(originals.getFirst(), secondConnection.getPacketListener());
+                listenerField.set(secondConnection, originals.getLast());
+                var unacquired = PaperRollbackNativeOwnership.prepare(List.of(a, b), () -> fail("Unexpected stop"));
+                unacquired.restoreAndRelease(() -> fail("No native state was acquired"));
+                assertSame(originalTicks, worldField.get(a.level()));
+                return null;
+            } finally { channels.forEach(io.netty.channel.embedded.EmbeddedChannel::finishAndReleaseAll); configField.set(null, previousConfig); }
+        });
+    }
+
+    private static MaintenanceProbe nativeOwnershipConnection(ServerPlayer player) throws Exception {
+        player.joining = true;
+        new PaperRollbackPlayerFields.Field<Long>(ServerPlayer.class, "lastActionTime", long.class).set(player, 0L);
+        var original = new org.objenesis.ObjenesisStd().newInstance(MaintenanceProbe.class);
+        original.player = player; original.sent = new java.util.ArrayList<>(); player.connection = original;
+        var connection = new net.minecraft.network.Connection(net.minecraft.network.protocol.PacketFlow.SERVERBOUND);
+        var nativeConnection = net.minecraft.server.network.ServerCommonPacketListenerImpl.class.getDeclaredField("connection");
+        nativeConnection.setAccessible(true); nativeConnection.set(original, connection);
+        new PaperRollbackPlayerFields.Field<net.minecraft.network.PacketListener>(net.minecraft.network.Connection.class,
+                "packetListener", net.minecraft.network.PacketListener.class).set(connection, original);
+        for (var name : List.of("chatSpamThrottler", "dropSpamThrottler", "tabSpamThrottler", "recipeSpamPackets")) {
+            var field = net.minecraft.server.network.ServerGamePacketListenerImpl.class.getDeclaredField(name);
+            field.setAccessible(true); field.set(original, new net.minecraft.util.TickThrottler(1, 1));
+        }
+        new PaperRollbackPlayerFields.Field<Integer>(net.minecraft.server.network.ServerGamePacketListenerImpl.class,
+                "ackBlockChangesUpTo", int.class).set(original, -1);
+        return original;
+    }
+
     @Test void connectionPacketPolicyOnlyPassesAuditedControlAndRollbackChannels() {
         var allocator = new org.objenesis.ObjenesisStd();
         for (var type : List.of(net.minecraft.network.protocol.common.ServerboundKeepAlivePacket.class,

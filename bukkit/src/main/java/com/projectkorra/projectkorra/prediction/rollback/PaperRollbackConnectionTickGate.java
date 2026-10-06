@@ -83,6 +83,55 @@ public final class PaperRollbackConnectionTickGate {
     public static Lease prepare(ServerPlayer player, Runnable stopBeforeMutation) {
         boundary(); return new Lease(Objects.requireNonNull(player), Objects.requireNonNull(stopBeforeMutation));
     }
+    /**
+     * Restore all participants before resuming any native connection tick. A failed
+     * listener swap reinstalls already detached facades; callers must stop simulation
+     * and repeat the packet handoff before retrying after such a failure.
+     */
+    public static void restoreAll(Collection<Lease> participants, Runnable restore) {
+        restoreAll(participants, restore, () -> { });
+    }
+
+    static void restoreAll(Collection<Lease> participants, Runnable restore, Runnable releaseOtherGates) {
+        boundary(); Objects.requireNonNull(restore); Objects.requireNonNull(releaseOtherGates);
+        var leases = List.copyOf(participants);
+        if (leases.isEmpty() || new HashSet<>(leases).size() != leases.size())
+            throw new IllegalArgumentException("Connection cleanup roster");
+        for (var lease : leases) {
+            lease.checkThread();
+            if (lease.restoring) throw new IllegalStateException("Recursive connection roster cleanup");
+        }
+        if (leases.stream().allMatch(lease -> lease.released)) return;
+        for (var lease : leases) {
+            lease.requireCurrent();
+            if (lease.releaseRetryNeedsDrain) throw new IllegalStateException("Repeat packet handoff before retrying roster release");
+        }
+        var detached = new ArrayList<Lease>();
+        leases.forEach(lease -> lease.restoring = true);
+        try {
+            restore.run();
+            // Validate the entire roster again after restoration callbacks.
+            for (var lease : leases) lease.requireCurrent();
+            for (var lease : leases) {
+                if (!LISTENER.compareAndSet(lease.connection, lease.proxy, lease.original))
+                    throw new IllegalStateException("Connection roster changed during release");
+                detached.add(lease);
+            }
+            releaseOtherGates.run();
+            for (var lease : leases) { lease.released = true; lease.suspended = false; }
+        } catch (RuntimeException | Error failure) {
+            for (int i = detached.size() - 1; i >= 0; i--) {
+                var lease = detached.get(i);
+                if (!LISTENER.compareAndSet(lease.connection, lease.original, lease.proxy))
+                    failure.addSuppressed(new IllegalStateException("Cannot recover externally replaced connection gate"));
+                // A network callback could have captured the original during the
+                // attempted release. Its queued input must cross a fresh barrier.
+                lease.handoffBarrier = null; lease.packetsDrained = false; lease.releaseRetryNeedsDrain = true;
+            }
+            throw failure;
+        } finally { leases.forEach(lease -> lease.restoring = false); }
+    }
+
     public static final class Lease {
         private final Thread owner = Thread.currentThread();
         private final ServerPlayer player;
@@ -92,7 +141,7 @@ public final class PaperRollbackConnectionTickGate {
         private final Runnable stopBeforeMutation;
         private volatile boolean suspended;
         private volatile boolean released;
-        private boolean restoring, packetsDrained;
+        private boolean restoring, packetsDrained, releaseRetryNeedsDrain;
         private CompletableFuture<Void> handoffBarrier;
         private PacketProcessor packetProcessor;
         private io.netty.channel.Channel drainChannel;
@@ -142,17 +191,17 @@ public final class PaperRollbackConnectionTickGate {
                 var channel = Objects.requireNonNull(connection.channel, "Live connection channel");
                 if (!channel.isOpen()) throw new IllegalStateException("Connection closed during handoff");
                 packetProcessor = processor; drainChannel = channel;
-                handoffBarrier = new CompletableFuture<>();
+                var barrier = new CompletableFuture<Void>(); handoffBarrier = barrier;
                 try {
                     channel.eventLoop().execute(() -> {
                         try {
                             serverQueue.execute(() -> {
-                                if (Thread.currentThread() == owner) handoffBarrier.complete(null);
-                                else handoffBarrier.completeExceptionally(new IllegalStateException("Handoff marker ran outside the server thread"));
+                                if (Thread.currentThread() == owner) barrier.complete(null);
+                                else barrier.completeExceptionally(new IllegalStateException("Handoff marker ran outside the server thread"));
                             });
-                        } catch (RuntimeException failure) { handoffBarrier.completeExceptionally(failure); }
+                        } catch (RuntimeException failure) { barrier.completeExceptionally(failure); }
                     });
-                } catch (RuntimeException failure) { handoffBarrier.completeExceptionally(failure); }
+                } catch (RuntimeException failure) { barrier.completeExceptionally(failure); }
                 return false;
             }
             if (!handoffBarrier.isDone()) return false;
@@ -160,7 +209,7 @@ public final class PaperRollbackConnectionTickGate {
             PaperRollbackQueuedPackets.drain(processor, original, proxy);
             // A queued command may have torn the session down. Never start it again.
             requireCurrent();
-            packetsDrained = true;
+            packetsDrained = true; releaseRetryNeedsDrain = false;
             return true;
         }
 
@@ -175,7 +224,9 @@ public final class PaperRollbackConnectionTickGate {
             if (restoring) throw new IllegalStateException("Recursive connection cleanup");
             if (released) return;
             if (!suspended) { released = true; return; }
-            requireCurrent(); restoring = true;
+            requireCurrent();
+            if (releaseRetryNeedsDrain) throw new IllegalStateException("Repeat packet handoff before retrying connection release");
+            restoring = true;
             try {
                 restore.run(); requireCurrent();
                 if (!LISTENER.compareAndSet(connection, proxy, original))
