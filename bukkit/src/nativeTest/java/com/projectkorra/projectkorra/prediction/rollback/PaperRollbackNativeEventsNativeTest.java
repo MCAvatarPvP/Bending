@@ -105,6 +105,68 @@ class PaperRollbackNativeEventsNativeTest {
         });
     }
 
+    @Test void itemInteractionFactoriesPreserveHandsAndPrivateCancellationWithoutLiveServer() throws Exception {
+        onTickThread(() -> {
+            var scene = new Scene(); var foreign = new Scene();
+            var received = new ArrayList<Event>();
+            var router = new PaperRollbackNativeEvents(event -> {
+                received.add(event);
+                var interaction = (org.bukkit.event.player.PlayerInteractEvent) event;
+                interaction.setUseItemInHand(Event.Result.DENY);
+            }, entity -> entity == scene.player.getBukkitEntity());
+            var builder = new RollbackNativeMethods(); router.bind(builder);
+            var method = CraftEventFactory.class.getDeclaredMethod("callPlayerInteractEvent", Player.class,
+                    org.bukkit.event.block.Action.class, net.minecraft.world.item.ItemStack.class,
+                    net.minecraft.world.InteractionHand.class);
+            var copied = builder.build().get(method);
+            var item = new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.APPLE, 3);
+            for (var hand : net.minecraft.world.InteractionHand.values()) {
+                var event = (org.bukkit.event.player.PlayerInteractEvent) invoke(copied, scene.player,
+                        org.bukkit.event.block.Action.RIGHT_CLICK_AIR, item, hand);
+                assertSame(event, received.getLast());
+                assertEquals(hand == net.minecraft.world.InteractionHand.MAIN_HAND
+                        ? org.bukkit.inventory.EquipmentSlot.HAND : org.bukkit.inventory.EquipmentSlot.OFF_HAND, event.getHand());
+                assertEquals(Event.Result.DENY, event.useItemInHand());
+                assertNull(event.getClickedBlock()); assertEquals(3, event.getItem().getAmount());
+                assertEquals(3, item.getCount());
+            }
+            received.clear();
+            assertThrows(IllegalArgumentException.class, () -> invoke(copied, foreign.player,
+                    org.bukkit.event.block.Action.RIGHT_CLICK_AIR, item, net.minecraft.world.InteractionHand.MAIN_HAND));
+            assertTrue(received.isEmpty()); assertNull(Bukkit.getServer());
+            return null;
+        });
+    }
+
+    @Test void blockInteractionFactoryRetainsTargetAndSeparateInitialCancellation() throws Exception {
+        onTickThread(() -> {
+            var scene = new Scene(); var received = new ArrayList<Event>();
+            var builder = new RollbackNativeMethods();
+            new PaperRollbackNativeEvents(received::add, entity -> entity == scene.player.getBukkitEntity()).bind(builder);
+            var method = CraftEventFactory.class.getDeclaredMethod("callPlayerInteractEvent", Player.class,
+                    org.bukkit.event.block.Action.class, net.minecraft.core.BlockPos.class, net.minecraft.core.Direction.class,
+                    net.minecraft.world.item.ItemStack.class, boolean.class, boolean.class,
+                    net.minecraft.world.InteractionHand.class, net.minecraft.world.phys.Vec3.class);
+            var copied = builder.build().get(method);
+            var position = new net.minecraft.core.BlockPos(4, 7, -2);
+            for (boolean denyBlock : new boolean[]{false, true}) for (boolean denyItem : new boolean[]{false, true}) {
+                var event = (org.bukkit.event.player.PlayerInteractEvent) invoke(copied, scene.player,
+                        org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK, position, net.minecraft.core.Direction.UP,
+                        new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.APPLE), denyBlock, denyItem,
+                        net.minecraft.world.InteractionHand.OFF_HAND, new net.minecraft.world.phys.Vec3(4.25, 8, -1.5));
+                assertSame(event, received.getLast());
+                assertEquals(denyBlock ? Event.Result.DENY : Event.Result.ALLOW, event.useInteractedBlock());
+                assertEquals(denyItem ? Event.Result.DENY : Event.Result.DEFAULT, event.useItemInHand());
+                assertEquals(org.bukkit.inventory.EquipmentSlot.OFF_HAND, event.getHand());
+                assertEquals(4, event.getClickedBlock().getX()); assertEquals(7, event.getClickedBlock().getY());
+                assertEquals(-2, event.getClickedBlock().getZ());
+                assertEquals(org.bukkit.block.BlockFace.UP, event.getBlockFace());
+                assertEquals(new org.bukkit.util.Vector(.25, 1, .5), event.getClickedPosition());
+            }
+            assertNull(Bukkit.getServer()); return null;
+        });
+    }
+
     private static Object invoke(MethodHandle handle, Object... arguments) {
         try { return handle.invokeWithArguments(arguments); }
         catch (RuntimeException | Error failure) { throw failure; }

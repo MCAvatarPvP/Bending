@@ -2983,3 +2983,23 @@ round trips, validation, server seed assignment and non-repeating predicted edge
 This is intent transport, not a completed native item-use implementation. Block/entity
 target metadata, native item-use execution and production event/output installation
 remain required before live rollback activation and two-client validation.
+
+
+### Native item-use boundary audit and private interaction events
+
+The packaged Paper handleUseItem implementation does more than call ItemStack.use:
+it applies mobility/loading/rate gates, acknowledges the native sequence, installs aim,
+raycasts the private world, consults or emits an interaction event, refreshes the hand
+stack after callbacks, performs cancellation resynchronization, and handles a
+server-requested swing. ServerPlayerGameMode.useItem then preserves transformed hand
+stacks and inventory output. Consumption also owns timing, finish/release callbacks,
+consume cancellation, and replacement items. Binding only ItemStack.use would omit
+these causal operations; the production action remainder is still unfinished.
+
+PaperRollbackNativeEvents now copies all callPlayerInteractEvent overloads into the
+private dispatch graph. Native Paper tests verify both hands, item presence, private
+listener cancellation, foreign-player rejection before dispatch, block position/face,
+relative hit coordinates, and independent initial block/item cancellation. The tests
+run with Bukkit.getServer() null, so success cannot come from a live global dispatcher.
+This supplies the interaction-event boundary needed by native item use; it does not
+yet install the complete use-item action, inventory resynchronization, or live runtime.
