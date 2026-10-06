@@ -151,6 +151,14 @@ plus preservation of distinct imported layer values and graph-root restoration. 
 Fabric artifact builds. This is component coverage, not proof of complete lighting
 parity in arbitrary arenas; client spatial service installation and the complete duel
 bootstrap remain required.
+`FabricRollbackSpatial` now composes the owned client lighting, environment and border
+and exposes them to the checkpoint graph. Its sky query rejects another terrain store.
+The existing native team-query dependency is supplied as private state; this does not
+transfer or publish scoreboard displays. Fabric environment exposes captured sky
+darkness, and its spatial integration test now covers night brightness, persistent sky
+visibility, terrain occlusion and restoration of weather/border/daytime together.
+Focused native-client tests and the remapped artifact build pass. Installation in the
+complete negotiated client factory remains outstanding.
 
 Live scheduler restoration/replacement now accepts a synchronous whole-state commit.
 Native callback submissions are staged while dispatch remains gated; only a successful

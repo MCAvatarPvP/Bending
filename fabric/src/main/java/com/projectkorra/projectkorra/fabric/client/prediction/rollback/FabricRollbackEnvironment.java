@@ -39,6 +39,8 @@ public final class FabricRollbackEnvironment implements EnvironmentAttributeAcce
     }
     public void weather(RollbackEnvironmentData.Weather weather) { checkThread(); this.weather = Objects.requireNonNull(weather); evaluator.tick(); }
     public RollbackEnvironmentData.Weather weather() { checkThread(); return weather; }
+    /** Native sky darkness from this checkpoint's dimension attributes, time and weather. */
+    public int skyDarkness() { return (int) (15.0F - getAttributeValue(EnvironmentAttributes.SKY_LIGHT_LEVEL_GAMEPLAY)); }
     @Override public <T> T getAttributeValue(EnvironmentAttribute<T> attribute) { sync(); return evaluator.getAttributeValue(attribute); }
     @Override public <T> T getAttributeValue(EnvironmentAttribute<T> attribute, Vec3d position, WeightedAttributeList interpolation) {
         sync(); cell(position);
