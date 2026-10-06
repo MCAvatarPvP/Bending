@@ -20,10 +20,13 @@ public class AirFlow extends AbstractAirFlow implements AddonAbility, ComboAbili
         super(player);
         if (!this.bPlayer.canBendIgnoreBinds(this) || !ConfigManager.getConfig().getBoolean(path("Enable"))) return;
         this.cooldown = ConfigManager.getConfig().getLong(path("Cooldown"));
-        setFlowFields(ConfigManager.getConfig().getLong(path("ChargeTime")), ConfigManager.getConfig().getLong(path("Duration")),
+        setFlowFields(0, ConfigManager.getConfig().getLong(path("Duration")),
                 ConfigManager.getConfig().getDouble(path("Range")), ConfigManager.getConfig().getInt(path("ParticlePerTick")),
                 ConfigManager.getConfig().getDouble(path("ParticleSpawnAreaSize")));
         start();
+        if (isStarted() && !isRemoved()) {
+            launch();
+        }
     }
 
     private static String path(final String node) {
@@ -82,7 +85,7 @@ public class AirFlow extends AbstractAirFlow implements AddonAbility, ComboAbili
 
     @Override
     public String getInstructions() {
-        return "AirBurst (Hold Sneak) -> AirBlast (Left Click)";
+        return "AirBurst (Hold Sneak) -> AirBlast (Left Click). Activates immediately.";
     }
 
     @Override
@@ -100,7 +103,6 @@ public class AirFlow extends AbstractAirFlow implements AddonAbility, ComboAbili
         ConfigManager.getConfig().addDefault(path("Enable"), true);
         ConfigManager.getConfig().addDefault(path("Cooldown"), 5000);
         ConfigManager.getConfig().addDefault(path("Duration"), 10000);
-        ConfigManager.getConfig().addDefault(path("ChargeTime"), 500);
         ConfigManager.getConfig().addDefault(path("Range"), 20);
         ConfigManager.getConfig().addDefault(path("ParticlePerTick"), 1);
         ConfigManager.getConfig().addDefault(path("ParticleSpawnAreaSize"), 3);

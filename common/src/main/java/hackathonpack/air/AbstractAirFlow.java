@@ -43,6 +43,15 @@ abstract class AbstractAirFlow extends AirAbility {
 
     protected abstract double directionMultiplier();
 
+    protected final void launch() {
+        this.state = State.LAUNCHED;
+        this.launchTime = System.currentTimeMillis();
+        this.flowLocation = this.player.getEyeLocation().add(this.player.getLocation().getDirection().multiply(sourceDistance()));
+        this.flowDirection = this.player.getLocation().getDirection().multiply(directionMultiplier());
+        this.player.getWorld().playSound(this.flowLocation, Sound.valueOf("ITEM_ELYTRA_FLYING"), 0.05F, 1);
+        this.bPlayer.addCooldown(this);
+    }
+
     @Override
     public void progress() {
         if (this.state == State.LAUNCHED && System.currentTimeMillis() > this.launchTime + this.duration) {
@@ -61,12 +70,7 @@ abstract class AbstractAirFlow extends AirAbility {
         }
         if (this.state == State.CHARGED) {
             if (!this.player.isSneaking()) {
-                this.state = State.LAUNCHED;
-                this.launchTime = System.currentTimeMillis();
-                this.flowLocation = this.player.getEyeLocation().add(this.player.getLocation().getDirection().multiply(sourceDistance()));
-                this.flowDirection = this.player.getLocation().getDirection().multiply(directionMultiplier());
-                this.player.getWorld().playSound(this.flowLocation, Sound.valueOf("ITEM_ELYTRA_FLYING"), 0.05F, 1);
-                this.bPlayer.addCooldown(this);
+                launch();
             } else {
                 playAirbendingParticles(this.bPlayer, this.player.getEyeLocation().add(this.player.getLocation().getDirection().multiply(sourceDistance())), 1);
             }
