@@ -76,6 +76,11 @@ public final class RollbackRosterViews implements RollbackStateCell<Void> {
     public Map<UUID, RollbackPlayer> players() { checkThread(); return players; }
     public RollbackWorld world() { checkThread(); return world; }
 
+    /** Canonical private player/world bindings, including normalization for outgoing graph export. */
+    public RollbackRosterBindings graphBindings() {
+        checkThread(); return new RollbackRosterBindings(world, players.values());
+    }
+
     /** Platform bindings for the portable bending graph; the source encoder uses the same IDs/contracts. */
     public List<RollbackGraphCodec.Binding> playerBindings() {
         checkThread();

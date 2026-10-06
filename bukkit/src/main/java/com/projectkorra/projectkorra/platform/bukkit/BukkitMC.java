@@ -250,7 +250,8 @@ public final class BukkitMC {
     }
 
     public static World world(final org.bukkit.World value) {
-        return value == null ? null : WORLDS.computeIfAbsent(value.getUID(), ignored -> new WorldView(value));
+        return value == null ? null : WORLDS.compute(value.getUID(), (ignored, current) ->
+                current != null && current.handle() == value ? current : new WorldView(value));
     }
 
     public static Block block(final org.bukkit.block.Block value) {

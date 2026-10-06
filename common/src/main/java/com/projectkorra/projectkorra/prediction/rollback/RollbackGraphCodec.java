@@ -167,10 +167,17 @@ public final class RollbackGraphCodec {
     private final Thread owner = Thread.currentThread();
     private final Catalog catalog;
     private final Limits limits;
+    private final Function<Object, Object> externalBindings;
 
     public RollbackGraphCodec(Catalog catalog, Limits limits) {
+        this(catalog, limits, ignored -> null);
+    }
+
+    /** Local view normalization may return only objects explicitly bound in this catalog. */
+    public RollbackGraphCodec(Catalog catalog, Limits limits, Function<Object, Object> externalBindings) {
         this.catalog = Objects.requireNonNull(catalog);
         this.limits = Objects.requireNonNull(limits);
+        this.externalBindings = Objects.requireNonNull(externalBindings);
     }
 
     public byte[] encode(Collection<?> roots) { return encode(roots, ignored -> null); }
@@ -264,6 +271,11 @@ public final class RollbackGraphCodec {
             if (old != null) return old;
             var replacement = source == null ? null : projections.apply(source);
             Object view = replacement == null ? source : replacement.value();
+            Object bound = view == null ? null : externalBindings.apply(view);
+            if (bound != null) {
+                if (!catalog.external.containsKey(bound)) throw invalid("unregistered normalized binding");
+                view = bound;
+            }
             if (replacement != null && !replacement.projection() && view != null && !catalog.external.containsKey(view)) {
                 throw invalid("unbound direct replacement " + view.getClass().getName());
             }

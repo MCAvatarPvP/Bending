@@ -109,6 +109,23 @@ not an installed production publisher: match bootstrap must supply the binding,
 include it in its output encoding and deliver confirmed effects. Scoreboard state
 itself is still server-owned and is not transferred or made a new completion gate.
 
+### Canonical roster graph bindings
+
+`RollbackRosterBindings` provides the player/world binding IDs used by private
+roster views and normalizes repeated loader wrappers before graph capture. A
+player's UUID, native handle, online state and native world must still match the
+enrolled identities; a same-UUID replacement is not accepted. The graph codec's
+normalizer can return only explicitly registered binding objects and composes with
+existing task/attribute projections. Bootstrap can obtain the private adapter from
+`RollbackRosterViews.graphBindings()` and must supply the matching source adapter.
+
+Tests cover round-trip alias preservation, foreign/replaced/disconnected identities
+and the actual BukkitMC player/offline wrapper entrypoints. Bukkit's world wrapper
+cache now replaces its cached entry when the native world instance changes, while
+leaving previously captured views untouched; a same-UUID world replacement therefore
+fails roster capture. Other native views (such as blocks and locations) still need
+their own portable graph handling as part of production bootstrap assembly.
+
 ### Production assembly audit
 
 The current native execution test is not a production assembly template. Its
