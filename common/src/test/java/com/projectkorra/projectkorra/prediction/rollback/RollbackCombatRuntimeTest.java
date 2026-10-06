@@ -176,6 +176,69 @@ class RollbackCombatRuntimeTest {
         });
     }
 
+    @Test void confirmedExportReadsTheFinalizedFrameAndRestoresTheProvisionalHead() {
+        withConfig(() -> {
+            var scenario = scenario(); var outside = ProjectKorra.collisionManager;
+            scenario.runtime.submit(A, 1, new Input(List.of(CLICK), false));
+            scenario.runtime.advance(); var expected = List.copyOf(scenario.fixture.history);
+            for (int i = 0; i < 3; i++) scenario.runtime.advance();
+            var head = List.copyOf(scenario.fixture.history); var diagnostics = scenario.runtime.diagnostics();
+            assertEquals(1, diagnostics.confirmedTick());
+            var exported = scenario.runtime.exportConfirmedState(() -> {
+                assertTrue(RollbackDomain.active()); assertFalse(RollbackClock.active());
+                assertEquals(expected, scenario.fixture.history); assertNull(scenario.fixture.effects);
+                return String.join(",", scenario.fixture.history).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            });
+            assertEquals(1, exported.tick()); assertEquals(1, exported.confirmedTick());
+            assertEquals(diagnostics.revision(), exported.revision());
+            assertEquals(String.join(",", expected), new String(exported.bytes(), java.nio.charset.StandardCharsets.UTF_8));
+            assertEquals(head, scenario.fixture.history); assertEquals(diagnostics, scenario.runtime.diagnostics());
+            assertSame(outside, ProjectKorra.collisionManager); assertFalse(RollbackDomain.active());
+            scenario.runtime.advance(); assertTrue(scenario.fixture.history.contains("begin:5"));
+        });
+    }
+
+    @Test void confirmedExportRejectsDirtyAndReplicaStateAndRestoresHeadOnEncodingFailure() {
+        withConfig(() -> {
+            var scenario = scenario(); scenario.runtime.advance(); scenario.runtime.advance();
+            scenario.runtime.submit(A, 1, new Input(List.of(CLICK), false));
+            assertThrows(IllegalStateException.class, () -> scenario.runtime.exportConfirmedState(() -> { fail("Dirty state"); return null; }));
+            assertFalse(scenario.runtime.failed()); scenario.runtime.reconcile();
+            var head = List.copyOf(scenario.fixture.history); var outside = ProjectKorra.collisionManager;
+            var problem = new IllegalArgumentException("encode failure");
+            assertSame(problem, assertThrows(IllegalArgumentException.class, () -> scenario.runtime.exportConfirmedState(() -> { throw problem; })));
+            assertEquals(head, scenario.fixture.history); assertSame(outside, ProjectKorra.collisionManager);
+            assertFalse(RollbackDomain.active()); assertTrue(scenario.runtime.failed());
+            var replica = scenario(RollbackConfiguration.capture(), true, true);
+            assertThrows(IllegalStateException.class, () -> replica.runtime.exportConfirmedState(() -> { fail("Replica is not authority"); return null; }));
+            assertFalse(replica.runtime.failed());
+        });
+    }
+
+    @Test void confirmedImportCreatesALocalCheckpointAndReplaysWithoutTouchingLiveRegistries() {
+        withConfig(() -> {
+            var replica = scenario(RollbackConfiguration.capture(), true, true);
+            replica.runtime.advance(); var baseline = List.copyOf(replica.fixture.history);
+            replica.runtime.confirm(1); replica.runtime.advance(); replica.runtime.advance();
+            var expected = new ArrayList<>(replica.fixture.history); expected.add(baseline.size(), "authoritative-marker");
+            var outside = ProjectKorra.collisionManager;
+            assertThrows(IllegalArgumentException.class, () -> replica.runtime.importConfirmedState(0, () -> fail("Old frontier")));
+            assertFalse(replica.runtime.failed());
+            var repaired = replica.runtime.importConfirmedState(1, () -> {
+                assertTrue(RollbackDomain.active()); assertFalse(RollbackClock.active());
+                assertEquals(baseline, replica.fixture.history); replica.fixture.history.add("authoritative-marker");
+            });
+            assertEquals(expected, replica.fixture.history); assertEquals(2, repaired.replayedFrom());
+            assertTrue(repaired.finalizedEffects().isEmpty()); assertSame(outside, ProjectKorra.collisionManager);
+            assertFalse(RollbackDomain.active()); assertFalse(replica.runtime.failed());
+            var authority = scenario();
+            assertThrows(IllegalStateException.class, () -> authority.runtime.importConfirmedState(0, () -> fail("Authority import")));
+            assertFalse(authority.runtime.failed());
+            assertThrows(IllegalArgumentException.class, () -> replica.runtime.importConfirmedState(1, () -> { throw new IllegalArgumentException("Bad imported graph"); }));
+            assertTrue(replica.runtime.failed()); assertSame(outside, ProjectKorra.collisionManager);
+        });
+    }
+
     @Test void actionsValidateTheirShapeAndCannotRunOutsideReplay() {
         assertThrows(IllegalArgumentException.class, () -> new RollbackInputActions.Action(0, 1, RollbackInputActions.Kind.SWING, -1));
         assertThrows(IllegalArgumentException.class, () -> new RollbackInputActions.Action(1, 0, RollbackInputActions.Kind.SWING, -1));

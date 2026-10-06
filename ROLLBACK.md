@@ -3348,3 +3348,20 @@ protection, one-shot effects, no duplicate finalization, head-only repair and fa
 This is the engine repair boundary, not installed network state reconciliation.
 Authoritative checkpoint export, authenticated bounded transfer, native/gameplay import
 and client publication ordering must still connect it before live use.
+
+
+### Confirmed checkpoint export and local import
+
+RollbackCombatRuntime.exportConfirmedState temporarily restores the authoritative
+confirmed frame for a detached encoder, then restores the current private head and
+outside registries. It rejects pending corrections and replicas without poisoning
+those recoverable cases; encoding failure terminates the domain after restoration.
+importConfirmedState anchors a validated importer at the replica's matching confirmed
+frame, captures the imported objects as a local checkpoint and replays later inputs.
+Both operations require an idle boundary and do not deliver live effects.
+
+Combat-runtime tests verify older confirmed contents while the head remains newer,
+continued advancement after export, restored head/registries on failure, local import
+and replay, stale-frontier rejection and authority/replica role separation. Concrete
+portable payload encoding, authenticated transfer and loader import bindings still
+need installation; no network correction or multiplayer readiness is claimed.

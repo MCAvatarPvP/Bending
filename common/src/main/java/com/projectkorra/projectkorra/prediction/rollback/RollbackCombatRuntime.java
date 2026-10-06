@@ -213,6 +213,23 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
     @Override public RollbackEngine.Update<RollbackDomain.Checkpoint, I, E> correctState(long tick, RollbackDomain.Checkpoint state) {
         requireUsable(); return domain.call(() -> engine.correctState(tick, state));
     }
+    /**
+     * Install validated authoritative data into the existing private objects at the
+     * confirmed tick, then replay retained input. Importers must bind all decoded
+     * state to this domain, never install live handles or publish outputs.
+     */
+    public RollbackEngine.Update<RollbackDomain.Checkpoint, I, E> importConfirmedState(long tick, Runnable importer) {
+        requireUsable(); Objects.requireNonNull(importer, "importer");
+        if (!engine.replica()) throw new IllegalStateException("Only replicas import repair state");
+        if (RollbackDomain.active() || RollbackClock.active()) throw new IllegalStateException("Import requires a live tick boundary");
+        if (tick != engine.confirmed().tick()) throw new IllegalArgumentException("State import must match the confirmed frontier");
+        return domain.call(() -> {
+            domain.restore(engine.confirmed().state());
+            importer.run();
+            return engine.correctState(tick, domain.capture());
+        });
+    }
+
     @Override public boolean replica() { return engine.replica(); }
     @Override public RollbackEngine.Submission correct(UUID participant, long tick, I input) {
         requireUsable();
@@ -254,6 +271,34 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
         // and must not poison the private domain or export the superseded branch.
         engine.frames(frontier.tick(), frontier.tick());
         return domain.call(() -> new Export(frontier.tick(), frontier.confirmedTick(), frontier.revision(), encoder.get()));
+    }
+
+    /**
+     * Export the authoritative confirmed checkpoint without replacing the current head.
+     * The encoder has the same detached/read-only contract as exportState. Both private
+     * head state and outside registries are restored even if encoding fails.
+     */
+    public Export exportConfirmedState(java.util.function.Supplier<byte[]> encoder) {
+        requireUsable(); Objects.requireNonNull(encoder, "encoder");
+        if (engine.replica()) throw new IllegalStateException("Only authority exports confirmed repair state");
+        if (RollbackDomain.active() || RollbackClock.active()) throw new IllegalStateException("Export requires a live tick boundary");
+        var frontier = engine.diagnostics();
+        engine.frames(frontier.tick(), frontier.tick());
+        var confirmed = engine.confirmed();
+        return domain.call(() -> {
+            var current = domain.capture();
+            Throwable failure = null;
+            try {
+                domain.restore(confirmed.state());
+                return new Export(confirmed.tick(), confirmed.tick(), frontier.revision(), encoder.get());
+            } catch (RuntimeException | Error problem) { failure = problem; throw problem; }
+            finally {
+                try { domain.restore(current); }
+                catch (RuntimeException | Error restoreFailure) {
+                    if (failure != null) failure.addSuppressed(restoreFailure); else throw restoreFailure;
+                }
+            }
+        });
     }
 
     public RollbackEngine.Diagnostics diagnostics() { return engine.diagnostics(); }
