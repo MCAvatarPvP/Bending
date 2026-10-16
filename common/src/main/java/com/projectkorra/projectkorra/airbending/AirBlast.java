@@ -707,6 +707,7 @@ public class AirBlast extends AirAbility {
         this.location = this.origin.clone();
         this.progressing = true;
         this.bPlayer.addCooldown(this);
+        this.bPlayer.addCooldown("AirSuction", this.getCooldown()); // AirBlast and AirSuction share a cooldown
         this.lagCompensator = new AbilityLagCompensator((p, snapshot) -> affect(p, snapshot.getLocation()));
     }
 

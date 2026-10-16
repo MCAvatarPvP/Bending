@@ -85,7 +85,7 @@ public class AirFlow extends AbstractAirFlow implements AddonAbility, ComboAbili
 
     @Override
     public String getInstructions() {
-        return "AirBurst (Hold Sneak) -> AirBlast (Left Click). Activates immediately.";
+        return "AirBlast (Hold Sneak) -> AirBurst (Left Click). Activates immediately.";
     }
 
     @Override

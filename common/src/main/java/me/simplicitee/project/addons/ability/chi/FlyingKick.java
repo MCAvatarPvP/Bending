@@ -22,6 +22,7 @@ import java.util.List;
 
 public class FlyingKick extends ChiAbility implements ComboAbility, AddonAbility {
 
+    private double radius;
     @Attribute("LaunchPower")
     private double launch;
     @Attribute(Attribute.DAMAGE)
@@ -54,9 +55,13 @@ public class FlyingKick extends ChiAbility implements ComboAbility, AddonAbility
         launch = ProjectAddons.instance.getConfig(bPlayer).getDouble("Combos.Chi.FlyingKick.LaunchPower");
         damage = ProjectAddons.instance.getConfig(bPlayer).getDouble("Combos.Chi.FlyingKick.Damage");
         cooldown = ProjectAddons.instance.getConfig(bPlayer).getLong("Combos.Chi.FlyingKick.Cooldown");
+        radius = ProjectAddons.instance.getConfig(bPlayer).getDouble("Combos.Chi.FlyingKick.Radius", 0.1);
+        double heightThingy = ProjectAddons.instance.getConfig(bPlayer).getDouble("Combos.Chi.FlyingKick.HeightThingy",
+                0.25485);
+
         affected = new ArrayList<>();
 
-        player.setVelocity(player.getLocation().getDirection().add(new Vector(0, 0.25485, 0)).normalize().multiply(launch));
+        player.setVelocity(player.getLocation().getDirection().add(new Vector(0, heightThingy, 0)).normalize().multiply(launch));
         start();
     }
 
@@ -106,7 +111,7 @@ public class FlyingKick extends ChiAbility implements ComboAbility, AddonAbility
         }
 
         ParticleEffect.CRIT_MAGIC.display(player.getLocation(), 3, 0.2, 0.2, 0.2, 0.02);
-        for (Entity entity : GeneralMethods.getEntitiesAroundPoint(player.getLocation(), 2)) {
+        for (Entity entity : GeneralMethods.getEntitiesAroundPoint(player.getLocation(), radius)) {
             if (affected.contains(entity)) {
                 continue;
             }
