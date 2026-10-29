@@ -141,19 +141,19 @@ public class Ripple extends EarthAbility {
                 this.block4 = newlocation.getBlock();
 
                 if (this.step == 0) {
-                    this.block4 = this.increase(this.block4);
+                    this.block4 = this.raiseGround(this.block4);
                 } else if (this.step == 1) {
                     this.block3 = this.increase(this.block3);
-                    this.block4 = this.increase(this.block4);
+                    this.block4 = this.raiseGround(this.block4);
                 } else if (this.step == 2) {
                     this.block2 = this.decrease(this.block2);
                     this.block3 = this.increase(this.block3);
-                    this.block4 = this.increase(this.block4);
+                    this.block4 = this.raiseGround(this.block4);
                 } else {
                     this.block1 = this.decrease(this.block1);
                     this.block2 = this.decrease(this.block2);
                     this.block3 = this.increase(this.block3);
-                    this.block4 = this.increase(this.block4);
+                    this.block4 = this.raiseGround(this.block4);
                 }
             }
         } else if (this.step == this.maxStep) {
@@ -246,14 +246,25 @@ public class Ripple extends EarthAbility {
         return block;
     }
 
-    // Returns null when another ripple already moved this column this tick, so
-    // this ripple doesn't later lower a column it never raised.
+    // Starts raising a ground block this ripple just reached. Returns null when
+    // the column is already taken this tick or can't be raised (e.g. another
+    // ripple's raised block sits on it), so this ripple never later lowers a
+    // column it doesn't own.
+    private Block raiseGround(final Block block) {
+        if (block == null || !markMovedForTick(block)) {
+            return null;
+        }
+        final Block raised = this.increase(block);
+        return raised == block ? null : raised;
+    }
+
+    // Raises a block this ripple owns. Not deduplicated per column: skipping it
+    // would drop the ripple's only reference to a block it already raised.
     private Block increase(final Block block) {
         if (block == null) {
             return null;
-        } else if (!markMovedForTick(block)) {
-            return null;
         }
+        markMovedForTick(block);
 
         final Block botblock = block.getRelative(BlockFace.DOWN);
         int length = 1;
