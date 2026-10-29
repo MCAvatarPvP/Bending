@@ -24,6 +24,8 @@ public class AirFlow extends AbstractAirFlow implements AddonAbility, ComboAbili
                 ConfigManager.getConfig().getDouble(path("Range")), ConfigManager.getConfig().getInt(path("ParticlePerTick")),
                 ConfigManager.getConfig().getDouble(path("ParticleSpawnAreaSize")));
         setPushFields(ConfigManager.getConfig().getDouble(path("SelfPushVelocity")), ConfigManager.getConfig().getDouble(path("OtherPushVelocity")));
+        setMaxTurnAngle(ConfigManager.getConfig().getDouble(path("MaxTurnAngle")));
+        setDrawSpeed(ConfigManager.getConfig().getDouble(path("DrawSpeed")));
         start();
         if (isStarted() && !isRemoved()) {
             launch();
@@ -109,6 +111,8 @@ public class AirFlow extends AbstractAirFlow implements AddonAbility, ComboAbili
         ConfigManager.getConfig().addDefault(path("ParticleSpawnAreaSize"), 3);
         ConfigManager.getConfig().addDefault(path("SelfPushVelocity"), 1.0);
         ConfigManager.getConfig().addDefault(path("OtherPushVelocity"), 1.0);
+        ConfigManager.getConfig().addDefault(path("MaxTurnAngle"), 60.0);
+        ConfigManager.getConfig().addDefault(path("DrawSpeed"), 0.5);
         ConfigManager.getConfig().addDefault(path("Combination"), Arrays.asList("AirBurst: SHIFT_DOWN", "AirBlast: LEFT_CLICK"));
         ConfigManager.defaultConfig.save();
         ProjectKorra.log.info("Succesfully enabled " + getName() + " by " + getAuthor());

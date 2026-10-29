@@ -101,6 +101,46 @@ class AirFlowSteeringTest {
         }
     }
 
+    @org.junit.jupiter.api.Test
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    void flowTurnsAtMostTheConfiguredAnglePerTick() throws Exception {
+        try (var world = new AbilityWorld()) {
+            var aim = new Location(world, 0, 2, 0);
+            var player = new Player() {
+                @Override public Location getEyeLocation() { return aim.clone(); }
+                @Override public World getWorld() { return world; }
+            };
+            var flow = new TestFlow(player, 1);
+            flow.setMaxTurnAngle(60);
+            field("flowLocation").set(flow, new Location(world, 0, 0, 0));
+            field("launchTime").setLong(flow, System.currentTimeMillis());
+            Field state = field("state");
+            state.set(flow, Enum.valueOf((Class) state.getType(), "LAUNCHED"));
+            flow.progress();
+            aim.setYaw(180);
+            for (int tick = 1; tick <= 3; tick++) {
+                flow.progress();
+                var path = (AirFlowPath) field("path").get(flow);
+                double angle = Math.toDegrees(path.step(tick - 1).angle(path.step(tick)));
+                assertEquals(60, angle, 1e-6);
+            }
+            flow.progress();
+            var path = (AirFlowPath) field("path").get(flow);
+            assertVector(new Vector(0, 0, -0.5), path.step(4));
+        }
+    }
+
+    @org.junit.jupiter.api.Test
+    void drawSpeedSetsHowFarTheFlowExtendsEachTick() {
+        var path = new AirFlowPath();
+        path.setSpeed(2);
+        for (int tick = 0; tick < 3; tick++) path.extend(new Vector(0, 0, 1), 5);
+        assertEquals(3, path.size());
+        assertVector(new Vector(0, 0, 2), path.step(0));
+        assertVector(new Vector(0, 0, 1), path.step(2));
+        assertTrue(path.isFull(5));
+    }
+
     private static Field field(String name) throws Exception {
         Field field = AbstractAirFlow.class.getDeclaredField(name); field.setAccessible(true); return field;
     }

@@ -24,6 +24,7 @@ abstract class AbstractAirFlow extends AirAbility {
     private double particleSpawnAreaSize;
     private double selfPushVelocity = 1;
     private double otherPushVelocity = 1;
+    private double maxTurnAngle = 180;
     private Location flowLocation;
     private Vector flowDirection;
     private State state = State.CHARGING;
@@ -45,6 +46,15 @@ abstract class AbstractAirFlow extends AirAbility {
     protected void setPushFields(final double selfPushVelocity, final double otherPushVelocity) {
         this.selfPushVelocity = selfPushVelocity;
         this.otherPushVelocity = otherPushVelocity;
+    }
+
+    protected void setDrawSpeed(final double drawSpeed) {
+        this.path.setSpeed(drawSpeed);
+    }
+
+    /** Caps how many degrees the flow's direction may turn per tick. */
+    protected void setMaxTurnAngle(final double maxTurnAngle) {
+        this.maxTurnAngle = maxTurnAngle;
     }
 
     protected abstract int sourceDistance();
@@ -86,7 +96,7 @@ abstract class AbstractAirFlow extends AirAbility {
         }
         if (!this.path.isFull(this.range)) {
             final Location aim = this.player.getEyeLocation();
-            this.flowDirection = aim.getDirection().multiply(directionMultiplier());
+            this.flowDirection = limitTurn(aim.getDirection().multiply(directionMultiplier()));
             this.path.extend(this.flowDirection, this.range);
         }
         tickParticles(true);
@@ -131,6 +141,23 @@ abstract class AbstractAirFlow extends AirAbility {
                 this.particles.remove(i);
             }
         }
+    }
+
+    private Vector limitTurn(final Vector desired) {
+        if (this.path.size() == 0 || this.maxTurnAngle >= 180) return desired;
+        final Vector previous = this.path.step(this.path.size() - 1).normalize();
+        final Vector target = desired.clone().normalize();
+        final double max = Math.toRadians(Math.max(0, this.maxTurnAngle));
+        final double cos = Math.max(-1, Math.min(1, previous.dot(target)));
+        if (Math.acos(cos) <= max) return desired;
+        Vector side = target.clone().subtract(previous.clone().multiply(cos));
+        if (side.lengthSquared() < 1e-9) {
+            // Aiming straight back has no preferred side; turn through the horizontal plane.
+            side = previous.clone().crossProduct(new Vector(0, 1, 0));
+            if (side.lengthSquared() < 1e-9) side = new Vector(1, 0, 0);
+        }
+        side.normalize();
+        return previous.multiply(Math.cos(max)).add(side.multiply(Math.sin(max))).multiply(desired.length());
     }
 
     private Vector selfPush(final Vector fallback) {
