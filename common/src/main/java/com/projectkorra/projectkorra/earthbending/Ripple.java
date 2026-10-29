@@ -255,7 +255,7 @@ public class Ripple extends EarthAbility {
             return null;
         }
         final Block raised = this.increase(block);
-        return raised == block ? null : raised;
+        return block.equals(raised) ? null : raised;
     }
 
     // Raises a block this ripple owns. Not deduplicated per column: skipping it
