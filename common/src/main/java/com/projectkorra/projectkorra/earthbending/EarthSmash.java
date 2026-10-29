@@ -825,6 +825,11 @@ public class EarthSmash extends EarthAbility {
      */
     public void checkRemainingBlocks() {
         if (animationCounter < 4 && !bPlayer.areSourceHolesOn()) return;
+        // Paper just supplied this shape and nothing has been rendered from it
+        // yet. Its center is a network leg old, so the blocks there now belong
+        // to Paper's later frames (or to nothing). Auditing them would prune
+        // every piece the new owner moved since and delete the smash outright.
+        if (this.renderedLocation == null && this.redrawTransferredShape) return;
         // A sparse authority correction can move the logical center while the
         // most recently rendered frame is still waiting for its ordinary
         // revert/draw pass. Inspect the coordinate that actually owns those
@@ -1571,7 +1576,27 @@ public class EarthSmash extends EarthAbility {
     public void applyPredictionTransfer(final PredictionTransfer transfer) {
         if (transfer == null || this.player == null || this.player.getWorld() == null
                 || !this.player.getWorld().getName().equals(transfer.world())) return;
-        this.retireRenderedShape();
+        State transferState;
+        try {
+            transferState = State.valueOf(transfer.state());
+        } catch (IllegalArgumentException ignored) {
+            transferState = State.GRABBED;
+        }
+        // A provisional grab has been predicting since the local input, one
+        // full round trip before Paper's handoff arrives. Paper has drawn the
+        // same number of frames since its own grab, so keep counting from
+        // there; restarting at Paper's grab frame misnames every later layer.
+        final boolean continuesPreview = this.awaitingPredictionTransfer;
+        final long previewFrames = continuesPreview ? this.predictionFrame : 0L;
+        final int previewProgress = continuesPreview ? this.progressCounter : 0;
+        // GRABBED and FLYING recompute their center from the local player
+        // every step. Paper's center is from the grab tick, so snapping back to
+        // it (and blanking the model until the next step) is pure flicker.
+        final boolean keepPreviewMotion = continuesPreview && this.state == transferState
+                && (transferState == State.GRABBED || transferState == State.FLYING)
+                && this.location != null && this.location.getWorld() == this.player.getWorld()
+                && this.hasSameShape(transfer.blocks());
+        if (!keepPreviewMotion) this.retireRenderedShape();
         this.currentBlocks.clear();
         for (final PredictionBlock block : transfer.blocks()) {
             if (block == null || !isSmashOffset(block.x(), block.y(), block.z())) continue;
@@ -1579,20 +1604,18 @@ public class EarthSmash extends EarthAbility {
             this.currentBlocks.add(new BlockRepresenter(block.x(), block.y(), block.z(),
                     data.getMaterial(), data));
         }
-        this.location = new Location(this.player.getWorld(), transfer.x(), transfer.y(), transfer.z());
-        this.origin = this.location.getBlock();
+        final Location authoritativeLocation = new Location(this.player.getWorld(),
+                transfer.x(), transfer.y(), transfer.z());
+        if (!keepPreviewMotion) this.location = authoritativeLocation;
+        this.origin = authoritativeLocation.getBlock();
         this.destination = transfer.hasDestination()
                 ? new Location(this.player.getWorld(), transfer.destinationX(),
                 transfer.destinationY(), transfer.destinationZ()) : null;
-        try {
-            this.state = State.valueOf(transfer.state());
-        } catch (IllegalArgumentException ignored) {
-            this.state = State.GRABBED;
-        }
+        this.state = transferState;
         this.grabbedDistance = Math.max(0, transfer.grabbedDistance());
         this.animationCounter = Math.max(0, transfer.animationCounter());
-        this.progressCounter = Math.max(0, transfer.progressCounter());
-        this.predictionFrame = Math.max(0L, transfer.predictionFrame());
+        this.progressCounter = Math.max(0, transfer.progressCounter()) + previewProgress;
+        this.predictionFrame = Math.max(0L, transfer.predictionFrame()) + previewFrames;
         final long now = System.currentTimeMillis();
         this.flightStartTime = now - Math.max(0, Math.min(60_000, transfer.flightElapsedMillis()));
         this.delay = now - Math.max(0, Math.min(60_000, transfer.delayElapsedMillis()));
@@ -1608,7 +1631,24 @@ public class EarthSmash extends EarthAbility {
         // Moving states repaint on their next ordinary animation step. LIFTED
         // has no such step, so remember that its just-retired visual must be
         // restored if reconciliation lands on the release boundary.
-        this.redrawTransferredShape = !this.currentBlocks.isEmpty();
+        this.redrawTransferredShape = !keepPreviewMotion && !this.currentBlocks.isEmpty();
+    }
+
+    /** Whether Paper's shape is exactly the one this instance is rendering, in any order. */
+    private boolean hasSameShape(final List<PredictionBlock> blocks) {
+        if (blocks == null || this.currentBlocks.isEmpty()
+                || this.affectedBlocks.isEmpty() || this.renderedLocation == null) return false;
+        final Set<String> expected = new HashSet<>();
+        for (final PredictionBlock block : blocks) {
+            if (block == null || !isSmashOffset(block.x(), block.y(), block.z())) continue;
+            expected.add(block.x() + "," + block.y() + "," + block.z() + "=" + block.material());
+        }
+        final Set<String> actual = new HashSet<>();
+        for (final BlockRepresenter block : this.currentBlocks) {
+            actual.add(block.getX() + "," + block.getY() + "," + block.getZ() + "="
+                    + TempBlockSync.encode(block.getData()));
+        }
+        return expected.equals(actual);
     }
 
     /** True when an activation checkpoint confirms the state already rendered locally. */
