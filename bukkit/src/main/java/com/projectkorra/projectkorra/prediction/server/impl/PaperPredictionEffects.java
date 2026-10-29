@@ -86,6 +86,11 @@ public abstract class PaperPredictionEffects extends PaperPredictionTempBlocks {
         if (action == null || !ownerId.equals(action.owner)) return 0;
 
         final int ordinal = ++action.tempFallingBlockOrdinal;
+        // The ordinal still advances (it marks the action as locally
+        // predicted), but with client-side visuals off the owner must see
+        // Paper's falling block as an ordinary viewer: without a prepare or
+        // receipt the client never matches, hides or aliases it.
+        if (drawsServerVisuals(ownerSession)) return ordinal;
         send(nativeOwner, PaperPredictionProtocol.TEMP_FALLING_BLOCK_PREPARE,
                 PaperPredictionProtocol.tempFallingBlockPrepare(tick, action.sequence, ordinal, ownerId,
                         ability.getName(), worldKey(location.getWorld()), location.getX(), location.getY(),
@@ -105,11 +110,17 @@ public abstract class PaperPredictionEffects extends PaperPredictionTempBlocks {
                 || (ownerSession.capabilities & CAPABILITY_EXACT) == 0) return;
         Action action = currentInputAction(ownerId);
         if (action == null) action = actionForEffect(ability);
-        if (action == null || !ownerId.equals(action.owner)) return;
+        if (action == null || !ownerId.equals(action.owner)
+                || drawsServerVisuals(ownerSession)) return;
 
         send(nativeOwner, PaperPredictionProtocol.TEMP_FALLING_BLOCK,
                 PaperPredictionProtocol.tempFallingBlock(tick, action.sequence, spawnOrdinal, ownerId,
                         fallingBlock.getEntityId(), ability.getName()));
+    }
+
+    /** True when this session turned client-side visuals off and renders Paper's entities. */
+    protected static boolean drawsServerVisuals(final Session session) {
+        return session != null && (session.capabilities & CAPABILITY_SERVER_VISUALS) != 0;
     }
 
     @Override

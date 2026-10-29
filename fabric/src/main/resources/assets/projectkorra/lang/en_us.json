@@ -2,5 +2,8 @@
   "projectkorra.config.title": "ProjectKorra Client Settings",
   "projectkorra.config.client_side_bending": "Client-side bending: %s",
   "projectkorra.config.client_side_bending.description.1": "Predict bending locally for immediate particles, movement, and block effects.",
-  "projectkorra.config.client_side_bending.description.2": "Turn this off to use only the server's authoritative bending."
+  "projectkorra.config.client_side_bending.description.2": "Turn this off to use only the server's authoritative bending.",
+  "projectkorra.config.client_side_visuals": "Client-side visuals: %s",
+  "projectkorra.config.client_side_visuals.description.1": "Draw predicted particles, sounds, blocks, and entities locally.",
+  "projectkorra.config.client_side_visuals.description.2": "Turn this off to see the server's visuals while still predicting gameplay."
 }

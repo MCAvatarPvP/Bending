@@ -15,6 +15,11 @@ public final class PredictedEntityIdAllocator {
         this.next = new AtomicInteger(first < 0 ? first : -1);
     }
 
+    /** True for an ID from this allocator's client-only negative namespace. */
+    public static boolean isPredictedId(final int id) {
+        return id < 0;
+    }
+
     /**
      * Returns an unused negative ID. Minecraft constructs every entity with a
      * process-local positive ID, but {@code ClientWorld.addEntity} removes the

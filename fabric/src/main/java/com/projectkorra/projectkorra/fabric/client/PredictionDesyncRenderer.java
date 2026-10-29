@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.fabric.client;
 
+import com.projectkorra.projectkorra.fabric.client.prediction.block.ClientBlockVisualOverlay;
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.DrawStyle;
@@ -16,6 +17,7 @@ public final class PredictionDesyncRenderer {
 
     public static void initialize() {
         WorldRenderEvents.END_EXTRACTION.register(context -> {
+            if (!ClientBlockVisualOverlay.visualsEnabled()) return;
             var desyncs = ExactPredictionRuntime.ownedTempDesyncs(context.world());
             if (desyncs.isEmpty()) return;
             MinecraftClient client = MinecraftClient.getInstance();

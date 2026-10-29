@@ -877,7 +877,7 @@ public final class BukkitMC {
 
         private void playForPredictionViewers(Runnable broadcast,
                                               Consumer<org.bukkit.entity.Player> sound) {
-            org.bukkit.entity.Player excluded = PaperPredictionServer.predictedSoundEffectOwner();
+            org.bukkit.entity.Player excluded = PaperPredictionServer.predictedVisualSoundOwner();
             if (excluded == null || excluded.getWorld() != value) {
                 broadcast.run();
                 return;
@@ -892,7 +892,7 @@ public final class BukkitMC {
             org.bukkit.Location nativeLocation = locationHandle(location);
             org.bukkit.Particle nativeParticle = particleHandle(particle);
             Object nativeData = particleDataHandle(particle, data);
-            org.bukkit.entity.Player excluded = PaperPredictionServer.predictedEffectOwner();
+            org.bukkit.entity.Player excluded = PaperPredictionServer.predictedVisualEffectOwner();
             if (excluded == null || excluded.getWorld() != value)
                 value.spawnParticle(nativeParticle, nativeLocation, count, ox, oy, oz, extra, nativeData);
             else
@@ -903,7 +903,7 @@ public final class BukkitMC {
         public void spawnParticle(Particle particle, Location location, int count, double ox, double oy, double oz, double extra) {
             org.bukkit.Location nativeLocation = locationHandle(location);
             org.bukkit.Particle nativeParticle = particleHandle(particle);
-            org.bukkit.entity.Player excluded = PaperPredictionServer.predictedEffectOwner();
+            org.bukkit.entity.Player excluded = PaperPredictionServer.predictedVisualEffectOwner();
             if (excluded == null || excluded.getWorld() != value)
                 value.spawnParticle(nativeParticle, nativeLocation, count, ox, oy, oz, extra);
             else
@@ -914,7 +914,7 @@ public final class BukkitMC {
         public void spawnParticle(Particle particle, Location location, int count, double ox, double oy, double oz) {
             org.bukkit.Location nativeLocation = locationHandle(location);
             org.bukkit.Particle nativeParticle = particleHandle(particle);
-            org.bukkit.entity.Player excluded = PaperPredictionServer.predictedEffectOwner();
+            org.bukkit.entity.Player excluded = PaperPredictionServer.predictedVisualEffectOwner();
             if (excluded == null || excluded.getWorld() != value)
                 value.spawnParticle(nativeParticle, nativeLocation, count, ox, oy, oz);
             else
@@ -2226,13 +2226,13 @@ public final class BukkitMC {
 
         @Override
         public <T> void spawnParticle(Particle particle, Location location, int count, double ox, double oy, double oz, double extra, T data, boolean force) {
-            if (value == PaperPredictionServer.predictedEffectOwner()) return;
+            if (value == PaperPredictionServer.predictedVisualEffectOwner()) return;
             value.spawnParticle(particleHandle(particle), locationHandle(location), count, ox, oy, oz, extra, particleDataHandle(particle, data), force);
         }
 
         @Override
         public void playSound(Location location, Sound sound, float volume, float pitch) {
-            if (value == PaperPredictionServer.predictedSoundEffectOwner()) return;
+            if (value == PaperPredictionServer.predictedVisualSoundOwner()) return;
             value.playSound(locationHandle(location), org.bukkit.Sound.valueOf(sound.name()), volume, pitch);
         }
 

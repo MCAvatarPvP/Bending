@@ -127,6 +127,39 @@ ordinary ProjectKorra handler, and publishes the resulting ownership metadata. T
 that metadata to suppress only an exactly predicted echo. External damage, velocity, blocks, and
 state changes remain authoritative and are applied after local progress when necessary.
 
+## Client-side visuals setting
+
+The Fabric Mod Menu screen has two independent toggles, both stored in
+`config/projectkorra-client.properties` and both on by default:
+
+- **Client-side bending** (`clientSideBending`) turns all prediction on or off. Off sends
+  `ClientDisabled` and Paper drops the session.
+- **Client-side visuals** (`clientSideVisuals`) only matters while bending is on. On is the
+  behavior described above. Off keeps prediction running but stops the client from drawing its own
+  predicted visuals, so the player sees Paper's copy of every effect instead.
+
+With visuals off, the client sets capability bit `16` (`CAPABILITY_SERVER_VISUALS`) in its
+`ClientHello`. Paper fixes capabilities when the session is created, so
+`PredictionClient.onClientSideVisualsSettingChanged` resets the runtime and sends a new hello. Paper
+replaces the old session with the new one.
+
+When the bit is set:
+
+- **Paper** treats the player as an ordinary viewer for visuals. `predictedVisualEffectOwner()` and
+  `predictedVisualSoundOwner()` return null for them, so particle and sound broadcasts in
+  `BukkitMC`/`BukkitWorld` include them. TempFallingBlock prepare and receipt packets are not sent,
+  so the client never hides or aliases Paper's falling block. The spawn ordinal still advances.
+- **Fabric** emits no predicted particles or sounds and never suppresses Paper's sound echo.
+  `ClientBlockVisualOverlay.visualsEnabled()` gates the terrain compositor (vanilla, Sodium and
+  VulkanMod), the foreground renderer, and the desync outline. A toggle rebuilds the affected
+  sections. Predicted entities keep simulating but are not rendered. Paper's entities spawn
+  visibly, and their removal still retires the matching local entity.
+
+Gameplay prediction does not change. Input, movement and velocity, cooldowns, hits, and the logical
+block composition used for collision and ability logic (`ClientBlockVisualOverlay#compose`) behave
+the same way with either setting. Paper's gameplay ownership, such as cooldown echo suppression and
+scheduled ability context, still uses the raw `predictedEffectOwner()`.
+
 ## Native action correlation
 
 Paper and client sequence numbers are separate streams. The client pairs a Paper native-action

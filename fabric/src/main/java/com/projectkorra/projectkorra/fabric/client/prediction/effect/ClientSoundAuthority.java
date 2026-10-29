@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.fabric.client.prediction.effect;
 
+import com.projectkorra.projectkorra.fabric.client.config.ClientBendingConfig;
+
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Iterator;
@@ -15,7 +17,8 @@ public final class ClientSoundAuthority {
     public void predict(final String sound, final String category,
                         final double x, final double y, final double z,
                         final float volume, final float pitch, final long tick) {
-        if (sound == null || sound.isBlank() || category == null || category.isBlank()
+        if (!ClientBendingConfig.isVisualsEnabled()
+                || sound == null || sound.isBlank() || category == null || category.isBlank()
                 || !finite(x, y, z) || !Float.isFinite(volume) || !Float.isFinite(pitch)) return;
         this.predicted.addLast(new PredictedSound(sound, category, x, y, z, volume, pitch, tick));
         this.expire(tick);
@@ -26,6 +29,11 @@ public final class ClientSoundAuthority {
                           final double x, final double y, final double z,
                           final float volume, final float pitch, final long tick) {
         this.expire(tick);
+        // With client-side visuals off nothing was played locally, so every echo is the only copy.
+        if (!ClientBendingConfig.isVisualsEnabled()) {
+            this.predicted.clear();
+            return false;
+        }
         if (sound == null || category == null || !finite(x, y, z)) return false;
         final Iterator<PredictedSound> iterator = this.predicted.iterator();
         while (iterator.hasNext()) {

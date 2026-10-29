@@ -82,6 +82,25 @@ class AirFlowSteeringTest {
         }
     }
 
+    @org.junit.jupiter.api.Test
+    void selfPushAimsAheadOnTheFlowAndBackTowardItsCenter() throws Exception {
+        try (var world = new AbilityWorld()) {
+            var player = new Player() {
+                @Override public Location getLocation() { return new Location(world, 1, -1, 3); }
+                @Override public World getWorld() { return world; }
+            };
+            var flow = new TestFlow(player, 1);
+            flow.setPushFields(2, 1);
+            field("flowLocation").set(flow, new Location(world, 0, 0, 0));
+            var path = (AirFlowPath) field("path").get(flow);
+            for (int i = 0; i < 20; i++) path.extend(new Vector(0, 0, 1), 20);
+            var selfPush = AbstractAirFlow.class.getDeclaredMethod("selfPush", Vector.class);
+            selfPush.setAccessible(true);
+            Vector push = (Vector) selfPush.invoke(flow, new Vector(0, 0, 0.5));
+            assertVector(new Vector(-1, 0, 2).normalize().multiply(2), push);
+        }
+    }
+
     private static Field field(String name) throws Exception {
         Field field = AbstractAirFlow.class.getDeclaredField(name); field.setAccessible(true); return field;
     }

@@ -44,9 +44,10 @@ public abstract class PredictionClientServerState extends PredictionClientNative
         if (!ClientBendingConfig.isEnabled()) return;
         debug("join: canSendHello=" + ClientPlayNetworking.canSend(PredictionPayloads.ClientHello.ID));
         if (ClientPlayNetworking.canSend(PredictionPayloads.ClientHello.ID)) {
-            sender.sendPacket(new PredictionPayloads.ClientHello(PredictionPayloads.PROTOCOL_VERSION, clientTick, CAPABILITIES));
+            final int capabilities = helloCapabilities();
+            sender.sendPacket(new PredictionPayloads.ClientHello(PredictionPayloads.PROTOCOL_VERSION, clientTick, capabilities));
             lastHelloTick = clientTick;
-            debug("sent hello on join tick=" + clientTick + " capabilities=" + CAPABILITIES);
+            debug("sent hello on join tick=" + clientTick + " capabilities=" + capabilities);
         }
     }
 

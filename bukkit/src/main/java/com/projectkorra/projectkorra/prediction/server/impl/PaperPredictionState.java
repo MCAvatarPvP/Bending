@@ -70,6 +70,8 @@ public abstract class PaperPredictionState implements PluginMessageListener, Run
         AbilityStateSync.Listener, GlidingStateSync.Listener,
         AbilityCheckpointSync.Listener, PlayerStatusSync.Listener {
     protected static final int CAPABILITY_EXACT = 8;
+    /** The exact client has client-side visuals off: Paper must keep sending it authoritative visuals. */
+    protected static final int CAPABILITY_SERVER_VISUALS = 16;
     protected static final int MAX_REWIND_TICKS = PaperPredictionServer.MAX_REWIND_TICKS;
     protected static final int MAX_TEMP_BLOCK_OPS_PER_PACKET = 256;
     protected static final int TEMP_BLOCK_PACKET_HEADROOM_BYTES = 1_024;

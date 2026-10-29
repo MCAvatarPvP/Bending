@@ -13,6 +13,7 @@ import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import java.util.ArrayList;
 
 abstract class AbstractAirFlow extends AirAbility {
+    private static final int SELF_PUSH_LOOKAHEAD = 4;
     private final ArrayList<FlowParticle> particles = new ArrayList<>();
     private final ArrayList<Entity> affectedEntities = new ArrayList<>();
     private long chargeTime;
@@ -21,6 +22,8 @@ abstract class AbstractAirFlow extends AirAbility {
     private double range;
     private int particlePerTick;
     private double particleSpawnAreaSize;
+    private double selfPushVelocity = 1;
+    private double otherPushVelocity = 1;
     private Location flowLocation;
     private Vector flowDirection;
     private State state = State.CHARGING;
@@ -37,6 +40,11 @@ abstract class AbstractAirFlow extends AirAbility {
         this.range = range;
         this.particlePerTick = particlePerTick;
         this.particleSpawnAreaSize = particleSpawnAreaSize;
+    }
+
+    protected void setPushFields(final double selfPushVelocity, final double otherPushVelocity) {
+        this.selfPushVelocity = selfPushVelocity;
+        this.otherPushVelocity = otherPushVelocity;
     }
 
     protected abstract int sourceDistance();
@@ -106,7 +114,14 @@ abstract class AbstractAirFlow extends AirAbility {
             final Vector velocity = step.clone().normalize();
             for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(loc, 2)) {
                 if (!this.affectedEntities.contains(entity)) {
-                    GeneralMethods.setVelocity(this, entity, velocity.clone().add(entity.getVelocity()).multiply(0.5));
+                    if (entity.equals(this.player)) {
+                        // Like FireJet, the caster's velocity is set outright instead of blended, aimed at the
+                        // flow ahead so they follow its turns and are pulled back onto it.
+                        GeneralMethods.setVelocity(this, entity, selfPush(step));
+                        this.player.setFallDistance(0);
+                    } else {
+                        GeneralMethods.setVelocity(this, entity, velocity.clone().multiply(this.otherPushVelocity).add(entity.getVelocity()).multiply(0.5));
+                    }
                     this.affectedEntities.add(entity);
                 }
             }
@@ -116,6 +131,27 @@ abstract class AbstractAirFlow extends AirAbility {
                 this.particles.remove(i);
             }
         }
+    }
+
+    private Vector selfPush(final Vector fallback) {
+        final Vector body = this.player.getLocation().toVector().add(new Vector(0, 1, 0));
+        final Vector center = this.flowLocation.toVector();
+        int nearest = 0;
+        double nearestDistance = center.distanceSquared(body);
+        for (int i = 0; i < this.path.size(); i++) {
+            center.add(this.path.step(i));
+            final double distance = center.distanceSquared(body);
+            if (distance < nearestDistance) {
+                nearest = i + 1;
+                nearestDistance = distance;
+            }
+        }
+        final Vector target = this.flowLocation.toVector();
+        final int ahead = Math.min(this.path.size(), nearest + SELF_PUSH_LOOKAHEAD);
+        for (int i = 0; i < ahead; i++) target.add(this.path.step(i));
+        Vector direction = target.subtract(body);
+        if (ahead <= nearest || direction.lengthSquared() < 1e-6) direction = fallback.clone();
+        return direction.normalize().multiply(this.selfPushVelocity);
     }
 
     private Vector rotate(final Vector vector) {

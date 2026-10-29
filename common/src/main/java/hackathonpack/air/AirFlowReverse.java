@@ -23,6 +23,7 @@ public class AirFlowReverse extends AbstractAirFlow implements AddonAbility, Com
         setFlowFields(ConfigManager.getConfig().getLong(path("ChargeTime")), ConfigManager.getConfig().getLong(path("Duration")),
                 ConfigManager.getConfig().getDouble(path("Range")), ConfigManager.getConfig().getInt(path("ParticlePerTick")),
                 ConfigManager.getConfig().getDouble(path("ParticleSpawnAreaSize")));
+        setPushFields(ConfigManager.getConfig().getDouble(path("SelfPushVelocity")), ConfigManager.getConfig().getDouble(path("OtherPushVelocity")));
         start();
     }
 
@@ -104,6 +105,8 @@ public class AirFlowReverse extends AbstractAirFlow implements AddonAbility, Com
         ConfigManager.getConfig().addDefault(path("Range"), 20);
         ConfigManager.getConfig().addDefault(path("ParticlePerTick"), 1);
         ConfigManager.getConfig().addDefault(path("ParticleSpawnAreaSize"), 3);
+        ConfigManager.getConfig().addDefault(path("SelfPushVelocity"), 1.0);
+        ConfigManager.getConfig().addDefault(path("OtherPushVelocity"), 1.0);
         ConfigManager.getConfig().addDefault(path("Combination"), Arrays.asList("AirBurst: SHIFT_DOWN", "AirSuction: LEFT_CLICK"));
         ConfigManager.defaultConfig.save();
         ProjectKorra.log.info("Succesfully enabled " + getName() + " by " + getAuthor());

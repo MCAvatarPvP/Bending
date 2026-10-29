@@ -51,7 +51,7 @@ public abstract class PredictionClientTick extends PredictionClientWorldState {
         if (!active && sessionId == null && client.getNetworkHandler() != null
                 && clientTick - lastHelloTick >= 20
                 && ClientPlayNetworking.canSend(PredictionPayloads.ClientHello.ID)) {
-            ClientPlayNetworking.send(new PredictionPayloads.ClientHello(PredictionPayloads.PROTOCOL_VERSION, clientTick, CAPABILITIES));
+            ClientPlayNetworking.send(new PredictionPayloads.ClientHello(PredictionPayloads.PROTOCOL_VERSION, clientTick, helloCapabilities()));
             lastHelloTick = clientTick;
             debug("sent hello retry tick=" + clientTick);
         }

@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.fabric.client.prediction.impl;
 
 import com.projectkorra.projectkorra.fabric.client.config.ClientBendingConfig;
+import com.projectkorra.projectkorra.fabric.client.prediction.block.ClientBlockVisualOverlay;
 import com.projectkorra.projectkorra.fabric.client.prediction.block.ClientTempBlockAuthority;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads;
 import com.projectkorra.projectkorra.prediction.authority.RegionProtectionAuthority;
@@ -222,6 +223,34 @@ public abstract class PredictionClientNativeInput extends PredictionClientState 
         PredictionClient.instance().disableHandshakePending = false;
         // Retry the normal authenticated handshake on the next client tick.
         PredictionClient.instance().lastHelloTick = PredictionClient.instance().clientTick - 20L;
+    }
+
+    /**
+     * Applies a Mod Menu visuals change without requiring a reconnect. Paper
+     * fixes capabilities per session, so a live session is replaced by a new
+     * hello carrying the updated server-visuals bit.
+     */
+    public static void onClientSideVisualsSettingChanged(final boolean enabled) {
+        // Terrain compiled with or without predicted blocks must be rebuilt even with no session.
+        ClientBlockVisualOverlay.onVisualsSettingChanged();
+        if (!initialized || !ClientBendingConfig.isEnabled()) return;
+        final PredictionClient prediction = PredictionClient.instance();
+        if (prediction.sessionId == null && !prediction.active) return;
+        final MinecraftClient client = MinecraftClient.getInstance();
+        // Stopping the runtime clears both block authorities, whose overlay
+        // removal schedules the terrain rebuilds for stale predicted blocks.
+        prediction.reset(client);
+        // Send now rather than on the next tick: a snapshot of the old session
+        // arriving first would otherwise restore sessionId and suppress the
+        // tick retry, leaving Paper on the old capabilities.
+        if (client.getNetworkHandler() != null && ClientPlayNetworking.canSend(PredictionPayloads.ClientHello.ID)) {
+            ClientPlayNetworking.send(new PredictionPayloads.ClientHello(
+                    PredictionPayloads.PROTOCOL_VERSION, prediction.clientTick, helloCapabilities()));
+            prediction.lastHelloTick = prediction.clientTick;
+            debug("sent visuals re-hello enabled=" + enabled + " capabilities=" + helloCapabilities());
+            return;
+        }
+        prediction.lastHelloTick = prediction.clientTick - 20L;
     }
 
     public static String diagnosticStatus() {

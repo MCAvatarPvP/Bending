@@ -42,6 +42,13 @@ public abstract class PredictionClientState {
     protected static final ThreadLocal<Boolean> INPUT_SNEAK_OVERRIDE = new ThreadLocal<>();
     protected static final ThreadLocal<Integer> INPUT_SLOT_OVERRIDE = new ThreadLocal<>();
     protected static final int CAPABILITIES = 1 | 2 | 4 | 8;
+    /** Asks Paper to keep sending its authoritative visuals because this client does not draw its own. */
+    protected static final int CAPABILITY_SERVER_VISUALS = 16;
+
+    /** Hello capabilities for the current settings; visuals off asks Paper for its own copies. */
+    protected static int helloCapabilities() {
+        return CAPABILITIES | (ClientBendingConfig.isVisualsEnabled() ? 0 : CAPABILITY_SERVER_VISUALS);
+    }
     protected static final int RUNTIME_RETRY_TICKS = 20;
     protected static final int WORLD_TRANSITION_HISTORY_LIMIT = 24;
     protected static final boolean DEBUG = Boolean.parseBoolean(System.getProperty("projectkorra.prediction.debug", "false"));

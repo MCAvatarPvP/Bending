@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.fabric.client.prediction.block;
 
+import com.projectkorra.projectkorra.fabric.client.config.ClientBendingConfig;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.BlockRenderType;
 import net.minecraft.block.Blocks;
@@ -44,6 +45,16 @@ public final class ClientBlockVisualOverlay {
         TEMP
     }
 
+    /**
+     * Cached "Client-side visuals" setting. Terrain workers read it once per
+     * block lookup, so it is a volatile field rather than the synchronized
+     * config getter. Only the render paths consult it; logical composition
+     * for gameplay and collision ignores it.
+     */
+    private static volatile boolean visualsEnabled = ClientBendingConfig.isVisualsEnabled();
+    /** The runtime's single overlay, so a settings change can rebuild its sections. */
+    private static volatile ClientBlockVisualOverlay current;
+
     private final ConcurrentMap<BlockKey, BlockState> direct = new ConcurrentHashMap<>();
     /** State and lower-layer policy are one atomic worker-visible snapshot. */
     private final ConcurrentMap<BlockKey, TempLayer> temp = new ConcurrentHashMap<>();
@@ -53,6 +64,44 @@ public final class ClientBlockVisualOverlay {
             new ConcurrentHashMap<>();
     private final Set<RenderSectionKey> pendingRebuildSections = ConcurrentHashMap.newKeySet();
     private int rebuildBatchDepth;
+
+    public ClientBlockVisualOverlay() {
+        current = this;
+    }
+
+    /** Whether predicted blocks may reach the terrain compiler or foreground renderer. */
+    public static boolean visualsEnabled() {
+        return visualsEnabled;
+    }
+
+    /**
+     * Re-reads the "Client-side visuals" setting and rebuilds every section
+     * that an overlay entry touches, so terrain compiled with (or without)
+     * predicted TEMP/DIRECT states and AIR concealment is recompiled against
+     * the new setting. Call on the client thread after the setting changes.
+     */
+    public static void onVisualsSettingChanged() {
+        final boolean enabled = ClientBendingConfig.isVisualsEnabled();
+        if (visualsEnabled == enabled) return;
+        visualsEnabled = enabled;
+        final ClientBlockVisualOverlay overlay = current;
+        if (overlay != null) overlay.rebuildAll();
+    }
+
+    private void rebuildAll() {
+        final Set<BlockKey> keys = new HashSet<>(this.direct.keySet());
+        keys.addAll(this.temp.keySet());
+        keys.addAll(this.foregroundDirect.keySet());
+        keys.addAll(this.foregroundTemp.keySet());
+        if (keys.isEmpty()) return;
+        beginRebuildBatch();
+        try {
+            keys.forEach(this::scheduleRebuild);
+        } finally {
+            endRebuildBatch();
+        }
+        flushRebuilds();
+    }
 
     /** Coalesces a dense authority update into one terrain request per affected section. */
     public void beginRebuildBatch() {
@@ -88,7 +137,9 @@ public final class ClientBlockVisualOverlay {
      */
     public BlockState composeTerrain(final ClientWorld world, final BlockPos pos,
                                      final BlockState authoritativeState) {
-        if (world == null || pos == null) return authoritativeState;
+        // Visuals off: Paper sends this player its authoritative blocks, so
+        // the terrain mesh shows the plain backing ClientWorld.
+        if (!visualsEnabled || world == null || pos == null) return authoritativeState;
         final BlockKey key = new BlockKey(world, pos.toImmutable());
         while (true) {
             final VisibleForeground selected = visibleForeground(key, authoritativeState);
@@ -254,7 +305,8 @@ public final class ClientBlockVisualOverlay {
 
     /** Immutable, world-local data safe to copy during render extraction. */
     public List<VisualBlock> foregroundBlocks(final ClientWorld world) {
-        if (world == null || foregroundDirect.isEmpty() && foregroundTemp.isEmpty()) {
+        if (!visualsEnabled || world == null
+                || foregroundDirect.isEmpty() && foregroundTemp.isEmpty()) {
             return List.of();
         }
         final long now = System.nanoTime();

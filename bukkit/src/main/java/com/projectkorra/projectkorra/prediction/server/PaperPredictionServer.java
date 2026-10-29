@@ -168,6 +168,28 @@ public final class PaperPredictionServer extends PaperPredictionSnapshots {
         return predictedEffectOwner();
     }
 
+    /**
+     * The player hidden from a particle broadcast because their client drew it.
+     * Unlike {@link #predictedEffectOwner()}, which also carries ability context,
+     * this returns null when the owner turned client-side visuals off, so they
+     * receive Paper's authoritative copy like any other viewer.
+     */
+    public static Player predictedVisualEffectOwner() {
+        return drawsOwnVisuals(predictedEffectOwner());
+    }
+
+    /** Sound counterpart of {@link #predictedVisualEffectOwner()}. */
+    public static Player predictedVisualSoundOwner() {
+        return drawsOwnVisuals(predictedSoundEffectOwner());
+    }
+
+    private static Player drawsOwnVisuals(final Player owner) {
+        final PaperPredictionServer server = active;
+        if (owner == null || server == null) return null;
+        final Session session = server.sessions.get(owner.getUniqueId());
+        return session != null && (session.capabilities & CAPABILITY_SERVER_VISUALS) != 0 ? null : owner;
+    }
+
     /** Adds only server-validated historical player boxes to a real ability query. */
     public static void augmentNearbyPlayers(
             final World world, final org.bukkit.util.BoundingBox query,
