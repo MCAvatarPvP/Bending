@@ -69,10 +69,6 @@ public class Ripple extends EarthAbility {
         return true;
     }
 
-    private static boolean hasAnyMoved(final Block block) {
-        return MOVED_COLUMNS.contains(block.getWorld().getName(), block.getX(), block.getZ());
-    }
-
     public static void progressAllCleanup() {
         BLOCKS.clear();
         MOVED_COLUMNS.clear();
@@ -144,84 +140,31 @@ public class Ripple extends EarthAbility {
                 this.block3 = this.block4;
                 this.block4 = newlocation.getBlock();
 
-                if (this.block1 != null) {
-                    if (hasAnyMoved(this.block1)) {
-                        this.block1 = null;
-                    }
-                }
-                if (this.block2 != null) {
-                    if (hasAnyMoved(this.block2)) {
-                        this.block2 = null;
-                    }
-                }
-                if (this.block3 != null) {
-                    if (hasAnyMoved(this.block3)) {
-                        this.block3 = null;
-                    }
-                }
-                if (this.block4 != null) {
-                    if (hasAnyMoved(this.block4)) {
-                        this.block4 = null;
-                    }
-                }
-
                 if (this.step == 0) {
-                    if (this.increase(this.block4)) {
-                        this.block4 = this.block4.getRelative(BlockFace.UP);
-                    }
+                    this.block4 = this.increase(this.block4);
                 } else if (this.step == 1) {
-                    if (this.increase(this.block3)) {
-                        this.block3 = this.block3.getRelative(BlockFace.UP);
-                    }
-                    if (this.increase(this.block4)) {
-                        this.block4 = this.block4.getRelative(BlockFace.UP);
-                    }
+                    this.block3 = this.increase(this.block3);
+                    this.block4 = this.increase(this.block4);
                 } else if (this.step == 2) {
-                    if (this.decrease(this.block2)) {
-                        this.block2 = this.block2.getRelative(BlockFace.DOWN);
-                    }
-                    if (this.increase(this.block3)) {
-                        this.block3 = this.block3.getRelative(BlockFace.UP);
-                    }
-                    if (this.increase(this.block4)) {
-                        this.block4 = this.block4.getRelative(BlockFace.UP);
-                    }
+                    this.block2 = this.decrease(this.block2);
+                    this.block3 = this.increase(this.block3);
+                    this.block4 = this.increase(this.block4);
                 } else {
-                    if (this.decrease(this.block1)) {
-                        this.block1 = this.block1.getRelative(BlockFace.DOWN);
-                    }
-                    if (this.decrease(this.block2)) {
-                        this.block2 = this.block2.getRelative(BlockFace.DOWN);
-                    }
-                    if (this.increase(this.block3)) {
-                        this.block3 = this.block3.getRelative(BlockFace.UP);
-                    }
-                    if (this.increase(this.block4)) {
-                        this.block4 = this.block4.getRelative(BlockFace.UP);
-                    }
+                    this.block1 = this.decrease(this.block1);
+                    this.block2 = this.decrease(this.block2);
+                    this.block3 = this.increase(this.block3);
+                    this.block4 = this.increase(this.block4);
                 }
             }
         } else if (this.step == this.maxStep) {
-            if (this.decrease(this.block2)) {
-                this.block2 = this.block2.getRelative(BlockFace.DOWN);
-            }
-            if (this.decrease(this.block3)) {
-                this.block3 = this.block3.getRelative(BlockFace.DOWN);
-            }
-            if (this.increase(this.block4)) {
-                this.block4 = this.block4.getRelative(BlockFace.UP);
-            }
+            this.block2 = this.decrease(this.block2);
+            this.block3 = this.decrease(this.block3);
+            this.block4 = this.increase(this.block4);
         } else if (this.step == this.maxStep + 1) {
-            if (this.decrease(this.block3)) {
-                this.block3 = this.block3.getRelative(BlockFace.DOWN);
-            }
-            if (this.decrease(this.block4)) {
-                this.block4 = this.block4.getRelative(BlockFace.DOWN);
-            }
+            this.block3 = this.decrease(this.block3);
+            this.block4 = this.decrease(this.block4);
         } else if (this.step == this.maxStep + 2) {
-            if (this.decrease(this.block4)) {
-                this.block4 = this.block4.getRelative(BlockFace.DOWN);
-            }
+            this.block4 = this.decrease(this.block4);
             this.remove();
         }
 
@@ -281,28 +224,35 @@ public class Ripple extends EarthAbility {
         return false;
     }
 
-    private boolean decrease(Block block) {
+    // Never skipped when another ripple touched the column this tick: every
+    // raise must be paired with a lower or the block is left poking out.
+    private Block decrease(final Block block) {
         if (block == null) {
-            return false;
-        } else if (!markMovedForTick(block)) {
-            return false;
+            return null;
         }
+        markMovedForTick(block);
 
+        Block moved = block;
         final Block botBlock = block.getRelative(BlockFace.DOWN);
         int length = 1;
 
         if (this.isEarthbendable(botBlock)) {
             length = 2;
-            block = botBlock;
+            moved = botBlock;
         }
-        return this.moveEarth(block, new Vector(0, -1, 0), length, false);
+        if (this.moveEarth(moved, new Vector(0, -1, 0), length, false)) {
+            return block.getRelative(BlockFace.DOWN);
+        }
+        return block;
     }
 
-    private boolean increase(final Block block) {
+    // Returns null when another ripple already moved this column this tick, so
+    // this ripple doesn't later lower a column it never raised.
+    private Block increase(final Block block) {
         if (block == null) {
-            return false;
+            return null;
         } else if (!markMovedForTick(block)) {
-            return false;
+            return null;
         }
 
         final Block botblock = block.getRelative(BlockFace.DOWN);
@@ -319,9 +269,9 @@ public class Ripple extends EarthAbility {
                     }
                 }
             }
-            return true;
+            return block.getRelative(BlockFace.UP);
         }
-        return false;
+        return block;
     }
 
     private void affect(final Entity entity) {
