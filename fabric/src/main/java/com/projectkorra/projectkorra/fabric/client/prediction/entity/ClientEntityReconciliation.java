@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.fabric.client.prediction.entity;
 
+import com.projectkorra.projectkorra.fabric.client.config.ClientBendingConfig;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads;
 import com.projectkorra.projectkorra.platform.mc.entity.ItemDisplay;
 import net.minecraft.block.Block;
@@ -31,6 +32,11 @@ import java.util.function.Function;
  * displays keep a normally tracked server fallback, hidden only during live
  * local prediction. TempFallingBlocks use
  * action + spawn ordinal matching; proximity is never sufficient.</p>
+ *
+ * <p>With client-side visuals off nothing of Paper's is concealed: its
+ * entities spawn, move and render normally, and a matched Paper id is kept
+ * only as a visible pair so its removal still retires the invisible local
+ * entity exactly as an alias would.</p>
  */
 public final class ClientEntityReconciliation {
     private final Map<Integer, Entity> authoritativeAliases = new HashMap<>();
@@ -39,6 +45,7 @@ public final class ClientEntityReconciliation {
     private final Map<Integer, Entity> hiddenPredictedDisplays = new HashMap<>();
     private final ClientDisplayFallbacks<Entity> displayFallbacks =
             new ClientDisplayFallbacks<>(entity -> !entity.isRemoved());
+    private final Map<Integer, VisibleAuthorityPair> visibleAuthorityPairs = new HashMap<>();
     private final Map<Entity, PredictedSpawn> predictedSpawns = new IdentityHashMap<>();
     private final Map<TempFallingBlockKey, PredictedTempFallingBlock> predictedTempFallingBlocks =
             new HashMap<>();
@@ -101,8 +108,9 @@ public final class ClientEntityReconciliation {
         if (localPlayer == null || receipt == null || receipt.actionSequence() <= 0L
                 || !localPlayer.getUuid().equals(receipt.abilityOwner())) return;
 
+        final boolean conceal = ClientBendingConfig.isVisualsEnabled();
         if (localActionSequence <= 0L) {
-            hiddenTempFallingEntities.add(receipt.serverEntityId());
+            if (conceal) hiddenTempFallingEntities.add(receipt.serverEntityId());
             return;
         }
         final TempFallingBlockKey key = new TempFallingBlockKey(
@@ -115,6 +123,12 @@ public final class ClientEntityReconciliation {
         preparedFallingEntityIds.remove(receipt.serverEntityId());
         final Entity predicted = pending != null
                 && pending.ability.equalsIgnoreCase(receipt.ability()) ? pending.entity : null;
+        // Server visuals: Paper's falling block is the rendered one. The local
+        // block keeps simulating unseen; its alias only ever hid Paper's copy.
+        if (!conceal) {
+            observedFallingBlockSpawns.remove(receipt.serverEntityId());
+            return;
+        }
 
         final boolean vanillaSpawnSeen = observedFallingBlockSpawns.remove(receipt.serverEntityId()) != null;
         final Entity authority = world == null ? null : world.getEntityById(receipt.serverEntityId());
@@ -161,6 +175,7 @@ public final class ClientEntityReconciliation {
                 if (!close(spawn, expected, 1.0E-7)) continue;
                 preparedFallingEntityIds.put(packet.getEntityId(), entry.getKey());
                 observedFallingBlockSpawns.put(packet.getEntityId(), tick);
+                if (!ClientBendingConfig.isVisualsEnabled()) return false;
                 hiddenTempFallingEntities.add(packet.getEntityId());
                 return true;
             }
@@ -177,7 +192,8 @@ public final class ClientEntityReconciliation {
             if (candidate == null || candidate.getType() != packet.getEntityType()
                     || authoritativeAliases.containsValue(candidate)
                     || displayFallbacks.isPaired(candidate)
-                    || hiddenPredictedDisplays.containsValue(candidate)) continue;
+                    || hiddenPredictedDisplays.containsValue(candidate)
+                    || isVisiblyPaired(candidate)) continue;
             // Match creation position, not the position reached while waiting
             // for Paper. Removed entities remain tombstones for delayed spawns.
             final double distance = entry.getValue().origin.squaredDistanceTo(serverPosition);
@@ -188,6 +204,13 @@ public final class ClientEntityReconciliation {
             }
         }
         if (best == null) return false;
+        if (!ClientBendingConfig.isVisualsEnabled()) {
+            // Let Paper's entity spawn and render. Displays were never retired
+            // by Paper's removal; other aliases discarded the local entity.
+            visibleAuthorityPairs.put(packet.getEntityId(),
+                    new VisibleAuthorityPair(best, !(best instanceof DisplayEntity)));
+            return false;
+        }
         if (best instanceof DisplayEntity) {
             if (predictedSpawns.get(best).allowDisplayFallback) {
                 // MetalCable can stop predicting at a grab/throw transition.
@@ -230,6 +253,10 @@ public final class ClientEntityReconciliation {
     public boolean removeHidden(final int serverEntityId) {
         // A fallback is a real vanilla entity: let vanilla destroy it as usual.
         displayFallbacks.remove(serverEntityId);
+        final VisibleAuthorityPair visible = visibleAuthorityPairs.remove(serverEntityId);
+        if (visible != null && visible.discardWithAuthority && !visible.predicted.isRemoved()) {
+            visible.predicted.discard();
+        }
         final boolean display = hiddenPredictedDisplays.remove(serverEntityId) != null;
         return hiddenTempFallingEntities.remove(serverEntityId) || display;
     }
@@ -270,6 +297,7 @@ public final class ClientEntityReconciliation {
         if (spawned != null) actionEntities.addAll(spawned);
         tempFallingAliases.removeIf(id -> actionEntities.contains(authoritativeAliases.get(id)));
         authoritativeAliases.entrySet().removeIf(entry -> actionEntities.contains(entry.getValue()));
+        visibleAuthorityPairs.values().removeIf(pair -> actionEntities.contains(pair.predicted));
         predictedSpawns.entrySet().removeIf(entry -> entry.getValue().actionSequence == actionSequence);
         predictedTempFallingBlocks.keySet().removeIf(key -> key.actionSequence == actionSequence);
         predictedTempFallingOwners.entrySet().removeIf(entry ->
@@ -286,12 +314,20 @@ public final class ClientEntityReconciliation {
         hiddenTempFallingEntities.clear();
         hiddenPredictedDisplays.clear();
         displayFallbacks.clear();
+        visibleAuthorityPairs.clear();
         predictedSpawns.clear();
         predictedTempFallingBlocks.clear();
         predictedTempFallingOwners.clear();
         serverTempFallingPrepares.clear();
         preparedFallingEntityIds.clear();
         observedFallingBlockSpawns.clear();
+    }
+
+    private boolean isVisiblyPaired(final Entity candidate) {
+        for (VisibleAuthorityPair pair : visibleAuthorityPairs.values()) {
+            if (pair.predicted == candidate) return true;
+        }
+        return false;
     }
 
     private static boolean matchesWorld(final String clientWorld, final String serverWorld) {
@@ -305,6 +341,7 @@ public final class ClientEntityReconciliation {
         return first.squaredDistanceTo(second) <= tolerance * tolerance;
     }
 
+    private record VisibleAuthorityPair(Entity predicted, boolean discardWithAuthority) { }
     private record PredictedSpawn(long actionSequence, Vec3d origin, boolean allowDisplayFallback) { }
     private record TempFallingBlockKey(long actionSequence, int spawnOrdinal) { }
     private record PredictedTempFallingBlock(Entity entity, String ability) { }

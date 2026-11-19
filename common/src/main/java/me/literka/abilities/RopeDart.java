@@ -208,7 +208,7 @@ public class RopeDart extends ChiAbility implements AddonAbility {
 
         for (final Entity entity : search.getEntities(candidate -> candidate instanceof LivingEntity
                 && !candidate.isDead() && !candidate.getUniqueId().equals(player.getUniqueId()))) {
-            final BoundingBox hitBox = entity.getBoundingBox().expand(0.35);
+            final BoundingBox hitBox = entity.getCombatBoundingBox().expand(0.35);
             final AABB collider = new AABB(entity.getWorld(), hitBox);
             if (movement == null ? collider.contains(to) : movement.intersects(collider)) {
                 setTarget((LivingEntity) entity);

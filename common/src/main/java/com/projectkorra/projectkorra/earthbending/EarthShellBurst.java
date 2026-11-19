@@ -143,7 +143,7 @@ final class EarthShellBurst extends BukkitRunnable {
                             Math.max(shard.location.getZ(), next.getZ()) + hitRadius));
                     shard.location.add(step);
                     for (final var entity : targets) {
-                        final BoundingBox body = entity.getBoundingBox();
+                        final BoundingBox body = entity.getCombatBoundingBox();
                         if (!body.overlaps(contact)) continue;
                         final Location touch = new Location(next.getWorld(),
                                 Math.max(body.getMinX(), Math.min(next.getX(), body.getMaxX())),

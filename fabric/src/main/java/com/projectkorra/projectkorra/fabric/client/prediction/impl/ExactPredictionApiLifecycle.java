@@ -229,6 +229,12 @@ public abstract class ExactPredictionApiLifecycle extends ExactPredictionApiBloc
         return ExactPredictionRuntime.instance().entityReconciliation.isPredictedOwned(entity);
     }
 
+    /** True for a falling block spawned by a locally predicted TempFallingBlock. */
+    public static boolean isPredictedTempFallingBlock(final Entity entity) {
+        return ExactPredictionRuntime.instance().ready
+                && ExactPredictionRuntime.instance().entityReconciliation.predictedTempFallingOwner(entity) != null;
+    }
+
     /**
      * Gives only locally predicted EarthShard falling blocks a brief launch
      * window in which delayed source/ready blocks cannot stop their movement.

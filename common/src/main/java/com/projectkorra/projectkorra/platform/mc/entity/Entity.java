@@ -85,6 +85,16 @@ public class Entity {
         return new BoundingBox();
     }
 
+    /** Bending target bounds; movement and vanilla combat keep the native body bounds. */
+    public BoundingBox getCombatBoundingBox() {
+        if (this instanceof Player player) {
+            var glider = com.projectkorra.projectkorra.ability.CoreAbility.getAbility(player,
+                    com.projectkorra.projectkorra.airbending.AirGlider.class);
+            if (glider != null && !glider.isRemoved()) return glider.getCombatBoundingBox();
+        }
+        return getBoundingBox();
+    }
+
     public boolean isOnGround() {
         return false;
     }

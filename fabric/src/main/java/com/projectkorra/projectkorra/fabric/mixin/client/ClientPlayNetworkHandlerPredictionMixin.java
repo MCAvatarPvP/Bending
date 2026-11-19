@@ -2,6 +2,7 @@ package com.projectkorra.projectkorra.fabric.mixin.client;
 
 import com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime;
 import com.projectkorra.projectkorra.fabric.client.PredictionClient;
+import com.projectkorra.projectkorra.fabric.client.config.ClientBendingConfig;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayNetworkHandler;
@@ -69,7 +70,7 @@ public abstract class ClientPlayNetworkHandlerPredictionMixin {
 
     @Inject(method = "onPlaySound", at = @At("HEAD"), cancellable = true)
     private void projectkorra$suppressPredictedSoundEcho(PlaySoundS2CPacket packet, CallbackInfo ci) {
-        if (MinecraftClient.getInstance().isOnThread()
+        if (MinecraftClient.getInstance().isOnThread() && ClientBendingConfig.isVisualsEnabled()
                 && ExactPredictionRuntime.suppressAuthoritativeSound(packet)) ci.cancel();
     }
 

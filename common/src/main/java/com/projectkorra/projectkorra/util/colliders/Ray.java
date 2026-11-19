@@ -136,7 +136,7 @@ public class Ray implements Collider {
 
     @Override
     public Collection<Entity> getEntities(Predicate<Entity> filter) {
-        Predicate<Entity> rayIntersetion = entity -> intersects(new AABB(entity.getWorld(), entity.getBoundingBox()));
+        Predicate<Entity> rayIntersetion = entity -> intersects(new AABB(entity.getWorld(), entity.getCombatBoundingBox()));
         return toAABB().getEntities(rayIntersetion.and(filter));
     }
 

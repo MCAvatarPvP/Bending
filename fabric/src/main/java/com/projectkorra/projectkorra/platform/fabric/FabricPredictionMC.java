@@ -2,6 +2,7 @@ package com.projectkorra.projectkorra.platform.fabric;
 
 import com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime;
 import com.projectkorra.projectkorra.fabric.client.PredictionClient;
+import com.projectkorra.projectkorra.fabric.client.config.ClientBendingConfig;
 import com.projectkorra.projectkorra.fabric.client.prediction.entity.PredictedEntityIdAllocator;
 import com.projectkorra.projectkorra.fabric.mixin.client.AreaEffectCloudEntityAccessor;
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -237,6 +238,13 @@ public final class FabricPredictionMC {
         }
 
         @Override
+        public Collection<Entity> getNearbyCombatEntities(BoundingBox box, Predicate<Entity> filter) {
+            return super.getNearbyCombatEntities(box, entity ->
+                    HitRegistrationPolicy.includePredictedEntity(AbilityExecutionContext.current(), entity)
+                            && (filter == null || filter.test(entity)));
+        }
+
+        @Override
         public Collection<Entity> getNearbyEntities(BoundingBox box, Predicate<Entity> filter) {
             Box nativeBox = new Box(box.getMinX(), box.getMinY(), box.getMinZ(), box.getMaxX(), box.getMaxY(), box.getMaxZ());
             List<Entity> result = new ArrayList<>();
@@ -264,6 +272,8 @@ public final class FabricPredictionMC {
 
         private <T> void spawnParticle(Particle particle, Location location, int count, double ox, double oy, double oz,
                                        double extra, T data, boolean force) {
+            // Client-side visuals off: Paper sends this player its authoritative particles instead.
+            if (!ClientBendingConfig.isVisualsEnabled()) return;
             ParticleEffect effect = FabricMC.particle(particle, data);
             if (effect == null) return;
             int samples = count == 0 ? 1 : Math.max(1, count);
@@ -284,7 +294,8 @@ public final class FabricPredictionMC {
         @Override public void playSound(Location location, Sound sound, SoundCategory category, float volume, float pitch) { playSound(location, sound == null ? null : sound.name(), volume, pitch, category); }
         @Override public void playSound(Location location, String sound, float volume, float pitch) { playSound(location, sound, volume, pitch, SoundCategory.MASTER); }
         private void playSound(Location location, String sound, float volume, float pitch, SoundCategory category) {
-            if (sound == null || sound.isBlank()) return;
+            // Client-side visuals off: Paper sends this player its authoritative sounds instead.
+            if (sound == null || sound.isBlank() || !ClientBendingConfig.isVisualsEnabled()) return;
             Identifier id = FabricMC.soundIdentifier(sound);
             if (id == null) return;
             final net.minecraft.sound.SoundCategory nativeCategory =
@@ -755,6 +766,13 @@ public final class FabricPredictionMC {
                 if (!passThrough.contains(current.getType())) break;
             }
             return List.of(previous, current);
+        }
+        @Override public void hideDisplay(Display display) {
+            final ClientPlayerEntity local = MinecraftClient.getInstance().player;
+            if (local != null && local.getUuid().equals(value.getUuid()) && display != null) {
+                // This display exists only in this client's predicted world.
+                display.setViewRange(0);
+            }
         }
         @Override public boolean hasLineOfSight(Entity entity) {
             Vec3d start = value.getEyePos(), end = nativeVector(entity.getBoundingBox().getCenter());

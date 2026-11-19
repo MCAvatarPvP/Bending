@@ -60,6 +60,10 @@ final class CoreAbilityActivationBootstrap {
 
     private static void registerAir() {
         register("Tornado", ClickType.SHIFT_DOWN, context -> created(new Tornado(context.getPlayer())));
+        register("Tornado", ClickType.LEFT_CLICK, context -> {
+            final Tornado tornado = CoreAbility.getAbility(context.getPlayer(), Tornado.class);
+            return tornado != null && tornado.launch();
+        });
         register("AirBlast", ClickType.SHIFT_DOWN, context -> created(new AirBlast(context.getPlayer())));
         register("AirBurst", ClickType.SHIFT_DOWN, context -> created(new AirBurst(context.getPlayer(), false)));
         register("AirSuction", ClickType.SHIFT_DOWN, context -> created(new AirSuction(context.getPlayer())));

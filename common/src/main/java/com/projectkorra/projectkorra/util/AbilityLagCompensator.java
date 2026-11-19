@@ -10,32 +10,37 @@ import java.util.*;
 
 public class AbilityLagCompensator {
 
+    // Two seconds of rewind, including the current frame. No full-history scans per tick.
+    static final int MAX_REWIND_TICKS = 40;
     private final Set<Player> players;
-    private final Map<Integer, Snapshot> snapshots;
+    private final Snapshot[] snapshots;
     private final OnUpdate onUpdate;
-    private int currentTick;
+    private long currentTick;
 
     public AbilityLagCompensator(OnUpdate onUpdate) {
         this.players = new HashSet<>();
-        this.snapshots = new HashMap<>();
+        this.snapshots = new Snapshot[MAX_REWIND_TICKS + 1];
         this.onUpdate = onUpdate;
         this.currentTick = 0;
     }
 
     public void update() {
-        Snapshot currentSnapshot = snapshots.get(currentTick);
+        Snapshot currentSnapshot = snapshots[index(currentTick)];
         final Iterator<Player> iterator = players.iterator();
         while (iterator.hasNext()) {
             final Player player = iterator.next();
-            final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-
-            Snapshot snapshot = getCompensatedSnapshot(bPlayer);
-
-            if (snapshot == null) {
+            if (!player.isOnline() || BendingPlayer.getBendingPlayer(player) == null) {
+                iterator.remove();
                 continue;
             }
 
-            AABB playerAABB = new AABB(player.getWorld(), player.getBoundingBox());
+            Snapshot snapshot = getCompensatedSnapshot(player.getPing());
+
+            if (snapshot == null || currentSnapshot == null) {
+                continue;
+            }
+
+            AABB playerAABB = new AABB(player.getWorld(), player.getCombatBoundingBox());
             boolean intersectsCurr = playerAABB.intersects(currentSnapshot.getCollider());
             boolean intersectsPrev = playerAABB.intersects(snapshot.getCollider());
             if (!intersectsCurr && !intersectsPrev) {
@@ -49,12 +54,16 @@ public class AbilityLagCompensator {
         }
 
         currentTick++;
+        snapshots[index(currentTick)] = null;
     }
 
-    private Snapshot getCompensatedSnapshot(BendingPlayer bPlayer) {
-        int snapshotIndex = Math.max(0, currentTick - bPlayer.getPlayer().getPing() / 50);
+    Snapshot getCompensatedSnapshot(int ping) {
+        final int rewind = Math.min(MAX_REWIND_TICKS, Math.max(0, ping / 50));
+        return snapshots[index(Math.max(0, currentTick - rewind))];
+    }
 
-        return snapshots.get(snapshotIndex);
+    private int index(long tick) {
+        return (int) (tick % snapshots.length);
     }
 
     public void addPlayer(Player player) {
@@ -62,11 +71,11 @@ public class AbilityLagCompensator {
     }
 
     public void addSnapshot(Collider collider) {
-        snapshots.put(currentTick, new Snapshot(collider.getCenter(), collider));
+        snapshots[index(currentTick)] = new Snapshot(collider.getCenter(), collider);
     }
 
     public void addSnapshot(Location location, double radius) {
-        snapshots.put(currentTick, new Snapshot(location, new AABB(location, radius)));
+        snapshots[index(currentTick)] = new Snapshot(location, new AABB(location, radius));
     }
 
     @FunctionalInterface

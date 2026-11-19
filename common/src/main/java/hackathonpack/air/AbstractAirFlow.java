@@ -16,7 +16,8 @@ import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import java.util.ArrayList;
 
 abstract class AbstractAirFlow extends AirAbility {
-    private final ArrayList<Location> particles = new ArrayList<>();
+    private static final int SELF_PUSH_LOOKAHEAD = 4;
+    private final ArrayList<FlowParticle> particles = new ArrayList<>();
     private final ArrayList<Entity> affectedEntities = new ArrayList<>();
     private long chargeTime;
     private long launchTime;
@@ -24,10 +25,14 @@ abstract class AbstractAirFlow extends AirAbility {
     private double range;
     private int particlePerTick;
     private double particleSpawnAreaSize;
+    private double selfPushVelocity = 1;
+    private double otherPushVelocity = 1;
+    private double maxTurnAngle = 180;
     private Location flowLocation;
     private Vector flowDirection;
     private State state = State.CHARGING;
     private boolean draining;
+    private final AirFlowPath path = new AirFlowPath();
 
     protected AbstractAirFlow(final Player player) {
         super(player);
@@ -41,9 +46,32 @@ abstract class AbstractAirFlow extends AirAbility {
         this.particleSpawnAreaSize = particleSpawnAreaSize;
     }
 
+    protected void setPushFields(final double selfPushVelocity, final double otherPushVelocity) {
+        this.selfPushVelocity = selfPushVelocity;
+        this.otherPushVelocity = otherPushVelocity;
+    }
+
+    protected void setDrawSpeed(final double drawSpeed) {
+        this.path.setSpeed(drawSpeed);
+    }
+
+    /** Caps how many degrees the flow's direction may turn per tick. */
+    protected void setMaxTurnAngle(final double maxTurnAngle) {
+        this.maxTurnAngle = maxTurnAngle;
+    }
+
     protected abstract int sourceDistance();
 
     protected abstract double directionMultiplier();
+
+    protected final void launch() {
+        this.state = State.LAUNCHED;
+        this.launchTime = RollbackClock.millis();
+        this.flowLocation = this.player.getEyeLocation().add(this.player.getLocation().getDirection().multiply(sourceDistance()));
+        this.flowDirection = this.player.getLocation().getDirection().multiply(directionMultiplier());
+        this.player.getWorld().playSound(this.flowLocation, Sound.valueOf("ITEM_ELYTRA_FLYING"), 0.05F, 1);
+        this.bPlayer.addCooldown(this);
+    }
 
     @Override
     public void progress() {
@@ -63,16 +91,16 @@ abstract class AbstractAirFlow extends AirAbility {
         }
         if (this.state == State.CHARGED) {
             if (!this.player.isSneaking()) {
-                this.state = State.LAUNCHED;
-                this.launchTime = RollbackClock.millis();
-                this.flowLocation = this.player.getEyeLocation().add(this.player.getLocation().getDirection().multiply(sourceDistance()));
-                this.flowDirection = this.player.getLocation().getDirection().multiply(directionMultiplier());
-                this.player.getWorld().playSound(this.flowLocation, Sound.valueOf("ITEM_ELYTRA_FLYING"), 0.05F, 1);
-                this.bPlayer.addCooldown(this);
+                launch();
             } else {
                 playAirbendingParticles(this.bPlayer, this.player.getEyeLocation().add(this.player.getLocation().getDirection().multiply(sourceDistance())), 1);
             }
             return;
+        }
+        if (!this.path.isFull(this.range)) {
+            final Location aim = this.player.getEyeLocation();
+            this.flowDirection = limitTurn(aim.getDirection().multiply(directionMultiplier()));
+            this.path.extend(this.flowDirection, this.range);
         }
         tickParticles(true);
         if (RollbackRandom.fraction() < 0.05)
@@ -82,30 +110,78 @@ abstract class AbstractAirFlow extends AirAbility {
     private void tickParticles(final boolean emitParticles) {
         if (emitParticles) {
             for (int i = 0; i < this.particlePerTick; i++) {
-                this.particles.add(this.flowLocation.clone().add(rotate(new Vector(RollbackRandom.fraction() * this.particleSpawnAreaSize - this.particleSpawnAreaSize / 2,
-                        RollbackRandom.fraction() * this.particleSpawnAreaSize - this.particleSpawnAreaSize / 2, 0))));
+                this.particles.add(new FlowParticle(this.flowLocation.clone().add(rotate(new Vector(RollbackRandom.fraction() * this.particleSpawnAreaSize - this.particleSpawnAreaSize / 2,
+                        RollbackRandom.fraction() * this.particleSpawnAreaSize - this.particleSpawnAreaSize / 2, 0)))));
             }
         }
         this.affectedEntities.clear();
         for (int i = this.particles.size() - 1; i >= 0; i--) {
-            final Location loc = this.particles.get(i);
+            final FlowParticle particle = this.particles.get(i);
+            if (particle.segment >= this.path.size()) {
+                this.particles.remove(i);
+                continue;
+            }
+            final Location loc = particle.location;
+            final Vector step = this.path.step(particle.segment++);
             playAirbendingParticles(this.bPlayer, loc, 1);
-            final Vector velocity = this.flowDirection.clone().rotateAroundY(Math.toRadians(noise(loc) * 90)).normalize();
+            final Vector velocity = step.clone().normalize();
             for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(loc, 2)) {
                 if (!this.affectedEntities.contains(entity)) {
-                    GeneralMethods.setVelocity(this, entity, velocity.clone().add(entity.getVelocity()).multiply(0.5));
+                    if (entity.equals(this.player)) {
+                        // Like FireJet, the caster's velocity is set outright instead of blended, aimed at the
+                        // flow ahead so they follow its turns and are pulled back onto it.
+                        GeneralMethods.setVelocity(this, entity, selfPush(step));
+                        this.player.setFallDistance(0);
+                    } else {
+                        GeneralMethods.setVelocity(this, entity, velocity.clone().multiply(this.otherPushVelocity).add(entity.getVelocity()).multiply(0.5));
+                    }
                     this.affectedEntities.add(entity);
                 }
             }
-            loc.add(velocity.multiply(0.5));
-            if (loc.distance(this.flowLocation) > this.range || GeneralMethods.isSolid(loc.getBlock())) {
+            loc.add(step);
+            if ((this.path.isFull(this.range) && particle.segment >= this.path.size())
+                    || GeneralMethods.isSolid(loc.getBlock())) {
                 this.particles.remove(i);
             }
         }
     }
 
-    private double noise(final Location location) {
-        return Math.sin(location.getX() * 0.31 + location.getY() * 0.17 + location.getZ() * 0.23);
+    private Vector limitTurn(final Vector desired) {
+        if (this.path.size() == 0 || this.maxTurnAngle >= 180) return desired;
+        final Vector previous = this.path.step(this.path.size() - 1).normalize();
+        final Vector target = desired.clone().normalize();
+        final double max = Math.toRadians(Math.max(0, this.maxTurnAngle));
+        final double cos = Math.max(-1, Math.min(1, previous.dot(target)));
+        if (Math.acos(cos) <= max) return desired;
+        Vector side = target.clone().subtract(previous.clone().multiply(cos));
+        if (side.lengthSquared() < 1e-9) {
+            // Aiming straight back has no preferred side; turn through the horizontal plane.
+            side = previous.clone().crossProduct(new Vector(0, 1, 0));
+            if (side.lengthSquared() < 1e-9) side = new Vector(1, 0, 0);
+        }
+        side.normalize();
+        return previous.multiply(Math.cos(max)).add(side.multiply(Math.sin(max))).multiply(desired.length());
+    }
+
+    private Vector selfPush(final Vector fallback) {
+        final Vector body = this.player.getLocation().toVector().add(new Vector(0, 1, 0));
+        final Vector center = this.flowLocation.toVector();
+        int nearest = 0;
+        double nearestDistance = center.distanceSquared(body);
+        for (int i = 0; i < this.path.size(); i++) {
+            center.add(this.path.step(i));
+            final double distance = center.distanceSquared(body);
+            if (distance < nearestDistance) {
+                nearest = i + 1;
+                nearestDistance = distance;
+            }
+        }
+        final Vector target = this.flowLocation.toVector();
+        final int ahead = Math.min(this.path.size(), nearest + SELF_PUSH_LOOKAHEAD);
+        for (int i = 0; i < ahead; i++) target.add(this.path.step(i));
+        Vector direction = target.subtract(body);
+        if (ahead <= nearest || direction.lengthSquared() < 1e-6) direction = fallback.clone();
+        return direction.normalize().multiply(this.selfPushVelocity);
     }
 
     private Vector rotate(final Vector vector) {
@@ -129,6 +205,15 @@ abstract class AbstractAirFlow extends AirAbility {
                 tickParticles(false);
             }
         }.runTaskTimer(ProjectKorra.plugin, 0, 1);
+    }
+
+    private static final class FlowParticle {
+        private final Location location;
+        private int segment;
+
+        private FlowParticle(final Location location) {
+            this.location = location;
+        }
     }
 
     private enum State {CHARGING, CHARGED, LAUNCHED}

@@ -64,7 +64,7 @@ final class MetalCableCollision {
         }
         if (targets != null) {
             for (final Entity entity : world.getNearbyEntities(area, targets)) {
-                final double time = intersection(from, movement, entity.getBoundingBox().expand(entityRadius));
+                final double time = intersection(from, movement, entity.getCombatBoundingBox().expand(entityRadius));
                 // A block wins ties, so an entity cannot be grabbed through a wall.
                 if (time < nearest) {
                     nearest = time;

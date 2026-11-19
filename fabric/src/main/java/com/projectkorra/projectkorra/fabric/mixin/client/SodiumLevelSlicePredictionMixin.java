@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.fabric.mixin.client;
 
 import com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime;
+import com.projectkorra.projectkorra.fabric.client.prediction.block.ClientBlockVisualOverlay;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.world.ClientWorld;
@@ -44,6 +45,7 @@ public abstract class SodiumLevelSlicePredictionMixin {
     private void projectkorra$visualBlockState(final int blockX, final int blockY,
                                                 final int blockZ,
                                                 final CallbackInfoReturnable<BlockState> cir) {
+        if (!ClientBlockVisualOverlay.visualsEnabled()) return;
         final ClientWorld world = MinecraftClient.getInstance().world;
         final BlockState authoritativeState = cir.getReturnValue();
         if (world == null || authoritativeState == null

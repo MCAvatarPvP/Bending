@@ -79,7 +79,7 @@ public final class BukkitWorld implements PKWorld {
         final String selected = GeneralMethods.firstLegacyConfigAlternative(sound);
         if (selected == null || selected.isBlank()) return;
         final Location nativeLocation = location.handle(Location.class);
-        final Player excluded = PaperPredictionServer.predictedEffectOwner();
+        final Player excluded = PaperPredictionServer.predictedVisualEffectOwner();
         if (selected.contains(":") || selected.contains(".")) {
             if (excluded == null || excluded.getWorld() != this.world) {
                 this.world.playSound(nativeLocation, selected, volume, pitch);
@@ -102,7 +102,7 @@ public final class BukkitWorld implements PKWorld {
     public void spawnParticle(final String particle, final PKLocation location, final int count, final double offsetX, final double offsetY, final double offsetZ, final double extra) {
         final Particle nativeParticle = particle(particle);
         final Location nativeLocation = location.handle(Location.class);
-        final Player excluded = PaperPredictionServer.predictedEffectOwner();
+        final Player excluded = PaperPredictionServer.predictedVisualEffectOwner();
         if (excluded == null || excluded.getWorld() != this.world)
             this.world.spawnParticle(nativeParticle, nativeLocation, count, offsetX, offsetY, offsetZ, extra);
         else

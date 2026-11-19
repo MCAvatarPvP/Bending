@@ -385,7 +385,7 @@ public class AirSweep extends AirAbility implements ComboAbility {
         final AABB searchBox = new AABB(previousLoc, loc).expand(this.radius + 1.0);
 
         for (final Entity entity : searchBox.getEntities(this::canHitEntity)) {
-            final BoundingBox expandedBox = entity.getBoundingBox().expand(this.radius);
+            final BoundingBox expandedBox = entity.getCombatBoundingBox().expand(this.radius);
             if (movement.intersects(new AABB(entity.getWorld(), expandedBox))) {
                 entities.add(entity);
             }
