@@ -60,6 +60,8 @@ public abstract class PredictionClientWorldState extends PredictionClientServerS
         if (client == null || world == null || sessionId == null || !readySent) return;
         if (active && runtimeWorld == world && runtimePlayer == client.player) return;
 
+        meleeContacts.clear();
+        acceptedAttack = null;
         recordWorldTransition("client world boundary target=" + worldRef(world));
         worldTempBlockResyncPending = true;
         worldTempBlockRequestSent = false;

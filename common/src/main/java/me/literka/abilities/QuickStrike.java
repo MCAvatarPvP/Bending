@@ -67,7 +67,7 @@ public class QuickStrike extends ChiAbility implements AddonAbility {
         double angleX = -120 + RollbackRandom.fraction() * 20;
         Utils.spawnCircleParticles(location, effect, location.getYaw(), angleX, 4, 0.1);
 
-        if (target instanceof Player p && Utils.willChiBlock(p, blockChance)) {
+        if (target instanceof Player p && Utils.willChiBlock(this, p, blockChance)) {
             Utils.blockChi(p, blockDuration);
         }
 

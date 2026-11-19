@@ -178,9 +178,10 @@ public abstract class ExactPredictionInput extends ExactPredictionStartup {
             try {
                 com.projectkorra.projectkorra.fabric.client.PredictionClient.withInputSelectedSlot(
                         selectedSlot,
-                        () -> PredictionDeterminism.run(
+                        () -> PredictionDeterminism.runCombat(
                                 sequence,
                                 action.deterministicSeed,
+                                com.projectkorra.projectkorra.fabric.client.PredictionClient.combatSeed(sequence),
                                 () -> {
                                     final Supplier<Void> nativeInput = () -> {
                                         switch (kind) {

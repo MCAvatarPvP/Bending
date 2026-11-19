@@ -364,7 +364,7 @@ public abstract class PaperPredictionInput extends PaperPredictionEffects {
         INPUT_SEQUENCE.set(sequence);
         AbilityActivationManager.beginTracking();
         try {
-            PredictionDeterminism.run(sequence, action.deterministicSeed, () ->
+            PredictionDeterminism.runCombat(sequence, action.deterministicSeed, PredictionDeterminism.combatSeed(session.session, sequence), () ->
                     runWithOwner(player.getUniqueId(), true,
                             () -> nativeResult.set(locallyRejectedOnCooldown
                                     ? CooldownSync.runInputVeto(player.getUniqueId(),

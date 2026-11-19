@@ -65,6 +65,7 @@ public abstract class PredictionClientState {
     protected boolean disableHandshakePending;
     protected long clientTick;
     protected long nextSequence;
+    protected long nativeActionOffset;
     protected boolean previousSneaking;
     protected long rightClickBlockUntilTick = -1;
     protected boolean droppedItem;

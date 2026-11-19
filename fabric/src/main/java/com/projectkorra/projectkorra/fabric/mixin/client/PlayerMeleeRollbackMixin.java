@@ -1,6 +1,10 @@
 package com.projectkorra.projectkorra.fabric.mixin.client;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import com.projectkorra.projectkorra.fabric.client.PredictionClient;
 import com.projectkorra.projectkorra.fabric.client.prediction.rollback.FabricRollbackMelee;
+import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
 import org.spongepowered.asm.mixin.Mixin;
@@ -9,11 +13,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(PlayerEntity.class)
 abstract class PlayerMeleeRollbackMixin {
-    @com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation(method = "attack", at = @At(
+    @WrapOperation(method = "attack", at = @At(
             value = "INVOKE", target = "Lnet/minecraft/entity/Entity;sidedDamage(Lnet/minecraft/entity/damage/DamageSource;F)Z"))
-    private boolean projectkorra$observeMeleeContact(Entity victim, net.minecraft.entity.damage.DamageSource source,
-            float amount, com.llamalad7.mixinextras.injector.wrapoperation.Operation<Boolean> original) {
-        com.projectkorra.projectkorra.fabric.client.PredictionClient.nativeMeleeDamage((PlayerEntity) (Object) this, victim, amount);
+    private boolean projectkorra$observeMeleeContact(Entity victim, DamageSource source,
+            float amount, Operation<Boolean> original) {
+        PredictionClient.nativeMeleeDamage((PlayerEntity) (Object) this, victim, amount);
         return original.call(victim, source, amount);
     }
 

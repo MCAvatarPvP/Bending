@@ -85,7 +85,7 @@ public abstract class PaperPredictionUtilities extends PaperPredictionState {
                 final Session session = server == null ? null : server.sessions.get(owner);
                 final Action action = session == null ? null : session.actions.get(sequence);
                 final long seed = action == null ? PredictionDeterminism.currentSeed() : action.deterministicSeed;
-                PredictionDeterminism.run(sequence, seed > 0L ? seed : sequence,
+                PredictionDeterminism.runCombat(sequence, seed > 0L ? seed : sequence, session == null ? 0 : PredictionDeterminism.combatSeed(session.session, sequence),
                         () -> runWithOwner(owner, true, task));
             }
         } finally {

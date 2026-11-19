@@ -29,6 +29,23 @@ public class RollbackNativeQueryShellTest {
         public int twiceBlock(int x, int y) { return block(x, y) * 2; }
     }
 
+    public static class DistinctDescriptors {
+        public Number base() { throw new AssertionError("live getter"); }
+        public Integer specialized() { throw new AssertionError("live getter"); }
+        public Number unbound() { throw new AssertionError("live getter"); }
+    }
+
+    @Test void bothRuntimeDescriptorsUseOnlyTheAgreedPrivateValue() {
+        var shell = RollbackNativeQueryShell.create(DistinctDescriptors.class);
+        var entity = shell.constant(DistinctDescriptors::base, DistinctDescriptors::specialized, 4).instance();
+        assertEquals(4, entity.base());
+        assertEquals(4, entity.specialized());
+        assertThrows(IllegalStateException.class, entity::unbound);
+        var merged = RollbackNativeQueryShell.create(DistinctDescriptors.class)
+                .constant(DistinctDescriptors::base, DistinctDescriptors::base, 5).instance();
+        assertEquals(5, merged.base());
+    }
+
     @Test void constructorlessShellAllowsOnlyConfiguredGettersOnItsOwningThread() {
         var shell = RollbackNativeQueryShell.create(World.class).constant(World::isClient, false);
         World world = shell.instance();

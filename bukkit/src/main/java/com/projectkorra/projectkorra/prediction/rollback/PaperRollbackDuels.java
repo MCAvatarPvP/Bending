@@ -7,7 +7,6 @@ import com.projectkorra.projectkorra.listener.CommonAbilityLifecycleListener;
 import com.projectkorra.projectkorra.platform.bukkit.BukkitMC;
 import com.projectkorra.projectkorra.platform.bukkit.BukkitProjectKorraPlatform;
 import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
-import com.projectkorra.projectkorra.prediction.state.PredictionConfigSync;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import org.bukkit.Bukkit;
@@ -190,7 +189,8 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
             time = RollbackTiming.finish(time, "enroll.participantGlobals");
             captured = PaperRollbackDuelSeed.captureOwned(ownership, request, challenge, definitions.definitions(),
                     players.values(), services, bending.values(), ProjectKorra.collisionManager, List.of(reservation, regions, globals),
-                    graph, List.of(), seed, Long.rotateLeft(seed, 29), CAPTURE_LIMITS, terrain);
+                    graph, List.of(), seed, Long.rotateLeft(seed, 29), CAPTURE_LIMITS, terrain,
+                    codec -> live = new PaperRollbackMatchRestoration.LiveRoster(players, bending, reservation, original, codec, layerLease));
             time = RollbackTiming.finish(time, "enroll.seed");
             encodedBootstrap = PaperRollbackBootstraps.encodeCaptured(captured.portable(), RollbackDuelRuntime.TERRAIN);
             // The live scheduler uses this monitor to enter async callbacks. Check again at ownership transfer.
@@ -198,12 +198,7 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
                 platform.rollbackScheduler().earthRevertDelay(ProjectKorra.plugin.revertChecker);
                 layerLease.detach();
             }
-            var config = RollbackConfiguration.prepare(captured.portable().configuration(), PredictionConfigSync.sources());
-            var codec = RollbackGameplayGraph.create(graph.installed(), graph.limits(), RollbackGameplayGraph.Side.LIVE,
-                    new RollbackRosterBindings(views.getFirst().getWorld(), views), config, lifecycle, graph.services(),
-                    new PaperRollbackGraphViews());
-            live = new PaperRollbackMatchRestoration.LiveRoster(players, bending, reservation, original, codec, layerLease);
-            time = RollbackTiming.finish(time, "enroll.liveBindings");
+            time = RollbackTiming.finish(time, "enroll.terrainHandoff");
             simulation = Objects.requireNonNull(factory.open(definitions, captured, level, services));
             RollbackTiming.finish(time, "enroll.simulation");
             runtime = new PaperRollbackMatchRuntime<>(request, seed, simulation.combat(), server, new RollbackServerRuntime.Output<>() {

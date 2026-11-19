@@ -3,7 +3,7 @@ package com.projectkorra.projectkorra.ability;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 
-public abstract class ChiAbility extends ElementalAbility {
+public abstract class ChiAbility extends ChiCombatAbility {
 
     public ChiAbility(final Player player) {
         super(player);

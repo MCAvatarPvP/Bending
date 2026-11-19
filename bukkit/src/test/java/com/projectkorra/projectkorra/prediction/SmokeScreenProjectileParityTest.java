@@ -23,7 +23,9 @@ class SmokeScreenProjectileParityTest {
         assertTrue(adapter.contains("value instanceof org.bukkit.entity.Snowball snowball"));
         assertTrue(adapter.contains("org.bukkit.entity.Snowball snowball = value.spawn(")
                 && adapter.contains("locationHandle(location), org.bukkit.entity.Snowball.class);"));
-        assertTrue(adapter.contains("value.launchProjectile(org.bukkit.entity.Snowball.class)"));
+        assertTrue(adapter.matches("(?s).*return \\(T\\) snowball\\(value\\.launchProjectile\\(org\\.bukkit\\.entity\\.Snowball\\.class, null,\\s*"
+                + "shot -> PaperPredictionServer\\.projectileSpawned\\(value, shot\\)\\)\\);.*"),
+                "the real player launch binds the native snowball to its caster before initial tracking");
         assertTrue(adapter.contains("new SnowballView(value)"));
     }
 

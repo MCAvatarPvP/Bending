@@ -1,7 +1,7 @@
 package com.projectkorra.projectkorra.chiblocking.passive;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
-import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+import com.projectkorra.projectkorra.ability.ChiAbility;
 
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
@@ -33,7 +33,7 @@ public class ChiPassive {
             newChance += ((AcrobatStance) stance).getChiBlockBoost();
         }
 
-        if (RollbackRandom.fraction() > newChance / 100.0) {
+        if (ChiAbility.passiveChiBlockRoll(attacker, player) > newChance / 100.0) {
             return false;
         } else if (bPlayer.isChiBlocked()) {
             return false;

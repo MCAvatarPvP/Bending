@@ -86,6 +86,7 @@ public abstract class PredictionClientServerState extends PredictionClientNative
                 worldTempBlockRequestSent = false;
             }
             nextSequence = 0L;
+            nativeActionOffset = 0L;
             readySent = false;
             actionStartedAtMillis.clear();
             pendingHitClaims.clear();
@@ -245,6 +246,7 @@ public abstract class PredictionClientServerState extends PredictionClientNative
     protected void onNativeAction(PredictionPayloads.NativeAction action) {
         if (!active || sessionId == null || action == null || !sessionId.equals(action.sessionId())) return;
         lastAuthorityTick = Math.max(lastAuthorityTick, action.serverTick());
+        if (action.clientActionSequence() > 0) nativeActionOffset = action.actionSequence() - action.clientActionSequence();
         final boolean confirmed = ExactPredictionRuntime.noteNativeAction(action);
         final long localSequence = ExactPredictionRuntime.correlatedLocalActionSequence(action.actionSequence());
         if (confirmed && localSequence > 0L) updateLatencyEstimate(localSequence);

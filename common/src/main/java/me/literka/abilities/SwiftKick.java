@@ -81,7 +81,7 @@ public class SwiftKick extends ChiAbility implements AddonAbility {
 
         if (target instanceof Player p) {
             if (!fallDmg) FallHandler.stopFall(p);
-            if (Utils.willChiBlock(p, blockChance)) Utils.blockChi(p, blockDuration);
+            if (Utils.willChiBlock(this, p, blockChance)) Utils.blockChi(p, blockDuration);
         }
         bPlayer.addCooldown(this);
         remove();

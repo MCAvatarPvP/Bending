@@ -86,9 +86,9 @@ public class Headbutt extends ModernChiAbility implements AddonAbility {
                 Utils.punchSound(target.getLocation(), true);
                 new MovementHandler(player, this).stopWithDuration(selfStunDuration, selfMessage);
                 new MovementHandler(target, this).stopWithDuration(otherStunDuration, otherMessage);
-                if (Utils.willChiBlock(player, selfBlockChance))
+                if (Utils.willChiBlock(this, player, selfBlockChance))
                     Utils.blockChi(player, selfBlockDuration);
-                if (target instanceof Player p && Utils.willChiBlock(p, otherBlockChance))
+                if (target instanceof Player p && Utils.willChiBlock(this, p, otherBlockChance))
                     Utils.blockChi(p, otherBlockDuration);
 
                 Location targetLoc = target.getEyeLocation().add(0, -0.2, 0);

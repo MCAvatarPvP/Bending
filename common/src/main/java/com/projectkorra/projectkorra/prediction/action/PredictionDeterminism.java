@@ -10,8 +10,32 @@ import java.util.UUID;
 public final class PredictionDeterminism {
     private static final ThreadLocal<Long> ACTION = new ThreadLocal<>();
     private static final ThreadLocal<Long> SEED = new ThreadLocal<>();
+    private static final ThreadLocal<Long> COMBAT_SEED = new ThreadLocal<>();
 
     private PredictionDeterminism() {
+    }
+
+    /** Combat chance belongs to the server session and native action, including replays of its progress. */
+    public static long combatSeed(UUID session, long nativeAction) {
+        if (session == null || nativeAction <= 0) return 0;
+        long seed = random(session, "bending-combat", nativeAction).nextLong() & Long.MAX_VALUE;
+        return seed == 0 ? 1 : seed;
+    }
+
+    public static long combatSeed() {
+        var value = COMBAT_SEED.get();
+        return value == null ? 0 : value;
+    }
+
+    public static void runCombat(long action, long seed, long combatSeed, Runnable task) {
+        var previous = COMBAT_SEED.get();
+        if (combatSeed > 0) COMBAT_SEED.set(combatSeed);
+        else COMBAT_SEED.remove();
+        try { run(action, seed, task); }
+        finally {
+            if (previous != null) COMBAT_SEED.set(previous);
+            else COMBAT_SEED.remove();
+        }
     }
 
     public static void run(final long actionSequence, final Runnable task) {

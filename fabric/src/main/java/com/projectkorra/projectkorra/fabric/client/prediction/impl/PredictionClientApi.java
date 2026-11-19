@@ -240,6 +240,12 @@ public abstract class PredictionClientApi extends PredictionClientLifecycle {
         }
     }
 
+    public static long combatSeed(long localActionSequence) {
+        var owner = PredictionClient.instance();
+        return com.projectkorra.projectkorra.prediction.action.PredictionDeterminism.combatSeed(
+                owner.sessionId, localActionSequence + owner.nativeActionOffset);
+    }
+
     public static float meleeDamage(long localActionSequence) {
         var contact = PredictionClient.instance().meleeContacts.get(localActionSequence);
         return contact == null ? 0.0F : contact.damage();

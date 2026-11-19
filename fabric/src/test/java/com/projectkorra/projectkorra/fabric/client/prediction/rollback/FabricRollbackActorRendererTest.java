@@ -16,8 +16,8 @@ class FabricRollbackActorRendererTest {
         UUID id = UUID.randomUUID();
         var liveWorld = RollbackNativeQueryShell.create(ClientWorld.class)
                 .constant(ClientWorld::getEnabledFeatures, FeatureFlags.VANILLA_FEATURES)
-                .constant(world -> world.getEntity(id), null)
-                .constant(world -> world.getEntityById(0), null)
+                .query(world -> world.getEntity(id), null, ignored -> null)
+                .query(world -> world.getEntityById(0), null, ignored -> null)
                 .constant(ClientWorld::getRegistryManager, FabricRollbackTestRegistry.simulationRegistries())
                 .instance();
         var privateWorld = FabricRollbackPlayerRendererTest.roster().world().world();
@@ -33,6 +33,8 @@ class FabricRollbackActorRendererTest {
         assertEquals(1, one.size());
         var model = assertInstanceOf(ArrowEntity.class, one.getFirst());
         assertNotSame(arrow, model);
+        assertTrue(renderer.owns(model));
+        assertFalse(renderer.owns(arrow));
         assertSame(liveWorld, model.getEntityWorld());
         assertEquals(id, model.getUuid());
         assertEquals(-41, model.getId());
@@ -44,6 +46,7 @@ class FabricRollbackActorRendererTest {
         actors.set(List.of());
         renderer.publish(2);
         assertTrue(list(renderer).isEmpty());
+        assertFalse(renderer.owns(model));
     }
 
     private static List<Entity> list(FabricRollbackActorRenderer renderer) {

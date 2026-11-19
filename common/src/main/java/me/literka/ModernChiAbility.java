@@ -1,10 +1,10 @@
 package me.literka;
 
 import com.projectkorra.projectkorra.Element;
-import com.projectkorra.projectkorra.ability.ElementalAbility;
+import com.projectkorra.projectkorra.ability.ChiCombatAbility;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 
-public abstract class ModernChiAbility extends ElementalAbility {
+public abstract class ModernChiAbility extends ChiCombatAbility {
     public ModernChiAbility(final Player player) {
         super(player);
     }

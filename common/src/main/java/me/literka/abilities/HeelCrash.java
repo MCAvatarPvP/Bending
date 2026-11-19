@@ -116,7 +116,7 @@ public class HeelCrash extends ModernChiAbility implements AddonAbility {
                 GeneralMethods.setVelocity(this, target, new Vector(0, heightPush, 0).add(dir.multiply(forwardPush)));
             if (target instanceof Player p) {
                 FallHandler.stopFall(p);
-                if (Utils.willChiBlock(p, blockChance)) Utils.blockChi(p, blockDuration);
+                if (Utils.willChiBlock(this, p, blockChance)) Utils.blockChi(p, blockDuration);
             }
             bPlayer.addCooldown(this);
             damaged = true;

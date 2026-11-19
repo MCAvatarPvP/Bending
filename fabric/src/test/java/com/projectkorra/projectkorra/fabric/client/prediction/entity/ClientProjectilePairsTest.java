@@ -16,6 +16,28 @@ class ClientProjectilePairsTest {
         return new ProjectileOwner(session, 32, ordinal, owner, id, uuid, "RopeDart", type);
     }
 
+    @Test void bothOwnerPayloadsMatchThePaperWireFieldsExactly() {
+        var buffer = new net.minecraft.network.RegistryByteBuf(io.netty.buffer.Unpooled.buffer(),
+                net.minecraft.registry.DynamicRegistryManager.EMPTY);
+        try {
+            UUID zero = new UUID(0, 0), owner = new UUID(0, 1), actor = new UUID(0, 2);
+            var claim = new ProjectileOwner(zero, 300, 2, owner, 400, actor, "Smokescreen", "AREA_EFFECT_CLOUD");
+            ProjectileOwner.CODEC.encode(buffer, claim);
+            assertEquals("00".repeat(16) + "ac0202" + "00".repeat(15) + "019003" + "00".repeat(15)
+                    + "020b536d6f6b6573637265656e11415245415f4546464543545f434c4f5544", io.netty.buffer.ByteBufUtil.hexDump(buffer));
+            assertEquals(claim, ProjectileOwner.CODEC.decode(buffer));
+            assertEquals(0, buffer.readableBytes());
+            buffer.clear();
+            var melee = new com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.MeleeAction(
+                    zero, 300, 4, "QuickStrike", 400, actor);
+            com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.MeleeAction.CODEC.encode(buffer, melee);
+            assertEquals("00".repeat(16) + "ac02040b517569636b537472696b659003" + "00".repeat(15) + "02",
+                    io.netty.buffer.ByteBufUtil.hexDump(buffer));
+            assertEquals(melee, com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.MeleeAction.CODEC.decode(buffer));
+            assertEquals(0, buffer.readableBytes());
+        } finally { buffer.release(); }
+    }
+
     @Test void delayedInputTagAndLocalLaunchCanFollowBothNativeReceiptAndSpawn() {
         shots.receipt(receipt(caster, 1, 90, server, "ARROW"), 3);
         assertFalse(shots.hide(90, server, "ARROW", mapping));
@@ -28,7 +50,18 @@ class ClientProjectilePairsTest {
         assertTrue(shots.hide(90, server, "ARROW", mapping));
         shot.alive = false;
         assertFalse(shots.hide(90, server, "ARROW", mapping));
-        assertSame(shot, shots.remove(90, mapping));
+        assertSame(shot, shots.remove(90, server, "ARROW", mapping));
+    }
+
+    @Test void smokeCloudParticlesFollowTheConfirmedImpactAndRetainServerFallback() {
+        Shot cloud = new Shot();
+        shots.launch(7, 2, caster, "AREA_EFFECT_CLOUD", "Smokescreen", cloud);
+        shots.receipt(new ProjectileOwner(session, 32, 2, caster, 125, server, "Smokescreen", "AREA_EFFECT_CLOUD"), 12);
+        assertTrue(shots.hide(125, server, "AREA_EFFECT_CLOUD", mapping));
+        cloud.alive = false;
+        assertFalse(shots.hide(125, server, "AREA_EFFECT_CLOUD", mapping));
+        assertNull(shots.remove(125, UUID.randomUUID(), "AREA_EFFECT_CLOUD", mapping));
+        assertFalse(shots.tracked(125));
     }
 
     @Test void nearbyStrangerDifferentProjectileAndRecycledIdsNeverHideOrdinaryArrows() {
@@ -46,6 +79,6 @@ class ClientProjectilePairsTest {
         assertTrue(shots.hide(83, server, "SNOWBALL", mapping));
         shots.rollback(7);
         assertFalse(shots.hide(82, server, "ARROW", mapping));
-        assertNull(shots.remove(83, mapping));
+        assertNull(shots.remove(83, server, "SNOWBALL", mapping));
     }
 }

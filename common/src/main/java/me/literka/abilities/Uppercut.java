@@ -108,7 +108,7 @@ public class Uppercut extends ModernChiAbility implements AddonAbility {
 
             if (target instanceof Player p) {
                 if (!fallDmg) FallHandler.stopFall(p);
-                if (Utils.willChiBlock(p, blockChance)) Utils.blockChi(p, blockDuration);
+                if (Utils.willChiBlock(this, p, blockChance)) Utils.blockChi(p, blockDuration);
             }
 
             hit = true;

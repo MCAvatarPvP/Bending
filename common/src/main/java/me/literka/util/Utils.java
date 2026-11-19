@@ -38,11 +38,15 @@ public class Utils {
     }
 
     public static boolean willChiBlock(Player player, double chance) {
+        var running = com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext.current();
+        return willChiBlock(running instanceof com.projectkorra.projectkorra.ability.ChiCombatAbility chi ? chi : null, player, chance);
+    }
+
+    public static boolean willChiBlock(com.projectkorra.projectkorra.ability.ChiCombatAbility ability, Player player, double chance) {
         BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
         if (bPlayer == null) return false;
-
-        if (RollbackRandom.fraction() > chance / 100.0) return false;
-        else return !bPlayer.isChiBlocked();
+        double roll = ability == null ? RollbackRandom.fraction() : ability.chiBlockRoll(player);
+        return roll <= chance / 100.0 && !bPlayer.isChiBlocked();
     }
 
     public static void blockChi(Player player, long duration) {

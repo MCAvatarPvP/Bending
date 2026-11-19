@@ -42,6 +42,10 @@ public final class FabricRollbackPlayerRenderer implements AutoCloseable {
     private FabricRollbackActorRenderer actors;
     private UUID viewer;
     void bindActors(FabricRollbackActorRenderer actors) { this.actors = Objects.requireNonNull(actors); }
+    public static boolean isReplicaModel(Entity entity) {
+        var owner = active;
+        return owner != null && owner.actors != null && EXTRACTION.get() != null && owner.actors.owns(entity);
+    }
     public static Iterable<Entity> renderEntities(Iterable<Entity> ordinary) {
         var owner = active;
         if (owner == null || EXTRACTION.get() == null || owner.actors == null || !owner.current.getAsBoolean()) return ordinary;

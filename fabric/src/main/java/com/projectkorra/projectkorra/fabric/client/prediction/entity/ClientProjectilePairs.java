@@ -57,11 +57,13 @@ public final class ClientProjectilePairs<E> {
                 && alive.test(pair.entity);
     }
 
-    E remove(int id, LongUnaryOperator localSequence) {
+    boolean tracked(int id) { return pairs.containsKey(id) || pending.containsKey(id); }
+
+    E remove(int id, UUID uuid, String type, LongUnaryOperator localSequence) {
         Pair<E> pair = resolve(id, localSequence);
         pairs.remove(id);
         pending.remove(id);
-        return pair == null ? null : pair.entity;
+        return pair != null && pair.owner.entityUuid().equals(uuid) && pair.owner.type().equals(type) ? pair.entity : null;
     }
 
     void expire(long minTick) { pending.values().removeIf(receipt -> receipt.tick < minTick); }

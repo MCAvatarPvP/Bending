@@ -1,6 +1,5 @@
 package com.projectkorra.projectkorra.fabric.client.prediction.impl;
 
-import com.jedk1.jedcore.ability.passive.WallRun;
 import com.projectkorra.projectkorra.BendingManager;
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
@@ -15,7 +14,6 @@ import com.projectkorra.projectkorra.ability.ComboAbility;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.EarthAbility;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
-import com.projectkorra.projectkorra.ability.FireAbility;
 import com.projectkorra.projectkorra.ability.WaterAbility;
 import com.projectkorra.projectkorra.ability.activation.AbilityActivationManager;
 import com.projectkorra.projectkorra.ability.activation.AbilityActivationManager.TrackingResult;
@@ -26,7 +24,6 @@ import com.projectkorra.projectkorra.ability.util.EmbeddedAddonBootstrap;
 import com.projectkorra.projectkorra.ability.util.MultiAbilityManager;
 import com.projectkorra.projectkorra.ability.util.PassiveManager;
 import com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation;
-import com.projectkorra.projectkorra.airbending.AirBlast;
 import com.projectkorra.projectkorra.airbending.AirGlider;
 import com.projectkorra.projectkorra.chiblocking.util.ChiblockingManager;
 import com.projectkorra.projectkorra.earthbending.EarthSmash;

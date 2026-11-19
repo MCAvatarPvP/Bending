@@ -68,6 +68,11 @@ class PaperRollbackNativeSceneNativeTest {
                     assertTrue(nativeBall.isRemoved());
 
                     var nativeDart = (PaperRollbackArrow) actors.actor(dart.getUniqueId());
+                    nativeDart.snapTo(8, 4, 8, 0, 0);
+                    nativeDart.setDeltaMovement(0, 0, 2);
+                    var dartActor = actors.registry().get(dart.getUniqueId());
+                    dartActor.tick();
+                    assertEquals(10, nativeDart.getZ(), 1e-5);
                     dart.setDamage(0);
                     dart.setPickupStatus(com.projectkorra.projectkorra.platform.mc.entity.Arrow.PickupStatus.DISALLOWED);
                     assertEquals(com.projectkorra.projectkorra.platform.mc.entity.Arrow.PickupStatus.DISALLOWED, dart.getPickupStatus());
@@ -87,7 +92,8 @@ class PaperRollbackNativeSceneNativeTest {
             assertSame(dart, events.get(2).getEntity());
             assertSame(target, events.get(2).getHitEntity());
             assertEquals(4, events.getLast().getHitBlock().getY());
-            assertEquals(List.of(net.minecraft.world.level.gameevent.GameEvent.PROJECTILE_LAND, net.minecraft.world.level.gameevent.GameEvent.PROJECTILE_LAND), blockHits);
+            assertEquals(2L, blockHits.stream().filter(net.minecraft.world.level.gameevent.GameEvent.PROJECTILE_LAND::equals).count());
+            assertTrue(blockHits.contains(net.minecraft.world.level.gameevent.GameEvent.PROJECTILE_SHOOT));
             assertEquals(1, removed.size());
             assertEquals(org.bukkit.event.entity.EntityRemoveEvent.Cause.HIT,
                     ((org.bukkit.event.entity.EntityRemoveEvent)removed.getFirst()).getCause());

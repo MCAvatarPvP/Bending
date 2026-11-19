@@ -39,7 +39,7 @@ public record PaperRollbackDuelSeed(PaperRollbackRosterSeed nativeRoster, Rollba
             GraphSetup graph, Collection<String> additionalPermissionNodes,
             long randomSeed, long soundSeed, PaperRollbackTerrainCapture.Limits terrainLimits) {
         return captureOwned(ownership, request, challenge, definitions, players, playerServices, bendingPlayers, collisions,
-                gameplayServices, graph, additionalPermissionNodes, randomSeed, soundSeed, terrainLimits, null);
+                gameplayServices, graph, additionalPermissionNodes, randomSeed, soundSeed, terrainLimits, null, ignored -> { });
     }
 
     static PaperRollbackDuelSeed captureOwned(PaperRollbackLiveOwnership ownership,
@@ -47,7 +47,8 @@ public record PaperRollbackDuelSeed(PaperRollbackRosterSeed nativeRoster, Rollba
             Collection<ServerPlayer> players, Map<UUID, PaperRollbackRosterSeed.Services> playerServices,
             Collection<BendingPlayer> bendingPlayers, CollisionManager collisions, Collection<?> gameplayServices,
             GraphSetup graph, Collection<String> additionalPermissionNodes,
-            long randomSeed, long soundSeed, PaperRollbackTerrainCapture.Limits terrainLimits, PaperRollbackTerrainCapture.Prepared prepared) {
+            long randomSeed, long soundSeed, PaperRollbackTerrainCapture.Limits terrainLimits, PaperRollbackTerrainCapture.Prepared prepared,
+            java.util.function.Consumer<RollbackGraphCodec> liveCodec) {
         Objects.requireNonNull(graph); Objects.requireNonNull(request);
         return Objects.requireNonNull(ownership).capture(request.sides().keySet(), tasks -> {
             var services = new ArrayList<Object>(gameplayServices);
@@ -60,8 +61,10 @@ public record PaperRollbackDuelSeed(PaperRollbackRosterSeed nativeRoster, Rollba
                         var roster = bendingPlayers.stream().map(BendingPlayer::getPlayer).toList();
                         var bindings = new RollbackRosterBindings(roster.getFirst().getWorld(), roster);
                         var configuration = RollbackConfiguration.prepare(data, PredictionConfigSync.sources());
-                        return RollbackGameplayGraph.create(graph.installed(), graph.limits(), RollbackGameplayGraph.Side.LIVE,
+                        var codec = RollbackGameplayGraph.create(graph.installed(), graph.limits(), RollbackGameplayGraph.Side.LIVE,
                                 bindings, configuration, graph.lifecycle(), graph.services(), new PaperRollbackGraphViews());
+                        liveCodec.accept(codec);
+                        return codec;
                     }, additionalPermissionNodes, randomSeed, soundSeed, terrainLimits, prepared);
             ownership.holdScheduledTerrain(players.iterator().next().level(), seed.portable().world());
             return seed;

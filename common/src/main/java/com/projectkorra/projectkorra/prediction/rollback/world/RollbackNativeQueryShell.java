@@ -83,6 +83,13 @@ public final class RollbackNativeQueryShell<T> {
         return configure(getter, value, arguments -> value, true, false, false);
     }
 
+    /** Named builds can merge a covariant bridge that has a distinct method name in the production mapping. */
+    public RollbackNativeQueryShell<T> constant(Function<T, ?> baseGetter, Function<T, ?> specializedGetter, Object value) {
+        Function<Object[], ?> result = arguments -> value;
+        configure(baseGetter, value, result, true, false, false);
+        return configure(specializedGetter, value, result, true, false, false);
+    }
+
     /**
      * Binds one compiled native call to a query over private logical state. The probe
      * only identifies the remapped method; its arguments are not retained. The query
@@ -137,7 +144,8 @@ public final class RollbackNativeQueryShell<T> {
             getter.apply(instance);
             if (probed == null) throw new IllegalArgumentException("Expected one intercepted native getter");
             Function<Object[], ?> implementation = nativeBody ? nativeBody(probed, query) : query;
-            if (queries.putIfAbsent(probed, implementation) != null) throw new IllegalArgumentException("Native query already bound: " + probed);
+            var existing = queries.putIfAbsent(probed, implementation);
+            if (existing != null && existing != implementation) throw new IllegalArgumentException("Native query already bound: " + probed);
         } finally {
             configuring = false;
             probeValue = null;

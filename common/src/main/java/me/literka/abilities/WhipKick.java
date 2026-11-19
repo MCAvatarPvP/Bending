@@ -126,7 +126,7 @@ public class WhipKick extends ModernChiAbility implements AddonAbility {
             if (pushOthers != 0) GeneralMethods.setVelocity(this, le, new Vector(0, pushOthers, 0));
             if (le instanceof Player p) {
                 if (!fallDmg) FallHandler.stopFall(p);
-                if (Utils.willChiBlock(p, blockChance)) Utils.blockChi(p, blockDuration);
+                if (Utils.willChiBlock(this, p, blockChance)) Utils.blockChi(p, blockDuration);
             }
             affectedEntities.add(le);
         }

@@ -2,7 +2,6 @@ package com.projectkorra.projectkorra.fabric.client.prediction.entity;
 
 import com.projectkorra.projectkorra.fabric.client.config.ClientBendingConfig;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads;
-import com.projectkorra.projectkorra.platform.mc.entity.ItemDisplay;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
@@ -21,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.LongUnaryOperator;
 
 /**
  * Owns the identity boundary between locally spawned prediction entities and
@@ -40,7 +40,7 @@ import java.util.function.Function;
  */
 public final class ClientEntityReconciliation {
     private final ClientProjectilePairs<Entity> projectiles = new ClientProjectilePairs<>(entity -> !entity.isRemoved());
-    private final java.util.function.LongUnaryOperator localSequence;
+    private final LongUnaryOperator localSequence;
 
     private final Map<Integer, Entity> authoritativeAliases = new HashMap<>();
     private final Set<Integer> tempFallingAliases = new HashSet<>();
@@ -61,7 +61,7 @@ public final class ClientEntityReconciliation {
     private final Function<String, BlockState> blockStateDecoder;
 
     public ClientEntityReconciliation(final Function<String, BlockState> blockStateDecoder,
-                                      java.util.function.LongUnaryOperator localSequence) {
+                                      LongUnaryOperator localSequence) {
         this.localSequence = localSequence;
         this.blockStateDecoder = blockStateDecoder;
     }
@@ -286,8 +286,13 @@ public final class ClientEntityReconciliation {
     public boolean removeHidden(final int serverEntityId) {
         // A fallback is a real vanilla entity: let vanilla destroy it as usual.
         displayFallbacks.remove(serverEntityId);
-        final Entity local = projectiles.remove(serverEntityId, localSequence);
-        if (local != null && !local.isRemoved()) local.discard();
+        if (projectiles.tracked(serverEntityId)) {
+            ClientWorld world = MinecraftClient.getInstance().world;
+            Entity authority = world == null ? null : world.getEntityById(serverEntityId);
+            Entity local = projectiles.remove(serverEntityId, authority == null ? null : authority.getUuid(),
+                    authority == null ? null : projectileType(authority.getType()), localSequence);
+            if (local != null && !local.isRemoved()) local.discard();
+        }
         final VisibleAuthorityPair visible = visibleAuthorityPairs.remove(serverEntityId);
         if (visible != null && visible.discardWithAuthority && !visible.predicted.isRemoved()) {
             visible.predicted.discard();

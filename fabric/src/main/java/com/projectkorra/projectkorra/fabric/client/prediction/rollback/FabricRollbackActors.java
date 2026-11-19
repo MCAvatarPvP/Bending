@@ -97,7 +97,7 @@ public final class FabricRollbackActors implements RollbackArenaActions.Native, 
                 return items.capture(stack);
             }
             case "setHelmet": ((net.minecraft.entity.LivingEntity) e).equipStack(net.minecraft.entity.EquipmentSlot.HEAD, items.nativeCopy((ItemStack) args[0])); return null;
-            case "setDamage": ((net.minecraft.entity.projectile.PersistentProjectileEntity)e).setDamage((int)args[0]); return null;
+            case "setDamage": ((net.minecraft.entity.projectile.PersistentProjectileEntity) e).setDamage((int) args[0]); return null;
             case "setCritical": ((net.minecraft.entity.projectile.PersistentProjectileEntity)e).setCritical((boolean)args[0]); return null;
             case "setPickupStatus": ((net.minecraft.entity.projectile.PersistentProjectileEntity)e).pickupType =
                     net.minecraft.entity.projectile.PersistentProjectileEntity.PickupPermission.valueOf(((Arrow.PickupStatus)args[0]).name()); return null;

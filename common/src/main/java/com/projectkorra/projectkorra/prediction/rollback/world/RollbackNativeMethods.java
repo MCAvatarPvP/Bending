@@ -39,6 +39,27 @@ import java.util.concurrent.atomic.AtomicLong;
  * The caller must supply owned receivers/state and keep all handles private.
  */
 public final class RollbackNativeMethods {
+    private record NativeSource(byte[] bytes, int version, Map<String, Integer> locals) { }
+    // Only immutable input metadata is shared. Generated method handles stay bound to their scene.
+    private static final ClassValue<NativeSource> SOURCES = new ClassValue<>() {
+        @Override protected NativeSource computeValue(Class<?> owner) {
+            try (var input = owner.getResourceAsStream("/" + Type.getInternalName(owner) + ".class")) {
+                if (input == null) throw new IllegalStateException("Native class bytes unavailable: " + owner);
+                byte[] bytes = input.readAllBytes();
+                var reader = new ClassReader(bytes);
+                var locals = new java.util.HashMap<String, Integer>();
+                reader.accept(new ClassVisitor(Opcodes.ASM9) {
+                    @Override public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
+                        return new MethodVisitor(Opcodes.ASM9) {
+                            @Override public void visitMaxs(int stack, int count) { locals.put(name + desc, count); }
+                        };
+                    }
+                }, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+                return new NativeSource(bytes, reader.readShort(6), Map.copyOf(locals));
+            } catch (IOException failure) { throw new IllegalStateException("Native class read failed", failure); }
+        }
+    };
+
     private static final AtomicLong IDS = new AtomicLong();
     private static final Handle CLASS_DATA = new Handle(Opcodes.H_INVOKESTATIC,
             "java/lang/invoke/MethodHandles", "classDataAt",
@@ -261,32 +282,21 @@ public final class RollbackNativeMethods {
         String originalName = Type.getInternalName(owner);
         String copiedName = originalName + "$RollbackBody$" + IDS.incrementAndGet();
         var lookup = LOOKUPS.get(owner);
-        byte[] original;
-        try (var input = owner.getResourceAsStream("/" + originalName + ".class")) {
-            if (input == null) throw new IllegalStateException("Native class bytes unavailable: " + owner);
-            original = input.readAllBytes();
-        } catch (IOException failure) { throw new IllegalStateException("Native class read failed", failure); }
+        var original = SOURCES.get(owner);
         String descriptor = Type.getMethodDescriptor(method);
+        Integer maximumLocals = original.locals().get(method.getName() + descriptor);
+        if (maximumLocals == null) throw new IllegalStateException("Native method body unavailable: " + method);
         var data = new ArrayList<MethodHandle>();
         var allocations = new java.util.HashSet<String>();
         factories.keySet().forEach(constructor -> allocations.add(Type.getInternalName(constructor.getDeclaringClass())));
         var writer = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS) {
             @Override protected ClassLoader getClassLoader() { return owner.getClassLoader(); }
         };
-        writer.visit(new ClassReader(original).readShort(6), Opcodes.ACC_FINAL, copiedName, null, "java/lang/Object", null);
+        writer.visit(original.version(), Opcodes.ACC_FINAL, copiedName, null, "java/lang/Object", null);
         int[] found = {0};
         // Preserve the original local layout, including its implicit receiver at
         // slot zero. Spill replacement arguments above every original local slot.
-        int[] maximumLocals = {0};
-        new ClassReader(original).accept(new ClassVisitor(Opcodes.ASM9) {
-            @Override public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
-                if (!name.equals(method.getName()) || !desc.equals(descriptor)) return null;
-                return new MethodVisitor(Opcodes.ASM9) {
-                    @Override public void visitMaxs(int stack, int locals) { maximumLocals[0] = locals; }
-                };
-            }
-        }, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
-        new ClassReader(original).accept(new ClassVisitor(Opcodes.ASM9) {
+        new ClassReader(original.bytes()).accept(new ClassVisitor(Opcodes.ASM9) {
             @Override public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
                 if (!name.equals(method.getName()) || !desc.equals(descriptor)) return null;
                 found[0]++;
@@ -423,7 +433,7 @@ public final class RollbackNativeMethods {
                         if (lambda != null) {
                             Type[] captures = Type.getArgumentTypes(desc);
                             int[] locals = new int[captures.length];
-                            int next = maximumLocals[0];
+                            int next = maximumLocals;
                             for (int i = 0; i < captures.length; i++) { locals[i] = next; next += captures[i].getSize(); }
                             for (int i = captures.length - 1; i >= 0; i--) super.visitVarInsn(captures[i].getOpcode(Opcodes.ISTORE), locals[i]);
                             int slot = data.size(); data.add(lambda);
@@ -436,7 +446,7 @@ public final class RollbackNativeMethods {
                     private void invoke(MethodHandle handle, MethodType invocation) {
                         Type[] arguments = Type.getArgumentTypes(invocation.descriptorString());
                         int[] locals = new int[arguments.length];
-                        int next = maximumLocals[0];
+                        int next = maximumLocals;
                         for (int i = 0; i < arguments.length; i++) { locals[i] = next; next += arguments[i].getSize(); }
                         for (int i = arguments.length - 1; i >= 0; i--) super.visitVarInsn(arguments[i].getOpcode(Opcodes.ISTORE), locals[i]);
                         int index = data.size(); data.add(handle);

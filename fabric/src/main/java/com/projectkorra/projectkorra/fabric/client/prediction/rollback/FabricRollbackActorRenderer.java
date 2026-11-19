@@ -47,6 +47,8 @@ final class FabricRollbackActorRenderer {
         lastTick = tick;
     }
 
+    boolean owns(Entity model) { return models.get(model.getUuid()) == model; }
+
     Iterable<Entity> append(Iterable<Entity> ordinary) {
         return models.isEmpty() ? ordinary : Iterables.concat(ordinary, models.values());
     }
@@ -88,6 +90,9 @@ final class FabricRollbackActorRenderer {
     private static <T> void copy(DataTracker.Entry<T> entry, DataTracker tracker) {
         var key = entry.getData();
         var value = entry.get();
-        if (!Objects.equals(tracker.get(key), value)) tracker.set(key, key.dataType().copy(value));
+        var previous = tracker.get(key);
+        boolean equal = value instanceof ItemStack stack && previous instanceof ItemStack before
+                ? ItemStack.areEqual(before, stack) : Objects.equals(previous, value);
+        if (!equal) tracker.set(key, key.dataType().copy(value));
     }
 }

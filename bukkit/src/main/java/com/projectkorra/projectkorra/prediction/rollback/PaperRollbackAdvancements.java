@@ -61,6 +61,7 @@ public final class PaperRollbackAdvancements implements RollbackStateCell<PaperR
     private final Map<Identifier, AdvancementHolder> definitions = new LinkedHashMap<>();
     private final Set<Object> boundaries = Collections.newSetFromMap(new IdentityHashMap<>());
     private final List<Object> checkpointRoots;
+    private List<CriterionProgress> criteria = List.of();
     private final RollbackStateGraph graph;
     private final WrapperAwareSerializer components;
     private final MethodHandle award, revoke, register;
@@ -82,7 +83,6 @@ public final class PaperRollbackAdvancements implements RollbackStateCell<PaperR
         Objects.requireNonNull(seed, "seed");
         var ops = world.world().registryAccess().createSerializationContext(JsonOps.INSTANCE);
         var roots = new ArrayList<Object>();
-        roots.add(state);
         for (var holder : seed.definitions()) {
             if (definitions.containsKey(holder.id())) throw new IllegalArgumentException("Duplicate advancement: " + holder.id());
             // The data-pack codec detaches predicates, items, requirements and
@@ -190,6 +190,14 @@ public final class PaperRollbackAdvancements implements RollbackStateCell<PaperR
             try { register.invokeExact(tracker, holder); }
             catch (Throwable failure) { throw failed(failure); }
         }
+        // Native registerListeners initializes every catalogue row. Award, revoke and flush
+        // retain its criterion objects and change their obtained times and tracker memberships.
+        var slots = new ArrayList<CriterionProgress>();
+        for (var holder : definitions.values()) {
+            var progress = Objects.requireNonNull(state.progress.get(holder), "Missing initialized native advancement");
+            for (var name : holder.value().criteria().keySet()) slots.add(Objects.requireNonNull(progress.getCriterion(name)));
+        }
+        criteria = List.copyOf(slots);
         initialized = true;
     }
     AdvancementHolder definition(Identifier id) {
@@ -291,25 +299,76 @@ public final class PaperRollbackAdvancements implements RollbackStateCell<PaperR
         requirePlayer();
         if (!initialized) throw new IllegalStateException("Advancement listeners are not initialized");
         long time = RollbackTiming.start();
-        var saved = graph.capture(checkpointRoots, List.of());
-        RollbackTiming.finish(time, "advancements.checkpoint", saved.objectCount());
-        return new Checkpoint(this, saved, PaperRollbackPrivateAccess.advancementFirstPacket(tracker));
+        var dates = new Instant[criteria.size()];
+        for (int index = 0; index < dates.length; index++) dates[index] = criteria.get(index).getObtained();
+        var listeners = new ArrayList<ListenerGroup>(state.listeners.size());
+        state.listeners.forEach((trigger, group) -> listeners.add(new ListenerGroup(trigger, group, List.copyOf(group))));
+        var presentation = graph.capture(checkpointRoots, List.of());
+        var result = new Checkpoint(this, presentation, dates, listeners, List.copyOf(state.visible),
+                List.copyOf(state.changed), List.copyOf(state.roots), PaperRollbackPrivateAccess.advancementFirstPacket(tracker));
+        RollbackTiming.finish(time, "advancements.checkpoint", presentation.objectCount());
+        return result;
     }
+
     @Override public void restoreRollbackState(Checkpoint saved) {
         requirePlayer();
         if (Objects.requireNonNull(saved, "checkpoint").owner != this) throw new IllegalArgumentException("Advancement checkpoint belongs to another player");
         long time = RollbackTiming.start();
-        saved.state.restore();
-        RollbackTiming.finish(time, "advancements.restore", saved.state.objectCount());
+        for (int index = 0; index < saved.dates.length; index++) {
+            var criterion = criteria.get(index);
+            var obtained = saved.dates[index];
+            if (!Objects.equals(criterion.getObtained(), obtained)) PaperRollbackPrivateAccess.obtainCriterion(criterion, obtained);
+        }
+        // Sets are native aliases that triggers can retain. Reinstall the original instances.
+        state.listeners.clear();
+        for (var group : saved.listeners) {
+            restoreSet(group.target, group.members);
+            state.listeners.put(group.trigger, group.target);
+        }
+        restoreSet(state.visible, saved.visible);
+        restoreSet(state.changed, saved.changed);
+        restoreSet(state.roots, saved.roots);
+        saved.presentation.restore();
         PaperRollbackPrivateAccess.advancementFirstPacket(tracker, saved.firstPacket);
+        RollbackTiming.finish(time, "advancements.restore", saved.presentation.objectCount());
     }
+
+    private static <T> void restoreSet(Set<T> target, List<T> members) {
+        if (target.size() == members.size()) {
+            var current = target.iterator();
+            boolean same = true;
+            for (var member : members) if (current.next() != member) { same = false; break; }
+            if (same) return;
+        }
+        target.clear();
+        target.addAll(members);
+    }
+
+    private record ListenerGroup(SimpleCriterionTrigger<?> trigger, Set<CriterionTrigger.Listener<?>> target,
+                                 List<CriterionTrigger.Listener<?>> members) { }
+
     @Override public List<?> rollbackReferences() { check(); return List.of(world); }
+
     public static final class Checkpoint {
         private final PaperRollbackAdvancements owner;
-        private final RollbackStateGraph.Snapshot state;
+        private final RollbackStateGraph.Snapshot presentation;
+        private final Instant[] dates;
+        private final List<ListenerGroup> listeners;
+        private final List<AdvancementHolder> visible, changed;
+        private final List<AdvancementNode> roots;
         private final boolean firstPacket;
-        private Checkpoint(PaperRollbackAdvancements owner, RollbackStateGraph.Snapshot state, boolean firstPacket) {
-            this.owner = owner; this.state = state; this.firstPacket = firstPacket;
+
+        private Checkpoint(PaperRollbackAdvancements owner, RollbackStateGraph.Snapshot presentation, Instant[] dates,
+                           List<ListenerGroup> listeners, List<AdvancementHolder> visible, List<AdvancementHolder> changed,
+                           List<AdvancementNode> roots, boolean firstPacket) {
+            this.owner = owner;
+            this.presentation = presentation;
+            this.dates = dates;
+            this.listeners = listeners;
+            this.visible = visible;
+            this.changed = changed;
+            this.roots = roots;
+            this.firstPacket = firstPacket;
         }
     }
     private static RuntimeException failed(Throwable failure) {
