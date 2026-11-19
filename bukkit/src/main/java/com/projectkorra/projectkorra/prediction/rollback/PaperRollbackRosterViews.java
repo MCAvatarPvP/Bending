@@ -27,6 +27,8 @@ public final class PaperRollbackRosterViews {
             }
             bindings.put(entry.getKey(), new RollbackRosterViews.Native(state, PaperRollbackInventory.bind(state, items)));
         }
-        return RollbackRosterViews.bind(logical, expected, bindings, services);
+        var views = RollbackRosterViews.bind(logical, expected, bindings, services);
+        world.bindVisibility(views);
+        return views;
     }
 }

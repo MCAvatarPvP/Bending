@@ -48,6 +48,34 @@ class RollbackWorldSettingsTest {
         assertEquals(RollbackDuelInteractions.STANDARD, RollbackWorldSettings.decode(base.encode()).interactions());
     }
 
+    @Test void versionSevenMatchRulesDecodeWithoutTeamsAndVersionEightRequiresTheEntireRoster() {
+        // Captured from the version-seven writer with kit, placed block and live break rules.
+        byte[] legacy = Base64.getDecoder().decode(
+                "AAAABwAAAAAAAAAUAAAAAAAAADkAAAAAAAAANQAAAD8DAQEBAAEAAAAABT4ZmZo+mZmaQOAAAAAAAAMBAEBgAADA"
+                + "QEAAAAAAAAEAAAB9AQAAAD3MzM0AAAABAAl0ZXN0OnJ1bGUAAQAAAAAAAAAAAMgAAASwAAAEsAAABLAAAASwAAAB"
+                + "AQAAAAEACldISVRFX1dPT0wAAAABAAAAAwAAAEf////8AAAXcEAEAAAAAAAAAAAAAAABAAhHT0xEX09SRQ==");
+        var base = settings(Map.of("test:rule", new RollbackWorldSettings.Flag(true)));
+        var position = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Position(3, 71, -4);
+        var match = new RollbackDuelInteractions(true, true, Set.of("WHITE_WOOL"), Set.of(position))
+                .withLiveBreakMaterials(Set.of("GOLD_ORE"));
+        assertEquals(base.withInteractions(match), RollbackWorldSettings.decode(legacy));
+
+        var target = new UUID(1, 2);
+        var ally = new UUID(3, 4);
+        var teams = new RollbackCombatTeams(Map.of(target, Set.of(target, ally)));
+        var extended = base.withInteractions(match.withTeams(teams));
+        byte[] current = extended.encode();
+        assertEquals(8, java.nio.ByteBuffer.wrap(current).getInt());
+        assertEquals(extended, RollbackWorldSettings.decode(current));
+        for (int size = legacy.length; size < current.length; size++) {
+            var truncated = Arrays.copyOf(current, size);
+            assertThrows(IllegalArgumentException.class, () -> RollbackWorldSettings.decode(truncated));
+        }
+        var unversioned = current.clone();
+        java.nio.ByteBuffer.wrap(unversioned).putInt(7);
+        assertThrows(IllegalArgumentException.class, () -> RollbackWorldSettings.decode(unversioned));
+    }
+
     @Test void oversizedAndInvalidPolicyRejectBeforeEncoding() {
         var rules = new HashMap<String, RollbackWorldSettings.Rule>();
         for (int i = 0; i <= RollbackWorldSettings.MAXIMUM_RULES; i++) rules.put("test:rule" + i, new RollbackWorldSettings.Flag(true));

@@ -148,6 +148,7 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
     private final PaperRollbackPacketData packetData;
     private PaperRollbackRoundEvents roundEvents;
     private RollbackActorRegistry actors;
+    private RollbackRosterViews rosterViews;
 
     public PaperRollbackWorldAccess(Queries<?> queries, int maximumChunks) {
         this(queries, null, maximumChunks);
@@ -565,6 +566,23 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
     void beginCheckpoint() { sealPlayers(); checkpointed = true; }
     boolean activeParticipant(java.util.UUID id) { checkThread(); return roundEvents == null || roundEvents.round().active(id); }
     boolean ownsPlayer(Object player) { checkThread(); return players.containsKey(player); }
+    void bindVisibility(RollbackRosterViews views) {
+        checkThread();
+        if (rosterViews != null || checkpointed) throw new IllegalStateException("Private roster visibility already bound");
+        rosterViews = Objects.requireNonNull(views);
+    }
+
+    boolean canSee(net.minecraft.server.level.ServerPlayer observer, org.bukkit.entity.Entity candidate) {
+        if (!ownsPlayer(observer) || !ownsWrapper(candidate)) throw new IllegalArgumentException("Foreign visibility query");
+        var target = ((org.bukkit.craftbukkit.entity.CraftEntity) candidate).getHandle();
+        if (observer == target) return true;
+        if (target instanceof net.minecraft.server.level.ServerPlayer && rosterViews != null) {
+            var participants = rosterViews.players();
+            return participants.get(observer.getUUID()).canSee(participants.get(target.getUUID()));
+        }
+        return target.visibleByDefault;
+    }
+
     boolean ownsWrapper(Object wrapper) {
         checkThread();
         return playerWrappers.containsKey(wrapper) || (wrapper instanceof org.bukkit.craftbukkit.entity.CraftEntity craft

@@ -30,20 +30,21 @@ final class FabricRollbackDigBlocks implements RollbackDigging.Blocks {
         var pos = nativePos(position);
         var state = world.getBlockState(pos);
         var mode = GameMode.valueOf(player.getGameMode().name());
-        var rules = duel.scene().services().settings().interactions();
-        var material = FabricMC.material(state).name();
-        var decision = creative() ? rules.creativeBreakDecision(material) : rules.breakDecision(pos.getX(), pos.getY(), pos.getZ(), material);
-        return decision != RollbackDuelInteractions.Decision.DENY && !body.isSpectator() && body.isAlive()
+        return decision(pos, FabricMC.material(state).name()) != RollbackDuelInteractions.Decision.DENY && !body.isSpectator() && body.isAlive()
                 && duel.round().active(player.getUniqueId()) && !state.isAir() && world.getWorldBorder().contains(pos)
                 && !body.isBlockBreakingRestricted(world, pos, mode)
                 && (!(state.getBlock() instanceof OperatorBlock) || body.isCreativeLevelTwoOp())
                 && body.getMainHandStack().canMine(state, world, pos, body);
     }
+    private RollbackDuelInteractions.Decision decision(BlockPos pos, String material) {
+        var rules = duel.scene().services().settings().interactions();
+        return creative() ? rules.creativeBreakDecision(material) : rules.breakDecision(pos.getX(), pos.getY(), pos.getZ(), material);
+    }
     @Override public void attack(Position position) {
         var pos = nativePos(position);
         var state = world.getBlockState(pos);
         // Objective interactions and native-only hooks are delivered by the live match.
-        if (!duel.scene().services().settings().interactions().liveBreakMaterials().contains(FabricMC.material(state).name()))
+        if (decision(pos, FabricMC.material(state).name()) == RollbackDuelInteractions.Decision.ALLOW)
             state.onBlockBreakStart(world, pos, body);
     }
     @Override public float delta(Position position) {
@@ -55,8 +56,7 @@ final class FabricRollbackDigBlocks implements RollbackDigging.Blocks {
         var state = world.getBlockState(pos);
         String material = FabricMC.material(state).name();
         var logical = duel.scene().logical();
-        var policy = duel.scene().services().settings().interactions();
-        switch (creative() ? policy.creativeBreakDecision(material) : policy.breakDecision(pos.getX(), pos.getY(), pos.getZ(), material)) {
+        switch (decision(pos, material)) {
             case DENY -> { return; }
             case LIVE_MATCH -> {
                 duel.output().accept(new RollbackDuelInteractions.LiveBreak(player.getUniqueId(), pos.getX(), pos.getY(), pos.getZ(), material));

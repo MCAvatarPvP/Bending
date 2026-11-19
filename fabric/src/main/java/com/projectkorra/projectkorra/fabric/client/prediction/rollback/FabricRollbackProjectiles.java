@@ -9,6 +9,12 @@ import net.minecraft.util.hit.HitResult;
 public final class FabricRollbackProjectiles {
     private FabricRollbackProjectiles() { }
     public static boolean active() { return RollbackDomain.active() && RollbackClock.active(); }
+    public static boolean hiddenTarget(ProjectileEntity projectile, net.minecraft.entity.Entity target) {
+        var world = FabricRollbackGliding.activeWorld();
+        if (world == null || !(target instanceof net.minecraft.entity.player.PlayerEntity player)
+                || !world.ownsEntity(projectile) || !(projectile.getOwner() instanceof FabricRollbackDamagePlayer shooter)) return false;
+        return world.hiddenProjectileTarget(projectile, shooter, player);
+    }
     public static boolean cancelled(ProjectileEntity projectile, HitResult hit) {
         var world = FabricRollbackGliding.activeWorld();
         if (world == null) throw new IllegalStateException("Missing world owner for private projectile impact");

@@ -50,7 +50,7 @@ public record RollbackWorldSettings(long gameTime, long randomSeed, long soundSe
         this(gameTime, randomSeed, soundSeed, seaLevel, difficulty, policy, rules, Map.of());
     }
 
-    public static final int VERSION = 7, MAXIMUM_RULES = 1_024, MAXIMUM_BYTES = 524_288;
+    public static final int VERSION = 8, MAXIMUM_RULES = 1_024, MAXIMUM_BYTES = 524_288;
     public enum Difficulty { PEACEFUL, EASY, NORMAL, HARD }
     public enum Dimension { NORMAL, NETHER, THE_END }
     public sealed interface Rule permits Flag, IntegerRule { Object value(); }
@@ -212,7 +212,7 @@ public record RollbackWorldSettings(long gameTime, long randomSeed, long soundSe
             }
             var arrows = version >= 5 ? new ArrowLifetime(in.readInt(), in.readInt(), in.readInt(), in.readInt(), in.readInt()) : ArrowLifetime.DEFAULT;
             var structures = version >= 6 ? RollbackStructurePieces.read(in) : RollbackStructurePieces.EMPTY;
-            var interactions = version >= 7 ? RollbackDuelInteractions.read(in) : RollbackDuelInteractions.STANDARD;
+            var interactions = version >= 7 ? RollbackDuelInteractions.read(in, version >= 8) : RollbackDuelInteractions.STANDARD;
             if (in.available() != 0) throw invalid("trailing data");
             return new RollbackWorldSettings(time, random, sound, sea, difficulty, policy, rules, legacy, despawn, arrows, structures, interactions);
         } catch (IOException failure) { throw new IllegalArgumentException("Invalid world settings: truncated data", failure); }

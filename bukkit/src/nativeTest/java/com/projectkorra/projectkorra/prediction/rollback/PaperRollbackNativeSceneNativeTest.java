@@ -71,6 +71,14 @@ class PaperRollbackNativeSceneNativeTest {
             var itemOwner = new RollbackNativeItems<>(new PaperRollbackItems(PaperRollbackEnvironmentNativeTest.registries()));
             var actors = new PaperRollbackActors(new UUID(82, 32), 16, itemOwner);
             actors.bind(scene);
+            var services = new TreeMap<UUID, RollbackRosterViews.Services>();
+            scene.roster().forEach((id, state) -> {
+                var player = (ServerPlayer) state.ownedPlayer();
+                var profile = new RollbackPlayerState.Profile(player.getGameProfile().name(), "SURVIVAL", "RIGHT", true, false, true, 50);
+                services.put(id, new RollbackRosterViews.Services(profile, Set.of(),
+                        new com.projectkorra.projectkorra.platform.mc.scoreboard.Scoreboard(), actors, unused(RollbackPlayerState.Rules.class)));
+            });
+            var views = PaperRollbackRosterViews.bind(scene.logical(), scene.world(), captured.participants(), scene.roster(), itemOwner, services);
             var arrow = actors.spawn(scene.logical(), new RollbackEntityBody.Pose(0, 2, 0, 0, 0),
                     com.projectkorra.projectkorra.platform.mc.entity.Arrow.class);
             scene.logical().entities().add(arrow);
@@ -90,7 +98,10 @@ class PaperRollbackNativeSceneNativeTest {
             nativeArrow.setPos(.5, 2, .5);
             nativeArrow.setDeltaMovement(0, 0, -4);
             var hits = (Collection<?>) scan.invoke(nativeArrow, nativeArrow.position(), nativeArrow.position().add(nativeArrow.getDeltaMovement()));
-            assertEquals(List.of(shooter), hits.stream().map(hit -> ((net.minecraft.world.phys.EntityHitResult)hit).getEntity()).toList());
+            assertEquals(List.of(shooter), hits.stream().map(hit -> ((net.minecraft.world.phys.EntityHitResult) hit).getEntity()).toList());
+            views.players().get(defenderId).state().hidden(Set.of(attackerId));
+            assertFalse(defender.getBukkitEntity().canSee(shooter.getBukkitEntity()));
+            assertTrue(((Collection<?>) scan.invoke(nativeArrow, nativeArrow.position(), nativeArrow.position().add(nativeArrow.getDeltaMovement()))).isEmpty());
             assertNull(Bukkit.getServer());
             return null;
         });

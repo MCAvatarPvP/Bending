@@ -61,6 +61,10 @@ public record RollbackDuelInteractions(boolean build, boolean bedWars, Set<Strin
         teams.write(out);
     }
     static RollbackDuelInteractions read(DataInput in) throws IOException {
+        return read(in, true);
+    }
+
+    static RollbackDuelInteractions read(DataInput in, boolean includesCombatTeams) throws IOException {
         boolean build = in.readBoolean(), beds = in.readBoolean();
         int count = in.readInt();
         if (count < 0 || count > 8192) throw new IllegalArgumentException("Duel material count");
@@ -79,6 +83,7 @@ public record RollbackDuelInteractions(boolean build, boolean bedWars, Set<Strin
         if (special > 8192) throw new IllegalArgumentException("Native break material count");
         var live = new HashSet<String>();
         for (int i = 0; i < special; i++) if (!live.add(in.readUTF())) throw new IllegalArgumentException("Duplicate native break material");
-        return new RollbackDuelInteractions(build, beds, materials, placed, items, live, RollbackCombatTeams.read(in));
+        var teams = includesCombatTeams ? RollbackCombatTeams.read(in) : RollbackCombatTeams.EMPTY;
+        return new RollbackDuelInteractions(build, beds, materials, placed, items, live, teams);
     }
 }

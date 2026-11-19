@@ -10,6 +10,7 @@ import com.projectkorra.projectkorra.platform.mc.metadata.MetadataValue;
 import com.projectkorra.projectkorra.platform.mc.util.BoundingBox;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackStateCell;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackMetadataOwner;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -338,7 +339,7 @@ public final class RollbackEntityBody implements RollbackStateCell<RollbackEntit
         var result = new LinkedHashMap<String, List<FixedMetadataValue>>();
         data.metadata.forEach((key, entries) -> {
             var values = new ArrayList<FixedMetadataValue>(entries.size());
-            for (var entry : entries) values.add(new FixedMetadataValue(entry.owner, entry.value));
+            for (var entry : entries) values.add(new FixedMetadataValue(RollbackMetadataOwner.portable(entry.owner), entry.value));
             result.put(key, values);
         });
         return result;

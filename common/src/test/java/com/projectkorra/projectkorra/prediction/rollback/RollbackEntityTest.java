@@ -156,7 +156,7 @@ class RollbackEntityTest {
             source.removeMetadata("marker", sourceOwner);
             var received = metadataCodec(recipient, targetOwner).decode(bytes);
             var installed = (RollbackAbilityGlobals) received.getFirst();
-            var domain = RollbackDomain.create(new RollbackStateGraph(value -> value == recipient, field -> true, 256),
+            var domain = RollbackDomain.create(new RollbackStateGraph(value -> value == recipient.handle(), field -> true, 256),
                     List.of(), List.of(), com.projectkorra.projectkorra.platform.Platform.current(), installed::install);
             domain.call(() -> {
                 assertThrows(IllegalStateException.class, () -> RollbackAbilityGlobals.repairActorMetadata(
@@ -172,6 +172,22 @@ class RollbackEntityTest {
             assertFalse(source.hasMetadata("marker"));
             assertEquals("unchanged", outside.getMetadata("marker").getFirst().value());
         }
+    }
+
+    @Test void embeddedAddonOwnerRebindsWithoutChangingTheBootstrapCatalog() {
+        var prior = me.literka.ChiRework.plugin;
+        try {
+            var source = new me.literka.ChiRework();
+            var local = new me.literka.ChiRework();
+            me.literka.ChiRework.plugin = source;
+            var catalog = new RollbackGraphCodec.Catalog(List.of(FixedMetadataValue.class), List.of(RollbackMetadataOwner.class), List.of());
+            var codec = new RollbackGraphCodec(catalog, new RollbackGraphCodec.Limits(32, 128, 4096, 1024));
+            var bytes = codec.encode(List.of(new FixedMetadataValue(RollbackMetadataOwner.portable(source), "marker")));
+            me.literka.ChiRework.plugin = local;
+            var value = (FixedMetadataValue) codec.decode(bytes).getFirst();
+            assertEquals("marker", value.value());
+            assertSame(local, RollbackMetadataOwner.local(value.owner()));
+        } finally { me.literka.ChiRework.plugin = prior; }
     }
 
     private static RollbackGraphCodec metadataCodec(Entity actor, Object plugin) {

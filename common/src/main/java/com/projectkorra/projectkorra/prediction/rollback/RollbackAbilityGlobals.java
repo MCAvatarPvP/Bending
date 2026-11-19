@@ -235,7 +235,7 @@ public final class RollbackAbilityGlobals {
 
     private void restoreActorMetadata() {
         actorMetadata.forEach((actor, keys) -> keys.forEach((key, values) -> {
-            for (var value : values) ensureActorMetadata(actor, key, value.owner(), value.value());
+            for (var value : values) ensureActorMetadata(actor, key, RollbackMetadataOwner.local(value.owner()), value.value());
         }));
         actorMetadata.clear();
     }

@@ -155,6 +155,11 @@ class FabricRollbackNativeSceneTest {
             try {
                 assertEquals(false, canHit.invoke(duel.actors().nativeEntity(first), target));
                 assertEquals(true, canHit.invoke(duel.actors().nativeEntity(second), shooter));
+                var viewer = duel.views().players().get(targetId);
+                viewer.state().hidden(Set.of(shooterId));
+                assertEquals(false, canHit.invoke(duel.actors().nativeEntity(second), shooter));
+                viewer.state().hidden(Set.of());
+                assertEquals(true, canHit.invoke(duel.actors().nativeEntity(second), shooter));
             } catch (ReflectiveOperationException failure) { throw new AssertionError(failure); }
             var world = (net.minecraft.server.world.ServerWorld) roster.world().world();
             assertFalse(shooter.damage(world, world.getDamageSources().playerAttack(target), 4));

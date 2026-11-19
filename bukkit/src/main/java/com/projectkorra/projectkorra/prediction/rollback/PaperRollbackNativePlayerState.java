@@ -128,6 +128,10 @@ public final class PaperRollbackNativePlayerState implements RollbackPlayerState
                         if (server.containerMenu != server.inventoryMenu) throw new IllegalStateException("Private external menu services were not supplied");
                     })
                     .nativeQuery(CraftPlayer::getGameMode, null, args -> ownedPlayer())
+                    .query(value -> value.canSee((org.bukkit.entity.Entity) null), false,
+                            args -> world.canSee((ServerPlayer) ownedPlayer(), (org.bukkit.entity.Entity) args[0]))
+                    .query(value -> value.canSee((org.bukkit.entity.Player) null), false,
+                            args -> world.canSee((ServerPlayer) ownedPlayer(), (org.bukkit.entity.Entity) args[0]))
                     .query(CraftPlayer::getScoreboard, null, args -> world.scoreboards().bukkitBoard((ServerPlayer) ownedPlayer()))
                     .query(value -> value.getAdvancementProgress(null), null, args -> {
                         ownedPlayer(); return serverServices.advancements().bukkitProgress((org.bukkit.advancement.Advancement) args[0]);

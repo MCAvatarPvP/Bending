@@ -143,6 +143,13 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
         this.actors = Objects.requireNonNull(actors);
     }
     List<Entity> activeActors() { return actors == null ? List.of() : actors.active(); }
+    boolean hiddenProjectileTarget(net.minecraft.entity.projectile.ProjectileEntity projectile, PlayerEntity shooter, PlayerEntity target) {
+        if (!ownsEntity(projectile) || !ownsPlayer(target) || actors == null)
+            throw new IllegalStateException("Projectile visibility check crosses the private scene");
+        var viewer = (RollbackPlayer) actors.logical(shooter);
+        var other = (RollbackPlayer) actors.logical(target);
+        return !viewer.canSee(other);
+    }
     boolean projectileImpact(net.minecraft.entity.projectile.ProjectileEntity projectile, net.minecraft.util.hit.HitResult hit) {
         if (!ownsEntity(projectile) || actors == null) throw new IllegalStateException("Projectile impact crosses the scene");
         var shot = (com.projectkorra.projectkorra.platform.mc.entity.Projectile) actors.logical(projectile);

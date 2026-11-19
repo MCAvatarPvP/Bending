@@ -18,6 +18,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class ProjectileEntityPredictionMixin {
     @Unique private boolean projectkorra$cancelledRollbackBlock;
 
+    @Inject(method = "canHit", at = @At("HEAD"), cancellable = true)
+    private void projectkorra$visibleTarget(net.minecraft.entity.Entity target, CallbackInfoReturnable<Boolean> result) {
+        if (FabricRollbackProjectiles.hiddenTarget((ProjectileEntity) (Object) this, target)) result.setReturnValue(false);
+    }
+
     @Inject(method = "hitOrDeflect", at = @At("HEAD"), cancellable = true)
     private void projectkorra$rollbackHit(HitResult hit, CallbackInfoReturnable<ProjectileDeflection> result) {
         if (!FabricRollbackProjectiles.active()) return;
