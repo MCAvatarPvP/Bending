@@ -55,11 +55,10 @@ final class RollbackModelAdapter implements PKAdapter, RollbackStateCell<Void> {
         @Override LivingEntity delegate();
         @Override default double health() { return delegate().getHealth(); }
         @Override default void damage(double amount, PKEntity source) {
-            if (source == null) { delegate().damage(amount); return; }
+            if (source != null && !(source instanceof EntityView))
+                throw new IllegalArgumentException("Foreign model damage source");
             var world = (RollbackWorld) delegate().getWorld();
-            if (!(source instanceof EntityView view) || view.delegate().getWorld() != world
-                    || !owns(world, view.delegate())) throw new IllegalArgumentException("Foreign model damage source");
-            delegate().damage(amount, view.delegate());
+            world.applyDamage(delegate(), amount, source == null ? null : ((EntityView) source).delegate());
         }
     }
     private record EntityModel(Entity delegate) implements EntityView { }

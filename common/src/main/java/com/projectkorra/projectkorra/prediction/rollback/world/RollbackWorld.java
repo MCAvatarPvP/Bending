@@ -119,6 +119,23 @@ public final class RollbackWorld extends World implements RollbackStateCell<Roll
 
     public RollbackBlockStore terrain() { checkThread(); return terrain; }
     public RollbackEntityRegistry entities() { checkThread(); return entities; }
+    /** Native damage for the model API uses only bodies still owned by this simulation tick. */
+    public void applyDamage(com.projectkorra.projectkorra.platform.mc.entity.LivingEntity target, double amount, Entity source) {
+        checkThread();
+        if (!com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()
+                || !com.projectkorra.projectkorra.prediction.rollback.RollbackClock.active())
+            throw new IllegalStateException("Model damage requires an active private combat tick");
+        requireCurrentBody(target);
+        if (source != null) requireCurrentBody(source);
+        if (source == null) target.damage(amount);
+        else target.damage(amount, source);
+    }
+    private void requireCurrentBody(Entity value) {
+        var current = entities.get(value.getUniqueId());
+        if (current == null || current.handle() != value.handle() || value.getWorld().handle() != handle())
+            throw new IllegalArgumentException("Damage target or source is outside the private arena");
+    }
+
     public Conditions conditions() { checkThread(); return conditions; }
     public void conditions(Conditions value) { checkThread(); conditions = Objects.requireNonNull(value, "conditions"); }
     @Override public String getName() { checkThread(); return identity.name; }
