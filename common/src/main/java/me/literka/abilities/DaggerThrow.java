@@ -5,6 +5,7 @@ import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
+import com.projectkorra.projectkorra.chiblocking.util.DaggerProjectileOwner;
 import com.projectkorra.projectkorra.ability.ChiAbility;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.util.Collision;
@@ -28,8 +29,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-public class DaggerThrow extends ChiAbility implements AddonAbility {
-    private static final List<AbilityInteraction> INTERACTIONS = new ArrayList<>();
+public class DaggerThrow extends ChiAbility implements AddonAbility, DaggerProjectileOwner {
+    private final List<AbilityInteraction> interactions = new ArrayList<>();
     private final List<Arrow> arrows = new ArrayList<>();
     @Attribute(Attribute.COOLDOWN)
     private long cooldown;
@@ -72,13 +73,14 @@ public class DaggerThrow extends ChiAbility implements AddonAbility {
     }
 
     private void loadInteractions() {
-        INTERACTIONS.clear();
+        interactions.clear();
 
         String path = "Abilities.DaggerThrow.Interactions";
 
         PKConfigurationSection section = ChiRework.config().getConfigurationSection(path);
+        if (section == null) return;
         for (String abilityName : section.getKeys(false)) {
-            INTERACTIONS.add(new AbilityInteraction(abilityName));
+            interactions.add(new AbilityInteraction(abilityName));
         }
     }
 
@@ -116,7 +118,7 @@ public class DaggerThrow extends ChiAbility implements AddonAbility {
         arrow.setDamage(0);
         arrow.setKnockbackStrength(0);
         arrow.setPickupStatus(Arrow.PickupStatus.DISALLOWED);
-        arrow.setMetadata("daggerthrow", new FixedMetadataValue(ChiRework.plugin, this));
+        arrow.setMetadata(DaggerProjectileOwner.METADATA, new FixedMetadataValue(ChiRework.plugin, this));
 
         if (particles) {
             arrow.setCritical(true);
@@ -144,8 +146,10 @@ public class DaggerThrow extends ChiAbility implements AddonAbility {
         return false;
     }
 
+    @Override public List<Arrow> getArrows() { return arrows; }
+    @Override public void hitWithDagger(LivingEntity entity, Arrow arrow) { damageEntityFromArrow(entity, arrow); }
     public void damageEntityFromArrow(LivingEntity entity, Arrow arrow) {
-        if (RegionProtection.isRegionProtected(player, arrow.getLocation(), "DaggerThrow")) {
+        if (RegionProtection.isRegionProtected(player, arrow.getLocation(), this)) {
             return;
         }
 
@@ -164,7 +168,8 @@ public class DaggerThrow extends ChiAbility implements AddonAbility {
 
         BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(target);
 
-        for (AbilityInteraction interaction : INTERACTIONS) {
+        if (bPlayer == null) return;
+        for (AbilityInteraction interaction : interactions) {
             if (!interaction.enabled) continue;
             if (hits < interaction.hitRequirement) continue;
 

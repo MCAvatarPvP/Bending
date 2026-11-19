@@ -3901,8 +3901,10 @@ public final class BukkitMC {
         public void setShooter(Object shooter) {
             if (shooter instanceof ProjectileSource source) {
                 value.setShooter(source);
+                recordAbilityOwner(value, source);
             } else if (shooter instanceof Entity entity && entity.handle() instanceof ProjectileSource source) {
                 value.setShooter(source);
+                recordAbilityOwner(value, source);
             }
         }
 

@@ -1073,7 +1073,11 @@ public final class FabricPredictionMC {
         @Override public World getWorld() { return world((ClientWorld) value.getEntityWorld()); }
         @Override public Vector getVelocity() { return commonVector(value.getVelocity()); }
         @Override public void setVelocity(Vector velocity) { ExactPredictionRuntime.setPredictedVelocity(value, nativeVector(velocity)); }
-        @Override public void setShooter(Object shooter) { value.setOwner(nativeEntity(shooter)); }
+        @Override public void setShooter(Object shooter) {
+            var owner = nativeEntity(shooter);
+            value.setOwner(owner);
+            ExactPredictionRuntime.trackLaunchedProjectile(value, owner);
+        }
         @Override public void setGravity(boolean gravity) { value.setNoGravity(!gravity); }
         @Override public void setSilent(boolean silent) { value.setSilent(silent); }
         @Override public void setInvulnerable(boolean invulnerable) { value.setInvulnerable(invulnerable); }

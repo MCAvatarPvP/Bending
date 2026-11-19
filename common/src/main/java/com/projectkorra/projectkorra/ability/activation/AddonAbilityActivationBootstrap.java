@@ -120,7 +120,10 @@ final class AddonAbilityActivationBootstrap {
         // Hyperion back on top of the duplicate public Combustion name so the
         // bound ability, config, activation handler, and runtime class agree.
         CoreAbility.registerPluginAbilities(Hyperion.getPlugin(), "me.moros.hyperion.abilities");
+        registerHyperionActions();
+    }
 
+    static void registerHyperionActions() {
         register("Evade", ClickType.LEFT_CLICK, context -> context.isBoundTo(me.moros.hyperion.abilities.airbending.Evade.class) && created(new me.moros.hyperion.abilities.airbending.Evade(context.getPlayer())));
         register("Smokescreen", ClickType.LEFT_CLICK, context -> context.isBoundTo(Smokescreen.class) && created(new Smokescreen(context.getPlayer())));
 
@@ -172,6 +175,8 @@ final class AddonAbilityActivationBootstrap {
         }
 
         register("TwisterPunch", ClickType.LEFT_CLICK, context -> canStart(context, TwisterPunch.class) && created(new TwisterPunch(context.getPlayer())));
+        register("DaggerThrow", ClickType.LEFT_CLICK, context -> context.isBoundTo(DaggerThrow.class)
+                && canStart(context, DaggerThrow.class, false) && created(new DaggerThrow(context.getPlayer())));
         register("StickyBomb", ClickType.LEFT_CLICK, context -> canStartIgnoringCooldown(context, StickyBomb.class, false) && created(new StickyBomb(context.getPlayer())));
         register("StickyBomb", ClickType.SHIFT_DOWN, AddonAbilityActivationBootstrap::detonateStickyBombs);
         register("RopeDart", ClickType.LEFT_CLICK, context -> canStart(context, RopeDart.class) && created(new RopeDart(context.getPlayer())));
@@ -182,10 +187,11 @@ final class AddonAbilityActivationBootstrap {
         register("Bola", ClickType.LEFT_CLICK, context -> canStart(context, Bola.class) && created(new Bola(context.getPlayer())));
         register("HighJump", ClickType.LEFT_CLICK, context -> context.isBoundTo(HighJump.class) && canStart(context, HighJump.class, false) && created(new HighJump(context.getPlayer(), false)));
         register("Block", ClickType.SHIFT_DOWN, context -> canStart(context, Block.class) && created(new Block(context.getPlayer())));
-        register("Counter", ClickType.SHIFT_DOWN, context -> {
+        register("Evade", ClickType.SHIFT_DOWN, context -> {
             BendingPlayer bPlayer = context.getBendingPlayer();
             return bPlayer != null
-                    && "Evade".equalsIgnoreCase(bPlayer.getBoundAbilityName())
+                    && context.isBoundTo(Evade.class)
+                    && bPlayer.canBendIgnoreBindsCooldowns(CoreAbility.getAbility(Counter.class))
                     && !bPlayer.isOnCooldown("Counter")
                     && !CoreAbility.hasAbility(context.getPlayer(), Counter.class)
                     && created(new Counter(context.getPlayer()));
@@ -200,6 +206,8 @@ final class AddonAbilityActivationBootstrap {
             CoreAbility.registerPluginAbilities(JedCore.plugin, "com.jedk1.jedcore.ability");
         }
 
+        register("DaggerThrow", ClickType.LEFT_CLICK, context -> context.isBoundTo(com.jedk1.jedcore.ability.chiblocking.DaggerThrow.class)
+                && created(new com.jedk1.jedcore.ability.chiblocking.DaggerThrow(context.getPlayer())));
         registerGlobal(ClickType.LEFT_CLICK, context -> {
             if (context.getBendingPlayer() != null && context.getBendingPlayer().isToggled()) {
                 new WallRun(context.getPlayer());

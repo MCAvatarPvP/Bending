@@ -104,6 +104,8 @@ public abstract class PredictionClientApi extends PredictionClientLifecycle {
                 (payload, context) -> PredictionClient.instance().onAbilityStateOwner(context.client(), payload));
         ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.GlidingStateOwner.ID,
                 (payload, context) -> PredictionClient.instance().onGlidingStateOwner(context.client(), payload));
+        ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.ProjectileImpact.ID,
+                (payload, context) -> PredictionClient.instance().onProjectileImpact(context.client(), payload));
         ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.ProjectileOwner.ID,
                 (payload, context) -> PredictionClient.instance().onProjectileOwner(context.client(), payload));
         ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.TempFallingBlockReceipt.ID,

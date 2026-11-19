@@ -55,6 +55,32 @@ class RollbackStateGraphTest {
         assertEquals(0, values.reference.position);
     }
 
+    @Test void restoresIndependentCheckpointsAcrossFullAndPartialFieldPages() {
+        var rows = new ArrayList<Node>();
+        for (int i = 0; i < 100; i++) {
+            var row = new Node();
+            row.position = i;
+            row.next = rows.isEmpty() ? null : rows.getLast();
+            rows.add(row);
+        }
+        var before = graph.capture(rows, List.of());
+        for (var row : rows) {
+            row.position = -row.position - 1;
+            row.next = row;
+        }
+        var after = graph.capture(rows, List.of());
+        before.restore();
+        for (int i = 0; i < rows.size(); i++) {
+            assertEquals(i, rows.get(i).position);
+            assertSame(i == 0 ? null : rows.get(i - 1), rows.get(i).next);
+        }
+        after.restore();
+        for (int i = 0; i < rows.size(); i++) {
+            assertEquals(-i - 1, rows.get(i).position);
+            assertSame(rows.get(i), rows.get(i).next);
+        }
+    }
+
     @Test void cachedLayoutsRespectEachGraphsFieldSelection() {
         Values values = new Values();
         graph.capture(List.of(values), List.of()); // Warm the shared class layout.

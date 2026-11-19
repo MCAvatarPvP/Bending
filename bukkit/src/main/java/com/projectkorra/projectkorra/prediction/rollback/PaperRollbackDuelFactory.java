@@ -50,11 +50,15 @@ public final class PaperRollbackDuelFactory implements PaperRollbackDuels.Simula
         var actions = new RollbackArenaActions(output, actors, new PaperRollbackTerrainTransfer(),
                 stack -> codec.encode(items.nativeCopy(stack)));
         var events = new PaperRollbackArenaEvents(output, data.world().settings().policy());
-        var binds = new PaperRollbackNativeScene.Bindings(new PaperRollbackBlockRules(items), items, actions, registries, events);
+        var compilation = new java.util.ArrayList<Runnable>();
+        var binds = new PaperRollbackNativeScene.Bindings(new PaperRollbackBlockRules(items), items, actions,
+                new PaperRollbackBlockEntities(registries), events, compilation::add);
         long time = RollbackTiming.start();
         var scene = new PaperRollbackNativeScene(data.world(), captured.nativeRoster(), round, registries,
                 source.enabledFeatures(), binds, services, data.epochNanos(), 65_536, 16_384, 500_000);
         time = RollbackTiming.finish(time, "scene.nativeImport");
+        var nativeMethods = CompletableFuture.runAsync(() -> compilation.forEach(Runnable::run),
+                task -> plugin.getServer().getScheduler().runTaskAsynchronously(plugin, task));
         actors.bind(scene);
         events.bind(scene);
         var views = PaperRollbackRosterViews.bind(scene.logical(), scene.world(), round.participants(), scene.roster(),
@@ -78,6 +82,6 @@ public final class PaperRollbackDuelFactory implements PaperRollbackDuels.Simula
         var direct = PaperRollbackDirectPackets.bind(peers, source.getWorld().getUID(), ids, registries);
         var presentation = new PaperRollbackPresentation(source.getWorld(), plugin, listener, codec, direct, ids.keySet());
         return new PaperRollbackDuels.Simulation(scene, match.graph(), match.combat(),
-                update -> update.finalizedEffects().forEach(effect -> presentation.publish(effect, update.confirmed().tick())), corrections);
+                update -> update.finalizedEffects().forEach(effect -> presentation.publish(effect, update.confirmed().tick())), corrections, nativeMethods);
     }
 }

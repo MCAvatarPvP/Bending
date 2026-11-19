@@ -41,6 +41,8 @@ import java.util.function.LongUnaryOperator;
 public final class ClientEntityReconciliation {
     private final ClientProjectilePairs<Entity> projectiles = new ClientProjectilePairs<>(entity -> !entity.isRemoved());
     private final LongUnaryOperator localSequence;
+    private final ClientImpactClouds<Entity> impactClouds;
+    private Entity currentImpact;
 
     private final Map<Integer, Entity> authoritativeAliases = new HashMap<>();
     private final Set<Integer> tempFallingAliases = new HashSet<>();
@@ -63,6 +65,7 @@ public final class ClientEntityReconciliation {
     public ClientEntityReconciliation(final Function<String, BlockState> blockStateDecoder,
                                       LongUnaryOperator localSequence) {
         this.localSequence = localSequence;
+        this.impactClouds = new ClientImpactClouds<>(Entity::discard, localSequence);
         this.blockStateDecoder = blockStateDecoder;
     }
 
@@ -75,6 +78,7 @@ public final class ClientEntityReconciliation {
     public static String projectileType(EntityType<?> type) {
         if (type == EntityType.ARROW) return "ARROW";
         if (type == EntityType.SNOWBALL) return "SNOWBALL";
+        if (type == EntityType.SHULKER_BULLET) return "SHULKER_BULLET";
         if (type == EntityType.AREA_EFFECT_CLOUD) return "AREA_EFFECT_CLOUD";
         return null;
     }
@@ -88,9 +92,26 @@ public final class ClientEntityReconciliation {
         predictedSpawns.computeIfPresent(projectile, (entity, spawn) ->
                 new PredictedSpawn(spawn.actionSequence, spawn.origin, spawn.allowDisplayFallback, true));
         projectiles.launch(sequence, ordinal, shooter.getUuid(), projectileType(projectile.getType()), ability, projectile);
+        if (projectile.getType() == EntityType.SNOWBALL) impactClouds.launch(sequence, ordinal, shooter.getUuid(), projectile);
+        if (projectile.getType() == EntityType.AREA_EFFECT_CLOUD) impactClouds.cloud(currentImpact, projectile);
     }
 
-    public void projectileOwner(PredictionPayloads.ProjectileOwner receipt, long tick) { projectiles.receipt(receipt, tick); }
+    public boolean deliverImpact(net.minecraft.entity.projectile.ProjectileEntity projectile, net.minecraft.util.hit.HitResult.Type hit,
+                                 java.util.function.BooleanSupplier dispatch) {
+        Entity previous = currentImpact;
+        currentImpact = projectile;
+        try { return ClientProjectileImpact.deliver(projectile, hit, dispatch); }
+        finally { currentImpact = previous; }
+    }
+
+    public void projectileOwner(PredictionPayloads.ProjectileOwner receipt, long tick) {
+        projectiles.receipt(receipt, tick);
+        impactClouds.owner(receipt, tick);
+    }
+
+    public void projectileImpact(PredictionPayloads.ProjectileImpact receipt, long tick) {
+        impactClouds.outcome(receipt, tick);
+    }
 
     public boolean isPredictedOwned(final Entity entity) {
         return entity != null && predictedSpawns.containsKey(entity);
@@ -183,8 +204,19 @@ public final class ClientEntityReconciliation {
         if (packet == null || world == null) return false;
         // Keep the server entity tracked and moving while its matching local launch is visible.
         if (projectileReceipts && (packet.getEntityType() == EntityType.AREA_EFFECT_CLOUD
-                || packet.getEntityData() != 0 && projectileType(packet.getEntityType()) != null))
+                || packet.getEntityData() != 0 && projectileType(packet.getEntityType()) != null)) {
+            var player = MinecraftClient.getInstance().player;
+            if (player != null && packet.getEntityData() == player.getId()
+                    && packet.getEntityType() != EntityType.AREA_EFFECT_CLOUD) {
+                var origin = new Vec3d(packet.getX(), packet.getY(), packet.getZ());
+                projectiles.nativeSpawn(packet.getEntityId(), packet.getUuid(), player.getUuid(),
+                        projectileType(packet.getEntityType()), tick, predicted -> {
+                            var launch = predictedSpawns.get(predicted);
+                            return launch != null && launch.origin.squaredDistanceTo(origin) <= .25;
+                        });
+            }
             return false;
+        }
         if (authoritativeAliases.containsKey(packet.getEntityId())
                 || hiddenTempFallingEntities.contains(packet.getEntityId())) return true;
 
@@ -311,7 +343,9 @@ public final class ClientEntityReconciliation {
     }
 
     public void expire(final long tick, final int actionRetentionTicks) {
+        projectiles.expirePreviews(tick);
         projectiles.expire(tick - actionRetentionTicks);
+        impactClouds.expire(tick - actionRetentionTicks);
         observedFallingBlockSpawns.entrySet().removeIf(
                 entry -> tick - entry.getValue() > actionRetentionTicks);
         serverTempFallingPrepares.entrySet().removeIf(
@@ -323,6 +357,7 @@ public final class ClientEntityReconciliation {
     /** Removes bookkeeping for an action whose normal retention window ended. */
     public void retireAction(final long actionSequence) {
         projectiles.retire(actionSequence);
+        impactClouds.retire(actionSequence);
         predictedSpawns.entrySet().removeIf(entry -> entry.getValue().actionSequence == actionSequence);
         predictedTempFallingBlocks.keySet().removeIf(key -> key.actionSequence == actionSequence);
         predictedTempFallingOwners.entrySet().removeIf(
@@ -335,6 +370,7 @@ public final class ClientEntityReconciliation {
     /** Removes all partial entity state created by a locally failed input. */
     public void rollbackAction(final long actionSequence, final Collection<Entity> spawned) {
         projectiles.rollback(actionSequence);
+        impactClouds.retire(actionSequence);
         final Set<Entity> actionEntities = spawned == null
                 ? Set.of() : java.util.Collections.newSetFromMap(new IdentityHashMap<>());
         if (spawned != null) actionEntities.addAll(spawned);
@@ -358,6 +394,7 @@ public final class ClientEntityReconciliation {
         hiddenPredictedDisplays.clear();
         displayFallbacks.clear();
         projectiles.clear();
+        impactClouds.clear();
         visibleAuthorityPairs.clear();
         predictedSpawns.clear();
         predictedTempFallingBlocks.clear();

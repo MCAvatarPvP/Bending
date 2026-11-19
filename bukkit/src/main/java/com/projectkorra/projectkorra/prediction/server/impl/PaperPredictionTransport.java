@@ -87,6 +87,7 @@ public abstract class PaperPredictionTransport extends PaperPredictionUtilities 
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, RollbackInputPacket.CHANNEL, this);
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, RollbackStartPacket.CLIENT_CHANNEL, this);
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, RollbackBootstrapPacket.CLIENT_CHANNEL, this);
+        Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.PROJECTILE_IMPACT, this);
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.PROJECTILE_OWNER, this);
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.MELEE_ACTION, this);
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.HELLO, this);
@@ -138,6 +139,7 @@ public abstract class PaperPredictionTransport extends PaperPredictionUtilities 
         messenger.registerOutgoingPluginChannel(plugin, RollbackStartPacket.SERVER_CHANNEL);
         messenger.registerOutgoingPluginChannel(plugin, RollbackAuthorityChunk.CHANNEL);
         messenger.registerOutgoingPluginChannel(plugin, RollbackStateCorrectionChunk.CHANNEL);
+        messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.PROJECTILE_IMPACT, this);
         messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.PROJECTILE_OWNER, this);
         messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.MELEE_ACTION, this);
         messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.HELLO, this);
@@ -157,6 +159,7 @@ public abstract class PaperPredictionTransport extends PaperPredictionUtilities 
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.VELOCITY_OWNER_V2);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.ABILITY_STATE_OWNER);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.GLIDING_STATE_OWNER);
+        messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.PROJECTILE_IMPACT);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.PROJECTILE_OWNER);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.TEMP_FALLING_BLOCK);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.TEMP_FALLING_BLOCK_PREPARE);
@@ -237,7 +240,7 @@ public abstract class PaperPredictionTransport extends PaperPredictionUtilities 
 
     @Override
     public void onPluginMessageReceived(String channel, Player player, byte[] message) {
-        if (PaperPredictionProtocol.PROJECTILE_OWNER.equals(channel)) return; // Advertises support to exact clients.
+        if (PaperPredictionProtocol.PROJECTILE_OWNER.equals(channel) || PaperPredictionProtocol.PROJECTILE_IMPACT.equals(channel)) return; // Advertises support to exact clients.
         Runnable handling = () -> {
             try {
                 switch (channel) {

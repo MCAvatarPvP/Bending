@@ -172,6 +172,23 @@ class FabricRollbackNativeSceneTest {
         assertEquals(1, access.projectkorra$potionContents().customEffects().getFirst().getAmplifier());
     }
 
+    @Test void nativeAdvancementChecksTheCapturedStructurePieceInsteadOfTheWholeVillage() throws Exception {
+        var pieces = new RollbackStructurePieces(List.of(new RollbackStructurePieces.Piece("minecraft:village_plains", 2, 3, 4, 5, 9, 8)));
+        var settings = FabricRollbackWorldServicesTest.settings().withStructures(pieces);
+        var registries = FabricRollbackTestRegistry.simulationRegistries();
+        var duel = FabricRollbackNativeScene.importDuel(bootstrapData(seed(settings)), registries,
+                FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);
+        var world = (net.minecraft.server.world.ServerWorld) duel.scene().roster().world().world();
+        var village = registries.getOrThrow(net.minecraft.registry.RegistryKeys.STRUCTURE)
+                .getEntry(net.minecraft.util.Identifier.ofVanilla("village_plains")).orElseThrow();
+        var allowed = net.minecraft.registry.entry.RegistryEntryList.<net.minecraft.world.gen.structure.Structure>of(village);
+        var predicate = net.minecraft.predicate.entity.LocationPredicate.Builder.create().structure(allowed).build();
+        assertTrue(predicate.test(world, 2, 3, 4));
+        assertTrue(predicate.test(world, 5, 9, 8));
+        assertFalse(predicate.test(world, 6, 3, 4));
+        assertSame(village.value(), world.getStructureAccessor().getStructureContaining(new net.minecraft.util.math.BlockPos(4, 6, 6), allowed).getStructure());
+    }
+
     @Test void predictedSmokescreenSnowballCreatesOneCloudAcrossRepeatedBlockContacts() throws Exception {
         var duel = FabricRollbackNativeScene.importDuel(bootstrapData(), FabricRollbackTestRegistry.simulationRegistries(),
                 FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);

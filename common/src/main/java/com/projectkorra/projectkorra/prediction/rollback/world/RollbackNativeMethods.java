@@ -190,6 +190,20 @@ public final class RollbackNativeMethods {
 
     public Map<Method, MethodHandle> build() {
         configure(); built = true;
+        return link();
+    }
+
+    /** Return private invocation sites now and let the caller schedule their bytecode compilation.
+     * No scene state is read by the compiler. The caller must await the entire job before using a site. */
+    public Map<Method, MethodHandle> prepare(java.util.function.Consumer<Runnable> queue) {
+        configure(); built = true;
+        var entries = new LinkedHashMap<Method, MethodHandle>();
+        copies.forEach((method, site) -> entries.put(method, site.dynamicInvoker()));
+        queue.accept(this::link);
+        return Map.copyOf(entries);
+    }
+
+    private Map<Method, MethodHandle> link() {
         Map<Method, MethodHandle> calls = new LinkedHashMap<>(replacements);
         copies.forEach((method, site) -> calls.put(method, site.dynamicInvoker()));
         Map<Method, MethodHandle> virtualCalls = new LinkedHashMap<>(calls);

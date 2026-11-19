@@ -16,7 +16,29 @@ public final class ClientProjectilePairs<E> {
     private final Map<Key, Launch<E>> launches = new HashMap<>();
     private final Map<Integer, Receipt> pending = new HashMap<>();
     private final Map<Integer, Pair<E>> pairs = new HashMap<>();
+    private record Preview(Key key, UUID uuid, long expires) {}
+    private final Map<Integer, Preview> previews = new HashMap<>();
     private final Predicate<E> alive;
+
+    // The vanilla tracker may beat the owner receipt and the native-action acknowledgement.
+    // Reserve only the shooter's unique live launch at this spawn origin until those packets arrive.
+    void nativeSpawn(int id, UUID uuid, UUID shooter, String type, long tick, Predicate<E> sameOrigin) {
+        previews.remove(id);
+        if (pairs.containsKey(id) || shooter == null) return;
+        Key match = null;
+        for (var entry : launches.entrySet()) {
+            var launch = entry.getValue();
+            if (!shooter.equals(launch.owner) || !type.equals(launch.type) || !alive.test(launch.entity)
+                    || !sameOrigin.test(launch.entity)) continue;
+            if (match != null) return;
+            match = entry.getKey();
+        }
+        if (match == null) return;
+        for (var preview : previews.values()) if (preview.key.equals(match)) return;
+        previews.put(id, new Preview(match, uuid, tick + 3));
+    }
+
+    void expirePreviews(long tick) { previews.values().removeIf(preview -> tick >= preview.expires); }
 
     ClientProjectilePairs(Predicate<E> alive) { this.alive = alive; }
 
@@ -26,8 +48,11 @@ public final class ClientProjectilePairs<E> {
     }
 
     void receipt(ProjectileOwner owner, long tick) {
-        if (owner.actionSequence() <= 0 || owner.ordinal() <= 0 || owner.entityId() < 0
-                || !(owner.type().equals("ARROW") || owner.type().equals("SNOWBALL") || owner.type().equals("AREA_EFFECT_CLOUD"))) return;
+        if (owner.actionSequence() <= 0 || owner.ordinal() <= 0 || owner.entityId() < 0) return;
+        switch (owner.type()) {
+            case "ARROW", "SNOWBALL", "SHULKER_BULLET", "AREA_EFFECT_CLOUD" -> { }
+            default -> { return; }
+        }
         Pair<E> existing = pairs.get(owner.entityId());
         if (existing != null && existing.owner.entityUuid().equals(owner.entityUuid())) return;
         if (existing != null) pairs.remove(owner.entityId());
@@ -53,16 +78,26 @@ public final class ClientProjectilePairs<E> {
 
     boolean hide(int id, UUID uuid, String type, LongUnaryOperator localSequence) {
         Pair<E> pair = resolve(id, localSequence);
-        return pair != null && pair.owner.entityUuid().equals(uuid) && pair.owner.type().equals(type)
-                && alive.test(pair.entity);
+        if (pair != null) return pair.owner.entityUuid().equals(uuid) && pair.owner.type().equals(type) && alive.test(pair.entity);
+        Preview preview = previews.get(id);
+        if (preview == null || !preview.uuid.equals(uuid)) return false;
+        Launch<E> launch = launches.get(preview.key);
+        if (launch == null || !launch.type.equals(type) || !alive.test(launch.entity)) return false;
+        Receipt receipt = pending.get(id);
+        if (receipt == null) return true;
+        ProjectileOwner owner = receipt.owner;
+        return owner.entityUuid().equals(uuid) && owner.owner().equals(launch.owner) && owner.type().equals(type)
+                && owner.ordinal() == preview.key.ordinal && owner.ability().equalsIgnoreCase(launch.ability)
+                && localSequence.applyAsLong(owner.actionSequence()) <= 0;
     }
 
-    boolean tracked(int id) { return pairs.containsKey(id) || pending.containsKey(id); }
+    boolean tracked(int id) { return pairs.containsKey(id) || pending.containsKey(id) || previews.containsKey(id); }
 
     E remove(int id, UUID uuid, String type, LongUnaryOperator localSequence) {
         Pair<E> pair = resolve(id, localSequence);
         pairs.remove(id);
         pending.remove(id);
+        previews.remove(id);
         return pair != null && pair.owner.entityUuid().equals(uuid) && pair.owner.type().equals(type) ? pair.entity : null;
     }
 
@@ -72,5 +107,5 @@ public final class ClientProjectilePairs<E> {
         retire(action);
         pairs.values().removeIf(pair -> pair.key.localAction == action);
     }
-    void clear() { launches.clear(); pairs.clear(); pending.clear(); }
+    void clear() { launches.clear(); pairs.clear(); pending.clear(); previews.clear(); }
 }

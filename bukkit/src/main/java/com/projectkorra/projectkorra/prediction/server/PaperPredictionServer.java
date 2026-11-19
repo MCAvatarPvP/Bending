@@ -85,7 +85,8 @@ public final class PaperPredictionServer extends PaperPredictionSnapshots {
     public static final int MAX_REWIND_TICKS = 12;
     private static volatile PaperPredictionServer active;
     private PaperRollbackMatchBootstrap rollbackMatchBootstrap;
-    private final Map<org.bukkit.entity.Entity, Action> predictedActors = new WeakHashMap<>();
+    private final com.projectkorra.projectkorra.prediction.server.impl.PaperPredictedProjectiles projectiles =
+            new com.projectkorra.projectkorra.prediction.server.impl.PaperPredictedProjectiles(this);
 
     private PaperPredictionServer(JavaPlugin plugin) {
         super(plugin);
@@ -340,43 +341,25 @@ public final class PaperPredictionServer extends PaperPredictionSnapshots {
         }
     }
 
-    /** Identifies this action's exact native projectile before ordinary entity tracking publishes it. */
     public static void projectileSpawned(Player owner, org.bukkit.entity.Entity projectile) {
         var server = active;
-        if (server == null || RollbackDomain.active()) return;
-        var ownerId = owner.getUniqueId();
-        var session = server.sessions.get(ownerId);
-        if (session == null || (session.capabilities & CAPABILITY_EXACT) == 0
-                || server.rollbackInputs.blocksLegacy(ownerId)
-                || !owner.getListeningPluginChannels().contains(PaperPredictionProtocol.PROJECTILE_OWNER)) return;
-        var ability = AbilityExecutionContext.current();
-        boolean owned = ability != null && ability.getPlayer() != null && ownerId.equals(ability.getPlayer().getUniqueId());
-        var action = server.currentInputAction(ownerId);
-        if (action == null && owned) action = server.actionForEffect(ability);
-        if (action == null || !action.locallyPredicted || !ownerId.equals(action.owner)
-                || server.predictedActors.putIfAbsent(projectile, action) != null) return;
-        server.send(owner, PaperPredictionProtocol.PROJECTILE_OWNER, PaperPredictionProtocol.projectileOwner(
-                session.session, action.sequence, ++action.projectileOrdinal, ownerId, projectile.getEntityId(),
-                projectile.getUniqueId(), owned ? ability.getName() : action.ability, projectile.getType().name()));
+        if (server != null) server.projectiles.spawned(owner, projectile);
     }
 
     public static void projectileImpact(org.bukkit.entity.Projectile projectile, Runnable callback) {
         var server = active;
-        var action = server == null ? null : server.predictedActors.get(projectile);
-        var session = action == null ? null : server.sessions.get(action.owner);
-        if (session == null || session.actions.get(action.sequence) != action || server.rollbackInputs.blocksLegacy(action.owner)) {
-            callback.run();
-            return;
-        }
-        // MetalCable's projectile can be reassigned by a subsequent input before impact.
-        for (var meta : projectile.getMetadata(me.moros.hyperion.methods.CoreMethods.CABLE_KEY)) {
-            if (meta.value() instanceof me.moros.hyperion.abilities.earthbending.MetalCable cable) {
-                var transitioned = server.actionForEffect(cable);
-                if (transitioned != null && transitioned.owner.equals(action.owner)) action = transitioned;
-                break;
-            }
-        }
-        runWithOwnerAndSequence(action.owner, action.sequence, callback);
+        if (server == null) callback.run();
+        else server.projectiles.impact(projectile, callback);
+    }
+
+    public static void finishSnowballImpact(org.bukkit.entity.Snowball ball) {
+        var server = active;
+        if (server != null) server.projectiles.finish(ball);
+    }
+
+    public static void removedSnowball(org.bukkit.entity.Snowball ball) {
+        var server = active;
+        if (server != null) server.projectiles.removed(ball);
     }
 
     public static Runnable contextual(Runnable task) {

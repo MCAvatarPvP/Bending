@@ -133,6 +133,7 @@ public class PKListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onEntityRemovedFromWorld(final EntityRemoveFromWorldEvent event) {
+        if (event.getEntity() instanceof org.bukkit.entity.Snowball ball) PaperPredictionServer.removedSnowball(ball);
         // Player world changes do not end their metadata lifetime; quit does.
         if (!(event.getEntity() instanceof Player)) {
             BukkitEntityMetadata.clear(event.getEntity(), this.plugin);
@@ -1191,6 +1192,11 @@ public class PKListener implements Listener {
             }
         }
 
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void finishPredictedSnowballImpact(final ProjectileHitEvent event) {
+        if (event.getEntity() instanceof org.bukkit.entity.Snowball ball) PaperPredictionServer.finishSnowballImpact(ball);
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)

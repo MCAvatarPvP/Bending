@@ -48,6 +48,7 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         Object difficulty();
         Object random();
         default net.minecraft.world.flag.FeatureFlagSet terrainFeatures() { throw new IllegalStateException("Terrain feature flags were not supplied"); }
+        default RollbackStructurePieces structures() { return RollbackStructurePieces.EMPTY; }
         default RollbackWorldSettings.ArrowLifetime arrowLifetime() { return RollbackWorldSettings.ArrowLifetime.DEFAULT; }
         default java.util.Map<String, Integer> actorDespawnTimes() { return java.util.Map.of(); }
         default boolean splitOverstackedLoot() { return true; }
@@ -151,6 +152,11 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
     }
 
     public PaperRollbackWorldAccess(Queries<?> queries, Combat<?> combatState, int maximumChunks) {
+        this(queries, combatState, maximumChunks, Runnable::run);
+    }
+
+    PaperRollbackWorldAccess(Queries<?> queries, Combat<?> combatState, int maximumChunks,
+            java.util.function.Consumer<Runnable> compile) {
         this.queries = Objects.requireNonNull(queries, "queries");
         this.combatState = combatState;
         packetData = combatState == null ? null : new PaperRollbackPacketData((net.minecraft.core.RegistryAccess) combatState.registryAccess());
@@ -260,8 +266,12 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
                 .query(value -> value.getBlockCollisions(null, Native.BOX), List.of(), args -> collision("getBlockCollisions", args));
         scoreboards = combatState == null ? null : new PaperRollbackScoreboards(this,
                 (net.minecraft.core.RegistryAccess) combatState.registryAccess(), combatState::output);
-        combat = combatState == null ? null : new PaperRollbackCombatAccess(this, combatState);
-        if (combat != null) combat.bind(shell);
+        combat = combatState == null ? null : new PaperRollbackCombatAccess(this, combatState, compile);
+        if (combat != null) {
+            combat.bind(shell);
+            var structures = new PaperRollbackStructures(combatState.structures(), (net.minecraft.core.RegistryAccess) combatState.registryAccess());
+            shell.constant(ServerLevel::structureManager, structures.manager());
+        }
         world = shell.instance();
         PaperRollbackPrivateAccess.initializeChunks(world, source); // Level's final loaded-block access reads this field directly.
         PaperRollbackPrivateAccess.initializeConfig(world);

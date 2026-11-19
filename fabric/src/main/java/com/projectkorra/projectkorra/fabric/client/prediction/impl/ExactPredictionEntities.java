@@ -187,7 +187,7 @@ public abstract class ExactPredictionEntities extends ExactPredictionPlayerState
         // Native entity ticks run after the input that created the projectile.
         // Re-enter that action so impact-spawned effects reconcile to Paper.
         final long impactAction = sourceAction;
-        return com.projectkorra.projectkorra.fabric.client.prediction.entity.ClientProjectileImpact.deliver(projectile, hit.getType(), () -> {
+        return entityReconciliation.deliverImpact(projectile, hit.getType(), () -> {
             ExactPredictionRuntime.runWithAction(impactAction, () -> this.platform.events().call(event));
             return event.isCancelled();
         });

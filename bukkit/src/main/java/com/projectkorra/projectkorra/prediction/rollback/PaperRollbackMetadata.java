@@ -28,6 +28,13 @@ final class PaperRollbackMetadata {
             EntityDataAccessor.class, DataComponentType.class, Item.class, BlockState.class,
             Codec.class, MapCodec.class, java.util.Locale.class, DECORATIONS);
 
+    private static final ClassValue<Boolean> FROZEN_TYPES = new ClassValue<>() {
+        @Override protected Boolean computeValue(Class<?> candidate) {
+            for (Class<?> type : TYPES) if (type.isAssignableFrom(candidate)) return true;
+            return false;
+        }
+    };
+
     private PaperRollbackMetadata() { }
 
     private static Map<Object, Boolean> itemPrototypes() {
@@ -38,6 +45,6 @@ final class PaperRollbackMetadata {
 
     static boolean frozen(Object value) {
         return value == ItemStack.EMPTY || value == ENCHANTMENT_ORDER || value == DEFAULT_ATTRIBUTES
-                || ITEM_PROTOTYPES.containsKey(value) || TYPES.stream().anyMatch(type -> type.isInstance(value));
+                || ITEM_PROTOTYPES.containsKey(value) || (value != null && FROZEN_TYPES.get(value.getClass()));
     }
 }

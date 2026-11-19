@@ -72,7 +72,8 @@ public final class PaperRollbackCombatAccess {
     private final WorldConfiguration worldConfiguration;
     private final PaperRollbackNativeEvents events;
 
-    PaperRollbackCombatAccess(PaperRollbackWorldAccess world, PaperRollbackWorldAccess.Combat<?> state) {
+    PaperRollbackCombatAccess(PaperRollbackWorldAccess world, PaperRollbackWorldAccess.Combat<?> state,
+            java.util.function.Consumer<Runnable> compile) {
         this.world = world; this.state = state;
         registries = (RegistryAccess) Objects.requireNonNull(state.registryAccess(), "captured native registries");
         damageRegistry = registries.lookupOrThrow(Registries.DAMAGE_TYPE);
@@ -216,7 +217,7 @@ public final class PaperRollbackCombatAccess {
             Method equipment = Player.class.getDeclaredMethod("detectEquipmentUpdates");
             Method cooldownApply = net.minecraft.world.item.component.UseCooldown.class.getDeclaredMethod("apply", ItemStack.class, LivingEntity.class);
             builder.copy(cooldownApply);
-            var copied = builder.build();
+            var copied = builder.prepare(compile);
             mount = copied.get(Entity.class.getDeclaredMethod("startRiding", Entity.class, boolean.class, boolean.class));
             unmount = copied.get(Entity.class.getDeclaredMethod("stopRiding"));
             melee = copied.get(attack);

@@ -84,6 +84,9 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
         Scoreboard scoreboard();
         /** Frozen authoritative registries, including reloadable loot/predicates; stable for the whole session. */
         DynamicRegistryManager.Immutable registries();
+        default net.minecraft.world.gen.StructureAccessor structures() {
+            throw new IllegalStateException("Private structure accessor is unavailable");
+        }
         long time();
         Difficulty difficulty();
         default net.minecraft.resource.featuretoggle.FeatureSet terrainFeatures() { throw new IllegalStateException("Terrain feature flags were not supplied"); }
@@ -283,6 +286,7 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
                 .constant(World::getScoreboard, ServerWorld::getScoreboard, scoreboard)
                 .constant(ServerWorld::getWaypointHandler, waypoints)
                 .constant(World::getRegistryManager, registries)
+                .query(ServerWorld::getStructureAccessor, null, args -> queries.structures())
                 .constant(World::getDamageSources, damageSources)
                 .constant(ServerWorld::getGameRules, gameRules)
                 .constant(World::getChunkManager, ServerWorld::getChunkManager, chunks)

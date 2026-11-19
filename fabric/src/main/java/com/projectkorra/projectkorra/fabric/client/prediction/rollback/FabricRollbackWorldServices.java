@@ -67,6 +67,7 @@ public final class FabricRollbackWorldServices implements FabricRollbackWorldQue
     }
     private final Thread thread = Thread.currentThread();
     private final RollbackWorldSettings settings;
+    private final net.minecraft.world.gen.StructureAccessor structures;
     private final RollbackWorld logical;
     private final DynamicRegistryManager.Immutable registries;
     private final Spatial<?> spatial;
@@ -81,6 +82,7 @@ public final class FabricRollbackWorldServices implements FabricRollbackWorldQue
         if (RollbackClock.active() || RollbackDomain.active()) throw new IllegalStateException("Prepare world services before replay");
         this.settings = Objects.requireNonNull(settings); this.registries = Objects.requireNonNull(registries);
         this.logical = Objects.requireNonNull(logical);
+        this.structures = new FabricRollbackStructures(settings.structures(), logical.terrain().bounds(), registries).accessor();
         var environment = switch (settings.policy().dimension()) {
             case NORMAL -> com.projectkorra.projectkorra.platform.mc.World.Environment.NORMAL;
             case NETHER -> com.projectkorra.projectkorra.platform.mc.World.Environment.NETHER;
@@ -123,6 +125,7 @@ public final class FabricRollbackWorldServices implements FabricRollbackWorldQue
         if (scheduledTicks != null) scheduledTicks.advance(next);
     }
     @Override public FeatureSet terrainFeatures() { checkThread(); return features; }
+    @Override public net.minecraft.world.gen.StructureAccessor structures() { checkThread(); return structures; }
     @Override public DynamicRegistryManager.Immutable registries() { checkThread(); return registries; }
     @Override public EnvironmentAttributeAccess environmentAttributes() { checkThread(); return spatial.environmentAttributes(); }
     @Override public WorldBorder border() { checkThread(); return spatial.border(); }

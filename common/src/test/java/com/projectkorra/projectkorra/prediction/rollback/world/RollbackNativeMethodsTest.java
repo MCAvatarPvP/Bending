@@ -62,6 +62,32 @@ class RollbackNativeMethodsTest {
         assertEquals(java.util.List.of(3), events);
     }
 
+    @Test void detachedCompilationLinksOnlyTheRegisteredDuelAndDoesNotRunNativeCode() throws Throwable {
+        var entry = AbstractNative.class.getDeclaredMethod("tick", int.class);
+        var declaration = AbstractNative.class.getDeclaredMethod("damage", int.class);
+        var implementation = BoundNative.class.getDeclaredMethod("damage", int.class);
+        var publish = AbstractNative.class.getDeclaredMethod("publish", int.class);
+        var append = MethodHandles.lookup().findVirtual(ArrayList.class, "add", MethodType.methodType(boolean.class, Object.class));
+        var jobs = new ArrayList<Runnable>();
+        var handlers = new ArrayList<MethodHandle>();
+        var events = java.util.List.of(new ArrayList<Integer>(), new ArrayList<Integer>());
+        for (var output : events) {
+            var builder = new RollbackNativeMethods().copy(entry).dispatch(declaration).copy(implementation)
+                    .replace(publish, append.bindTo(output).asType(MethodType.methodType(void.class, int.class)));
+            handlers.add(builder.prepare(jobs::add).get(entry));
+            assertThrows(IllegalStateException.class, builder::build);
+        }
+        AbstractNative player = new BoundNative();
+        assertThrows(IllegalStateException.class, () -> { int ignored = (int)handlers.get(0).invokeExact(player, 2); });
+        java.util.concurrent.CompletableFuture.runAsync(jobs.get(1)).join();
+        assertEquals(8, (int)handlers.get(1).invokeExact(player, 2));
+        assertTrue(events.get(0).isEmpty());
+        java.util.concurrent.CompletableFuture.runAsync(jobs.get(0)).join();
+        assertEquals(5, (int)handlers.get(0).invokeExact(player, 3));
+        assertEquals(java.util.List.of(3), events.get(0));
+        assertEquals(java.util.List.of(2), events.get(1));
+    }
+
     static abstract class AbstractNative {
         int health = 10;
         final int tick(int amount) { return damage(amount); }

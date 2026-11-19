@@ -25,7 +25,15 @@ class PaperRollbackNativeSceneNativeTest {
             var outputs = new ArrayList<PaperRollbackCombatAccess.Output>();
             var removed = new ArrayList<org.bukkit.event.Event>();
             var blockHits = new ArrayList<Object>();
-            var scene = scene(seed(), roster, roster.participants(), new Events() {
+            var captured = seed();
+            var geometry = new RollbackStructurePieces(List.of(new RollbackStructurePieces.Piece(
+                    "minecraft:fortress", -3, 4, -3, -1, 9, -1)));
+            var settings = RollbackWorldSettings.decode(captured.settings().withStructures(geometry).encode());
+            assertEquals(geometry, settings.structures());
+            var arena = new RollbackWorldSeed(captured.world(), captured.name(), captured.minimumY(), captured.maximumY(),
+                    captured.dayTime(), captured.storm(), settings, captured.border(), captured.environment(), captured.terrain(),
+                    captured.light(), captured.scheduledTicks());
+            var scene = scene(arena, roster, roster.participants(), new Events() {
                 @Override public void event(org.bukkit.event.Event event) { removed.add(event); }
                 @Override public void output(PaperRollbackCombatAccess.Output output) { outputs.add(output); }
                 @Override public void gameEvent(Object event, Object position, Object context) { blockHits.add(event); }
@@ -35,6 +43,13 @@ class PaperRollbackNativeSceneNativeTest {
             actors.bind(scene);
             assertTrue(scene.world().world().isLoaded(new net.minecraft.core.BlockPos(-1, 4, -1)));
             assertFalse(scene.world().world().isLoaded(new net.minecraft.core.BlockPos(32, 4, 0)));
+            var level = scene.world().world();
+            var structure = level.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.STRUCTURE)
+                    .get(net.minecraft.resources.Identifier.parse("minecraft:fortress")).orElseThrow();
+            var inFortress = net.minecraft.advancements.criterion.LocationPredicate.Builder.inStructure(structure).build();
+            assertTrue(inFortress.matches(level, -1, 4, -1));
+            assertFalse(inFortress.matches(level, -1, 3, -1));
+            assertFalse(inFortress.matches(level, 32, 4, 0));
             var pose = new RollbackEntityBody.Pose(0, 4, 0, 0, 0);
             var ball = actors.spawn(scene.logical(), pose, com.projectkorra.projectkorra.platform.mc.entity.Snowball.class);
             var target = actors.spawn(scene.logical(), pose, com.projectkorra.projectkorra.platform.mc.entity.BlockDisplay.class);

@@ -43,6 +43,9 @@ public final class FabricRollbackWorldQueries implements FabricRollbackWorldAcce
     public interface Services<S> extends RollbackStateCell<S> {
         default net.minecraft.resource.featuretoggle.FeatureSet terrainFeatures() { throw new IllegalStateException("Terrain feature flags were not supplied"); }
         DynamicRegistryManager.Immutable registries();
+        default net.minecraft.world.gen.StructureAccessor structures() {
+            throw new IllegalStateException("Private structure accessor is unavailable");
+        }
         EnvironmentAttributeAccess environmentAttributes();
         WorldBorder border();
         Scoreboard scoreboard();
@@ -187,6 +190,7 @@ public final class FabricRollbackWorldQueries implements FabricRollbackWorldAcce
         requireRoster(); requireMember(except); if (!shape.isEmpty()) requireBounds(shape.getBoundingBox());
         return FabricRollbackEntityCollisions.unobstructed(this, except, shape);
     }
+    @Override public net.minecraft.world.gen.StructureAccessor structures() { checkThread(); return services.structures(); }
     @Override public DynamicRegistryManager.Immutable registries() { checkThread(); return registries; }
     @Override public EnvironmentAttributeAccess environmentAttributes() { checkThread(); return services.environmentAttributes(); }
     @Override public WorldBorder getWorldBorder() { checkThread(); return services.border(); }

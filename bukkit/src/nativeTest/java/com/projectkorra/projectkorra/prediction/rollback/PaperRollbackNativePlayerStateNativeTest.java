@@ -46,6 +46,14 @@ class PaperRollbackNativePlayerStateNativeTest {
         return new RollbackEntity(RollbackEntityBody.nativeBacked(scene.state.identity(), scene.queries.logical, scene.state, MOTION_RULES));
     }
 
+    @Test void typeClassificationKeepsMutableItemsSeparateFromFrozenSingletons() {
+        assertTrue(PaperRollbackMetadata.frozen(Items.STONE));
+        assertTrue(PaperRollbackMetadata.frozen(ItemStack.EMPTY));
+        assertFalse(PaperRollbackMetadata.frozen(new ItemStack(Items.STONE)));
+        assertFalse(PaperRollbackMetadata.frozen(null));
+        assertFalse(PaperRollbackMetadata.frozen(Component.literal("mutable")));
+    }
+
     @Test void logicalMovementAndNativePhysicsShareOneStoreAndRewindWithTerrain() throws Exception {
         onTickThread(() -> {
             var scene = new Scene(); var view = logical(scene);

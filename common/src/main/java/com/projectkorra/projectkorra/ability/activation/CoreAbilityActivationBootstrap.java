@@ -221,7 +221,7 @@ final class CoreAbilityActivationBootstrap {
         register("FireManipulation", ClickType.LEFT_CLICK, CoreAbilityActivationBootstrap::clickFireManipulation);
     }
 
-    private static void registerChi() {
+    static void registerChi() {
         register("HighJump", ClickType.LEFT_CLICK, context -> context.isBoundTo(HighJump.class) && created(new HighJump(context.getPlayer())));
         register("Smokescreen", ClickType.LEFT_CLICK, context -> context.isBoundTo(Smokescreen.class) && created(new Smokescreen(context.getPlayer())));
         register("WarriorStance", ClickType.LEFT_CLICK, context -> created(new WarriorStance(context.getPlayer())));

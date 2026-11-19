@@ -26,7 +26,8 @@ public final class PaperRollbackWorldSeed {
         bounds = com.projectkorra.projectkorra.prediction.rollback.world.RollbackLightingBounds.capture(
                 bounds, bukkit.getMinHeight(), bukkit.getMaxHeight(), limits.maximumCells());
         long tick = world.getGameTime(), day = world.getDayTime();
-        var settings = PaperRollbackWorldSettings.capture(world, randomSeed, soundSeed);
+        var structures = PaperRollbackStructureCapture.capture(world, bounds, limits.maximumLoadedChunks());
+        var settings = PaperRollbackWorldSettings.capture(world, randomSeed, soundSeed).withStructures(structures);
         var border = PaperRollbackBorder.capture(world.getWorldBorder());
         var environment = PaperRollbackEnvironment.capture(world);
         boolean storm = bukkit.hasStorm();

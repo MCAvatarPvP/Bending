@@ -558,6 +558,21 @@ public final class PredictionPayloads {
         @Override public Id<MeleeAction> getId() { return ID; }
     }
 
+    public record ProjectileImpact(UUID sessionId, long actionSequence, int ordinal, UUID owner, int entityId,
+                                   UUID entityUuid, boolean createdCloud) implements CustomPayload {
+        public static final Id<ProjectileImpact> ID = id("projectile_impact");
+        public static final PacketCodec<RegistryByteBuf, ProjectileImpact> CODEC =
+                PacketCodec.of(ProjectileImpact::write, ProjectileImpact::new);
+        private ProjectileImpact(RegistryByteBuf buf) {
+            this(buf.readUuid(), buf.readVarLong(), buf.readVarInt(), buf.readUuid(), buf.readVarInt(), buf.readUuid(), buf.readBoolean());
+        }
+        private void write(RegistryByteBuf buf) {
+            buf.writeUuid(sessionId); buf.writeVarLong(actionSequence); buf.writeVarInt(ordinal); buf.writeUuid(owner);
+            buf.writeVarInt(entityId); buf.writeUuid(entityUuid); buf.writeBoolean(createdCloud);
+        }
+        @Override public Id<ProjectileImpact> getId() { return ID; }
+    }
+
     public record ProjectileOwner(UUID sessionId, long actionSequence, int ordinal, UUID owner, int entityId,
                                   UUID entityUuid, String ability, String type) implements CustomPayload {
         public static final Id<ProjectileOwner> ID = id("projectile_owner");
@@ -756,6 +771,7 @@ public final class PredictionPayloads {
         PayloadTypeRegistry.playS2C().register(GlidingStateOwner.ID, GlidingStateOwner.CODEC);
         PayloadTypeRegistry.playS2C().register(TempFallingBlockPrepare.ID, TempFallingBlockPrepare.CODEC);
         PayloadTypeRegistry.playC2S().register(MeleeAction.ID, MeleeAction.CODEC);
+        PayloadTypeRegistry.playS2C().register(ProjectileImpact.ID, ProjectileImpact.CODEC);
         PayloadTypeRegistry.playS2C().register(ProjectileOwner.ID, ProjectileOwner.CODEC);
         PayloadTypeRegistry.playS2C().register(TempFallingBlockReceipt.ID, TempFallingBlockReceipt.CODEC);
         PayloadTypeRegistry.playS2C().register(DirectBlockReceipt.ID, DirectBlockReceipt.CODEC);

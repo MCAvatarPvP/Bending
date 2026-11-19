@@ -13,7 +13,12 @@ import java.util.function.IntSupplier;
 public final class PaperRollbackNativeScene implements RollbackStateCell<Void>, IntSupplier {
     /** Gameplay callbacks remain mandatory; none may retain a live world or publish replay outputs. */
     public record Bindings(RollbackBlockStore.Rules blocks, RollbackItems items, RollbackWorld.Actions actions,
-            PaperRollbackWorldQueries.BlockEntities<?> blockEntities, PaperRollbackWorldServices.Events<?> events) {
+            PaperRollbackWorldQueries.BlockEntities<?> blockEntities, PaperRollbackWorldServices.Events<?> events,
+            java.util.function.Consumer<Runnable> compile) {
+        public Bindings(RollbackBlockStore.Rules blocks, RollbackItems items, RollbackWorld.Actions actions,
+                PaperRollbackWorldQueries.BlockEntities<?> blockEntities, PaperRollbackWorldServices.Events<?> events) {
+            this(blocks, items, actions, blockEntities, events, Runnable::run);
+        }
         public Bindings(RollbackBlockStore.Rules blocks, RollbackItems items, RollbackWorld.Actions actions,
                 RegistryAccess registries, PaperRollbackWorldServices.Events<?> events) {
             this(blocks, items, actions, new PaperRollbackBlockEntities(registries), events);
@@ -21,7 +26,7 @@ public final class PaperRollbackNativeScene implements RollbackStateCell<Void>, 
 
         public Bindings {
             Objects.requireNonNull(blocks); Objects.requireNonNull(items); Objects.requireNonNull(actions);
-            Objects.requireNonNull(blockEntities); Objects.requireNonNull(events);
+            Objects.requireNonNull(blockEntities); Objects.requireNonNull(events); Objects.requireNonNull(compile);
         }
     }
     private final Thread thread = Thread.currentThread();
@@ -66,7 +71,7 @@ public final class PaperRollbackNativeScene implements RollbackStateCell<Void>, 
         spatial = new PaperRollbackSpatial(logical, registries, seed.environment(), seed.border(), lighting);
         services = new PaperRollbackWorldServices(seed.settings(), logical, registries, features, spatial, bindings.events());
         queries = new PaperRollbackWorldQueries(logical, services, bindings.blockEntities());
-        world = new PaperRollbackWorldAccess(queries, services, maximumChunks);
+        world = new PaperRollbackWorldAccess(queries, services, maximumChunks, bindings.compile());
         roster = players.instantiate(world, epochNanos, playerServices);
         queries.bindRoster(world, roster);
         ticks = new PaperRollbackScheduledTicks(world, seed.ticks());

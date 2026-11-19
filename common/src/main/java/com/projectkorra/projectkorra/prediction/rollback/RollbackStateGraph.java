@@ -125,7 +125,7 @@ public final class RollbackStateGraph {
             if (!Modifier.isStatic(field.getModifiers()) || Modifier.isFinal(field.getModifiers()))
                 throw new IllegalArgumentException("Expected a replaceable static binding: " + field);
             var access = LAYOUTS.get(field.getDeclaringClass()).accessors.computeIfAbsent(field, FieldAccess::new);
-            capture.fields.add(new FieldValue(null, access, access.read(null)));
+            capture.fields.add(null, access, access.read(null));
         }
         for (Object root : roots) capture.visit(root);
         for (Field field : staticRoots) {
@@ -146,16 +146,16 @@ public final class RollbackStateGraph {
     }
 
     public static final class Snapshot {
-        private final List<FieldValue> fields;
+        private final FieldValues fields;
         private final List<Restore> values;
         private final List<Restore> indices;
         private final List<Restore> guards;
         private final int objects;
         private final Thread owner = Thread.currentThread();
 
-        private Snapshot(List<FieldValue> fields, List<Restore> values, List<Restore> indices,
+        private Snapshot(FieldValues fields, List<Restore> values, List<Restore> indices,
                          List<Restore> guards, int objects) {
-            this.fields = List.copyOf(fields);
+            this.fields = fields;
             this.values = List.copyOf(values);
             this.indices = List.copyOf(indices);
             this.guards = List.copyOf(guards);
@@ -168,7 +168,7 @@ public final class RollbackStateGraph {
             if (Thread.currentThread() != owner) throw new IllegalStateException("Runtime snapshot crossed threads");
             // Restore keys' mutable coordinates before rebuilding hash/ordering indices.
             guards.forEach(Restore::restore);
-            fields.forEach(FieldValue::restore);
+            fields.restore();
             values.forEach(Restore::restore);
             indices.forEach(Restore::restore);
         }
@@ -177,14 +177,45 @@ public final class RollbackStateGraph {
     @FunctionalInterface
     private interface Restore { void restore(); }
 
-    private record FieldValue(Object owner, FieldAccess access, Object value) {
-        void restore() { access.restore(owner, value); }
+    /** Private pages move from the capture to the snapshot; no field allocates a separate entry object. */
+    private static final class FieldValues {
+        private static final int MAXIMUM_PAGE = 256;
+        private static final class Page {
+            final Object[] owners, values;
+            final FieldAccess[] accessors;
+            int size;
+            Page(int capacity) {
+                owners = new Object[capacity]; values = new Object[capacity]; accessors = new FieldAccess[capacity];
+            }
+        }
+        private final List<Page> pages = new ArrayList<>();
+        private Page last;
+        void add(Object owner, FieldAccess access, Object value) {
+            if (last == null || last.size == last.owners.length) {
+                last = new Page(last == null ? 8 : Math.min(MAXIMUM_PAGE, last.size * 2));
+                pages.add(last);
+            }
+            int slot = last.size++;
+            last.owners[slot] = owner; last.accessors[slot] = access; last.values[slot] = value;
+        }
+        void restore() {
+            for (Page page : pages) for (int i = 0; i < page.size; i++) {
+                page.accessors[i].restore(page.owners[i], page.values[i]);
+            }
+        }
+        List<String> referencesTo(Object target) {
+            var references = new ArrayList<String>();
+            for (Page page : pages) for (int i = 0; i < page.size; i++) {
+                if (page.values[i] == target) references.add(page.accessors[i].field.toString());
+            }
+            return references;
+        }
     }
 
     private final class Capture {
         final IdentityHashMap<Object, Boolean> seen = new IdentityHashMap<>();
         final ArrayDeque<Object> pending = new ArrayDeque<>();
-        final List<FieldValue> fields = new ArrayList<>();
+        final FieldValues fields = new FieldValues();
         final List<Restore> values = new ArrayList<>();
         final List<Restore> indices = new ArrayList<>();
         final List<Restore> guards = new ArrayList<>();
@@ -200,7 +231,7 @@ public final class RollbackStateGraph {
             if (!included.test(field)) return;
             final FieldAccess access = LAYOUTS.get(field.getDeclaringClass()).accessors.computeIfAbsent(field, FieldAccess::new);
             final Object value = access.read(owner);
-            fields.add(new FieldValue(owner, access, value));
+            fields.add(owner, access, value);
             visit(value);
         }
 
@@ -297,7 +328,7 @@ public final class RollbackStateGraph {
                 for (Class<?> current = type; current != Object.class && current != Record.class; current = current.getSuperclass()) {
                     if (current.getClassLoader() == null) {
                         throw new IllegalStateException("Mutable platform type requires a state adapter: " + current.getName()
-                                + "; referenced by " + fields.stream().filter(saved -> saved.value == value).map(saved -> saved.access.field.toString()).toList());
+                                + "; referenced by " + fields.referencesTo(value));
                     }
                     for (Field field : LAYOUTS.get(current).sorted) if (!Modifier.isStatic(field.getModifiers())) field(value, field);
                 }

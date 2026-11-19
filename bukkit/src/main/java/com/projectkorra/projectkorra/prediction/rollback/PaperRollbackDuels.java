@@ -19,10 +19,10 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
     public record Simulation(PaperRollbackNativeScene scene, RollbackGameplayGraph.Imported graph,
             RollbackCombatRuntime<RollbackPlayerInput, Object> combat,
             Consumer<RollbackEngine.Update<RollbackDomain.Checkpoint, RollbackPlayerInput, Object>> presentation,
-            PaperRollbackCorrections.Settings corrections) {
+            PaperRollbackCorrections.Settings corrections, java.util.concurrent.CompletableFuture<Void> nativeMethods) {
         public Simulation {
             Objects.requireNonNull(scene); Objects.requireNonNull(graph); Objects.requireNonNull(combat);
-            Objects.requireNonNull(presentation); Objects.requireNonNull(corrections);
+            Objects.requireNonNull(presentation); Objects.requireNonNull(corrections); Objects.requireNonNull(nativeMethods);
         }
     }
     @FunctionalInterface
@@ -148,7 +148,8 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
                 nativeServices = null;
             }
             if (transfer == null) {
-                if (!encodedBootstrap.isDone()) return null;
+                if (!encodedBootstrap.isDone() || !simulation.nativeMethods().isDone()) return null;
+                simulation.nativeMethods().join();
                 ownership.requireReady();
                 transfer = server.beginEncodedRollbackBootstrap(captured.portable(), encodedBootstrap.join(),
                         RollbackDuelRuntime.TRANSFER, () -> {

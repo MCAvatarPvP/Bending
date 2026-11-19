@@ -265,6 +265,11 @@ public abstract class ExactPredictionApiLifecycle extends ExactPredictionApiBloc
         ExactPredictionRuntime.instance().trackLaunchedProjectile0(entity, shooter);
     }
 
+    public static void noteProjectileImpact(com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.ProjectileImpact receipt) {
+        var runtime = ExactPredictionRuntime.instance();
+        if (runtime.ready) runtime.entityReconciliation.projectileImpact(receipt, runtime.tick);
+    }
+
     public static void noteProjectileOwner(com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.ProjectileOwner receipt) {
         var runtime = ExactPredictionRuntime.instance();
         if (runtime.ready) runtime.entityReconciliation.projectileOwner(receipt, runtime.tick);

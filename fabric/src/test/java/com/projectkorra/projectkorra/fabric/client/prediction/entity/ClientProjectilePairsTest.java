@@ -64,6 +64,37 @@ class ClientProjectilePairsTest {
         assertFalse(shots.tracked(125));
     }
 
+    @Test void firstRenderRequiresTheShootersUniqueMatchingFlightAndYieldsToTheReceipt() {
+        var shot = new Shot();
+        shots.launch(7, 1, caster, "ARROW", "RopeDart", shot);
+        shots.nativeSpawn(8, server, UUID.randomUUID(), "ARROW", 40, local -> true);
+        assertFalse(shots.hide(8, server, "ARROW", mapping));
+        shots.nativeSpawn(9, server, caster, "ARROW", 40, local -> false);
+        assertFalse(shots.hide(9, server, "ARROW", mapping));
+        shots.nativeSpawn(9, server, caster, "ARROW", 40, local -> true);
+        assertTrue(shots.hide(9, server, "ARROW", mapping));
+        assertFalse(shots.hide(9, UUID.randomUUID(), "ARROW", mapping));
+        shots.receipt(receipt(caster, 1, 9, server, "ARROW"), 41);
+        assertTrue(shots.hide(9, server, "ARROW", id -> 0));
+        shots.expirePreviews(43);
+        assertFalse(shots.hide(9, server, "ARROW", id -> 0));
+        assertTrue(shots.hide(9, server, "ARROW", mapping));
+        shots.clear();
+        shots.launch(7, 1, caster, "ARROW", "RopeDart", shot);
+        shots.launch(8, 1, caster, "ARROW", "RopeDart", new Shot());
+        shots.nativeSpawn(9, server, caster, "ARROW", 40, local -> true);
+        assertFalse(shots.hide(9, server, "ARROW", mapping));
+    }
+
+    @Test void simultaneousStickyBombsPairOnlyWithTheirOwnFlyingBullets() {
+        Shot bomb = new Shot();
+        shots.launch(7, 1, caster, "SHULKER_BULLET", "StickyBomb", bomb);
+        shots.receipt(new ProjectileOwner(session, 32, 1, UUID.randomUUID(), 7, server, "StickyBomb", "SHULKER_BULLET"), 1);
+        assertFalse(shots.hide(7, server, "SHULKER_BULLET", mapping));
+        shots.receipt(new ProjectileOwner(session, 32, 1, caster, 8, server, "StickyBomb", "SHULKER_BULLET"), 1);
+        assertTrue(shots.hide(8, server, "SHULKER_BULLET", mapping));
+    }
+
     @Test void nearbyStrangerDifferentProjectileAndRecycledIdsNeverHideOrdinaryArrows() {
         Shot first = new Shot(), second = new Shot();
         shots.launch(7, 1, caster, "ARROW", "RopeDart", first);

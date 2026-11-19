@@ -8,6 +8,7 @@ import com.jedk1.jedcore.configuration.JedCoreConfig;
 import com.jedk1.jedcore.util.AbilitySelector;
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.ability.AddonAbility;
+import com.projectkorra.projectkorra.chiblocking.util.DaggerProjectileOwner;
 import com.projectkorra.projectkorra.ability.ChiAbility;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.util.Collision;
@@ -29,10 +30,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-public class DaggerThrow extends ChiAbility implements AddonAbility {
-    private static final List<AbilityInteraction> INTERACTIONS = new ArrayList<>();
-    private static boolean particles;
-    private static double damage;
+public class DaggerThrow extends ChiAbility implements AddonAbility, DaggerProjectileOwner {
+    private final List<AbilityInteraction> interactions = new ArrayList<>();
+    private boolean particles;
+    private double damage;
     private final List<Arrow> arrows = new ArrayList<>();
     private long endTime;
     private int shots = 1;
@@ -74,39 +75,27 @@ public class DaggerThrow extends ChiAbility implements AddonAbility {
     }
 
     public static void damageEntityFromArrow(LivingEntity entity, Arrow arrow) {
-        if (RegionProtection.isRegionProtected((Player) arrow.getShooter(), arrow.getLocation(), "DaggerThrow")) {
-            return;
-        }
+        if (DaggerProjectileOwner.owner(arrow) instanceof DaggerThrow owner) owner.hitWithDagger(entity, arrow);
+    }
 
-        arrow.setVelocity(new Vector(0, 0, 0));
+    @Override public void hitWithDagger(LivingEntity entity, Arrow arrow) {
+        if (RegionProtection.isRegionProtected(player, arrow.getLocation(), this)) return;
         entity.setNoDamageTicks(0);
-        double prevHealth = entity.getHealth();
-        Player shooter = (Player) arrow.getShooter();
-        DamageAbility da = new DamageAbility(shooter);
-        DamageHandler.damageEntity(entity, damage, da);
-        shooter.playSound(shooter.getLocation(), Sound.ENTITY_ARROW_HIT_PLAYER, 1f, 1);
-        da.remove();
-        if (prevHealth > entity.getHealth()) {
-            arrow.remove();
-        }
-
+        DamageHandler.damageEntity(entity, damage, this);
+        player.playSound(player.getLocation(), Sound.ENTITY_ARROW_HIT_PLAYER, 1f, 1);
         if (!(entity instanceof Player)) {
             return;
         }
 
-        DaggerThrow dt = CoreAbility.getAbility(shooter, DaggerThrow.class);
-        if (dt == null) {
-            return;
-        }
-
-        ++dt.hits;
+        ++hits;
 
         Player target = (Player) entity;
         BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(target);
 
-        for (AbilityInteraction interaction : INTERACTIONS) {
+        if (bPlayer == null) return;
+        for (AbilityInteraction interaction : interactions) {
             if (!interaction.enabled) continue;
-            if (dt.hits < interaction.hitRequirement) continue;
+            if (hits < interaction.hitRequirement) continue;
 
             CoreAbility abilityDefinition = AbilitySelector.getAbility(interaction.name);
             if (abilityDefinition == null) continue;
@@ -120,11 +109,11 @@ public class DaggerThrow extends ChiAbility implements AddonAbility {
     }
 
     public static boolean hasParticleTrail() {
-        return particles;
+        return JedCoreConfig.getConfig((Player) null).getBoolean("Abilities.Chi.DaggerThrow.ParticleTrail");
     }
 
     public static double getDamage() {
-        return damage;
+        return JedCoreConfig.getConfig((Player) null).getDouble("Abilities.Chi.DaggerThrow.Damage");
     }
 
     public void setFields() {
@@ -139,13 +128,14 @@ public class DaggerThrow extends ChiAbility implements AddonAbility {
     }
 
     private void loadInteractions() {
-        INTERACTIONS.clear();
+        interactions.clear();
 
         String path = "Abilities.Chi.DaggerThrow.Interactions";
 
         PKConfigurationSection section = JedCoreConfig.getConfig(this.bPlayer).getConfigurationSection(path);
+        if (section == null) return;
         for (String abilityName : section.getKeys(false)) {
-            INTERACTIONS.add(new AbilityInteraction(abilityName));
+            interactions.add(new AbilityInteraction(abilityName));
         }
     }
 
@@ -182,7 +172,9 @@ public class DaggerThrow extends ChiAbility implements AddonAbility {
         arrow.getLocation().setDirection(vector);
         arrow.setKnockbackStrength(0);
         arrow.setBounce(false);
-        arrow.setMetadata("daggerthrow", new FixedMetadataValue(JedCore.plugin, "1"));
+        arrow.setDamage(0);
+        arrow.setPickupStatus(Arrow.PickupStatus.DISALLOWED);
+        arrow.setMetadata(DaggerProjectileOwner.METADATA, new FixedMetadataValue(JedCore.plugin, this));
 
         if (particles) {
             arrow.setCritical(true);
