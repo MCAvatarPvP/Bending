@@ -27,6 +27,7 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
     }
     @FunctionalInterface
     public interface SimulationFactory {
+        default boolean ready() { return true; }
         Simulation open(RollbackDuelRuntime setup, PaperRollbackDuelSeed captured, ServerLevel source,
                         Map<UUID, PaperRollbackRosterSeed.Services> services);
     }
@@ -84,6 +85,7 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
         private PaperRollbackDuelSeed captured;
         private PaperRollbackBootstraps.Transfer transfer;
         private java.util.concurrent.CompletableFuture<byte[]> encodedBootstrap;
+        private java.util.concurrent.CompletableFuture<Map<UUID, PaperRollbackRosterSeed.Services>> nativeServices;
         private Simulation simulation;
         private PaperRollbackMatchRuntime<Object> runtime;
         private PaperRollbackMatchRestoration restoration;
@@ -129,7 +131,7 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
             if (acquisitionFailure instanceof RuntimeException failure) throw failure;
             if (acquisitionFailure instanceof Error error) throw error;
             if (!acquired) {
-                if (chunks.poll() && terrainReady()) pendingAcquisition.add(this);
+                if (chunks.poll() && terrainReady() && factory.ready()) pendingAcquisition.add(this);
                 return null;
             }
             if (captured == null) {
@@ -138,6 +140,12 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
                 long time = RollbackTiming.start();
                 try { capture(); } finally { RollbackTiming.finish(time, "enroll.capture"); }
                 terrain = null;
+            }
+            if (simulation == null) {
+                if (!nativeServices.isDone()) return null;
+                ownership.requireReady();
+                openSimulation(nativeServices.join());
+                nativeServices = null;
             }
             if (transfer == null) {
                 if (!encodedBootstrap.isDone()) return null;
@@ -199,6 +207,12 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
                 layerLease.detach();
             }
             time = RollbackTiming.finish(time, "enroll.terrainHandoff");
+            nativeServices = PaperRollbackAdvancements.prepareRoster(services, level.registryAccess());
+            RollbackTiming.finish(time, "enroll.advancementCatalogue");
+        }
+        private void openSimulation(Map<UUID, PaperRollbackRosterSeed.Services> services) {
+            long seed = RollbackDuelRuntime.seed(request.session());
+            long time = RollbackTiming.start();
             simulation = Objects.requireNonNull(factory.open(definitions, captured, level, services));
             RollbackTiming.finish(time, "enroll.simulation");
             runtime = new PaperRollbackMatchRuntime<>(request, seed, simulation.combat(), server, new RollbackServerRuntime.Output<>() {
@@ -250,6 +264,7 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
             }
             if (terrain != null) { terrain.terrain().cancel(false); terrain = null; }
             if (encodedBootstrap != null) { encodedBootstrap.cancel(false); encodedBootstrap = null; }
+            if (nativeServices != null) { nativeServices.cancel(false); nativeServices = null; }
             chunks.close();
             released = true;
         }

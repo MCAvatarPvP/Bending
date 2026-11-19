@@ -7,7 +7,19 @@ import java.util.*;
 /** Detached startup rules/policy. Seeds initialize private streams, not the live world's running RNG. */
 public record RollbackWorldSettings(long gameTime, long randomSeed, long soundSeed, int seaLevel, Difficulty difficulty,
                                     Policy policy, Map<String, Rule> rules, Map<String, Byte> legacyBlockData,
-                                    Map<String, Integer> actorDespawnTime) {
+                                    Map<String, Integer> actorDespawnTime, ArrowLifetime arrowLifetime) {
+    public record ArrowLifetime(int airGrace, int groundTicks, int creativeTicks, int unpickableTicks, int tridentTicks) {
+        public static final ArrowLifetime DEFAULT = new ArrowLifetime(200, 1200, 1200, 1200, 1200);
+        public ArrowLifetime {
+            if (airGrace < -1 || groundTicks < 0 || creativeTicks < 0 || unpickableTicks < 0 || tridentTicks < 0) throw invalid("arrow lifespan");
+        }
+    }
+
+    public RollbackWorldSettings(long gameTime, long randomSeed, long soundSeed, int seaLevel, Difficulty difficulty,
+                                 Policy policy, Map<String, Rule> rules, Map<String, Byte> legacy, Map<String, Integer> despawn) {
+        this(gameTime, randomSeed, soundSeed, seaLevel, difficulty, policy, rules, legacy, despawn, ArrowLifetime.DEFAULT);
+    }
+
     public RollbackWorldSettings(long gameTime, long randomSeed, long soundSeed, int seaLevel, Difficulty difficulty,
                                  Policy policy, Map<String, Rule> rules, Map<String, Byte> legacyBlockData) {
         this(gameTime, randomSeed, soundSeed, seaLevel, difficulty, policy, rules, legacyBlockData, Map.of());
@@ -17,7 +29,7 @@ public record RollbackWorldSettings(long gameTime, long randomSeed, long soundSe
         this(gameTime, randomSeed, soundSeed, seaLevel, difficulty, policy, rules, Map.of());
     }
 
-    public static final int VERSION = 4, MAXIMUM_RULES = 1_024, MAXIMUM_BYTES = 524_288;
+    public static final int VERSION = 5, MAXIMUM_RULES = 1_024, MAXIMUM_BYTES = 524_288;
     public enum Difficulty { PEACEFUL, EASY, NORMAL, HARD }
     public enum Dimension { NORMAL, NETHER, THE_END }
     public sealed interface Rule permits Flag, IntegerRule { Object value(); }
@@ -62,7 +74,7 @@ public record RollbackWorldSettings(long gameTime, long randomSeed, long soundSe
         }
     }
     public RollbackWorldSettings {
-        Objects.requireNonNull(difficulty); Objects.requireNonNull(policy);
+        Objects.requireNonNull(difficulty); Objects.requireNonNull(policy); Objects.requireNonNull(arrowLifetime);
         if (actorDespawnTime.size() > 1_024) throw invalid("actor despawn count");
         actorDespawnTime = Collections.unmodifiableMap(new TreeMap<>(actorDespawnTime));
         actorDespawnTime.forEach((type, ticks) -> { key(type); if (ticks == null || ticks < 0) throw invalid("actor despawn ticks"); });
@@ -78,9 +90,11 @@ public record RollbackWorldSettings(long gameTime, long randomSeed, long soundSe
     public byte[] encode() {
         try {
             var bytes = new ByteArrayOutputStream(); var out = new DataOutputStream(bytes);
-            boolean melee = !actorDespawnTime.isEmpty() || policy.disablePlayerCrits() || policy.disableSprintInterruptionOnAttack() || policy.combatExhaustion() != .1F;
+            boolean arrows = !arrowLifetime.equals(ArrowLifetime.DEFAULT);
+            boolean despawn = arrows || !actorDespawnTime.isEmpty();
+            boolean melee = despawn || policy.disablePlayerCrits() || policy.disableSprintInterruptionOnAttack() || policy.combatExhaustion() != .1F;
             boolean extended = melee || !legacyBlockData.isEmpty() || !policy.splitOverstackedLoot() || policy.alternativeLuckFormula();
-            out.writeInt(!actorDespawnTime.isEmpty() ? VERSION : melee ? 3 : extended ? 2 : 1); out.writeLong(gameTime); out.writeLong(randomSeed); out.writeLong(soundSeed);
+            out.writeInt(arrows ? VERSION : despawn ? 4 : melee ? 3 : extended ? 2 : 1); out.writeLong(gameTime); out.writeLong(randomSeed); out.writeLong(soundSeed);
             out.writeInt(seaLevel); out.writeByte(difficulty.ordinal()); var p = policy;
             out.writeByte(p.dimension.ordinal()); out.writeBoolean(p.pvp); out.writeBoolean(p.skipBlockedDamageTick);
             out.writeBoolean(p.updateEquipmentOnActions); out.writeBoolean(p.nonPlayerScoreboards); out.writeBoolean(p.playerCramming);
@@ -111,9 +125,13 @@ public record RollbackWorldSettings(long gameTime, long randomSeed, long soundSe
                     previous = name;
                 }
             }
-            if (!actorDespawnTime.isEmpty()) {
+            if (despawn) {
                 out.writeShort(actorDespawnTime.size());
                 for (var entry : actorDespawnTime.entrySet()) { out.writeUTF(entry.getKey()); out.writeInt(entry.getValue()); }
+            }
+            if (arrows) {
+                out.writeInt(arrowLifetime.airGrace()); out.writeInt(arrowLifetime.groundTicks());
+                out.writeInt(arrowLifetime.creativeTicks()); out.writeInt(arrowLifetime.unpickableTicks()); out.writeInt(arrowLifetime.tridentTicks());
             }
             if (bytes.size() > MAXIMUM_BYTES) throw invalid("wire budget");
             return bytes.toByteArray();
@@ -167,8 +185,9 @@ public record RollbackWorldSettings(long gameTime, long randomSeed, long soundSe
                     previous = type; despawn.put(type, in.readInt());
                 }
             }
+            var arrows = version >= 5 ? new ArrowLifetime(in.readInt(), in.readInt(), in.readInt(), in.readInt(), in.readInt()) : ArrowLifetime.DEFAULT;
             if (in.available() != 0) throw invalid("trailing data");
-            return new RollbackWorldSettings(time, random, sound, sea, difficulty, policy, rules, legacy, despawn);
+            return new RollbackWorldSettings(time, random, sound, sea, difficulty, policy, rules, legacy, despawn, arrows);
         } catch (IOException failure) { throw new IllegalArgumentException("Invalid world settings: truncated data", failure); }
     }
     private static void key(String key) {

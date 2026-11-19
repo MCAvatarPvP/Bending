@@ -78,12 +78,18 @@ class PaperRollbackWorldAccessNativeTest {
         var saved = new RollbackStateGraph(value -> false, field -> true, 1_000).capture(List.of(access), List.of());
         assertTrue(level.hasChunksAt(-1, -1, 1, 1));
         assertFalse(level.environmentAttributes().getDimensionValue(net.minecraft.world.attribute.EnvironmentAttributes.FAST_LAVA));
+        var pos = new BlockPos(-1, 4, -1);
+        assertTrue(level.isLoaded(pos));
+        assertFalse(level.isLoaded(new BlockPos(0, 320, 0)));
+        assertFalse(level.isLoaded(new BlockPos(Integer.MAX_VALUE, 4, 0)));
         queries.loaded = false; queries.fastLava = true;
+        assertFalse(level.isLoaded(pos));
         assertFalse(level.hasChunksAt(-1, -1, 1, 1));
         assertTrue(level.environmentAttributes().getDimensionValue(net.minecraft.world.attribute.EnvironmentAttributes.FAST_LAVA));
         assertTrue(level.environmentAttributes().getValue(net.minecraft.world.attribute.EnvironmentAttributes.FAST_LAVA, BlockPos.ZERO));
         assertTrue(level.environmentAttributes().getValue(net.minecraft.world.attribute.EnvironmentAttributes.FAST_LAVA, Vec3.ZERO));
         saved.restore();
+        assertTrue(level.isLoaded(pos));
         assertTrue(level.hasChunksAt(-1, -1, 1, 1));
         assertFalse(level.environmentAttributes().getDimensionValue(net.minecraft.world.attribute.EnvironmentAttributes.FAST_LAVA));
         assertThrows(IllegalStateException.class, () -> level.hasChunksAt(-100, -100, 100, 100));

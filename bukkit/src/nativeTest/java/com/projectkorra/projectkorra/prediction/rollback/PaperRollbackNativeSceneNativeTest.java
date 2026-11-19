@@ -33,6 +33,8 @@ class PaperRollbackNativeSceneNativeTest {
             var items = new RollbackNativeItems<>(new PaperRollbackItems(PaperRollbackEnvironmentNativeTest.registries()));
             var actors = new PaperRollbackActors(new UUID(72, 34), 16, items);
             actors.bind(scene);
+            assertTrue(scene.world().world().isLoaded(new net.minecraft.core.BlockPos(-1, 4, -1)));
+            assertFalse(scene.world().world().isLoaded(new net.minecraft.core.BlockPos(32, 4, 0)));
             var pose = new RollbackEntityBody.Pose(0, 4, 0, 0, 0);
             var ball = actors.spawn(scene.logical(), pose, com.projectkorra.projectkorra.platform.mc.entity.Snowball.class);
             var target = actors.spawn(scene.logical(), pose, com.projectkorra.projectkorra.platform.mc.entity.BlockDisplay.class);

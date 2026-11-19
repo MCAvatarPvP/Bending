@@ -74,6 +74,11 @@ public final class RollbackNativeQueryShell<T> {
         catch (Throwable failure) { throw new IllegalStateException("Native query shell handler", failure); }
     }
 
+    /** Generate reusable class layouts without constructing a thread-owned native instance. */
+    public static void prepare(Class<?>... types) {
+        for (var type : types) LAYOUTS.get(Objects.requireNonNull(type));
+    }
+
     public static <T> RollbackNativeQueryShell<T> create(Class<T> type) {
         return new RollbackNativeQueryShell<>(Objects.requireNonNull(type, "type"));
     }

@@ -177,18 +177,20 @@ public abstract class ExactPredictionEntities extends ExactPredictionPlayerState
         }
         // Sneaking after firing can transition MetalCable to a newer action.
         // Match Paper's current ability owner rather than its original shot.
-        long impactAction = action;
+        long sourceAction = action;
         for (var metadata : commonProjectile.getMetadata(CoreMethods.CABLE_KEY)) {
             if (metadata.value() instanceof MetalCable cable) {
-                impactAction = this.abilityActions.getOrDefault(cable, action);
+                sourceAction = this.abilityActions.getOrDefault(cable, action);
                 break;
             }
         }
         // Native entity ticks run after the input that created the projectile.
         // Re-enter that action so impact-spawned effects reconcile to Paper.
-        ExactPredictionRuntime.runWithAction(
-                impactAction, () -> this.platform.events().call(event));
-        return event.isCancelled() || projectile.isRemoved();
+        final long impactAction = sourceAction;
+        return com.projectkorra.projectkorra.fabric.client.prediction.entity.ClientProjectileImpact.deliver(projectile, hit.getType(), () -> {
+            ExactPredictionRuntime.runWithAction(impactAction, () -> this.platform.events().call(event));
+            return event.isCancelled();
+        });
     }
 
     protected void trackSpawn0(Entity entity) {

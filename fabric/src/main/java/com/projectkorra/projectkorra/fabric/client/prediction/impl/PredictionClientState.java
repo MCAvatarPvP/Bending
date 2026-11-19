@@ -42,8 +42,8 @@ import com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime;
 
 public abstract class PredictionClientState {
     protected final FabricRollbackStarts rollbackStarts = new FabricRollbackStarts();
-    protected final FabricRollbackBootstraps rollbackBootstraps = new FabricRollbackBootstraps(rollbackStarts,
-            client -> { ExactPredictionRuntime.stop(client); this.active = false; });
+    protected final FabricRollbackBootstraps rollbackBootstraps = new FabricRollbackBootstraps(rollbackStarts, this::resetLegacy);
+    protected abstract void resetLegacy(MinecraftClient client);
     protected static final ThreadLocal<Boolean> INPUT_SNEAK_OVERRIDE = new ThreadLocal<>();
     protected static final ThreadLocal<Integer> INPUT_SLOT_OVERRIDE = new ThreadLocal<>();
     protected static final int CAPABILITIES = 1 | 2 | 4 | 8;

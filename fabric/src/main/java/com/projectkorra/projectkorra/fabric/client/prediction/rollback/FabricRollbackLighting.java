@@ -44,21 +44,29 @@ public final class FabricRollbackLighting implements RollbackStateCell<FabricRol
         height = HeightLimitView.create(bounds.minY(), bounds.maxY() - bounds.minY());
         palettes = PalettesFactory.fromRegistryManager(Objects.requireNonNull(registries));
         var initial = new TreeMap<Long, ChunkState>();
+        var palette = terrain.palette().stream().map(cell -> FabricRollbackGeometry.decode(cell.data())).toList();
+        var air = net.minecraft.block.Blocks.AIR.getDefaultState();
+        int width = bounds.maxX() - bounds.minX(), depth = bounds.maxZ() - bounds.minZ();
         for (int x = bounds.minX() >> 4; x < bounds.maxX() >> 4; x++) for (int z = bounds.minZ() >> 4; z < bounds.maxZ() >> 4; z++) {
             var chunk = new ProtoChunk(new ChunkPos(x, z), UpgradeData.NO_UPGRADE_DATA, height, palettes, null);
+            var sections = chunk.getSectionArray();
             var sky = layers(hasSky); var block = layers(false);
-            initial.put(ChunkPos.toLong(x, z), new ChunkState(chunk.getSectionArray(), sky, block));
-        }
-        var palette = terrain.palette().stream().map(cell -> FabricRollbackGeometry.decode(cell.data())).toList();
-        int index = 0;
-        for (int y = bounds.minY(); y < bounds.maxY(); y++) for (int z = bounds.minZ(); z < bounds.maxZ(); z++) for (int x = bounds.minX(); x < bounds.maxX(); x++) {
-            var p = new Position(x, y, z); var state = initial.get(ChunkPos.toLong(x >> 4, z >> 4));
-            int section = height.getSectionIndex(y);
-            state.sections[section].setBlockState(x & 15, y & 15, z & 15, palette.get(terrain.paletteIndex(index++)));
-            int sunlight = light.sky(p);
-            if (!hasSky && sunlight != 0) throw new IllegalArgumentException("Sky light in a dimension without sky lighting");
-            state.sky[section + 1].set(x & 15, y & 15, z & 15, sunlight);
-            state.block[section + 1].set(x & 15, y & 15, z & 15, light.block(p));
+            for (int i = 0; i < sections.length; i++) {
+                int y = bounds.minY() + (i << 4);
+                var photons = light.section(x << 4, y, z << 4);
+                if (!hasSky && photons.hasSkyLight()) throw new IllegalArgumentException("Sky light in a dimension without sky lighting");
+                sky[i + 1] = new ChunkNibbleArray(photons.sky());
+                block[i + 1] = new ChunkNibbleArray(photons.block());
+                var section = sections[i];
+                for (int dy = 0; dy < 16; dy++) for (int dz = 0; dz < 16; dz++) {
+                    int row = ((y - bounds.minY() + dy) * depth + (z << 4) - bounds.minZ() + dz) * width + (x << 4) - bounds.minX();
+                    for (int dx = 0; dx < 16; dx++) {
+                        var state = palette.get(terrain.paletteIndex(row + dx));
+                        if (state != air) section.setBlockState(dx, dy, dz, state);
+                    }
+                }
+            }
+            initial.put(ChunkPos.toLong(x, z), new ChunkState(sections, sky, block));
         }
         install(initial);
     }

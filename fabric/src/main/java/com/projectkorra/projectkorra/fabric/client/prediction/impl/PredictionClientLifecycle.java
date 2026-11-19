@@ -45,7 +45,7 @@ public abstract class PredictionClientLifecycle extends PredictionClientInput {
         finally { resetLegacy(client); }
     }
 
-    private void resetLegacy(MinecraftClient client) {
+    @Override protected void resetLegacy(MinecraftClient client) {
         debug("reset active=" + active + " session=" + sessionId);
         ExactPredictionRuntime.stop(client);
         active = false; sessionId = null; nextSequence = 0;

@@ -48,24 +48,33 @@ public final class PaperRollbackLighting implements RollbackStateCell<PaperRollb
         var height = LevelHeightAccessor.create(bounds.minY(), bounds.maxY() - bounds.minY());
         minSection = height.getMinSectionY(); sectionCount = height.getSectionsCount();
         var containers = PalettedContainerFactory.create(registries);
+        var palette = terrain.palette().stream().map(cell -> states.decode(cell.data())).toList();
+        var air = net.minecraft.world.level.block.Blocks.AIR.defaultBlockState();
+        int width = bounds.maxX() - bounds.minX(), depth = bounds.maxZ() - bounds.minZ();
         for (int x = bounds.minX() >> 4; x < bounds.maxX() >> 4; x++) for (int z = bounds.minZ() >> 4; z < bounds.maxZ() >> 4; z++) {
             var chunk = new ProtoChunk(new ChunkPos(x, z), UpgradeData.EMPTY, height, containers, null);
             chunk.setPersistedStatus(ChunkStatus.LIGHT); chunk.setLightCorrect(true);
+            var sections = chunk.getSections();
+            var sky = emptyLayers(hasSky); var block = emptyLayers(false);
+            for (int i = 0; i < sections.length; i++) {
+                int y = bounds.minY() + (i << 4);
+                var photons = light.section(x << 4, y, z << 4);
+                if (!hasSky && photons.hasSkyLight()) throw new IllegalArgumentException("Sky light in a dimension without sky lighting");
+                sky[i + 1] = new SWMRNibbleArray(photons.sky());
+                block[i + 1] = new SWMRNibbleArray(photons.block());
+                var section = sections[i];
+                for (int dy = 0; dy < 16; dy++) for (int dz = 0; dz < 16; dz++) {
+                    int row = ((y - bounds.minY() + dy) * depth + (z << 4) - bounds.minZ() + dz) * width + (x << 4) - bounds.minX();
+                    for (int dx = 0; dx < 16; dx++) {
+                        var state = palette.get(terrain.paletteIndex(row + dx));
+                        if (state != air) section.setBlockState(dx, dy, dz, state);
+                    }
+                }
+            }
             var access = (StarlightChunk) chunk;
-            access.starlight$setBlockNibbles(emptyLayers(false)); access.starlight$setSkyNibbles(emptyLayers(hasSky));
+            access.starlight$setSkyNibbles(sky); access.starlight$setBlockNibbles(block);
             chunks.put(ChunkPos.asLong(x, z), chunk);
         }
-        var palette = terrain.palette().stream().map(cell -> states.decode(cell.data())).toList(); int index = 0;
-        for (int y = bounds.minY(); y < bounds.maxY(); y++) for (int z = bounds.minZ(); z < bounds.maxZ(); z++)
-            for (int x = bounds.minX(); x < bounds.maxX(); x++) {
-                var position = new Position(x, y, z); var chunk = chunk(position);
-                chunk.getSections()[(y >> 4) - minSection].setBlockState(x & 15, y & 15, z & 15, palette.get(terrain.paletteIndex(index++)));
-                var access = (StarlightChunk) chunk; int layer = (y >> 4) - minSection + 1;
-                int sunlight = light.sky(position);
-                if (!hasSky && sunlight != 0) throw new IllegalArgumentException("Sky light in a dimension without sky lighting");
-                access.starlight$getSkyNibbles()[layer].set(x, y, z, sunlight);
-                access.starlight$getBlockNibbles()[layer].set(x, y, z, light.block(position));
-            }
         for (var chunk : chunks.values()) {
             var access = (StarlightChunk) chunk;
             for (var layer : access.starlight$getSkyNibbles()) layer.updateVisible();

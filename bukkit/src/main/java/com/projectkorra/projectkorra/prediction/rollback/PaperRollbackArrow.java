@@ -21,6 +21,20 @@ final class PaperRollbackArrow extends Arrow {
                 ? hitTargetOrDeflectSelf(hit) : ProjectileDeflection.NONE;
     }
 
+    @Override protected void tickDespawn() {
+        var lifetime = scene.services().settings().arrowLifetime();
+        int limit = switch (pickup) {
+            case ALLOWED -> lifetime.groundTicks();
+            case CREATIVE_ONLY -> lifetime.creativeTicks();
+            case DISALLOWED -> lifetime.unpickableTicks();
+        };
+        if (++life >= limit) {
+            var cause = org.bukkit.event.entity.EntityRemoveEvent.Cause.DESPAWN;
+            scene.world().event(new org.bukkit.event.entity.EntityRemoveEvent(getBukkitEntity(), cause));
+            PaperRollbackPrivateAccess.retirePrivateActor(this);
+        }
+    }
+
     @Override protected void onHitBlock(BlockHitResult hit) {
         boolean cancelled = hitCancelled;
         if (!cancelled) scene.ticks().projectile(this, hit);

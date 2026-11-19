@@ -1,6 +1,9 @@
 package com.projectkorra.projectkorra.chiblocking;
 
+import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.ability.CoreAbility;
+import com.projectkorra.projectkorra.prediction.hit.PredictedContactSync;
+import com.projectkorra.projectkorra.prediction.state.CooldownSync;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.Particle;
@@ -19,6 +22,52 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ChiEffectsTest {
+    private static final class ParalyzeProbe extends Paralyze {
+        private ParalyzeProbe(Player caster, Player target) { super(caster, target); }
+        boolean mayStun(Player caster, Player target) {
+            this.player = caster;
+            return canParalyze(target);
+        }
+    }
+
+    @Test void remoteParalyzeReportsOneContactAndOnlyCommitsWhenTheDefenderIsEligible() throws Exception {
+        try (var world = new AbilityWorld()) {
+            var caster = world.player(0, 64, 0);
+            var target = world.player(2, 64, 0);
+            var ability = new ObjenesisStd().newInstance(ParalyzeProbe.class);
+            var contacts = new ArrayList<CoreAbility>();
+            PredictedContactSync.Listener claims = (source, victim) -> {
+                assertSame(target, victim);
+                contacts.add(source);
+            };
+            var client = new CooldownSync.Listener() {
+                @Override public boolean isAuthoritative() { return false; }
+                @Override public void onAdded(CoreAbility source, BendingPlayer player, String name, long expiry) {}
+                @Override public void onRemoved(BendingPlayer player, String name) {}
+            };
+            PredictedContactSync.install(claims);
+            CooldownSync.install(client);
+            try {
+                assertFalse(ability.mayStun(caster, target));
+                assertEquals(List.of(ability), contacts);
+                CooldownSync.clear(client);
+                assertFalse(ability.mayStun(caster, target));
+                var eligible = new java.util.concurrent.atomic.AtomicBoolean(false);
+                BendingPlayer.getPlayers().put(target.getUniqueId(), new BendingPlayer(target) {
+                    @Override public boolean canBeChiblocked() { return eligible.get(); }
+                });
+                assertFalse(ability.mayStun(caster, target));
+                eligible.set(true);
+                assertTrue(ability.mayStun(caster, target));
+                assertEquals(List.of(ability), contacts);
+            } finally {
+                CooldownSync.clear(client);
+                PredictedContactSync.clear(claims);
+                BendingPlayer.getPlayers().remove(target.getUniqueId());
+            }
+        }
+    }
+
     @Test void smokeBatchesTheSameGustsAtEachImpactPointForEachViewer() throws Exception {
         try (var ignored = new AbilityWorld()) {
             var viewers = new ArrayList<Player>();

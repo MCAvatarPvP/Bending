@@ -45,13 +45,13 @@ public class ChiListener implements Listener {
             new AxeKick(player);
         } else if (bPlayer.canBend(CoreAbility.getAbility(Deflect.class)) && !CoreAbility.hasAbility(player, Deflect.class)) {
             new Deflect(player);
-        } else if (bPlayer.canBend(CoreAbility.getAbility(Evade.class)) && !CoreAbility.hasAbility(player, Evade.class)) {
+        } else if (bPlayer.getBoundAbility() instanceof Evade && bPlayer.canBend(CoreAbility.getAbility(Evade.class)) && !CoreAbility.hasAbility(player, Evade.class)) {
             new Evade(player);
         } else if (bPlayer.canBend(CoreAbility.getAbility(DaggerThrow.class))) {
             new DaggerThrow(player);
         } else if (bPlayer.canBend(CoreAbility.getAbility(Bola.class)) && !CoreAbility.hasAbility(player, Bola.class)) {
             new Bola(player);
-        } else if (bPlayer.canBend(CoreAbility.getAbility(HighJump.class))) {
+        } else if (bPlayer.getBoundAbility() instanceof HighJump && bPlayer.canBend(CoreAbility.getAbility(HighJump.class))) {
             new HighJump(player, false);
         }
     }
@@ -194,11 +194,11 @@ public class ChiListener implements Listener {
         if (bPlayer.canBend(CoreAbility.getAbility(Block.class)) && !CoreAbility.hasAbility(player, Block.class)) {
             new Block(player);
         } else if (bPlayer.canBendIgnoreBindsCooldowns(CoreAbility.getAbility(Counter.class))
-                && bPlayer.getBoundAbilityName().equalsIgnoreCase("Evade")
+                && bPlayer.getBoundAbility() instanceof Evade
                 && !bPlayer.isOnCooldown("Counter")
                 && !CoreAbility.hasAbility(player, Counter.class)) {
             new Counter(player);
-        } else if (bPlayer.canBend(CoreAbility.getAbility(HighJump.class))) {
+        } else if (bPlayer.getBoundAbility() instanceof HighJump && bPlayer.canBend(CoreAbility.getAbility(HighJump.class))) {
             new HighJump(player, true);
         }
     }

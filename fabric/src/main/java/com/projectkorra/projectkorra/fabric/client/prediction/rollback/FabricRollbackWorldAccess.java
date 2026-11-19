@@ -379,6 +379,10 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
                 .nativeQuery(value -> value.isRegionLoaded(0, 0, 0, 0), false, args ->
                         checkRegion((int) args[0], (int) args[1], (int) args[2], (int) args[3]))
                 .query(World::getWorldBorder, null, args -> queries.getWorldBorder())
+                .query(world -> world.getCollisionsIncludingWorldBorder(null), null,
+                        args -> queries.getCollisionsIncludingWorldBorder((net.minecraft.world.RaycastContext) args[0]))
+                .query(world -> world.raycast((net.minecraft.world.RaycastContext) null), null,
+                        args -> queries.raycast((net.minecraft.world.RaycastContext) args[0]))
                 .query(value -> value.getChunkAsView(0, 0), null, args -> queries.getChunkAsView((int) args[0], (int) args[1]))
                 .query(value -> value.getEntityCollisions(null, probeBox), List.of(), args -> {
                     check((Box) args[1]);

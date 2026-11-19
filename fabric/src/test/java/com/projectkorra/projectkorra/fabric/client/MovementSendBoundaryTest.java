@@ -60,10 +60,12 @@ class MovementSendBoundaryTest {
                 "Paper must receive the action identity before vanilla input and contact evidence afterward");
         final int processInput = paper.indexOf("private CommonInputHandler.InputResult processInput(");
         final int consumeTag = paper.indexOf("session.actionTags.consume(kind, selectedSlot, abilityName)", processInput);
-        final int assignTag = paper.indexOf("action.clientSequence = clientActionSequence", consumeTag);
+        final int announce = paper.indexOf("announceInput(player, session, kind, sequence,", consumeTag);
+        final int forwardTag = paper.indexOf("clientActionSequence, selectedSlot, abilityName, origin, predictable)", announce);
+        final int assignTag = paper.indexOf("action.clientSequence = clientSequence");
         final int nativeReceipt = paper.indexOf("PaperPredictionProtocol.nativeAction", assignTag);
-        assertTrue(processInput >= 0 && consumeTag > processInput && assignTag > consumeTag
-                        && nativeReceipt > assignTag,
+        assertTrue(processInput >= 0 && consumeTag > processInput && announce > consumeTag && forwardTag > announce
+                        && assignTag >= 0 && nativeReceipt > assignTag,
                 "Paper must echo the exact client identity in its first native-action receipt");
         final int actionTagHandler = paper.indexOf("private void onActionTag");
         final int actionTagHandlerEnd = paper.indexOf("private void onHitClaim", actionTagHandler);

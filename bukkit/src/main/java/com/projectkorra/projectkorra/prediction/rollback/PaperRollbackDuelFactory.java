@@ -7,16 +7,35 @@ import org.bukkit.plugin.java.JavaPlugin;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import com.projectkorra.projectkorra.prediction.rollback.world.RollbackNativeQueryShell;
 
 /** Creates the private authoritative simulation for a negotiated Neptune duel. */
 public final class PaperRollbackDuelFactory implements PaperRollbackDuels.SimulationFactory {
     private final JavaPlugin plugin;
     private final PKListener listener;
+    private final CompletableFuture<Void> layouts;
 
     public PaperRollbackDuelFactory(JavaPlugin plugin, PKListener listener) {
         PaperRollbackLegacyBlocks.values(); // Load the bundled table at plugin enable.
         this.plugin = plugin;
         this.listener = listener;
+        layouts = CompletableFuture.runAsync(() -> RollbackNativeQueryShell.prepare(
+                ServerLevel.class, net.minecraft.world.level.Level.class, net.minecraft.server.level.ServerChunkCache.class,
+                ca.spottedleaf.moonrise.patches.chunk_system.level.entity.EntityLookup.class,
+                net.minecraft.world.attribute.EnvironmentAttributeSystem.class, net.minecraft.world.level.chunk.LevelChunk.class,
+                net.minecraft.world.level.chunk.LevelChunkSection.class, org.bukkit.craftbukkit.CraftWorld.class,
+                net.minecraft.server.MinecraftServer.class, net.minecraft.server.players.PlayerList.class,
+                net.minecraft.stats.ServerStatsCounter.class, net.minecraft.server.PlayerAdvancements.class,
+                net.minecraft.server.network.ServerGamePacketListenerImpl.class, org.bukkit.craftbukkit.entity.CraftPlayer.class,
+                org.bukkit.craftbukkit.inventory.CraftInventoryPlayer.class),
+                task -> plugin.getServer().getScheduler().runTaskAsynchronously(plugin, task));
+    }
+
+    @Override public boolean ready() {
+        if (!layouts.isDone()) return false;
+        layouts.join();
+        return true;
     }
 
     @Override public PaperRollbackDuels.Simulation open(RollbackDuelRuntime setup, PaperRollbackDuelSeed captured,

@@ -258,7 +258,8 @@ public abstract class PredictionClientNativeInput extends PredictionClientState 
         ClientBlockVisualOverlay.onVisualsSettingChanged();
         if (!initialized || !ClientBendingConfig.isEnabled()) return;
         final PredictionClient prediction = PredictionClient.instance();
-        if (prediction.sessionId == null && !prediction.active) return;
+        if (prediction.sessionId == null && !prediction.active
+                && !prediction.rollbackBootstraps.ownsSession() && !prediction.rollbackStarts.ownsSession()) return;
         final MinecraftClient client = MinecraftClient.getInstance();
         // Stopping the runtime clears both block authorities, whose overlay
         // removal schedules the terrain rebuilds for stale predicted blocks.

@@ -27,6 +27,26 @@ public final class RollbackLightSeed {
     public RollbackBlockStore.Bounds bounds() { return bounds; }
     public int sky(RollbackBlockStore.Position position) { return (layers[index(position)] & 255) >>> 4; }
     public int block(RollbackBlockStore.Position position) { return layers[index(position)] & 15; }
+    /** Owned native section arrays in low/even-X, high/odd-X nibble order. */
+    public record Section(byte[] sky, byte[] block, boolean hasSkyLight) { }
+    public Section section(int x, int y, int z) {
+        if (((x | y | z) & 15) != 0 || x < bounds.minX() || y < bounds.minY() || z < bounds.minZ()
+                || (long) x + 16 > bounds.maxX() || (long) y + 16 > bounds.maxY() || (long) z + 16 > bounds.maxZ())
+            throw new IllegalArgumentException("Light section outside captured bounds");
+        int width = bounds.maxX() - bounds.minX(), depth = bounds.maxZ() - bounds.minZ();
+        byte[] sky = new byte[2048], block = new byte[2048];
+        int skyMask = 0, target = 0;
+        for (int dy = 0; dy < 16; dy++) for (int dz = 0; dz < 16; dz++) {
+            int row = ((y - bounds.minY() + dy) * depth + z - bounds.minZ() + dz) * width + x - bounds.minX();
+            for (int dx = 0; dx < 16; dx += 2) {
+                int even = layers[row + dx] & 255, odd = layers[row + dx + 1] & 255;
+                sky[target] = (byte) ((even >>> 4) | (odd & 240));
+                block[target++] = (byte) ((even & 15) | ((odd & 15) << 4));
+                skyMask |= even | odd;
+            }
+        }
+        return new Section(sky, block, (skyMask & 240) != 0);
+    }
     private int index(RollbackBlockStore.Position position) {
         if (!bounds.contains(Objects.requireNonNull(position))) throw new IllegalArgumentException("Light outside captured bounds");
         return ((position.y() - bounds.minY()) * (bounds.maxZ() - bounds.minZ()) + position.z() - bounds.minZ())

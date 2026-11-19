@@ -21,8 +21,7 @@ class FabricRollbackActorRendererTest {
                 .constant(ClientWorld::getRegistryManager, FabricRollbackTestRegistry.simulationRegistries())
                 .instance();
         var privateWorld = FabricRollbackPlayerRendererTest.roster().world().world();
-        var arrow = EntityType.ARROW.create(privateWorld, SpawnReason.TRIGGERED);
-        assertNotNull(arrow);
+        var arrow = new ArrowEntity(EntityType.ARROW, privateWorld);
         arrow.setUuid(id);
         arrow.setId(-41);
         arrow.refreshPositionAndAngles(1, 10, 20, 30, 35);

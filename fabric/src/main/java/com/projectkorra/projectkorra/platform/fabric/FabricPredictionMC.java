@@ -788,12 +788,12 @@ public final class FabricPredictionMC {
                 return type.cast(new ClientArrow(entity));
             }
             if (type == Snowball.class) {
-                Location spawn = getEyeLocation();
-                Snowball projectile = getWorld().spawn(spawn,
-                        Snowball.class);
-                projectile.setShooter(this);
-                projectile.setVelocity(spawn.getDirection().multiply(1.5));
-                return type.cast(projectile);
+                ClientWorld world = (ClientWorld) value.getEntityWorld();
+                SnowballEntity projectile = new SnowballEntity(world, value, new net.minecraft.item.ItemStack(Items.SNOWBALL));
+                projectile.setVelocity(value, value.getPitch(), value.getYaw(), 0.0F, 1.5F, 1.0F);
+                addPredictedEntity(world, projectile);
+                ExactPredictionRuntime.trackLaunchedProjectile(projectile, value);
+                return type.cast(new ClientSnowball(projectile));
             }
             return super.launchProjectile(type);
         }
@@ -1153,10 +1153,13 @@ public final class FabricPredictionMC {
         @Override public Object nativeHandle() { return value; }
     }
 
-    public static boolean hideCloudParticles(AreaEffectCloudEntity cloud) {
+    public static boolean hideOwnedEntityParticles(net.minecraft.entity.Entity entity) {
+        if (!(entity.getEntityWorld() instanceof ClientWorld)
+                || com.projectkorra.projectkorra.fabric.client.prediction.rollback.FabricRollbackPlayerRenderer.isReplicaModel(entity)) return false;
         boolean localVisuals = com.projectkorra.projectkorra.fabric.client.config.ClientBendingConfig.isVisualsEnabled();
-        if (cloud instanceof PredictedCloud) return !localVisuals;
-        return localVisuals && ExactPredictionRuntime.hideDisplayFallback(cloud);
+        if (entity instanceof PredictedCloud || com.projectkorra.projectkorra.fabric.client.prediction.entity.PredictedEntityIdAllocator.isPredictedId(entity.getId()))
+            return !localVisuals;
+        return localVisuals && ExactPredictionRuntime.hideDisplayFallback(entity);
     }
 
     /** ClientWorld runs only the particle phase; a predicted cloud owns its original expiry. */

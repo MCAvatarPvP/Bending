@@ -26,13 +26,25 @@ import java.util.*;
 /** Native advancement progress, listeners and events over detached definitions and owned player state. */
 public final class PaperRollbackAdvancements implements RollbackStateCell<PaperRollbackAdvancements.Checkpoint> {
     /** Existing logged-in player state. Import does not rerun login rewards or completed criteria. */
-    public record Seed(List<AdvancementHolder> definitions, Map<Identifier, Map<String, Instant>> obtained) {
-        public Seed {
-            definitions = List.copyOf(definitions);
+    public static final class Seed {
+        private final List<AdvancementHolder> definitions;
+        private final Map<Identifier, Map<String, Instant>> obtained;
+        private boolean ownsDefinitions;
+        public Seed(List<AdvancementHolder> definitions, Map<Identifier, Map<String, Instant>> obtained) {
+            this.definitions = List.copyOf(definitions);
             var values = new LinkedHashMap<Identifier, Map<String, Instant>>();
             obtained.forEach((id, criteria) -> values.put(id, Map.copyOf(criteria)));
-            obtained = Map.copyOf(values);
+            this.obtained = Map.copyOf(values);
             if (definitions.size() > 10_000) throw new IllegalArgumentException("Advancement definition budget exceeded");
+        }
+        public List<AdvancementHolder> definitions() { return definitions; }
+        public Map<Identifier, Map<String, Instant>> obtained() { return obtained; }
+        private List<AdvancementHolder> detach(com.mojang.serialization.DynamicOps<com.google.gson.JsonElement> ops) {
+            if (ownsDefinitions) {
+                ownsDefinitions = false;
+                return definitions;
+            }
+            return definitions.stream().map(holder -> EncodedDefinition.capture(holder, ops).decode(ops)).toList();
         }
         public static Seed capture(ServerPlayer player) {
             if (!ca.spottedleaf.moonrise.common.util.TickThread.isTickThread() || RollbackDomain.active() || RollbackClock.active())
@@ -51,6 +63,50 @@ public final class PaperRollbackAdvancements implements RollbackStateCell<PaperR
         }
 
         public static Seed empty() { return new Seed(List.of(), Map.of()); }
+    }
+    /** Only registry identifiers, serialized values and display coordinates cross to the decoder. */
+    private record EncodedDefinition(Identifier id, com.google.gson.JsonElement value, com.google.gson.JsonElement name,
+            float x, float y) {
+        static EncodedDefinition capture(AdvancementHolder holder, com.mojang.serialization.DynamicOps<com.google.gson.JsonElement> ops) {
+            var original = holder.value();
+            var display = original.display().orElse(null);
+            return new EncodedDefinition(holder.id(), Advancement.CODEC.encodeStart(ops, original).getOrThrow(),
+                    original.name().map(component -> ComponentSerialization.CODEC.encodeStart(ops, component).getOrThrow()).orElse(null),
+                    display == null ? 0 : display.getX(), display == null ? 0 : display.getY());
+        }
+        AdvancementHolder decode(com.mojang.serialization.DynamicOps<com.google.gson.JsonElement> ops) {
+            var copy = Advancement.CODEC.parse(ops, value).getOrThrow();
+            copy.display().ifPresent(display -> display.setLocation(x, y));
+            var component = Optional.ofNullable(name).map(value -> ComponentSerialization.CODEC.parse(ops, value).getOrThrow());
+            return new AdvancementHolder(id, new Advancement(copy.parent(), copy.display(), copy.rewards(), copy.criteria(),
+                    copy.requirements(), copy.sendsTelemetryEvent(), component));
+        }
+    }
+
+    static java.util.concurrent.CompletableFuture<Map<UUID, PaperRollbackRosterSeed.Services>> prepareRoster(
+            Map<UUID, PaperRollbackRosterSeed.Services> services, net.minecraft.core.RegistryAccess registries) {
+        var source = Map.copyOf(services);
+        var definitions = source.values().iterator().next().advancements().definitions();
+        for (var service : source.values()) {
+            var other = service.advancements().definitions();
+            if (other.size() != definitions.size()) throw new IllegalStateException("Advancement catalogue changed during roster capture");
+            for (int i = 0; i < definitions.size(); i++) if (definitions.get(i) != other.get(i))
+                throw new IllegalStateException("Advancement catalogue changed during roster capture");
+        }
+        // Snapshot mutable live definitions exactly once at ownership acquisition. Worker threads
+        // decode only this detached image against the same frozen native registries.
+        var ops = registries.createSerializationContext(JsonOps.INSTANCE);
+        var encoded = definitions.stream().map(holder -> EncodedDefinition.capture(holder, ops)).toList();
+        return java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+            var result = new TreeMap<UUID, PaperRollbackRosterSeed.Services>();
+            var input = registries.createSerializationContext(JsonOps.INSTANCE);
+            source.forEach((id, service) -> {
+                var privateSeed = new Seed(encoded.stream().map(row -> row.decode(input)).toList(), service.advancements().obtained());
+                privateSeed.ownsDefinitions = true;
+                result.put(id, new PaperRollbackRosterSeed.Services(service.randomSeed(), service.maximumObjects(), service.statistics(), privateSeed));
+            });
+            return Map.copyOf(result);
+        });
     }
     public record Announcement(UUID player, String component) implements PaperRollbackCombatAccess.Output { }
 
@@ -83,19 +139,9 @@ public final class PaperRollbackAdvancements implements RollbackStateCell<PaperR
         Objects.requireNonNull(seed, "seed");
         var ops = world.world().registryAccess().createSerializationContext(JsonOps.INSTANCE);
         var roots = new ArrayList<Object>();
-        for (var holder : seed.definitions()) {
-            if (definitions.containsKey(holder.id())) throw new IllegalArgumentException("Duplicate advancement: " + holder.id());
-            // The data-pack codec detaches predicates, items, requirements and
-            // mutable display data; retain native registry/trigger identities only.
-            var original = holder.value();
-            var copy = Advancement.CODEC.parse(ops, Advancement.CODEC.encodeStart(ops, original).getOrThrow()).getOrThrow();
-            if (original.display().isPresent()) {
-                var display = original.display().orElseThrow();
-                copy.display().orElseThrow().setLocation(display.getX(), display.getY());
-            }
-            var name = original.name().map(value -> ComponentSerialization.CODEC.parse(ops,
-                    ComponentSerialization.CODEC.encodeStart(ops, value).getOrThrow()).getOrThrow());
-            copy = new Advancement(copy.parent(), copy.display(), copy.rewards(), copy.criteria(), copy.requirements(), copy.sendsTelemetryEvent(), name);
+        for (var detached : seed.detach(ops)) {
+            if (definitions.containsKey(detached.id())) throw new IllegalArgumentException("Duplicate advancement: " + detached.id());
+            var copy = detached.value();
             // Each listener refers directly to its catalogue predicate as well as to the holder.
             // Conditions are evaluated against private player state. They may retain tag lookups
             // into the live registry and must never become checkpoint roots.
@@ -103,8 +149,7 @@ public final class PaperRollbackAdvancements implements RollbackStateCell<PaperR
                 requireTrigger(criterion.trigger());
                 boundaries.add(criterion.triggerInstance());
             }
-            var detached = new AdvancementHolder(holder.id(), copy);
-            definitions.put(holder.id(), detached);
+            definitions.put(detached.id(), detached);
             boundaries.add(detached);
             boundaries.add(copy.requirements());
             // These detached values have mutable public interfaces (display coordinates/icons,

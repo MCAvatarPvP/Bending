@@ -97,8 +97,22 @@ public final class PaperRollbackWorldQueries implements PaperRollbackWorldAccess
         return tile;
     }
     @Override public WorldBorder worldBorder() { checkThread(); return services.border(); }
+    @Override public net.minecraft.world.phys.BlockHitResult projectileRay(net.minecraft.world.level.ClipContext ray) {
+        checkThread();
+        requireBounds(new AABB(ray.getFrom(), ray.getTo()));
+        return CollisionGetter.super.clipIncludingBorder(ray);
+    }
+
     @Override public WorldBorder getWorldBorder() { return worldBorder(); }
     @Override public BlockGetter getChunkForCollisions(int x, int z) { return chunkLoaded(x, z) ? this : null; }
+    @Override public boolean hasCapturedChunk(int x, int z) {
+        checkThread();
+        var bounds = logical.terrain().bounds();
+        return x >= (bounds.minX() >> 4) && x <= ((bounds.maxX() - 1) >> 4)
+                && z >= (bounds.minZ() >> 4) && z <= ((bounds.maxZ() - 1) >> 4)
+                && logical.isChunkLoaded(x, z);
+    }
+
     @Override public boolean chunkLoaded(int x, int z) {
         checkThread(); var b = logical.terrain().bounds();
         if (x < (b.minX() >> 4) || x > ((b.maxX() - 1) >> 4) || z < (b.minZ() >> 4) || z > ((b.maxZ() - 1) >> 4)) {

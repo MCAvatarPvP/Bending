@@ -48,6 +48,7 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         Object difficulty();
         Object random();
         default net.minecraft.world.flag.FeatureFlagSet terrainFeatures() { throw new IllegalStateException("Terrain feature flags were not supplied"); }
+        default RollbackWorldSettings.ArrowLifetime arrowLifetime() { return RollbackWorldSettings.ArrowLifetime.DEFAULT; }
         default java.util.Map<String, Integer> actorDespawnTimes() { return java.util.Map.of(); }
         default boolean splitOverstackedLoot() { return true; }
         Object rule(Object nativeRule);
@@ -83,6 +84,9 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         boolean isUnobstructed(Entity except, net.minecraft.world.phys.shapes.VoxelShape shape);
         /** Native CollisionGetter queries not handled by Moonrise's chunk/palette iteration. */
         Object collisionQuery(String method, Object[] arguments);
+        default net.minecraft.world.phys.BlockHitResult projectileRay(net.minecraft.world.level.ClipContext ray) {
+            throw new IllegalStateException("Native projectile queries require captured collision geometry");
+        }
         boolean raining();
         boolean skyVisible(BlockPos position);
         BlockPos topPosition(net.minecraft.world.level.levelgen.Heightmap.Types type, BlockPos position);
@@ -92,6 +96,7 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         boolean chunksLoaded(int minimumX, int minimumZ, int maximumX, int maximumZ);
         /** Chunk coordinates; a partially captured edge chunk is allowed, but its block reads remain bounded. */
         boolean chunkLoaded(int x, int z);
+        default boolean hasCapturedChunk(int x, int z) { return chunkLoaded(x, z); }
         net.minecraft.world.attribute.EnvironmentAttributeReader environmentAttributes();
     }
 
@@ -158,6 +163,7 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         sectionCount = height >> 4;
         this.maximumChunks = maximumChunks;
         ServerChunkCache source = RollbackNativeQueryShell.create(ServerChunkCache.class)
+                .query(value -> value.hasChunk(0, 0), false, args -> queries.hasCapturedChunk((int) args[0], (int) args[1]))
                 .query(value -> value.getChunk(0, 0, ChunkStatus.FULL, false), null, args -> chunk((int) args[0], (int) args[1]))
                 .query(value -> value.getChunkAtIfLoadedImmediately(0, 0), null, args -> chunk((int) args[0], (int) args[1]))
                 .outputQuery(value -> value.sendToTrackingPlayers(null, null), args -> trackedPacket((Entity) args[0], (net.minecraft.network.protocol.Packet<?>) args[1], false))
@@ -182,7 +188,10 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
                 .constant(ServerLevel::getMinSectionY, minimumSection)
                 .constant(ServerLevel::getMaxSectionY, maximumY >> 4)
                 .constant(ServerLevel::getSectionsCount, sectionCount)
-                .constant(ServerLevel::getChunkSource, source)
+                .constant(value -> ((net.minecraft.world.level.Level) value).getChunkSource(), ServerLevel::getChunkSource, source)
+                .nativeQuery(value -> value.isInValidBounds(BlockPos.ZERO), false, args -> checkThread())
+                .nativeQuery(value -> value.isLoaded(BlockPos.ZERO), false, args -> checkThread())
+                .query(value -> value.clipIncludingBorder(null), null, args -> queries.projectileRay((net.minecraft.world.level.ClipContext) args[0]))
                 .nativeQuery(value -> value.hasNeighborSignal(BlockPos.ZERO), false, args -> terrain())
                 .nativeQuery(value -> value.getBestNeighborSignal(BlockPos.ZERO), 0, args -> terrain())
                 .nativeQuery(value -> value.getDirectSignalTo(BlockPos.ZERO), 0, args -> terrain())
@@ -256,6 +265,10 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         world = shell.instance();
         PaperRollbackPrivateAccess.initializeChunks(world, source); // Level's final loaded-block access reads this field directly.
         PaperRollbackPrivateAccess.initializeConfig(world);
+        if (combatState != null) {
+            world.spigotConfig.arrowDespawnRate = combatState.arrowLifetime().groundTicks();
+            world.spigotConfig.tridentDespawnRate = combatState.arrowLifetime().tridentTicks();
+        }
         world.moonrise$setEntityLookup(lookup);
     }
 

@@ -121,8 +121,8 @@ final class AddonAbilityActivationBootstrap {
         // bound ability, config, activation handler, and runtime class agree.
         CoreAbility.registerPluginAbilities(Hyperion.getPlugin(), "me.moros.hyperion.abilities");
 
-        register("Evade", ClickType.LEFT_CLICK, context -> created(new me.moros.hyperion.abilities.airbending.Evade(context.getPlayer())));
-        register("Smokescreen", ClickType.LEFT_CLICK, context -> created(new Smokescreen(context.getPlayer())));
+        register("Evade", ClickType.LEFT_CLICK, context -> context.isBoundTo(me.moros.hyperion.abilities.airbending.Evade.class) && created(new me.moros.hyperion.abilities.airbending.Evade(context.getPlayer())));
+        register("Smokescreen", ClickType.LEFT_CLICK, context -> context.isBoundTo(Smokescreen.class) && created(new Smokescreen(context.getPlayer())));
 
         register("EarthShot", ClickType.SHIFT_DOWN, context -> created(new EarthShot(context.getPlayer())));
         register("EarthShot", ClickType.LEFT_CLICK, context -> {
@@ -145,9 +145,10 @@ final class AddonAbilityActivationBootstrap {
 
         register("Bolt", ClickType.SHIFT_DOWN, context -> created(new Bolt(context.getPlayer())));
         register("FlameRush", ClickType.SHIFT_DOWN, context -> created(new FlameRush(context.getPlayer())));
-        register("Combustion", ClickType.SHIFT_DOWN, context -> created(
+        register("Combustion", ClickType.SHIFT_DOWN, context -> context.isBoundTo(me.moros.hyperion.abilities.firebending.Combustion.class) && created(
                 new me.moros.hyperion.abilities.firebending.Combustion(context.getPlayer())));
         register("Combustion", ClickType.LEFT_CLICK, context -> {
+            if (!context.isBoundTo(me.moros.hyperion.abilities.firebending.Combustion.class)) return false;
             me.moros.hyperion.abilities.firebending.Combustion.attemptExplode(context.getPlayer());
             return true;
         });
@@ -177,9 +178,9 @@ final class AddonAbilityActivationBootstrap {
         register("WhipKick", ClickType.LEFT_CLICK, context -> canStart(context, WhipKick.class) && created(new WhipKick(context.getPlayer())));
         register("AxeKick", ClickType.LEFT_CLICK, context -> canStart(context, AxeKick.class) && created(new AxeKick(context.getPlayer())));
         register("Deflect", ClickType.LEFT_CLICK, context -> canStart(context, Deflect.class) && created(new Deflect(context.getPlayer())));
-        register("Evade", ClickType.LEFT_CLICK, context -> canStart(context, Evade.class) && created(new Evade(context.getPlayer())));
+        register("Evade", ClickType.LEFT_CLICK, context -> context.isBoundTo(Evade.class) && canStart(context, Evade.class) && created(new Evade(context.getPlayer())));
         register("Bola", ClickType.LEFT_CLICK, context -> canStart(context, Bola.class) && created(new Bola(context.getPlayer())));
-        register("HighJump", ClickType.LEFT_CLICK, context -> canStart(context, HighJump.class, false) && created(new HighJump(context.getPlayer(), false)));
+        register("HighJump", ClickType.LEFT_CLICK, context -> context.isBoundTo(HighJump.class) && canStart(context, HighJump.class, false) && created(new HighJump(context.getPlayer(), false)));
         register("Block", ClickType.SHIFT_DOWN, context -> canStart(context, Block.class) && created(new Block(context.getPlayer())));
         register("Counter", ClickType.SHIFT_DOWN, context -> {
             BendingPlayer bPlayer = context.getBendingPlayer();
@@ -189,7 +190,7 @@ final class AddonAbilityActivationBootstrap {
                     && !CoreAbility.hasAbility(context.getPlayer(), Counter.class)
                     && created(new Counter(context.getPlayer()));
         });
-        register("HighJump", ClickType.SHIFT_DOWN, context -> canStart(context, HighJump.class, false) && created(new HighJump(context.getPlayer(), true)));
+        register("HighJump", ClickType.SHIFT_DOWN, context -> context.isBoundTo(HighJump.class) && canStart(context, HighJump.class, false) && created(new HighJump(context.getPlayer(), true)));
     }
 
     private static void registerJedCore() {
@@ -224,7 +225,7 @@ final class AddonAbilityActivationBootstrap {
         register("SonicBlast", ClickType.SHIFT_DOWN, context -> created(new SonicBlast(context.getPlayer())));
 
         register("EarthArmor", ClickType.LEFT_CLICK, context -> created(new MetalArmor(context.getPlayer())));
-        register("EarthKick", ClickType.SHIFT_DOWN, context -> created(new EarthKick(context.getPlayer())));
+        register("EarthKick", ClickType.SHIFT_DOWN, context -> context.isBoundTo(EarthKick.class) && created(new EarthKick(context.getPlayer())));
         register("EarthLine", ClickType.SHIFT_DOWN, context -> EarthLine.prepareLine(context.getPlayer()));
         registerGlobal(ClickType.LEFT_CLICK, AddonAbilityActivationBootstrap::shootPreparedEarthLine);
         register("EarthLine", ClickType.LEFT_CLICK, context -> {
@@ -298,8 +299,9 @@ final class AddonAbilityActivationBootstrap {
         });
         register("LightningBurst", ClickType.SHIFT_DOWN, context -> created(new LightningBurst(context.getPlayer())));
 
-        register("Bloodbending", ClickType.SHIFT_DOWN, context -> created(new Bloodbending(context.getPlayer())));
+        register("Bloodbending", ClickType.SHIFT_DOWN, context -> context.isBoundTo(Bloodbending.class) && created(new Bloodbending(context.getPlayer())));
         register("Bloodbending", ClickType.LEFT_CLICK, context -> {
+            if (!context.isBoundTo(Bloodbending.class)) return false;
             Bloodbending.launch(context.getPlayer());
             return true;
         });
@@ -359,8 +361,8 @@ final class AddonAbilityActivationBootstrap {
         register("Shrapnel", ClickType.LEFT_CLICK, context -> canUseBound(context) && (context.getPlayer().isSneaking() ? created(new ShrapnelBlast(context.getPlayer())) : created(new ShrapnelShot(context.getPlayer()))));
         register("NinjaStance", ClickType.LEFT_CLICK, context -> canUseBound(context) && created(new NinjaStance(context.getPlayer())));
         register("NinjaStance", ClickType.SHIFT_DOWN, AddonAbilityActivationBootstrap::beginNinjaStealth);
-        register("LavaSurge", ClickType.SHIFT_DOWN, context -> canUseBound(context) && created(new LavaSurge(context.getPlayer())));
-        register("LavaSurge", ClickType.LEFT_CLICK, AddonAbilityActivationBootstrap::shootLavaSurge);
+        register("LavaSurge", ClickType.SHIFT_DOWN, context -> context.isBoundTo(LavaSurge.class) && canUseBound(context) && created(new LavaSurge(context.getPlayer())));
+        register("LavaSurge", ClickType.LEFT_CLICK, context -> context.isBoundTo(LavaSurge.class) && shootLavaSurge(context));
         register("GaleGust", ClickType.LEFT_CLICK, context -> canUseBound(context) && created(new GaleGust(context.getPlayer())));
         register("Accretion", ClickType.SHIFT_DOWN, context -> canUseBound(context) && created(new Accretion(context.getPlayer())));
         register("Accretion", ClickType.LEFT_CLICK, AddonAbilityActivationBootstrap::shootAccretion);
@@ -388,7 +390,7 @@ final class AddonAbilityActivationBootstrap {
             if (whip != null) whip.remove();
             return true;
         });
-        register("EarthKick", ClickType.SHIFT_DOWN, context -> canUseBound(context) && created(new me.simplicitee.project.addons.ability.earth.EarthKick(context.getPlayer())));
+        register("EarthKick", ClickType.SHIFT_DOWN, context -> context.isBoundTo(me.simplicitee.project.addons.ability.earth.EarthKick.class) && canUseBound(context) && created(new me.simplicitee.project.addons.ability.earth.EarthKick(context.getPlayer())));
         register("EnergyBeam", ClickType.SHIFT_DOWN, context -> canUseBound(context) && created(new EnergyBeam(context.getPlayer())));
         register("Explode", ClickType.SHIFT_DOWN, context -> canUseBound(context) && created(new Explode(context.getPlayer())));
         register("QuickWeld", ClickType.SHIFT_DOWN, context -> canUseBound(context) && created(new QuickWeld(context.getPlayer(), context.getPlayer().getInventory().getItemInMainHand())));

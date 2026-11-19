@@ -1,12 +1,11 @@
 package com.projectkorra.projectkorra.chiblocking;
 
-import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.ability.ChiAbility;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.airbending.Suffocate;
 import com.projectkorra.projectkorra.attribute.Attribute;
-import com.projectkorra.projectkorra.command.Commands;
+import com.projectkorra.projectkorra.prediction.hit.ConfirmedHitEffects;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Sound;
 import com.projectkorra.projectkorra.platform.mc.entity.Creature;
@@ -39,13 +38,7 @@ public class Paralyze extends ChiAbility {
 
     @Override
     public void progress() {
-        if (this.bPlayer.canBend(this)) {
-            if (this.target instanceof Player) {
-                if (Commands.invincible.contains(((Player) this.target).getName()) || !BendingPlayer.getBendingPlayer((Player) this.target).canBeChiblocked()) {
-                    this.remove();
-                    return;
-                }
-            }
+        if (this.bPlayer.canBend(this) && canParalyze(this.target)) {
             this.paralyze(this.target);
             this.bPlayer.addCooldown(this);
         }
@@ -64,7 +57,8 @@ public class Paralyze extends ChiAbility {
         }
         final MovementHandler mh = new MovementHandler((LivingEntity) entity, CoreAbility.getAbility(Paralyze.class));
         mh.stopWithDuration(this.duration, Element.CHI.getColor() + "* Paralyzed *");
-        entity.getWorld().playSound(entity.getLocation(), Sound.ENTITY_ENDER_DRAGON_HURT, 2, 0);
+        ConfirmedHitEffects.sound(this, entity, () ->
+                entity.getWorld().playSound(entity.getLocation(), Sound.ENTITY_ENDER_DRAGON_HURT, 2, 0));
     }
 
     @Override

@@ -72,6 +72,7 @@ public final class FabricRollbackActors implements RollbackArenaActions.Native, 
         var key = Identifier.ofVanilla(id.type().name().toLowerCase(Locale.ROOT));
         var nativeType = Registries.ENTITY_TYPE.getEntry(key).orElseThrow().value();
         var e = FabricRollbackActorAllocation.create(server(), nativeType, id);
+        if (e instanceof FabricRollbackArrow arrow) arrow.rollback$arrowLifetime(scene.services().settings().arrowLifetime());
         var delegate = FabricMC.entity(e);
         int lifespan = scene.services().settings().actorDespawnTime().getOrDefault(Registries.ENTITY_TYPE.getId(e.getType()).toString(), -1);
         return new FabricRollbackActor(e, id, scene.logical(), this, lifespan, type, (method, args) -> special(e, delegate, method, args));

@@ -85,7 +85,9 @@ class FabricRollbackNativeSceneTest {
         assertSame(imported.scene().logical(), views.world());
     }
 
-    private RollbackBootstrapData bootstrapData() throws Exception {
+    private RollbackBootstrapData bootstrapData() throws Exception { return bootstrapData(seed()); }
+
+    private RollbackBootstrapData bootstrapData(RollbackWorldSeed world) throws Exception {
         RollbackBootstrapData reference;
         try (var in = Objects.requireNonNull(getClass().getResourceAsStream("/rollback/duel-bootstrap.base64"))) {
             reference = RollbackBootstrapData.decode(Base64.getMimeDecoder().decode(in.readAllBytes()), "12".repeat(32),
@@ -93,7 +95,7 @@ class FabricRollbackNativeSceneTest {
         }
         // The historical bootstrap fixture predates the captured lighting seed.
         return new RollbackBootstrapData(reference.session(), reference.challenge(), reference.match(), reference.round(),
-                reference.epochMillis(), reference.epochNanos(), reference.definitions(), reference.sides(), seed(), reference.roster(),
+                reference.epochMillis(), reference.epochNanos(), reference.definitions(), reference.sides(), world, reference.roster(),
                 reference.configuration(), reference.access(), reference.materials(), reference.tags(), reference.server(), reference.plugins(), reference.bending());
     }
 
@@ -168,6 +170,52 @@ class FabricRollbackNativeSceneTest {
         assertSame(duel.actors().nativeEntity(caster), nativeCloud.getOwner());
         cloud.addCustomEffect(new com.projectkorra.projectkorra.platform.mc.potion.PotionEffect(effect, 5, 1), true);
         assertEquals(1, access.projectkorra$potionContents().customEffects().getFirst().getAmplifier());
+    }
+
+    @Test void predictedSmokescreenSnowballCreatesOneCloudAcrossRepeatedBlockContacts() throws Exception {
+        var duel = FabricRollbackNativeScene.importDuel(bootstrapData(), FabricRollbackTestRegistry.simulationRegistries(),
+                FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);
+        var caster = duel.views().players().values().iterator().next();
+        var local = caster.launchProjectile(com.projectkorra.projectkorra.platform.mc.entity.Snowball.class);
+        var snowball = (net.minecraft.entity.projectile.thrown.SnowballEntity) duel.actors().nativeEntity(local);
+        var hits = new java.util.concurrent.atomic.AtomicInteger();
+        assertTrue(com.projectkorra.projectkorra.fabric.client.prediction.entity.ClientProjectileImpact.deliver(
+                snowball, net.minecraft.util.hit.HitResult.Type.ENTITY, () -> true));
+        assertFalse(snowball.isRemoved());
+        for (int frame = 0; frame < 40; frame++) {
+            assertTrue(com.projectkorra.projectkorra.fabric.client.prediction.entity.ClientProjectileImpact.deliver(
+                    snowball, net.minecraft.util.hit.HitResult.Type.BLOCK, () -> {
+                        hits.incrementAndGet();
+                        duel.scene().logical().spawn(caster.getEyeLocation(), com.projectkorra.projectkorra.platform.mc.entity.AreaEffectCloud.class);
+                        return false;
+                    }));
+        }
+        assertEquals(1, hits.get());
+        assertTrue(snowball.isRemoved());
+    }
+
+    @Test void aFlyingPrivateArrowDespawnUsesTheCapturedGraceAndPickupLimit() throws Exception {
+        var original = FabricRollbackWorldServicesTest.settings();
+        var policy = new RollbackWorldSettings.ArrowLifetime(1, 8, 4, 2, 6);
+        var settings = new RollbackWorldSettings(original.gameTime(), original.randomSeed(), original.soundSeed(), original.seaLevel(),
+                original.difficulty(), original.policy(), original.rules(), original.legacyBlockData(), original.actorDespawnTime(), policy);
+        var duel = FabricRollbackNativeScene.importDuel(bootstrapData(seed(settings)), FabricRollbackTestRegistry.simulationRegistries(),
+                FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);
+        var caster = duel.views().players().values().iterator().next();
+        var arrow = caster.launchProjectile(com.projectkorra.projectkorra.platform.mc.entity.Arrow.class);
+        var nativeArrow = (net.minecraft.entity.projectile.ArrowEntity) duel.actors().nativeEntity(arrow);
+        nativeArrow.setPosition(1, 16, 1);
+        nativeArrow.setNoGravity(true);
+        nativeArrow.setVelocity(0, 0, 0.1);
+        nativeArrow.pickupType = net.minecraft.entity.projectile.PersistentProjectileEntity.PickupPermission.DISALLOWED;
+        var phases = new FabricRollbackPhases(duel);
+        phases.tickWorld(1);
+        assertFalse(nativeArrow.isRemoved());
+        phases.tickWorld(2);
+        assertFalse(nativeArrow.isRemoved());
+        phases.tickWorld(3);
+        assertTrue(nativeArrow.isRemoved());
+        assertFalse(arrow.isValid());
     }
 
     @Test void privatePassengerTicksOnceAndEjectDetachesItsNativeVehicle() throws Exception {
@@ -285,14 +333,16 @@ class FabricRollbackNativeSceneTest {
             return RollbackRosterData.decode(Base64.getMimeDecoder().decode(in.readAllBytes()));
         }
     }
-    private static RollbackWorldSeed seed() throws Exception {
+    private static RollbackWorldSeed seed() throws Exception { return seed(FabricRollbackWorldServicesTest.settings()); }
+
+    private static RollbackWorldSeed seed(RollbackWorldSettings settings) throws Exception {
         var bounds = new RollbackBlockStore.Bounds(-16, -64, -16, 32, 320, 32);
         int count = 48 * 384 * 48;
         var air = new BlockData(Material.AIR); air.setExactState("minecraft:air");
         var terrain = new RollbackTerrainSeed.Builder(bounds, count * 4 + 1024);
         terrain.append(new RollbackBlockStore.Cell(air, null, Biome.DESERT, (byte) 15, .8, .4), count);
         return new RollbackWorldSeed(new UUID(0, 1), "assembled", -64, 320, 6000, false,
-                FabricRollbackWorldServicesTest.settings(), new RollbackBorderData(0, 0, 29999984, .2, 5, 5, 15, 1000, null),
+                settings, new RollbackBorderData(0, 0, 29999984, .2, 5, 5, 15, 1000, null),
                 FabricRollbackEnvironmentTest.seed(), terrain.finish(), RollbackLightSeed.capture(bounds, count, p -> 15, p -> 0));
     }
     private static FabricRollbackNativeScene scene(RollbackWorldSeed seed, RollbackRosterData players, Set<UUID> participants) {

@@ -127,6 +127,32 @@ class PaperRollbackAdvancementsNativeTest {
         });
     }
 
+    @Test void rosterPreparationCapturesMutableDefinitionsOnceAndDecodesPrivatePlayerCopies() throws Exception {
+        onTickThread(() -> {
+            var display = display(); display.setLocation(4, 8);
+            var holder = definition(true, AdvancementRewards.EMPTY, Optional.of(display));
+            var base = new PaperRollbackAdvancements.Seed(List.of(holder), Map.of());
+            var service = new PaperRollbackRosterSeed.Services(1, 100_000, new PaperRollbackStatistics.Seed(false, Map.of(), Map.of()), base);
+            UUID first = UUID.randomUUID(), second = UUID.randomUUID();
+            var registries = (net.minecraft.core.RegistryAccess) new PaperRollbackDamageNativeTest.Combat().registryAccess();
+            var pending = PaperRollbackAdvancements.prepareRoster(Map.of(first, service, second, service), registries);
+            display.setLocation(50, 100);
+            display.getIcon().setCount(42);
+            var prepared = pending.join();
+            var firstScene = new Scene(prepared.get(first).advancements());
+            var secondScene = new Scene(prepared.get(second).advancements());
+            var firstDisplay = firstScene.player.getAdvancements().criterionData.get(CriteriaTriggers.LOCATION)
+                    .iterator().next().advancement().value().display().orElseThrow();
+            var secondDisplay = secondScene.player.getAdvancements().criterionData.get(CriteriaTriggers.LOCATION)
+                    .iterator().next().advancement().value().display().orElseThrow();
+            assertEquals(4, firstDisplay.getX()); assertEquals(1, firstDisplay.getIcon().getCount());
+            firstDisplay.setLocation(17, 25); firstDisplay.getIcon().setCount(8);
+            assertEquals(4, secondDisplay.getX()); assertEquals(1, secondDisplay.getIcon().getCount());
+            assertEquals(50, display.getX()); assertEquals(42, display.getIcon().getCount());
+            return null;
+        });
+    }
+
     @Test void importDetachesDisplayDataAndRetainsObtainedDatesWithoutRegrantingLoginRewards() throws Exception {
         onTickThread(() -> {
             var display = display(); display.setLocation(1.5F, 2.5F);

@@ -12,8 +12,10 @@ import java.util.function.BooleanSupplier;
 public final class PaperRollbackStarts {
     private final Map<Object, UUID> worlds = new IdentityHashMap<>();
     private final RollbackStartServerEndpoint endpoint;
+    private final JavaPlugin plugin;
 
     public PaperRollbackStarts(JavaPlugin plugin) {
+        this.plugin = plugin;
         endpoint = new RollbackStartServerEndpoint(new RollbackStartServerEndpoint.Transport() {
             @Override public boolean current(RollbackStartNegotiation.PreparedPeer peer) {
                 Player player = Bukkit.getPlayer(peer.player());
@@ -49,6 +51,8 @@ public final class PaperRollbackStarts {
                 @Override public void start(RollbackStartNegotiation negotiation, long serverTick) { runtime.start(negotiation, serverTick); }
                 @Override public void tick(long serverTick) { runtime.tick(serverTick); }
                 @Override public void stop(RollbackStartServerEndpoint.Failure failure) {
+                    if (failure.cause() != null && plugin != null) plugin.getLogger().log(java.util.logging.Level.WARNING,
+                            "Rollback session " + session + " stopped: " + failure.detail(), failure.cause());
                     captured.forEach((connection, world) -> worlds.remove(connection, world));
                     runtime.stop(failure);
                 }

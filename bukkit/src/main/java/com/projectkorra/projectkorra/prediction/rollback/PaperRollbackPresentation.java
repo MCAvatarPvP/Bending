@@ -16,9 +16,13 @@ final class PaperRollbackPresentation {
     private final PKListener listener;
     private final PaperRollbackItemCodec items;
     private final PaperRollbackDirectPackets direct;
-    private final java.util.Set<UUID> participants;
+    private final java.util.Set<UUID> replicaParticleViewers;
     PaperRollbackPresentation(World world, JavaPlugin plugin, PKListener listener, PaperRollbackItemCodec items, PaperRollbackDirectPackets direct, java.util.Set<UUID> participants) {
-        this.participants = java.util.Set.copyOf(participants);
+        // Enrollment retires the ordinary prediction session and its capability bits. Hold the
+        // negotiated visual policy with this duel; changing visual mode negotiates a fresh session.
+        replicaParticleViewers = participants.stream()
+                .filter(com.projectkorra.projectkorra.prediction.server.PaperPredictionServer::rendersReplicaParticles)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
         this.world = world; this.plugin = plugin; this.listener = listener; this.items = items; this.direct = direct;
     }
     private Player viewer(UUID id) {
@@ -56,8 +60,7 @@ final class PaperRollbackPresentation {
         };
     }
     private boolean rendersParticles(Player viewer) {
-        return participants.contains(viewer.getUniqueId()) && com.projectkorra.projectkorra.prediction.server.PaperPredictionServer
-                .rendersReplicaParticles(viewer.getUniqueId());
+        return replicaParticleViewers.contains(viewer.getUniqueId());
     }
     void publish(RollbackEngine.Effect<Object> effect, long confirmed) {
         Object event = effect.value();

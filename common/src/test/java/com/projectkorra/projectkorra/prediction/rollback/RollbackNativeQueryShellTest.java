@@ -47,6 +47,7 @@ public class RollbackNativeQueryShellTest {
     }
 
     @Test void constructorlessShellAllowsOnlyConfiguredGettersOnItsOwningThread() {
+        CompletableFuture.runAsync(() -> RollbackNativeQueryShell.prepare(World.class)).join();
         var shell = RollbackNativeQueryShell.create(World.class).constant(World::isClient, false);
         World world = shell.instance();
         assertFalse(world.isClient());

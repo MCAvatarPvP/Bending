@@ -27,7 +27,9 @@ public final class PaperRollbackWorldSettings {
         paper.entities.spawning.despawnTime.forEach((type, value) -> value.value().ifPresent(ticks ->
                 despawn.put(net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(type).toString(), ticks)));
         return new RollbackWorldSettings(captured.gameTime(), randomSeed, soundSeed, captured.seaLevel(), captured.difficulty(),
-                policy, captured.rules(), PaperRollbackLegacyBlocks.values(), despawn);
+                policy, captured.rules(), PaperRollbackLegacyBlocks.values(), despawn, new RollbackWorldSettings.ArrowLifetime(
+                        paper.entities.spawning.maxArrowDespawnInvulnerability.value().orElse(-1), spigot.arrowDespawnRate,
+                        paper.entities.spawning.creativeArrowDespawnRate.value(), paper.entities.spawning.nonPlayerArrowDespawnRate.value(), spigot.tridentDespawnRate));
     }
     /** Also supports capture from an already detached native rule set. */
     public static RollbackWorldSettings capture(GameRules rules, long time, long randomSeed, long soundSeed, int seaLevel,

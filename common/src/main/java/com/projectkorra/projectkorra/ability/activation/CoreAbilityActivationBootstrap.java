@@ -101,7 +101,7 @@ final class CoreAbilityActivationBootstrap {
     }
 
     private static void registerWater() {
-        register("Bloodbending", ClickType.SHIFT_DOWN, context -> created(new Bloodbending(context.getPlayer())));
+        register("Bloodbending", ClickType.SHIFT_DOWN, context -> context.isBoundTo(Bloodbending.class) && created(new Bloodbending(context.getPlayer())));
         register("IceBlast", ClickType.SHIFT_DOWN, context -> created(new IceBlast(context.getPlayer())));
         register("IceSpike", ClickType.SHIFT_DOWN, context -> created(new IceSpikeBlast(context.getPlayer())));
         register("OctopusForm", ClickType.SHIFT_DOWN, context -> {
@@ -123,6 +123,7 @@ final class CoreAbilityActivationBootstrap {
         register("HealingWaters", ClickType.SHIFT_DOWN, context -> created(new HealingWaters(context.getPlayer())));
 
         register("Bloodbending", ClickType.LEFT_CLICK, context -> {
+            if (!context.isBoundTo(Bloodbending.class)) return false;
             Bloodbending.launch(context.getPlayer());
             return true;
         });
@@ -185,7 +186,7 @@ final class CoreAbilityActivationBootstrap {
         register("EarthArmor", ClickType.LEFT_CLICK, CoreAbilityActivationBootstrap::clickEarthArmor);
         register("Tremorsense", ClickType.LEFT_CLICK, context -> created(new Tremorsense(context.getPlayer(), true)));
         register("MetalClips", ClickType.LEFT_CLICK, CoreAbilityActivationBootstrap::clickMetalClips);
-        register("LavaSurge", ClickType.LEFT_CLICK, CoreAbilityActivationBootstrap::clickLavaSurge);
+        register("LavaSurge", ClickType.LEFT_CLICK, context -> context.isBoundTo(LavaSurge.class) && clickLavaSurge(context));
         register("LavaFlow", ClickType.LEFT_CLICK, context -> created(new LavaFlow(context.getPlayer(), LavaFlow.AbilityType.CLICK)));
         register("EarthSmash", ClickType.LEFT_CLICK,
                 context -> activateEarthSmash(context, ClickType.LEFT_CLICK));
@@ -221,8 +222,8 @@ final class CoreAbilityActivationBootstrap {
     }
 
     private static void registerChi() {
-        register("HighJump", ClickType.LEFT_CLICK, context -> created(new HighJump(context.getPlayer())));
-        register("Smokescreen", ClickType.LEFT_CLICK, context -> created(new Smokescreen(context.getPlayer())));
+        register("HighJump", ClickType.LEFT_CLICK, context -> context.isBoundTo(HighJump.class) && created(new HighJump(context.getPlayer())));
+        register("Smokescreen", ClickType.LEFT_CLICK, context -> context.isBoundTo(Smokescreen.class) && created(new Smokescreen(context.getPlayer())));
         register("WarriorStance", ClickType.LEFT_CLICK, context -> created(new WarriorStance(context.getPlayer())));
         register("AcrobatStance", ClickType.LEFT_CLICK, context -> created(new AcrobatStance(context.getPlayer())));
     }

@@ -90,6 +90,17 @@ public final class PaperRollbackCombatAccess {
         worldConfiguration.entities = allocator.newInstance(WorldConfiguration.Entities.class);
         worldConfiguration.entities.behavior = allocator.newInstance(WorldConfiguration.Entities.Behavior.class);
         worldConfiguration.entities.spawning = allocator.newInstance(WorldConfiguration.Entities.Spawning.class);
+        var ordinaryArrowRate = allocator.newInstance(org.spigotmc.SpigotWorldConfig.class);
+        ordinaryArrowRate.arrowDespawnRate = state.arrowLifetime().unpickableTicks();
+        worldConfiguration.entities.spawning.nonPlayerArrowDespawnRate =
+                io.papermc.paper.configuration.type.fallback.ArrowDespawnRate.def(ordinaryArrowRate);
+        var creativeArrowRate = allocator.newInstance(org.spigotmc.SpigotWorldConfig.class);
+        creativeArrowRate.arrowDespawnRate = state.arrowLifetime().creativeTicks();
+        worldConfiguration.entities.spawning.creativeArrowDespawnRate =
+                io.papermc.paper.configuration.type.fallback.ArrowDespawnRate.def(creativeArrowRate);
+        int grace = state.arrowLifetime().airGrace();
+        worldConfiguration.entities.spawning.maxArrowDespawnInvulnerability = new io.papermc.paper.configuration.type.number.IntOr.Disabled(
+                grace < 0 ? java.util.OptionalInt.empty() : java.util.OptionalInt.of(grace));
         worldConfiguration.entities.spawning.despawnTime = new it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap<>();
         state.actorDespawnTimes().forEach((key, ticks) -> worldConfiguration.entities.spawning.despawnTime.put(
                 net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getOptional(net.minecraft.resources.Identifier.parse(key)).orElseThrow(),
