@@ -59,6 +59,8 @@
     "client.WorldRendererRollbackMixin",
     "client.CameraRollbackMixin",
     "client.CrosshairRollbackMixin",
+    "client.CrosshairActionRollbackMixin",
+    "client.CrosshairEyeRollbackMixin",
     "client.InGameHudRollbackMixin",
     "client.FallingBlockEntityPredictionMixin",
     "client.FallingBlockEntityRendererPredictionMixin",

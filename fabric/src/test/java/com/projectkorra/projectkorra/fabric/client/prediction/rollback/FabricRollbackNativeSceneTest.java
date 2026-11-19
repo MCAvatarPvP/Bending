@@ -433,7 +433,6 @@ class FabricRollbackNativeSceneTest {
         assertTrue(world.getBlockState(floor).isOf(net.minecraft.block.Blocks.VOID_AIR));
         assertTrue(world.getFluidState(floor).isEmpty());
         assertNull(world.getBlockEntity(floor));
-        assertEquals(world.getBiome(floor.up()), world.getBiome(floor));
         assertThrows(IllegalStateException.class, () -> world.getBlockState(new net.minecraft.util.math.BlockPos(100, min, 1)));
         body.setPosition(1.5, min + .125, 1.5);
         body.setOnGround(false);
@@ -468,7 +467,9 @@ class FabricRollbackNativeSceneTest {
         var source = roster.players().get(player.getUniqueId());
         var nativePlayer = source.ownedPlayer();
         var privateVictim = roster.players().get(victim.getUniqueId()).ownedPlayer();
+        nativePlayer.setPose(net.minecraft.entity.EntityPose.STANDING);
         nativePlayer.refreshPositionAndAngles(1.5, 4, 1.5, 90, 0);
+        nativePlayer.lastX = 1.5; nativePlayer.lastY = 4; nativePlayer.lastZ = 1.5;
         privateVictim.setPosition(1.5, 4, 2.425);
         var models = new HashMap<Integer, net.minecraft.entity.Entity>();
         var visibleWorld = RollbackNativeQueryShell.create(net.minecraft.client.world.ClientWorld.class)
@@ -498,6 +499,17 @@ class FabricRollbackNativeSceneTest {
             assertEquals(hit.getPos().subtract(privateVictim.getEntityPos()), FabricRollbackCrosshair.offset(hit, visibleVictim));
             assertEquals(90, nativePlayer.getYaw());
             assertEquals(11, visibleLocal.distanceTo(visibleVictim));
+            var slab = duel.scene().logical().getBlockAt(1, 5, 2);
+            slab.setBlockData(new FabricRollbackTerrainTransfer().decode(Material.OAK_SLAB, "minecraft:oak_slab[type=bottom]"), false);
+            nativePlayer.setPose(net.minecraft.entity.EntityPose.CROUCHING);
+            views.put(player.getUniqueId(), source.use(p -> FabricRollbackPlayerView.capture(p, p)));
+            renderer.publish(901, 0, views);
+            assertEquals(net.minecraft.util.hit.HitResult.Type.ENTITY, FabricRollbackPlayerRenderer.pick(visibleLocal, visibleLocal, .1F).getType());
+            assertEquals(net.minecraft.util.hit.HitResult.Type.BLOCK, FabricRollbackPlayerRenderer.pick(visibleLocal, visibleLocal, 1).getType());
+            nativePlayer.setPose(net.minecraft.entity.EntityPose.STANDING);
+            views.put(player.getUniqueId(), source.use(p -> FabricRollbackPlayerView.capture(p, p)));
+            renderer.publish(902, 0, views);
+            slab.setType(Material.AIR, false);
             visibleLocal.aim(180, 0);
             assertEquals(net.minecraft.util.hit.HitResult.Type.MISS, FabricRollbackPlayerRenderer.pick(visibleLocal, visibleLocal, 1).getType());
             visibleLocal.aim(0, 0);
@@ -508,13 +520,14 @@ class FabricRollbackNativeSceneTest {
             var block = assertInstanceOf(net.minecraft.util.hit.BlockHitResult.class, FabricRollbackPlayerRenderer.pick(visibleLocal, visibleLocal, 1));
             assertEquals(net.minecraft.util.hit.HitResult.Type.BLOCK, block.getType());
             assertEquals(3, block.getBlockPos().getZ());
+            assertTrue(FabricRollbackPlayerRenderer.pickedBlock(visibleLocal, visibleLocal, block.getBlockPos()).isOf(net.minecraft.block.Blocks.STONE));
             wall.setType(Material.AIR, false);
             privateVictim.setPosition(1.5, 4, 10.5);
             assertEquals(net.minecraft.util.hit.HitResult.Type.MISS, FabricRollbackPlayerRenderer.pick(visibleLocal, visibleLocal, 1).getType());
             privateVictim.setPosition(1.5, 4, 2.425);
             var stand = terrain.spawn(new com.projectkorra.projectkorra.platform.mc.Location(terrain, 1.5, 4, 4),
                     com.projectkorra.projectkorra.platform.mc.entity.ArmorStand.class);
-            renderer.publish(901, 0, views);
+            renderer.publish(903, 0, views);
             var attack = new RollbackInputActions.Action(1, 1, RollbackInputActions.Kind.ATTACK, -1,
                     RollbackInputActions.Hand.MAIN, new RollbackInteractionTarget.Actor(stand.getEntityId(), null));
             var edge = new RollbackPlayerInput.Edge(attack, 0, 0);

@@ -47,9 +47,24 @@ public final class FabricRollbackPlayerRenderer implements AutoCloseable {
         this.picker = Objects.requireNonNull(picker); selector = FabricRollbackCrosshair.selector(picker.ownedPlayer()); nativeActors = actors;
     }
     public static net.minecraft.util.hit.HitResult pick(Entity local, Entity camera, float delta) {
+        var owner = picking(local, camera);
+        if (owner == null) return null;
+        var view = owner.views.get(owner.viewer);
+        var eye = view.cameraMotion().sample(view.motion().position(), owner.previousEyes.get(owner.viewer), delta);
+        return FabricRollbackCrosshair.pick(owner.selector, owner.picker, delta, local.getPitch(delta), local.getYaw(delta), eye, owner::pickModel);
+    }
+    private static FabricRollbackPlayerRenderer picking(Entity local, Entity camera) {
         var owner = active;
-        if (owner == null || owner.picker == null || local != camera || !local.getUuid().equals(owner.viewer) || owner.lookup(local) == null) return null;
-        return FabricRollbackCrosshair.pick(owner.selector, owner.picker, delta, local.getPitch(delta), local.getYaw(delta), owner::pickModel);
+        return owner == null || owner.picker == null || local == null || local != camera || !local.getUuid().equals(owner.viewer)
+                || owner.lookup(local) == null ? null : owner;
+    }
+    public static net.minecraft.block.BlockState pickedBlock(Entity local, Entity camera, net.minecraft.util.math.BlockPos pos) {
+        var owner = picking(local, camera);
+        return owner == null ? null : owner.picker.use(player -> player.getEntityWorld().getBlockState(pos));
+    }
+    public static Boolean withinWeaponRange(Entity local, Entity camera, net.minecraft.component.type.AttackRangeComponent range, Vec3d point) {
+        var owner = picking(local, camera);
+        return owner == null ? null : owner.picker.use(player -> range.isWithinRange(player, point));
     }
     private Entity pickModel(Entity source) {
         UUID id = source.getUuid();

@@ -38,8 +38,13 @@ public final class RollbackArenaFloor {
         var id = player.getUniqueId();
         if (player.getLocation().getY() > deathY || !round.active(id)) return;
         var checkpoint = checkpoints.get(id);
-        if (checkpoint == null) round.fellBelowArena(id);
-        else if (!player.teleport(checkpoint.location(player)))
+        if (checkpoint == null) {
+            round.fellBelowArena(id);
+            return;
+        }
+        if (!player.teleport(checkpoint.location(player)))
             throw new IllegalStateException("Unable to return the private participant to their parkour checkpoint");
+        // Neptune's absolute Bukkit teleport supplies zero velocity on every axis.
+        player.setVelocity(new com.projectkorra.projectkorra.platform.mc.util.Vector());
     }
 }

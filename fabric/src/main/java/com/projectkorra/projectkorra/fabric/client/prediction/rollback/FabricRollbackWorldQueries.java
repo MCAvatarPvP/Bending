@@ -162,9 +162,7 @@ public final class FabricRollbackWorldQueries implements FabricRollbackWorldAcce
         }
     }
     @Override public RegistryEntry<Biome> biome(BlockPos pos) {
-        checkThread();
-        int y = Math.clamp(pos.getY(), logical.getMinHeight(), logical.getMaxHeight() - 1);
-        var cell = logical.terrain().cell(new RollbackBlockStore.Position(pos.getX(), y, pos.getZ()));
+        checkThread(); var cell = logical.terrain().cell(key(pos));
         return registries.getOrThrow(RegistryKeys.BIOME).getEntry(Identifier.of(cell.biomeKey()))
                 .orElseThrow(() -> new IllegalStateException("Captured biome is absent from session registries: " + cell.biomeKey()));
     }
@@ -218,7 +216,7 @@ public final class FabricRollbackWorldQueries implements FabricRollbackWorldAcce
     @Override public void gameEvent(RegistryEntry<GameEvent> event, Vec3d position, GameEvent.Emitter emitter) {
         requireRoster(); requireMember(emitter.sourceEntity());
         if (!Double.isFinite(position.x) || !Double.isFinite(position.y) || !Double.isFinite(position.z)) throw new IllegalArgumentException("Game event position");
-        logical.terrain().cell(key(BlockPos.ofFloored(position)));
+        requireBounds(new Box(BlockPos.ofFloored(position)));
         services.gameEvent(event, position, emitter);
     }
     @Override public void waypoint(FabricRollbackWorldAccess.WaypointAction action, Entity entity) { requireRoster(); requireMember(entity); services.waypoint(action, entity); }

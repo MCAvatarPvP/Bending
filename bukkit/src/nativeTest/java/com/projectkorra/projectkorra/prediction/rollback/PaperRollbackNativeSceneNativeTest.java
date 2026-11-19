@@ -78,14 +78,7 @@ class PaperRollbackNativeSceneNativeTest {
             var itemOwner = new RollbackNativeItems<>(new PaperRollbackItems(PaperRollbackEnvironmentNativeTest.registries()));
             var actors = new PaperRollbackActors(new UUID(82, 32), 16, itemOwner);
             actors.bind(scene);
-            var services = new TreeMap<UUID, RollbackRosterViews.Services>();
-            scene.roster().forEach((id, state) -> {
-                var player = (ServerPlayer) state.ownedPlayer();
-                var profile = new RollbackPlayerState.Profile(player.getGameProfile().name(), "SURVIVAL", "RIGHT", true, false, true, 50);
-                services.put(id, new RollbackRosterViews.Services(profile, Set.of(),
-                        new com.projectkorra.projectkorra.platform.mc.scoreboard.Scoreboard(), actors, unused(RollbackPlayerState.Rules.class)));
-            });
-            var views = PaperRollbackRosterViews.bind(scene.logical(), scene.world(), captured.participants(), scene.roster(), itemOwner, services);
+            var views = bindAbilityViews(scene, actors, itemOwner);
             var arrow = actors.spawn(scene.logical(), new RollbackEntityBody.Pose(0, 2, 0, 0, 0),
                     com.projectkorra.projectkorra.platform.mc.entity.Arrow.class);
             scene.logical().entities().add(arrow);
@@ -493,6 +486,63 @@ class PaperRollbackNativeSceneNativeTest {
             assertNull(Bukkit.getServer());
             return null;
         });
+    }
+
+    @Test void parkourFloorReturnsOnlyTheFallingPlayerToTheirOwnCheckpoint() throws Exception {
+        onTickThread(() -> {
+            var captured = PaperRollbackRosterSeed.capture(source(), 0);
+            var scene = scene(seed(), captured, captured.participants());
+            var items = new RollbackNativeItems<>(new PaperRollbackItems(PaperRollbackEnvironmentNativeTest.registries()));
+            var actors = new PaperRollbackActors(new UUID(243, 13), 16, items);
+            actors.bind(scene);
+            var players = bindAbilityViews(scene, actors, items).players().values().stream().toList();
+            var first = players.getFirst(); var second = players.getLast();
+            var state = scene.roster().get(first.getUniqueId());
+            var nativePlayer = (ServerPlayer) state.ownedPlayer();
+            var opponent = second.getLocation();
+            var round = new RollbackRound(new UUID(243, 13), Map.of(first.getUniqueId(), first.getUniqueId(), second.getUniqueId(), second.getUniqueId()));
+            var floor = new RollbackArenaFloor(1, Map.of(
+                    first.getUniqueId(), new RollbackArenaFloor.Respawn(3.5, 8, -2.5, 73, -18),
+                    second.getUniqueId(), new RollbackArenaFloor.Respawn(-8.5, 9, 2.5, -45, 0)));
+            floor.validate(round);
+            round.beginTick(1);
+            nativePlayer.setPos(.5, 1.25, .5);
+            nativePlayer.setDeltaMovement(.3, -.8, -.1);
+            var original = nativePlayer.position();
+            var motion = nativePlayer.getDeltaMovement();
+            var before = state.captureRollbackState();
+            floor.afterMovement(round, first);
+            assertEquals(original, nativePlayer.position());
+            for (int replay = 0; replay < 2; replay++) {
+                if (replay > 0) {
+                    state.restoreRollbackState(before);
+                    assertEquals(original, nativePlayer.position());
+                    assertEquals(motion, nativePlayer.getDeltaMovement());
+                }
+                nativePlayer.setPos(.5, 1, .5);
+                floor.afterMovement(round, first);
+                assertEquals(new net.minecraft.world.phys.Vec3(3.5, 8, -2.5), nativePlayer.position());
+                assertEquals(73, nativePlayer.getYRot());
+                assertEquals(-18, nativePlayer.getXRot());
+                assertEquals(net.minecraft.world.phys.Vec3.ZERO, nativePlayer.getDeltaMovement());
+                assertEquals(opponent, second.getLocation());
+                assertTrue(round.active(first.getUniqueId()));
+                assertTrue(round.provisionalDefeats().isEmpty());
+            }
+            return null;
+        });
+    }
+
+    private static RollbackRosterViews bindAbilityViews(PaperRollbackNativeScene scene, PaperRollbackActors actors,
+                                                         RollbackNativeItems<net.minecraft.world.item.ItemStack> items) {
+        var services = new TreeMap<UUID, RollbackRosterViews.Services>();
+        scene.roster().forEach((id, state) -> {
+            var player = (ServerPlayer) state.ownedPlayer();
+            var profile = new RollbackPlayerState.Profile(player.getGameProfile().name(), "SURVIVAL", "RIGHT", true, false, true, 50);
+            services.put(id, new RollbackRosterViews.Services(profile, Set.of(),
+                    new com.projectkorra.projectkorra.platform.mc.scoreboard.Scoreboard(), actors, unused(RollbackPlayerState.Rules.class)));
+        });
+        return PaperRollbackRosterViews.bind(scene.logical(), scene.world(), scene.roster().keySet(), scene.roster(), items, services);
     }
 
     @Test void nativeParticipantCanFallAcrossTheDimensionFloorAndRewind() throws Exception {

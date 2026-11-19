@@ -14,10 +14,11 @@ public final class FabricRollbackCrosshair {
     private static final ThreadLocal<FabricRollbackCrosshair> PICKING = new ThreadLocal<>();
     private final PlayerEntity player;
     private final float pitch, yaw;
+    private final Vec3d eye;
     private final Function<Entity, Entity> model;
 
-    private FabricRollbackCrosshair(PlayerEntity player, float pitch, float yaw, Function<Entity, Entity> model) {
-        this.player = player; this.pitch = pitch; this.yaw = yaw; this.model = model;
+    private FabricRollbackCrosshair(PlayerEntity player, float pitch, float yaw, Vec3d eye, Function<Entity, Entity> model) {
+        this.player = player; this.pitch = pitch; this.yaw = yaw; this.eye = eye; this.model = model;
     }
     static net.minecraft.client.network.ClientPlayerEntity selector(PlayerEntity body) {
         // The vanilla entry point belongs to the client-only player class. Its three virtual
@@ -31,10 +32,10 @@ public final class FabricRollbackCrosshair {
                 }).instance();
     }
     static HitResult pick(net.minecraft.client.network.ClientPlayerEntity selector, FabricRollbackNativePlayerState state,
-                          float delta, float pitch, float yaw, Function<Entity, Entity> model) {
+                          float delta, float pitch, float yaw, Vec3d eye, Function<Entity, Entity> model) {
         return state.use(player -> {
             if (PICKING.get() != null) throw new IllegalStateException("Reentrant crosshair query");
-            PICKING.set(new FabricRollbackCrosshair(player, pitch, yaw, model));
+            PICKING.set(new FabricRollbackCrosshair(player, pitch, yaw, eye, model));
             try {
                 var hit = selector.getCrosshairTarget(delta, player);
                 if (!(hit instanceof EntityHitResult contact)) return hit;
@@ -48,6 +49,9 @@ public final class FabricRollbackCrosshair {
     }
     static boolean visible(Entity viewer, Entity entity) {
         var current = PICKING.get(); return current == null || current.player != viewer || current.model.apply(entity) != null;
+    }
+    public static Vec3d eye(Entity entity) {
+        var current = PICKING.get(); return current != null && current.player == entity ? current.eye : null;
     }
     static float pitch(PlayerEntity entity, float ordinary) {
         var current = PICKING.get(); return current != null && current.player == entity ? current.pitch : ordinary;
