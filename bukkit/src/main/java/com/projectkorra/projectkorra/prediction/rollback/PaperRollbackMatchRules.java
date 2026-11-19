@@ -18,7 +18,9 @@ final class PaperRollbackMatchRules {
 
     // Neptune 2.3's public bridge supplies the match UUID but its API jar omits getMatch and
     // getPlacedBlocks. Keep that compatibility lookup entirely outside private simulation.
-    static RollbackDuelInteractions capture(PaperRollbackMatchBootstrap.Request request, Player owner) {
+    record Rules(RollbackDuelInteractions interactions, RollbackArenaFloor floor) {}
+
+    static Rules capture(PaperRollbackMatchBootstrap.Request request, Player owner) {
         var plugin = Bukkit.getPluginManager().getPlugin("Neptune");
         if (plugin == null || !plugin.isEnabled()) throw new IllegalStateException("Neptune match is unavailable");
         try {
@@ -46,7 +48,21 @@ final class PaperRollbackMatchRules {
                 var pos = new Position(location.getBlockX(), location.getBlockY(), location.getBlockZ());
                 if (request.terrain().contains(pos)) placed.add(pos);
             }
-            return new RollbackDuelInteractions(build, enabled.contains("bedwars"), allowed, placed);
+            var arena = call(match, "getArena");
+            var checkpoints = new java.util.TreeMap<UUID, RollbackArenaFloor.Respawn>();
+            if (enabled.contains("parkour")) {
+                var participantById = match.getClass().getMethod("getParticipant", UUID.class);
+                var matchType = api.getClassLoader().loadClass("dev.lrxh.neptune.game.match.Match");
+                for (var id : request.sides().keySet()) {
+                    var participant = participantById.invoke(match, id);
+                    var spawn = (Location) participant.getClass().getMethod("getSpawn", matchType).invoke(participant, match);
+                    if (spawn == null || spawn.getWorld() == null || !request.world().equals(spawn.getWorld().getUID()))
+                        throw new IllegalStateException("Parkour checkpoint is outside the captured arena world");
+                    checkpoints.put(id, new RollbackArenaFloor.Respawn(spawn.getX(), spawn.getY(), spawn.getZ(), spawn.getYaw(), spawn.getPitch()));
+                }
+            }
+            var interactions = new RollbackDuelInteractions(build, enabled.contains("bedwars"), allowed, placed);
+            return new Rules(interactions, new RollbackArenaFloor((int) call(arena, "getDeathY"), checkpoints));
         } catch (ReflectiveOperationException failure) {
             throw new IllegalStateException("Cannot capture the current Neptune kit", failure);
         }

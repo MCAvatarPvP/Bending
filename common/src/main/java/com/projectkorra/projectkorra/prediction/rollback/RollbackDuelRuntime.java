@@ -63,6 +63,8 @@ public final class RollbackDuelRuntime {
         var policies = imported.bending().services().stream().filter(RollbackRegionPolicy.class::isInstance).map(RollbackRegionPolicy.class::cast).toList();
         if (policies.size() != 1) throw new IllegalArgumentException("Duel requires one captured region policy");
         RegionProtectionHook regions = policies.getFirst().bind(views);
+        for (var service : imported.bending().services())
+            if (service instanceof RollbackArenaFloor floor) execution.arenaFloor(floor, round);
         var external = Collections.newSetFromMap(new IdentityHashMap<Object, Boolean>());
         external.addAll(imported.configuration().references());
         external.addAll(handles.values());

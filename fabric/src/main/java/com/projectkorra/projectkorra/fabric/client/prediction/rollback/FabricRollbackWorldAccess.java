@@ -590,7 +590,7 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
         var result = new ArrayList<Entity>();
         for (Entity entity : candidates) {
             if (entity.getEntityWorld() != world) throw new IllegalArgumentException("Native query entity belongs to another world");
-            if (entity != except && entity.getBoundingBox().intersects(bounds) && predicate.test(entity)) result.add(entity);
+            if (entity != except && entity.getBoundingBox().intersects(bounds) && FabricRollbackCrosshair.visible(except, entity) && predicate.test(entity)) result.add(entity);
         }
         return List.copyOf(result);
     }

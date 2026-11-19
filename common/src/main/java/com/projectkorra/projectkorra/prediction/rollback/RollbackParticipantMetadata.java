@@ -53,7 +53,7 @@ final class RollbackParticipantMetadata {
                         .findFirst().orElse(null);
                 if (markers.containsKey(key)) {
                     var value = markers.get(key);
-                    if (current == null || !Objects.equals(current.value(), value))
+                    if (current == null || (value instanceof CoreAbility ? current.value() != value : !Objects.equals(current.value(), value)))
                         player.setMetadata(key, new FixedMetadataValue(ProjectKorra.plugin, value));
                 } else if (current != null) player.removeMetadata(key, ProjectKorra.plugin);
             }

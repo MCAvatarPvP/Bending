@@ -495,6 +495,49 @@ class PaperRollbackNativeSceneNativeTest {
         });
     }
 
+    @Test void nativeParticipantCanFallAcrossTheDimensionFloorAndRewind() throws Exception {
+        onTickThread(() -> {
+            var captured = PaperRollbackRosterSeed.capture(source(), 0);
+            var seed = seed();
+            var scene = scene(seed, captured, captured.participants(), new Events() {
+                @Override public void event(org.bukkit.event.Event event) { }
+                @Override public void output(PaperRollbackCombatAccess.Output output) { }
+                @Override public void gameEvent(Object event, Object position, Object context) { }
+            });
+            var level = scene.world().world();
+            var floor = new net.minecraft.core.BlockPos(0, seed.minimumY(), 0);
+            var top = new net.minecraft.core.BlockPos(0, seed.maximumY(), 0);
+            for (var outside : List.of(floor.below(), top, top.above())) {
+                assertTrue(level.getBlockState(outside).is(net.minecraft.world.level.block.Blocks.VOID_AIR));
+                assertTrue(level.getFluidState(outside).isEmpty());
+                assertNull(level.getBlockEntity(outside));
+                assertTrue(level.getBlockStateIfLoaded(outside).is(net.minecraft.world.level.block.Blocks.VOID_AIR));
+            }
+            assertTrue(level.getBlockState(floor).is(net.minecraft.world.level.block.Blocks.AIR));
+            assertThrows(IllegalStateException.class, () -> level.getBlockState(floor.offset(1000, 0, 0)));
+            assertThrows(IllegalStateException.class, () -> scene.logical().getBlockAt(0, floor.getY() - 1, 0).setType(Material.STONE));
+            var state = scene.roster().values().iterator().next();
+            var player = (ServerPlayer) state.ownedPlayer();
+            player.setPos(.5, floor.getY() + .25, .5);
+            player.setDeltaMovement(0, -.7, 0);
+            var before = state.captureRollbackState();
+            Runnable falling = () -> {
+                for (int step = 1; step <= 20; step++) {
+                    try (var clock = RollbackClock.at(1000, step, 50_000_000)) { state.tick(); }
+                }
+            };
+            falling.run();
+            assertTrue(player.getY() < floor.getY() - 16);
+            var position = player.position();
+            var velocity = player.getDeltaMovement();
+            state.restoreRollbackState(before);
+            falling.run();
+            assertEquals(position, player.position());
+            assertEquals(velocity, player.getDeltaMovement());
+            return null;
+        });
+    }
+
     @Test void nativeSceneImportsOwnedServerBodiesAndRewindsTerrainLightClockAndPlayers() throws Exception {
         onTickThread(() -> {
             var source = source(); var sourcePositions = source.stream().map(ServerPlayer::position).toList(); var captured = PaperRollbackRosterSeed.capture(source, 0); var seed = seed();

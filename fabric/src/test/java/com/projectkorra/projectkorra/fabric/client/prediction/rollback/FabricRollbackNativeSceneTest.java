@@ -421,12 +421,122 @@ class FabricRollbackNativeSceneTest {
         assertFalse(RollbackEntityBody.logicalBody(passenger).insideVehicle());
     }
 
+    @Test void nativeFallingAcrossTheDimensionFloorReadsVoidAirAndRewindsTheSameMovement() throws Exception {
+        var data = bootstrapData();
+        var duel = FabricRollbackNativeScene.importDuel(data, FabricRollbackTestRegistry.simulationRegistries(),
+                FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);
+        var state = duel.scene().roster().players().values().iterator().next();
+        var body = state.ownedPlayer();
+        var world = body.getEntityWorld();
+        int min = data.world().minimumY();
+        var floor = new net.minecraft.util.math.BlockPos(1, min - 1, 1);
+        assertTrue(world.getBlockState(floor).isOf(net.minecraft.block.Blocks.VOID_AIR));
+        assertTrue(world.getFluidState(floor).isEmpty());
+        assertNull(world.getBlockEntity(floor));
+        assertEquals(world.getBiome(floor.up()), world.getBiome(floor));
+        assertThrows(IllegalStateException.class, () -> world.getBlockState(new net.minecraft.util.math.BlockPos(100, min, 1)));
+        body.setPosition(1.5, min + .125, 1.5);
+        body.setOnGround(false);
+        body.setVelocity(0, -.5, 0);
+        var id = body.getUuid();
+        var engine = new RollbackEngine<>(new RollbackSimulation<FabricRollbackNativePlayerState.Checkpoint, Integer, Object>() {
+            public FabricRollbackNativePlayerState.Checkpoint snapshot() { return state.captureRollbackState(); }
+            public void restore(FabricRollbackNativePlayerState.Checkpoint checkpoint) { state.restoreRollbackState(checkpoint); }
+            public Integer predict(UUID participant, Integer last) { return last; }
+            public void step(long tick, Map<UUID, Integer> inputs, RollbackStep<Object> effects) {
+                try (var output = duel.output().open(effects)) { state.tick(); }
+            }
+        }, Map.of(id, 0), RollbackDuelRuntime.ENGINE, 0);
+        engine.advance();
+        assertTrue(body.getY() < min);
+        engine.advance();
+        var expected = body.getEntityPos();
+        assertTrue(expected.y < min - .5);
+        engine.submit(id, 1, 1);
+        assertEquals(1, engine.reconcile().replayedFrom());
+        assertEquals(expected, body.getEntityPos());
+    }
+
+    @Test void nativeCrosshairUsesCurrentAimPrivateTerrainAndVisibleActorsWhileTheLiveBodiesStayFrozen() throws Exception {
+        var duel = FabricRollbackNativeScene.importDuel(bootstrapData(), FabricRollbackTestRegistry.simulationRegistries(),
+                FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);
+        var roster = duel.scene().roster();
+        var participants = new ArrayList<>(duel.views().players().values());
+        var player = participants.getFirst();
+        var victim = participants.get(1);
+        player.state().hidden(Set.of());
+        var source = roster.players().get(player.getUniqueId());
+        var nativePlayer = source.ownedPlayer();
+        var privateVictim = roster.players().get(victim.getUniqueId()).ownedPlayer();
+        nativePlayer.refreshPositionAndAngles(1.5, 4, 1.5, 90, 0);
+        privateVictim.setPosition(1.5, 4, 2.425);
+        var models = new HashMap<Integer, net.minecraft.entity.Entity>();
+        var visibleWorld = RollbackNativeQueryShell.create(net.minecraft.client.world.ClientWorld.class)
+                .constant(net.minecraft.client.world.ClientWorld::getEnabledFeatures, FeatureFlags.VANILLA_FEATURES)
+                .constant(net.minecraft.client.world.ClientWorld::getRegistryManager, FabricRollbackTestRegistry.simulationRegistries())
+                .query(w -> w.getEntityById(0), null, args -> models.get((int)args[0]))
+                .query(w -> w.getEntity(new UUID(0, 0)), null, args -> null)
+                .instance();
+        var views = new TreeMap<UUID, FabricRollbackPlayerView>();
+        roster.players().forEach((id, body) -> views.put(id, body.use(p -> FabricRollbackPlayerView.capture(p, nativePlayer))));
+        var visibleLocal = new FabricRollbackCameraTest.VisiblePlayer(roster, views.get(player.getUniqueId()), visibleWorld);
+        var visibleVictim = new FabricRollbackCameraTest.VisiblePlayer(roster, views.get(victim.getUniqueId()), visibleWorld);
+        visibleLocal.place(new net.minecraft.util.math.Vec3d(30, 20, 30));
+        visibleVictim.place(new net.minecraft.util.math.Vec3d(30, 20, 41));
+        visibleLocal.aim(0, 0);
+        models.put(visibleVictim.getId(), visibleVictim);
+        var camera = new net.minecraft.client.render.Camera();
+        try (var renderer = new FabricRollbackPlayerRenderer(UUID.randomUUID(), visibleWorld, views.keySet(),
+                () -> true, camera::getCameraPos, pos -> 0)) {
+            renderer.bindCamera(player.getUniqueId(), camera);
+            renderer.bindPicking(source, duel.actors());
+            renderer.bindActors(new FabricRollbackActorRenderer(visibleWorld, duel.actors()::active));
+            renderer.publish(900, 0, views);
+            var hit = assertInstanceOf(net.minecraft.util.hit.EntityHitResult.class, FabricRollbackPlayerRenderer.pick(visibleLocal, visibleLocal, 1));
+            assertSame(visibleVictim, hit.getEntity());
+            assertSame(privateVictim, FabricRollbackCrosshair.packetTarget(visibleVictim, hit));
+            assertEquals(hit.getPos().subtract(privateVictim.getEntityPos()), FabricRollbackCrosshair.offset(hit, visibleVictim));
+            assertEquals(90, nativePlayer.getYaw());
+            assertEquals(11, visibleLocal.distanceTo(visibleVictim));
+            visibleLocal.aim(180, 0);
+            assertEquals(net.minecraft.util.hit.HitResult.Type.MISS, FabricRollbackPlayerRenderer.pick(visibleLocal, visibleLocal, 1).getType());
+            visibleLocal.aim(0, 0);
+            var terrain = duel.scene().logical();
+            privateVictim.setPosition(1.5, 4, 4.4);
+            var wall = terrain.getBlockAt(1, player.getEyeLocation().getBlockY(), 3);
+            wall.setType(Material.STONE, false);
+            var block = assertInstanceOf(net.minecraft.util.hit.BlockHitResult.class, FabricRollbackPlayerRenderer.pick(visibleLocal, visibleLocal, 1));
+            assertEquals(net.minecraft.util.hit.HitResult.Type.BLOCK, block.getType());
+            assertEquals(3, block.getBlockPos().getZ());
+            wall.setType(Material.AIR, false);
+            privateVictim.setPosition(1.5, 4, 10.5);
+            assertEquals(net.minecraft.util.hit.HitResult.Type.MISS, FabricRollbackPlayerRenderer.pick(visibleLocal, visibleLocal, 1).getType());
+            privateVictim.setPosition(1.5, 4, 2.425);
+            var stand = terrain.spawn(new com.projectkorra.projectkorra.platform.mc.Location(terrain, 1.5, 4, 4),
+                    com.projectkorra.projectkorra.platform.mc.entity.ArmorStand.class);
+            renderer.publish(901, 0, views);
+            var attack = new RollbackInputActions.Action(1, 1, RollbackInputActions.Kind.ATTACK, -1,
+                    RollbackInputActions.Hand.MAIN, new RollbackInteractionTarget.Actor(stand.getEntityId(), null));
+            var edge = new RollbackPlayerInput.Edge(attack, 0, 0);
+            assertFalse(RollbackInteractionTarget.allowed(player, edge, 3));
+            player.state().hidden(Set.of(victim.getUniqueId()));
+            var actor = assertInstanceOf(net.minecraft.util.hit.EntityHitResult.class, FabricRollbackPlayerRenderer.pick(visibleLocal, visibleLocal, 1));
+            assertSame(visibleWorld, actor.getEntity().getEntityWorld());
+            assertEquals(stand.getEntityId(), actor.getEntity().getId());
+            assertSame(duel.actors().nativeEntity(stand), FabricRollbackCrosshair.packetTarget(actor.getEntity(), actor));
+            assertTrue(RollbackInteractionTarget.allowed(player, edge, 3));
+            assertNull(FabricRollbackPlayerRenderer.pick(visibleLocal, visibleVictim, 1));
+        }
+        assertNull(FabricRollbackPlayerRenderer.pick(visibleLocal, visibleLocal, 1));
+    }
+
     @Test void replayResolvesTheRequestedTargetFromTheCapturedEyeAtTheInputEdge() throws Exception {
         var duel = FabricRollbackNativeScene.importDuel(bootstrapData(), FabricRollbackTestRegistry.simulationRegistries(),
                 FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);
         var participants = new ArrayList<>(duel.views().players().values());
         var player = participants.getFirst();
         var victim = participants.get(1);
+        player.state().hidden(Set.of());
         ((FabricRollbackNativePlayerState) player.body().kinematicsSource()).ownedPlayer().setPosition(1.5, 4, 1.5);
         ((FabricRollbackNativePlayerState) victim.body().kinematicsSource()).ownedPlayer().setPosition(1.5, 4, 4.5);
         var attack = new RollbackInputActions.Action(1, 1, RollbackInputActions.Kind.ATTACK, -1,

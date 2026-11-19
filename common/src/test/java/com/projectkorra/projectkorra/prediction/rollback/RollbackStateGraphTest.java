@@ -9,11 +9,45 @@ import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class RollbackStateGraphTest {
+    @Test void cachedFieldBindingsRespectChangingSelectionAndDeclaredReferenceTypes() {
+        class State {
+            int number;
+            String label;
+            Object reference;
+        }
+        var parent = new State();
+        var child = new State();
+        parent.reference = child;
+        child.reference = parent;
+        child.number = 7;
+        child.label = "original";
+        var selectLabel = new AtomicBoolean(false);
+        var selective = new RollbackStateGraph(ignored -> false,
+                field -> !field.getName().equals("label") || selectLabel.get(), 2);
+        var first = selective.capture(List.of(parent), List.of());
+        child.number = 11;
+        child.label = "changed";
+        first.restore();
+        assertEquals(7, child.number);
+        assertEquals("changed", child.label);
+
+        selectLabel.set(true);
+        var second = selective.capture(List.of(parent), List.of());
+        child.label = "later";
+        parent.reference = "replacement";
+        second.restore();
+        assertSame(child, parent.reference);
+        assertSame(parent, child.reference);
+        assertEquals("changed", child.label);
+        assertEquals(2, second.objectCount());
+    }
+
     private final RollbackStateGraph graph = new RollbackStateGraph(ignored -> false, ignored -> true, 10_000);
 
     private static class BaseValues { private int hidden = 7; }

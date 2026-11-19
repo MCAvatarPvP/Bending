@@ -42,6 +42,17 @@ public abstract class RollbackPlayerExecution<E> implements RollbackCombatRuntim
     private long tick = -1;
     private boolean worldTicked;
     private RollbackControlEvents controlEvents;
+    private RollbackArenaFloor arenaFloor;
+    private RollbackRound round;
+
+    final void arenaFloor(RollbackArenaFloor floor, RollbackRound round) {
+        requireIdle();
+        if (arenaFloor != null) throw new IllegalStateException("Arena floor is already bound");
+        floor.validate(round);
+        this.arenaFloor = floor;
+        this.round = round;
+    }
+
     private final RollbackStepOutput<E> output;
     private RollbackStepOutput<E>.Binding outputBinding;
 
@@ -137,6 +148,7 @@ public abstract class RollbackPlayerExecution<E> implements RollbackCombatRuntim
         worldTicked = true;
         for (var participant : players.values()) {
             tickPlayer(participant);
+            if (arenaFloor != null) arenaFloor.afterMovement(round, participant);
             if (participant.isOnGround() && participant.isFlying()
                     && participant.getGameMode() != com.projectkorra.projectkorra.platform.mc.GameMode.SPECTATOR) {
                 RollbackInputActions.flight(participant, false);

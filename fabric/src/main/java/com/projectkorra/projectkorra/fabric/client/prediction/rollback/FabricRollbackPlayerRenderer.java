@@ -40,6 +40,30 @@ public final class FabricRollbackPlayerRenderer implements AutoCloseable {
     private Map<UUID, FabricRollbackPlayerView> views = Map.of();
     private Map<UUID, Float> previousEyes = Map.of();
     private FabricRollbackActorRenderer actors;
+    private net.minecraft.client.network.ClientPlayerEntity selector;
+    private FabricRollbackNativePlayerState picker;
+    private FabricRollbackActors nativeActors;
+    void bindPicking(FabricRollbackNativePlayerState picker, FabricRollbackActors actors) {
+        this.picker = Objects.requireNonNull(picker); selector = FabricRollbackCrosshair.selector(picker.ownedPlayer()); nativeActors = actors;
+    }
+    public static net.minecraft.util.hit.HitResult pick(Entity local, Entity camera, float delta) {
+        var owner = active;
+        if (owner == null || owner.picker == null || local != camera || !local.getUuid().equals(owner.viewer) || owner.lookup(local) == null) return null;
+        return FabricRollbackCrosshair.pick(owner.selector, owner.picker, delta, local.getPitch(delta), local.getYaw(delta), owner::pickModel);
+    }
+    private Entity pickModel(Entity source) {
+        UUID id = source.getUuid();
+        if (nativeActors != null && source instanceof net.minecraft.entity.player.PlayerEntity) {
+            var player = (com.projectkorra.projectkorra.prediction.rollback.world.RollbackPlayer) nativeActors.logical(picker.ownedPlayer());
+            if (!player.canSee((com.projectkorra.projectkorra.platform.mc.entity.Player) nativeActors.logical(source))) return null;
+        }
+        var live = world.getEntityById(source.getId());
+        if (live != null && live.getUuid().equals(id)) return live;
+        if (participants.contains(id) || actors == null) return null;
+        var model = actors.model(id);
+        // A confirmed actor may already have a live instance with a different tracking ID during handoff.
+        return model != null ? model : ((net.minecraft.client.world.ClientWorld)world).getEntity(id);
+    }
     private UUID viewer;
     void bindActors(FabricRollbackActorRenderer actors) { this.actors = Objects.requireNonNull(actors); }
     public static boolean isReplicaModel(Entity entity) {
@@ -126,7 +150,7 @@ public final class FabricRollbackPlayerRenderer implements AutoCloseable {
         var view = owner.lookup(entity);
         return view == null ? null : new CameraView(view, owner.previousEyes.get(view.id()), owner.viewer.equals(view.id()));
     }
-    @Override public void close() { check(); closed = true; actors = null; views = Map.of(); previousEyes = Map.of(); ownedCamera = null; if (active == this) active = null; }
+    @Override public void close() { check(); closed = true; actors = null; selector = null; picker = null; nativeActors = null; views = Map.of(); previousEyes = Map.of(); ownedCamera = null; if (active == this) active = null; }
     public UUID session() { return session; }
     private void check() { if (thread != Thread.currentThread()) throw new IllegalStateException("Player rendering crossed threads"); }
 }

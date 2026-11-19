@@ -64,7 +64,9 @@ public sealed interface RollbackInteractionTarget {
         eye.setYaw(edge.yaw());
         eye.setPitch(edge.pitch());
         var dir = eye.getDirection();
-        Predicate<Entity> otherTarget = candidate -> !candidate.getUniqueId().equals(player.getUniqueId()) && pickable.test(candidate);
+        Predicate<Entity> otherTarget = candidate -> !candidate.getUniqueId().equals(player.getUniqueId())
+                && (!(candidate instanceof com.projectkorra.projectkorra.platform.mc.entity.Player participant) || player.canSee(participant))
+                && pickable.test(candidate);
         if (target instanceof Dig dig) {
             var pos = new RollbackBlockStore.Position(dig.x, dig.y, dig.z);
             if (!world.terrain().bounds().contains(pos)) return false;

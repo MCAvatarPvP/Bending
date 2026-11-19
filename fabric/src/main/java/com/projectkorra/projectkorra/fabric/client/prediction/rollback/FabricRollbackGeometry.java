@@ -74,7 +74,7 @@ public final class FabricRollbackGeometry implements RollbackWorldQueries.Geomet
             @Override public BlockEntity getBlockEntity(BlockPos pos) { return blockEntities.get(terrain, key(pos), getBlockState(pos)); }
             @Override public BlockState getBlockState(BlockPos pos) {
                 if (++reads[0] > RollbackBlockRay.MAX_VISITED_BLOCKS) throw new IllegalStateException("Movement block read budget exceeded");
-                return decode(terrain.cell(key(pos)).data());
+                return terrainState(terrain, pos);
             }
             @Override public FluidState getFluidState(BlockPos pos) { return getBlockState(pos).getFluidState(); }
             @Override public int getHeight() { return height; }
@@ -108,7 +108,8 @@ public final class FabricRollbackGeometry implements RollbackWorldQueries.Geomet
         return rayTrace(terrain, ray, ShapeContext.of(state.ownedPlayer()));
     }
     private RollbackBlockRay.Hit rayTrace(RollbackBlockStore terrain, RollbackBlockRay ray, ShapeContext collisionContext) {
-        terrain.cell(ray.originBlock());
+        if (ray.originBlock().y() >= minimumY && ray.originBlock().y() < minimumY + height)
+            terrain.cell(ray.originBlock());
         Vec3d from = new Vec3d(ray.x(), ray.y(), ray.z());
         Vec3d to = new Vec3d(ray.endX(), ray.endY(), ray.endZ());
         BlockView view = view(terrain, null, null);
@@ -146,7 +147,7 @@ public final class FabricRollbackGeometry implements RollbackWorldQueries.Geomet
                 return blockEntities.get(terrain, key(pos), getBlockState(pos));
             }
             @Override public BlockState getBlockState(BlockPos pos) {
-                return pos.equals(replaced) ? replacement : decode(terrain.cell(key(pos)).data());
+                return pos.equals(replaced) ? replacement : terrainState(terrain, pos);
             }
             @Override public FluidState getFluidState(BlockPos pos) { return getBlockState(pos).getFluidState(); }
             @Override public int getHeight() { return height; }
@@ -154,6 +155,10 @@ public final class FabricRollbackGeometry implements RollbackWorldQueries.Geomet
         };
     }
 
+    private BlockState terrainState(RollbackBlockStore terrain, BlockPos pos) {
+        if (pos.getY() < minimumY || pos.getY() >= minimumY + height) return net.minecraft.block.Blocks.VOID_AIR.getDefaultState();
+        return decode(terrain.cell(key(pos)).data());
+    }
     private static Position key(BlockPos position) { return new Position(position.getX(), position.getY(), position.getZ()); }
     private static Box box(net.minecraft.util.math.Box box) {
         return new Box(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);

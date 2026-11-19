@@ -154,7 +154,7 @@ class FabricRollbackCameraTest {
         }).instance();
     }
     /** Real native player fields/attributes with a test-only rendering world; no game client or graphical window. */
-    private static final class VisiblePlayer extends PlayerEntity {
+    static final class VisiblePlayer extends PlayerEntity {
         private World visibleWorld;
         VisiblePlayer(FabricRollbackRoster roster, FabricRollbackPlayerView view, World visibleWorld) {
             super(roster.world().world(), new GameProfile(view.id(), "CameraTest"));

@@ -150,6 +150,7 @@ public final class PaperRollbackGeometry implements RollbackWorldQueries.Geometr
         @Override public int getMinY() { return minimumY; }
         @Override public int getHeight() { return height; }
         @Override public BlockState getBlockState(BlockPos pos) {
+            if (isOutsideBuildHeight(pos)) return net.minecraft.world.level.block.Blocks.VOID_AIR.defaultBlockState();
             Position key = position(pos);
             // Expose pending setBlockData geometry before installing its overlay.
             return key.equals(replaced) ? replacement : decode(terrain.cell(key).data());
@@ -157,7 +158,10 @@ public final class PaperRollbackGeometry implements RollbackWorldQueries.Geometr
         @Override public BlockState getBlockStateIfLoaded(BlockPos pos) { return getBlockState(pos); }
         @Override public FluidState getFluidState(BlockPos pos) { return getBlockState(pos).getFluidState(); }
         @Override public FluidState getFluidIfLoaded(BlockPos pos) { return getFluidState(pos); }
-        @Override public BlockEntity getBlockEntity(BlockPos pos) { return (BlockEntity) blockEntities.get(terrain, position(pos), getBlockState(pos)); }
+        @Override public BlockEntity getBlockEntity(BlockPos pos) {
+            var state = getBlockState(pos);
+            return state.hasBlockEntity() ? (BlockEntity) blockEntities.get(terrain, position(pos), state) : null;
+        }
     }
 
     private final class CollisionView extends TerrainView implements CollisionGetter {

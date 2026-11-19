@@ -113,7 +113,14 @@ public final class FabricRollbackWorldQueries implements FabricRollbackWorldAcce
         this.players = List.copyOf(players); this.membership = Collections.unmodifiableSet(membership); this.nativeWorld = roster.world().world(); this.owner = roster.world();
     }
     @Override public BlockState getBlockState(BlockPos pos) {
-        checkThread(); var cell = logical.terrain().cell(key(pos));
+        checkThread();
+        // A presentation ray can extend beyond the exported arena. Only exported cells can be picked.
+        var position = key(pos);
+        if (pos.getY() < logical.getMinHeight() || pos.getY() >= logical.getMaxHeight())
+            return net.minecraft.block.Blocks.VOID_AIR.getDefaultState();
+        if (FabricRollbackCrosshair.active(nativeWorld) && !logical.terrain().bounds().contains(position))
+            return net.minecraft.block.Blocks.AIR.getDefaultState();
+        var cell = logical.terrain().cell(position);
         var state = states.get(cell);
         if (state == null) {
             state = FabricRollbackGeometry.decode(cell.data());
@@ -155,7 +162,9 @@ public final class FabricRollbackWorldQueries implements FabricRollbackWorldAcce
         }
     }
     @Override public RegistryEntry<Biome> biome(BlockPos pos) {
-        checkThread(); var cell = logical.terrain().cell(key(pos));
+        checkThread();
+        int y = Math.clamp(pos.getY(), logical.getMinHeight(), logical.getMaxHeight() - 1);
+        var cell = logical.terrain().cell(new RollbackBlockStore.Position(pos.getX(), y, pos.getZ()));
         return registries.getOrThrow(RegistryKeys.BIOME).getEntry(Identifier.of(cell.biomeKey()))
                 .orElseThrow(() -> new IllegalStateException("Captured biome is absent from session registries: " + cell.biomeKey()));
     }
@@ -166,7 +175,8 @@ public final class FabricRollbackWorldQueries implements FabricRollbackWorldAcce
 
     @Override public List<? extends Entity> otherEntities(Entity except, Box bounds) { return getOtherEntities(except, bounds, entity -> true); }
     @Override public List<Entity> getOtherEntities(Entity except, Box bounds, Predicate<? super Entity> predicate) {
-        requireRoster(); requireMember(except); requireBounds(bounds); Objects.requireNonNull(predicate);
+        requireRoster(); requireMember(except); Objects.requireNonNull(predicate);
+        if (!FabricRollbackCrosshair.active(nativeWorld)) requireBounds(bounds);
         var result = new ArrayList<Entity>();
         for (var player : players) if (player != except && !player.isRemoved() && player.getBoundingBox().intersects(bounds) && predicate.test(player)) result.add(player);
         for (var actor : owner.activeActors()) if (actor != except && !actor.isRemoved() && actor.getBoundingBox().intersects(bounds) && predicate.test(actor)) result.add(actor);
@@ -233,8 +243,8 @@ public final class FabricRollbackWorldQueries implements FabricRollbackWorldAcce
     private void requireBounds(Box bounds) {
         var box = new RollbackBlockStore.Box(bounds.minX, bounds.minY, bounds.minZ, bounds.maxX, bounds.maxY, bounds.maxZ);
         RollbackMovementSolver.requireBlockQuery(box); var captured = logical.terrain().bounds();
-        if (box.minX() < captured.minX() || box.maxX() > captured.maxX() || box.minY() < captured.minY() || box.maxY() > captured.maxY()
-                || box.minZ() < captured.minZ() || box.maxZ() > captured.maxZ()) throw new IllegalStateException("Entity query outside captured terrain");
+        if (!captured.coversWorldQuery(box, logical.getMinHeight(), logical.getMaxHeight()))
+            throw new IllegalStateException("Entity query outside captured terrain");
     }
     private static RollbackBlockStore.Position key(BlockPos pos) { return new RollbackBlockStore.Position(pos.getX(), pos.getY(), pos.getZ()); }
     private void checkThread() { if (Thread.currentThread() != thread) throw new IllegalStateException("Private world queries crossed threads"); }

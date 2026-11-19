@@ -222,9 +222,15 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
             globals.requireNoInitialActors(views.getFirst().getWorld(), request.terrain(), ids);
             globals.bindLayers(layerLease.seed());
             time = RollbackTiming.finish(time, "enroll.participantGlobals");
-            var rules = request.interactions() == null ? PaperRollbackMatchRules.capture(request, players.values().iterator().next().getBukkitEntity()) : request.interactions();
-            captured = PaperRollbackDuelSeed.captureOwned(ownership, request.withInteractions(rules), challenge, definitions.definitions(),
-                    players.values(), services, bending.values(), ProjectKorra.collisionManager, List.of(reservation, regions, globals),
+            var gameplay = new ArrayList<Object>(List.of(reservation, regions, globals));
+            var interactions = request.interactions();
+            if (interactions == null) {
+                var rules = PaperRollbackMatchRules.capture(request, players.values().iterator().next().getBukkitEntity());
+                gameplay.add(rules.floor());
+                interactions = rules.interactions();
+            }
+            captured = PaperRollbackDuelSeed.captureOwned(ownership, request.withInteractions(interactions), challenge, definitions.definitions(),
+                    players.values(), services, bending.values(), ProjectKorra.collisionManager, gameplay,
                     graph, List.of(), seed, Long.rotateLeft(seed, 29), CAPTURE_LIMITS, terrain,
                     codec -> live = new PaperRollbackMatchRestoration.LiveRoster(players, bending, reservation, original, codec, layerLease));
             time = RollbackTiming.finish(time, "enroll.seed");

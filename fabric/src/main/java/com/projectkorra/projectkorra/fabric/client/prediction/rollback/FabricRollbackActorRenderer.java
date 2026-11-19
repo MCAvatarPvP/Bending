@@ -47,6 +47,7 @@ final class FabricRollbackActorRenderer {
         lastTick = tick;
     }
 
+    Entity model(UUID id) { return models.get(id); }
     boolean owns(Entity model) { return models.get(model.getUuid()) == model; }
 
     Iterable<Entity> append(Iterable<Entity> ordinary) {

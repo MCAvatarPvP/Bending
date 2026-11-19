@@ -13,6 +13,8 @@ import net.minecraft.world.World;
 /** Owned replica body: use the client's input factors at the native input phase, followed by ordinary native travel. */
 public abstract class FabricRollbackSimulatedPlayer extends FabricRollbackDamagePlayer {
     protected FabricRollbackSimulatedPlayer(World world, GameProfile profile) { super(world, profile); }
+    @Override public float getPitch(float delta) { return FabricRollbackCrosshair.pitch(this, super.getPitch(delta)); }
+    @Override public float getYaw(float delta) { return FabricRollbackCrosshair.yaw(this, super.getYaw(delta)); }
     @Override public void startGliding() {
         if (FabricRollbackGliding.allowed(this, true)) super.startGliding();
         else super.stopGliding(); // Paper marks both transitions when a start request is cancelled.

@@ -79,14 +79,18 @@ public final class PaperRollbackWorldQueries implements PaperRollbackWorldAccess
     @Override public BlockState blockState(int x, int y, int z) { return getBlockState(new BlockPos(x, y, z)); }
     @Override public BlockEntity blockEntity(int x, int y, int z) { return getBlockEntity(new BlockPos(x, y, z)); }
     @Override public BlockState getBlockState(BlockPos pos) {
-        checkThread(); var cell = logical.terrain().cell(key(pos)); var state = states.get(cell);
+        checkThread();
+        if (isOutsideBuildHeight(pos)) return net.minecraft.world.level.block.Blocks.VOID_AIR.defaultBlockState();
+        var cell = logical.terrain().cell(key(pos)); var state = states.get(cell);
         if (state == null) {
             state = decoder.decode(cell.data()); if (states.size() >= 4096) states.clear(); states.put(cell, state);
         }
         return state;
     }
     @Override public FluidState getFluidState(BlockPos pos) { return getBlockState(pos).getFluidState(); }
-    @Override public BlockState getBlockStateIfLoaded(BlockPos pos) { return chunkLoaded(pos.getX() >> 4, pos.getZ() >> 4) ? getBlockState(pos) : null; }
+    @Override public BlockState getBlockStateIfLoaded(BlockPos pos) {
+        return isOutsideBuildHeight(pos) || chunkLoaded(pos.getX() >> 4, pos.getZ() >> 4) ? getBlockState(pos) : null;
+    }
     @Override public FluidState getFluidIfLoaded(BlockPos pos) { var state = getBlockStateIfLoaded(pos); return state == null ? null : state.getFluidState(); }
     @Override public BlockEntity getBlockEntity(BlockPos pos) {
         var state = getBlockState(pos); if (!state.hasBlockEntity()) return null;
@@ -198,7 +202,8 @@ public final class PaperRollbackWorldQueries implements PaperRollbackWorldAccess
     private void requireBounds(AABB bounds) {
         var box = new RollbackBlockStore.Box(bounds.minX, bounds.minY, bounds.minZ, bounds.maxX, bounds.maxY, bounds.maxZ);
         RollbackMovementSolver.requireBlockQuery(box); var b = logical.terrain().bounds();
-        if (box.minX() < b.minX() || box.maxX() > b.maxX() || box.minY() < b.minY() || box.maxY() > b.maxY() || box.minZ() < b.minZ() || box.maxZ() > b.maxZ()) throw new IllegalStateException("Entity query outside captured terrain");
+        if (!b.coversWorldQuery(box, logical.getMinHeight(), logical.getMaxHeight()))
+            throw new IllegalStateException("Entity query outside captured terrain");
     }
     private static RollbackBlockStore.Position key(BlockPos pos) { return new RollbackBlockStore.Position(pos.getX(), pos.getY(), pos.getZ()); }
     private void checkThread() { if (thread != Thread.currentThread()) throw new IllegalStateException("Private world queries crossed threads"); }

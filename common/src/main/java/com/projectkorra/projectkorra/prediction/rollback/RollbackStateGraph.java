@@ -12,6 +12,9 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.OptionalInt;
+import java.util.OptionalLong;
+import java.util.OptionalDouble;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,9 +49,10 @@ public final class RollbackStateGraph {
     };
 
     private static final class Layout {
-        final List<Field> declared;
-        final List<Field> sorted;
-        final Map<Field, FieldAccess> accessors = new ConcurrentHashMap<>();
+        final List<Slot> declared;
+        final List<Slot> sorted;
+        final Map<Field, Slot> staticSlots = new ConcurrentHashMap<>();
+        final List<Field> staticFields;
 
         Layout(Class<?> type) {
             var fields = List.of(type.getDeclaredFields());
@@ -58,8 +62,35 @@ public final class RollbackStateGraph {
                         && Collection.class.isAssignableFrom(field.getType())
                         && Set.of("entries", "keys", "values").contains(field.getName()))).toList();
             }
-            declared = fields;
-            sorted = declared.stream().sorted(Comparator.comparing(Field::getName)).toList();
+            declared = fields.stream().filter(field -> !Modifier.isStatic(field.getModifiers())).map(Slot::new).toList();
+            sorted = declared.stream().sorted(Comparator.comparing(slot -> slot.field.getName())).toList();
+            staticFields = fields.stream().filter(field -> Modifier.isStatic(field.getModifiers()))
+                    .sorted(Comparator.comparing(Field::getName)).toList();
+        }
+    }
+
+    private static final class Slot {
+        private static final Set<Class<?>> LEAVES = Set.of(String.class, Class.class, UUID.class,
+                OptionalInt.class, OptionalLong.class, OptionalDouble.class, Boolean.class, Byte.class,
+                Short.class, Integer.class, Long.class, Float.class, Double.class, Character.class);
+        final Field field;
+        final boolean visitReference;
+        private volatile FieldAccess access;
+
+        Slot(Field field) {
+            this.field = field;
+            var type = field.getType();
+            visitReference = !type.isPrimitive() && !Enum.class.isAssignableFrom(type) && !LEAVES.contains(type);
+        }
+
+        FieldAccess access() {
+            var bound = access;
+            return bound == null ? bind() : bound;
+        }
+
+        private synchronized FieldAccess bind() {
+            if (access == null) access = new FieldAccess(field);
+            return access;
         }
     }
 
@@ -131,13 +162,13 @@ public final class RollbackStateGraph {
         for (Field field : bindings) {
             if (!Modifier.isStatic(field.getModifiers()) || Modifier.isFinal(field.getModifiers()))
                 throw new IllegalArgumentException("Expected a replaceable static binding: " + field);
-            var access = LAYOUTS.get(field.getDeclaringClass()).accessors.computeIfAbsent(field, FieldAccess::new);
+            var access = LAYOUTS.get(field.getDeclaringClass()).staticSlots.computeIfAbsent(field, Slot::new).access();
             capture.fields.add(null, access, access.read(null));
         }
         for (Object root : roots) capture.visit(root);
         for (Field field : staticRoots) {
             if (!Modifier.isStatic(field.getModifiers())) throw new IllegalArgumentException("Expected static root: " + field);
-            capture.field(null, field);
+            capture.field(null, LAYOUTS.get(field.getDeclaringClass()).staticSlots.computeIfAbsent(field, Slot::new));
         }
         while (!capture.pending.isEmpty()) capture.scan(capture.pending.removeFirst());
         return new Snapshot(capture.fields, capture.values, capture.indices, capture.guards, capture.seen.size());
@@ -146,8 +177,8 @@ public final class RollbackStateGraph {
     /** Returns an explicit service's static roots without enumerating or initializing unrelated classes. */
     public static List<Field> staticFields(final Class<?> type, final Predicate<Field> select) {
         final List<Field> fields = new ArrayList<>();
-        for (Field field : LAYOUTS.get(type).sorted) {
-            if (Modifier.isStatic(field.getModifiers()) && select.test(field)) fields.add(field);
+        for (Field field : LAYOUTS.get(type).staticFields) {
+            if (select.test(field)) fields.add(field);
         }
         return List.copyOf(fields);
     }
@@ -228,18 +259,17 @@ public final class RollbackStateGraph {
         final List<Restore> guards = new ArrayList<>();
 
         void visit(final Object value) {
-            if (value == null || scalar(value) || external.test(value) || seen.containsKey(value)) return;
-            if (seen.size() >= maximumObjects) throw new IllegalStateException("Rollback state exceeds object budget");
-            seen.put(value, Boolean.TRUE);
+            if (value == null || scalar(value) || external.test(value) || seen.put(value, Boolean.TRUE) != null) return;
+            if (seen.size() > maximumObjects) throw new IllegalStateException("Rollback state exceeds object budget");
             pending.addLast(value);
         }
 
-        void field(final Object owner, final Field field) {
-            if (!included.test(field)) return;
-            final FieldAccess access = LAYOUTS.get(field.getDeclaringClass()).accessors.computeIfAbsent(field, FieldAccess::new);
+        void field(final Object owner, final Slot slot) {
+            if (!included.test(slot.field)) return;
+            final FieldAccess access = slot.access();
             final Object value = access.read(owner);
             fields.add(owner, access, value);
-            visit(value);
+            if (slot.visitReference) visit(value);
         }
 
         @SuppressWarnings({"unchecked", "rawtypes"})
@@ -254,9 +284,7 @@ public final class RollbackStateGraph {
             if (value instanceof Map<?, ?> || value instanceof Collection<?>) {
                 // Addon collection subclasses can carry gameplay fields of their own.
                 for (Class<?> current = type; current.getClassLoader() != null; current = current.getSuperclass()) {
-                    for (Field field : LAYOUTS.get(current).declared) {
-                        if (!Modifier.isStatic(field.getModifiers())) field(value, field);
-                    }
+                    for (Slot slot : LAYOUTS.get(current).declared) field(value, slot);
                 }
             }
             if (type.isArray()) {
@@ -321,7 +349,7 @@ public final class RollbackStateGraph {
                 // The entry cannot change, but its key/value can own mutable state.
                 // Native/addon subclasses may add their own mutable fields too.
                 for (Class<?> current = type; current != java.util.AbstractMap.SimpleImmutableEntry.class; current = current.getSuperclass()) {
-                    for (Field field : LAYOUTS.get(current).declared) if (!Modifier.isStatic(field.getModifiers())) field(value, field);
+                    for (Slot slot : LAYOUTS.get(current).declared) field(value, slot);
                 }
                 visit(entry.getKey());
                 visit(entry.getValue());
@@ -337,7 +365,7 @@ public final class RollbackStateGraph {
                         throw new IllegalStateException("Mutable platform type requires a state adapter: " + current.getName()
                                 + "; referenced by " + fields.referencesTo(value));
                     }
-                    for (Field field : LAYOUTS.get(current).sorted) if (!Modifier.isStatic(field.getModifiers())) field(value, field);
+                    for (Slot slot : LAYOUTS.get(current).sorted) field(value, slot);
                 }
             }
         }

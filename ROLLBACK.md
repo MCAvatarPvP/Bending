@@ -55,11 +55,12 @@ implemented by the plugin and verified against the packaged Paper version.
 
 Two Minecraft 1.21.11 Fabric clients and stock Paper 1.21.11 build 132 run the matching ProjectKorra 1.10.35 jars with Neptune 2.3. The loopback test adds 50 ms in each direction for one participant and 10 ms for the other.
 
-- Both clients opted in and started the same private session. A cold run reached 57 server simulation ticks. A later run with real Rope Dart input exposed a missing permission decision in the shared ability-start listener. Paper restored both players and the clients automatically renegotiated ordinary prediction in the same Neptune round.
+- A classic Chi player and a Martial Arts player both fired Rope Dart inside the same enrolled duel. Both clients rendered their private arrow models. Across 364 and 374 samples of Minecraft's renderer, respectively, neither client showed more than the two projectiles in flight. Both participants moved and fired again late in the run.
+- Paper completed 400 sampled server ticks with nine revisions and 34 replayed steps. On tick 587 the authority had finalized tick 579 and held recent inputs from both players. Fresh physical inputs use the latest server head to recover when a client falls behind the finalized frame. Queued inputs keep their original tick.
+- Across those 400 ticks on a cold server with one active duel, whole-server tick duration was 21.35 ms median, 54.92 ms p95, 141.27 ms p99 and 162.85 ms maximum. Twenty-five ticks exceeded 50 ms. Inside the simulation, p95 was 155.0 ms for the first 20 ticks and 44.36 ms for the remaining 380. Enrollment was measured separately.
 - In ordinary prediction, a physical Paralyze attack produced one local action and one claim for the defender. Paper applied and released the stun, and the caster received the cooldown. Neptune rejected the same attack in the lobby.
 - One Smokescreen swing produced a single Paper snowball and accepted impact. The caster rendered the predicted cloud and the defender rendered the authoritative cloud. A canceled impact removed the provisional cloud on the caster and produced no cloud for the defender.
-- In ordinary prediction, simultaneous Rope Darts produced one native arrow per caster. Across 60 samples on each client, the native renderer and particle probes reported at most two visible arrows, including the frame when the local arrow handed off to its server counterpart.
-- Across all 57 cold server simulation ticks the median was 17.52 ms, p95 was 47.88 ms and the maximum was 137.6 ms. World and player setup are measured separately and still exceed 50 ms on a cold server. This run covered one duel.
+- Voluntarily leaving an enrolled session returned both participants to ordinary prediction in the lobby. A failure during the private round also restored both participants and renegotiated ordinary prediction in the same Neptune round.
 
 ## Implementation history
 

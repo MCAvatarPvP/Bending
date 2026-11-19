@@ -57,11 +57,24 @@ public final class RollbackRound implements RollbackStateCell<RollbackRound.Chec
         if (cancelled || ended || defeated.contains(victim) || (attacker != null && defeated.contains(attacker))) return DamageResult.CANCEL;
         if (attacker != null) attackers.put(victim, attacker);
         if (!endsLife(health, finalDamage, holdingTotem)) return DamageResult.ALLOW;
+        recordDefeat(victim);
+        return DamageResult.DEFEAT;
+    }
+
+    /** Neptune treats crossing the arena floor as an uncredited death even after an earlier hit. */
+    public void fellBelowArena(UUID victim) {
+        check(); participant(victim);
+        if (tick == 0 || tick <= confirmed) throw new IllegalStateException("Arena defeat requires an unconfirmed tick");
+        if (ended || defeated.contains(victim)) return;
+        attackers.remove(victim);
+        recordDefeat(victim);
+    }
+
+    private void recordDefeat(UUID victim) {
         defeated.add(victim);
         defeats.add(new Defeat(session, tick, victim, attackers.get(victim)));
         ended = sides.entrySet().stream().filter(entry -> !defeated.contains(entry.getKey()))
                 .map(Map.Entry::getValue).distinct().limit(2).count() < 2;
-        return DamageResult.DEFEAT;
     }
 
     public Set<UUID> participants() { check(); return sides.keySet(); }

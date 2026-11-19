@@ -3,6 +3,7 @@ package com.projectkorra.projectkorra.fabric.mixin.client;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.projectkorra.projectkorra.fabric.client.prediction.rollback.FabricRollbackNativeActions;
+import com.projectkorra.projectkorra.fabric.client.prediction.rollback.FabricRollbackCrosshair;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.network.ClientPlayerInteractionManager;
 import net.minecraft.entity.Entity;
@@ -27,6 +28,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 /** Capture before native item, block, inventory and entity side effects. Ordinary managers/players take the original path. */
 @Mixin(ClientPlayerInteractionManager.class)
 abstract class ClientInteractionRollbackMixin {
+    @org.spongepowered.asm.mixin.Unique
+    private static Entity projectkorra$packetTarget(Entity target) {
+        var client = net.minecraft.client.MinecraftClient.getInstance();
+        return FabricRollbackCrosshair.packetTarget(target, client == null ? null : client.crosshairTarget);
+    }
     @Inject(method = "interactItem", at = @At("HEAD"), cancellable = true)
     private void projectkorra$item(PlayerEntity player, Hand hand, CallbackInfoReturnable<ActionResult> callback) {
         if (FabricRollbackNativeActions.packet((ClientPlayerInteractionManager) (Object) this, player,
@@ -40,17 +46,17 @@ abstract class ClientInteractionRollbackMixin {
     @Inject(method = "interactEntityAtLocation", at = @At("HEAD"), cancellable = true)
     private void projectkorra$entityAt(PlayerEntity player, Entity target, EntityHitResult hit, Hand hand, CallbackInfoReturnable<ActionResult> callback) {
         if (FabricRollbackNativeActions.packet((ClientPlayerInteractionManager) (Object) this, player,
-                () -> PlayerInteractEntityC2SPacket.interactAt(target, player.isSneaking(), hand, hit.getPos().subtract(target.getEntityPos())))) callback.setReturnValue(ActionResult.CONSUME);
+                () -> PlayerInteractEntityC2SPacket.interactAt(FabricRollbackCrosshair.packetTarget(target, hit), player.isSneaking(), hand, FabricRollbackCrosshair.offset(hit, target)))) callback.setReturnValue(ActionResult.CONSUME);
     }
     @Inject(method = "interactEntity", at = @At("HEAD"), cancellable = true)
     private void projectkorra$entity(PlayerEntity player, Entity target, Hand hand, CallbackInfoReturnable<ActionResult> callback) {
         if (FabricRollbackNativeActions.packet((ClientPlayerInteractionManager) (Object) this, player,
-                () -> PlayerInteractEntityC2SPacket.interact(target, player.isSneaking(), hand))) callback.setReturnValue(ActionResult.CONSUME);
+                () -> PlayerInteractEntityC2SPacket.interact(projectkorra$packetTarget(target), player.isSneaking(), hand))) callback.setReturnValue(ActionResult.CONSUME);
     }
     @Inject(method = "attackEntity", at = @At("HEAD"), cancellable = true)
     private void projectkorra$attack(PlayerEntity player, Entity target, CallbackInfo callback) {
         if (FabricRollbackNativeActions.packet((ClientPlayerInteractionManager) (Object) this, player,
-                () -> PlayerInteractEntityC2SPacket.attack(target, player.isSneaking()))) callback.cancel();
+                () -> PlayerInteractEntityC2SPacket.attack(projectkorra$packetTarget(target), player.isSneaking()))) callback.cancel();
     }
     @Inject(method = "stopUsingItem", at = @At("HEAD"), cancellable = true)
     private void projectkorra$release(PlayerEntity player, CallbackInfo callback) {

@@ -84,7 +84,8 @@ public final class FabricRollbackEnvironment implements EnvironmentAttributeAcce
         if (!Double.isFinite(position.x) || !Double.isFinite(position.y) || !Double.isFinite(position.z)
                 || position.x < Integer.MIN_VALUE || position.x > Integer.MAX_VALUE || position.y < Integer.MIN_VALUE || position.y > Integer.MAX_VALUE
                 || position.z < Integer.MIN_VALUE || position.z > Integer.MAX_VALUE) throw new IllegalArgumentException("Environment position");
-        return logical.terrain().cell(new RollbackBlockStore.Position((int) Math.floor(position.x), (int) Math.floor(position.y), (int) Math.floor(position.z)));
+        int y = Math.clamp((int)Math.floor(position.y), logical.getMinHeight(), logical.getMaxHeight() - 1);
+        return logical.terrain().cell(new RollbackBlockStore.Position((int)Math.floor(position.x), y, (int)Math.floor(position.z)));
     }
     private void sync() { checkThread(); long day = logical.getFullTime(); if (day != cachedDay) { evaluator.tick(); cachedDay = day; } }
     @Override public Snapshot captureRollbackState() { checkThread(); return new Snapshot(this); }

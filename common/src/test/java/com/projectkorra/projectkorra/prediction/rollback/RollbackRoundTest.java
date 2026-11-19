@@ -33,6 +33,29 @@ public class RollbackRoundTest {
 
     private RollbackRound duel() { return new RollbackRound(SESSION, Map.of(A, A, B, B)); }
 
+    @Test void crossingArenaFloorCanRewindAndConfirmsOnceWithoutAttributingAnEarlierHit() {
+        var round = duel();
+        var delivered = new ArrayList<RollbackRound.Defeat>();
+        round.beginTick(1);
+        round.damage(A, B, 20, 3, false, false);
+        var beforeFall = round.snapshot();
+        round.beginTick(2);
+        round.fellBelowArena(A);
+        round.fellBelowArena(A);
+        round.importData(round.exportData());
+        round.finalizeThrough(1, delivered::add);
+        assertTrue(delivered.isEmpty());
+        round.restore(beforeFall);
+        assertTrue(round.active(A));
+        assertEquals(B, round.exportData().attackers().get(A));
+        round.beginTick(2);
+        round.beginTick(3);
+        round.fellBelowArena(A);
+        round.finalizeThrough(3, delivered::add);
+        round.finalizeThrough(3, delivered::add);
+        assertEquals(List.of(new RollbackRound.Defeat(SESSION, 3, A, null)), delivered);
+    }
+
     @Test public void lateDodgeRetractsTheProvisionalDefeatBeforeAnyMatchResultIsDelivered() {
         var round = duel();
         var beforeHit = round.snapshot();

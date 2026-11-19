@@ -43,6 +43,13 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
             final long volume = Math.multiplyExact(Math.multiplyExact((long) maxX - minX, (long) maxY - minY), (long) maxZ - minZ);
             if (volume > 16_777_216L) throw new IllegalArgumentException("Terrain volume exceeds budget");
         }
+        /** Only the part of a native query within the dimension's build height can require captured blocks. */
+        public boolean coversWorldQuery(Box box, int worldMinY, int worldMaxY) {
+            if (box.minX < minX || box.maxX > maxX || box.minZ < minZ || box.maxZ > maxZ) return false;
+            if (box.maxY < worldMinY || box.minY >= worldMaxY) return true;
+            return Math.max(box.minY, worldMinY) >= minY && Math.min(box.maxY, worldMaxY) <= maxY;
+        }
+
         public boolean contains(Position position) {
             return position.x >= minX && position.x < maxX && position.y >= minY && position.y < maxY
                     && position.z >= minZ && position.z < maxZ;
