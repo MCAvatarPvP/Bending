@@ -170,12 +170,14 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
                 @Override public void step(long tick, Map<UUID, I> inputs, RollbackStep<E> effects) {
                     Throwable failure = null;
                     try {
+                        RollbackAbilityGlobals.requireIsolatedManagers();
                         if (round != null) round.beginTick(tick);
                         execution.begin(effects);
                         scheduler.advance(tick);
                         // The engine supplies UUID order, independent of network arrival order.
                         inputs.forEach(execution::input);
                         execution.tickWorld(tick);
+                        RollbackAbilityGlobals.requireIsolatedManagers();
                         state.manager.run();
                     } catch (RuntimeException | Error exception) {
                         failure = exception;
@@ -293,21 +295,7 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
         if (RollbackDomain.active() || RollbackClock.active()) throw new IllegalStateException("Export requires a live tick boundary");
         var frontier = engine.diagnostics();
         engine.frames(frontier.tick(), frontier.tick());
-        var confirmed = engine.confirmed();
-        return domain.call(() -> {
-            var current = domain.capture();
-            Throwable failure = null;
-            try {
-                domain.restore(confirmed.state());
-                return Objects.requireNonNull(reader.get(), "Confirmed state");
-            } catch (RuntimeException | Error problem) { failure = problem; throw problem; }
-            finally {
-                try { domain.restore(current); }
-                catch (RuntimeException | Error restoreFailure) {
-                    if (failure != null) failure.addSuppressed(restoreFailure); else throw restoreFailure;
-                }
-            }
-        });
+        return domain.readConfirmed(engine.confirmed().state(), reader);
     }
 
     /**

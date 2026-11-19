@@ -61,7 +61,8 @@ public final class RollbackActorRegistry implements RollbackStateCell<RollbackAc
         return active().stream().map(actor -> {
             Entity view = actor.view();
             Class<?> contract = view.getClass();
-            while (contract != null && !contract.getPackageName().equals(Entity.class.getPackageName()))
+            while (contract != null && (contract.getClassLoader() != Entity.class.getClassLoader()
+                    || !contract.getPackageName().equals(Entity.class.getPackageName())))
                 contract = contract.getSuperclass();
             if (contract == null || !Entity.class.isAssignableFrom(contract))
                 throw new IllegalStateException("Missing shared actor facade contract");

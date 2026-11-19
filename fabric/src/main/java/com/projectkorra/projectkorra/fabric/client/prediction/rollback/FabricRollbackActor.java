@@ -24,9 +24,11 @@ final class FabricRollbackActor implements RollbackActorRegistry.Actor<RollbackS
     private final RollbackStateGraph graph;
     private final RollbackEntityBody body;
     private final com.projectkorra.projectkorra.platform.mc.entity.Entity view;
+    private final int lifespan;
 
     <T extends com.projectkorra.projectkorra.platform.mc.entity.Entity> FabricRollbackActor(
-            Entity entity, Identity identity, RollbackWorld world, RollbackEntityBody.Rules policy, Class<T> type, RollbackTypedEntity.Specialized specialized) {
+            Entity entity, Identity identity, RollbackWorld world, RollbackEntityBody.Rules policy, int lifespan, Class<T> type, RollbackTypedEntity.Specialized specialized) {
+        this.lifespan = lifespan;
         this.nativeEntity = Objects.requireNonNull(entity); this.identity = Objects.requireNonNull(identity);
         if (entity instanceof PlayerEntity) throw new IllegalArgumentException("Actor cannot own a participant");
         entity.setUuid(identity.uuid()); entity.setId(identity.networkId());
@@ -73,8 +75,10 @@ final class FabricRollbackActor implements RollbackActorRegistry.Actor<RollbackS
     }
     @Override public double eyeHeight() { return nativeEntity.getEyeHeight(nativeEntity.getPose()); }
     @Override public void tick() {
-        if (body.valid() && !nativeEntity.hasVehicle() && !nativeEntity.isRemoved())
-            ((ServerWorld) nativeEntity.getEntityWorld()).tickEntity(nativeEntity);
+        if (body.valid() && !nativeEntity.hasVehicle() && !nativeEntity.isRemoved()) {
+            if (lifespan >= 0 && nativeEntity.age + 1 >= lifespan) nativeEntity.discard();
+            else ((ServerWorld) nativeEntity.getEntityWorld()).tickEntity(nativeEntity);
+        }
         body.liveness(!nativeEntity.isRemoved(), !nativeEntity.isAlive());
     }
     @Override public RollbackStateGraph.Snapshot captureRollbackState() {

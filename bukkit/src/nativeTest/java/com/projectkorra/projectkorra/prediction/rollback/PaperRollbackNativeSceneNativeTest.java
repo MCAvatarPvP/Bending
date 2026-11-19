@@ -32,6 +32,11 @@ class PaperRollbackNativeSceneNativeTest {
             scene.logical().entities().add(display);
             display.setBlock(new PaperRollbackTerrainTransfer().decode(Material.OAK_PLANKS, "minecraft:oak_planks"));
             var saved = actors.registry().exportState();
+            var memory = new RollbackStateGraph(value -> Proxy.isProxyClass(value.getClass()), field -> true, 600_000)
+                    .capture(List.of(actors), List.of());
+            display.setBlock(new PaperRollbackTerrainTransfer().decode(Material.STONE, "minecraft:stone"));
+            memory.restore();
+            assertArrayEquals(saved.encode(), actors.registry().exportState().encode());
             var bindings = actors.registry().bindings();
             assertEquals(1, bindings.size()); assertSame(display, bindings.getFirst().value());
             actors.importState(saved);
@@ -39,6 +44,8 @@ class PaperRollbackNativeSceneNativeTest {
             assertNotSame(display, restored.value()); assertEquals(bindings.getFirst().id(), restored.id());
             assertEquals(com.projectkorra.projectkorra.platform.mc.entity.BlockDisplay.class, restored.type());
             var now = actors.registry().exportState();
+            assertEquals(PaperRollbackBlockSnapshots.decode(RollbackActorFrame.decode(saved.actors().getFirst().state()).nbt()),
+                    PaperRollbackBlockSnapshots.decode(RollbackActorFrame.decode(now.actors().getFirst().state()).nbt()));
             assertArrayEquals(saved.encode(), now.encode());
             assertNull(Bukkit.getServer());
             return null;
@@ -154,6 +161,23 @@ class PaperRollbackNativeSceneNativeTest {
             assertArrayEquals(bytes, queues.captureRollbackState().encode());
             scene.services().advanceTick(1);
             assertEquals(RollbackScheduledTicks.Kind.BLOCK, queues.captureRollbackState().entries().getFirst().kind());
+            var lamp = new BlockData(Material.REDSTONE_LAMP); lamp.setExactState("minecraft:redstone_lamp[lit=true]");
+            logical.setBlockData(lamp, false);
+            world.scheduleTick(pos, net.minecraft.world.level.block.Blocks.REDSTONE_LAMP, 1);
+            scene.services().advanceTick(2);
+            assertTrue(logical.getBlockData().getExactState().contains("lit=false"));
+            logical.setType(Material.WATER, false);
+            world.scheduleTick(pos, net.minecraft.world.level.material.Fluids.WATER, 1);
+            scene.services().advanceTick(3);
+            assertEquals(Material.WATER, scene.logical().getBlockAt(0, 3, 0).getType());
+            var flowing = new BlockData(Material.WATER); flowing.setExactState("minecraft:water[level=1]");
+            for (int x : new int[]{8, 11}) {
+                scene.logical().getBlockAt(x, 10, 0).setBlockData(flowing, false);
+                world.scheduleTick(new net.minecraft.core.BlockPos(x, 10, 0), net.minecraft.world.level.material.Fluids.FLOWING_WATER, 1);
+            }
+            scene.services().advanceTick(4);
+            assertEquals(Material.WATER, scene.logical().getBlockAt(8, 10, 0).getType());
+            assertEquals(Material.AIR, scene.logical().getBlockAt(11, 10, 0).getType());
             return null;
         });
     }
@@ -192,7 +216,19 @@ class PaperRollbackNativeSceneNativeTest {
         return type.cast(Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type}, (proxy, method, args) -> { throw new AssertionError("Unexpected " + method); }));
     }
     private static final class Events implements PaperRollbackWorldServices.Events<Void> {
-        @Override public void event(org.bukkit.event.Event event) { throw new AssertionError("No gameplay event expected"); }
+        @Override public void event(org.bukkit.event.Event event) {
+            if (event instanceof org.bukkit.event.block.BlockFromToEvent) return;
+            if (event instanceof org.bukkit.event.block.FluidLevelChangeEvent level) {
+                level.setCancelled(level.getBlock().getX() == 8);
+                return;
+            }
+            if (event instanceof org.bukkit.event.block.BlockRedstoneEvent redstone) {
+                assertEquals(15, redstone.getOldCurrent());
+                assertEquals(0, redstone.getNewCurrent());
+                return;
+            }
+            throw new AssertionError("No gameplay event expected: " + event);
+        }
         @Override public void gameEvent(Object event, Object pos, Object context) { throw new AssertionError("No gameplay event expected"); }
         @Override public void output(PaperRollbackCombatAccess.Output output) { throw new AssertionError("No output expected"); }
         @Override public Void captureRollbackState() { return null; }

@@ -22,6 +22,7 @@ final class PaperRollbackScheduledTicks implements RollbackStateCell<RollbackSch
     private final Thread thread = Thread.currentThread();
     private final RollbackScheduledTicks seed;
     private final ServerLevel world;
+    private final PaperRollbackTerrainEvents callbacks;
     private Queues<Block> blocks;
     private Queues<Fluid> fluids;
     private long nextOrder;
@@ -58,8 +59,9 @@ final class PaperRollbackScheduledTicks implements RollbackStateCell<RollbackSch
             }
         }
     }
-    PaperRollbackScheduledTicks(ServerLevel world, RollbackScheduledTicks seed) {
-        this.world = world; this.seed = seed;
+    PaperRollbackScheduledTicks(PaperRollbackWorldAccess access, RollbackScheduledTicks seed) {
+        this.world = access.world(); this.seed = seed;
+        callbacks = new PaperRollbackTerrainEvents(access);
         restoreRollbackState(seed);
     }
     LevelTicks<Block> blocks() { check(); return blocks.nativeTicks; }
@@ -88,12 +90,12 @@ final class PaperRollbackScheduledTicks implements RollbackStateCell<RollbackSch
         check();
         blocks.nativeTicks.tick(time, seed.maximumBlockTicks(), (pos, block) -> {
             var state = world.getBlockState(pos);
-            if (state.is(block)) state.tick(world, pos, world.getRandom());
+            if (state.is(block)) callbacks.block(state, pos);
         });
         fluids.nativeTicks.tick(time, seed.maximumFluidTicks(), (pos, fluid) -> {
             var state = world.getBlockState(pos);
             var water = state.getFluidState();
-            if (water.getType() == fluid) water.tick(world, pos, state);
+            if (water.getType() == fluid) callbacks.fluid(water, pos, state);
         });
     }
     @Override public RollbackScheduledTicks captureRollbackState() {
@@ -105,6 +107,10 @@ final class PaperRollbackScheduledTicks implements RollbackStateCell<RollbackSch
         check();
         if (!state.bounds().equals(seed.bounds()) || state.maximumBlockTicks() != seed.maximumBlockTicks()
                 || state.maximumFluidTicks() != seed.maximumFluidTicks()) throw new IllegalArgumentException("Foreign scheduled terrain region");
+        if (state.entries().isEmpty() && blocks != null && blocks.nativeTicks.count() == 0 && fluids.nativeTicks.count() == 0) {
+            nextOrder = state.nextOrder();
+            return;
+        }
         var newBlocks = new Queues<>(BuiltInRegistries.BLOCK, Kind.BLOCK, seed.bounds());
         var newFluids = new Queues<>(BuiltInRegistries.FLUID, Kind.FLUID, seed.bounds());
         for (var e : state.entries()) {

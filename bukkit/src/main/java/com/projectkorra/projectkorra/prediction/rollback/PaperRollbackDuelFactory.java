@@ -14,6 +14,7 @@ public final class PaperRollbackDuelFactory implements PaperRollbackDuels.Simula
     private final PKListener listener;
 
     public PaperRollbackDuelFactory(JavaPlugin plugin, PKListener listener) {
+        PaperRollbackLegacyBlocks.values(); // Load the bundled table at plugin enable.
         this.plugin = plugin;
         this.listener = listener;
     }

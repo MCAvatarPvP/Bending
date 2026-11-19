@@ -2,6 +2,7 @@ package com.projectkorra.projectkorra.fabric.client.prediction.rollback;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackDomain;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackNativeMovements;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackPlayerValues;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackPlayerValues.Kind;
 import net.fabricmc.loader.api.FabricLoader;
@@ -209,6 +210,14 @@ public final class FabricRollbackPlayerValues {
             Map.entry("health.healthScale", Kind.DOUBLE)
     );
 
+    private static final RollbackNativeMovements<net.minecraft.util.math.Vec3d> MOVEMENTS = new RollbackNativeMovements<>(
+            net.minecraft.entity.Entity.class, traceField("field_54947", "Ljava/util/ArrayDeque;"), traceField("field_57579", "Ljava/util/List;"),
+            net.minecraft.util.math.Vec3d.class, v -> new RollbackPlayerValues.Vector(v.x, v.y, v.z),
+            v -> new net.minecraft.util.math.Vec3d(v.x(), v.y(), v.z()));
+    private static String traceField(String id, String descriptor) {
+        return FabricLoader.getInstance().getMappingResolver().mapFieldName("intermediary", "net.minecraft.class_1297", id, descriptor);
+    }
+
     private FabricRollbackPlayerValues() { }
     public static Prepared prepare(RollbackPlayerValues values) {
         if (RollbackClock.active() || RollbackDomain.active()) throw new IllegalStateException("Prepare player values before replay");
@@ -217,6 +226,7 @@ public final class FabricRollbackPlayerValues {
     static Prepared prepareBoundary(RollbackPlayerValues values) {
         if (RollbackClock.active()) throw new IllegalStateException("Cannot replace native state during a tick");
         var remaining = new TreeMap<>(values.fields());
+        var movements = RollbackNativeMovements.History.read(remaining);
         var nativeValues = new ArrayList<Object>(FIELDS.size());
         for (Field field : FIELDS) nativeValues.add(FabricRollbackNativeValues.decode(field.type, RollbackPlayerValues.requireField(field.key, remaining.remove(field.key))));
         if (!remaining.keySet().equals(RETAINED.keySet())) throw new IllegalArgumentException("Player value fields changed");
@@ -224,14 +234,17 @@ public final class FabricRollbackPlayerValues {
             RollbackPlayerValues.requireField(key, cell);
             if (cell.kind() != RETAINED.get(key)) throw new IllegalArgumentException("Paper player value type changed: " + key);
         });
-        return new Prepared(Collections.unmodifiableList(nativeValues), new RollbackPlayerValues(remaining));
+        return new Prepared(Collections.unmodifiableList(nativeValues), new RollbackPlayerValues(remaining), movements);
     }
 
     public static final class Prepared {
         private final Thread owner = Thread.currentThread();
         private final List<Object> nativeValues;
         private final RollbackPlayerValues retained;
-        private Prepared(List<Object> nativeValues, RollbackPlayerValues retained) { this.nativeValues = nativeValues; this.retained = retained; }
+        private final RollbackNativeMovements.History movements;
+        private Prepared(List<Object> nativeValues, RollbackPlayerValues retained, RollbackNativeMovements.History movements) {
+            this.nativeValues = nativeValues; this.retained = retained; this.movements = movements;
+        }
         /** The native policy/maintenance adapter still has to consume and evolve this state. */
         public RollbackPlayerValues retained() { return retained; }
         public void apply(FabricRollbackNativePlayerState state) {
@@ -240,6 +253,7 @@ public final class FabricRollbackPlayerValues {
         void applyBoundary(FabricRollbackNativePlayerState state) {
             if (Thread.currentThread() != owner || RollbackClock.active()) throw new IllegalStateException("Cannot replace player values at this boundary");
             state.use(player -> {
+                MOVEMENTS.apply(player, movements);
                 for (int i = 0; i < FIELDS.size(); i++) FIELDS.get(i).write(player, nativeValues.get(i));
                 if (player instanceof FabricRollbackDamagePlayer owned)
                     owned.rollbackInvulnerableDuration = (Integer) retained.fields().get("living.invulnerableDuration").value();
@@ -251,6 +265,7 @@ public final class FabricRollbackPlayerValues {
             requireBootstrap();
             return state.use(player -> {
                 var result = new TreeMap<>(retained.fields());
+                MOVEMENTS.capture(player).export(result);
                 if (player instanceof FabricRollbackDamagePlayer owned)
                     result.put("living.invulnerableDuration", new RollbackPlayerValues.Cell(Kind.INT, owned.rollbackInvulnerableDuration));
                 for (Field field : FIELDS) result.put(field.key, FabricRollbackNativeValues.encode(field.type, field.read(player)));

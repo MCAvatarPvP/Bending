@@ -55,37 +55,50 @@ public final class PaperRollbackTerrainCapture {
             if (chunk == null) throw new IllegalStateException("Terrain capture requires loaded chunk " + x + "," + z);
             loaded.put(ChunkPos.asLong(x, z), chunk);
         }
+        var position = new BlockPos.MutableBlockPos();
+        net.minecraft.world.level.block.state.BlockState lastState = null;
+        net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome> lastNoise = null, lastSmoothed = null;
+        Cell lastCell = null;
+        int runLength = 0;
+        LevelChunk chunk = null;
         for (int y = bounds.minY(); y < bounds.maxY(); y++) for (int z = bounds.minZ(); z < bounds.maxZ(); z++) for (int x = bounds.minX(); x < bounds.maxX(); x++) {
-            var position = new BlockPos(x, y, z);
-            var chunk = loaded.get(ChunkPos.asLong(Math.floorDiv(x, 16), Math.floorDiv(z, 16)));
+            position.set(x, y, z);
+            if (x == bounds.minX() || (x & 15) == 0) chunk = loaded.get(ChunkPos.asLong(x >> 4, z >> 4));
             var nativeState = chunk.getBlockState(position);
+            var noise = source.getNoiseBiome(x >> 2, y >> 2, z >> 2);
+            var smoothed = source.getBiome(position);
+            byte light = (byte)source.getMaxLocalRawBrightness(position);
+            double temperature = smoothed.value().getTemperature(position, source.getSeaLevel());
+            // Repeated cells use the same palette entry. Tile data is position-specific.
+            if (!nativeState.hasBlockEntity() && nativeState == lastState && noise == lastNoise && smoothed == lastSmoothed
+                    && lastCell.light() == light && Double.compare(lastCell.temperature(), temperature) == 0) {
+                runLength++;
+                continue;
+            }
+            if (runLength != 0) builder.append(lastCell, runLength);
             var data = states.computeIfAbsent(nativeState, state -> {
                 var nativeData = CraftBlockData.fromData(state);
                 var detached = BukkitMC.blockData(nativeData);
-                // Preserve properties beyond the common mutable facade (e.g. fire age).
                 detached.setExactState(nativeData.getAsString());
                 return detached;
             });
-            byte[] tile = null;
-            if (nativeState.hasBlockEntity()) {
-                // getBlockEntity/getBlockEntityNbtForSaving may instantiate packed
-                // entities. Read the existing maps without changing the live chunk.
-                tile = encode(blockEntity(source, chunk, position), limits.maximumBlockEntityBytes());
-            }
-            var biome = source.getNoiseBiome(x >> 2, y >> 2, z >> 2);
-            var key = biome.unwrapKey().orElseThrow(() -> new IllegalStateException("Unregistered biome in terrain capture")).identifier();
-            var smoothedBiome = source.getBiome(position);
-            var smoothedKey = smoothedBiome.unwrapKey().orElseThrow(() -> new IllegalStateException("Unregistered smoothed biome in terrain capture")).identifier();
-            // Preserve the existing BukkitMC common-biome mapping. The full native
-            // registry key is retained separately for native world queries.
+            byte[] tile = nativeState.hasBlockEntity()
+                    ? encode(blockEntity(source, chunk, position), limits.maximumBlockEntityBytes()) : null;
+            var key = noise.unwrapKey().orElseThrow(() -> new IllegalStateException("Unregistered biome in terrain capture")).identifier();
+            var smoothedKey = smoothed.unwrapKey().orElseThrow(() -> new IllegalStateException("Unregistered smoothed biome in terrain capture")).identifier();
             Biome common = Biome.DESERT;
             if (key.getNamespace().equals("minecraft")) {
                 try { common = Biome.valueOf(key.getPath().toUpperCase(Locale.ROOT)); }
                 catch (IllegalArgumentException ignored) { }
             }
-            builder.append(new Cell(data, tile, common, smoothedKey.toString(), key.toString(), (byte) source.getMaxLocalRawBrightness(position),
-                    smoothedBiome.value().getTemperature(position, source.getSeaLevel()), biome.value().climateSettings.downfall()));
+            lastCell = new Cell(data, tile, common, smoothedKey.toString(), key.toString(), light,
+                    temperature, noise.value().climateSettings.downfall());
+            lastState = nativeState;
+            lastNoise = noise;
+            lastSmoothed = smoothed;
+            runLength = 1;
         }
+        if (runLength != 0) builder.append(lastCell, runLength);
         if (source.getGameTime() != tick) throw new IllegalStateException("World advanced during synchronous terrain capture");
         return builder.finish();
     }

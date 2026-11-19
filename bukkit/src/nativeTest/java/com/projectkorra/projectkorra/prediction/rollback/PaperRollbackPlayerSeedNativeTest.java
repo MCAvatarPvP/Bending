@@ -293,6 +293,29 @@ class PaperRollbackPlayerSeedNativeTest {
         });
     }
 
+    @Test void movingPlayerImportsOutstandingBlockContactsOnce() throws Exception {
+        onTickThread(() -> {
+            var source = new Scene(); var state = source.create(); var player = (ServerPlayer) state.ownedPlayer();
+            var original = PaperRollbackPlayerSeed.capture(player, EPOCH).values();
+            var fields = new java.util.TreeMap<>(original.fields());
+            var from = new RollbackPlayerValues.Vector(0, 64, 0);
+            var to = new RollbackPlayerValues.Vector(.25, 64, 0);
+            var moves = new RollbackPlayerValues.Movements(List.of(new RollbackPlayerValues.Movement(from, to, null),
+                    new RollbackPlayerValues.Movement(to, from, from)));
+            fields.put("entity.pendingMovements", new RollbackPlayerValues.Cell(RollbackPlayerValues.Kind.MOVEMENTS, moves));
+            var prepared = new RollbackPlayerValues(fields);
+            PaperRollbackPlayerSeed.prepareValues(player, prepared).run();
+            var captured = PaperRollbackPlayerSeed.capture(player, EPOCH);
+            assertEquals(moves, captured.values().fields().get("entity.pendingMovements").value());
+            var imported = new Scene().imported(captured, EPOCH);
+            var replica = (ServerPlayer) imported.ownedPlayer();
+            assertEquals(moves, PaperRollbackPlayerSeed.capture(replica, EPOCH).values().fields().get("entity.pendingMovements").value());
+            PaperRollbackPlayerSeed.prepareValues(replica, original).run();
+            assertFalse(PaperRollbackPlayerSeed.capture(replica, EPOCH).values().fields().containsKey("entity.pendingMovements"));
+            return null;
+        });
+    }
+
     @Test void captureRejectsWrongThreadsReplayAndUnboundRelationsBeforeCreatingAReplica() throws Exception {
         onTickThread(() -> {
             var source = new Scene(); var state = source.create(); var player = (ServerPlayer) state.ownedPlayer();

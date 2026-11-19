@@ -74,6 +74,7 @@ public final class PaperRollbackConnection implements RollbackStateCell<Boolean>
     private void send(Packet<?> packet) {
         check();
         if (packet == null) return;
+        if (packet instanceof ClientboundSetEntityMotionPacket velocity && world.consumeMeleeVelocity(player, velocity)) return;
         if (!AUDITED_PACKETS.containsKey(packet.getClass())) {
             var detached = packetData.capture(packet);
             if (detached != null) { world.output(new PaperRollbackPacketData.Direct(player.getUUID(), detached)); return; }

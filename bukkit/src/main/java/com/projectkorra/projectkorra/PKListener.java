@@ -239,33 +239,12 @@ public class PKListener implements Listener {
         final var toblock = BukkitMC.block(event.getToBlock());
         final var fromblock = BukkitMC.block(event.getBlock());
 
-        if (TempBlock.isTempBlock(fromblock) || TempBlock.isTempBlock(toblock)) {
-            event.setCancelled(true);
-        } else {
-            if (ElementalAbility.isLava(fromblock)) {
-                event.setCancelled(!EarthPassive.canFlowFromTo(fromblock, toblock));
-            } else if (ElementalAbility.isWater(fromblock)) {
-                event.setCancelled(WaterBubble.isAir(toblock));
-                if (!event.isCancelled()) {
-                    event.setCancelled(!WaterManipulation.canFlowFromTo(fromblock, toblock));
-                }
-
-                if (!event.isCancelled()) {
-                    if (Illumination.isIlluminationTorch(toblock)) {
-                        toblock.setType(com.projectkorra.projectkorra.platform.mc.Material.AIR);
-                    }
-                }
-            }
-        }
+        event.setCancelled(com.projectkorra.projectkorra.util.BendingFluidPhysics.cancelFlow(fromblock, toblock));
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onFluidLevelChange(final FluidLevelChangeEvent event) {
-        if (TempBlock.isTempBlock(BukkitMC.block(event.getBlock()))) {
-            event.setCancelled(true);
-        } else if (TempBlock.isTouchingTempBlock(BukkitMC.block(event.getBlock()))) {
-            event.setCancelled(true);
-        }
+        event.setCancelled(com.projectkorra.projectkorra.util.BendingFluidPhysics.cancelLevelChange(BukkitMC.block(event.getBlock())));
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)

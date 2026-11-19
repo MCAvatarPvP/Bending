@@ -295,7 +295,8 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
         roots.add(combos);
         roots.add(AbilityActivationManager.captureRollbackRegistry());
         for (Object service : services) if (!(service instanceof CoreAbility.RollbackIdReservation))
-            roots.add(service instanceof RollbackTaskBindings.Capture tasks ? tasks.bindings() : service);
+            roots.add(service instanceof RollbackTaskBindings.Capture tasks ? tasks.bindings()
+                    : service instanceof RollbackAbilityGlobals globals ? globals.portable() : service);
         // Attribute definitions exist for future activations too. Keep their metadata,
         // but import only this roster's per-instance cache entries. Project the maps,
         // not the cache objects, to preserve references held by arbitrary ability fields.
@@ -427,7 +428,7 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
         var globals = abilityGlobals();
         if (globals != null) {
             globals.validate(playerViews());
-            RollbackDomain.installAbilityGlobals(globals);
+            globals.install();
         }
         materials.install();
         combos.install();

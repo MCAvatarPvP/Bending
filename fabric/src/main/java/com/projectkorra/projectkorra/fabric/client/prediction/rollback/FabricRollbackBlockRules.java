@@ -33,6 +33,8 @@ public final class FabricRollbackBlockRules implements Rules, RollbackStateCell<
     private final RollbackNativeItems<net.minecraft.item.ItemStack> items;
     private FabricRollbackGeometry geometry;
     private RollbackBlockStore terrain;
+    private record NativeUpdate(int flags, int remaining) { }
+    private NativeUpdate pending;
     private ServerWorld world;
 
     public FabricRollbackBlockRules(RollbackNativeItems<net.minecraft.item.ItemStack> items) {
@@ -64,6 +66,10 @@ public final class FabricRollbackBlockRules implements Rules, RollbackStateCell<
     }
     @Override public void physics(RollbackBlockStore store, Position position, Cell before, Cell after) {
         check(store);
+        NativeUpdate update = pending;
+        pending = null;
+        int flags = update == null ? Block.NOTIFY_ALL : update.flags();
+        int remaining = update == null ? net.minecraft.world.World.MAX_UPDATE_DEPTH : update.remaining();
         var pos = pos(position);
         var old = FabricRollbackGeometry.decode(before.data());
         var current = FabricRollbackGeometry.decode(after.data());
@@ -72,14 +78,19 @@ public final class FabricRollbackBlockRules implements Rules, RollbackStateCell<
             old.onStateReplaced(world, pos, false);
             current.onBlockAdded(world, pos, old, false);
         }
-        for (var direction : NeighborUpdater.UPDATE_ORDER) {
-            var neighbor = pos.offset(direction);
-            world.getBlockState(neighbor).neighborUpdate(world, neighbor, old.getBlock(), null, false);
+        if ((flags & Block.NOTIFY_NEIGHBORS) != 0) {
+            for (var direction : NeighborUpdater.UPDATE_ORDER) {
+                var neighbor = pos.offset(direction);
+                world.getBlockState(neighbor).neighborUpdate(world, neighbor, old.getBlock(), null, false);
+            }
+            if (current.hasComparatorOutput()) world.updateComparators(pos, current.getBlock());
         }
-        if (current.hasComparatorOutput()) world.updateComparators(pos, current.getBlock());
-        old.prepare(world, pos, Block.NOTIFY_LISTENERS, net.minecraft.world.World.MAX_UPDATE_DEPTH - 1);
-        current.updateNeighbors(world, pos, Block.NOTIFY_LISTENERS, net.minecraft.world.World.MAX_UPDATE_DEPTH - 1);
-        current.prepare(world, pos, Block.NOTIFY_LISTENERS, net.minecraft.world.World.MAX_UPDATE_DEPTH - 1);
+        if ((flags & Block.FORCE_STATE) == 0 && remaining > 0) {
+            int shapeFlags = flags & ~(Block.NOTIFY_NEIGHBORS | Block.SKIP_DROPS);
+            old.prepare(world, pos, shapeFlags, remaining - 1);
+            current.updateNeighbors(world, pos, shapeFlags, remaining - 1);
+            current.prepare(world, pos, shapeFlags, remaining - 1);
+        }
     }
 
     @Override public Collection<ItemStack> drops(RollbackBlockStore store, Position position, ItemStack tool) {
@@ -123,11 +134,18 @@ public final class FabricRollbackBlockRules implements Rules, RollbackStateCell<
         return removed && harvested;
     }
     boolean write(BlockPos pos, BlockState state, boolean physics) {
+        return write(pos, state, physics ? Block.NOTIFY_ALL : Block.FORCE_STATE, net.minecraft.world.World.MAX_UPDATE_DEPTH);
+    }
+    boolean write(BlockPos pos, BlockState state, int flags, int remaining) {
         if (world.getBlockState(pos) == state) return false;
         var data = FabricMC.blockData(state);
         data.setExactState(BlockArgumentParser.stringifyBlockState(state));
-        terrain.block(pos.getX(), pos.getY(), pos.getZ()).setBlockData(data, physics);
-        return true;
+        var previous = pending;
+        pending = new NativeUpdate(flags, remaining);
+        try {
+            terrain.block(pos.getX(), pos.getY(), pos.getZ()).setBlockData(data, true);
+            return true;
+        } finally { pending = previous; }
     }
     private static BlockPos pos(Position position) { return new BlockPos(position.x(), position.y(), position.z()); }
     @Override public Void captureRollbackState() { check(terrain); return null; }

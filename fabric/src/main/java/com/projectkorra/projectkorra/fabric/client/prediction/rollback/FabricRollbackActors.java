@@ -73,7 +73,8 @@ public final class FabricRollbackActors implements RollbackArenaActions.Native, 
         var nativeType = Registries.ENTITY_TYPE.getEntry(key).orElseThrow().value();
         var e = FabricRollbackActorAllocation.create(server(), nativeType, id);
         var delegate = FabricMC.entity(e);
-        return new FabricRollbackActor(e, id, scene.logical(), this, type, (method, args) -> special(e, delegate, method, args));
+        int lifespan = scene.services().settings().actorDespawnTime().getOrDefault(Registries.ENTITY_TYPE.getId(e.getType()).toString(), -1);
+        return new FabricRollbackActor(e, id, scene.logical(), this, lifespan, type, (method, args) -> special(e, delegate, method, args));
     }
     private Object special(net.minecraft.entity.Entity e, Entity delegate, Method method, Object[] args) throws Throwable {
         switch (method.getName()) {

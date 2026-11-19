@@ -44,6 +44,16 @@ final class PaperRollbackArenaEvents implements PaperRollbackWorldServices.Event
         } catch (ReflectiveOperationException failure) { throw new IllegalStateException("Native vibration listener changed", failure); }
     }
     @Override public void event(Event event) {
+        if (event instanceof org.bukkit.event.block.BlockFromToEvent flow) {
+            var from = flow.getBlock(); var to = flow.getToBlock();
+            flow.setCancelled(com.projectkorra.projectkorra.util.BendingFluidPhysics.cancelFlow(
+                    scene.logical().getBlockAt(from.getX(), from.getY(), from.getZ()),
+                    scene.logical().getBlockAt(to.getX(), to.getY(), to.getZ())));
+        } else if (event instanceof org.bukkit.event.block.FluidLevelChangeEvent change) {
+            var block = change.getBlock();
+            change.setCancelled(com.projectkorra.projectkorra.util.BendingFluidPhysics.cancelLevelChange(
+                    scene.logical().getBlockAt(block.getX(), block.getY(), block.getZ())));
+        }
         if (!policy.pvp() && event instanceof EntityDamageByEntityEvent damage
                 && damage.getDamageSource().getCausingEntity() instanceof org.bukkit.entity.Player attacker
                 && attacker != damage.getEntity()) damage.setCancelled(true);

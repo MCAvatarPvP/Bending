@@ -73,6 +73,7 @@ class PaperRollbackDamageNativeTest {
                 world.attack(attacker, target);
             }
             assertTrue(target.getHealth() < target.getMaxHealth());
+            assertTrue(target.getDeltaMovement().lengthSqr() > 0, "The virtual player must retain its melee impulse");
             assertTrue(combat.events.contains(io.papermc.paper.event.player.PrePlayerAttackEntityEvent.class.getName()));
             return null;
         });

@@ -272,6 +272,12 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
                 .constant(World::getDamageSources, damageSources)
                 .constant(ServerWorld::getGameRules, gameRules)
                 .constant(ServerWorld::getChunkManager, chunks)
+                .nativeQuery(value -> value.isReceivingRedstonePower(BlockPos.ORIGIN), false, args -> terrain())
+                .nativeQuery(value -> value.getReceivedRedstonePower(BlockPos.ORIGIN), 0, args -> terrain())
+                .nativeQuery(value -> value.getReceivedStrongRedstonePower(BlockPos.ORIGIN), 0, args -> terrain())
+                .nativeQuery(value -> value.isEmittingRedstonePower(BlockPos.ORIGIN, net.minecraft.util.math.Direction.UP), false, args -> terrain())
+                .nativeQuery(value -> value.getEmittedRedstonePower(BlockPos.ORIGIN, net.minecraft.util.math.Direction.UP), 0, args -> terrain())
+                .nativeQuery(value -> value.getStrongRedstonePower(BlockPos.ORIGIN, net.minecraft.util.math.Direction.UP), 0, args -> terrain())
                 .query(ServerWorld::getBlockTickScheduler, null, args -> scheduled().blocks())
                 .query(ServerWorld::getFluidTickScheduler, null, args -> scheduled().fluids())
                 .outputQuery(value -> value.scheduleBlockTick(BlockPos.ORIGIN, Blocks.AIR, 1),
@@ -340,9 +346,9 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
                 .nativeQuery(value -> value.getCrammedEntities(null, probeBox), List.of(), args -> check((Box) args[1]))
                 .query(value -> value.getBlockState(BlockPos.ORIGIN), Blocks.AIR.getDefaultState(), args -> queries.getBlockState((BlockPos) args[0]))
                 .query(value -> value.setBlockState(BlockPos.ORIGIN, Blocks.AIR.getDefaultState(), 0), false,
-                        args -> terrain().write((BlockPos) args[0], (BlockState) args[1], ((int) args[2] & net.minecraft.block.Block.FORCE_STATE) == 0))
+                        args -> terrain().write((BlockPos) args[0], (BlockState) args[1], (int) args[2], net.minecraft.world.World.MAX_UPDATE_DEPTH))
                 .query(value -> value.setBlockState(BlockPos.ORIGIN, Blocks.AIR.getDefaultState(), 0, 0), false,
-                        args -> terrain().write((BlockPos) args[0], (BlockState) args[1], ((int) args[2] & net.minecraft.block.Block.FORCE_STATE) == 0))
+                        args -> terrain().write((BlockPos) args[0], (BlockState) args[1], (int) args[2], (int) args[3]))
                 .nativeQuery(value -> value.setBlockState(BlockPos.ORIGIN, Blocks.AIR.getDefaultState()), false, args -> terrain())
                 .nativeQuery(value -> value.removeBlock(BlockPos.ORIGIN, false), false, args -> terrain())
                 .outputQuery(value -> value.replaceWithStateForNeighborUpdate(net.minecraft.util.math.Direction.UP, BlockPos.ORIGIN, BlockPos.ORIGIN,

@@ -27,6 +27,8 @@ public final class PaperRollbackBlockRules implements Rules, RollbackStateCell<V
     private final RollbackNativeItems<net.minecraft.world.item.ItemStack> items;
     private PaperRollbackGeometry geometry;
     private RollbackBlockStore terrain;
+    private record NativeUpdate(int flags, int remaining) { }
+    private NativeUpdate pending;
     private ServerLevel world;
     private boolean alternativeLuckFormula;
 
@@ -59,6 +61,10 @@ public final class PaperRollbackBlockRules implements Rules, RollbackStateCell<V
     }
     @Override public void physics(RollbackBlockStore store, Position position, Cell before, Cell after) {
         check(store);
+        NativeUpdate update = pending;
+        pending = null;
+        int flags = update == null ? Block.UPDATE_ALL : update.flags();
+        int remaining = update == null ? Block.UPDATE_LIMIT : update.remaining();
         var pos = pos(position);
         var old = states.decode(before.data());
         var current = states.decode(after.data());
@@ -67,14 +73,19 @@ public final class PaperRollbackBlockRules implements Rules, RollbackStateCell<V
             old.affectNeighborsAfterRemoval(world, pos, false);
             current.onPlace(world, pos, old, false);
         }
-        for (var direction : NeighborUpdater.UPDATE_ORDER) {
-            var neighbor = pos.relative(direction);
-            world.getBlockState(neighbor).handleNeighborChanged(world, neighbor, old.getBlock(), null, false);
+        if ((flags & Block.UPDATE_NEIGHBORS) != 0) {
+            for (var direction : NeighborUpdater.UPDATE_ORDER) {
+                var neighbor = pos.relative(direction);
+                world.getBlockState(neighbor).handleNeighborChanged(world, neighbor, old.getBlock(), null, false);
+            }
+            if (current.hasAnalogOutputSignal()) world.updateNeighbourForOutputSignal(pos, current.getBlock());
         }
-        if (current.hasAnalogOutputSignal()) world.updateNeighbourForOutputSignal(pos, current.getBlock());
-        old.updateIndirectNeighbourShapes(world, pos, Block.UPDATE_CLIENTS, Block.UPDATE_LIMIT - 1);
-        current.updateNeighbourShapes(world, pos, Block.UPDATE_CLIENTS, Block.UPDATE_LIMIT - 1);
-        current.updateIndirectNeighbourShapes(world, pos, Block.UPDATE_CLIENTS, Block.UPDATE_LIMIT - 1);
+        if ((flags & Block.UPDATE_KNOWN_SHAPE) == 0 && remaining > 0) {
+            int shapeFlags = flags & ~(Block.UPDATE_NEIGHBORS | Block.UPDATE_SUPPRESS_DROPS);
+            old.updateIndirectNeighbourShapes(world, pos, shapeFlags, remaining - 1);
+            current.updateNeighbourShapes(world, pos, shapeFlags, remaining - 1);
+            current.updateIndirectNeighbourShapes(world, pos, shapeFlags, remaining - 1);
+        }
     }
 
     @Override public Collection<ItemStack> drops(RollbackBlockStore store, Position position, ItemStack tool) {
@@ -111,12 +122,19 @@ public final class PaperRollbackBlockRules implements Rules, RollbackStateCell<V
         return removed && harvested;
     }
     boolean write(BlockPos pos, BlockState state, boolean physics) {
+        return write(pos, state, physics ? Block.UPDATE_ALL : Block.UPDATE_KNOWN_SHAPE, Block.UPDATE_LIMIT);
+    }
+    boolean write(BlockPos pos, BlockState state, int flags, int remaining) {
         if (world.getBlockState(pos) == state) return false;
         var craft = CraftBlockData.fromData(state);
         var data = BukkitMC.blockData(craft);
         data.setExactState(craft.getAsString());
-        terrain.block(pos.getX(), pos.getY(), pos.getZ()).setBlockData(data, physics);
-        return true;
+        var previous = pending;
+        pending = new NativeUpdate(flags, remaining);
+        try {
+            terrain.block(pos.getX(), pos.getY(), pos.getZ()).setBlockData(data, true);
+            return true;
+        } finally { pending = previous; }
     }
     private static BlockPos pos(Position position) { return new BlockPos(position.x(), position.y(), position.z()); }
     @Override public Void captureRollbackState() { check(terrain); return null; }

@@ -104,6 +104,7 @@ public final class PaperRollbackWorldServices implements PaperRollbackWorldAcces
     @Override public RegistryAccess.Frozen registryAccess() { return registries(); }
     @Override public Difficulty difficulty() { checkThread(); return Difficulty.valueOf(logical.conditions().difficulty()); }
     @Override public net.minecraft.world.flag.FeatureFlagSet terrainFeatures() { checkThread(); return features; }
+    @Override public java.util.Map<String, Integer> actorDespawnTimes() { return settings.actorDespawnTime(); }
     @Override public boolean splitOverstackedLoot() { return policy().splitOverstackedLoot(); }
     @Override public RandomSource random() { checkThread(); return random; }
     @Override public Object rule(Object rule) {

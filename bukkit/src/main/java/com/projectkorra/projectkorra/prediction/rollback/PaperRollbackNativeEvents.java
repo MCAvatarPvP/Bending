@@ -164,6 +164,11 @@ final class PaperRollbackNativeEvents {
         if (event instanceof org.bukkit.event.entity.EntityMountEvent mounted) requireOwned(mounted.getMount());
         if (event instanceof org.bukkit.event.entity.EntityDismountEvent dismounted) requireOwned(dismounted.getDismounted());
         if (event instanceof io.papermc.paper.event.player.PrePlayerAttackEntityEvent attack) requireOwned(attack.getAttacked());
+        if (event instanceof org.bukkit.event.block.BlockEvent blockEvent) {
+            local = ownedBlock.test(blockEvent.getBlock());
+            if (event instanceof org.bukkit.event.block.BlockFromToEvent flow && !ownedBlock.test(flow.getToBlock()))
+                throw new IllegalArgumentException("Flow destination does not belong to the private terrain");
+        }
         if (event instanceof org.bukkit.event.block.BlockReceiveGameEvent received) {
             local = ownedBlock.test(received.getBlock());
             requireOwned(received.getEntity());

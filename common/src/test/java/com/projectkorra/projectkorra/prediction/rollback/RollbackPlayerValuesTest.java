@@ -16,7 +16,8 @@ class RollbackPlayerValuesTest {
         var dimensions = new Dimensions(.6f, 1.5f, 1.27f, false, attachments);
         var fields = new HashMap<String, Cell>();
         Object[] values = {true, (byte) -7, (short) 230, 123, 9999999999L, -0f, -0d, '\uFFFF', "OFF_HAND",
-                new Vector(.05, .3, .08), new Box(-1, 0, -1, 1, 1.5, 1), new Block(-2, 6, 7), new Chunk(-2, 8), dimensions, Optional.empty()};
+                new Vector(.05, .3, .08), new Box(-1, 0, -1, 1, 1.5, 1), new Block(-2, 6, 7), new Chunk(-2, 8), dimensions, Optional.empty(),
+                new Movements(List.of(new Movement(new Vector(0, 1, 2), new Vector(3, 4, 5), new Vector(-1, 0, 1))))};
         for (Kind kind : Kind.values()) fields.put("field." + kind.name(), new Cell(kind, values[kind.ordinal()]));
         fields.put("null.position", new Cell(Kind.VECTOR, null));
         fields.put("present.block", new Cell(Kind.OPTIONAL_BLOCK, Optional.of(new Block(1, 2, 3))));

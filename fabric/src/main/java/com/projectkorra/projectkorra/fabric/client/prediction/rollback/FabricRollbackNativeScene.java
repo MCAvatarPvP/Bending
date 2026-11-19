@@ -2,6 +2,9 @@ package com.projectkorra.projectkorra.fabric.client.prediction.rollback;
 
 import com.projectkorra.projectkorra.prediction.rollback.*;
 import com.projectkorra.projectkorra.prediction.rollback.world.*;
+import com.projectkorra.projectkorra.fabric.PrivateFluidFlow;
+import net.minecraft.util.math.BlockPos;
+import com.projectkorra.projectkorra.platform.mc.block.Block;
 import net.minecraft.registry.DynamicRegistryManager;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.resource.featuretoggle.FeatureSet;
@@ -107,6 +110,18 @@ public final class FabricRollbackNativeScene implements RollbackStateCell<Void>,
         roster = FabricRollbackRoster.instantiate(players, participants, queries, epochNanos, maximumPlayerObjects);
         queries.bindRoster(roster);
         ticks = new FabricRollbackScheduledTicks((net.minecraft.server.world.ServerWorld) roster.world().world(), seed.ticks());
+        ((PrivateFluidFlow) roster.world().world()).projectKorra$bindFluidFlow(
+                new PrivateFluidFlow.Policy() {
+                    private Block block(BlockPos pos) {
+                        return logical.getBlockAt(pos.getX(), pos.getY(), pos.getZ());
+                    }
+                    @Override public boolean cancelFlow(BlockPos from, BlockPos to) {
+                        return bindings.events().cancelFluidFlow(block(from), block(to));
+                    }
+                    @Override public boolean cancelLevelChange(BlockPos pos) {
+                        return bindings.events().cancelFluidLevelChange(block(pos));
+                    }
+                });
         services.bindTicks(ticks);
         roster.world().bindTicks(ticks);
         if (bindings.blocks() instanceof FabricRollbackBlockRules nativeRules) {

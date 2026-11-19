@@ -54,6 +54,8 @@ class RollbackCombatRuntimeTest {
             duel.runtime.submit(B, 1, new Input(List.of(CLICK), false));
             duel.runtime.reconcile();
             assertEquals(before + 2, duel.fixture.checkpointCount);
+            duel.runtime.readConfirmedState(() -> duel.fixture.history.size());
+            assertEquals(before + 2, duel.fixture.checkpointCount);
         });
     }
 

@@ -27,6 +27,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -75,8 +76,203 @@ public class TempBlock {
     @Deprecated
     public static final Map<Block, TempBlock> instances = new ConcurrentHashMap<>();
 
+    /** Portable, canonical layer stacks. Native indices are rebuilt from those same layer objects on each import. */
+    public static final class RollbackLayers {
+        private Map<Block, LinkedList<TempBlock>> stacks = new HashMap<>();
+        private Map<CoreAbility, EffectCounter> effects = new WeakHashMap<>();
+        private Map<Block, TempBlock> lava = new LinkedHashMap<>(), land = new LinkedHashMap<>(), air = new LinkedHashMap<>();
+        private long nextId, idLimit, nextRevision, revisionLimit;
+        private Indices indices;
+        private static final long CAPACITY = 1L << 32;
+        private static final Set<Lease> LEASES = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+
+        private static final class Indices {
+            private final Map<Long, TempBlock> ids = new HashMap<>();
+            private final Map<Block, TempBlock> tops = new HashMap<>();
+            private final Map<VisibilityKey, VisibilitySnapshot> visibility = new HashMap<>();
+            private final PriorityQueue<TempBlock> expirations = new PriorityQueue<>(128, EXPIRATIONS.comparator());
+        }
+
+        public Map<Block, TempBlock> lava() { return lava; }
+        public Map<Block, TempBlock> land() { return land; }
+        public Map<Block, TempBlock> air() { return air; }
+
+        public RollbackLayers portable() {
+            var copy = new RollbackLayers();
+            copy.stacks = stacks;
+            copy.effects = effects;
+            copy.lava = lava; copy.land = land; copy.air = air;
+            copy.nextId = nextId; copy.idLimit = idLimit;
+            copy.nextRevision = nextRevision; copy.revisionLimit = revisionLimit;
+            return copy;
+        }
+
+        public void install() {
+            if (activeLayers() != this || indices != null) throw new IllegalStateException("Invalid private temporary-layer installation");
+            indices = new Indices();
+            index(stacks);
+        }
+
+        private static void index(Map<Block, LinkedList<TempBlock>> rows) {
+            for (var entry : rows.entrySet()) {
+                for (var layer : entry.getValue()) {
+                    if (layersById().putIfAbsent(layer.layerId, layer) != null) throw new IllegalArgumentException("Duplicate temporary layer ID");
+                    if (layer.scheduled) expirations().add(layer);
+                }
+                refreshViewsLocked(entry.getKey());
+            }
+        }
+
+        static void beforeLiveMutation(Block block) {
+            if (com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active() || block == null) return;
+            final List<Lease> overlaps;
+            synchronized (MUTATION_LOCK) { overlaps = LEASES.stream().filter(owner -> owner.contains(block)).toList(); }
+            for (var owner : overlaps) {
+                owner.stop.run();
+                synchronized (MUTATION_LOCK) {
+                    if (LEASES.contains(owner)) throw new IllegalStateException("Overlapping temporary layer is still owned by the duel");
+                }
+            }
+        }
+
+        public static Lease capture(World world, com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Bounds bounds,
+                                    Set<UUID> players, Runnable stop) {
+            if (com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) throw new IllegalStateException("Capture live temporary layers outside replay");
+            synchronized (MUTATION_LOCK) { return new Lease(world, bounds, players, stop); }
+        }
+
+        public static final class Lease {
+            private final World world;
+            private final com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Bounds bounds;
+            private final Set<UUID> players;
+            private final Runnable stop;
+            private final RollbackLayers seed = new RollbackLayers();
+            private boolean detached, complete;
+            private Lease(World world, com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Bounds bounds,
+                          Set<UUID> players, Runnable stop) {
+                this.world = Objects.requireNonNull(world); this.bounds = Objects.requireNonNull(bounds);
+                this.players = Set.copyOf(players); this.stop = Objects.requireNonNull(stop);
+                for (var other : LEASES) if (other.world.handle() == world.handle() && overlaps(bounds, other.bounds))
+                    throw new IllegalStateException("Temporary terrain is already owned by another duel");
+                LAYERS.forEach((block, stack) -> {
+                    if (contains(block)) {
+                        if (stack.stream().anyMatch(layer -> layer.ownerId == null || !players.contains(layer.ownerId)))
+                            throw new IllegalStateException("Temporary layer in the arena has no enrolled owner");
+                        seed.stacks.put(block, new LinkedList<>(stack));
+                    }
+                    else if (stack.stream().anyMatch(layer -> layer.ownerId != null && players.contains(layer.ownerId)))
+                        throw new IllegalStateException("Participant has a temporary layer outside the arena");
+                });
+                EFFECT_COUNTERS.forEach((ability, counter) -> {
+                    if (ability != null && ability.getPlayer() != null && players.contains(ability.getPlayer().getUniqueId())) seed.effects.put(ability, counter);
+                });
+                var maps = com.projectkorra.projectkorra.earthbending.lava.LavaFlow.rollbackMaps();
+                copyLava(maps.get(0), seed.lava); copyLava(maps.get(1), seed.land); copyLava(maps.get(2), seed.air);
+                seed.nextId = NEXT_LAYER_ID.getAndUpdate(n -> Math.addExact(n, CAPACITY)); seed.idLimit = seed.nextId + CAPACITY;
+                seed.nextRevision = NEXT_REVISION.getAndUpdate(n -> Math.addExact(n, CAPACITY)); seed.revisionLimit = seed.nextRevision + CAPACITY;
+                validateRows(seed);
+            }
+            private void copyLava(Map<Block, TempBlock> live, Map<Block, TempBlock> destination) {
+                live.forEach((block, layer) -> { if (contains(block)) destination.put(block, layer); });
+            }
+            private boolean contains(Block block) {
+                return block.getWorld().handle() == world.handle() && bounds.contains(new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Position(block.getX(), block.getY(), block.getZ()));
+            }
+            private static boolean overlaps(com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Bounds a,
+                                            com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Bounds b) {
+                return a.minX() < b.maxX() && b.minX() < a.maxX() && a.minY() < b.maxY() && b.minY() < a.maxY()
+                        && a.minZ() < b.maxZ() && b.minZ() < a.maxZ();
+            }
+            public RollbackLayers seed() { return seed; }
+            private void validateRows(RollbackLayers state) {
+                var seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<TempBlock, Boolean>());
+                var ids = new HashSet<Long>();
+                state.stacks.forEach((block, layers) -> {
+                    if (!contains(block) || layers.isEmpty()) throw new IllegalStateException("Invalid restored layer stack");
+                    for (var layer : layers) {
+                        if (layer == null || !layer.block.equals(block) || !seen.add(layer) || !ids.add(layer.layerId) || layer.reverted
+                                || layer.ownerId != null && !players.contains(layer.ownerId))
+                            throw new IllegalStateException("Temporary layer has overlapping ownership");
+                    }
+                });
+                for (var layer : seen) if (!seen.containsAll(layer.attachedTempBlocks))
+                    throw new IllegalStateException("Attached temporary layer crosses the arena");
+                state.effects.forEach((ability, counter) -> {
+                    if (ability == null || ability.getPlayer() == null || !players.contains(ability.getPlayer().getUniqueId()))
+                        throw new IllegalStateException("Temporary effect counter belongs to another player");
+                });
+                for (var map : List.of(state.lava, state.land, state.air)) map.forEach((block, layer) -> {
+                    if (!contains(block) || !seen.contains(layer) || !layer.block.equals(block))
+                        throw new IllegalStateException("LavaFlow references a foreign temporary layer");
+                });
+            }
+            public void detach() {
+                synchronized (MUTATION_LOCK) {
+                    if (detached) return;
+                    for (var other : LEASES) if (other.world.handle() == world.handle() && overlaps(bounds, other.bounds))
+                        throw new IllegalStateException("Overlapping temporary layer lease during enrollment");
+                    for (var entry : seed.stacks.entrySet()) if (!entry.getValue().equals(LAYERS.get(entry.getKey())))
+                        throw new IllegalStateException("Live layers changed before capture");
+                    seed.stacks.forEach((block, stack) -> {
+                        LAYERS.remove(block);
+                        for (var layer : stack) { LAYERS_BY_ID.remove(layer.layerId); EXPIRATIONS.remove(layer); }
+                        refreshViewsLocked(block);
+                    });
+                    seed.effects.keySet().forEach(EFFECT_COUNTERS::remove);
+                    var maps = com.projectkorra.projectkorra.earthbending.lava.LavaFlow.rollbackMaps();
+                    seed.lava.keySet().forEach(maps.get(0)::remove); seed.land.keySet().forEach(maps.get(1)::remove); seed.air.keySet().forEach(maps.get(2)::remove);
+                    LEASES.add(this); detached = true;
+                }
+            }
+            public void validate(RollbackLayers state) {
+                if (complete) return;
+                if (!detached || state == null || state.idLimit != seed.idLimit || state.revisionLimit != seed.revisionLimit
+                        || state.nextId < seed.nextId || state.nextId > state.idLimit
+                        || state.nextRevision < seed.nextRevision || state.nextRevision > state.revisionLimit)
+                    throw new IllegalStateException("Invalid confirmed temporary-layer reservation");
+                validateRows(state);
+                state.stacks.forEach((block, stack) -> {
+                    if (LAYERS.containsKey(block) || stack.stream().anyMatch(layer -> LAYERS_BY_ID.containsKey(layer.layerId)))
+                        throw new IllegalStateException("Live temporary layers changed during duel");
+                });
+            }
+            public void merge(RollbackLayers state) {
+                synchronized (MUTATION_LOCK) {
+                    if (complete) return;
+                    validate(state);
+                    LAYERS.putAll(state.stacks); EFFECT_COUNTERS.putAll(state.effects);
+                    var maps = com.projectkorra.projectkorra.earthbending.lava.LavaFlow.rollbackMaps();
+                    maps.get(0).putAll(state.lava); maps.get(1).putAll(state.land); maps.get(2).putAll(state.air);
+                    index(state.stacks);
+                    LEASES.remove(this); complete = true;
+                }
+            }
+            public void abort() { if (detached && !complete) merge(seed); }
+        }
+    }
+
+    private static RollbackLayers activeLayers() { return com.projectkorra.projectkorra.prediction.rollback.RollbackAbilityGlobals.layers(); }
+    private static Map<Block, LinkedList<TempBlock>> layers() { var p = activeLayers(); return p == null ? LAYERS : p.stacks; }
+    private static Map<Long, TempBlock> layersById() { var p = activeLayers(); return p == null ? LAYERS_BY_ID : p.indices.ids; }
+    private static Map<CoreAbility, EffectCounter> effectCounters() { var p = activeLayers(); return p == null ? EFFECT_COUNTERS : p.effects; }
+    private static Map<Block, TempBlock> tops() { var p = activeLayers(); return p == null ? instances : p.indices.tops; }
+    private static Map<VisibilityKey, VisibilitySnapshot> visibility() { var p = activeLayers(); return p == null ? VISIBILITY : p.indices.visibility; }
+    private static PriorityQueue<TempBlock> expirations() { var p = activeLayers(); return p == null ? EXPIRATIONS : p.indices.expirations; }
+    private static long nextLayerId() {
+        var p = activeLayers();
+        if (p == null) return NEXT_LAYER_ID.incrementAndGet();
+        if (p.nextId >= p.idLimit) throw new IllegalStateException("Temporary layer ID reservation exhausted");
+        return ++p.nextId;
+    }
+    private static long nextRevision() {
+        var p = activeLayers();
+        if (p == null) return NEXT_REVISION.incrementAndGet();
+        if (p.nextRevision >= p.revisionLimit) throw new IllegalStateException("Temporary layer revision reservation exhausted");
+        return ++p.nextRevision;
+    }
+
     private final Block block;
-    private final long layerId = NEXT_LAYER_ID.incrementAndGet();
+    private final long layerId = nextLayerId();
     private final String effectAbility;
     private final long effectStep;
     private final int effectOrdinal;
@@ -136,6 +332,7 @@ public class TempBlock {
     private TempBlock(final Block block, BlockData newData, final long duration,
                       final CoreAbility explicitAbility, final EffectIdentity explicitIdentity) {
         this.block = Objects.requireNonNull(block, "block");
+        RollbackLayers.beforeLiveMutation(block);
         Objects.requireNonNull(newData, "newData");
         final CoreAbility resolvedAbility = explicitAbility != null
                 ? explicitAbility : AbilityExecutionContext.current();
@@ -155,7 +352,7 @@ public class TempBlock {
         this.newData = newData.clone();
 
         synchronized (MUTATION_LOCK) {
-            LinkedList<TempBlock> stack = LAYERS.get(block);
+            LinkedList<TempBlock> stack = layers().get(block);
             this.state = stack == null || stack.isEmpty() ? block.getState() : stack.getFirst().state;
             // Ability removal can run arbitrary addon callbacks. During a full
             // teardown, a replacement layer would miss the removal snapshot and
@@ -171,10 +368,10 @@ public class TempBlock {
 
             if (stack == null) {
                 stack = new LinkedList<>();
-                LAYERS.put(block, stack);
+                layers().put(block, stack);
             }
             stack.addLast(this);
-            LAYERS_BY_ID.put(this.layerId, this);
+            layersById().put(this.layerId, this);
             refreshViewsLocked(block);
             try {
                 scheduleLocked(duration);
@@ -185,9 +382,9 @@ public class TempBlock {
             } catch (RuntimeException | Error failure) {
                 unscheduleLocked(this);
                 stack.remove(this);
-                LAYERS_BY_ID.remove(this.layerId);
+                layersById().remove(this.layerId);
                 this.reverted = true;
-                if (stack.isEmpty()) LAYERS.remove(block);
+                if (stack.isEmpty()) layers().remove(block);
                 refreshViewsLocked(block);
                 advanceRevisionLocked();
                 final BlockData effectiveData = stack.isEmpty()
@@ -210,24 +407,24 @@ public class TempBlock {
         if (ability == null) return new EffectIdentity("", -1L, 0);
         synchronized (MUTATION_LOCK) {
             final long step = ability.isStarted() ? ability.getRunningTicks() : 0L;
-            final EffectCounter previous = EFFECT_COUNTERS.get(ability);
+            final EffectCounter previous = effectCounters().get(ability);
             final int ordinal = previous != null && previous.step == step
                     ? previous.ordinal + 1 : 1;
-            EFFECT_COUNTERS.put(ability, new EffectCounter(step, ordinal));
+            effectCounters().put(ability, new EffectCounter(step, ordinal));
             return new EffectIdentity(ability.getName(), step, ordinal);
         }
     }
 
     public static TempBlock get(final Block block) {
         synchronized (MUTATION_LOCK) {
-            final LinkedList<TempBlock> stack = LAYERS.get(block);
+            final LinkedList<TempBlock> stack = layers().get(block);
             return stack == null || stack.isEmpty() ? null : stack.getLast();
         }
     }
 
     public static LinkedList<TempBlock> getAll(final Block block) {
         synchronized (MUTATION_LOCK) {
-            final LinkedList<TempBlock> stack = LAYERS.get(block);
+            final LinkedList<TempBlock> stack = layers().get(block);
             return stack == null ? null : new LinkedList<>(stack);
         }
     }
@@ -235,7 +432,7 @@ public class TempBlock {
     public static List<TempBlock> getActiveLayers() {
         synchronized (MUTATION_LOCK) {
             final List<TempBlock> result = new ArrayList<>();
-            LAYERS.values().forEach(result::addAll);
+            layers().values().forEach(result::addAll);
             return List.copyOf(result);
         }
     }
@@ -243,7 +440,7 @@ public class TempBlock {
     /** Constant-time identity lookup used by the prediction lifecycle. */
     public static TempBlock getActiveLayer(final long layerId) {
         synchronized (MUTATION_LOCK) {
-            final TempBlock layer = LAYERS_BY_ID.get(layerId);
+            final TempBlock layer = layersById().get(layerId);
             return layer == null || layer.reverted ? null : layer;
         }
     }
@@ -259,7 +456,7 @@ public class TempBlock {
             final UUID nextOwner = ownerId(ability);
             final List<TempBlock> owned = new ArrayList<>();
             final Set<Block> changedCoordinates = new HashSet<>();
-            for (TempBlock layer : LAYERS_BY_ID.values()) {
+            for (TempBlock layer : layersById().values()) {
                 if (layer.reverted || layer.ability.orElse(null) != ability
                         || Objects.equals(layer.ownerId, nextOwner)) continue;
                 layer.ownerId = nextOwner;
@@ -277,7 +474,7 @@ public class TempBlock {
 
     public static boolean isTempBlock(final Block block) {
         synchronized (MUTATION_LOCK) {
-            final LinkedList<TempBlock> stack = LAYERS.get(block);
+            final LinkedList<TempBlock> stack = layers().get(block);
             return block != null && stack != null && !stack.isEmpty();
         }
     }
@@ -287,7 +484,7 @@ public class TempBlock {
         synchronized (MUTATION_LOCK) {
             for (BlockFace face : new BlockFace[]{BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST,
                     BlockFace.WEST, BlockFace.UP, BlockFace.DOWN}) {
-                final LinkedList<TempBlock> stack = LAYERS.get(block.getRelative(face));
+                final LinkedList<TempBlock> stack = layers().get(block.getRelative(face));
                 if (stack != null && !stack.isEmpty()) return true;
             }
             return false;
@@ -327,21 +524,21 @@ public class TempBlock {
             }
         } finally {
             synchronized (MUTATION_LOCK) {
-                EXPIRATIONS.clear();
+                expirations().clear();
                 if (shutdownCleanupDepth > 0) {
-                    for (LinkedList<TempBlock> stack : LAYERS.values()) {
+                    for (LinkedList<TempBlock> stack : layers().values()) {
                         for (TempBlock layer : stack) {
                             layer.reverted = true;
                             layer.scheduled = false;
                         }
                     }
-                    LAYERS.clear();
-                    LAYERS_BY_ID.clear();
-                    instances.clear();
-                    VISIBILITY.clear();
-                    EFFECT_COUNTERS.clear();
-                } else if (LAYERS.isEmpty()) {
-                    LAYERS_BY_ID.clear();
+                    layers().clear();
+                    layersById().clear();
+                    tops().clear();
+                    visibility().clear();
+                    effectCounters().clear();
+                } else if (layers().isEmpty()) {
+                    layersById().clear();
                 }
             }
         }
@@ -354,11 +551,11 @@ public class TempBlock {
      */
     public static void discardAll() {
         synchronized (MUTATION_LOCK) {
-            for (Block block : new ArrayList<>(LAYERS.keySet())) {
+            for (Block block : new ArrayList<>(layers().keySet())) {
                 invalidateStackLocked(block, null, false);
             }
-            EXPIRATIONS.clear();
-            LAYERS_BY_ID.clear();
+            expirations().clear();
+            layersById().clear();
         }
     }
 
@@ -374,6 +571,7 @@ public class TempBlock {
      * authority. This method never writes a replacement block state.
      */
     public static void removeBlock(final Block block) {
+        RollbackLayers.beforeLiveMutation(block);
         final List<TempBlock> removed;
         synchronized (MUTATION_LOCK) {
             removed = invalidateStackLocked(block, block == null ? null : block.getBlockData(), true);
@@ -388,6 +586,7 @@ public class TempBlock {
      * No captured TempBlock state is restored along the way.
      */
     public static void removeBlockBeforeWrite(final Block block, final BlockData replacementData) {
+        RollbackLayers.beforeLiveMutation(block);
         if (block == null) return;
         final BlockData effectiveData = replacementData == null
                 ? block.getBlockData().clone() : replacementData.clone();
@@ -404,6 +603,7 @@ public class TempBlock {
 
     /** Drops one coordinate without a world write or callbacks, while closing its network lifecycle. */
     public static void discardBlock(final Block block) {
+        RollbackLayers.beforeLiveMutation(block);
         synchronized (MUTATION_LOCK) {
             invalidateStackLocked(block, block == null ? null : block.getBlockData(), true);
         }
@@ -412,18 +612,18 @@ public class TempBlock {
     private static List<TempBlock> invalidateStackLocked(final Block block, final BlockData effectiveData,
                                                           final boolean publish) {
         if (block == null) return List.of();
-        final LinkedList<TempBlock> stack = LAYERS.remove(block);
+        final LinkedList<TempBlock> stack = layers().remove(block);
         if (stack == null || stack.isEmpty()) {
-            instances.remove(block);
-            if (block.getWorld() != null) VISIBILITY.remove(VisibilityKey.of(block));
+            tops().remove(block);
+            if (block.getWorld() != null) visibility().remove(VisibilityKey.of(block));
             return List.of();
         }
-        instances.remove(block);
-        VISIBILITY.remove(VisibilityKey.of(block));
+        tops().remove(block);
+        visibility().remove(VisibilityKey.of(block));
         final List<TempBlock> removed = new ArrayList<>(stack.size());
         for (TempBlock layer : stack) {
             unscheduleLocked(layer);
-            LAYERS_BY_ID.remove(layer.layerId);
+            layersById().remove(layer.layerId);
             if (layer.reverted) continue;
             layer.reverted = true;
             if (publish && effectiveData != null) {
@@ -474,17 +674,17 @@ public class TempBlock {
         final long aligned = PredictionTiming.alignDuration(this.ability.orElse(null), duration);
         this.revertTime = aligned >= Long.MAX_VALUE - now ? Long.MAX_VALUE : now + aligned;
         this.scheduled = true;
-        EXPIRATIONS.add(this);
+        expirations().add(this);
     }
 
     private static void unscheduleLocked(final TempBlock layer) {
         if (!layer.scheduled) return;
-        EXPIRATIONS.remove(layer);
+        expirations().remove(layer);
         layer.scheduled = false;
     }
 
     private void advanceRevisionLocked() {
-        this.revision = NEXT_REVISION.incrementAndGet();
+        this.revision = nextRevision();
     }
 
     /** Sends pre-mutation metadata before the vanilla packet can be emitted. */
@@ -505,20 +705,20 @@ public class TempBlock {
 
     private static void refreshViewsLocked(final Block block) {
         if (block == null || block.getWorld() == null) return;
-        final LinkedList<TempBlock> stack = LAYERS.get(block);
+        final LinkedList<TempBlock> stack = layers().get(block);
         if (stack == null || stack.isEmpty()) {
-            instances.remove(block);
-            VISIBILITY.remove(VisibilityKey.of(block));
+            tops().remove(block);
+            visibility().remove(VisibilityKey.of(block));
             return;
         }
-        instances.put(block, stack.getLast());
+        tops().put(block, stack.getLast());
         final List<LayerView> layers = new ArrayList<>(stack.size());
         final List<UUID> owners = new ArrayList<>(stack.size());
         for (TempBlock layer : stack) {
             layers.add(new LayerView(layer.layerId, layer.ownerId, layer.newData.clone()));
             owners.add(layer.ownerId);
         }
-        VISIBILITY.put(VisibilityKey.of(block), new VisibilitySnapshot(
+        visibility().put(VisibilityKey.of(block), new VisibilitySnapshot(
                 stack.getFirst().state.getBlockData().clone(), List.copyOf(layers),
                 Collections.unmodifiableList(owners)));
     }
@@ -526,13 +726,13 @@ public class TempBlock {
     public static boolean isTopLayerOwnedBy(final World world, final int x, final int y, final int z,
                                              final UUID playerId) {
         if (world == null || playerId == null) return false;
-        final VisibilitySnapshot snapshot = VISIBILITY.get(new VisibilityKey(world, x, y, z));
+        final VisibilitySnapshot snapshot = visibility().get(new VisibilityKey(world, x, y, z));
         return snapshot != null && TempBlockOwnershipPolicy.topLayerOwnedBy(snapshot.owners, playerId);
     }
 
     public static boolean hasOwnedLayer(final Block block, final UUID playerId) {
         if (block == null || block.getWorld() == null || playerId == null) return false;
-        final VisibilitySnapshot snapshot = VISIBILITY.get(VisibilityKey.of(block));
+        final VisibilitySnapshot snapshot = visibility().get(VisibilityKey.of(block));
         if (snapshot == null) return false;
         for (UUID owner : snapshot.owners) if (playerId.equals(owner)) return true;
         return false;
@@ -545,7 +745,7 @@ public class TempBlock {
 
     public static BlockData getVisibleData(final World world, final int x, final int y, final int z,
                                            final UUID playerId) {
-        final VisibilitySnapshot snapshot = VISIBILITY.get(new VisibilityKey(world, x, y, z));
+        final VisibilitySnapshot snapshot = visibility().get(new VisibilityKey(world, x, y, z));
         if (snapshot == null) return null;
         final int index = TempBlockOwnershipPolicy.visibleLayerIndex(snapshot.owners, playerId);
         return index < 0 ? snapshot.original.clone() : snapshot.layers.get(index).data.clone();
@@ -553,7 +753,7 @@ public class TempBlock {
 
     public static Map<UUID, BlockData> getOwnerViews(final Block block, final UUID additionalOwner) {
         if (block == null || block.getWorld() == null) return Map.of();
-        final VisibilitySnapshot snapshot = VISIBILITY.get(VisibilityKey.of(block));
+        final VisibilitySnapshot snapshot = visibility().get(VisibilityKey.of(block));
         final Set<UUID> owners = new HashSet<>();
         if (snapshot != null) for (UUID owner : snapshot.owners) if (owner != null) owners.add(owner);
         if (additionalOwner != null) owners.add(additionalOwner);
@@ -569,7 +769,7 @@ public class TempBlock {
                                                             final UUID playerId) {
         if (world == null || playerId == null) return List.of();
         final List<VisibleBlock> result = new ArrayList<>();
-        VISIBILITY.forEach((key, snapshot) -> {
+        visibility().forEach((key, snapshot) -> {
             if ((!key.world.equals(world)) || key.x >> 4 != chunkX || key.z >> 4 != chunkZ) return;
             boolean owned = false;
             for (UUID owner : snapshot.owners) {
@@ -586,9 +786,10 @@ public class TempBlock {
 
     /** Reverts every registered layer at this coordinate; an absent stack is a no-op. */
     public static void revertBlock(final Block block, final Material defaultType) {
+        RollbackLayers.beforeLiveMutation(block);
         final List<TempBlock> snapshot;
         synchronized (MUTATION_LOCK) {
-            final LinkedList<TempBlock> stack = LAYERS.get(block);
+            final LinkedList<TempBlock> stack = layers().get(block);
             snapshot = stack == null ? List.of() : new ArrayList<>(stack);
         }
         for (TempBlock layer : snapshot) layer.revertBlock();
@@ -616,10 +817,11 @@ public class TempBlock {
     }
 
     public void setState(final BlockState newState) {
+        RollbackLayers.beforeLiveMutation(this.block);
         if (newState == null) return;
         synchronized (MUTATION_LOCK) {
             if (this.reverted) return;
-            final LinkedList<TempBlock> stack = LAYERS.get(this.block);
+            final LinkedList<TempBlock> stack = layers().get(this.block);
             if (stack == null || !stack.contains(this)) return;
             for (TempBlock layer : stack) layer.state = newState;
             refreshViewsLocked(this.block);
@@ -655,6 +857,7 @@ public class TempBlock {
     }
 
     public TempBlock setAbility(final CoreAbility ability) {
+        RollbackLayers.beforeLiveMutation(this.block);
         synchronized (MUTATION_LOCK) {
             if (this.reverted) return this;
             this.ability = Optional.ofNullable(ability);
@@ -671,6 +874,7 @@ public class TempBlock {
     }
 
     public void setRevertTask(final Runnable task) {
+        RollbackLayers.beforeLiveMutation(this.block);
         synchronized (MUTATION_LOCK) {
             this.revertTask = task;
         }
@@ -687,6 +891,7 @@ public class TempBlock {
     }
 
     public void setRevertTime(final long duration) {
+        RollbackLayers.beforeLiveMutation(this.block);
         synchronized (MUTATION_LOCK) {
             if (this.reverted || duration <= 0L || this.state.hasBlockEntity()) return;
             unscheduleLocked(this);
@@ -698,6 +903,7 @@ public class TempBlock {
 
     /** Re-publishes semantic ability metadata without changing this layer's expiry. */
     public void refreshPredictionMetadata() {
+        RollbackLayers.beforeLiveMutation(this.block);
         synchronized (MUTATION_LOCK) {
             if (this.reverted) return;
             advanceRevisionLocked();
@@ -716,20 +922,21 @@ public class TempBlock {
      * undo an already-running client prediction.
      */
     public void discard() {
+        RollbackLayers.beforeLiveMutation(this.block);
         synchronized (MUTATION_LOCK) {
             if (this.reverted) return;
-            final LinkedList<TempBlock> stack = LAYERS.get(this.block);
+            final LinkedList<TempBlock> stack = layers().get(this.block);
             if (stack == null || !stack.contains(this)) {
                 this.reverted = true;
-                LAYERS_BY_ID.remove(this.layerId);
+                layersById().remove(this.layerId);
                 unscheduleLocked(this);
                 return;
             }
             stack.remove(this);
-            LAYERS_BY_ID.remove(this.layerId);
+            layersById().remove(this.layerId);
             this.reverted = true;
             unscheduleLocked(this);
-            if (stack.isEmpty()) LAYERS.remove(this.block);
+            if (stack.isEmpty()) layers().remove(this.block);
             refreshViewsLocked(this.block);
             final BlockData effectiveData = stack.isEmpty()
                     ? this.state.getBlockData().clone() : stack.getLast().newData.clone();
@@ -739,25 +946,26 @@ public class TempBlock {
     }
 
     private void revertBlock(final boolean removeFromQueue) {
+        RollbackLayers.beforeLiveMutation(this.block);
         boolean complete = false;
         Throwable writeFailure = null;
         synchronized (MUTATION_LOCK) {
             if (this.reverted) return;
-            final LinkedList<TempBlock> stack = LAYERS.get(this.block);
+            final LinkedList<TempBlock> stack = layers().get(this.block);
             if (stack == null || !stack.contains(this)) {
                 this.reverted = true;
-                LAYERS_BY_ID.remove(this.layerId);
+                layersById().remove(this.layerId);
                 if (removeFromQueue) unscheduleLocked(this);
                 return;
             }
 
             final boolean wasTop = stack.getLast() == this;
             stack.remove(this);
-            LAYERS_BY_ID.remove(this.layerId);
+            layersById().remove(this.layerId);
             this.reverted = true;
             if (removeFromQueue) unscheduleLocked(this);
             else this.scheduled = false;
-            if (stack.isEmpty()) LAYERS.remove(this.block);
+            if (stack.isEmpty()) layers().remove(this.block);
             refreshViewsLocked(this.block);
 
             final BlockData effectiveData = stack.isEmpty()
@@ -814,6 +1022,8 @@ public class TempBlock {
     }
 
     public void addAttachedBlock(final TempBlock tempBlock) {
+        RollbackLayers.beforeLiveMutation(this.block);
+        if (tempBlock != null) RollbackLayers.beforeLiveMutation(tempBlock.block);
         if (tempBlock == null || tempBlock == this) return;
         synchronized (MUTATION_LOCK) {
             this.attachedTempBlocks.add(tempBlock);
@@ -834,6 +1044,7 @@ public class TempBlock {
 
     @Experimental
     public TempBlock setBendableSource(final boolean value) {
+        RollbackLayers.beforeLiveMutation(this.block);
         this.bendableSource = value;
         return this;
     }
@@ -843,6 +1054,7 @@ public class TempBlock {
     }
 
     public TempBlock setCanSuffocate(final boolean value) {
+        RollbackLayers.beforeLiveMutation(this.block);
         this.suffocate = value;
         return this;
     }
@@ -858,13 +1070,14 @@ public class TempBlock {
     }
 
     public void setType(final BlockData data) {
+        RollbackLayers.beforeLiveMutation(this.block);
         if (data == null) return;
         synchronized (MUTATION_LOCK) {
             if (this.reverted) return;
-            final LinkedList<TempBlock> stack = LAYERS.get(this.block);
+            final LinkedList<TempBlock> stack = layers().get(this.block);
             if (stack == null || !stack.contains(this)) {
                 this.reverted = true;
-                LAYERS_BY_ID.remove(this.layerId);
+                layersById().remove(this.layerId);
                 return;
             }
             final BlockData previousData = this.newData;
@@ -895,7 +1108,7 @@ public class TempBlock {
     public void updateSnowableBlock(final Block block, final boolean snowy) {
         if (block == null) return;
         synchronized (MUTATION_LOCK) {
-            final LinkedList<TempBlock> stack = LAYERS.get(block);
+            final LinkedList<TempBlock> stack = layers().get(block);
             final TempBlock top = stack == null || stack.isEmpty() ? null : stack.getLast();
             final BlockData currentData = top == null ? block.getBlockData() : top.newData.clone();
             if (!(currentData instanceof Snowable snowable)) return;
@@ -953,7 +1166,10 @@ public class TempBlock {
         @Override public List<?> rollbackReferences() { return List.of(original, layers); }
     }
 
-    private record EffectCounter(long step, int ordinal) {
+    private static final class EffectCounter {
+        private final long step;
+        private final int ordinal;
+        private EffectCounter(long step, int ordinal) { this.step = step; this.ordinal = ordinal; }
     }
 
     private record EffectIdentity(String ability, long step, int ordinal) {
@@ -966,9 +1182,9 @@ public class TempBlock {
             while (true) {
                 final TempBlock expired;
                 synchronized (MUTATION_LOCK) {
-                    expired = EXPIRATIONS.peek();
+                    expired = expirations().peek();
                     if (expired == null || expired.revertTime > now) return;
-                    EXPIRATIONS.poll();
+                    expirations().poll();
                     expired.scheduled = false;
                 }
                 try {

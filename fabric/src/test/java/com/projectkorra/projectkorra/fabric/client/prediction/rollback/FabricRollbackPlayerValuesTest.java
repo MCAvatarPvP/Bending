@@ -22,6 +22,22 @@ import static org.junit.jupiter.api.Assertions.*;
 class FabricRollbackPlayerValuesTest {
     @BeforeAll static void bootstrap() { FabricRollbackTestRegistry.bootstrap(); }
 
+    @Test void pendingBlockContactsRetainTheirOrderAndClearOnAnEmptyCorrection() throws Exception {
+        var empty = RollbackPlayerValues.decode(fixture());
+        var fields = new java.util.TreeMap<>(empty.fields());
+        var first = new RollbackPlayerValues.Vector(0, 0, 1);
+        var last = new RollbackPlayerValues.Vector(2, 0, 1);
+        var steps = new Movements(List.of(new Movement(first, last, first), new Movement(last, first, null)));
+        fields.put("entity.pendingMovements", new Cell(Kind.MOVEMENTS, steps));
+        var seed = new RollbackPlayerValues(fields);
+        var state = player();
+        var incoming = FabricRollbackPlayerValues.prepare(seed);
+        incoming.apply(state);
+        assertArrayEquals(seed.encode(), incoming.capture(state).encode());
+        FabricRollbackPlayerValues.prepare(empty).apply(state);
+        assertArrayEquals(empty.encode(), incoming.capture(state).encode());
+    }
+
     @Test void actualPaperValueCaptureAppliesWithIdenticalBytesAndRewindsNativeTransientState() throws Exception {
         byte[] bytes = fixture();
         var values = RollbackPlayerValues.decode(bytes);

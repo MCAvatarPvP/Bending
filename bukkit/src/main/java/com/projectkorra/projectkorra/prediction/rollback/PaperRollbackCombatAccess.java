@@ -61,6 +61,8 @@ public final class PaperRollbackCombatAccess {
     private final Registry<DamageType> damageRegistry;
     private final DamageSources damageSources;
     private final MethodHandle damage, serverDamage, melee, use, release, mount, unmount;
+    private Entity meleeTarget;
+    private Vec3 meleeVelocity;
     private final MethodHandle awardStatistic, resetStatistic;
     private final MethodHandle addEffect, removeEffect, setAir, setSwimming, movementStep, playerBodyTick;
     private final MethodHandle serverTick, serverBodyTick, serverJump;
@@ -89,6 +91,9 @@ public final class PaperRollbackCombatAccess {
         worldConfiguration.entities.behavior = allocator.newInstance(WorldConfiguration.Entities.Behavior.class);
         worldConfiguration.entities.spawning = allocator.newInstance(WorldConfiguration.Entities.Spawning.class);
         worldConfiguration.entities.spawning.despawnTime = new it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap<>();
+        state.actorDespawnTimes().forEach((key, ticks) -> worldConfiguration.entities.spawning.despawnTime.put(
+                net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getOptional(net.minecraft.resources.Identifier.parse(key)).orElseThrow(),
+                new io.papermc.paper.configuration.type.number.IntOr.Disabled(java.util.OptionalInt.of(ticks))));
         var builder = new RollbackNativeMethods();
         events = new PaperRollbackNativeEvents(world::event, world::ownsWrapper,
                 block -> block instanceof org.bukkit.craftbukkit.block.CraftBlock craft && craft.getHandle() == world.world());
@@ -241,6 +246,8 @@ public final class PaperRollbackCombatAccess {
                 .outputQuery(value -> value.addPlayer(null), args -> waypoint((Entity) args[0], true, WaypointAction.TRACK))
                 .outputQuery(value -> value.removePlayer(null), args -> waypoint((Entity) args[0], true, WaypointAction.UNTRACK)).instance();
         var bukkitWorld = RollbackNativeQueryShell.create(org.bukkit.craftbukkit.CraftWorld.class)
+                .query(value -> value.getBlockAt(0, 0, 0), null, args -> org.bukkit.craftbukkit.block.CraftBlock.at(
+                        world.world(), new net.minecraft.core.BlockPos((int) args[0], (int) args[1], (int) args[2])))
                 .query(org.bukkit.craftbukkit.CraftWorld::getEnvironment, null, args -> state.worldPolicy().environment())
                 .query(org.bukkit.craftbukkit.CraftWorld::isVoidDamageEnabled, false, args -> state.worldPolicy().voidDamageEnabled())
                 .query(org.bukkit.craftbukkit.CraftWorld::getVoidDamageAmount, 0F, args -> state.worldPolicy().voidDamageAmount())
@@ -526,9 +533,22 @@ public final class PaperRollbackCombatAccess {
         worldConfiguration.entities.behavior.disablePlayerCrits = state.disablePlayerCrits();
         worldConfiguration.misc.disableSprintInterruptionOnAttack = state.disableSprintInterruptionOnAttack();
         world.world().spigotConfig.combatExhaustion = state.combatExhaustion();
-        try { melee.invokeExact(nativePlayer, target); }
-        catch (RuntimeException | Error failure) { throw failure; }
+        if (meleeTarget != null) throw new IllegalStateException("Nested private melee dispatch");
+        meleeTarget = target;
+        try {
+            melee.invokeExact(nativePlayer, target);
+            // Paper's ordinary player sends the impulse to its client, then restores the server
+            // body's previous velocity. This simulation owns both phases of the same body.
+            if (meleeVelocity != null) { target.setDeltaMovement(meleeVelocity); target.hurtMarked = true; }
+        } catch (RuntimeException | Error failure) { throw failure; }
         catch (Throwable failure) { throw new IllegalStateException("Private native melee failed", failure); }
+        finally { meleeTarget = null; meleeVelocity = null; }
+    }
+
+    boolean consumeMeleeVelocity(ServerPlayer recipient, net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket velocity) {
+        if (recipient != meleeTarget || recipient.getId() != velocity.getId()) return false;
+        meleeVelocity = velocity.getMovement();
+        return true;
     }
 
     private void prepareMovement() {

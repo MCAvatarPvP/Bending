@@ -118,13 +118,15 @@ public record PaperRollbackDuelSeed(PaperRollbackRosterSeed nativeRoster, Rollba
         permissionNodes.addAll(Objects.requireNonNull(additionalPermissionNodes));
         var access = PaperRollbackPlayerAccess.capture(nativePlayers.values().stream().map(ServerPlayer::getBukkitEntity).toList(),
                 org.bukkit.Bukkit.getPluginManager().getPermissions(), permissionNodes);
-        var worldSeed = PaperRollbackWorldSeed.capture(world, request.terrain(), randomSeed, soundSeed, terrainLimits);
         var services = new ArrayList<Object>(gameplayServices);
         if (services.stream().anyMatch(RollbackEventBindings.class::isInstance))
             throw new IllegalArgumentException("Duel capture owns event registration capture");
         services.add(RollbackEventBindings.capture(com.projectkorra.projectkorra.platform.Platform.events()));
-        services.add(RollbackAbilityGlobals.capture(bending.values().stream().map(BendingPlayer::getPlayer).toList()));
+        RollbackLiveRegistryEligibility.requireAvailable();
+        if (services.stream().noneMatch(RollbackAbilityGlobals.class::isInstance))
+            services.add(RollbackAbilityGlobals.capture(bending.values().stream().map(BendingPlayer::getPlayer).toList()));
         var graph = RollbackBendingState.encode(bending.values(), collisions, services, sourceCodec);
+        var worldSeed = PaperRollbackWorldSeed.capture(world, request.terrain(), randomSeed, soundSeed, terrainLimits);
         var portable = new RollbackBootstrapData(request.session(), challenge, request.match(), request.round(), millis, nanos, definitions,
                 request.sides(), worldSeed, nativeRoster.portable(playerServices), configuration, access, RollbackMaterials.capture(com.projectkorra.projectkorra.platform.Platform.materials()), PaperRollbackTags.capture(), RollbackServer.Metadata.capture(com.projectkorra.projectkorra.platform.Platform.server()), PaperRollbackPlugins.capture(), graph);
         if (world.getGameTime() != tick) throw new IllegalStateException("World advanced during duel capture");

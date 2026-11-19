@@ -23,19 +23,11 @@ public final class PaperRollbackWorldSettings {
                 paper.misc.disableSprintInterruptionOnAttack, spigot.combatExhaustion);
         var captured = capture(world.getGameRules(), world.getGameTime(), randomSeed, soundSeed, world.getSeaLevel(),
                 RollbackWorldSettings.Difficulty.valueOf(world.getDifficulty().name()), policy);
+        var despawn = new TreeMap<String, Integer>();
+        paper.entities.spawning.despawnTime.forEach((type, value) -> value.value().ifPresent(ticks ->
+                despawn.put(net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(type).toString(), ticks)));
         return new RollbackWorldSettings(captured.gameTime(), randomSeed, soundSeed, captured.seaLevel(), captured.difficulty(),
-                policy, captured.rules(), Legacy.DATA);
-    }
-    private static final class Legacy {
-        static final java.util.Map<String, Byte> DATA = capture();
-        private static java.util.Map<String, Byte> capture() {
-            var result = new TreeMap<String, Byte>();
-            for (var state : net.minecraft.world.level.block.Block.BLOCK_STATE_REGISTRY) {
-                byte value = org.bukkit.craftbukkit.legacy.CraftLegacy.toLegacyData(state);
-                if (value != 0) result.put(net.minecraft.commands.arguments.blocks.BlockStateParser.serialize(state), value);
-            }
-            return java.util.Map.copyOf(result);
-        }
+                policy, captured.rules(), PaperRollbackLegacyBlocks.values(), despawn);
     }
     /** Also supports capture from an already detached native rule set. */
     public static RollbackWorldSettings capture(GameRules rules, long time, long randomSeed, long soundSeed, int seaLevel,

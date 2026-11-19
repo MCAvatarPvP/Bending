@@ -8,6 +8,7 @@
     "ServerPlayNetworkHandlerMixin"
   ],
   "client": [
+    "client.ServerWorldRollbackFluid",
     "client.LootEntryRollbackAccess",
     "client.LootChoiceRollbackMixin",
     "client.LootTableRollbackMixin",

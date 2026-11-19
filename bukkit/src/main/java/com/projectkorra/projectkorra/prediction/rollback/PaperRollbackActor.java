@@ -13,7 +13,7 @@ import net.minecraft.world.phys.Vec3;
 import java.util.*;
 
 /** A private spawned native entity and its ability-facing view share one rewindable body. */
-final class PaperRollbackActor implements RollbackActorRegistry.Actor<RollbackStateGraph.Snapshot>, KinematicsSource<RollbackStateGraph.Snapshot> {
+final class PaperRollbackActor implements RollbackActorRegistry.Actor<RollbackStateGraph.Snapshot>, KinematicsSource<RollbackStateGraph.Snapshot>, ActorProperties {
     private final PaperRollbackNativeScene scene;
     private final net.minecraft.world.entity.Entity nativeActor;
     private final Identity identity;
@@ -34,6 +34,25 @@ final class PaperRollbackActor implements RollbackActorRegistry.Actor<RollbackSt
     @Override public Entity view() { return view; }
     net.minecraft.world.entity.Entity entity() { return nativeActor; }
 
+    @Override public boolean valid() { return !nativeActor.isRemoved(); }
+    @Override public boolean dead() { return !nativeActor.isAlive(); }
+    @Override public void remove() {
+        if (nativeActor.isRemoved()) return;
+        if (nativeActor.valid || nativeActor.inWorld || !scene.world().ownsEntity(nativeActor))
+            throw new IllegalStateException("Cannot retire an unowned native actor");
+        scene.world().event(new org.bukkit.event.entity.EntityRemoveEvent(nativeActor.getBukkitEntity(),
+                org.bukkit.event.entity.EntityRemoveEvent.Cause.PLUGIN));
+        PaperRollbackPrivateAccess.retirePrivateActor(nativeActor);
+    }
+    @Override public int fireTicks() { return nativeActor.getRemainingFireTicks(); }
+    @Override public void fireTicks(int value) { nativeActor.setRemainingFireTicks(value); }
+    @Override public boolean silent() { return nativeActor.isSilent(); }
+    @Override public void silent(boolean value) { nativeActor.setSilent(value); }
+    @Override public boolean invulnerable() { return nativeActor.isInvulnerable(); }
+    @Override public void invulnerable(boolean value) { nativeActor.setInvulnerable(value); }
+    @Override public boolean gravity() { return !nativeActor.isNoGravity(); }
+    @Override public void gravity(boolean value) { nativeActor.setNoGravity(!value); }
+
     @Override public Kinematics readKinematics() {
         var p = nativeActor.position(); var b = nativeActor.getBoundingBox(); var v = nativeActor.getDeltaMovement();
         return new Kinematics(new Pose(p.x, p.y, p.z, nativeActor.getYRot(), nativeActor.getXRot()),
@@ -53,12 +72,15 @@ final class PaperRollbackActor implements RollbackActorRegistry.Actor<RollbackSt
     @Override public double eyeHeight() { return nativeActor.getEyeHeight(); }
     @Override public void tick() {
         if (!RollbackClock.active() || !RollbackDomain.active()) throw new IllegalStateException("Native actor tick outside its match");
-        if (!nativeActor.isRemoved()) {
+        if (!nativeActor.isRemoved() && !nativeActor.isPassenger()) {
             nativeActor.setOldPosAndRot();
-            nativeActor.tickCount++;
+            nativeActor.tickCount++; nativeActor.totalEntityAge++;
             nativeActor.tick();
+            for (var passenger : nativeActor.getPassengers()) {
+                if (scene.world().ownsEntity(passenger)) nativeActor.positionRider(passenger);
+            }
         }
-        if (nativeActor.isRemoved()) RollbackEntityBody.logicalBody(view).remove();
+        RollbackEntityBody.logicalBody(view).liveness(!nativeActor.isRemoved(), !nativeActor.isAlive());
     }
 
     @Override public byte[] exportState() {
@@ -86,7 +108,7 @@ final class PaperRollbackActor implements RollbackActorRegistry.Actor<RollbackSt
         nativeActor.load(input); nativeActor.setId(networkId);
         var old = frame.last();
         nativeActor.setOldPosAndRot(new Vec3(old.x(), old.y(), old.z()), old.yaw(), old.pitch());
-        nativeActor.tickCount = frame.age(); nativeActor.horizontalCollision = frame.horizontalCollision();
+        nativeActor.tickCount = frame.age(); nativeActor.totalEntityAge = frame.age(); nativeActor.horizontalCollision = frame.horizontalCollision();
         nativeActor.verticalCollision = frame.verticalCollision(); nativeActor.verticalCollisionBelow = frame.groundCollision();
         nativeActor.needsSync = frame.impulse(); nativeActor.hurtMarked = frame.sendVelocity();
         PaperRollbackRandomStreams.restore(nativeActor.getRandom(), frame.random());

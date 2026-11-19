@@ -73,7 +73,7 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
         registerExternalActionBarHook();
         try {
             this.prediction = PaperPredictionServer.start(this);
-            var duels = new PaperRollbackDuels(this.prediction, platform,
+            var duels = new PaperRollbackDuels(this, this.prediction, platform,
                     listener.lifecycleEvents(), new PaperRollbackDuelFactory(this, listener));
             getServer().getPluginManager().registerEvents(duels, this);
             this.prediction.installRollbackMatchBootstrap(duels);

@@ -31,6 +31,13 @@ public final class FabricRollbackWorldServices implements FabricRollbackWorldQue
     }
     public interface Events<S> extends RollbackStateCell<S> {
         void gameEvent(RegistryEntry<GameEvent> event, Vec3d position, GameEvent.Emitter emitter);
+        default boolean cancelFluidLevelChange(com.projectkorra.projectkorra.platform.mc.block.Block block) {
+            return com.projectkorra.projectkorra.util.BendingFluidPhysics.cancelLevelChange(block);
+        }
+        default boolean cancelFluidFlow(com.projectkorra.projectkorra.platform.mc.block.Block from,
+                                        com.projectkorra.projectkorra.platform.mc.block.Block to) {
+            return com.projectkorra.projectkorra.util.BendingFluidPhysics.cancelFlow(from, to);
+        }
         void waypoint(FabricRollbackWorldAccess.WaypointAction action, Entity entity);
         void output(FabricRollbackWorldAccess.Output output);
         default boolean slotAllowed(UUID player, int previous, int selected, boolean cancelled) {

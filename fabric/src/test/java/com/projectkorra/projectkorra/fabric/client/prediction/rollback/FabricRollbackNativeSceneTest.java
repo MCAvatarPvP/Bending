@@ -224,6 +224,23 @@ class FabricRollbackNativeSceneTest {
         assertArrayEquals(bytes, queues.captureRollbackState().encode());
         scene.services().advanceTick(1);
         assertEquals(RollbackScheduledTicks.Kind.BLOCK, queues.captureRollbackState().entries().getFirst().kind());
+        var lamp = new BlockData(Material.REDSTONE_LAMP); lamp.setExactState("minecraft:redstone_lamp[lit=true]");
+        logical.setBlockData(lamp, false);
+        world.scheduleBlockTick(pos, net.minecraft.block.Blocks.REDSTONE_LAMP, 1);
+        scene.services().advanceTick(2);
+        assertTrue(logical.getBlockData().getExactState().contains("lit=false"));
+        logical.setType(Material.WATER, false);
+        world.scheduleFluidTick(pos, net.minecraft.fluid.Fluids.WATER, 1);
+        scene.services().advanceTick(3);
+        assertEquals(Material.WATER, scene.logical().getBlockAt(0, 3, 0).getType());
+        var flowing = new BlockData(Material.WATER); flowing.setExactState("minecraft:water[level=1]");
+        for (int x : new int[]{8, 11}) {
+            scene.logical().getBlockAt(x, 10, 0).setBlockData(flowing, false);
+            world.scheduleFluidTick(new net.minecraft.util.math.BlockPos(x, 10, 0), net.minecraft.fluid.Fluids.FLOWING_WATER, 1);
+        }
+        scene.services().advanceTick(4);
+        assertEquals(Material.WATER, scene.logical().getBlockAt(8, 10, 0).getType());
+        assertEquals(Material.AIR, scene.logical().getBlockAt(11, 10, 0).getType());
     }
     private static RollbackRosterData players() throws Exception {
         try (var in = Objects.requireNonNull(FabricRollbackNativeSceneTest.class.getResourceAsStream("/rollback/player-roster.base64"))) {
@@ -262,6 +279,16 @@ class FabricRollbackNativeSceneTest {
         @Override public void restoreRollbackState(Void ignored) { }
     }
     private static final class Events implements FabricRollbackWorldServices.Events<Void> {
+        @Override public boolean cancelFluidLevelChange(com.projectkorra.projectkorra.platform.mc.block.Block block) {
+            assertInstanceOf(RollbackWorld.class, block.getWorld());
+            return block.getX() == 8;
+        }
+        @Override public boolean cancelFluidFlow(com.projectkorra.projectkorra.platform.mc.block.Block from,
+                                                  com.projectkorra.projectkorra.platform.mc.block.Block to) {
+            assertSame(from.getWorld(), to.getWorld());
+            assertInstanceOf(RollbackWorld.class, from.getWorld());
+            return false;
+        }
         @Override public void gameEvent(net.minecraft.registry.entry.RegistryEntry<net.minecraft.world.event.GameEvent> event, net.minecraft.util.math.Vec3d pos, net.minecraft.world.event.GameEvent.Emitter emitter) { throw new AssertionError("No gameplay event expected"); }
         @Override public void waypoint(FabricRollbackWorldAccess.WaypointAction action, net.minecraft.entity.Entity entity) { throw new AssertionError("No waypoint expected"); }
         @Override public void output(FabricRollbackWorldAccess.Output output) { throw new AssertionError("No output expected"); }

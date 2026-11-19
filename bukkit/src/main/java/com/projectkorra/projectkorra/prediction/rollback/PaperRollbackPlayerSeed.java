@@ -55,7 +55,10 @@ public final class PaperRollbackPlayerSeed {
     private static final Values WALK = new Values(WalkAnimationState.class, "speedOld", "speed", "position", "positionScale");
     private static final Values HEALTH = new Values(CraftPlayer.class, "health", "scaledHealth", "healthScale");
     private static final Field<EnumMap> LOCATION_ENCHANTMENTS = new Field<>(LivingEntity.class, "activeLocationDependentEnchantments", EnumMap.class);
-    private static final Field<ArrayDeque> MOVEMENTS = new Field<>(Entity.class, "movementThisTick", ArrayDeque.class);
+    private static final RollbackNativeMovements<net.minecraft.world.phys.Vec3> MOVEMENTS = new RollbackNativeMovements<>(
+            Entity.class, "movementThisTick", "finalMovementsThisTick", net.minecraft.world.phys.Vec3.class,
+            v -> new RollbackPlayerValues.Vector(v.x, v.y, v.z), v -> new net.minecraft.world.phys.Vec3(v.x(), v.y(), v.z()));
+    private final RollbackNativeMovements.History movements;
 
     private final UUID id;
     private final String name;
@@ -88,6 +91,7 @@ public final class PaperRollbackPlayerSeed {
                 new RollbackRosterData.Client(information.language(), information.viewDistance(), RollbackRosterData.Chat.valueOf(information.chatVisibility().name()),
                         information.chatColors(), information.modelCustomisation(), RollbackRosterData.Hand.valueOf(information.mainHand().name()),
                         information.textFilteringEnabled(), information.allowsListing(), RollbackRosterData.Particles.valueOf(information.particleStatus().name())));
+        movements = MOVEMENTS.capture(source);
         entity = ENTITY.capture(source); living = LIVING.capture(source); player = PLAYER.capture(source); server = SERVER.capture(source);
         food = FOOD.capture(source.getFoodData()); walk = WALK.capture(source.walkAnimation); health = HEALTH.capture(source.getBukkitEntity());
         vitals = PaperRollbackPlayerVitals.capture(source);
@@ -121,6 +125,7 @@ public final class PaperRollbackPlayerSeed {
         var fields = new TreeMap<String, RollbackPlayerValues.Cell>();
         ENTITY.export("entity", entity, fields); LIVING.export("living", living, fields); PLAYER.export("player", player, fields);
         SERVER.export("server", server, fields); FOOD.export("food", food, fields); WALK.export("walk", walk, fields); HEALTH.export("health", health, fields);
+        movements.export(fields);
         return new RollbackPlayerValues(fields);
     }
 
@@ -136,10 +141,12 @@ public final class PaperRollbackPlayerSeed {
 
     static Runnable prepareValues(ServerPlayer target, RollbackPlayerValues values) {
         var remaining = new TreeMap<>(values.fields());
+        var movements = RollbackNativeMovements.History.read(remaining);
         Object[] entity = ENTITY.prepare("entity", remaining), living = LIVING.prepare("living", remaining), player = PLAYER.prepare("player", remaining),
                 server = SERVER.prepare("server", remaining), food = FOOD.prepare("food", remaining), walk = WALK.prepare("walk", remaining), health = HEALTH.prepare("health", remaining);
         if (!remaining.isEmpty()) throw new IllegalArgumentException("Unknown player value fields " + remaining.keySet());
         return () -> {
+            MOVEMENTS.apply(target, movements);
             ENTITY.apply(target, entity); LIVING.apply(target, living); PLAYER.apply(target, player); SERVER.apply(target, server);
             FOOD.apply(target.getFoodData(), food); WALK.apply(target.walkAnimation, walk); HEALTH.apply(target.getBukkitEntity(), health);
         };
@@ -183,6 +190,7 @@ public final class PaperRollbackPlayerSeed {
         // Paper checks this flag in Player.isImmobile. The private roster owns the
         // replica; making it eligible for its native tick does not spawn it.
         target.valid = true;
+        MOVEMENTS.apply(target, movements);
         ENTITY.apply(target, entity); LIVING.apply(target, living); PLAYER.apply(target, player); SERVER.apply(target, server);
         FOOD.apply(target.getFoodData(), food); WALK.apply(target.walkAnimation, walk); HEALTH.apply(target.getBukkitEntity(), health);
         PaperRollbackPlayerVitals.applyTo(target, vitals);
@@ -201,12 +209,12 @@ public final class PaperRollbackPlayerSeed {
         }
         if (source.isSleeping() || source.isPassenger() || !source.getPassengers().isEmpty() || source.getCamera() != source
                 || source.fishing != null || !source.getEnderPearls().isEmpty() || source.portalProcess != null
-                || source.isChangingDimension || !MOVEMENTS.get(source).isEmpty()) {
+                || source.isChangingDimension) {
             throw new IllegalStateException("Cannot capture world interactions for " + source.getUUID()
                     + " (sleeping=" + source.isSleeping() + ", mounted=" + source.isPassenger() + ", passengers=" + source.getPassengers().size()
                     + ", remoteCamera=" + (source.getCamera() != source) + ", fishing=" + (source.fishing != null)
                     + ", pearls=" + source.getEnderPearls().size() + ", portal=" + (source.portalProcess != null)
-                    + ", changingDimension=" + source.isChangingDimension + ", pendingMovements=" + MOVEMENTS.get(source).size() + ")");
+                    + ", changingDimension=" + source.isChangingDimension + ")");
         }
         for (Object value : LOCATION_ENCHANTMENTS.get(source).values()) {
             if (!((Map<?, ?>) value).isEmpty()) throw new IllegalStateException("Active location effects require world-state import");

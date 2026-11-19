@@ -26,7 +26,7 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
-import org.bukkit.craftbukkit.legacy.CraftLegacy;
+import net.minecraft.commands.arguments.blocks.BlockStateParser;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -76,7 +76,7 @@ public final class PaperRollbackGeometry implements RollbackWorldQueries.Geometr
                 outline.isEmpty() ? null : box(outline.bounds()), collision.toAabbs().stream().map(PaperRollbackGeometry::box).toList(), fluidBoxes);
     }
 
-    public byte legacyData(BlockData data) { return CraftLegacy.toLegacyData(decode(data)); }
+    public byte legacyData(BlockData data) { return PaperRollbackLegacyBlocks.values().getOrDefault(BlockStateParser.serialize(decode(data)), (byte) 0); }
     @Override public boolean motionBlockingHeight(BlockData data) { return Heightmap.Types.MOTION_BLOCKING.isOpaque().test(decode(data)); }
 
     /** Entity and border colliders are supplied separately by the movement adapter. */

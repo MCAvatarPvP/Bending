@@ -103,6 +103,29 @@ public final class PaperItemMetadata {
 }
 sourceSets.main.java.srcDir(generatePaperItemCatalog)
 
+// Generate CraftLegacy's conversion table in an isolated build JVM. Its static
+// initializer runs DataFixerUpper and must never execute during a rollback duel.
+sourceSets {
+    paperLegacyData {
+        compileClasspath += paperSchemaClasspath
+        runtimeClasspath += configurations.runtimeClasspath + paperSchemaClasspath
+    }
+}
+def paperLegacyResources = layout.buildDirectory.dir('generated/resources/paperLegacyData')
+def paperLegacyTable = paperLegacyResources.map { it.file('rollback/paper-legacy-blocks.bin.gz') }
+def generatePaperLegacyBlockData = tasks.register('generatePaperLegacyBlockData', JavaExec) {
+    dependsOn tasks.named('paperLegacyDataClasses')
+    classpath = sourceSets.paperLegacyData.runtimeClasspath
+    mainClass = 'com.projectkorra.projectkorra.build.PaperLegacyBlockDataGenerator'
+    inputs.property('minecraftVersion', project.minecraft_version)
+    outputs.file(paperLegacyTable)
+    maxHeapSize = '1G'
+    args paperLegacyTable.get().asFile.absolutePath, project.minecraft_version
+}
+sourceSets.main.resources.srcDir(paperLegacyResources)
+tasks.named('processResources') { dependsOn generatePaperLegacyBlockData }
+
+
 tasks.withType(Test).configureEach {
     useJUnitPlatform()
 }

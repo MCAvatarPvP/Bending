@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.prediction.rollback;
 
 import com.projectkorra.projectkorra.BendingPlayer;
+import com.projectkorra.projectkorra.util.TempBlock.RollbackLayers;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore;
@@ -20,7 +21,11 @@ public final class PaperRollbackMatchRestoration {
     /** Original live identities and the ID reservation held during the match. */
     public record LiveRoster(Map<UUID, ServerPlayer> nativePlayers, Map<UUID, BendingPlayer> bendingPlayers,
             CoreAbility.RollbackIdReservation reservation, CoreAbility.RollbackRegistry originalAbilities,
-            RollbackGraphCodec liveCodec) {
+            RollbackGraphCodec liveCodec, RollbackLayers.Lease layers) {
+        public LiveRoster(Map<UUID, ServerPlayer> nativePlayers, Map<UUID, BendingPlayer> bendingPlayers,
+                CoreAbility.RollbackIdReservation reservation, CoreAbility.RollbackRegistry originalAbilities, RollbackGraphCodec liveCodec) {
+            this(nativePlayers, bendingPlayers, reservation, originalAbilities, liveCodec, null);
+        }
         public LiveRoster {
             nativePlayers = Map.copyOf(nativePlayers);
             bendingPlayers = Map.copyOf(bendingPlayers);
@@ -51,6 +56,8 @@ public final class PaperRollbackMatchRestoration {
     private final RollbackTaskBindings tasks;
     private final RollbackScheduledTicks scheduledTicks;
     private final long frontierTime;
+    private RollbackLayers.Lease layerLease;
+    private RollbackLayers settledLayers;
     private boolean released;
 
     private PaperRollbackMatchRestoration(PaperRollbackTerrainWriteback terrain, PaperRollbackRosterComponents.Prepared players,
@@ -91,16 +98,25 @@ public final class PaperRollbackMatchRestoration {
                 .map(RollbackTaskBindings.class::cast).toList();
         if (tasks.size() != 1) throw new IllegalStateException("Confirmed gameplay requires one scheduler");
         var gameplay = restored.prepareCommit(live.bendingPlayers(), live.reservation(), live.originalAbilities());
-        return new PaperRollbackMatchRestoration(terrain, players, gameplay, tasks.getFirst(), actors, frame.scheduledTicks(), frame.players().worldTime());
+        var plan = new PaperRollbackMatchRestoration(terrain, players, gameplay, tasks.getFirst(), actors, frame.scheduledTicks(), frame.players().worldTime());
+        if (live.layers() != null) {
+            plan.layerLease = live.layers();
+            plan.settledLayers = restored.services().stream().filter(RollbackAbilityGlobals.class::isInstance).map(RollbackAbilityGlobals.class::cast)
+                    .findFirst().orElseThrow().capturedLayers();
+            plan.layerLease.validate(plan.settledLayers);
+        }
+        return plan;
     }
 
     public void release(PaperRollbackLiveOwnership ownership) {
         if (released) return;
         gameplay.validate();
+        if (layerLease != null) layerLease.validate(settledLayers);
         actors.validate();
         ownership.stageScheduledTerrain(scheduledTicks, frontierTime);
         ownership.restoreAndRelease(tasks, terrain, players, () -> {
             actors.commit();
+            if (layerLease != null) layerLease.merge(settledLayers);
             gameplay.commit();
         });
         released = true;

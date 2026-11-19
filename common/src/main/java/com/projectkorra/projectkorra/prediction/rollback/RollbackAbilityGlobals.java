@@ -6,22 +6,88 @@ import com.projectkorra.projectkorra.util.BlockSource;
 import com.projectkorra.projectkorra.util.BlockSource.BlockSourceType;
 import com.projectkorra.projectkorra.util.BlockSourceInformation;
 import com.projectkorra.projectkorra.util.ClickType;
+import com.projectkorra.projectkorra.util.TempBlock;
+import com.projectkorra.projectkorra.util.TempFallingBlock;
+import com.projectkorra.projectkorra.util.TempArmorStand;
+import com.projectkorra.projectkorra.platform.mc.entity.FallingBlock;
+import com.projectkorra.projectkorra.platform.mc.entity.Entity;
+import com.projectkorra.projectkorra.platform.mc.World;
+import com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore;
 import java.util.*;
 
 /** Per-participant delayed Catapult landings and block-source selections. */
 public final class RollbackAbilityGlobals {
-    private final Set<UUID> landings = new LinkedHashSet<>();
-    private final Map<Player, HashMap<BlockSourceType, HashMap<ClickType, BlockSourceInformation>>> sources = new LinkedHashMap<>();
+    private boolean enrolled;
+    private RollbackParticipantStatuses statuses = new RollbackParticipantStatuses();
+    private TempBlock.RollbackLayers layers;
+    private Map<FallingBlock, TempFallingBlock> falling = new LinkedHashMap<>();
+    private Set<TempArmorStand> stands = new LinkedHashSet<>();
+    private Set<UUID> landings = new LinkedHashSet<>();
+    private Map<Player, HashMap<BlockSourceType, HashMap<ClickType, BlockSourceInformation>>> sources = new LinkedHashMap<>();
 
     public static RollbackAbilityGlobals capture(Collection<Player> participants) {
         if (RollbackDomain.active()) throw new IllegalStateException("Capture participant registries on the live server");
         var data = new RollbackAbilityGlobals();
+        data.enrolled = true;
         for (Player player : participants) {
             if (Catapult.isAwaitingLanding(player)) data.landings.add(player.getUniqueId());
             var owned = BlockSource.captureRollbackSources(player);
             if (owned != null) data.sources.put(player, owned);
         }
+        data.statuses.capture(participants);
         return data;
+    }
+
+    RollbackParticipantStatuses participantStatuses() { return statuses; }
+
+    /** An already-live temporary actor cannot become part of a newly captured native scene. */
+    public void requireNoInitialActors(World world, RollbackBlockStore.Bounds bounds, Set<UUID> participants) {
+        for (var entry : TempFallingBlock.instances.entrySet()) {
+            var ability = entry.getValue().getAbility();
+            if (inside(world, bounds, entry.getKey()) || ability != null && ability.getPlayer() != null && participants.contains(ability.getPlayer().getUniqueId()))
+                throw new IllegalStateException("Duel enrollment overlaps an existing temporary falling block");
+        }
+        for (var stand : TempArmorStand.getTempStands()) if (inside(world, bounds, stand.getArmorStand()))
+            throw new IllegalStateException("Duel enrollment overlaps an existing temporary armor stand");
+    }
+    private static boolean inside(World world, RollbackBlockStore.Bounds bounds, Entity entity) {
+        var loc = entity.getLocation();
+        return loc.getWorld().handle() == world.handle() && bounds.contains(new RollbackBlockStore.Position(loc.getBlockX(), loc.getBlockY(), loc.getBlockZ()));
+    }
+    public static Map<FallingBlock, TempFallingBlock> falling(Map<FallingBlock, TempFallingBlock> live) {
+        var scope = RollbackDomain.abilityGlobals();
+        return scope == null ? live : scope.falling;
+    }
+    public static Set<TempArmorStand> stands(Set<TempArmorStand> live) {
+        var scope = RollbackDomain.abilityGlobals();
+        return scope == null ? live : scope.stands;
+    }
+
+    public void bindLayers(TempBlock.RollbackLayers captured) {
+        if (layers != null) throw new IllegalStateException("Temporary layers already captured");
+        layers = Objects.requireNonNull(captured);
+    }
+    public TempBlock.RollbackLayers capturedLayers() { return layers; }
+    public static TempBlock.RollbackLayers layers() {
+        var scope = RollbackDomain.abilityGlobals();
+        return scope == null ? null : scope.layers;
+    }
+    RollbackAbilityGlobals portable() {
+        var copy = new RollbackAbilityGlobals();
+        copy.enrolled = enrolled; copy.landings = landings; copy.sources = sources; copy.statuses = statuses;
+        copy.falling = falling; copy.stands = stands;
+        copy.layers = layers == null ? null : layers.portable();
+        return copy;
+    }
+    void install() {
+        RollbackDomain.installAbilityGlobals(this);
+        if (layers != null) layers.install();
+    }
+
+    /** A private tick may not advance a shared live timer that still lacks participant ownership. */
+    static void requireIsolatedManagers() {
+        var state = RollbackDomain.abilityGlobals();
+        if (state != null && state.enrolled) RollbackLiveRegistryEligibility.requireAvailable();
     }
 
     public static Set<UUID> landings(Set<UUID> live) {
@@ -37,6 +103,17 @@ public final class RollbackAbilityGlobals {
 
     /** Resolve each key against the canonical roster before touching any live membership. */
     void validate(Map<UUID, Player> roster) {
+        statuses.validate(roster);
+        if (!falling.isEmpty() || !stands.isEmpty()) {
+            var world = roster.values().iterator().next().getWorld();
+            for (var stand : stands) if (stand.getArmorStand() == null || stand.getArmorStand().getWorld().handle() != world.handle())
+                throw new IllegalStateException("Temporary armor stand belongs to another world");
+            for (var entry : falling.entrySet()) {
+                var block = entry.getValue(); var caster = block.getAbility() == null ? null : block.getAbility().getPlayer();
+                if (caster == null || !roster.containsKey(caster.getUniqueId()) || block.getFallingBlock().handle() != entry.getKey().handle()
+                        || entry.getKey().getWorld().handle() != world.handle()) throw new IllegalStateException("Invalid private temporary falling block");
+            }
+        }
         if (!roster.keySet().containsAll(landings) || sources.size() > roster.size())
             throw new IllegalArgumentException("Ability registry owner outside duel");
         for (var entry : sources.entrySet()) {
@@ -57,6 +134,13 @@ public final class RollbackAbilityGlobals {
     void merge(Map<UUID, Player> roster) {
         if (RollbackDomain.active() || RollbackClock.active()) throw new IllegalStateException("Restore participant registries outside replay");
         validate(roster);
+        for (var entry : falling.entrySet()) {
+            var previous = TempFallingBlock.instances.get(entry.getKey());
+            if (previous != null && previous != entry.getValue()) throw new IllegalStateException("Temporary falling block already has a live owner");
+        }
+        statuses.merge(roster);
+        TempFallingBlock.instances.putAll(falling);
+        TempArmorStand.getTempStands().addAll(stands);
         for (var entry : roster.entrySet()) {
             Catapult.restoreRollbackLanding(entry.getKey(), landings.contains(entry.getKey()));
             BlockSource.restoreRollbackSources(entry.getValue(), sources.get(entry.getValue()));

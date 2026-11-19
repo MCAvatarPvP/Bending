@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.util;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantStatuses;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership;
 
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
@@ -17,25 +18,31 @@ public class TempPotionEffect {
     private final LivingEntity entity;
     private int ID = Integer.MIN_VALUE;
 
+    public static Map<LivingEntity, TempPotionEffect> activeEffects() {
+        var state = RollbackParticipantStatuses.current();
+        return state == null ? instances : state.potions();
+    }
+    public LivingEntity rollbackTarget() { return entity; }
+
     public TempPotionEffect(final LivingEntity entity, final PotionEffect effect) {
         this(entity, effect, RollbackClock.millis());
     }
 
     public TempPotionEffect(final LivingEntity entity, final PotionEffect effect, final long starttime) {
         this.entity = entity;
-        if (instances.containsKey(entity)) {
-            final TempPotionEffect instance = instances.get(entity);
+        if (activeEffects().containsKey(entity)) {
+            final TempPotionEffect instance = activeEffects().get(entity);
             instance.infos.put(instance.ID++, new PotionInfo(starttime, effect));
-            instances.put(entity, instance);
+            activeEffects().put(entity, instance);
         } else {
             this.infos.put(this.ID++, new PotionInfo(starttime, effect));
-            instances.put(entity, this);
+            activeEffects().put(entity, this);
         }
     }
 
     public static void progressAll() {
-        for (final LivingEntity entity : instances.keySet()) {
-            instances.get(entity).progress();
+        for (final LivingEntity entity : activeEffects().keySet()) {
+            activeEffects().get(entity).progress();
         }
     }
 
@@ -79,8 +86,8 @@ public class TempPotionEffect {
                 this.infos.remove(id);
             }
         }
-        if (this.infos.isEmpty() && instances.containsKey(this.entity)) {
-            instances.remove(this.entity);
+        if (this.infos.isEmpty() && activeEffects().containsKey(this.entity)) {
+            activeEffects().remove(this.entity);
         }
     }
 

@@ -50,6 +50,7 @@ final class PaperRollbackNativeValues {
             case BOX -> { var b = (AABB) value; yield new Box(b.minX, b.minY, b.minZ, b.maxX, b.maxY, b.maxZ); }
             case BLOCK -> block((BlockPos) value);
             case CHUNK -> { var p = (ChunkPos) value; yield new Chunk(p.x, p.z); }
+            case MOVEMENTS -> throw new IllegalArgumentException("Movement queues use the native movement adapter");
             case OPTIONAL_BLOCK -> ((Optional<BlockPos>) value).map(PaperRollbackNativeValues::block);
             case DIMENSIONS -> {
                 var d = (EntityDimensions) value;
@@ -75,6 +76,7 @@ final class PaperRollbackNativeValues {
             case BOX -> { var b = (Box) value; yield new AABB(b.minX(), b.minY(), b.minZ(), b.maxX(), b.maxY(), b.maxZ()); }
             case BLOCK -> block((Block) value);
             case CHUNK -> { var p = (Chunk) value; yield new ChunkPos(p.x(), p.z()); }
+            case MOVEMENTS -> throw new IllegalArgumentException("Movement queues use the native movement adapter");
             case OPTIONAL_BLOCK -> ((Optional<Block>) value).map(PaperRollbackNativeValues::block);
             case DIMENSIONS -> {
                 var d = (Dimensions) value;

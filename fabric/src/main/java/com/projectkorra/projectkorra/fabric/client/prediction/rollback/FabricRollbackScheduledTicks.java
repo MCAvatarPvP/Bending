@@ -108,6 +108,10 @@ final class FabricRollbackScheduledTicks implements RollbackStateCell<RollbackSc
         check();
         if (!state.bounds().equals(seed.bounds()) || state.maximumBlockTicks() != seed.maximumBlockTicks()
                 || state.maximumFluidTicks() != seed.maximumFluidTicks()) throw new IllegalArgumentException("Foreign scheduled terrain region");
+        if (state.entries().isEmpty() && blocks != null && blocks.nativeTicks.getTickCount() == 0 && fluids.nativeTicks.getTickCount() == 0) {
+            nextOrder = state.nextOrder();
+            return;
+        }
         var newBlocks = new Queues<>(Registries.BLOCK, Kind.BLOCK, seed.bounds());
         var newFluids = new Queues<>(Registries.FLUID, Kind.FLUID, seed.bounds());
         for (var e : state.entries()) {

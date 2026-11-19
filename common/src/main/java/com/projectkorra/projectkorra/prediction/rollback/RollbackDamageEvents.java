@@ -17,7 +17,8 @@ public final class RollbackDamageEvents {
             throw new IllegalStateException("Bending damage requires the private combat tick and event bus");
         }
         if (RollbackControlEvents.player(view.getEntity().getUniqueId()) != view.getEntity()
-                || directDamager != null && RollbackControlEvents.player(directDamager.getUniqueId()) != directDamager
+                || directDamager != null && (!(view.getEntity().getWorld() instanceof com.projectkorra.projectkorra.prediction.rollback.world.RollbackWorld world)
+                || world.entities().get(directDamager.getUniqueId()) != directDamager)
                 || damagingBlock != null && damagingBlock.getWorld() != view.getEntity().getWorld()) {
             throw new IllegalArgumentException("Damage references a foreign combatant or terrain");
         }

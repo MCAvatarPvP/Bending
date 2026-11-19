@@ -69,7 +69,7 @@ public final class PaperRollbackNativeScene implements RollbackStateCell<Void>, 
         world = new PaperRollbackWorldAccess(queries, services, maximumChunks);
         roster = players.instantiate(world, epochNanos, playerServices);
         queries.bindRoster(world, roster);
-        ticks = new PaperRollbackScheduledTicks(world.world(), seed.ticks());
+        ticks = new PaperRollbackScheduledTicks(world, seed.ticks());
         services.bindTicks(ticks);
         world.bindTicks(ticks);
         if (bindings.blocks() instanceof PaperRollbackBlockRules nativeRules) {

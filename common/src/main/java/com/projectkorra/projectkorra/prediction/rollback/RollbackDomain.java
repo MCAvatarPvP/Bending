@@ -35,7 +35,7 @@ public final class RollbackDomain {
     private final PredictionServices.Bindings prediction;
     private final RollbackConfiguration configuration;
     private Checkpoint state;
-    private RollbackAbilityGlobals globals = new RollbackAbilityGlobals();
+    private RollbackAbilityGlobals globals;
     private boolean failed, outsideRestoreFailed;
 
     private RollbackDomain(RollbackStateGraph graph, Collection<Field> shared, Collection<?> local,
@@ -113,6 +113,24 @@ public final class RollbackDomain {
         return installed(state, operation, ignored -> capture());
     }
 
+    /** Read a settled frame using its existing immutable snapshot and leave local bodies at the provisional head. */
+    <T> T readConfirmed(Checkpoint confirmed, Supplier<T> reader) {
+        checkThread();
+        if (failed || confirmed.owner != this) throw new IllegalStateException("Cannot read this confirmed frame");
+        Checkpoint head = state;
+        return installed(confirmed, () -> {
+            Throwable failure = null;
+            try { return Objects.requireNonNull(reader.get(), "Confirmed state"); }
+            catch (RuntimeException | Error problem) { failure = problem; throw problem; }
+            finally {
+                try { restore(head); }
+                catch (RuntimeException | Error restoreFailure) {
+                    if (failure != null) failure.addSuppressed(restoreFailure); else throw restoreFailure;
+                }
+            }
+        }, null);
+    }
+
     /** A stopped authority may still extract its last successful checkpoint after a failed step. */
     <T> T readForHandoff(Checkpoint confirmed, Supplier<T> reader) {
         checkThread();
@@ -165,7 +183,7 @@ public final class RollbackDomain {
     public Checkpoint capture() {
         checkActive();
         var roots = new ArrayList<Object>(local);
-        roots.add(globals);
+        if (globals != null) roots.add(globals);
         return new Checkpoint(this, graph.capture(roots, shared), globals);
     }
 

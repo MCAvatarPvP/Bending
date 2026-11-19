@@ -47,6 +47,15 @@ final class PaperRollbackPrivateAccess {
     private static final MethodHandle SPECIAL = setter(LevelChunkSection.class, "specialCollidingBlocks");
     private static final MethodHandle BUKKIT = setter(Entity.class, "bukkitEntity");
     private static final MethodHandle RANDOM = setter(Entity.class, "random");
+    private static final MethodHandle REMOVAL = setter(Entity.class, "removalReason");
+    static void retirePrivateActor(Entity actor) {
+        try { REMOVAL.invokeExact(actor, Entity.RemovalReason.DISCARDED); }
+        catch (Throwable failure) { throw failed(failure); }
+    }
+    private static final MethodHandle WRAPPER_BODY = setter(CraftEntity.class, "entity");
+    private static final MethodHandle WRAPPER_SERVER = setter(CraftEntity.class, "server");
+    private static final MethodHandle WRAPPER_TYPE = setter(CraftEntity.class, "entityType");
+    private static final MethodHandle WRAPPER_DATA = setter(CraftEntity.class, "persistentDataContainer");
     private static final MethodHandle SOURCE = setter(CraftDamageSource.class, "damageSource");
     private static final MethodHandle TYPE = setter(CraftDamageSource.class, "damageType");
     private static final MethodHandle ENCHANTMENT_ORDER = getter(ItemEnchantments.class, "ENCHANTMENT_ORDER");
@@ -105,6 +114,37 @@ final class PaperRollbackPrivateAccess {
     static void initializeSection(LevelChunkSection section, PalettedContainer<BlockState> states) {
         try { STATES.invokeExact(section, states); SPECIAL.invokeExact(section, (short) 1); }
         catch (Throwable failure) { throw failed(failure); }
+    }
+    static CraftEntity actorWrapper(Entity body, org.bukkit.craftbukkit.CraftServer server, org.bukkit.entity.EntityType kind) {
+        // CraftEntity's public factory reaches the process-wide Bukkit registry. The private
+        // arena already knows the precise native type and owns the wrapper's data container.
+        Class<? extends CraftEntity> type = switch (kind) {
+            case BLOCK_DISPLAY -> org.bukkit.craftbukkit.entity.CraftBlockDisplay.class;
+            case ITEM_DISPLAY -> org.bukkit.craftbukkit.entity.CraftItemDisplay.class;
+            case ARMOR_STAND -> org.bukkit.craftbukkit.entity.CraftArmorStand.class;
+            case AREA_EFFECT_CLOUD -> org.bukkit.craftbukkit.entity.CraftAreaEffectCloud.class;
+            case ARROW -> org.bukkit.craftbukkit.entity.CraftArrow.class;
+            case SMALL_FIREBALL -> org.bukkit.craftbukkit.entity.CraftSmallFireball.class;
+            case FIREBALL -> org.bukkit.craftbukkit.entity.CraftLargeFireball.class;
+            case FALLING_BLOCK -> org.bukkit.craftbukkit.entity.CraftFallingBlock.class;
+            case ITEM -> org.bukkit.craftbukkit.entity.CraftItem.class;
+            case SHULKER_BULLET -> org.bukkit.craftbukkit.entity.CraftShulkerBullet.class;
+            case SNOWBALL -> org.bukkit.craftbukkit.entity.CraftSnowball.class;
+            case TRIDENT -> org.bukkit.craftbukkit.entity.CraftTrident.class;
+            case SLIME -> org.bukkit.craftbukkit.entity.CraftSlime.class;
+            case TNT -> org.bukkit.craftbukkit.entity.CraftTNTPrimed.class;
+            default -> {
+                if (!(body instanceof net.minecraft.world.entity.LivingEntity)) throw new IllegalArgumentException("Unknown private native actor " + kind);
+                yield org.bukkit.craftbukkit.entity.CraftLivingEntity.class;
+            }
+        };
+        CraftEntity wrapper = ALLOCATOR.newInstance(type);
+        var data = new org.bukkit.craftbukkit.persistence.CraftPersistentDataContainer(new org.bukkit.craftbukkit.persistence.CraftPersistentDataTypeRegistry());
+        try {
+            WRAPPER_BODY.invokeExact(wrapper, body); WRAPPER_SERVER.invokeExact(wrapper, server);
+            WRAPPER_TYPE.invokeExact(wrapper, kind); WRAPPER_DATA.invokeExact(wrapper, data);
+        } catch (Throwable failure) { throw failed(failure); }
+        return wrapper;
     }
     static void initializePlayer(Entity entity, CraftEntity wrapper, RandomSource random) {
         try { BUKKIT.invokeExact(entity, wrapper); RANDOM.invokeExact(entity, random); }

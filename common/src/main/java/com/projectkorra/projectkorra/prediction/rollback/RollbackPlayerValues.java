@@ -15,10 +15,19 @@ import java.util.*;
 public final class RollbackPlayerValues {
     public static final int VERSION = 1, MAXIMUM_FIELDS = 512, MAXIMUM_BYTES = 1_048_576;
     // Ordinals are part of VERSION's wire schema.
-    public enum Kind { BOOLEAN, BYTE, SHORT, INT, LONG, FLOAT, DOUBLE, CHAR, ENUM, VECTOR, BOX, BLOCK, CHUNK, DIMENSIONS, OPTIONAL_BLOCK }
+    public enum Kind { BOOLEAN, BYTE, SHORT, INT, LONG, FLOAT, DOUBLE, CHAR, ENUM, VECTOR, BOX, BLOCK, CHUNK, DIMENSIONS, OPTIONAL_BLOCK, MOVEMENTS }
 
     public record Vector(double x, double y, double z) {
         public Vector { finite(x); finite(y); finite(z); }
+    }
+    public record Movement(Vector from, Vector to, Vector axisMovement) {
+        public Movement { Objects.requireNonNull(from); Objects.requireNonNull(to); }
+    }
+    public record Movements(List<Movement> steps) {
+        public Movements {
+            if (steps.size() > 256) throw invalid("movement count");
+            steps = List.copyOf(steps);
+        }
     }
     public record Block(int x, int y, int z) { }
     public record Chunk(int x, int z) { }
@@ -52,7 +61,7 @@ public final class RollbackPlayerValues {
                     case INT -> Integer.class; case LONG -> Long.class; case FLOAT -> Float.class;
                     case DOUBLE -> Double.class; case CHAR -> Character.class; case ENUM -> String.class;
                     case VECTOR -> Vector.class; case BOX -> Box.class; case BLOCK -> Block.class;
-                    case CHUNK -> Chunk.class; case DIMENSIONS -> Dimensions.class; case OPTIONAL_BLOCK -> Optional.class;
+                    case CHUNK -> Chunk.class; case DIMENSIONS -> Dimensions.class; case OPTIONAL_BLOCK -> Optional.class; case MOVEMENTS -> Movements.class;
                 };
                 if (!expected.isInstance(value)) throw invalid("value type " + kind);
                 if (value instanceof Float v) finite(v);
@@ -141,6 +150,15 @@ public final class RollbackPlayerValues {
             }
             case BLOCK -> block(out, (Block) value);
             case CHUNK -> { Chunk chunk = (Chunk) value; out.writeInt(chunk.x); out.writeInt(chunk.z); }
+            case MOVEMENTS -> {
+                var moves = ((Movements) value).steps();
+                out.writeShort(moves.size());
+                for (var move : moves) {
+                    vector(out, move.from()); vector(out, move.to());
+                    out.writeBoolean(move.axisMovement() != null);
+                    if (move.axisMovement() != null) vector(out, move.axisMovement());
+                }
+            }
             case OPTIONAL_BLOCK -> { var optional = (Optional<Block>) value; out.writeBoolean(optional.isPresent()); if (optional.isPresent()) block(out, optional.get()); }
             case DIMENSIONS -> {
                 Dimensions dimensions = (Dimensions) value;
@@ -160,6 +178,12 @@ public final class RollbackPlayerValues {
             case ENUM -> text(in); case VECTOR -> vector(in); case BLOCK -> block(in);
             case BOX -> new Box(in.readDouble(), in.readDouble(), in.readDouble(), in.readDouble(), in.readDouble(), in.readDouble());
             case CHUNK -> new Chunk(in.readInt(), in.readInt());
+            case MOVEMENTS -> {
+                int size = bounded(in.readUnsignedShort(), 256);
+                var moves = new ArrayList<Movement>(size);
+                for (int i = 0; i < size; i++) moves.add(new Movement(vector(in), vector(in), bool(in) ? vector(in) : null));
+                yield new Movements(moves);
+            }
             case OPTIONAL_BLOCK -> bool(in) ? Optional.of(block(in)) : Optional.empty();
             case DIMENSIONS -> {
                 float width = in.readFloat(), height = in.readFloat(), eye = in.readFloat(); boolean fixed = bool(in);

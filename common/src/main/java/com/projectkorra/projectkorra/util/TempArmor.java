@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.util;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantStatuses;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership;
 
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -36,6 +37,21 @@ public class TempArmor {
      * @param armorItems The armor that should be set onto the player. Optional
      *                   - can be set later.
      */
+    public static Map<LivingEntity, PriorityQueue<TempArmor>> activeArmor() {
+        var state = RollbackParticipantStatuses.current();
+        return state == null ? INSTANCES : state.armor();
+    }
+    public static Map<LivingEntity, ItemStack[]> originalArmor() {
+        var state = RollbackParticipantStatuses.current();
+        return state == null ? ORIGINAL : state.originalArmor();
+    }
+    private static final class ExpiryOrder implements Comparator<TempArmor> {
+        @Override public int compare(TempArmor a, TempArmor b) {
+            long current = RollbackClock.millis();
+            return (int) ((a.getStartTime() + a.getDuration() - current) - (b.getStartTime() + b.getDuration() - current));
+        }
+    }
+
     public TempArmor(final LivingEntity entity, final ItemStack[] armorItems) {
         this(entity, defaultDuration, null, armorItems);
     }
@@ -82,26 +98,21 @@ public class TempArmor {
             }
         }
 
-        if (!INSTANCES.containsKey(entity)) {
-            ORIGINAL.put(entity, this.oldArmor);
-            final PriorityQueue<TempArmor> queue = new PriorityQueue<>(10, (a, b) -> {
-                final long current = RollbackClock.millis();
-                final long remainingA = a.getStartTime() + a.getDuration() - current;
-                final long remainingB = b.getStartTime() + b.getDuration() - current;
-                return (int) (remainingA - remainingB);
-            });
+        if (!activeArmor().containsKey(entity)) {
+            originalArmor().put(entity, this.oldArmor);
+            final PriorityQueue<TempArmor> queue = new PriorityQueue<>(10, new ExpiryOrder());
 
-            INSTANCES.put(entity, queue);
+            activeArmor().put(entity, queue);
         }
         this.setArmor(armorItems);
 
-        INSTANCES.get(entity).add(this);
+        activeArmor().get(entity).add(this);
     }
 
     public static void cleanup() {
-        for (final LivingEntity entity : INSTANCES.keySet()) {
+        for (final LivingEntity entity : activeArmor().keySet()) {
             if (RollbackLiveOwnership.blocks(entity.getUniqueId())) continue;
-            final PriorityQueue<TempArmor> queue = INSTANCES.get(entity);
+            final PriorityQueue<TempArmor> queue = activeArmor().get(entity);
             while (!queue.isEmpty()) {
                 final TempArmor tarmor = queue.peek();
                 if (RollbackClock.millis() >= tarmor.getStartTime() + tarmor.getDuration()) {
@@ -118,9 +129,9 @@ public class TempArmor {
      * shutdown!</b>
      */
     public static void revertAll() {
-        for (final LivingEntity entity : INSTANCES.keySet()) {
-            while (!INSTANCES.get(entity).isEmpty()) {
-                final TempArmor armor = INSTANCES.get(entity).poll();
+        for (final LivingEntity entity : activeArmor().keySet()) {
+            while (!activeArmor().get(entity).isEmpty()) {
+                final TempArmor armor = activeArmor().get(entity).poll();
                 armor.revert();
             }
         }
@@ -133,7 +144,7 @@ public class TempArmor {
      * @return If the entity has temporary armor on
      */
     public static boolean hasTempArmor(final LivingEntity entity) {
-        return INSTANCES.containsKey(entity) && !INSTANCES.get(entity).isEmpty();
+        return activeArmor().containsKey(entity) && !activeArmor().get(entity).isEmpty();
     }
 
     /**
@@ -147,14 +158,14 @@ public class TempArmor {
         if (!TempArmor.hasTempArmor(entity)) {
             return null;
         }
-        return INSTANCES.get(entity).peek();
+        return activeArmor().get(entity).peek();
     }
 
     public static List<TempArmor> getTempArmorList(final LivingEntity entity) {
         if (!TempArmor.hasTempArmor(entity)) {
             return Collections.emptyList();
         }
-        return new ArrayList<>(INSTANCES.get(entity));
+        return new ArrayList<>(activeArmor().get(entity));
     }
 
     /**
@@ -267,7 +278,7 @@ public class TempArmor {
      * @param keepInv Whether the keepInventory gamerule is on
      */
     public void revert(List<ItemStack> drops, boolean keepInv) {
-        final PriorityQueue<TempArmor> queue = INSTANCES.get(this.entity);
+        final PriorityQueue<TempArmor> queue = activeArmor().get(this.entity);
 
         if (queue.contains(this)) {
             final TempArmor head = queue.peek();
@@ -290,18 +301,18 @@ public class TempArmor {
         }
 
         if (queue.isEmpty()) {
-            this.entity.getEquipment().setArmorContents(ORIGINAL.get(this.entity));
+            this.entity.getEquipment().setArmorContents(originalArmor().get(this.entity));
 
             if (drops != null && !keepInv) {
-                for (ItemStack is : ORIGINAL.get(this.entity)) {
+                for (ItemStack is : originalArmor().get(this.entity)) {
                     if (is != null) {
                         drops.add(is);
                     }
                 }
             }
 
-            INSTANCES.remove(this.entity);
-            ORIGINAL.remove(this.entity);
+            activeArmor().remove(this.entity);
+            originalArmor().remove(this.entity);
         }
 
         if (this.removeAbilOnForceRevert && this.ability != null && !this.ability.isRemoved()) {

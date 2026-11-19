@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.util;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantStatuses;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership;
 
 import com.projectkorra.projectkorra.ProjectKorra;
@@ -26,6 +27,11 @@ public class MovementHandler {
     private long duration;
     private String message;
 
+    private static Set<MovementHandler> restrictions() {
+        var state = RollbackParticipantStatuses.current();
+        return state == null ? handlers : state.movement();
+    }
+
     public MovementHandler(LivingEntity entity, CoreAbility ability) {
         this.entity = entity;
         this.location = entity.getLocation();
@@ -34,8 +40,8 @@ public class MovementHandler {
     }
 
     public static void tickAll() {
-        for (MovementHandler handler : new java.util.ArrayList<>(handlers)) {
-            if (handlers.contains(handler)) handler.tick();
+        for (MovementHandler handler : new java.util.ArrayList<>(restrictions())) {
+            if (restrictions().contains(handler)) handler.tick();
         }
     }
 
@@ -44,13 +50,13 @@ public class MovementHandler {
     }
 
     public static void resetAll() {
-        for (MovementHandler handler : handlers) {
+        for (MovementHandler handler : restrictions()) {
             handler.reset();
         }
     }
 
     public static MovementHandler getFromEntityAndAbility(Entity entity, CoreAbility ability) {
-        for (final MovementHandler handler : handlers) {
+        for (final MovementHandler handler : restrictions()) {
             if (handler.getEntity().getEntityId() == entity.getEntityId() && handler.getAbility().equals(ability)) {
                 return handler;
             }
@@ -62,14 +68,14 @@ public class MovementHandler {
     public void stopWithDuration(long duration, String message) {
         this.duration = duration;
         this.message = message;
-        handlers.add(this);
+        restrictions().add(this);
         this.entity.setMetadata("movement:stop", new FixedMetadataValue(ProjectKorra.plugin, ability));
     }
 
     public void stop(String message) {
         this.duration = -1;
         this.message = message;
-        handlers.add(this);
+        restrictions().add(this);
         this.entity.setMetadata("movement:stop", new FixedMetadataValue(ProjectKorra.plugin, ability));
     }
 
@@ -101,7 +107,7 @@ public class MovementHandler {
     }
 
     public void reset() {
-        handlers.remove(this);
+        restrictions().remove(this);
         if (!(this.entity instanceof Player)) {
             this.entity.setAI(true);
         }
