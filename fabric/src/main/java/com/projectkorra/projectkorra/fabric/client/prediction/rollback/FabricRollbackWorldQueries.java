@@ -149,7 +149,7 @@ public final class FabricRollbackWorldQueries implements FabricRollbackWorldAcce
     @Override public boolean isChunkLoaded(int x, int z) {
         checkThread(); var b = logical.terrain().bounds();
         if (x < (b.minX() >> 4) || x > ((b.maxX() - 1) >> 4) || z < (b.minZ() >> 4) || z > ((b.maxZ() - 1) >> 4)) {
-            throw new IllegalStateException("Chunk availability outside captured region");
+            throw new RollbackBlockStore.OutsideCapture("Chunk availability outside captured region");
         }
         return logical.isChunkLoaded(x, z);
     }
@@ -242,7 +242,7 @@ public final class FabricRollbackWorldQueries implements FabricRollbackWorldAcce
         var box = new RollbackBlockStore.Box(bounds.minX, bounds.minY, bounds.minZ, bounds.maxX, bounds.maxY, bounds.maxZ);
         RollbackMovementSolver.requireBlockQuery(box); var captured = logical.terrain().bounds();
         if (!captured.coversWorldQuery(box, logical.getMinHeight(), logical.getMaxHeight()))
-            throw new IllegalStateException("Entity query outside captured terrain");
+            throw new RollbackBlockStore.OutsideCapture("Entity query outside captured terrain");
     }
     private static RollbackBlockStore.Position key(BlockPos pos) { return new RollbackBlockStore.Position(pos.getX(), pos.getY(), pos.getZ()); }
     private void checkThread() { if (Thread.currentThread() != thread) throw new IllegalStateException("Private world queries crossed threads"); }

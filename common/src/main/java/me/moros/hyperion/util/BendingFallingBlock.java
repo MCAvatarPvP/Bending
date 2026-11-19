@@ -19,6 +19,8 @@
 
 package me.moros.hyperion.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 
 import com.projectkorra.projectkorra.Element;
@@ -65,7 +67,7 @@ public class BendingFallingBlock {
     }
     private final FallingBlock fallingBlock;
     private final CoreAbility ability;
-    private final long expirationTime;
+    private long expirationTime;
 
     public BendingFallingBlock(Location location, BlockData data, Vector velocity, CoreAbility abilityInstance, boolean gravity) {
         this(location, data, velocity, abilityInstance, gravity, 30000);
@@ -142,6 +144,10 @@ public class BendingFallingBlock {
 
     public FallingBlock getFallingBlock() {
         return fallingBlock;
+    }
+
+    public void rebase(RollbackTimeShift time) {
+        time.once(this, () -> expirationTime = time.time(expirationTime));
     }
 
     public long getExpirationTime() {

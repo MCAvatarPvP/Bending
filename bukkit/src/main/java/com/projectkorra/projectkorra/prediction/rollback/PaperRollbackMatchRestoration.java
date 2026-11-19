@@ -16,7 +16,7 @@ import java.util.UUID;
 
 /** Stages a single confirmed frame for return to normal gameplay. Retain the plan until release succeeds. */
 public final class PaperRollbackMatchRestoration {
-    private record Frame(RollbackRosterData players, List<RollbackBlockStore.Change> changes, byte[] bending, PaperRollbackActorRestoration.Captured actors, RollbackScheduledTicks scheduledTicks) { }
+    private record Frame(RollbackRosterData players, List<RollbackBlockStore.Change> changes, byte[] bending, PaperRollbackActorRestoration.Captured actors, RollbackScheduledTicks scheduledTicks, long confirmedMillis, long confirmedNanos) { }
 
     /** Original live identities and the ID reservation held during the match. */
     public record LiveRoster(Map<UUID, ServerPlayer> nativePlayers, Map<UUID, BendingPlayer> bendingPlayers,
@@ -55,15 +55,15 @@ public final class PaperRollbackMatchRestoration {
     private final RollbackBendingState.Restoration.LiveCommit gameplay;
     private final RollbackTaskBindings tasks;
     private final RollbackScheduledTicks scheduledTicks;
-    private final long frontierTime;
+    private final long frontierTime, confirmedMillis, confirmedNanos;
     private RollbackLayers.Lease layerLease;
     private RollbackLayers settledLayers;
     private boolean released;
 
     private PaperRollbackMatchRestoration(PaperRollbackTerrainWriteback terrain, PaperRollbackRosterComponents.Prepared players,
-            RollbackBendingState.Restoration.LiveCommit gameplay, RollbackTaskBindings tasks, PaperRollbackActorRestoration actors, RollbackScheduledTicks scheduledTicks, long frontierTime) {
+            RollbackBendingState.Restoration.LiveCommit gameplay, RollbackTaskBindings tasks, PaperRollbackActorRestoration actors, RollbackScheduledTicks scheduledTicks, long frontierTime, long confirmedMillis, long confirmedNanos) {
         this.actors = actors;
-        this.scheduledTicks = scheduledTicks; this.frontierTime = frontierTime;
+        this.scheduledTicks = scheduledTicks; this.frontierTime = frontierTime; this.confirmedMillis = confirmedMillis; this.confirmedNanos = confirmedNanos;
         this.terrain = terrain;
         this.players = players;
         this.gameplay = gameplay;
@@ -88,7 +88,7 @@ public final class PaperRollbackMatchRestoration {
             var registry = scene.world().actors();
             var codec = registry == null ? graph.codec() : graph.codec().withBindings(registry.bindings());
             return new Frame(roster, scene.logical().terrain().changesSince(initial.world().terrain()),
-                    graph.bending().exportState(codec, registry), actors, scene.ticks().captureRollbackState());
+                    graph.bending().exportState(codec, registry), actors, scene.ticks().captureRollbackState(), RollbackClock.millis(), RollbackClock.nanos());
         });
         var terrain = PaperRollbackTerrainWriteback.prepare(world, initial.world().terrain(), frame.changes());
         var players = PaperRollbackRosterComponents.prepare(live.nativePlayers(), frame.players(), liveNanos);
@@ -98,7 +98,7 @@ public final class PaperRollbackMatchRestoration {
                 .map(RollbackTaskBindings.class::cast).toList();
         if (tasks.size() != 1) throw new IllegalStateException("Confirmed gameplay requires one scheduler");
         var gameplay = restored.prepareCommit(live.bendingPlayers(), live.reservation(), live.originalAbilities());
-        var plan = new PaperRollbackMatchRestoration(terrain, players, gameplay, tasks.getFirst(), actors, frame.scheduledTicks(), frame.players().worldTime());
+        var plan = new PaperRollbackMatchRestoration(terrain, players, gameplay, tasks.getFirst(), actors, frame.scheduledTicks(), frame.players().worldTime(), frame.confirmedMillis(), frame.confirmedNanos());
         var globals = restored.services().stream().filter(RollbackAbilityGlobals.class::isInstance)
                 .map(RollbackAbilityGlobals.class::cast).findFirst();
         globals.ifPresent(state -> state.validateTemporaryActors(frame.actors().data()));
@@ -115,7 +115,10 @@ public final class PaperRollbackMatchRestoration {
         gameplay.validate();
         if (layerLease != null) layerLease.validate(settledLayers);
         actors.validate();
+        terrain.validate();
+        players.validate();
         ownership.stageScheduledTerrain(scheduledTicks, frontierTime);
+        gameplay.rebaseAt(confirmedMillis, RollbackClock.millis(), confirmedNanos, RollbackClock.nanos());
         ownership.restoreAndRelease(tasks, terrain, players, () -> {
             actors.commit();
             if (layerLease != null) layerLease.merge(settledLayers);

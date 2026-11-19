@@ -282,7 +282,7 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
         // Validate before entering the domain: an unreconciled input is recoverable,
         // and must not poison the private domain or export the superseded branch.
         engine.frames(frontier.tick(), frontier.tick());
-        return domain.call(() -> new Export(frontier.tick(), frontier.confirmedTick(), frontier.revision(), encoder.get()));
+        return domain.call(() -> new Export(frontier.tick(), frontier.confirmedTick(), frontier.revision(), engine.observeFrame(frontier.tick(), encoder)));
     }
 
     /**
@@ -305,7 +305,8 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
         if (RollbackDomain.active() || RollbackClock.active()) throw new IllegalStateException("Export requires a live tick boundary");
         var frontier = engine.diagnostics();
         engine.frames(frontier.tick(), frontier.tick());
-        return domain.readConfirmed(engine.confirmed().state(), reader);
+        var confirmed = engine.confirmed();
+        return domain.readConfirmed(confirmed.state(), () -> engine.observeFrame(confirmed.tick(), reader));
     }
 
     /**
@@ -319,7 +320,7 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
         if (engine.replica() || delivering || RollbackDomain.active() || RollbackClock.active())
             throw new IllegalStateException("Handoff requires the stopped authority on its live tick thread");
         handingOff = true;
-        return domain.readForHandoff(confirmed.state(), reader);
+        return domain.readForHandoff(confirmed.state(), () -> engine.observeFrame(confirmed.tick(), reader));
     }
 
     public RollbackEngine.Diagnostics diagnostics() { return engine.diagnostics(); }

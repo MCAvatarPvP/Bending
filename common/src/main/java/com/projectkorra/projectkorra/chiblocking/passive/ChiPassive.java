@@ -1,6 +1,9 @@
 package com.projectkorra.projectkorra.chiblocking.passive;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTaskBindings;
 import com.projectkorra.projectkorra.ability.ChiAbility;
 
 import com.projectkorra.projectkorra.BendingPlayer;
@@ -55,17 +58,28 @@ public class ChiPassive {
         bPlayer.blockChi();
         player.getWorld().playSound(player.getLocation(), Sound.ENTITY_ENDER_DRAGON_HURT, 2, 0);
 
-        final long start = RollbackClock.millis();
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                ChatUtil.sendActionBar(Element.CHI.getColor() + "* Chiblocked *", player);
-                if (RollbackClock.millis() >= start + getDuration(bPlayer)) {
-                    bPlayer.unblockChi();
-                    this.cancel();
-                }
+        new BlockTimer(player, bPlayer).runTaskTimer(ProjectKorra.plugin, 0, 1);
+    }
+
+    private static final class BlockTimer extends BukkitRunnable implements RollbackTaskBindings.TimedCallback {
+        private final Player player;
+        private final BendingPlayer bender;
+        private long start = RollbackClock.millis();
+
+        private BlockTimer(Player player, BendingPlayer bender) {
+            this.player = player;
+            this.bender = bender;
+        }
+
+        @Override public void rebase(RollbackTimeShift time) { start = time.time(start); }
+
+        @Override public void run() {
+            ChatUtil.sendActionBar(Element.CHI.getColor() + "* Chiblocked *", player);
+            if (RollbackClock.millis() >= start + getDuration(bender)) {
+                bender.unblockChi();
+                cancel();
             }
-        }.runTaskTimer(ProjectKorra.plugin, 0, 1);
+        }
     }
 
     public static double getChance(BendingPlayer bPlayer) {

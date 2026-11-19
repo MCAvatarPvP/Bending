@@ -75,6 +75,7 @@ public final class PaperRollbackActors implements RollbackArenaActions.Native, R
         var entity = nativeType == net.minecraft.world.entity.EntityType.ITEM ? new PaperRollbackItemEntity(scene)
                 : nativeType == net.minecraft.world.entity.EntityType.SNOWBALL ? new PaperRollbackSnowball(scene)
                 : nativeType == net.minecraft.world.entity.EntityType.ARROW ? new PaperRollbackArrow(scene)
+                : nativeType == net.minecraft.world.entity.EntityType.SHULKER_BULLET ? new PaperRollbackShulkerBullet(scene)
                 : Objects.requireNonNull(nativeType.create(server(), EntitySpawnReason.TRIGGERED), "Cannot create private actor " + key);
         entity.setId(id.networkId()); entity.setUUID(id.uuid());
         entity.spawnReason = org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.CUSTOM;

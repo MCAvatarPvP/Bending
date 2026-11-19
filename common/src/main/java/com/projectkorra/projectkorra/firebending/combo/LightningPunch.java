@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.firebending.combo;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantAbilityIndices;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 
@@ -225,10 +227,13 @@ public final class LightningPunch extends LightningAbility implements ComboAbili
 
     public static final class PendingHit {
         private final LivingEntity target;
-        private final long createdAt;
+        private long createdAt;
         PendingHit(LivingEntity target, long createdAt) {
             this.target = target;
             this.createdAt = createdAt;
+        }
+        public void rebase(RollbackTimeShift time) {
+            time.once(this, () -> createdAt = time.nanos(createdAt));
         }
         public LivingEntity target() { return target; }
     }

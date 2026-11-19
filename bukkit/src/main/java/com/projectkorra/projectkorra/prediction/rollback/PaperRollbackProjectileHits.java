@@ -18,6 +18,10 @@ final class PaperRollbackProjectileHits {
         return view;
     }
 
+    static boolean continues(net.minecraft.world.entity.projectile.Projectile projectile, HitResult hit, boolean cancelled) {
+        return !projectile.isRemoved() && (hit.getType() == HitResult.Type.BLOCK || !cancelled);
+    }
+
     static boolean cancelled(PaperRollbackNativeScene scene, net.minecraft.world.entity.projectile.Projectile projectile, HitResult hit) {
         if (!RollbackDomain.active() || !RollbackClock.active()) throw new IllegalStateException("Private projectile outside replay");
         var event = new ProjectileHitEvent();

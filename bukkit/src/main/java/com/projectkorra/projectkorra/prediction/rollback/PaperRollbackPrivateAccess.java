@@ -49,7 +49,10 @@ final class PaperRollbackPrivateAccess {
     private static final MethodHandle RANDOM = setter(Entity.class, "random");
     private static final MethodHandle REMOVAL = setter(Entity.class, "removalReason");
     static void retirePrivateActor(Entity actor) {
-        try { REMOVAL.invokeExact(actor, Entity.RemovalReason.DISCARDED); }
+        retirePrivateActor(actor, Entity.RemovalReason.DISCARDED);
+    }
+    static void retirePrivateActor(Entity actor, Entity.RemovalReason reason) {
+        try { REMOVAL.invokeExact(actor, reason); }
         catch (Throwable failure) { throw failed(failure); }
     }
     private static final MethodHandle WRAPPER_BODY = setter(CraftEntity.class, "entity");

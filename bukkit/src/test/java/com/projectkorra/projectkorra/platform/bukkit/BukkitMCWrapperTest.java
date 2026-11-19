@@ -20,6 +20,23 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BukkitMCWrapperTest {
     @Test
+    void restoredProjectileViewsExposeTheirNativeRegistryType() {
+        for (var type : List.of(org.bukkit.entity.EntityType.ARROW, org.bukkit.entity.EntityType.SNOWBALL,
+                org.bukkit.entity.EntityType.SHULKER_BULLET, org.bukkit.entity.EntityType.AREA_EFFECT_CLOUD)) {
+            var actor = (org.bukkit.entity.Entity) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{type.getEntityClass()}, (proxy, method, arguments) -> switch (method.getName()) {
+                        case "getType" -> type;
+                        case "hashCode" -> System.identityHashCode(proxy);
+                        case "equals" -> proxy == arguments[0];
+                        default -> throw new UnsupportedOperationException(method.getName());
+                    });
+            var view = BukkitMC.entity(actor);
+            assertSame(actor, view.handle());
+            assertEquals(EntityType.valueOf(type.name()), view.getType());
+        }
+    }
+
+    @Test
     void blockCollisionBoxesKeepSeparateStairSurfacesAndUseWorldCoordinates() {
         var lower = new org.bukkit.util.BoundingBox(0, 0, 0, 1, 0.5, 1);
         var upper = new org.bukkit.util.BoundingBox(0.5, 0.5, 0, 1, 1, 1);

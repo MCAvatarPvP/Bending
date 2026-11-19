@@ -425,6 +425,17 @@ class RollbackBendingStateTest {
                     });
             try (var restorationScope = Platform.using(restorePlatform)) {
                 assertThrows(IllegalStateException.class, () -> restored.prepareAbilities(abilityReservation, expectedLiveAbilities));
+                var restoredA = restored.players().get(A);
+                var restoredB = restored.players().get(B);
+                var sharedCooldown = new Cooldown(2_500L, true);
+                restoredA.getCooldowns().put("QuickStrike", sharedCooldown);
+                restoredB.getCooldowns().put("SharedCooldown", sharedCooldown);
+                bendingOther.getCooldowns().put("QuickStrike", new Cooldown(2_500L, false));
+                restoredA.getTempElements().put(Element.FIRE, 2_600L);
+                restoredA.getTempSubElements().put(Element.BLUE_FIRE, -1L);
+                restoredA.setLastHealthRegen(1_800L);
+                field(CoreAbility.class, "startTime").setLong(restoredPulse, 1_300L);
+                long outsideMillis = unrelatedPulse.getStartTime();
                 long confirmedStart = restoredPulse.getStartTick();
                 long unrelatedStart = unrelatedPulse.getStartTick();
                 field(CoreAbility.class, "currentTick").setLong(null, restored.abilities().tick() + 8);
@@ -462,6 +473,9 @@ class RollbackBendingStateTest {
                 var liveAttributeDefinitions = (Map<String, AttributeCache>) attributes.get(Pulse.class);
                 liveAttributeDefinitions.put("Speed", new AttributeCache(sourceAttribute.getField(), sourceAttribute.getAttribute()));
                 assertThrows(IllegalStateException.class, commit::commit);
+                assertThrows(IllegalStateException.class, () -> commit.rebaseAt(2_000, 90_000, 150, 250));
+                assertEquals(2_500L, sharedCooldown.getCooldown());
+                assertEquals(1_300L, restoredPulse.getStartTime());
                 assertSame(bendingA, BendingPlayer.getBendingPlayer(liveA), "Failed validation must precede all registry writes");
                 assertSame(livePulse, CoreAbility.getAbility(liveA, Pulse.class));
                 assertEquals(Set.of(livePulse, unrelatedPulse), sourceAttribute.getInitialValues().keySet());
@@ -475,13 +489,27 @@ class RollbackBendingStateTest {
                 assertEquals(1, unrelatedPulse.history.size(), "Unrelated abilities continue normally");
                 long handoffTick = CoreAbility.getCurrentTick();
                 int eventsAtCommit = events.size(), constructorsAtCommit = Dynamic.constructions;
-                liveOwnership.restoreAndRelease(commit::commit);
+                liveOwnership.restoreAndRelease(() -> {
+                    commit.rebaseAt(2_000L, 92_000L, -200L, 400L);
+                    commit.commit();
+                });
                 assertFalse(RollbackLiveOwnership.blocks(A)); assertFalse(RollbackLiveOwnership.blocks(B));
                 long confirmedAge = restored.abilities().tick() - confirmedStart;
                 assertEquals(confirmedAge, CoreAbility.getCurrentTick() - restoredPulse.getStartTick());
                 assertEquals(unrelatedStart, unrelatedPulse.getStartTick());
                 assertEquals(handoffTick, CoreAbility.getCurrentTick());
+                commit.rebaseAt(2_000L, 100_000L, -200L, 900L);
                 commit.commit();
+                assertSame(sharedCooldown, restoredA.getCooldowns().get("QuickStrike"));
+                assertSame(sharedCooldown, restoredB.getCooldowns().get("SharedCooldown"));
+                assertTrue(sharedCooldown.isDatabase());
+                assertEquals(92_500L, sharedCooldown.getCooldown());
+                assertEquals(92_600L, restoredA.getTempElements().get(Element.FIRE));
+                assertEquals(-1L, restoredA.getTempSubElements().get(Element.BLUE_FIRE));
+                assertEquals(91_800L, restoredA.getLastHealthRegen());
+                assertEquals(91_300L, restoredPulse.getStartTime());
+                assertEquals(outsideMillis, unrelatedPulse.getStartTime());
+                assertEquals(2_500L, bendingOther.getCooldowns().get("QuickStrike").getCooldown());
                 assertEquals(confirmedAge, CoreAbility.getCurrentTick() - restoredPulse.getStartTick());
                 field(CoreAbility.class, "currentTick").setLong(null, handoffTick + 1);
                 assertSame(restoredPulse.activationAlias, namedActivations.get("fixture").get(ClickType.LEFT_CLICK).getFirst());
@@ -525,7 +553,8 @@ class RollbackBendingStateTest {
                 assertSame(restored.players().get(A), BendingPlayer.getBendingPlayer(liveA));
                 assertSame(bendingOther, BendingPlayer.getBendingPlayer(other));
                 assertEquals(2, temporary.size());
-                assertTrue(temporary.contains(Pair.of(liveB, 4567L)));
+                assertTrue(temporary.contains(Pair.of(liveB, 94_567L)));
+                assertTrue(temporary.contains(Pair.of(other, 500L)));
                 assertSame(unrelatedPulse, CoreAbility.getAbility(other, Pulse.class));
             }
 

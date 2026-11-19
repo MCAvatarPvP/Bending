@@ -1,5 +1,7 @@
 package me.literka.abilities;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
 
@@ -128,6 +130,11 @@ public class RapidPunch extends ChiAbility implements AddonAbility {
     @Override
     public boolean isEnabled() {
         return ChiRework.config().getBoolean("Abilities.RapidPunch.Enabled");
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        last = shift.time(last);
     }
 
     @Override

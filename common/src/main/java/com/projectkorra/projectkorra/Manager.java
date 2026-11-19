@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.mc.event.HandlerList;
 import com.projectkorra.projectkorra.platform.mc.event.Listener;
@@ -57,6 +59,7 @@ public abstract class Manager implements Listener {
     }
     public interface RestorationStep {
         void validate();
+        default void rebase(RollbackTimeShift time) { }
         void commit();
     }
 
@@ -83,6 +86,7 @@ public abstract class Manager implements Listener {
             return new RestorationStep() {
                 private int completed;
                 @Override public void validate() { requireCurrent(); steps.forEach(RestorationStep::validate); }
+                @Override public void rebase(RollbackTimeShift time) { steps.forEach(step -> step.rebase(time)); }
                 @Override public void commit() {
                     validate();
                     while (completed < steps.size()) { steps.get(completed).commit(); completed++; }

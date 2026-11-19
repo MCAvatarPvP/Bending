@@ -15,6 +15,16 @@ class RollbackStartEndpointTest {
     private static final String HASH = "a".repeat(64);
     private static final RollbackStartNegotiation.Limits LIMITS = new RollbackStartNegotiation.Limits(80, 20, 2);
 
+    @Test void reachingUnknownTerrainEndsPredictionWithTheBoundaryReason() {
+        var boundary = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.OutsideCapture("outside arena");
+        var transition = RollbackStartServerEndpoint.Failure.fromTick(RollbackStartPacket.AbortReason.SERVER_FAILURE, "tick failed", boundary);
+        assertEquals(RollbackStartPacket.AbortReason.STATE_CHANGED, transition.reason());
+        assertSame(boundary, transition.cause());
+        var unexpected = new IllegalStateException("damage handler failed");
+        assertEquals(RollbackStartPacket.AbortReason.SERVER_FAILURE, RollbackStartServerEndpoint.Failure.fromTick(
+                RollbackStartPacket.AbortReason.SERVER_FAILURE, "tick failed", unexpected).reason());
+    }
+
     @Test void snapshotImportReceiptsFeedTheRealClockBarrierAndStartTheSession() {
         var f = new Fixture(); byte[] data = new byte[RollbackBootstrapPacket.DATA_BYTES * 2 + 17];
         var offer = new RollbackBootstrapPacket.Offer(ID, CHALLENGE, RollbackStartNegotiation.VERSION, HASH,

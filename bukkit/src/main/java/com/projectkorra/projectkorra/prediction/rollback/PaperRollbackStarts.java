@@ -51,7 +51,9 @@ public final class PaperRollbackStarts {
                 @Override public void start(RollbackStartNegotiation negotiation, long serverTick) { runtime.start(negotiation, serverTick); }
                 @Override public void tick(long serverTick) { runtime.tick(serverTick); }
                 @Override public void stop(RollbackStartServerEndpoint.Failure failure) {
-                    if (failure.cause() != null && plugin != null) plugin.getLogger().log(java.util.logging.Level.WARNING,
+                    if (plugin != null && failure.cause() instanceof com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.OutsideCapture)
+                        plugin.getLogger().info("Rollback session " + session + " reached the captured arena boundary: " + failure.detail());
+                    else if (failure.cause() != null && plugin != null) plugin.getLogger().log(java.util.logging.Level.WARNING,
                             "Rollback session " + session + " stopped: " + failure.detail(), failure.cause());
                     captured.forEach((connection, world) -> worlds.remove(connection, world));
                     runtime.stop(failure);

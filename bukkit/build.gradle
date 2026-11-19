@@ -161,6 +161,7 @@ tasks.register('runPaperServer') {
 // compilation. They bootstrap registries without starting a server or using run/.
 sourceSets {
     nativeTest {
+        java.srcDir(rootProject.file('common/src/nativeTestFixtures/java'))
         resources.srcDir(rootProject.file('test-fixtures'))
         compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
         runtimeClasspath += sourceSets.main.output + sourceSets.main.runtimeClasspath + sourceSets.main.compileClasspath.minus(configurations.optionalPluginApi)

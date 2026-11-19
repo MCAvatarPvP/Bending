@@ -46,6 +46,15 @@ public final class RollbackParticipantAbilityIndices {
         return indices == null ? LIVE : indices.participants;
     }
 
+    void rebase(RollbackTimeShift time) {
+        time.once(chiBlocks, () -> chiBlocks.replaceAll((player, deadline) -> time.time(deadline)));
+        time.once(bombThrows, () -> bombThrows.replaceAll((player, deadline) -> time.time(deadline)));
+        for (var queue : bombCooldowns.values()) time.once(queue, () -> queue.replaceAll(time::time));
+        time.once(smokeTimes, () -> smokeTimes.replaceAll((name, started) -> time.time(started)));
+        time.once(flameTimes, () -> flameTimes.replaceAll((entity, hit) -> time.time(hit)));
+        hits.values().forEach(hit -> hit.rebase(time));
+    }
+
     private static UUID player(Entity entity) {
         return entity instanceof Player ? entity.getUniqueId() : null;
     }

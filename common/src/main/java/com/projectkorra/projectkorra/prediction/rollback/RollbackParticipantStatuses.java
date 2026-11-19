@@ -79,6 +79,13 @@ public final class RollbackParticipantStatuses {
             if (slots.length != 4) throw new IllegalStateException("Invalid saved armor slots");
         });
     }
+    void rebase(RollbackTimeShift time) {
+        movement.forEach(handler -> handler.rebase(time));
+        velocity.values().forEach(tracker -> tracker.rebase(time));
+        potions.values().forEach(effect -> effect.rebase(time));
+        for (var layers : armor.values()) for (var layer : layers) layer.rebase(time);
+    }
+
     void merge(Map<UUID, Player> roster) {
         MovementHandler.handlers.removeIf(handler -> includes(roster, handler.getEntity()));
         MovementHandler.handlers.addAll(movement);

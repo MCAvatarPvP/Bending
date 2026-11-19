@@ -45,6 +45,11 @@ public final class RollbackArenaBlockIndices {
         return result;
     }
 
+    public void rebase(RollbackTimeShift time) {
+        participants.rebase(time);
+        time.once(spearExpiry, () -> spearExpiry.replaceAll((block, deadline) -> time.time(deadline)));
+    }
+
     public void detach(Predicate<Block> inside, Set<UUID> players) {
         transfer(new Transfer(Operation.CHECK_SOURCE, inside, players));
         transfer(new Transfer(Operation.DETACH, inside, players));

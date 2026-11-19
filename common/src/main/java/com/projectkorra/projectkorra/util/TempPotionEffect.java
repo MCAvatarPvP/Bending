@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantStatuses;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership;
@@ -22,6 +24,10 @@ public class TempPotionEffect {
         var state = RollbackParticipantStatuses.current();
         return state == null ? instances : state.potions();
     }
+    public void rebase(RollbackTimeShift time) {
+        for (var info : infos.values()) time.once(info, () -> info.starttime = time.time(info.starttime));
+    }
+
     public LivingEntity rollbackTarget() { return entity; }
 
     public TempPotionEffect(final LivingEntity entity, final PotionEffect effect) {
@@ -93,7 +99,7 @@ public class TempPotionEffect {
 
     private class PotionInfo {
 
-        private final long starttime;
+        private long starttime;
         private final PotionEffect effect;
 
         public PotionInfo(final long starttime, final PotionEffect effect) {

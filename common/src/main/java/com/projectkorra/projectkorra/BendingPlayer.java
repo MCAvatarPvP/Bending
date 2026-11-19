@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackBendingHooks;
 import com.projectkorra.projectkorra.prediction.authority.PredictionServices;
@@ -79,6 +81,17 @@ public class BendingPlayer extends OfflineBendingPlayer {
     private int tickIndex;
     private int cps;
     private long lastWaterManipRedirect, lastScooterUse;
+
+    @Override void rebaseRollbackTime(RollbackTimeShift shift) {
+        super.rebaseRollbackTime(shift);
+        slowTime = shift.time(slowTime);
+        lastAirBlastTime = shift.time(lastAirBlastTime);
+        airStaminaDisplayUntil = shift.time(airStaminaDisplayUntil);
+        lastSurgeWaveTime = shift.time(lastSurgeWaveTime);
+        lastHealthRegen = shift.time(lastHealthRegen);
+        lastWaterManipRedirect = shift.time(lastWaterManipRedirect);
+        lastScooterUse = shift.time(lastScooterUse);
+    }
 
     public BendingPlayer(Player player) {
         super(player);

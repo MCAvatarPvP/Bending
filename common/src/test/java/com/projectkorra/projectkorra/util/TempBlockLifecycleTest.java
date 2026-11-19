@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.jedk1.jedcore.util.RegenTempBlock;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -107,7 +109,7 @@ class TempBlockLifecycleTest {
             var moved = com.projectkorra.projectkorra.ability.EarthAbility.getMovedEarth();
             var air = com.projectkorra.projectkorra.ability.EarthAbility.getTempAirLocations();
             var earth = new Information();
-            earth.setBlock(arena); earth.setState(original.getState()); earth.setPredictionOwner(player);
+            earth.setBlock(arena); earth.setState(original.getState()); earth.setPredictionOwner(player); earth.setTime(4_100L);
             moved.put(arena, earth); air.put(earth.getID(), earth);
             var unaffected = new Information();
             unaffected.setBlock(outside); unaffected.setState(outside.getState());
@@ -153,6 +155,15 @@ class TempBlockLifecycleTest {
                     }
                 });
                 var confirmed = transfer(privateState, arena);
+                long deadline = confirmed.land().get(arena).getRevertTime();
+                long movedAt = confirmed.earth().moved.get(arena).getTime();
+                long outsideTime = unaffected.getTime();
+                var shift = RollbackTimeShift.between(5_000L, 9_000L);
+                confirmed.rebase(shift);
+                confirmed.rebase(shift);
+                assertEquals(deadline + 4_000L, confirmed.land().get(arena).getRevertTime());
+                assertEquals(movedAt + 4_000L, confirmed.earth().air.get(earth.getID()).getTime());
+                assertEquals(outsideTime, unaffected.getTime());
                 lease.merge(confirmed);
                 lease.merge(confirmed);
                 assertEquals(2, TempBlock.getAll(arena).size());

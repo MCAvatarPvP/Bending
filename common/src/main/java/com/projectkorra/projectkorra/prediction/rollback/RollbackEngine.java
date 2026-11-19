@@ -9,6 +9,7 @@ import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 /**
  * Bounded, single-threaded input prediction, replay and finalization. The runtime adapter
@@ -214,6 +215,14 @@ public final class RollbackEngine<S, I, E> implements RollbackReplicaTimeline<S,
     public Frame<S, I, E> head() {
         checkThread();
         return head;
+    }
+
+    /** Read a retained frame on its own timeline after replay has stopped. */
+    <T> T observeFrame(long tick, Supplier<T> reader) {
+        checkThread();
+        try (var clock = RollbackClock.observe(epochMillis, epochNanos, tick, limits.stepNanos())) {
+            return reader.get();
+        }
     }
 
     public Frame<S, I, E> confirmed() {

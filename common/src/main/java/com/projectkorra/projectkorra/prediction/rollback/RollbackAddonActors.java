@@ -86,6 +86,11 @@ public final class RollbackAddonActors {
         }
     }
 
+    void rebase(RollbackTimeShift time) {
+        standExpiry.forEach(stand -> stand.rebase(time));
+        fallingExpiry.forEach(block -> block.rebase(time));
+    }
+
     void merge() {
         validateLive();
         for (var stand : standExpiry) TempArmorStand.resume(stand);

@@ -1,5 +1,7 @@
 package me.literka.abilities;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantAbilityIndices;
 
@@ -289,6 +291,11 @@ public class StickyBomb extends ModernChiAbility implements AddonAbility {
     @Override
     public boolean isEnabled() {
         return ChiRework.config().getBoolean("Abilities.StickyBomb.Enabled");
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        time = shift.time(time);
     }
 
     @Override

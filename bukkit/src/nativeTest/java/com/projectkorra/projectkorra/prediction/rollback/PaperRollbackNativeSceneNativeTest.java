@@ -220,6 +220,47 @@ class PaperRollbackNativeSceneNativeTest {
         });
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void nativeStickyBombAttachesOncePerBranchAndNeverCallsLiveCraftEvents(boolean wall) throws Exception {
+        onTickThread(() -> {
+            var roster = PaperRollbackRosterSeed.capture(source(), 0);
+            var removals = new ArrayList<org.bukkit.event.entity.EntityRemoveEvent>();
+            var sounds = new ArrayList<String>();
+            var actions = (RollbackWorld.Actions)Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{RollbackWorld.Actions.class}, (proxy, method, args) -> {
+                        if (!method.getName().equals("sound")) throw new AssertionError(method);
+                        sounds.add((String)args[3]); return null;
+                    });
+            var scene = scene(seed(), roster, roster.participants(), new Events() {
+                @Override public void gameEvent(Object event, Object pos, Object source) { }
+                @Override public void event(org.bukkit.event.Event event) {
+                    removals.add(assertInstanceOf(org.bukkit.event.entity.EntityRemoveEvent.class, event));
+                }
+            }, actions);
+            var items = new RollbackNativeItems<>(new PaperRollbackItems(PaperRollbackEnvironmentNativeTest.registries()));
+            var actors = new PaperRollbackActors(UUID.randomUUID(), 16, items);
+            actors.bind(scene);
+            var participants = bindAbilityViews(scene, actors, items).players().values().stream().toList();
+            var caster = participants.getFirst(); var target = participants.getLast();
+            actors.nativeEntity(caster).setPos(.5, 4, -2);
+            actors.nativeEntity(target).setPos(.5, 4, wall ? 8 : 2);
+            if (wall) scene.logical().getBlockAt(0, 5, 2).setType(Material.STONE, false);
+            var shot = actors.spawn(scene.logical(), new RollbackEntityBody.Pose(.5, 5.25, .5, 0, 0),
+                    com.projectkorra.projectkorra.platform.mc.entity.ShulkerBullet.class);
+            scene.logical().entities().add(shot);
+            shot.setShooter(caster);
+            var bullet = actors.nativeEntity(shot);
+            bullet.setNoGravity(true);
+            bullet.setDeltaMovement(0, 0, 3);
+            StickyBombImpactScenario.verify(caster, target, shot, actors.registry(), new RollbackStepOutput<>(), actors.registry()::tick, wall);
+            assertEquals(List.of("BLOCK_HONEY_BLOCK_STEP", "BLOCK_HONEY_BLOCK_STEP"), sounds);
+            assertEquals(List.of(org.bukkit.event.entity.EntityRemoveEvent.Cause.PLUGIN, org.bukkit.event.entity.EntityRemoveEvent.Cause.PLUGIN),
+                    removals.stream().map(org.bukkit.event.entity.EntityRemoveEvent::getCause).toList());
+            return null;
+        });
+    }
+
     @Test void privateSnowballImpactDeliversExactLogicalActorsWithoutALiveBukkitServer() throws Exception {
         onTickThread(() -> {
             var roster = PaperRollbackRosterSeed.capture(source(), 0);
@@ -741,10 +782,13 @@ class PaperRollbackNativeSceneNativeTest {
         return scene(seed, players, participants, new Events());
     }
     private static PaperRollbackNativeScene scene(RollbackWorldSeed seed, PaperRollbackRosterSeed players, Set<UUID> participants, Events events) {
+        return scene(seed, players, participants, events, unused(RollbackWorld.Actions.class));
+    }
+    private static PaperRollbackNativeScene scene(RollbackWorldSeed seed, PaperRollbackRosterSeed players, Set<UUID> participants, Events events, RollbackWorld.Actions actions) {
         var tiles = new PaperRollbackBlockEntities(PaperRollbackEnvironmentNativeTest.registries());
         var items = new RollbackNativeItems<>(new PaperRollbackItems(PaperRollbackEnvironmentNativeTest.registries()));
         var blocks = new PaperRollbackBlockRules(items);
-        var bindings = new PaperRollbackNativeScene.Bindings(blocks, items, unused(RollbackWorld.Actions.class), tiles, events);
+        var bindings = new PaperRollbackNativeScene.Bindings(blocks, items, actions, tiles, events);
         var services = new TreeMap<UUID, PaperRollbackRosterSeed.Services>();
         players.participants().forEach(id -> services.put(id, new PaperRollbackRosterSeed.Services(id.getLeastSignificantBits(), 300_000,
                 PaperRollbackStatistics.Seed.fresh(), PaperRollbackAdvancements.Seed.empty())));

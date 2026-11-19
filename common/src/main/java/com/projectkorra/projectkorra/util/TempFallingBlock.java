@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 
 import com.projectkorra.projectkorra.Element;
@@ -154,6 +156,10 @@ public class TempFallingBlock {
 
     public Location getLocation() {
         return fallingblock.getLocation();
+    }
+
+    public void rebase(RollbackTimeShift time) {
+        time.once(this, () -> creation = time.time(creation));
     }
 
     public long getCreationTime() {

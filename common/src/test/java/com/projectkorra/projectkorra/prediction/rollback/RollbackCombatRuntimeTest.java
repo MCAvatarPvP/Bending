@@ -225,6 +225,32 @@ class RollbackCombatRuntimeTest {
         });
     }
 
+    @Test void cooldownObservationUsesTheRequestedFrameEvenWhenWallTimeAndProvisionalHeadArePastExpiry() {
+        withConfig(() -> {
+            var scenario = scenario(); // Epoch 1000 ms, 50 ms steps, three provisional frames.
+            scenario.runtime.submit(A, 1, new Input(List.of(CLICK), false));
+            for (int i = 0; i < 4; i++) scenario.runtime.advance();
+            assertEquals(1, scenario.runtime.diagnostics().confirmedTick());
+
+            java.util.function.Supplier<Long> remaining = () -> {
+                assertFalse(RollbackClock.active());
+                assertThrows(IllegalStateException.class, () -> new RollbackStepOutput<String>().open(new RollbackStep<>(1, 1)));
+                var player = BendingPlayer.getBendingPlayer(scenario.fixture.player);
+                assertTrue(player.isOnCooldown("fixture"));
+                assertEquals(50_010_000L, RollbackClock.nanos());
+                return player.getCooldown("fixture") - RollbackClock.millis();
+            };
+            assertEquals(50L, scenario.runtime.readConfirmedState(remaining));
+            scenario.runtime.exportState(() -> {
+                assertEquals(1_200L, RollbackClock.millis());
+                assertFalse(BendingPlayer.getBendingPlayer(scenario.fixture.player).isOnCooldown("fixture"));
+                return new byte[0];
+            });
+            assertEquals(50L, scenario.runtime.readForHandoff(remaining));
+            assertTrue(RollbackClock.millis() > 1_200L);
+        });
+    }
+
     @Test void confirmedExportRejectsDirtyAndReplicaStateAndRestoresHeadOnEncodingFailure() {
         withConfig(() -> {
             var scenario = scenario(); scenario.runtime.advance(); scenario.runtime.advance();

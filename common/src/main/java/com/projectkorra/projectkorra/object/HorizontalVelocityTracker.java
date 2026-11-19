@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.object;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantStatuses;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership;
@@ -48,6 +50,10 @@ public class HorizontalVelocityTracker {
         var state = RollbackParticipantStatuses.current();
         return state == null ? instances : state.velocity();
     }
+    public void rebase(RollbackTimeShift time) {
+        time.once(this, () -> fireTime = time.time(fireTime));
+    }
+
     public Entity rollbackTarget() { return entity; }
     public Player rollbackInstigator() { return instigator; }
 

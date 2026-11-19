@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.prediction.rollback.RollbackArenaBlockIndices;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackStateCell;
@@ -113,6 +115,15 @@ public class TempBlock {
         public Map<Block, TempBlock> lava() { return lava; }
         public Map<Block, TempBlock> land() { return land; }
         public Map<Block, TempBlock> air() { return air; }
+
+        /** Translate detached deadlines before rebuilding the live expiration queue. */
+        public void rebase(RollbackTimeShift time) {
+            for (var stack : stacks.values()) for (var layer : stack) {
+                if (layer.scheduled) time.once(layer, () -> layer.revertTime = time.time(layer.revertTime));
+            }
+            abilityIndices.rebase(time);
+            if (earth != null) earth.rebase(time);
+        }
 
         public RollbackLayers portable() {
             var copy = new RollbackLayers();

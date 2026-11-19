@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.ability;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.prediction.rollback.RollbackGraphCodec;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
@@ -410,6 +412,15 @@ public abstract class CoreAbility implements Ability {
                 if (source != target) throw new IllegalStateException("Restored abilities must use canonical live attributes");
             });
         }
+        public void rebase(RollbackTimeShift shift) {
+            if (!committed) for (var ability : restored.instances) {
+                shift.once(ability, () -> {
+                    ability.rebaseRollbackTimers(shift);
+                    ability.startTime = shift.time(ability.startTime);
+                });
+            }
+        }
+
         public void commit() {
             requireCurrent(); if (committed) return;
             // The live clock continued during negotiation and the unconfirmed prediction window.
@@ -1190,6 +1201,9 @@ public abstract class CoreAbility implements Ability {
     protected boolean requiresPlayer() {
         return true;
     }
+
+    /** Translate any additional absolute timers on the detached instance before live gameplay resumes. */
+    protected void rebaseRollbackTimers(RollbackTimeShift time) { }
 
     public long getStartTime() {
         return this.startTime;

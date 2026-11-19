@@ -167,6 +167,28 @@ class FabricRollbackNativeSceneTest {
         });
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void nativeStickyBombAttachesOncePerBranchWithoutAnExtraVanillaImpact(boolean wall) throws Exception {
+        var duel = FabricRollbackNativeScene.importDuel(bootstrapData(), FabricRollbackTestRegistry.simulationRegistries(),
+                FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);
+        var participants = duel.views().players().values().stream().toList();
+        var caster = participants.getFirst(); var target = participants.getLast();
+        caster.state().hidden(Set.of());
+        duel.actors().nativeEntity(caster).setPosition(.5, 4, -2);
+        duel.actors().nativeEntity(target).setPosition(.5, 4, wall ? 8 : 2);
+        var world = duel.scene().logical();
+        if (wall) world.getBlockAt(0, 5, 2).setType(Material.STONE, false);
+        var shot = world.spawn(new com.projectkorra.projectkorra.platform.mc.Location(world, .5, 5.25, .5),
+                com.projectkorra.projectkorra.platform.mc.entity.ShulkerBullet.class);
+        shot.setShooter(caster);
+        var bullet = duel.actors().nativeEntity(shot);
+        bullet.setNoGravity(true);
+        bullet.setVelocity(0, 0, 3);
+        StickyBombImpactScenario.verify(caster, target, shot, duel.actors().registry(), duel.output(),
+                () -> new FabricRollbackPhases(duel).tickWorld(1), wall);
+    }
+
     @Test void nativeDartAndSmokescreenUseTheirOwnedArrowAndPotionCloud() throws Exception {
         var duel = FabricRollbackNativeScene.importDuel(bootstrapData(), FabricRollbackTestRegistry.simulationRegistries(),
                 FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);

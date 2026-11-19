@@ -19,6 +19,8 @@
 
 package me.moros.hyperion.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -68,7 +70,7 @@ public class TempArmorStand {
     private final ArmorStand armorStand;
     private final CoreAbility ability;
     private final Material headMaterial;
-    private final long expirationTime;
+    private long expirationTime;
     private final boolean particles;
 
     public TempArmorStand(CoreAbility abilityInstance, Location location, Material material, long delay) {
@@ -144,6 +146,10 @@ public class TempArmorStand {
 
     public ArmorStand getArmorStand() {
         return armorStand;
+    }
+
+    public void rebase(RollbackTimeShift time) {
+        time.once(this, () -> expirationTime = time.time(expirationTime));
     }
 
     public long getExpirationTime() {

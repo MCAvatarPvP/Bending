@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantStatuses;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership;
@@ -217,6 +219,10 @@ public class TempArmor {
 
     public ItemStack[] getOldArmor() {
         return this.oldArmor;
+    }
+
+    public void rebase(RollbackTimeShift time) {
+        time.once(this, () -> startTime = time.time(startTime));
     }
 
     public long getStartTime() {

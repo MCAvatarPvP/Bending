@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantStatuses;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership;
@@ -22,7 +24,7 @@ public class MovementHandler {
 
     private final LivingEntity entity;
     private final CoreAbility ability;
-    private final long startTime;
+    private long startTime;
     private ResetTask reset = null;
     private Location location;
     private long duration;
@@ -122,6 +124,10 @@ public class MovementHandler {
 
     public CoreAbility getAbility() {
         return this.ability;
+    }
+
+    public void rebase(RollbackTimeShift time) {
+        time.once(this, () -> startTime = time.time(startTime));
     }
 
     public LivingEntity getEntity() {

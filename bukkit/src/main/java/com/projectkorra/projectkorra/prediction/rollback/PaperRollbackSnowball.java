@@ -30,7 +30,7 @@ final class PaperRollbackSnowball extends Snowball {
 
     @Override public ProjectileDeflection preHitTargetOrDeflectSelf(HitResult hit) {
         hitCancelled = PaperRollbackProjectileHits.cancelled(scene, this, hit);
-        return !isRemoved() && (hit.getType() == HitResult.Type.BLOCK || !hitCancelled)
+        return PaperRollbackProjectileHits.continues(this, hit, hitCancelled)
                 ? hitTargetOrDeflectSelf(hit) : ProjectileDeflection.NONE;
     }
 

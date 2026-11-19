@@ -133,6 +133,11 @@ public final class RollbackEarthTerrain {
                 || !Collections.disjoint(active.keySet(), RaiseEarth.activeBlocks().keySet()) || !Collections.disjoint(prevented, EarthAbility.getPreventEarthbendingBlocks())
                 || !Collections.disjoint(physics, EarthAbility.getPreventPhysicsBlocks())) throw new IllegalStateException("Overlapping live earth restoration");
     }
+    public void rebase(RollbackTimeShift time) {
+        for (var rows : List.of(moved.values(), air.values())) for (var info : rows)
+            time.once(info, () -> info.setTime(time.time(info.getTime())));
+    }
+
     public void detach() {
         moved.keySet().forEach(EarthAbility.getMovedEarth()::remove); air.keySet().forEach(EarthAbility.getTempAirLocations()::remove);
         earthQueue.keySet().forEach(RevertChecker.earthQueue()::remove); airQueue.keySet().forEach(RevertChecker.airQueue()::remove);

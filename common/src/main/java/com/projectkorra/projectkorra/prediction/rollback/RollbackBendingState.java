@@ -232,6 +232,8 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
             private final CoreAbility.RollbackAbilityRestoration abilityCommit;
             private final RollbackAbilityGlobals globals;
             private final Map<UUID, Player> roster;
+            private RollbackTimeShift clockShift;
+            private boolean clockPrepared;
             private LiveCommit(OfflineBendingPlayer.RollbackPlayerRestoration players,
                     CoreAbility.RollbackAbilityRestoration abilities) {
                 playerCommit = players; abilityCommit = abilities;
@@ -248,14 +250,33 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
                 comboCommit.validate();
                 activationCommit.validate();
             }
+            /** Set the time of first live delivery before publishing any of this graph's owned services. */
+            public void rebaseAt(long confirmedMillis, long liveMillis, long confirmedNanos, long liveNanos) {
+                validate();
+                if (clockPrepared) return;
+                if (clockShift == null) clockShift = RollbackTimeShift.between(confirmedMillis, liveMillis, confirmedNanos, liveNanos);
+                if (clockShift.active()) {
+                    playerCommit.rebase(clockShift);
+                    abilityCommit.rebase(clockShift);
+                    managerCommit.rebase(clockShift);
+                    comboCommit.rebase(clockShift);
+                    if (globals != null) globals.rebase(clockShift);
+                    for (var service : state.services) {
+                        if (service instanceof RollbackTaskBindings tasks) tasks.rebase(clockShift);
+                    }
+                }
+                clockPrepared = true;
+            }
+
             public void commit() {
                 validate();
+                if (!clockPrepared) rebaseAt(0, 0, 0, 0);
                 // No gameplay hooks run in these steps. Each completed step is idempotent.
                 commitManagers();
                 commitAttributes();
                 comboCommit.commit();
                 activationCommit.commit();
-                playerCommit.commit();
+                playerCommit.commit(clockShift);
                 abilityCommit.commit();
                 if (globals != null) globals.merge(roster);
             }

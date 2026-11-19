@@ -16,7 +16,14 @@ public final class RollbackStartServerEndpoint {
         /** Owns coordinated cleanup; the endpoint does not release Neptune's latency lease. */
         void stop(Failure failure);
     }
-    public record Failure(RollbackStartPacket.AbortReason reason, String detail, Throwable cause) { }
+    public record Failure(RollbackStartPacket.AbortReason reason, String detail, Throwable cause) {
+        static Failure fromTick(RollbackStartPacket.AbortReason reason, String detail, Throwable cause) {
+            if (cause instanceof com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.OutsideCapture) {
+                return new Failure(RollbackStartPacket.AbortReason.STATE_CHANGED, cause.getMessage(), cause);
+            }
+            return new Failure(reason, detail, cause);
+        }
+    }
 
     private final Thread owner = Thread.currentThread();
     private final Transport transport;
@@ -84,7 +91,7 @@ public final class RollbackStartServerEndpoint {
             try { registration.progress(tick, true); }
             catch (RuntimeException | Error failure) {
                 if (registration.ended) throw failure;
-                registration.fail(new Failure(RollbackStartPacket.AbortReason.SERVER_FAILURE, "Rollback runtime/start tick failed", failure));
+                registration.fail(Failure.fromTick(RollbackStartPacket.AbortReason.SERVER_FAILURE, "Rollback runtime/start tick failed", failure));
             }
         }
     }

@@ -96,10 +96,13 @@ class RollbackArenaBlockIndicesTest {
                 seed.participants.chiBlocks.remove(enrolled);
                 seed.participants.bombCooldowns.get(enrolled).removeFirst();
                 seed.participants.bombThrows.put(enrolled, 65L);
+                var shift = RollbackTimeShift.between(35L, 1_035L);
+                seed.rebase(shift);
+                seed.rebase(shift); // A retried handoff uses the same detached values.
                 seed.merge(block -> false, roster);
                 assertFalse(live.chiBlocks.containsKey(enrolled));
-                assertEquals(List.of(40L, 60L), live.bombCooldowns.get(enrolled));
-                assertEquals(65L, live.bombThrows.get(enrolled));
+                assertEquals(List.of(1_040L, 1_060L), live.bombCooldowns.get(enrolled));
+                assertEquals(1_065L, live.bombThrows.get(enrolled));
                 assertEquals(55L, live.chiBlocks.get(outside));
             } finally {
                 live.chiBlocks.remove(enrolled);

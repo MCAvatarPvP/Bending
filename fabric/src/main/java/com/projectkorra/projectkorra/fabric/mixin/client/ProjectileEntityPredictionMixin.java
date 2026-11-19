@@ -26,7 +26,11 @@ public abstract class ProjectileEntityPredictionMixin {
     @Inject(method = "hitOrDeflect", at = @At("HEAD"), cancellable = true)
     private void projectkorra$rollbackHit(HitResult hit, CallbackInfoReturnable<ProjectileDeflection> result) {
         if (!FabricRollbackProjectiles.active()) return;
-        boolean cancelled = FabricRollbackProjectiles.cancelled((ProjectileEntity)(Object)this, hit);
+        var projectile = (ProjectileEntity)(Object)this;
+        boolean cancelled = FabricRollbackProjectiles.cancelled(projectile, hit);
+        // A bending listener can consume the projectile on either kind of hit.
+        // The vanilla block callback and projectile-specific impact effects must then both stop.
+        if (projectile.isRemoved()) { result.setReturnValue(ProjectileDeflection.NONE); return; }
         projectkorra$cancelledRollbackBlock = cancelled && hit.getType() == HitResult.Type.BLOCK;
         if (cancelled && !projectkorra$cancelledRollbackBlock) result.setReturnValue(ProjectileDeflection.NONE);
     }

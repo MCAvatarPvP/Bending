@@ -16,15 +16,19 @@ public final class RollbackClock {
         return time == null ? System.nanoTime() : time.nanos;
     }
 
+    /** A checkpoint reader has frame time, but cannot open a tick's output or mutation services. */
     public static boolean active() {
-        return CURRENT.get() != null;
+        return identity() != null;
     }
 
-    static Object identity() { return CURRENT.get(); }
+    static Object identity() {
+        final Time time = CURRENT.get();
+        return time != null && time.executing ? time : null;
+    }
 
     static long nextRandomSeed() {
         final Time time = CURRENT.get();
-        if (time == null) throw new IllegalStateException("No simulation clock");
+        if (time == null || !time.executing) throw new IllegalStateException("No simulation tick");
         long seed = time.millis ^ time.elapsedNanos ^ (++time.randomOrdinal * 0x9E3779B97F4A7C15L);
         seed = (seed ^ (seed >>> 30)) * 0xBF58476D1CE4E5B9L;
         seed = (seed ^ (seed >>> 27)) * 0x94D049BB133111EBL;
@@ -36,30 +40,40 @@ public final class RollbackClock {
     }
 
     static Scope at(final long epochMillis, final long epochNanos, final long tick, final long stepNanos) {
+        return open(epochMillis, epochNanos, tick, stepNanos, true);
+    }
+
+    static Scope observe(final long epochMillis, final long epochNanos, final long tick, final long stepNanos) {
+        return open(epochMillis, epochNanos, tick, stepNanos, false);
+    }
+
+    private static Scope open(long epochMillis, long epochNanos, long tick, long stepNanos, boolean executing) {
         final long elapsed = Math.multiplyExact(tick, stepNanos);
         final Time previous = CURRENT.get();
         final Time current = new Time(Math.addExact(epochMillis, elapsed / 1_000_000L),
-                epochNanos + elapsed, elapsed);
+                epochNanos + elapsed, elapsed, executing);
         CURRENT.set(current);
         return new Scope(previous, current);
     }
 
     static RollbackRandom random() {
         final Time time = CURRENT.get();
-        if (time == null) throw new IllegalStateException("No simulation clock");
+        if (time == null || !time.executing) throw new IllegalStateException("No simulation tick");
         if (time.random == null) time.random = new RollbackRandom(nextRandomSeed());
         return time.random;
     }
 
     private static final class Time {
         final long millis, nanos, elapsedNanos;
+        final boolean executing;
         long randomOrdinal;
         RollbackRandom random;
 
-        Time(long millis, long nanos, long elapsedNanos) {
+        Time(long millis, long nanos, long elapsedNanos, boolean executing) {
             this.millis = millis;
             this.nanos = nanos;
             this.elapsedNanos = elapsedNanos;
+            this.executing = executing;
         }
     }
 

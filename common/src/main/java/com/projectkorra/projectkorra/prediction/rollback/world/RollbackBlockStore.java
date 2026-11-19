@@ -36,6 +36,11 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
         }
     }
 
+    /** A native ray or movement needs real terrain beyond this duel's owned snapshot. */
+    public static final class OutsideCapture extends IllegalStateException {
+        public OutsideCapture(String message) { super(message); }
+    }
+
     /** Inclusive minimum, exclusive maximum. Uncaptured coordinates abort instead of reading future terrain. */
     public record Bounds(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
         public Bounds {
@@ -391,7 +396,7 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
         if (Thread.currentThread() != owner) throw new IllegalStateException("Logical terrain crossed threads");
     }
     private void requireInside(Position position) {
-        if (!bounds.contains(position)) throw new IllegalStateException("Terrain was not captured at " + position);
+        if (!bounds.contains(position)) throw new OutsideCapture("Terrain was not captured at " + position);
     }
     static BlockData copyData(BlockData data) {
         Objects.requireNonNull(data, "data");

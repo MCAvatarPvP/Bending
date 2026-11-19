@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 
 import com.projectkorra.projectkorra.Element.SubElement;
@@ -182,6 +184,13 @@ public class OfflineBendingPlayer {
         return new RollbackPlayerRestoration(expected, restored, temporaryElements);
     }
 
+    void rebaseRollbackTime(RollbackTimeShift shift) {
+        cooldowns.values().forEach(cooldown -> cooldown.rebaseRollbackTime(shift));
+        shift.once(tempElements, () -> tempElements.replaceAll((element, expiry) -> shift.time(expiry)));
+        shift.once(tempSubElements, () -> tempSubElements.replaceAll((element, expiry) -> shift.time(expiry)));
+        lastAccessed = shift.time(lastAccessed);
+    }
+
     public static final class RollbackPlayerRestoration {
         private final Thread owner = Thread.currentThread();
         private final Map<UUID, BendingPlayer> expected, restored;
@@ -226,12 +235,20 @@ public class OfflineBendingPlayer {
             }
         }
         /** Idempotent while the restored roster still owns its live registry entries. */
-        public void commit() {
+        public void rebase(RollbackTimeShift shift) {
+            if (shift.active() && !committed) {
+                for (var player : restored.values()) shift.once(player, () -> player.rebaseRollbackTime(shift));
+            }
+        }
+
+        public void commit() { commit(RollbackTimeShift.NONE); }
+
+        public void commit(RollbackTimeShift shift) {
             requireCurrent(); if (committed) return;
             // Build the complete replacement queue before modifying any live registry.
             var queue = new PriorityQueue<>(temporaryElements());
             queue.removeIf(entry -> restored.containsKey(entry.getLeft().getUniqueId()));
-            for (var entry : temporaryElements) queue.add(Pair.of(entry.player, entry.expiry));
+            for (var entry : temporaryElements) queue.add(Pair.of(entry.player, shift.time(entry.expiry)));
             onlinePlayers().putAll(restored); cachedPlayers().putAll(restored);
             temporaryElements().clear(); temporaryElements().addAll(queue);
             committed = true;

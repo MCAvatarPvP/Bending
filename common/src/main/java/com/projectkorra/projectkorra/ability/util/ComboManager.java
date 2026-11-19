@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.ability.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.prediction.rollback.RollbackDomain;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership;
@@ -200,6 +202,10 @@ public class ComboManager {
                             || players.keySet().stream().anyMatch(id -> currentScheduled().get(id) != beforeScheduled.get(id)
                                     || currentHelp().get(id) != beforeHelp.get(id))
                             || !before.equals(stamp())) throw new IllegalStateException("Live combo state changed before restoration");
+                }
+                @Override public void rebase(RollbackTimeShift time) {
+                    for (var history : recent.values()) for (var info : history)
+                        time.once(info, () -> info.setTime(time.time(info.getTime())));
                 }
                 public void commit() {
                     validate(); if (committed) return;

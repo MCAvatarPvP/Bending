@@ -120,14 +120,14 @@ public final class PaperRollbackWorldQueries implements PaperRollbackWorldAccess
     @Override public boolean chunkLoaded(int x, int z) {
         checkThread(); var b = logical.terrain().bounds();
         if (x < (b.minX() >> 4) || x > ((b.maxX() - 1) >> 4) || z < (b.minZ() >> 4) || z > ((b.maxZ() - 1) >> 4)) {
-            throw new IllegalStateException("Chunk availability outside captured region");
+            throw new RollbackBlockStore.OutsideCapture("Chunk availability outside captured region");
         }
         return logical.isChunkLoaded(x, z);
     }
     @Override public boolean chunksLoaded(int minX, int minZ, int maxX, int maxZ) {
         checkThread(); var b = logical.terrain().bounds();
         if (minX > maxX || minZ > maxZ || minX < b.minX() || maxX >= b.maxX() || minZ < b.minZ() || maxZ >= b.maxZ()) {
-            throw new IllegalStateException("Region outside captured terrain");
+            throw new RollbackBlockStore.OutsideCapture("Region outside captured terrain");
         }
         long count = ((long) (maxX >> 4) - (minX >> 4) + 1) * ((long) (maxZ >> 4) - (minZ >> 4) + 1);
         if (count > 65_536) throw new IllegalStateException("Loaded-region query budget exceeded");
@@ -203,7 +203,7 @@ public final class PaperRollbackWorldQueries implements PaperRollbackWorldAccess
         var box = new RollbackBlockStore.Box(bounds.minX, bounds.minY, bounds.minZ, bounds.maxX, bounds.maxY, bounds.maxZ);
         RollbackMovementSolver.requireBlockQuery(box); var b = logical.terrain().bounds();
         if (!b.coversWorldQuery(box, logical.getMinHeight(), logical.getMaxHeight()))
-            throw new IllegalStateException("Entity query outside captured terrain");
+            throw new RollbackBlockStore.OutsideCapture("Entity query outside captured terrain");
     }
     private static RollbackBlockStore.Position key(BlockPos pos) { return new RollbackBlockStore.Position(pos.getX(), pos.getY(), pos.getZ()); }
     private void checkThread() { if (thread != Thread.currentThread()) throw new IllegalStateException("Private world queries crossed threads"); }

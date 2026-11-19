@@ -254,6 +254,18 @@ public final class RollbackAbilityGlobals {
         entity.setMetadata(key, new com.projectkorra.projectkorra.platform.mc.metadata.FixedMetadataValue(owner, value));
     }
 
+    void rebase(RollbackTimeShift time) {
+        if (!time.active()) return;
+        statuses.rebase(time);
+        for (var kinds : sources.values()) for (var clicks : kinds.values()) for (var info : clicks.values()) {
+            if (info != null) time.once(info, () -> info.setCreationTime(time.time(info.getCreationTime())));
+        }
+        falling.values().forEach(block -> block.rebase(time));
+        if (addonActors != null) addonActors.rebase(time);
+        if (layers != null) layers.rebase(time);
+        if (unleasedIndices != null) unleasedIndices.rebase(time);
+    }
+
     void merge(Map<UUID, Player> roster) {
         if (RollbackDomain.active() || RollbackClock.active()) throw new IllegalStateException("Restore participant registries outside replay");
         validate(roster);

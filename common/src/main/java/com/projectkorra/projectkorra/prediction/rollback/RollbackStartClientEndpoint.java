@@ -74,7 +74,7 @@ public final class RollbackStartClientEndpoint {
             }
         } catch (RuntimeException | Error failure) {
             if (current.ended) throw failure;
-            current.fail(new RollbackStartServerEndpoint.Failure(RollbackStartPacket.AbortReason.STATE_CHANGED, "Client runtime/start tick failed", failure), true);
+            current.fail(RollbackStartServerEndpoint.Failure.fromTick(RollbackStartPacket.AbortReason.STATE_CHANGED, "Client runtime/start tick failed", failure), true);
         }
     }
 

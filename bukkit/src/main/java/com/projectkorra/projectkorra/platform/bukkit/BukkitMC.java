@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.platform.bukkit;
 
+import com.projectkorra.projectkorra.platform.mc.entity.EntityType;
 import com.projectkorra.projectkorra.BukkitProjectKorraPlugin;
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.chat.ChatMessageType;
@@ -1341,6 +1342,8 @@ public final class BukkitMC {
     private static class EntityView extends Entity {
         protected final org.bukkit.entity.Entity value;
 
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
+
         private EntityView(org.bukkit.entity.Entity value) {
             this.value = value;
         }
@@ -1467,6 +1470,8 @@ public final class BukkitMC {
 
     private static class LivingView extends LivingEntity {
         protected final org.bukkit.entity.LivingEntity value;
+
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
 
         private LivingView(org.bukkit.entity.LivingEntity value) {
             this.value = value;
@@ -1756,6 +1761,8 @@ public final class BukkitMC {
     private static final class ArmorStandView extends ArmorStand {
         private final org.bukkit.entity.ArmorStand value;
 
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
+
         private ArmorStandView(org.bukkit.entity.ArmorStand value) {
             this.value = value;
         }
@@ -1945,6 +1952,8 @@ public final class BukkitMC {
     private static final class DroppedItemView extends Item {
         private final org.bukkit.entity.Item value;
 
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
+
         private DroppedItemView(org.bukkit.entity.Item value) {
             this.value = value;
         }
@@ -2107,6 +2116,8 @@ public final class BukkitMC {
 
     private static class PlayerView extends Player {
         private final org.bukkit.entity.Player value;
+
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
 
         private PlayerView(org.bukkit.entity.Player value) {
             this.value = value;
@@ -2910,6 +2921,8 @@ public final class BukkitMC {
     private static final class FallingView extends FallingBlock {
         private final org.bukkit.entity.FallingBlock value;
 
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
+
         private FallingView(org.bukkit.entity.FallingBlock value) {
             this.value = value;
         }
@@ -3029,6 +3042,8 @@ public final class BukkitMC {
 
     private static class DisplayView extends Display {
         protected final org.bukkit.entity.Display value;
+
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
 
         private DisplayView(org.bukkit.entity.Display value) {
             this.value = value;
@@ -3182,6 +3197,8 @@ public final class BukkitMC {
 
     private static final class BlockDisplayView extends BlockDisplay {
         private final org.bukkit.entity.BlockDisplay value;
+
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
         private final DisplayView display;
 
         private BlockDisplayView(org.bukkit.entity.BlockDisplay value) {
@@ -3338,6 +3355,8 @@ public final class BukkitMC {
 
     private static final class ItemDisplayView extends ItemDisplay {
         private final org.bukkit.entity.ItemDisplay value;
+
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
         private final DisplayView display;
 
         private ItemDisplayView(org.bukkit.entity.ItemDisplay value) {
@@ -3505,6 +3524,8 @@ public final class BukkitMC {
     private static final class AreaEffectCloudView extends AreaEffectCloud {
         private final org.bukkit.entity.AreaEffectCloud value;
 
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
+
         private AreaEffectCloudView(org.bukkit.entity.AreaEffectCloud value) {
             this.value = value;
         }
@@ -3622,6 +3643,8 @@ public final class BukkitMC {
 
     private static final class SnowballView extends Snowball {
         private final org.bukkit.entity.Snowball value;
+
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
 
         private SnowballView(org.bukkit.entity.Snowball value) {
             this.value = value;
@@ -3787,6 +3810,8 @@ public final class BukkitMC {
 
     private static final class ShulkerBulletView extends ShulkerBullet {
         private final org.bukkit.entity.ShulkerBullet value;
+
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
 
         private ShulkerBulletView(org.bukkit.entity.ShulkerBullet value) {
             this.value = value;
@@ -3956,6 +3981,8 @@ public final class BukkitMC {
 
     private static final class ArrowView extends Arrow {
         private final org.bukkit.entity.Arrow value;
+
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
 
         private ArrowView(org.bukkit.entity.Arrow value) {
             this.value = value;

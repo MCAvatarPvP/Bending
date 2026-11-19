@@ -23,6 +23,16 @@ public final class RollbackTaskBindings {
     }
     public List<Entry> entries() { return entries; }
 
+    /** Optional hook for callbacks that store their own absolute timestamps in addition to their tick delay. */
+    public interface TimedCallback extends Runnable {
+        void rebase(RollbackTimeShift time);
+    }
+
+    public void rebase(RollbackTimeShift time) {
+        for (var entry : entries) if (entry.callback instanceof TimedCallback task)
+            time.once(task, () -> task.rebase(time));
+    }
+
     /** Live adapter input at a frozen tick boundary; never itself placed in the portable graph. */
     public record Pending(PKTask source, Runnable callback, long delay, long period, CoreAbility ability, long action, long seed) {
         public Pending { Objects.requireNonNull(source); Objects.requireNonNull(callback); }

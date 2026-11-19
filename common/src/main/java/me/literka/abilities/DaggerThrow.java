@@ -1,5 +1,7 @@
 package me.literka.abilities;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 
 import com.projectkorra.projectkorra.BendingPlayer;
@@ -182,6 +184,11 @@ public class DaggerThrow extends ChiAbility implements AddonAbility, DaggerProje
             ability.remove();
             bPlayer.addCooldown(ability, interaction.cooldown);
         }
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        endTime = shift.time(endTime);
     }
 
     @Override
