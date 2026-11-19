@@ -116,7 +116,7 @@ def paperLegacyTable = paperLegacyResources.map { it.file('rollback/paper-legacy
 def generatePaperLegacyBlockData = tasks.register('generatePaperLegacyBlockData', JavaExec) {
     dependsOn tasks.named('paperLegacyDataClasses')
     classpath = sourceSets.paperLegacyData.runtimeClasspath
-    mainClass = 'com.projectkorra.projectkorra.build.PaperLegacyBlockDataGenerator'
+    mainClass = 'com.projectkorra.projectkorra.tools.PaperLegacyBlockDataGenerator'
     inputs.property('minecraftVersion', project.minecraft_version)
     outputs.file(paperLegacyTable)
     maxHeapSize = '1G'
