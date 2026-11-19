@@ -95,7 +95,7 @@ public class FlightHandler extends Manager {
     @Override
     protected void onRollbackInstall() {
         if (!(Platform.scheduler() instanceof RollbackScheduler scheduler)) throw new IllegalStateException("Flight cleanup requires a private scheduler");
-        scheduler.runServiceTimer(this::cleanupExpired, 0, 1);
+        scheduler.runServiceTimer((com.projectkorra.projectkorra.platform.PKRunnable) this::cleanupExpired, 0, 1);
     }
 
     @Override

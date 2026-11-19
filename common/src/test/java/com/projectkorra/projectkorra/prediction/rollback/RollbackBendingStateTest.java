@@ -342,6 +342,25 @@ class RollbackBendingStateTest {
                     return imported.exportState(outgoing.sender());
                 } catch (Exception failure) { throw new AssertionError(failure); }
             });
+            var checkpointGraph = new RollbackGameplayGraph.Imported(RollbackConfiguration.capture(), outgoingCodec[0].receiver(), imported);
+            var repair = domain.call(() -> imported.exportRepair(outgoingCodec[0].sender()));
+            var replace = checkpointGraph.prepareRepair(repair, privateScheduler.tick());
+            domain.call(() -> {
+                var before = domain.capture();
+                int pendingBeforeRepair = privateScheduler.pendingTasks();
+                try {
+                    replace.run();
+                    var corrected = checkpointGraph.bending();
+                    assertNotSame(imported, corrected);
+                    assertSame(corrected.players().get(A), BendingPlayer.getBendingPlayer(privateA));
+                    assertNotSame(pulse, CoreAbility.getAbility(privateA, Pulse.class));
+                    assertEquals(pendingBeforeRepair, privateScheduler.pendingTasks());
+                    assertInstanceOf(CapturedRule.class, privateBus.commonRegistrations().getFirst().listener());
+                } finally {
+                    domain.restore(before);
+                }
+                return null;
+            });
             var exported = RollbackBendingState.decode(List.of(A, B), outgoingBytes, outgoingCodec[0].receiver());
             assertEquals(constructorsAtExport, Dynamic.constructions);
             assertEquals(Set.of(1, 9), exported.abilities().stream().map(CoreAbility::getId).collect(java.util.stream.Collectors.toSet()));

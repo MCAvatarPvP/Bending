@@ -20,11 +20,16 @@ import java.util.*;
  * Queries must be private session services; world/bending/service bootstrap and Paper
  * policy parity are still required before this roster can replace live duel simulation.
  */
-public final class FabricRollbackRoster {
+public final class FabricRollbackRoster implements com.projectkorra.projectkorra.prediction.rollback.RollbackStateCell<FabricRollbackRoster.Retained> {
+    public static final class Retained {
+        private final FabricRollbackRoster owner;
+        private final Map<UUID, FabricRollbackPlayerValues.Prepared> values;
+        private Retained(FabricRollbackRoster owner) { this.owner = owner; values = owner.values; }
+    }
     private final Thread thread = Thread.currentThread();
     private final FabricRollbackWorldAccess world;
     private final Map<UUID, FabricRollbackNativePlayerState> players;
-    private final Map<UUID, FabricRollbackPlayerValues.Prepared> values;
+    private Map<UUID, FabricRollbackPlayerValues.Prepared> values;
     private record Metadata(RollbackRosterData.Identity identity, long randomSeed) { }
     private final Map<UUID, Metadata> metadata;
 
@@ -88,6 +93,47 @@ public final class FabricRollbackRoster {
         });
         return new RollbackRosterData(world.world().getTime(), result);
     }
+    /** Apply authoritative components to the same native bodies so logical player references retain their identity. */
+    public void importConfirmed(RollbackRosterData confirmed, long capturedNanos) {
+        checkThread();
+        if (RollbackClock.active() || !players.keySet().equals(confirmed.players().keySet())
+                || world.world().getTime() != confirmed.worldTime())
+            throw new IllegalArgumentException("Confirmed roster differs from the restored world/tick");
+        var prepared = new TreeMap<UUID, FabricRollbackPlayerValues.Prepared>();
+        var combat = new TreeMap<UUID, RollbackPlayerCombatData>();
+        confirmed.players().forEach((id, seed) -> {
+            var initial = metadata.get(id);
+            if (!initial.identity().equals(seed.identity()) || initial.randomSeed() != seed.randomSeed())
+                throw new IllegalArgumentException("Confirmed participant identity changed");
+            seed.context().rebase(capturedNanos);
+            prepared.put(id, FabricRollbackPlayerValues.prepareBoundary(seed.values()));
+            combat.put(id, seed.combat());
+        });
+        var previous = new LinkedHashMap<FabricRollbackNativePlayerState, FabricRollbackNativePlayerState.Checkpoint>();
+        players.values().forEach(body -> previous.put(body, body.captureRollbackState()));
+        try {
+            confirmed.players().forEach((id, seed) -> {
+                var body = players.get(id);
+                prepared.get(id).applyBoundary(body);
+                FabricRollbackPlayerVitals.applyBoundary(body, seed.vitals());
+                FabricRollbackPlayerItems.applyBoundary(body, seed.items());
+                FabricRollbackPlayerContextData.applyBoundary(body, seed.context(), capturedNanos);
+            });
+            FabricRollbackPlayerCombatData.applyBoundary(players, combat);
+            values = Map.copyOf(prepared);
+        } catch (RuntimeException | Error failure) {
+            previous.forEach(FabricRollbackNativePlayerState::restoreRollbackState);
+            throw failure;
+        }
+    }
+    @Override public Retained captureRollbackState() { checkThread(); return new Retained(this); }
+    @Override public void restoreRollbackState(Retained saved) {
+        checkThread();
+        if (saved.owner != this) throw new IllegalArgumentException("Foreign native roster checkpoint");
+        values = saved.values;
+    }
+    @Override public List<?> rollbackReferences() { checkThread(); return List.copyOf(players.values()); }
+
     private static GameProfile profile(RollbackRosterData.Identity identity) {
         var properties = ImmutableListMultimap.<String, Property>builder();
         for (var property : identity.properties()) properties.put(property.key(), new Property(property.name(), property.value(), property.signature()));

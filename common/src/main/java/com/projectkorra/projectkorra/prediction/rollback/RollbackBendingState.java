@@ -81,7 +81,11 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
     }
 
     /** Export settled current domain state, replacing startup task/event roots with current registrations. */
-    public byte[] exportState(RollbackGraphCodec codec) {
+    public byte[] exportState(RollbackGraphCodec codec) { return exportState(codec, false); }
+
+    public byte[] exportRepair(RollbackGraphCodec codec) { return exportState(codec, true); }
+
+    private byte[] exportState(RollbackGraphCodec codec, boolean includeServiceTimers) {
         if (Thread.currentThread() != owner || !installed || !RollbackDomain.active()
                 || ProjectKorra.collisionManager != collisions || !BendingPlayer.getPlayers().keySet().equals(players.keySet())
                 || players.entrySet().stream().anyMatch(entry -> BendingPlayer.getPlayers().get(entry.getKey()) != entry.getValue()))
@@ -89,7 +93,7 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
         if (!(com.projectkorra.projectkorra.platform.Platform.scheduler() instanceof RollbackScheduler scheduler))
             throw new IllegalStateException("Export requires the private gameplay scheduler");
         var current = new ArrayList<Object>();
-        var tasks = scheduler.exportTasks();
+        var tasks = scheduler.exportTasks(includeServiceTimers);
         var events = RollbackEventBindings.capture(com.projectkorra.projectkorra.platform.Platform.events());
         boolean foundTasks = false, foundEvents = false;
         for (Object service : services) {
@@ -104,6 +108,10 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
     }
 
     /** The expected roster comes from the session contract, never from an unvalidated object graph. */
+    static RollbackBendingState decodeRepair(Collection<UUID> participants, byte[] bytes, RollbackGraphCodec codec) {
+        return fromRoots(participants, codec.decodeRepair(bytes));
+    }
+
     public static RollbackBendingState decode(Collection<UUID> participants, byte[] bytes, RollbackGraphCodec codec) {
         return fromRoots(participants, codec.decode(bytes));
     }
@@ -374,25 +382,29 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
     }
 
     /** Called once from domain bootstrap; subsequent swaps use ordinary checkpoints. */
-    public void install() {
+    public void install() { install(false); }
+
+    void install(boolean repair) {
         if (Thread.currentThread() != owner || !RollbackDomain.active() || installed) {
             throw new IllegalStateException("Bending import requires one bootstrap on its owning thread");
         }
         var events = services.stream().filter(RollbackEventBindings.class::isInstance)
                 .map(RollbackEventBindings.class::cast).toList();
-        if (events.size() > 1) throw new IllegalArgumentException("Duplicate event registration roots");
+        if (events.size() > 1 || repair && events.isEmpty()) throw new IllegalArgumentException("Duplicate event registration roots");
         if (!events.isEmpty()) {
             if (!(com.projectkorra.projectkorra.platform.Platform.events() instanceof RollbackEventBus bus))
                 throw new IllegalStateException("Imported event rules require a private event bus");
-            events.getFirst().install(bus);
+            if (repair) bus.replaceRegistrations(events.getFirst().registrations());
+            else events.getFirst().install(bus);
         }
         var tasks = services.stream().filter(RollbackTaskBindings.class::isInstance)
                 .map(RollbackTaskBindings.class::cast).toList();
-        if (tasks.size() > 1) throw new IllegalArgumentException("Duplicate task binding roots");
+        if (tasks.size() > 1 || repair && tasks.isEmpty()) throw new IllegalArgumentException("Duplicate task binding roots");
         if (!tasks.isEmpty()) {
             if (!(com.projectkorra.projectkorra.platform.Platform.scheduler() instanceof RollbackScheduler scheduler))
                 throw new IllegalStateException("Imported callbacks require a private scheduler");
-            tasks.getFirst().install(scheduler);
+            if (repair) tasks.getFirst().replace(scheduler);
+            else tasks.getFirst().install(scheduler);
         }
         materials.install();
         combos.install();
@@ -400,7 +412,7 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
         abilities.install();
         OfflineBendingPlayer.installRollbackPlayers(players, temporaryElements);
         ProjectKorra.collisionManager = collisions;
-        managers.install();
+        managers.install(!repair);
         installed = true;
     }
 

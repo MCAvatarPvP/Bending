@@ -19,6 +19,22 @@ public final class PaperRollbackCorrections {
         }
     }
 
+    /** The sender invokes this encoder while the authority has installed its confirmed checkpoint. */
+    public static Settings forMatch(RollbackBootstrapData initial, PaperRollbackNativeScene scene,
+            RollbackPlayerExecution<?> execution, RollbackRound round, RollbackActorRegistry actors,
+            RollbackGameplayGraph.Imported graph, int maximumBytes, int intervalTicks) {
+        var states = new PaperRollbackTerrainTransfer();
+        return new Settings(initial.definitions(), maximumBytes, intervalTicks, () -> {
+            long tick = round.tick();
+            long nanos = initial.epochNanos() + Math.multiplyExact(tick, RollbackDuelRuntime.ENGINE.stepNanos());
+            var data = new RollbackConfirmedData(round.exportData(), scene.captureRoster(initial.roster(), nanos),
+                    PaperRollbackRandomStreams.capture(scene), execution.captureRollbackState(),
+                    scene.logical().terrain().changesSince(initial.world().terrain()), actors.exportState(),
+                    graph.bending().exportRepair(graph.codec().withBindings(actors.bindings())));
+            return data.encode(initial, states, RollbackDuelRuntime.TERRAIN, maximumBytes - RollbackStateCorrection.HEADER_BYTES);
+        });
+    }
+
     private final UUID session;
     private final Settings settings;
     private final Function<Supplier<byte[]>, RollbackCombatRuntime.Export> exportConfirmedState;

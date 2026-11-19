@@ -40,6 +40,7 @@ public final class RollbackEntityRegistry implements RollbackStateCell<RollbackE
     }
 
     public void add(Entity entity) {
+        pruneRemoved();
         addAll(List.of(entity));
     }
 
@@ -59,6 +60,35 @@ public final class RollbackEntityRegistry implements RollbackStateCell<RollbackE
             if (added.size() > maximumEntities - entities.size()) throw new IllegalStateException("Entity budget exceeded");
         }
         entities.putAll(added); networkIds.putAll(addedNetwork);
+    }
+
+    /** Replace only the supplied spawned cohort after a confirmed repair. Existing roster identities stay owned. */
+    @SuppressWarnings("WrapperReferenceEquality") // Only this exact bound facade can be exchanged.
+    public void replaceSpawned(Collection<? extends Entity> previous, Collection<? extends Entity> next) {
+        checkThread();
+        var replaced = new TreeMap<>(entities);
+        var ids = new HashMap<>(networkIds);
+        replaced.values().removeIf(entity -> {
+            if (entity instanceof Player || entity.isValid()) return false;
+            ids.remove(entity.getEntityId()); return true;
+        });
+        for (var entity : previous) {
+            if (entity instanceof Player) throw new IllegalArgumentException("Cannot replace a participant with an actor");
+            if (replaced.get(entity.getUniqueId()) == entity) {
+                replaced.remove(entity.getUniqueId());
+                ids.remove(entity.getEntityId());
+            }
+        }
+        for (var entity : next) {
+            var body = RollbackEntityBody.logicalBody(entity);
+            if (entity instanceof Player || body.world() != world || !body.valid() || replaced.putIfAbsent(entity.getUniqueId(), entity) != null
+                    || ids.putIfAbsent(entity.getEntityId(), entity) != null || replaced.size() > maximumEntities)
+                throw new IllegalArgumentException("Invalid confirmed actor membership");
+        }
+        for (var entity : previous) if (replaced.get(entity.getUniqueId()) != entity)
+            RollbackEntityBody.logicalBody(entity).discardFromRestoredRegistry();
+        entities.clear(); entities.putAll(replaced);
+        networkIds.clear(); networkIds.putAll(ids);
     }
 
     /** Previous checkpoints and ability references retain removed views as needed. */

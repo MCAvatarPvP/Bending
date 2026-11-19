@@ -109,7 +109,7 @@ public final class RollbackDomain {
         checkThread();
         Objects.requireNonNull(operation, "operation");
         if (failed) throw new IllegalStateException("Rollback domain failed; discard the session");
-        return installed(state, operation, true);
+        return installed(state, operation, ignored -> capture());
     }
 
     /** A stopped authority may still extract its last successful checkpoint after a failed step. */
@@ -117,10 +117,17 @@ public final class RollbackDomain {
         checkThread();
         if (Objects.requireNonNull(confirmed).owner != this || outsideRestoreFailed)
             throw new IllegalStateException("Cannot enter the confirmed domain for live restoration");
-        return installed(confirmed, reader, false);
+        return installed(confirmed, reader, null);
     }
 
-    private <T> T installed(Checkpoint initial, Supplier<T> operation, boolean keepChanges) {
+    /** Every successful engine step already captures its resulting head before it returns. */
+    <I,E> RollbackEngine.Update<Checkpoint,I,E> step(Supplier<RollbackEngine.Update<Checkpoint,I,E>> operation) {
+        checkThread();
+        if (failed) throw new IllegalStateException("Rollback domain failed; discard the session");
+        return installed(state, operation, update -> update.head().state());
+    }
+
+    private <T> T installed(Checkpoint initial, Supplier<T> operation, java.util.function.Function<T, Checkpoint> retain) {
         if (ACTIVE.get() != null) throw new IllegalStateException("Nested rollback domains are not supported");
         final RollbackStateGraph.Snapshot outside;
         try { outside = graph.capture(List.of(), shared); }
@@ -133,7 +140,7 @@ public final class RollbackDomain {
              var predictionScope = PredictionServices.using(prediction)) {
             if (initial != null) initial.snapshot.restore();
             T result = operation.get();
-            if (keepChanges) state = capture();
+            if (retain != null) state = retain.apply(result);
             return result;
         } catch (RuntimeException | Error exception) {
             failed = true;

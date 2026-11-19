@@ -29,7 +29,8 @@ public final class RollbackDuelRuntime {
 
     public RollbackDuelRuntime(ClassLoader loader) {
         installed = RollbackGameplayCatalog.installed(loader);
-        definitions = RollbackDefinitionSchema.fingerprint(RollbackGameplayCatalog.create(installed, List.of()).fingerprint(),
+        definitions = RollbackDefinitionSchema.fingerprint(RollbackGameplayCatalog.implementationFingerprint(loader, installed),
+                RollbackGameplayCatalog.create(installed, List.of()).fingerprint(),
                 RollbackBootstrapData.VERSION, RollbackInputPacket.VERSION, RollbackTerrainCodec.VERSION, RollbackGraphCodec.VERSION,
                 ENGINE.rollbackTicks(), ENGINE.futureTicks(), ENGINE.effectsPerTick(), ENGINE.stepNanos());
     }
@@ -42,7 +43,7 @@ public final class RollbackDuelRuntime {
     /** Import the captured gameplay graph onto the already instantiated private native scene. */
     public Match open(RollbackBootstrapData data, RollbackRound round, RollbackRosterViews views, RollbackPlatform.Identity identity,
             RollbackServer.Blocks<?> blocks, RollbackNativeItems<?> items, RollbackPlayerExecution<Object> execution,
-            RegionProtectionHook regions, List<?> sceneRoots, boolean replica) {
+            List<?> sceneRoots, boolean replica) {
         if (!definitions.equals(data.definitions())) throw new IllegalArgumentException("Installed gameplay schema differs from the duel");
         var handles = new TreeMap<String, Object>();
         var bindings = new ArrayList<RollbackGraphCodec.Binding>();
@@ -59,6 +60,9 @@ public final class RollbackDuelRuntime {
         var lifecycle = new CommonAbilityLifecycleListener(execution.output()::accept);
         var imported = RollbackGameplayGraph.decode(installed, GRAPH, data.sides().keySet(), data.bending(), data.configuration(),
                 PredictionConfigSync.sources(), views.graphBindings(), lifecycle, bindings);
+        var policies = imported.bending().services().stream().filter(RollbackRegionPolicy.class::isInstance).map(RollbackRegionPolicy.class::cast).toList();
+        if (policies.size() != 1) throw new IllegalArgumentException("Duel requires one captured region policy");
+        RegionProtectionHook regions = policies.getFirst().bind(views);
         var external = Collections.newSetFromMap(new IdentityHashMap<Object, Boolean>());
         external.addAll(imported.configuration().references());
         external.addAll(handles.values());

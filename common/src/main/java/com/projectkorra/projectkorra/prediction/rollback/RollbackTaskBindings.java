@@ -89,6 +89,12 @@ public final class RollbackTaskBindings {
         installed = true;
     }
 
+    void replace(RollbackScheduler scheduler) {
+        requireUninstalled();
+        scheduler.replaceTasks(entries, minimumNextId, maximumNextId);
+        installed = true;
+    }
+
     int nextId() { return minimumNextId; }
     int idLimit() { return maximumNextId; }
     void requireUninstalled() {

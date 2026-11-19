@@ -47,6 +47,8 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         Object registryAccess();
         Object difficulty();
         Object random();
+        default net.minecraft.world.flag.FeatureFlagSet terrainFeatures() { throw new IllegalStateException("Terrain feature flags were not supplied"); }
+        default boolean splitOverstackedLoot() { return true; }
         Object rule(Object nativeRule);
         long time();
         long nextSoundSeed();
@@ -60,6 +62,9 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         WorldPolicy worldPolicy();
         int containerUpdateRate();
         float regenerationExhaustion();
+        default boolean disablePlayerCrits() { return false; }
+        default boolean disableSprintInterruptionOnAttack() { return false; }
+        default float combatExhaustion() { return .1F; }
         boolean parrotsStayOnShoulder();
         void event(org.bukkit.event.Event event);
         void gameEvent(Object nativeEvent, Object position, Object context);
@@ -97,6 +102,17 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         static final AABB BOX = new AABB(0, 0, 0, 1, 1, 1);
     }
 
+    private PaperRollbackBlockRules terrainRules;
+    void bindTerrain(PaperRollbackBlockRules rules) {
+        checkThread();
+        if (terrainRules != null) throw new IllegalStateException("Terrain rules already bound");
+        terrainRules = Objects.requireNonNull(rules);
+    }
+    private PaperRollbackBlockRules terrain() {
+        checkThread();
+        if (terrainRules == null) throw new IllegalStateException("Private native terrain rules were not supplied");
+        return terrainRules;
+    }
     private final Thread thread = Thread.currentThread();
     private final Queries<?> queries;
     private final int minimumY, height, minimumSection, sectionCount, maximumChunks;
@@ -111,6 +127,7 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
     private final PaperRollbackScoreboards scoreboards;
     private final PaperRollbackPacketData packetData;
     private PaperRollbackRoundEvents roundEvents;
+    private RollbackActorRegistry actors;
 
     public PaperRollbackWorldAccess(Queries<?> queries, int maximumChunks) {
         this(queries, null, maximumChunks);
@@ -162,6 +179,16 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
                 .query(value -> value.isOutsideBuildHeight(BlockPos.ZERO), false, args -> outside(((BlockPos) args[0]).getY()))
                 .query(value -> value.isOutsideBuildHeight(0), false, args -> outside((int) args[0]))
                 .query(value -> value.getBlockState(BlockPos.ZERO), Native.AIR, args -> block((BlockPos) args[0]))
+                .query(value -> value.setBlock(BlockPos.ZERO, Native.AIR, 0), false, args ->
+                        terrain().write((BlockPos) args[0], (BlockState) args[1], ((int) args[2] & net.minecraft.world.level.block.Block.UPDATE_KNOWN_SHAPE) == 0))
+                .query(value -> value.setBlock(BlockPos.ZERO, Native.AIR, 0, 0), false, args ->
+                        terrain().write((BlockPos) args[0], (BlockState) args[1], ((int) args[2] & net.minecraft.world.level.block.Block.UPDATE_KNOWN_SHAPE) == 0))
+                .nativeQuery(value -> value.setBlockAndUpdate(BlockPos.ZERO, Native.AIR), false, args -> terrain())
+                .nativeQuery(value -> value.removeBlock(BlockPos.ZERO, false), false, args -> terrain())
+                .outputQuery(value -> value.neighborShapeChanged(net.minecraft.core.Direction.UP, BlockPos.ZERO, BlockPos.ZERO, Native.AIR, 0, 0),
+                        args -> net.minecraft.world.level.redstone.NeighborUpdater.executeShapeUpdate(world(), (net.minecraft.core.Direction) args[0],
+                                (BlockPos) args[1], (BlockPos) args[2], (BlockState) args[3], (int) args[4], (int) args[5]))
+                .nativeAction(value -> value.updateNeighbourForOutputSignal(BlockPos.ZERO, Blocks.AIR), args -> terrain())
                 .query(value -> value.getFluidState(BlockPos.ZERO), Native.FLUID, args -> block((BlockPos) args[0]).getFluidState())
                 .query(value -> value.getBlockEntity(BlockPos.ZERO), null, args -> { BlockPos pos = (BlockPos) args[0]; return queries.blockEntity(pos.getX(), pos.getY(), pos.getZ()); })
                 .query(ServerLevel::isRaining, false, args -> queries.raining())
@@ -179,7 +206,7 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
                 .nativeQuery(value -> value.isRainingAt(BlockPos.ZERO), false, args -> { })
                 .query(ServerLevel::getWorldBorder, null, args -> queries.worldBorder())
                 .query(value -> value.getPlayerInAnyDimension(null), null, args -> importedPlayer((java.util.UUID) args[0]))
-                .query(value -> value.getEntityInAnyDimension(null), null, args -> importedPlayer((java.util.UUID) args[0]))
+                .query(value -> value.getEntityInAnyDimension(null), null, args -> importedEntity((java.util.UUID) args[0]))
                 .query(value -> value.getPlayerByUUID(null), null, args -> importedPlayer((java.util.UUID) args[0]))
                 .query(value -> value.getEntities((Entity) null, Native.BOX, entity -> true), List.of(), args -> entities(args[0], args[1], false, args[2]))
                 .query(value -> value.getEntityCollisions(null, Native.BOX), List.of(), args -> {
@@ -287,6 +314,29 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         }
         roundEvents = new PaperRollbackRoundEvents(round, roster);
         sealPlayers();
+    }
+
+    void useItem(net.minecraft.server.level.ServerPlayer player, net.minecraft.world.InteractionHand hand) {
+        checkThread(); if (!ownsPlayer(player)) throw new IllegalArgumentException("Foreign item user");
+        combat.useItem(player, hand);
+    }
+    void releaseItem(net.minecraft.server.level.ServerPlayer player) {
+        checkThread(); if (!ownsPlayer(player)) throw new IllegalArgumentException("Foreign item user");
+        combat.releaseItem(player);
+    }
+    void useBlock(net.minecraft.server.level.ServerPlayer player, net.minecraft.world.InteractionHand hand, net.minecraft.world.phys.BlockHitResult hit) {
+        checkThread(); if (!ownsPlayer(player)) throw new IllegalArgumentException("Foreign block user");
+        combat.useBlock(player, hand, hit);
+    }
+    void interact(net.minecraft.server.level.ServerPlayer player, Entity target, net.minecraft.world.InteractionHand hand,
+                  RollbackInteractionTarget.Offset offset) {
+        checkThread(); if (!ownsPlayer(player) || !ownsEntity(target)) throw new IllegalArgumentException("Foreign entity interaction");
+        combat.interact(player, target, hand, offset);
+    }
+    void attack(net.minecraft.server.level.ServerPlayer player, Entity target) {
+        checkThread();
+        if (combat == null || !ownsPlayer(player) || !ownsEntity(target)) throw new IllegalArgumentException("Foreign melee body");
+        combat.attack(player, target);
     }
 
     boolean damage(Object player, Object source, float amount) {
@@ -399,10 +449,36 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         requirePlayerRegistration(player);
         players.put(player, state); playerWrappers.put(wrapper, true); playerOrder.add(state);
     }
+    RollbackActorRegistry actors() { checkThread(); return actors; }
+    void bindActors(RollbackActorRegistry actors) {
+        checkThread();
+        if (this.actors != null || checkpointed || RollbackClock.active() || RollbackDomain.active())
+            throw new IllegalStateException("Bind actors before the arena starts");
+        this.actors = Objects.requireNonNull(actors);
+    }
+    private net.minecraft.world.entity.Entity importedEntity(java.util.UUID id) {
+        var player = importedPlayer(id);
+        if (player != null || actors == null) return player;
+        var actor = actors.get(id);
+        return actor instanceof PaperRollbackActor owned && !owned.entity().isRemoved() ? owned.entity() : null;
+    }
+    List<net.minecraft.world.entity.Entity> spawnedEntities() {
+        checkThread();
+        return actors == null ? List.of() : actors.active().stream().map(actor -> ((PaperRollbackActor) actor).entity()).toList();
+    }
+    boolean ownsEntity(net.minecraft.world.entity.Entity entity) {
+        checkThread();
+        return ownsPlayer(entity) || (actors != null && actors.get(entity.getUUID()) instanceof PaperRollbackActor owned
+                && owned.entity() == entity && !entity.isRemoved());
+    }
     void sealPlayers() { checkThread(); playersSealed = true; }
     void beginCheckpoint() { sealPlayers(); checkpointed = true; }
     boolean ownsPlayer(Object player) { checkThread(); return players.containsKey(player); }
-    boolean ownsWrapper(Object wrapper) { checkThread(); return playerWrappers.containsKey(wrapper); }
+    boolean ownsWrapper(Object wrapper) {
+        checkThread();
+        return playerWrappers.containsKey(wrapper) || (wrapper instanceof org.bukkit.craftbukkit.entity.CraftEntity craft
+                && actors != null && craft.getHandle().getBukkitEntityRaw() == craft && ownsEntity(craft.getHandle()));
+    }
 
     private Object collision(String method, Object[] args) {
         bounds(args[1]);

@@ -9,7 +9,13 @@ class RollbackWorldSettingsTest {
         var rules = new HashMap<String, RollbackWorldSettings.Rule>();
         rules.put("minecraft:fire_damage", new RollbackWorldSettings.Flag(false));
         rules.put("minecraft:random_tick_speed", new RollbackWorldSettings.IntegerRule(Integer.MIN_VALUE));
-        var data = settings(rules); rules.clear();
+        var fixture = settings(rules);
+        var legacy = new TreeMap<String, Byte>();
+        legacy.put("minecraft:water[level=1]", (byte) 1);
+        legacy.put("minecraft:water[level=11]", (byte) 11);
+        var data = new RollbackWorldSettings(fixture.gameTime(), fixture.randomSeed(), fixture.soundSeed(),
+                fixture.seaLevel(), fixture.difficulty(), fixture.policy(), fixture.rules(), legacy);
+        legacy.clear(); rules.clear();
         assertEquals(data, RollbackWorldSettings.decode(data.encode()));
         assertEquals(2, data.rules().size()); assertThrows(UnsupportedOperationException.class, () -> data.rules().clear());
     }

@@ -70,6 +70,8 @@ public abstract class RollbackPlayerExecution<E> implements RollbackCombatRuntim
     public final java.util.function.Consumer<E> output() { requireThread(); return output; }
 
     /** Loader constructors validate that all logical views share the owned native state. */
+    /** A target is an intent. Each loader checks its private native reach and scene membership before dispatch. */
+    protected boolean validTarget(RollbackPlayer player, RollbackPlayerInput.Edge edge) { return edge.action().target() == null; }
     protected abstract void movementInput(RollbackPlayer player, RollbackMovementInput input);
     protected abstract void tickPlayer(RollbackPlayer player);
     protected abstract boolean selectSlot(RollbackPlayer player, int slot, boolean cancelled);
@@ -104,6 +106,7 @@ public abstract class RollbackPlayerExecution<E> implements RollbackCombatRuntim
         for (var edge : input.actions()) {
             movementInput(participant, new RollbackMovementInput(movement.strafe(), movement.forward(), movement.jump(), edge.yaw(), edge.pitch()));
             PredictionDeterminism.run(edge.action().sequence(), edge.action().seed(), () -> {
+                if (!validTarget(participant, edge)) return;
                 var result = RollbackInputActions.dispatch(participant, edge.action(), (slot, cancelled) -> selectSlot(participant, slot, cancelled));
                 if (edge.action().kind() == RollbackInputActions.Kind.SWING
                         || edge.action().kind() == RollbackInputActions.Kind.OFF_HAND_SWING) {

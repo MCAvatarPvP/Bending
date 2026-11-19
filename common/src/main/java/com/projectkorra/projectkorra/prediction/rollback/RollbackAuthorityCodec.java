@@ -5,7 +5,7 @@ import java.util.*;
 
 /** Bounded server-to-client input/revision encoding, never a client hit claim or native object graph. */
 public final class RollbackAuthorityCodec {
-    public static final int VERSION = 6;
+    public static final int VERSION = 7;
     public static final int MAXIMUM_BYTES = 1_048_576;
     private RollbackAuthorityCodec() { }
 
@@ -14,7 +14,10 @@ public final class RollbackAuthorityCodec {
         var roster = new TreeSet<>(update.receivedTicks().keySet());
         long size = 63 + roster.size() * 18L;
         for (var receipts : update.receivedTicks().values()) size += receipts.size() * 8L;
-        for (var frame : update.frames()) for (var input : frame.values()) size += 19L + input.actions().size() * 26L;
+        for (var frame : update.frames()) for (var input : frame.values()) {
+            size += 19L;
+            for (var edge : input.actions()) size += 27L + RollbackInteractionTarget.size(edge.action().target());
+        }
         if (size > MAXIMUM_BYTES) throw new IllegalArgumentException("Authority update exceeds byte budget");
         try {
             var bytes = new ByteArrayOutputStream((int) size); var out = new DataOutputStream(bytes);
@@ -80,6 +83,7 @@ public final class RollbackAuthorityCodec {
             var action = edge.action();
             out.writeLong(action.sequence()); out.writeLong(action.seed()); out.writeByte(action.kind().ordinal());
             out.writeByte(action.slot()); out.writeByte(action.hand().ordinal()); out.writeFloat(edge.yaw()); out.writeFloat(edge.pitch());
+            RollbackInteractionTarget.write(out, action.target());
         }
     }
     private static RollbackPlayerInput readInput(DataInputStream in) throws IOException {
@@ -92,8 +96,10 @@ public final class RollbackAuthorityCodec {
             if (kind >= kinds.length) throw new IllegalArgumentException("Unknown authority action");
             int hand = in.readUnsignedByte();
             if (hand >= RollbackInputActions.Hand.values().length) throw new IllegalArgumentException("Unknown authority hand");
+            float yaw = in.readFloat(), pitch = in.readFloat();
+            var target = RollbackInteractionTarget.read(in);
             actions.add(new RollbackPlayerInput.Edge(new RollbackInputActions.Action(sequence, seed, kinds[kind], slot,
-                    RollbackInputActions.Hand.values()[hand]), in.readFloat(), in.readFloat()));
+                    RollbackInputActions.Hand.values()[hand], target), yaw, pitch));
         }
         return new RollbackPlayerInput(movement, sprinting, actions);
     }

@@ -9,12 +9,20 @@ import net.minecraft.world.phys.Vec3;
 import org.bukkit.event.Event;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import java.util.*;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.gameevent.vibrations.VibrationSystem;
+import com.projectkorra.projectkorra.prediction.rollback.world.RollbackNativeMethods;
+import org.bukkit.craftbukkit.CraftGameEvent;
 
 /** Private native event policy and vibration routing for the captured match. */
 final class PaperRollbackArenaEvents implements PaperRollbackWorldServices.Events<Void> {
     private final RollbackStepOutput<Object> output;
     private final RollbackWorldSettings.Policy policy;
     private PaperRollbackNativeScene scene;
+    private MethodHandle vibration;
 
     PaperRollbackArenaEvents(RollbackStepOutput<Object> output, RollbackWorldSettings.Policy policy) {
         this.output = Objects.requireNonNull(output); this.policy = Objects.requireNonNull(policy);
@@ -22,6 +30,18 @@ final class PaperRollbackArenaEvents implements PaperRollbackWorldServices.Event
     void bind(PaperRollbackNativeScene scene) {
         if (this.scene != null) throw new IllegalStateException("Native event policy already has a scene");
         this.scene = Objects.requireNonNull(scene);
+        var methods = new RollbackNativeMethods();
+        scene.world().bindEvents(methods);
+        try {
+            var receive = VibrationSystem.Listener.class.getMethod("handleGameEvent", ServerLevel.class, Holder.class,
+                    GameEvent.Context.class, Vec3.class);
+            var adapter = MethodHandles.lookup().findConstructor(CraftGameEvent.class, MethodType.methodType(void.class, Holder.class))
+                    .asType(MethodType.methodType(org.bukkit.GameEvent.class, Holder.class));
+            methods.replace(CraftGameEvent.class.getMethod("minecraftHolderToBukkit", Holder.class), adapter);
+            // Paper raises BlockReceiveGameEvent inside this method. Route its plugin manager to the private scene.
+            methods.copy(receive);
+            vibration = methods.build().get(receive);
+        } catch (ReflectiveOperationException failure) { throw new IllegalStateException("Native vibration listener changed", failure); }
     }
     @Override public void event(Event event) {
         if (!policy.pvp() && event instanceof EntityDamageByEntityEvent damage
@@ -52,10 +72,19 @@ final class PaperRollbackArenaEvents implements PaperRollbackWorldServices.Event
                     (double) listener.getListenerRadius() * listener.getListenerRadius()) continue;
             if (listener.getDeliveryMode() == GameEventListener.DeliveryMode.BY_DISTANCE)
                 byDistance.add(new GameEvent.ListenerInfo(event, position, emitter, listener, target.get()));
-            else listener.handleGameEvent(level, event, emitter, position);
+            else deliver(listener, level, event, emitter, position);
         }
         Collections.sort(byDistance);
-        for (var message : byDistance) message.recipient().handleGameEvent(level, event, emitter, position);
+        for (var message : byDistance) deliver(message.recipient(), level, event, emitter, position);
+    }
+    private void deliver(GameEventListener listener, ServerLevel level, Holder<GameEvent> event, GameEvent.Context emitter, Vec3 position) {
+        if (!(listener instanceof VibrationSystem.Listener sensor)) {
+            listener.handleGameEvent(level, event, emitter, position);
+            return;
+        }
+        try { boolean ignored = (boolean) vibration.invokeExact(sensor, level, event, emitter, position); }
+        catch (RuntimeException | Error failure) { throw failure; }
+        catch (Throwable failure) { throw new IllegalStateException("Private vibration listener failed", failure); }
     }
     private static boolean withinSections(int value, int center, int radius) {
         int section = value >> 4;

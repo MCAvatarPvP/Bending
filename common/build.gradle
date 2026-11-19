@@ -25,17 +25,22 @@ tasks.register('generateRollbackGameplayCatalog') {
     inputs.files(sourceSets.main.output.classesDirs)
     outputs.dir(rollbackCatalogDirectory)
     doLast {
-        def names = new TreeSet<String>()
+        def digests = new TreeMap<String, String>()
+        def sha = java.security.MessageDigest.getInstance('SHA-256')
         sourceSets.main.output.classesDirs.files.each { root ->
             if (root.exists()) fileTree(root).matching { include '**/*.class' }.files.each { compiled ->
                 def name = root.toPath().relativize(compiled.toPath()).toString().replace('\\', '.').replace('/', '.')
                 name = name.substring(0, name.length() - 6)
-                if (!name.endsWith('package-info') && name != 'module-info') names.add(name)
+                if (!name.endsWith('package-info') && name != 'module-info') {
+                    digests[name] = java.util.HexFormat.of().formatHex(sha.digest(compiled.bytes))
+                }
             }
         }
         def target = rollbackCatalogDirectory.get().file('META-INF/projectkorra/rollback-gameplay.types').asFile
         target.parentFile.mkdirs()
-        target.setText(names.join('\n') + '\n', 'UTF-8')
+        target.setText(digests.keySet().join('\n') + '\n', 'UTF-8')
+        new File(target.parentFile, 'rollback-gameplay.sha256').setText(
+                digests.collect { name, hash -> hash + ' ' + name }.join('\n') + '\n', 'UTF-8')
     }
 }
 sourceSets.main.resources.srcDir(rollbackCatalogDirectory)

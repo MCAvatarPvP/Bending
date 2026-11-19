@@ -52,6 +52,8 @@ class RollbackConfigurationTest {
 
     @Test void typedDefaultsExplicitValuesOrderAndAliasesSurviveWireTransfer() {
         Config source = config("source");
+        String[] defaults = {"fire", null, "air"};
+        source.addDefault("ElementNames", defaults);
         source.addDefault("Abilities.Speed", 20.0); source.addDefault("Fallback", "23.0 # 20.85");
         var sequence = new ArrayList<Object>(Arrays.asList(null, true, (byte) 1, (short) 2, 3, 4L, -0.0F, -0.0D,
                 new BigInteger("92233720368547758081"), new BigDecimal("123.45600"), new Date(12345), "\uD83D\uDD25"));
@@ -60,6 +62,7 @@ class RollbackConfigurationTest {
         source.applyRemoteValues(new LinkedHashMap<>(Map.of("Abilities.Speed", 15.5, "Sequence", sequence)));
         var sources = Map.of("file_source_yml", source, "addon", source);
         var seed = RollbackConfiguration.captureData(sources); var bytes = seed.encode();
+        defaults[0] = "outside";
         var expectedKeys = source.getKeys(true);
         var received = RollbackConfiguration.Data.decode(bytes);
         assertArrayEquals(bytes, received.encode()); assertEquals(seed.fingerprint(), received.fingerprint());
@@ -71,6 +74,7 @@ class RollbackConfigurationTest {
             assertEquals(15.5, client.getDouble("Abilities.Speed")); assertEquals(23, client.getInt("Fallback"));
             assertTrue(client.containsExplicit("Abilities.Speed")); assertFalse(client.containsExplicit("Fallback"));
             assertTrue(client.hasLoadedValues()); assertFalse(client.contains("ClientOnly"));
+            assertArrayEquals(new String[]{"fire", null, "air"}, (String[]) client.get("ElementNames"));
             assertEquals(sequence, client.get("Sequence"));
             assertEquals(expectedKeys, client.getKeys(true));
             return null;

@@ -12,9 +12,47 @@ public final class RollbackGameplayGraph {
     private RollbackGameplayGraph() { }
 
     /** Prepared state is still uninstalled; its owner includes configuration and bending in domain roots. */
-    public record Imported(RollbackConfiguration configuration, RollbackGraphCodec codec, RollbackBendingState bending) {
-        public Imported { Objects.requireNonNull(configuration); Objects.requireNonNull(codec); Objects.requireNonNull(bending); }
-        public List<?> roots() { return List.of(configuration, bending); }
+    public static final class Imported implements RollbackStateCell<RollbackBendingState> {
+        private final RollbackConfiguration configuration;
+        private final RollbackGraphCodec codec;
+        private RollbackBendingState bending;
+
+        public Imported(RollbackConfiguration configuration, RollbackGraphCodec codec, RollbackBendingState bending) {
+            this.configuration = Objects.requireNonNull(configuration);
+            this.codec = Objects.requireNonNull(codec);
+            this.bending = Objects.requireNonNull(bending);
+        }
+        public RollbackConfiguration configuration() { return configuration; }
+        public RollbackGraphCodec codec() { return codec; }
+        public RollbackBendingState bending() { return bending; }
+        public List<?> roots() { return List.of(configuration, this); }
+        @Override public RollbackBendingState captureRollbackState() { return bending; }
+        @Override public void restoreRollbackState(RollbackBendingState saved) { bending = saved; }
+        @Override public List<?> rollbackReferences() { return List.of(bending); }
+
+        public Runnable prepareRepair(byte[] bytes, long tick) {
+            return prepareRepair(bytes, tick, List::of);
+        }
+
+        /** Resolve spawned actor handles after the recipient has installed this frontier's native membership. */
+        public Runnable prepareRepair(byte[] bytes, long tick, Supplier<List<RollbackGraphCodec.Binding>> actors) {
+            byte[] payload = bytes.clone();
+            return () -> {
+                if (!RollbackDomain.active() || RollbackClock.active()
+                        || com.projectkorra.projectkorra.ProjectKorra.collisionManager != bending.collisions()
+                        || !(com.projectkorra.projectkorra.platform.Platform.scheduler() instanceof RollbackScheduler scheduler)
+                        || scheduler.tick() != tick)
+                    throw new IllegalStateException("Gameplay repair belongs to another private frame");
+                var repaired = RollbackBendingState.decodeRepair(bending.players().keySet(), payload, codec.withBindings(actors.get()));
+                for (var entry : repaired.players().entrySet()) {
+                    var current = bending.players().get(entry.getKey()).getPlayer();
+                    if (current.handle() != entry.getValue().getPlayer().handle())
+                        throw new IllegalStateException("Gameplay repair changed private body identity");
+                }
+                repaired.install(true);
+                bending = repaired;
+            };
+        }
     }
 
     public static Imported decode(Collection<Class<?>> installed, RollbackGraphCodec.Limits limits,

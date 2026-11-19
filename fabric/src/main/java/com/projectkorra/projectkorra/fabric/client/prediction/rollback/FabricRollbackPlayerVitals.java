@@ -64,7 +64,10 @@ public final class FabricRollbackPlayerVitals {
     }
 
     public static void apply(FabricRollbackNativePlayerState state, RollbackPlayerVitals vitals) {
-        requireBootstrap(); Objects.requireNonNull(vitals);
+        requireBootstrap(); applyBoundary(state, vitals);
+    }
+    static void applyBoundary(FabricRollbackNativePlayerState state, RollbackPlayerVitals vitals) {
+        if (RollbackClock.active()) throw new IllegalStateException("Cannot replace native state during a tick"); Objects.requireNonNull(vitals);
         state.use(player -> { apply(player, vitals); return null; });
     }
     private record NativeAttribute(RollbackPlayerVitals.Attribute value, RegistryEntry<EntityAttribute> type, List<EntityAttributeModifier> modifiers) { }

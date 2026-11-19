@@ -35,6 +35,43 @@ public final class RollbackGameplayCatalog {
         }
     }
 
+    /** Compare gameplay method implementations before loader-specific remapping or shading. */
+    static String implementationFingerprint(ClassLoader loader, List<Class<?>> installed) {
+        var digests = new TreeMap<String, String>();
+        try {
+            var resources = loader.getResources("META-INF/projectkorra/rollback-gameplay.sha256");
+            while (resources.hasMoreElements()) {
+                try (var input = new BufferedReader(new InputStreamReader(resources.nextElement().openStream(), StandardCharsets.UTF_8))) {
+                    for (String line; (line = input.readLine()) != null;) {
+                        if (line.length() <= 65 || line.length() > 577 || line.charAt(64) != ' ')
+                            throw new IllegalStateException("Invalid local gameplay digest");
+                        String hash = line.substring(0, 64), name = line.substring(65);
+                        var prior = digests.putIfAbsent(name, hash);
+                        if (!hash.matches("[0-9a-f]{64}") || prior != null && !prior.equals(hash) || digests.size() > 20_000)
+                            throw new IllegalStateException("Inconsistent local gameplay digest for " + name);
+                    }
+                }
+            }
+            // An addon with an older type inventory can still negotiate using its local class resources.
+            var sha = java.security.MessageDigest.getInstance("SHA-256");
+            var definitions = new TreeMap<String, String>();
+            for (var type : installed) {
+                String name = type.getName(), hash = digests.get(name);
+                if (hash == null) {
+                    try (var input = loader.getResourceAsStream(name.replace('.', '/') + ".class")) {
+                        if (input == null) throw new IllegalStateException("Missing installed gameplay implementation " + name);
+                        hash = HexFormat.of().formatHex(sha.digest(input.readAllBytes()));
+                    }
+                }
+                definitions.put(name, hash);
+            }
+            return RollbackDefinitionSchema.fingerprint(definitions.entrySet().stream()
+                    .map(entry -> List.of(entry.getKey(), entry.getValue())).toList());
+        } catch (IOException | java.security.NoSuchAlgorithmException failure) {
+            throw new IllegalStateException("Cannot fingerprint local gameplay implementations", failure);
+        }
+    }
+
     /** Unsupported object forms remain symbols; encoding them still requires an explicit projection/binding. */
     public static RollbackGraphCodec.Catalog create(Collection<Class<?>> installed, Collection<RollbackGraphCodec.Binding> bindings) {
         var symbols = List.copyOf(installed);

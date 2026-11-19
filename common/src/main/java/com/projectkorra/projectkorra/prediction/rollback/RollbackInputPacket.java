@@ -13,17 +13,20 @@ import java.util.UUID;
  */
 public record RollbackInputPacket(UUID session, long clientTick, RollbackMovementInput movement,
                                   boolean sprinting, List<Edge> actions) {
-    public static final int VERSION = 6;
+    public static final int VERSION = 7;
     public static final String CHANNEL = "projectkorra:rollback_input";
-    public static final int MAXIMUM_BYTES = 47 + 19 * RollbackPlayerInput.MAXIMUM_ACTIONS;
+    public static final int MAXIMUM_BYTES = 47 + 46 * RollbackPlayerInput.MAXIMUM_ACTIONS;
 
-    public record Edge(long sequence, RollbackInputActions.Kind kind, int slot, float yaw, float pitch, RollbackInputActions.Hand hand) {
+    public record Edge(long sequence, RollbackInputActions.Kind kind, int slot, float yaw, float pitch, RollbackInputActions.Hand hand, RollbackInteractionTarget target) {
+        public Edge(long sequence, RollbackInputActions.Kind kind, int slot, float yaw, float pitch, RollbackInputActions.Hand hand) {
+            this(sequence, kind, slot, yaw, pitch, hand, null);
+        }
         public Edge(long sequence, RollbackInputActions.Kind kind, int slot, float yaw, float pitch) {
             this(sequence, kind, slot, yaw, pitch, RollbackInputActions.defaultHand(kind));
         }
         public Edge {
             // The same shape validation as a simulation action, without accepting a wire seed.
-            new RollbackInputActions.Action(sequence, 1, kind, slot, hand);
+            new RollbackInputActions.Action(sequence, 1, kind, slot, hand, target);
             var look = new RollbackMovementInput(0, 0, false, yaw, pitch);
             yaw = look.yaw(); pitch = look.pitch();
         }
@@ -51,7 +54,7 @@ public record RollbackInputPacket(UUID session, long clientTick, RollbackMovemen
             seed = (seed ^ (seed >>> 30)) * 0xBF58476D1CE4E5B9L;
             seed = (seed ^ (seed >>> 27)) * 0x94D049BB133111EBL;
             seed = (seed ^ (seed >>> 31)) & Long.MAX_VALUE;
-            return new RollbackPlayerInput.Edge(new RollbackInputActions.Action(edge.sequence(), seed == 0 ? 1 : seed, edge.kind(), edge.slot(), edge.hand()), edge.yaw(), edge.pitch());
+            return new RollbackPlayerInput.Edge(new RollbackInputActions.Action(edge.sequence(), seed == 0 ? 1 : seed, edge.kind(), edge.slot(), edge.hand(), edge.target()), edge.yaw(), edge.pitch());
         }).toList());
     }
 
@@ -66,7 +69,7 @@ public record RollbackInputPacket(UUID session, long clientTick, RollbackMovemen
             output.writeByte(actions.size());
             for (var edge : actions) {
                 output.writeLong(edge.sequence()); output.writeByte(edge.kind().ordinal()); output.writeByte(edge.slot()); output.writeByte(edge.hand().ordinal());
-                output.writeFloat(edge.yaw()); output.writeFloat(edge.pitch());
+                output.writeFloat(edge.yaw()); output.writeFloat(edge.pitch()); RollbackInteractionTarget.write(output, edge.target());
             }
             return bytes.toByteArray();
         } catch (IOException impossible) { throw new UncheckedIOException(impossible); }
@@ -90,7 +93,7 @@ public record RollbackInputPacket(UUID session, long clientTick, RollbackMovemen
                 if (kind >= kinds.length) throw new IllegalArgumentException("Unknown input action");
                 int slot = input.readByte(), hand = input.readUnsignedByte();
                 if (hand >= RollbackInputActions.Hand.values().length) throw new IllegalArgumentException("Unknown input hand");
-                actions.add(new Edge(sequence, kinds[kind], slot, input.readFloat(), input.readFloat(), RollbackInputActions.Hand.values()[hand]));
+                actions.add(new Edge(sequence, kinds[kind], slot, input.readFloat(), input.readFloat(), RollbackInputActions.Hand.values()[hand], RollbackInteractionTarget.read(input)));
             }
             if (input.available() != 0) throw new IllegalArgumentException("Trailing input data");
             return new RollbackInputPacket(session, tick, movement, sprinting, actions);

@@ -188,7 +188,7 @@ public final class FabricRollbackNativePlayerState implements RollbackPlayerStat
     /** Native world entity tick, including age/previous-position updates and owned player passengers. */
     public void tick() {
         use(entity -> {
-            ((net.minecraft.server.world.ServerWorld) world.world()).tickEntity(entity);
+            if (!entity.hasVehicle()) ((net.minecraft.server.world.ServerWorld) world.world()).tickEntity(entity);
             return null;
         });
     }

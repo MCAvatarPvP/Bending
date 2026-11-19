@@ -75,6 +75,48 @@ public final class RollbackRound implements RollbackStateCell<RollbackRound.Chec
         return !(finalDamage <= 0 || finalDamage < health || holdingTotem);
     }
 
+    /** Detached match policy state. Finalized delivery receipts stay exclusively on the authority. */
+    public record Data(long tick, Map<UUID, UUID> attackers, List<Defeat> defeats) {
+        public Data {
+            if (tick < 0 || attackers.size() > RollbackRosterData.MAXIMUM_PLAYERS
+                    || defeats.size() > RollbackRosterData.MAXIMUM_PLAYERS)
+                throw new IllegalArgumentException("Invalid round correction");
+            attackers = java.util.Collections.unmodifiableMap(new java.util.TreeMap<>(Map.copyOf(attackers)));
+            defeats = List.copyOf(defeats);
+        }
+    }
+
+    public Data exportData() {
+        check();
+        return new Data(tick, attackers, defeats);
+    }
+
+    /** Apply a complete imported decision history without delivering a match result. */
+    public void importData(Data data) {
+        check();
+        if (data.tick() != tick) throw new IllegalArgumentException("Round correction tick differs");
+        restore(validateData(data));
+    }
+
+    Checkpoint validateData(Data data) {
+        check();
+        data.attackers().forEach((player, attacker) -> { participant(player); participant(attacker); });
+        var fallen = new LinkedHashSet<UUID>();
+        boolean done = false;
+        long previous = 0;
+        for (var defeat : data.defeats()) {
+            participant(defeat.player());
+            if (done || !session.equals(defeat.session()) || defeat.tick() < 1 || defeat.tick() < previous
+                    || defeat.tick() > data.tick() || !fallen.add(defeat.player())
+                    || !Objects.equals(data.attackers().get(defeat.player()), defeat.lastAttacker()))
+                throw new IllegalArgumentException("Invalid round defeat history");
+            previous = defeat.tick();
+            done = sides.entrySet().stream().filter(entry -> !fallen.contains(entry.getKey()))
+                    .map(Map.Entry::getValue).distinct().limit(2).count() < 2;
+        }
+        return new Checkpoint(this, data.tick(), fallen, data.attackers(), data.defeats(), done);
+    }
+
     @Override public Checkpoint captureRollbackState() { return snapshot(); }
     @Override public void restoreRollbackState(Checkpoint state) { restore(state); }
 

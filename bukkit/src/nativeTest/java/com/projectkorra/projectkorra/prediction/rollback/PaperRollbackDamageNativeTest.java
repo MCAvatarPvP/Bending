@@ -44,8 +44,17 @@ class PaperRollbackDamageNativeTest {
             TagLoader.loadTagsForExistingRegistries(resources, statics).forEach(Registry.PendingTags::apply);
             var dynamic = RegistryDataLoader.load(resources, statics.registries()
                     .<net.minecraft.core.HolderLookup.RegistryLookup<?>>map(RegistryAccess.RegistryEntry::value).toList(), RegistryDataLoader.WORLDGEN_REGISTRIES);
-            registries = new RegistryAccess.ImmutableRegistryAccess(java.util.stream.Stream.concat(statics.registries(), dynamic.registries())).freeze();
+            var combined = new RegistryAccess.ImmutableRegistryAccess(java.util.stream.Stream.concat(statics.registries(), dynamic.registries())).freeze();
+            var entries = net.minecraft.world.level.storage.loot.LootDataType.values()
+                    .<RegistryDataLoader.RegistryData<?>>map(PaperRollbackDamageNativeTest::lootRegistry).toList();
+            var loot = RegistryDataLoader.load(resources, combined.registries()
+                    .<net.minecraft.core.HolderLookup.RegistryLookup<?>>map(RegistryAccess.RegistryEntry::value).toList(), entries);
+            registries = new RegistryAccess.ImmutableRegistryAccess(java.util.stream.Stream.concat(combined.registries(), loot.registries())).freeze();
         }
+    }
+
+    private static <T> RegistryDataLoader.RegistryData<T> lootRegistry(net.minecraft.world.level.storage.loot.LootDataType<T> type) {
+        return new RegistryDataLoader.RegistryData<>(type.registryKey(), type.codec(), false);
     }
 
     @Test void nativeReleaseRoutesEventBeforePrivateItemEffectsAndRewinds() throws Exception {

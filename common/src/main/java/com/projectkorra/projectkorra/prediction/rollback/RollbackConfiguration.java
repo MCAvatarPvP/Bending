@@ -216,6 +216,10 @@ public final class RollbackConfiguration implements RollbackStateCell<RollbackCo
         if (value == null || value instanceof String || value instanceof Boolean || value instanceof Byte || value instanceof Short
                 || value instanceof Integer || value instanceof Long || value instanceof Float || value instanceof Double
                 || value instanceof BigInteger || value instanceof BigDecimal) return value;
+        if (value instanceof String[] strings) {
+            for (String ignored : strings) budget.add(depth + 1);
+            return strings.clone();
+        }
         if (value.getClass() == Date.class) return new Date(((Date) value).getTime());
         if (value instanceof Map<?, ?> map) {
             var result = new LinkedHashMap<Object, Object>();
@@ -253,6 +257,9 @@ public final class RollbackConfiguration implements RollbackStateCell<RollbackCo
             for (var entry : map.entrySet()) { write(out, entry.getKey(), budget, depth + 1); write(out, entry.getValue(), budget, depth + 1); }
         } else if (value instanceof Set<?> set) {
             out.writeByte(14); out.writeInt(set.size()); for (Object child : set) write(out, child, budget, depth + 1);
+        } else if (value instanceof String[] strings) {
+            out.writeByte(15); out.writeInt(strings.length);
+            for (String entry : strings) write(out, entry, budget, depth + 1);
         } else throw invalid("value type");
     }
     private static Object read(DataInputStream in, Budget budget, int depth) throws IOException {
@@ -273,6 +280,15 @@ public final class RollbackConfiguration implements RollbackStateCell<RollbackCo
             case 14 -> {
                 int size = count(in); var set = new LinkedHashSet<>();
                 for (int i = 0; i < size; i++) if (!set.add(read(in, budget, depth + 1))) throw invalid("duplicate set entry"); yield set;
+            }
+            case 15 -> {
+                String[] strings = new String[count(in)];
+                for (int i = 0; i < strings.length; i++) {
+                    Object value = read(in, budget, depth + 1);
+                    if (value != null && !(value instanceof String)) throw invalid("string array entry");
+                    strings[i] = (String) value;
+                }
+                yield strings;
             }
             default -> throw invalid("value tag");
         };

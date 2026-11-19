@@ -133,11 +133,13 @@ public abstract class Manager implements Listener {
             return new RestorationSources(roster, targets, roots);
         }
 
-        public void install() {
+        public void install() { install(true); }
+
+        public void install(boolean initializeServices) {
             if (!RollbackDomain.active()) throw new IllegalStateException("Manager install requires a rollback domain");
             MANAGERS.clear();
             MANAGERS.putAll(managers);
-            managers.values().forEach(Manager::onRollbackInstall);
+            if (initializeServices) managers.values().forEach(Manager::onRollbackInstall);
         }
     }
 

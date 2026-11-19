@@ -8,10 +8,13 @@ final class FabricRollbackGliding {
     private static final ThreadLocal<FabricRollbackWorldAccess> ACTIVE = new ThreadLocal<>();
     private FabricRollbackGliding() { }
     static <R> R use(FabricRollbackWorldAccess world, PlayerEntity player, Function<PlayerEntity, R> operation) {
+        return use(world, () -> operation.apply(player));
+    }
+    static <R> R use(FabricRollbackWorldAccess world, java.util.function.Supplier<R> operation) {
         var previous = ACTIVE.get();
         if (previous != null && previous != world) throw new IllegalStateException("Native glide scope crossed private worlds");
         ACTIVE.set(world);
-        try { return operation.apply(player); }
+        try { return operation.get(); }
         finally { if (previous == null) ACTIVE.remove(); else ACTIVE.set(previous); }
     }
     static FabricRollbackWorldAccess owner(PlayerEntity player) {

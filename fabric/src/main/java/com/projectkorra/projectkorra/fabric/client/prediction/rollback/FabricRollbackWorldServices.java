@@ -51,6 +51,7 @@ public final class FabricRollbackWorldServices implements FabricRollbackWorldQue
         private final long time, lastTick;
         private Snapshot(FabricRollbackWorldServices owner) { this.owner = owner; time = owner.time; lastTick = owner.lastTick; }
     }
+    private final FeatureSet features;
     private final Thread thread = Thread.currentThread();
     private final RollbackWorldSettings settings;
     private final RollbackWorld logical;
@@ -76,7 +77,8 @@ public final class FabricRollbackWorldServices implements FabricRollbackWorldQue
             throw new IllegalArgumentException("Logical world differs from captured settings");
         }
         this.spatial = Objects.requireNonNull(spatial); this.events = Objects.requireNonNull(events);
-        var nativeRules = new GameRules(Objects.requireNonNull(features)); var available = nativeRules.streamRules().toList();
+        this.features = Objects.requireNonNull(features);
+        var nativeRules = new GameRules(features); var available = nativeRules.streamRules().toList();
         var keys = new HashSet<String>(); var values = new IdentityHashMap<GameRule<?>, Object>();
         for (var rule : available) {
             String key = rule.getId().toString(); keys.add(key); var value = settings.rules().get(key);
@@ -106,6 +108,7 @@ public final class FabricRollbackWorldServices implements FabricRollbackWorldQue
         logical.conditions(conditions);
         time = next; lastTick = tick;
     }
+    @Override public FeatureSet terrainFeatures() { checkThread(); return features; }
     @Override public DynamicRegistryManager.Immutable registries() { checkThread(); return registries; }
     @Override public EnvironmentAttributeAccess environmentAttributes() { checkThread(); return spatial.environmentAttributes(); }
     @Override public WorldBorder border() { checkThread(); return spatial.border(); }

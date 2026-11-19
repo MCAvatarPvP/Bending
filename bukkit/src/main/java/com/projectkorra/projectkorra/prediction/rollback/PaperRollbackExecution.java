@@ -40,6 +40,23 @@ public final class PaperRollbackExecution<E> extends RollbackPlayerExecution<E> 
         }
     }
 
+    @Override protected boolean validTarget(RollbackPlayer player, RollbackPlayerInput.Edge edge) {
+        var target = edge.action().target();
+        if (target == null) return true;
+        var nativePlayer = (ServerPlayer) state(player).ownedPlayer();
+        return RollbackInteractionTarget.allowed(player, edge, target instanceof RollbackInteractionTarget.Block
+                ? nativePlayer.blockInteractionRange() : nativePlayer.entityInteractionRange(), candidate -> {
+            var body = com.projectkorra.projectkorra.prediction.rollback.world.RollbackEntityBody.logicalBody(candidate);
+            var entity = switch (body.kinematicsSource()) {
+                case PaperRollbackNativePlayerState state -> state.ownedPlayer();
+                case PaperRollbackActor actor -> actor.entity();
+                default -> throw new IllegalArgumentException("Foreign target in private spatial queries");
+            };
+            return entity.level() == nativePlayer.level() && entity.getId() == candidate.getEntityId()
+                    && entity.isPickable() && !entity.isSpectator();
+        });
+    }
+
     @Override protected void movementInput(RollbackPlayer player, RollbackMovementInput input) {
         state(player).movementInput(input);
     }

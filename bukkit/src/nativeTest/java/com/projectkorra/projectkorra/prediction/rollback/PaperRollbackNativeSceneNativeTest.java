@@ -72,6 +72,37 @@ class PaperRollbackNativeSceneNativeTest {
             assertNull(Bukkit.getServer()); return null;
         });
     }
+    @Test void privateNeighborShapesAndVanillaLootRewindTogether() throws Exception {
+        onTickThread(() -> {
+            var configField = io.papermc.paper.configuration.GlobalConfiguration.class.getDeclaredField("instance");
+            configField.setAccessible(true);
+            var previous = configField.get(null);
+            var config = new io.papermc.paper.configuration.GlobalConfiguration();
+            config.misc = new org.objenesis.ObjenesisStd().newInstance(io.papermc.paper.configuration.GlobalConfiguration.Misc.class);
+            configField.set(null, config);
+            try {
+                var captured = PaperRollbackRosterSeed.capture(source(), 0);
+                var scene = scene(seed(), captured, captured.participants());
+                var block = scene.logical().getBlockAt(0, 4, 0);
+                var fence = scene.logical().getBlockAt(1, 4, 0);
+                fence.setType(Material.OAK_FENCE, false);
+                block.setType(Material.OAK_PLANKS);
+                assertTrue(fence.getBlockData().getExactState().contains("west=true"));
+                assertEquals(List.of(Material.OAK_PLANKS), block.getDrops().stream().map(item -> item.getType()).toList());
+                block.setType(Material.GRAVEL, false);
+                var checkpoint = new RollbackStateGraph(value -> Proxy.isProxyClass(value.getClass()), field -> true, 600_000)
+                        .capture(List.of(scene), List.of());
+                var results = new ArrayList<Material>();
+                for (int i = 0; i < 64; i++) results.add(block.getDrops().iterator().next().getType());
+                assertTrue(results.contains(Material.FLINT));
+                assertTrue(results.contains(Material.GRAVEL));
+                checkpoint.restore();
+                for (var expected : results) assertEquals(expected, block.getDrops().iterator().next().getType());
+                assertNull(Bukkit.getServer());
+            } finally { configField.set(null, previous); }
+            return null;
+        });
+    }
     private static List<ServerPlayer> source() {
         var world = new PaperRollbackWorldAccess(new PaperRollbackWorldAccessNativeTest.Queries(), new PaperRollbackDamageNativeTest.Combat(), 4);
         var result = new ArrayList<ServerPlayer>();
@@ -93,13 +124,10 @@ class PaperRollbackNativeSceneNativeTest {
                 PaperRollbackEnvironmentNativeTest.seed(), terrain.finish(), RollbackLightSeed.capture(bounds, count, p -> 15, p -> 0));
     }
     private static PaperRollbackNativeScene scene(RollbackWorldSeed seed, PaperRollbackRosterSeed players, Set<UUID> participants) {
-        var tiles = new PaperRollbackBlockEntities(PaperRollbackEnvironmentNativeTest.registries()); var geometry = new PaperRollbackGeometry(seed.minimumY(), seed.maximumY(), tiles);
-        var blocks = (RollbackBlockStore.Rules) Proxy.newProxyInstance(PaperRollbackNativeSceneNativeTest.class.getClassLoader(), new Class<?>[]{RollbackBlockStore.Rules.class}, (proxy, method, args) -> {
-            if (method.getName().equals("geometry")) return geometry.geometry((RollbackBlockStore) args[0], (RollbackBlockStore.Position) args[1], (BlockData) args[2]);
-            if (method.isDefault()) return java.lang.reflect.InvocationHandler.invokeDefault(proxy, method, args);
-            throw new AssertionError("Unexpected block action " + method);
-        });
-        var bindings = new PaperRollbackNativeScene.Bindings(blocks, unused(RollbackItems.class), unused(RollbackWorld.Actions.class), tiles, new Events());
+        var tiles = new PaperRollbackBlockEntities(PaperRollbackEnvironmentNativeTest.registries());
+        var items = new RollbackNativeItems<>(new PaperRollbackItems(PaperRollbackEnvironmentNativeTest.registries()));
+        var blocks = new PaperRollbackBlockRules(items);
+        var bindings = new PaperRollbackNativeScene.Bindings(blocks, items, unused(RollbackWorld.Actions.class), tiles, new Events());
         var services = new TreeMap<UUID, PaperRollbackRosterSeed.Services>();
         players.participants().forEach(id -> services.put(id, new PaperRollbackRosterSeed.Services(id.getLeastSignificantBits(), 300_000,
                 PaperRollbackStatistics.Seed.fresh(), PaperRollbackAdvancements.Seed.empty())));

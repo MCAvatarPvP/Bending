@@ -102,18 +102,40 @@ class WorldGuard extends RegionProtectionBase {
         final int minZ = centerZ - radius, maxZExclusive = centerZ + radius + 1;
         final int minY = player.getWorld().getMinHeight();
         final int maxYExclusive = player.getWorld().getMaxHeight();
+        return boxes(player, abilities, hook, manager, minX, minY, minZ, maxXExclusive, maxYExclusive, maxZExclusive, false);
+    }
+
+    static List<RegionProtectionAuthority.Box> duelBoxes(Player player,
+            com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Bounds bounds, WorldGuard hook) {
+        var world = (org.bukkit.World) player.getWorld().handle();
+        var manager = com.sk89q.worldguard.WorldGuard.getInstance().getPlatform().getRegionContainer().get(BukkitAdapter.adapt(world));
+        return boxes(player, RegionProtectionAuthority.normalizedAbilities(List.of()), hook, manager,
+                bounds.minX(), bounds.minY(), bounds.minZ(), bounds.maxX(), bounds.maxY(), bounds.maxZ(), true);
+    }
+
+    private static List<RegionProtectionAuthority.Box> boxes(Player player, List<String> abilities, WorldGuard hook, RegionManager manager,
+            int minX, int minY, int minZ, int maxXExclusive, int maxYExclusive, int maxZExclusive, boolean duel) {
         final TreeSet<Integer> xs = boundaries(minX, maxXExclusive);
         final TreeSet<Integer> ys = boundaries(minY, maxYExclusive);
         final TreeSet<Integer> zs = boundaries(minZ, maxZExclusive);
 
-        for (ProtectedRegion region : manager.getRegions().values()) {
+        for (ProtectedRegion region : manager == null ? List.<ProtectedRegion>of() : manager.getRegions().values()) {
             if (!region.isPhysicalArea()) continue;
             final BlockVector3 minimum = region.getMinimumPoint();
             final BlockVector3 maximum = region.getMaximumPoint();
             if (maximum.x() < minX || minimum.x() >= maxXExclusive
                     || maximum.z() < minZ || minimum.z() >= maxZExclusive
                     || maximum.y() < minY || minimum.y() >= maxYExclusive) continue;
-            if (!(region instanceof ProtectedCuboidRegion)) return List.of();
+            if (!(region instanceof ProtectedCuboidRegion)) {
+                if (!duel) return List.of();
+                if (!(region instanceof com.sk89q.worldguard.protection.regions.ProtectedPolygonalRegion))
+                    throw new IllegalArgumentException("Unsupported WorldGuard region shape in duel arena");
+                // Membership in a polygon is constant within each integer X/Z column.
+                for (long cell = Math.max(minX, minimum.x()); cell <= Math.min((long) maxXExclusive, 1L + maximum.x()); cell++)
+                    xs.add(Math.toIntExact(cell));
+                for (long cell = Math.max(minZ, minimum.z()); cell <= Math.min((long) maxZExclusive, 1L + maximum.z()); cell++)
+                    zs.add(Math.toIntExact(cell));
+            }
             addBoundary(xs, minimum.x(), minX, maxXExclusive);
             addBoundary(xs, (long) maximum.x() + 1L, minX, maxXExclusive);
             addBoundary(ys, minimum.y(), minY, maxYExclusive);
@@ -124,7 +146,10 @@ class WorldGuard extends RegionProtectionBase {
 
         final List<Integer> x = List.copyOf(xs), y = List.copyOf(ys), z = List.copyOf(zs);
         final long cells = (long) (x.size() - 1) * (y.size() - 1) * (z.size() - 1);
-        if (cells <= 0 || cells > MAX_PREDICTION_CELLS) return List.of();
+        if (cells <= 0 || cells > (duel ? 16384 : MAX_PREDICTION_CELLS)) {
+            if (duel) throw new IllegalArgumentException("WorldGuard duel policy exceeds capture budget");
+            return List.of();
+        }
         final List<RegionProtectionAuthority.Box> boxes = new ArrayList<>();
         for (int xi = 0; xi + 1 < x.size(); xi++) {
             for (int yi = 0; yi + 1 < y.size(); yi++) {

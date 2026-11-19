@@ -33,6 +33,21 @@ public final class BukkitRegionProtectionBootstrap {
         if (enabled("Lands")) new Lands();
     }
 
+    public static boolean supportsRollback() {
+        var policies = RegionProtection.getActiveProtections();
+        return policies.isEmpty() || policies.size() == 1 && policies.get("WorldGuard") instanceof WorldGuard;
+    }
+
+    public static com.projectkorra.projectkorra.prediction.rollback.RollbackRegionPolicy captureRollback(
+            java.util.Collection<Player> players, com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Bounds bounds) {
+        var policies = RegionProtection.getActiveProtections();
+        if (!supportsRollback()) throw new IllegalStateException("Duel region hooks changed before capture");
+        var rows = new java.util.TreeMap<java.util.UUID, List<RegionProtectionAuthority.Box>>();
+        for (var player : players) rows.put(player.getUniqueId(), policies.isEmpty() ? List.of()
+                : WorldGuard.duelBoxes(player, bounds, (WorldGuard) policies.get("WorldGuard")));
+        return new com.projectkorra.projectkorra.prediction.rollback.RollbackRegionPolicy(rows);
+    }
+
     public static List<RegionProtectionAuthority.Box> predictionBoxes(
             final Player player, final List<String> abilities, final int radius) {
         if (!enabled("WorldGuard")) return List.of();

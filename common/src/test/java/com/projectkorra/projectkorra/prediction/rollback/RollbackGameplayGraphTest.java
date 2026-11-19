@@ -177,7 +177,7 @@ class RollbackGameplayGraphTest {
                 data, Map.of(), targetRoster, lifecycle, List.of());
         assertSame(privateA, imported.bending().players().get(a.getUniqueId()).getPlayer());
         assertNotSame(first, imported.bending().players().get(a.getUniqueId()));
-        assertEquals(List.of(imported.configuration(), imported.bending()), imported.roots());
+        assertEquals(List.of(imported.configuration(), imported), imported.roots());
         assertEquals(12345, imported.bending().players().get(a.getUniqueId()).getCooldowns().get("arbitrary-ability").getCooldown());
         imported.bending().players().get(a.getUniqueId()).getCooldowns().clear();
         assertTrue(first.getCooldowns().containsKey("arbitrary-ability"));

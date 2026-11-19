@@ -141,9 +141,14 @@ public final class PaperRollbackWorldQueries implements PaperRollbackWorldAccess
     @Override public List<Entity> moonrise$getHardCollidingEntities(Entity except, AABB bounds, Predicate<? super Entity> predicate) { return entities(except, bounds, predicate, true); }
     private List<Entity> entities(Entity except, AABB bounds, Predicate<? super Entity> predicate, boolean hardOnly) {
         requireRoster(); requireMember(except); requireBounds(bounds); var result = new ArrayList<Entity>();
-        for (var player : players) if (player != except && !player.isRemoved() && player.getBoundingBox().intersects(bounds)
-                && (!hardOnly || player.moonrise$isHardColliding()) && (predicate == null || predicate.test(player))) result.add(player);
+        for (var player : players) select(player, except, bounds, predicate, hardOnly, result);
+        for (var actor : owner.spawnedEntities()) select(actor, except, bounds, predicate, hardOnly, result);
         return List.copyOf(result);
+    }
+    private static void select(Entity entity, Entity except, AABB bounds, Predicate<? super Entity> predicate,
+            boolean hardOnly, List<Entity> result) {
+        if (entity != except && !entity.isRemoved() && entity.getBoundingBox().intersects(bounds)
+                && (!hardOnly || entity.moonrise$isHardColliding()) && (predicate == null || predicate.test(entity))) result.add(entity);
     }
     @Override public <T extends Entity> List<T> getEntities(EntityTypeTest<Entity, T> filter, AABB bounds, Predicate<? super T> predicate) {
         Objects.requireNonNull(filter); var result = new ArrayList<T>();
@@ -175,7 +180,7 @@ public final class PaperRollbackWorldQueries implements PaperRollbackWorldAccess
     @Override public void restoreRollbackState(Void ignored) { requireRoster(); }
     @Override public List<?> rollbackReferences() { requireRoster(); return List.of(logical, services, blockEntities, owner); }
     private void requireRoster() { checkThread(); if (players == null) throw new IllegalStateException("Bind the native query roster before simulation"); }
-    private void requireMember(Entity entity) { if (entity != null && !membership.contains(entity)) throw new IllegalArgumentException("Native query contains an unowned entity"); }
+    private void requireMember(Entity entity) { if (entity != null && !membership.contains(entity) && !owner.ownsEntity(entity)) throw new IllegalArgumentException("Native query contains an unowned entity"); }
     private void requireBounds(AABB bounds) {
         var box = new RollbackBlockStore.Box(bounds.minX, bounds.minY, bounds.minZ, bounds.maxX, bounds.maxY, bounds.maxZ);
         RollbackMovementSolver.requireBlockQuery(box); var b = logical.terrain().bounds();

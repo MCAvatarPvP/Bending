@@ -19,7 +19,10 @@ public final class FabricRollbackPlayerContextData {
         public Retained { Objects.requireNonNull(input); Objects.requireNonNull(clientMovement); collisionExemptions = Set.copyOf(collisionExemptions); }
     }
     public static void apply(FabricRollbackNativePlayerState state, RollbackPlayerContext context, long initialNanos) {
-        requireBootstrap(); var clocks = context.rebase(initialNanos);
+        requireBootstrap(); applyBoundary(state, context, initialNanos);
+    }
+    static void applyBoundary(FabricRollbackNativePlayerState state, RollbackPlayerContext context, long initialNanos) {
+        if (RollbackClock.active()) throw new IllegalStateException("Cannot replace native state during a tick"); var clocks = context.rebase(initialNanos);
         var retained = new Retained(context.input(), context.clientMovement(), clocks.lastJump(), clocks.eatingStart(), context.collisionExemptions());
         var fluids = new HashMap<TagKey<Fluid>, Double>(); var eyes = new HashSet<TagKey<Fluid>>();
         context.fluidHeights().forEach((key, value) -> fluids.put(TagKey.of(RegistryKeys.FLUID, Identifier.of(key)), value));

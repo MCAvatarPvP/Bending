@@ -11,14 +11,24 @@ class RollbackInputPacketTest {
     private static RollbackInputPacket.Edge edge(long sequence) { return new RollbackInputPacket.Edge(sequence, RollbackInputActions.Kind.SWING, -1, 450, 0); }
     private static RollbackInputPacket packet(List<RollbackInputPacket.Edge> edges) { return new RollbackInputPacket(SESSION, 101, MOVE, true, edges); }
 
+    static RollbackInteractionTarget target(RollbackInputActions.Kind kind) {
+        var offset = new RollbackInteractionTarget.Offset(.25f, .5f, .75f);
+        return switch (kind) {
+            case ATTACK, INTERACT_ENTITY -> new RollbackInteractionTarget.Actor(42, null);
+            case RIGHT_CLICK_ENTITY -> new RollbackInteractionTarget.Actor(42, offset);
+            case RIGHT_CLICK_BLOCK -> new RollbackInteractionTarget.Block(1, 2, 3, RollbackInteractionTarget.Face.UP, offset, false);
+            default -> null;
+        };
+    }
     @Test void sharedCodecRoundTripsAllActionsAndMaximumPayloadAndDetachesTheList() {
         var source = new ArrayList<RollbackInputPacket.Edge>();
         for (var kind : RollbackInputActions.Kind.values()) source.add(new RollbackInputPacket.Edge(source.size() + 1, kind,
-                kind == RollbackInputActions.Kind.SLOT_CHANGE ? 8 : -1, -450, 45));
+                kind == RollbackInputActions.Kind.SLOT_CHANGE ? 8 : -1, -450, 45, RollbackInputActions.defaultHand(kind), target(kind)));
         var packet = packet(source); source.clear();
         assertEquals(RollbackInputActions.Kind.values().length, packet.actions().size());
         assertEquals(packet, RollbackInputPacket.decode(packet.encode()));
-        var maximum = packet(java.util.stream.LongStream.rangeClosed(1, RollbackPlayerInput.MAXIMUM_ACTIONS).mapToObj(RollbackInputPacketTest::edge).toList());
+        var maximum = packet(java.util.stream.LongStream.rangeClosed(1, RollbackPlayerInput.MAXIMUM_ACTIONS).mapToObj(i -> new RollbackInputPacket.Edge(i,
+                RollbackInputActions.Kind.RIGHT_CLICK_BLOCK, -1, 0, 0, RollbackInputActions.Hand.MAIN, target(RollbackInputActions.Kind.RIGHT_CLICK_BLOCK))).toList());
         assertEquals(RollbackInputPacket.MAXIMUM_BYTES, maximum.encode().length);
         assertEquals(maximum, RollbackInputPacket.decode(maximum.encode()));
         assertEquals(47, packet(List.of()).encode().length);
@@ -54,6 +64,23 @@ class RollbackInputPacketTest {
                 RollbackInputActions.Kind.SLOT_CHANGE, 1, RollbackInputActions.Hand.OFF));
         assertThrows(IllegalArgumentException.class, () -> new RollbackInputActions.Action(1, 1,
                 RollbackInputActions.Kind.OFF_HAND_SWING, -1, RollbackInputActions.Hand.MAIN));
+    }
+
+    @Test void targetsRoundTripThroughClientAndAuthorityAndCannotAttachToAFreeSwing() {
+        var hit = new RollbackInteractionTarget.Offset(.5f, 1, .25f);
+        var block = new RollbackInteractionTarget.Block(5, 65, -3, RollbackInteractionTarget.Face.UP, hit, false);
+        var edges = List.of(new RollbackInputPacket.Edge(1, RollbackInputActions.Kind.RIGHT_CLICK_BLOCK, -1, 45, 12, RollbackInputActions.Hand.OFF, block),
+                new RollbackInputPacket.Edge(2, RollbackInputActions.Kind.RIGHT_CLICK_ENTITY, -1, 45, 12, RollbackInputActions.Hand.MAIN, new RollbackInteractionTarget.Actor(-7, hit)),
+                new RollbackInputPacket.Edge(3, RollbackInputActions.Kind.ATTACK, -1, 45, 12, RollbackInputActions.Hand.MAIN, new RollbackInteractionTarget.Actor(2, null)));
+        var encoded = packet(edges);
+        assertEquals(encoded, RollbackInputPacket.decode(encoded.encode()));
+        var frame = encoded.playerInput(PLAYER, 99);
+        assertEquals(block, frame.actions().getFirst().action().target());
+        var update = new RollbackAuthorityUpdate(SESSION, 1, 0, 1, 0, 1, List.of(Map.of(PLAYER, frame)), Map.of(PLAYER, List.of(1L)));
+        assertEquals(update, RollbackAuthorityCodec.decode(RollbackAuthorityCodec.encode(update)));
+        assertThrows(IllegalArgumentException.class, () -> new RollbackInputActions.Action(1, 1, RollbackInputActions.Kind.SWING, -1, RollbackInputActions.Hand.MAIN, block));
+        assertThrows(IllegalArgumentException.class, () -> new RollbackInputActions.Action(1, 1, RollbackInputActions.Kind.ATTACK, -1));
+        assertThrows(IllegalArgumentException.class, () -> new RollbackInteractionTarget.Offset(Float.NaN, 0, 0));
     }
 
     @Test void serverSeedIsStableAcrossDeliveryOrderAndScopedToSessionAndPlayer() {

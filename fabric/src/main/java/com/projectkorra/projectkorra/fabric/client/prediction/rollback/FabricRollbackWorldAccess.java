@@ -11,6 +11,7 @@ import com.projectkorra.projectkorra.prediction.rollback.world.RollbackPlayer;
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackNativeQueryShell;
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore;
 import net.minecraft.block.Blocks;
+import net.minecraft.block.BlockState;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.fluid.Fluids;
@@ -84,6 +85,7 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
         DynamicRegistryManager.Immutable registries();
         long time();
         Difficulty difficulty();
+        default net.minecraft.resource.featuretoggle.FeatureSet terrainFeatures() { throw new IllegalStateException("Terrain feature flags were not supplied"); }
         <T> T gameRule(GameRule<T> rule);
         /** Owned native world RNG; include its mutable state in rollbackReferences/checkpoints. */
         net.minecraft.util.math.random.Random random();
@@ -126,6 +128,17 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
         int itemCooldown(PlayerEntity player, net.minecraft.item.ItemStack item, int ticks);
         boolean skipDamageTickWhenShieldBlocked();
     }
+    private FabricRollbackActors actors;
+    void bindActors(FabricRollbackActors actors) {
+        checkThread(); if (this.actors != null || checkpointed || RollbackClock.active()) throw new IllegalStateException("Native actors already bound");
+        this.actors = Objects.requireNonNull(actors);
+    }
+    List<Entity> activeActors() { return actors == null ? List.of() : actors.active(); }
+    boolean ownsEntity(Entity entity) { return ownsPlayer(entity) || actors != null && entity != null && actors.actor(entity.getUuid()) == entity; }
+    private Entity importedEntity(UUID id) {
+        var player = importedPlayer(id);
+        return player == null && actors != null ? actors.actor(id) : player;
+    }
     private RollbackRound round;
     private DamagePolicy<?> damagePolicy;
     boolean hasRound() { checkThread(); return round != null; }
@@ -149,7 +162,7 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
         requireDamageSource(event.source());
         var damager = FabricRollbackPlayerCombatData.eventDamager(event.source());
         if (damager == null) damager = event.source().getSource();
-        var logicalDamager = damager == null ? null : damagePlayer(damager);
+        var logicalDamager = damager == null ? null : ownsPlayer(damager) ? damagePlayer(damager) : actors.logical(damager);
         damagePolicy().event(event);
         if (logicalVictim != null) {
             // A DamageSource position can be an explosion origin. Only an actual captured block may be a damager.
@@ -181,6 +194,17 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
     private final World world;
     private final FabricRollbackPacketData packetData;
     private final Thread thread = Thread.currentThread();
+    private FabricRollbackBlockRules terrainRules;
+    void bindTerrain(FabricRollbackBlockRules rules) {
+        checkThread();
+        if (terrainRules != null) throw new IllegalStateException("Terrain rules already bound");
+        terrainRules = Objects.requireNonNull(rules);
+    }
+    private FabricRollbackBlockRules terrain() {
+        checkThread();
+        if (terrainRules == null) throw new IllegalStateException("Private native terrain rules were not supplied");
+        return terrainRules;
+    }
     private final Map<PlayerEntity, FabricRollbackNativePlayerState> players = new IdentityHashMap<>();
     private final List<FabricRollbackNativePlayerState> playerOrder = new ArrayList<>();
     private boolean playersSealed, checkpointed;
@@ -215,7 +239,12 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
         var chunks = RollbackNativeQueryShell.create(net.minecraft.server.world.ServerChunkManager.class)
                 .outputQuery(value -> value.sendToOtherNearbyPlayers(null, null), args -> trackedPacket((Entity) args[0], (net.minecraft.network.packet.Packet<?>) args[1], false))
                 .outputQuery(value -> value.sendToNearbyPlayers(null, null), args -> trackedPacket((Entity) args[0], (net.minecraft.network.packet.Packet<?>) args[1], true)).instance();
+        var tickingEntities = RollbackNativeQueryShell.create(net.minecraft.world.EntityList.class)
+                .query(value -> value.has(null), false, args -> ownsEntity((Entity) args[0])).instance();
         world = RollbackNativeQueryShell.create(ServerWorld.class)
+                .nativeAction(value -> ((com.projectkorra.projectkorra.fabric.mixin.client.ServerWorldRollbackEntities) value).rollback$entities(null), args -> {
+                    if (args[0] != tickingEntities) throw new IllegalArgumentException("Foreign entity membership");
+                })
                 .nativeAction(value -> ((com.projectkorra.projectkorra.fabric.mixin.client.WorldRollbackRandomAccess) value).rollback$random(null), args -> {
                     if (args[0] != queries.random()) throw new IllegalArgumentException("Foreign world RNG");
                 })
@@ -231,6 +260,8 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
                 .query(World::getTime, 0L, args -> queries.time())
                 .query(World::getDifficulty, Difficulty.NORMAL, args -> queries.difficulty())
                 .query(World::getRandom, null, args -> Objects.requireNonNull(queries.random(), "private world random"))
+                .query(value -> value.getOrCreateRandom(null), null, args -> queries.random())
+                .query(World::getEnabledFeatures, null, args -> queries.terrainFeatures())
                 .outputQuery(value -> value.sendEntityDamage(null, null), args -> entityDamage((Entity) args[0], (DamageSource) args[1]))
                 .outputQuery(value -> value.sendEntityStatus(null, (byte) 0), args ->
                         queries.output(new StatusOutput(ownedId((Entity) args[0]), (byte) args[1])))
@@ -265,12 +296,23 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
                 .nativeQuery(value -> value.hasRain(BlockPos.ORIGIN), false, args -> { })
                 .nativeQuery(value -> value.getPrecipitation(BlockPos.ORIGIN), null, args -> { })
                 .query(value -> value.getPlayerAnyDimension(null), null, args -> importedPlayer((UUID) args[0]))
-                .query(value -> value.getEntityAnyDimension(null), null, args -> importedPlayer((UUID) args[0]))
+                .query(value -> value.getEntityAnyDimension(null), null, args -> importedEntity((UUID) args[0]))
                 .query(value -> value.getPlayerByUuid(null), null, args -> importedPlayer((UUID) args[0]))
                 .query(value -> value.getOtherEntities(null, probeBox, entity -> true), List.of(), this::otherEntities)
                 .nativeQuery(value -> value.getOtherEntities(null, probeBox), List.of(), args -> check((Box) args[1]))
                 .nativeQuery(value -> value.getCrammedEntities(null, probeBox), List.of(), args -> check((Box) args[1]))
                 .query(value -> value.getBlockState(BlockPos.ORIGIN), Blocks.AIR.getDefaultState(), args -> queries.getBlockState((BlockPos) args[0]))
+                .query(value -> value.setBlockState(BlockPos.ORIGIN, Blocks.AIR.getDefaultState(), 0), false,
+                        args -> terrain().write((BlockPos) args[0], (BlockState) args[1], ((int) args[2] & net.minecraft.block.Block.FORCE_STATE) == 0))
+                .query(value -> value.setBlockState(BlockPos.ORIGIN, Blocks.AIR.getDefaultState(), 0, 0), false,
+                        args -> terrain().write((BlockPos) args[0], (BlockState) args[1], ((int) args[2] & net.minecraft.block.Block.FORCE_STATE) == 0))
+                .nativeQuery(value -> value.setBlockState(BlockPos.ORIGIN, Blocks.AIR.getDefaultState()), false, args -> terrain())
+                .nativeQuery(value -> value.removeBlock(BlockPos.ORIGIN, false), false, args -> terrain())
+                .outputQuery(value -> value.replaceWithStateForNeighborUpdate(net.minecraft.util.math.Direction.UP, BlockPos.ORIGIN, BlockPos.ORIGIN,
+                                Blocks.AIR.getDefaultState(), 0, 0),
+                        args -> net.minecraft.world.block.NeighborUpdater.replaceWithStateForNeighborUpdate(world(), (net.minecraft.util.math.Direction) args[0],
+                                (BlockPos) args[1], (BlockPos) args[2], (BlockState) args[3], (int) args[4], (int) args[5]))
+                .nativeAction(value -> value.updateComparators(BlockPos.ORIGIN, Blocks.AIR), args -> terrain())
                 .query(value -> value.getFluidState(BlockPos.ORIGIN), Fluids.EMPTY.getDefaultState(), args -> queries.getFluidState((BlockPos) args[0]))
                 .query(value -> value.getBlockEntity(BlockPos.ORIGIN), null, args -> queries.getBlockEntity((BlockPos) args[0]))
                 .query(World::getHeight, 1, args -> queries.getHeight())
@@ -306,6 +348,7 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
                     return queries.findSupportingBlockPos((Entity) args[0], (Box) args[1]);
                 })
                 .instance();
+        ((com.projectkorra.projectkorra.fabric.mixin.client.ServerWorldRollbackEntities) world).rollback$entities(tickingEntities);
         ((com.projectkorra.projectkorra.fabric.mixin.client.WorldRollbackRandomAccess) world)
                 .rollback$random(Objects.requireNonNull(queries.random(), "private world random"));
     }
@@ -425,7 +468,7 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
     }
 
     private UUID ownedId(Entity entity) {
-        if (entity.getEntityWorld() != world || !ownsPlayer(entity)) throw new IllegalArgumentException("Event belongs to an unowned native entity");
+        if (entity.getEntityWorld() != world || !ownsEntity(entity)) throw new IllegalArgumentException("Event belongs to an unowned native entity");
         return entity.getUuid();
     }
 
@@ -469,7 +512,7 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
 
     @SuppressWarnings("WrapperReferenceEquality")
     private void waypoint(WaypointAction action, Object value) {
-        if (!(value instanceof Entity entity) || entity.getEntityWorld() != world || !ownsPlayer(entity)) {
+        if (!(value instanceof Entity entity) || entity.getEntityWorld() != world || !ownsEntity(entity)) {
             throw new IllegalArgumentException("Waypoint belongs to an unowned native entity");
         }
         queries.waypoint(action, entity);
@@ -485,14 +528,12 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
         int count = 1;
         while (!pending.isEmpty()) {
             Entity entity = pending.removeFirst();
-            if (entity.getEntityWorld() != world || !ownsPlayer(entity) || seen.put(entity, true) != null) {
+            if (entity.getEntityWorld() != world || !ownsEntity(entity) || seen.put(entity, true) != null) {
                 throw new IllegalArgumentException("Native tick contains an unowned entity or passenger cycle");
             }
-            // ServerWorld.tickPassenger reads its native entityList for non-player
-            // passengers. Those require the forthcoming typed-entity adapter.
             for (Entity passenger : entity.getPassengerList()) {
                 if (passenger.getVehicle() != entity) throw new IllegalArgumentException("Broken native passenger relationship");
-                if (++count > players.size()) throw new IllegalArgumentException("Native passenger tree exceeds the owned roster");
+                if (++count > players.size() + (actors == null ? 0 : actors.registry().active().size())) throw new IllegalArgumentException("Native passenger tree exceeds the owned roster");
                 pending.addLast(passenger);
             }
         }
@@ -504,6 +545,7 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
         checkThread();
         var references = new ArrayList<Object>(playerOrder.size() + 1);
         references.add(queries);
+        if (actors != null) references.add(actors);
         if (round != null) { references.add(round); references.add(damagePolicy); }
         references.addAll(playerOrder);
         return List.copyOf(references);

@@ -43,10 +43,16 @@ final class PaperRollbackNativeEvents {
     private final Thread thread = Thread.currentThread();
     private final Consumer<Event> dispatcher;
     private final Predicate<org.bukkit.entity.Entity> owned;
+    private final Predicate<org.bukkit.block.Block> ownedBlock;
     private CraftServer server;
     private PluginManager manager;
 
     PaperRollbackNativeEvents(Consumer<Event> dispatcher, Predicate<org.bukkit.entity.Entity> owned) {
+        this(dispatcher, owned, block -> false);
+    }
+    PaperRollbackNativeEvents(Consumer<Event> dispatcher, Predicate<org.bukkit.entity.Entity> owned,
+            Predicate<org.bukkit.block.Block> ownedBlock) {
+        this.ownedBlock = Objects.requireNonNull(ownedBlock);
         this.dispatcher = Objects.requireNonNull(dispatcher, "private event dispatcher");
         this.owned = Objects.requireNonNull(owned, "owned Bukkit entity predicate");
     }
@@ -149,7 +155,12 @@ final class PaperRollbackNativeEvents {
         Objects.requireNonNull(event, "event");
         org.bukkit.entity.Entity target = event instanceof EntityEvent entity ? entity.getEntity()
                 : event instanceof PlayerEvent player ? player.getPlayer() : null;
-        if (event.isAsynchronous() || target == null || !owned.test(target)) {
+        boolean local = target != null && owned.test(target);
+        if (event instanceof org.bukkit.event.block.BlockReceiveGameEvent received) {
+            local = ownedBlock.test(received.getBlock());
+            requireOwned(received.getEntity());
+        }
+        if (event.isAsynchronous() || !local) {
             throw new IllegalArgumentException("Event does not belong to the private simulation");
         }
         if (event instanceof org.bukkit.event.entity.EntityDamageByEntityEvent damage) requireOwned(damage.getDamager());

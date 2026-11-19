@@ -58,7 +58,7 @@ public final class PaperRollbackCombatAccess {
     private final RegistryAccess registries;
     private final Registry<DamageType> damageRegistry;
     private final DamageSources damageSources;
-    private final MethodHandle damage, serverDamage;
+    private final MethodHandle damage, serverDamage, melee, use, release;
     private final MethodHandle awardStatistic, resetStatistic;
     private final MethodHandle addEffect, removeEffect, setAir, setSwimming, movementStep, playerBodyTick;
     private final MethodHandle serverTick, serverBodyTick, serverJump;
@@ -77,6 +77,8 @@ public final class PaperRollbackCombatAccess {
         globalConfiguration = allocator.newInstance(GlobalConfiguration.class);
         globalConfiguration.unsupportedSettings = allocator.newInstance(GlobalConfiguration.UnsupportedSettings.class);
         worldConfiguration = allocator.newInstance(WorldConfiguration.class);
+        worldConfiguration.misc = allocator.newInstance(WorldConfiguration.Misc.class);
+        worldConfiguration.fixes = allocator.newInstance(WorldConfiguration.Fixes.class);
         worldConfiguration.scoreboards = allocator.newInstance(WorldConfiguration.Scoreboards.class);
         worldConfiguration.collisions = allocator.newInstance(WorldConfiguration.Collisions.class);
         worldConfiguration.environment = allocator.newInstance(WorldConfiguration.Environment.class);
@@ -84,7 +86,8 @@ public final class PaperRollbackCombatAccess {
         worldConfiguration.entities = allocator.newInstance(WorldConfiguration.Entities.class);
         worldConfiguration.entities.behavior = allocator.newInstance(WorldConfiguration.Entities.Behavior.class);
         var builder = new RollbackNativeMethods();
-        events = new PaperRollbackNativeEvents(world::event, world::ownsWrapper);
+        events = new PaperRollbackNativeEvents(world::event, world::ownsWrapper,
+                block -> block instanceof org.bukkit.craftbukkit.block.CraftBlock craft && craft.getHandle() == world.world());
         events.bind(builder); events.bindDamageSources(builder, source -> requireSource((DamageSource) source));
         world.scoreboards().bind(builder, events.server());
         new PaperRollbackStatusEffects(registries).bind(builder);
@@ -92,20 +95,21 @@ public final class PaperRollbackCombatAccess {
                 "applyItemBlocking", "blockingItemEffects", "blockUsingItem", "blockedByItem", "startUsingItem", "stopUsingItem",
                 "checkTotemDeathProtection", "addEffect", "removeEffect", "removeEffectNoUpdate", "removeAllEffects",
                 "aiStep", "travel", "travelFallFlying", "handleFallFlyingCollisions", "updateFallFlying", "stopFallFlying", "pushEntities", "isImmobile", "jumpFromGround",
-                "tick", "baseTick", "tickEffects", "detectEquipmentUpdates", "collectEquipmentChanges", "onBelowWorld", "heal");
+                "releaseUsingItem", "updatingUsingItem", "updateUsingItem", "tick", "baseTick", "tickEffects", "detectEquipmentUpdates", "collectEquipmentChanges", "onBelowWorld", "heal");
         for (Method method : LivingEntity.class.getDeclaredMethods()) if (livingBodies.contains(method.getName())) builder.copy(method);
         for (Method method : Player.class.getDeclaredMethods()) {
             if (Set.of("hurtServer", "actuallyHurt", "causeFoodExhaustion", "hurtArmor", "hurtHelmet", "awardStat", "resetStat", "canHarmPlayer", "aiStep", "isImmobile",
                     "blockUsingItem", "tick", "updatePlayerPose", "updateSwimming", "detectEquipmentUpdates", "turtleHelmetTick",
-                    "tryToStartFallFlying", "startFallFlying", "travel").contains(method.getName())) builder.copy(method);
+                    "tryToStartFallFlying", "startFallFlying", "travel", "attack", "causeExtraKnockback", "doSweepAttack", "itemAttackInteraction",
+                    "damageStatsAndHearts", "attackVisualEffects", "playServerSideSound", "lungeForwardMaybe", "onAttack").contains(method.getName())) builder.copy(method);
         }
         for (Method method : Entity.class.getDeclaredMethods()) {
-            if (Set.of("tick", "baseTick", "updateSwimming", "setPose", "hurt", "checkBelowWorld").contains(method.getName())) builder.copy(method);
+            if (Set.of("tick", "baseTick", "updateSwimming", "setPose", "hurt", "hurtOrSimulate", "checkBelowWorld").contains(method.getName())) builder.copy(method);
         }
         // The native break callback mutates owned equipment and emits a captured
         // entity status through the private world.
         for (Method method : ItemStack.class.getDeclaredMethods()) {
-            if (method.getName().equals("hurtAndBreak")) builder.copy(method);
+            if (Set.of("hurtAndBreak", "use", "releaseUsing", "applyAfterUseComponentSideEffects").contains(method.getName())) builder.copy(method);
         }
         // Shield wear/disable enters item-component and cooldown methods. Copy the
         // entire causal call path so its statistics, events and packets stay private.
@@ -170,12 +174,25 @@ public final class PaperRollbackCombatAccess {
             builder.copy(ServerPlayer.class.getDeclaredMethod("pushEntities"));
             builder.copy(swimming);
             builder.copy(air);
+            var useItem = net.minecraft.server.level.ServerPlayerGameMode.class.getMethod("useItem", ServerPlayer.class,
+                    net.minecraft.world.level.Level.class, ItemStack.class, net.minecraft.world.InteractionHand.class);
+            builder.copy(useItem);
+            for (var method : net.minecraft.world.item.Item.class.getDeclaredMethods())
+                if (Set.of("use", "releaseUsing").contains(method.getName())) builder.copy(method);
+            var sendSound = MethodType.methodType(void.class, Player.class, double.class, double.class, double.class,
+                    SoundEvent.class, SoundSource.class, float.class, float.class);
+            builder.replace(Player.class.getDeclaredMethod("sendSoundEffect", sendSound.parameterArray()),
+                    lookup.findVirtual(PaperRollbackCombatAccess.class, "playerSound", sendSound).bindTo(this));
+            Method attack = ServerPlayer.class.getDeclaredMethod("attack", Entity.class);
+            builder.copy(attack);
             builder.copy(award).copy(reset).copy(serverEntry).copy(ServerPlayer.class.getMethod("canHarmPlayer", Player.class));
             Method stopUse = LivingEntity.class.getDeclaredMethod("stopUsingItem");
             Method equipment = Player.class.getDeclaredMethod("detectEquipmentUpdates");
             Method cooldownApply = net.minecraft.world.item.component.UseCooldown.class.getDeclaredMethod("apply", ItemStack.class, LivingEntity.class);
             builder.copy(cooldownApply);
             var copied = builder.build();
+            melee = copied.get(attack);
+            use = copied.get(useItem); release = copied.get(LivingEntity.class.getDeclaredMethod("releaseUsingItem"));
             useCooldown = copied.get(cooldownApply);
             playerImmobile = copied.get(Player.class.getDeclaredMethod("isImmobile"));
             serverImmobile = copied.get(ServerPlayer.class.getDeclaredMethod("isImmobile"));
@@ -234,6 +251,8 @@ public final class PaperRollbackCombatAccess {
                 .query(ServerLevel::getDifficulty, Difficulty.NORMAL, args -> state.difficulty())
                 .query(ServerLevel::isPvpAllowed, false, args -> state.pvpAllowed())
                 .query(ServerLevel::getRandom, null, args -> state.random())
+                .query(value -> value.getRandomSequence(null), null, args -> state.random())
+                .query(ServerLevel::enabledFeatures, null, args -> state.terrainFeatures())
                 .outputQuery(value -> value.broadcastDamageEvent(null, null), args -> damageOutput((Entity) args[0], (DamageSource) args[1]))
                 .outputQuery(value -> value.broadcastEntityEvent(null, (byte) 0), args -> state.output(new StatusOutput(ownedId((Entity) args[0]), (byte) args[1])))
                 .outputQuery(value -> value.playSound(null, 0, 0, 0, SoundEvents.PLAYER_HURT, SoundSource.PLAYERS, 1F, 1F), args -> sound(args, false))
@@ -411,6 +430,72 @@ public final class PaperRollbackCombatAccess {
         catch (RuntimeException | Error failure) { throw failure; }
         catch (Throwable failure) { throw new IllegalStateException("Private native server player tick failed", failure); }
     }
+    /** Resolve virtual native callbacks before any unbound item/block implementation can reach Bukkit. */
+    private static Class<?> declares(Class<?> type, String method, Class<?>... signature) {
+        for (Class<?> current = type; current != null; current = current.getSuperclass()) {
+            try { return current.getDeclaredMethod(method, signature).getDeclaringClass(); }
+            catch (NoSuchMethodException ignored) { }
+        }
+        throw new IllegalStateException("Unknown native interaction method " + method);
+    }
+    void useItem(ServerPlayer player, net.minecraft.world.InteractionHand hand) {
+        var stack = player.getItemInHand(hand);
+        if (stack.isEmpty() || player.isSpectator() || player.getCooldowns().isOnCooldown(stack)) return;
+        try { var ignored = (net.minecraft.world.InteractionResult) use.invokeExact(player.gameMode, player,
+                (net.minecraft.world.level.Level) player.level(), stack, hand); }
+        catch (RuntimeException | Error failure) { throw failure; }
+        catch (Throwable failure) { throw new IllegalStateException("Private item use failed", failure); }
+    }
+    void releaseItem(ServerPlayer player) {
+        if (!player.isUsingItem()) return;
+        try { release.invokeExact((LivingEntity) player); }
+        catch (RuntimeException | Error failure) { throw failure; }
+        catch (Throwable failure) { throw new IllegalStateException("Private item release failed", failure); }
+    }
+    void useBlock(ServerPlayer player, net.minecraft.world.InteractionHand hand, net.minecraft.world.phys.BlockHitResult hit) {
+        var stack = player.getItemInHand(hand);
+        var block = player.level().getBlockState(hit.getBlockPos());
+        var type = block.getBlock().getClass();
+        var stateType = net.minecraft.world.level.block.state.BlockState.class;
+        var levelType = net.minecraft.world.level.Level.class;
+        var posType = net.minecraft.core.BlockPos.class;
+        var hitType = net.minecraft.world.phys.BlockHitResult.class;
+        var base = net.minecraft.world.level.block.state.BlockBehaviour.class;
+        if (declares(type, "useItemOn", ItemStack.class, stateType, levelType, posType, Player.class, net.minecraft.world.InteractionHand.class, hitType) != base
+                || declares(type, "useWithoutItem", stateType, levelType, posType, Player.class, hitType) != base)
+            throw new IllegalStateException("Block interaction requires an owned native callback: " + type.getName());
+        if (!stack.isEmpty() && declares(stack.getItem().getClass(), "useOn", net.minecraft.world.item.context.UseOnContext.class)
+                != net.minecraft.world.item.Item.class)
+            throw new IllegalStateException("Block item requires an owned native callback: " + stack.getItem());
+        // Both default block callbacks pass, and the base item useOn callback has no effect.
+    }
+    void interact(ServerPlayer player, Entity target, net.minecraft.world.InteractionHand hand, RollbackInteractionTarget.Offset offset) {
+        if (offset != null) {
+            if (declares(target.getClass(), "interactAt", Player.class, Vec3.class, net.minecraft.world.InteractionHand.class) != Entity.class)
+                throw new IllegalStateException("Entity interactAt requires an owned native callback: " + target.getType());
+            target.interactAt(player, new Vec3(offset.x(), offset.y(), offset.z()), hand);
+        } else {
+            var held = player.getItemInHand(hand);
+            if (declares(target.getClass(), "interact", Player.class, net.minecraft.world.InteractionHand.class) != Entity.class
+                    || target instanceof net.minecraft.world.entity.Leashable || !held.isEmpty() &&
+                    declares(held.getItem().getClass(), "interactLivingEntity", ItemStack.class, Player.class, LivingEntity.class,
+                            net.minecraft.world.InteractionHand.class) != net.minecraft.world.item.Item.class)
+                throw new IllegalStateException("Entity interaction requires an owned native callback: " + target.getType());
+            player.interactOn(target, hand);
+        }
+    }
+
+    void attack(ServerPlayer nativePlayer, Entity target) {
+        ownedId(nativePlayer);
+        if (!world.ownsEntity(target) || nativePlayer == target) throw new IllegalArgumentException("Invalid private melee target");
+        worldConfiguration.entities.behavior.disablePlayerCrits = state.disablePlayerCrits();
+        worldConfiguration.misc.disableSprintInterruptionOnAttack = state.disableSprintInterruptionOnAttack();
+        world.world().spigotConfig.combatExhaustion = state.combatExhaustion();
+        try { melee.invokeExact(nativePlayer, target); }
+        catch (RuntimeException | Error failure) { throw failure; }
+        catch (Throwable failure) { throw new IllegalStateException("Private native melee failed", failure); }
+    }
+
     private void prepareMovement() {
         float walking = state.jumpExhaustion(false), sprinting = state.jumpExhaustion(true);
         if (!Float.isFinite(walking) || walking < 0 || !Float.isFinite(sprinting) || sprinting < 0) {
@@ -471,6 +556,7 @@ public final class PaperRollbackCombatAccess {
     }
 
     private WorldConfiguration worldConfiguration() {
+        worldConfiguration.fixes.splitOverstackedLoot = state.splitOverstackedLoot();
         worldConfiguration.tickRates.containerUpdate = state.containerUpdateRate();
         worldConfiguration.entities.behavior.parrotsAreUnaffectedByPlayerMovement = state.parrotsStayOnShoulder();
         worldConfiguration.environment.netherCeilingVoidDamageHeight = new io.papermc.paper.configuration.type.number.IntOr.Disabled(state.worldPolicy().netherCeilingHeight());
@@ -517,7 +603,7 @@ public final class PaperRollbackCombatAccess {
     private UUID nullableOwnedId(Entity entity) { return entity == null ? null : ownedId(entity); }
     @SuppressWarnings("WrapperReferenceEquality")
     private UUID ownedId(Entity entity) {
-        if (!world.ownsPlayer(entity) || entity.level() != world.world()) throw new IllegalArgumentException("Native combat entity belongs to another simulation");
+        if (!world.ownsEntity(entity) || entity.level() != world.world()) throw new IllegalArgumentException("Native combat entity belongs to another simulation");
         return entity.getUUID();
     }
     private RandomSource worldRandom(net.minecraft.world.level.Level level) {

@@ -118,6 +118,11 @@ public final class RollbackEventBus implements PKEventBus, RollbackStateCell<Rol
     public void importRegistrations(List<Registration> registrations) {
         checkBoundary();
         if (!handlers.isEmpty() || sequence != 0) throw new IllegalStateException("Import requires a fresh event bus");
+        replaceRegistrations(registrations);
+    }
+
+    void replaceRegistrations(List<Registration> registrations) {
+        checkBoundary();
         if (registrations.size() > maximumHandlers) throw new IllegalStateException("Rollback event handler budget exceeded");
         var imported = new ArrayList<Handler>();
         for (Registration registration : registrations) {

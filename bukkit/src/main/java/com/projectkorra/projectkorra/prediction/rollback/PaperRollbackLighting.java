@@ -96,6 +96,10 @@ public final class PaperRollbackLighting implements RollbackStateCell<PaperRollb
         @Override public Geometry geometry(RollbackBlockStore terrain, Position p, BlockData data) { return delegate.geometry(terrain, p, data); }
         @Override public byte legacyData(RollbackBlockStore terrain, Position p, BlockData data) { return delegate.legacyData(terrain, p, data); }
         @Override public void physics(RollbackBlockStore terrain, Position p) { delegate.physics(terrain, p); }
+        @Override public void physics(RollbackBlockStore terrain, Position p, RollbackBlockStore.Cell before,
+                                      RollbackBlockStore.Cell after) {
+            delegate.physics(terrain, p, before, after);
+        }
         @Override public java.util.Collection<com.projectkorra.projectkorra.platform.mc.inventory.ItemStack> drops(
                 RollbackBlockStore terrain, Position p, com.projectkorra.projectkorra.platform.mc.inventory.ItemStack tool) { return delegate.drops(terrain, p, tool); }
         @Override public boolean breakNaturally(RollbackBlockStore terrain, Position p,

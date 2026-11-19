@@ -15,7 +15,7 @@ import java.util.UUID;
 
 /** Stages a single confirmed frame for return to normal gameplay. Retain the plan until release succeeds. */
 public final class PaperRollbackMatchRestoration {
-    private record Frame(RollbackRosterData players, List<RollbackBlockStore.Change> changes, byte[] bending) { }
+    private record Frame(RollbackRosterData players, List<RollbackBlockStore.Change> changes, byte[] bending, PaperRollbackActorRestoration.Captured actors) { }
 
     /** Original live identities and the ID reservation held during the match. */
     public record LiveRoster(Map<UUID, ServerPlayer> nativePlayers, Map<UUID, BendingPlayer> bendingPlayers,
@@ -44,6 +44,7 @@ public final class PaperRollbackMatchRestoration {
         }
     }
 
+    private final PaperRollbackActorRestoration actors;
     private final PaperRollbackTerrainWriteback terrain;
     private final PaperRollbackRosterComponents.Prepared players;
     private final RollbackBendingState.Restoration.LiveCommit gameplay;
@@ -51,7 +52,8 @@ public final class PaperRollbackMatchRestoration {
     private boolean released;
 
     private PaperRollbackMatchRestoration(PaperRollbackTerrainWriteback terrain, PaperRollbackRosterComponents.Prepared players,
-            RollbackBendingState.Restoration.LiveCommit gameplay, RollbackTaskBindings tasks) {
+            RollbackBendingState.Restoration.LiveCommit gameplay, RollbackTaskBindings tasks, PaperRollbackActorRestoration actors) {
+        this.actors = actors;
         this.terrain = terrain;
         this.players = players;
         this.gameplay = gameplay;
@@ -72,23 +74,31 @@ public final class PaperRollbackMatchRestoration {
             var roster = scene.captureRoster(initial.roster(), initial.epochNanos() + elapsed);
             if (roster.worldTime() != Math.addExact(initial.roster().worldTime(), tick))
                 throw new IllegalStateException("Private roster and confirmed clock differ");
+            var actors = PaperRollbackActorRestoration.Captured.capture(initial.session(), scene);
+            var registry = scene.world().actors();
+            var codec = registry == null ? graph.codec() : graph.codec().withBindings(registry.bindings());
             return new Frame(roster, scene.logical().terrain().changesSince(initial.world().terrain()),
-                    graph.bending().exportState(graph.codec()));
+                    graph.bending().exportState(codec), actors);
         });
         var terrain = PaperRollbackTerrainWriteback.prepare(world, initial.world().terrain(), frame.changes());
         var players = PaperRollbackRosterComponents.prepare(live.nativePlayers(), frame.players(), liveNanos);
-        var restored = RollbackBendingState.decodeRestoration(views, frame.bending(), live.liveCodec());
+        var actors = new PaperRollbackActorRestoration(world, live.nativePlayers(), frame.actors());
+        var restored = RollbackBendingState.decodeRestoration(views, frame.bending(), live.liveCodec().withBindings(actors.bindings()));
         var tasks = restored.services().stream().filter(RollbackTaskBindings.class::isInstance)
                 .map(RollbackTaskBindings.class::cast).toList();
         if (tasks.size() != 1) throw new IllegalStateException("Confirmed gameplay requires one scheduler");
         var gameplay = restored.prepareCommit(live.bendingPlayers(), live.reservation(), live.originalAbilities());
-        return new PaperRollbackMatchRestoration(terrain, players, gameplay, tasks.getFirst());
+        return new PaperRollbackMatchRestoration(terrain, players, gameplay, tasks.getFirst(), actors);
     }
 
     public void release(PaperRollbackLiveOwnership ownership) {
         if (released) return;
         gameplay.validate();
-        ownership.restoreAndRelease(tasks, terrain, players, gameplay::commit);
+        actors.validate();
+        ownership.restoreAndRelease(tasks, terrain, players, () -> {
+            actors.commit();
+            gameplay.commit();
+        });
         released = true;
     }
 }

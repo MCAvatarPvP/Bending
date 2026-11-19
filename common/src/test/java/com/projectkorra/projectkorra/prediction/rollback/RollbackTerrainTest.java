@@ -167,9 +167,12 @@ class RollbackTerrainTest {
     }
 
     @Test void nativeRulesSeeProvisionalNeighborsAndUncapturedReadsCannotUseLiveWorld() {
-        TestWorld world = new TestWorld(Map.of(), new TestRules() {
-            @Override public void physics(RollbackBlockStore terrain, Position position) {
-                if (position.equals(ORIGIN) && terrain.cell(position).data().getMaterial() == Material.WATER) {
+        TestWorld world = new TestWorld(Map.of(ORIGIN, cell(Material.STONE)), new TestRules() {
+            @Override public void physics(RollbackBlockStore terrain, Position position, Cell before, Cell after) {
+                if (position.equals(ORIGIN)) {
+                    assertEquals(Material.STONE, before.data().getMaterial());
+                    assertEquals(Material.WATER, after.data().getMaterial());
+                    assertEquals(after, terrain.cell(position));
                     terrain.block(1, 0, 0).setType(Material.ICE, false);
                 }
             }

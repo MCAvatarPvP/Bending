@@ -25,6 +25,38 @@ class RollbackBootstrapDataTest {
     }
     private static RollbackBootstrapData data() { return data(20, Map.of(A, A, B, B)); }
 
+    @Test void confirmedCheckpointBindsTheArenaBodiesAndDecisionHistoryToTheNegotiatedDuel() {
+        var initial = data();
+        var round = new RollbackRound(initial.session(), initial.sides());
+        round.beginTick(1);
+        assertEquals(RollbackRound.DamageResult.DEFEAT, round.damage(B, A, 4, 6, false, false));
+        var cursor = new RollbackRandom.State(71, true, -0.25);
+        var streams = new RollbackRandomStreams(cursor, cursor, Map.of(A, cursor, B, cursor));
+        var position = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Position(-17, -2, -1);
+        var cell = initial.world().terrain().cell(position);
+        var state = new RollbackConfirmedData(round.exportData(), new RollbackRosterData(21, initial.roster().players()), streams,
+                Map.of(A, 8L, B, 11L), List.of(new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Change(position, cell)),
+                new RollbackActorData(initial.session(), 11, List.of()), initial.bending());
+        byte[] encoded = state.encode(initial, STATES, LIMITS, 65_536);
+        var copy = RollbackConfirmedData.decode(encoded, 1, initial, STATES, LIMITS, encoded.length);
+        assertArrayEquals(encoded, copy.encode(initial, STATES, LIMITS, encoded.length));
+        assertEquals(state.random(), copy.random());
+        assertEquals(state.actionSequences(), copy.actionSequences());
+        assertEquals(state.actors(), copy.actors());
+        assertEquals(cell.data().getExactState(), copy.terrain().getFirst().value().data().getExactState());
+        var client = new RollbackRound(initial.session(), initial.sides());
+        client.beginTick(1);
+        client.importData(copy.round());
+        assertTrue(client.ended());
+        assertEquals(round.provisionalDefeats(), client.provisionalDefeats());
+        assertThrows(IllegalArgumentException.class, () -> state.encode(initial, STATES, LIMITS, encoded.length - 1));
+        assertThrows(IllegalArgumentException.class, () -> RollbackConfirmedData.decode(encoded, 2, initial, STATES, LIMITS, encoded.length));
+        assertThrows(IllegalArgumentException.class, () -> RollbackConfirmedData.decode(Arrays.copyOf(encoded, encoded.length - 1), 1, initial, STATES, LIMITS, encoded.length));
+        byte[] invalid = encoded.clone();
+        invalid[20] = 2; // First world stream's Gaussian cache flag.
+        assertThrows(IllegalArgumentException.class, () -> RollbackConfirmedData.decode(invalid, 1, initial, STATES, LIMITS, encoded.length));
+    }
+
     @Test void entireDuelStateAndExactCaptureEpochRoundTripWithOneFingerprint() {
         var source = data(); byte[] bytes = source.encode(STATES, LIMITS);
         var copy = RollbackBootstrapData.decode(bytes, DEFINITIONS, STATES, LIMITS);

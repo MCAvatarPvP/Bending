@@ -53,6 +53,11 @@ public abstract class PredictionClientApi extends PredictionClientLifecycle {
         if (initialized) return;
         initialized = true;
         debug("client prediction networking initialized");
+        net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents.CLIENT_STARTED.register(client -> {
+            var owner = PredictionClient.instance();
+            owner.installRollbackBootstrap(new com.projectkorra.projectkorra.fabric.client.prediction.rollback.FabricRollbackDuelFactory(
+                    client, owner.rollbackStarts::sendInput));
+        });
         ClientPlayNetworking.registerGlobalReceiver(RollbackBootstrapPayloads.ToClient.ID,
                 (payload, context) -> {
                     PredictionClient owner = PredictionClient.instance();

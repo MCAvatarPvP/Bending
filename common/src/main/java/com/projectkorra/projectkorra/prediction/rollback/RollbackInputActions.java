@@ -16,17 +16,19 @@ import java.util.Set;
 public final class RollbackInputActions {
     private RollbackInputActions() { }
 
-    public enum Kind { SWING, RIGHT_CLICK, RIGHT_CLICK_BLOCK, RIGHT_CLICK_ENTITY, SNEAK_START, SNEAK_STOP, SWAP_HANDS, SLOT_CHANGE, FLIGHT_START, FLIGHT_STOP, GLIDE_START, OFF_HAND_SWING, RELEASE_USE_ITEM }
+    public enum Kind { SWING, RIGHT_CLICK, RIGHT_CLICK_BLOCK, RIGHT_CLICK_ENTITY, SNEAK_START, SNEAK_STOP, SWAP_HANDS, SLOT_CHANGE, FLIGHT_START, FLIGHT_STOP, GLIDE_START, OFF_HAND_SWING, RELEASE_USE_ITEM, ATTACK, INTERACT_ENTITY }
 
     public enum Hand { MAIN, OFF }
     public static Hand defaultHand(Kind kind) { return kind == Kind.OFF_HAND_SWING ? Hand.OFF : Hand.MAIN; }
 
     /** Slot is present only for SLOT_CHANGE. Seeds and sequences are assigned/validated by the session. */
-    public record Action(long sequence, long seed, Kind kind, int slot, Hand hand) {
+    public record Action(long sequence, long seed, Kind kind, int slot, Hand hand, RollbackInteractionTarget target) {
+        public Action(long sequence, long seed, Kind kind, int slot, Hand hand) { this(sequence, seed, kind, slot, hand, null); }
         public Action(long sequence, long seed, Kind kind, int slot) { this(sequence, seed, kind, slot, defaultHand(kind)); }
         public Action {
             Objects.requireNonNull(kind, "kind"); Objects.requireNonNull(hand, "hand");
-            if (kind != Kind.RIGHT_CLICK && kind != Kind.RIGHT_CLICK_BLOCK && kind != Kind.RIGHT_CLICK_ENTITY && hand != defaultHand(kind))
+            RollbackInteractionTarget.validate(kind, target);
+            if (kind != Kind.INTERACT_ENTITY && kind != Kind.RIGHT_CLICK && kind != Kind.RIGHT_CLICK_BLOCK && kind != Kind.RIGHT_CLICK_ENTITY && hand != defaultHand(kind))
                 throw new IllegalArgumentException("Action does not accept this hand");
             if (sequence <= 0 || seed <= 0) throw new IllegalArgumentException("Action identity");
             if (kind == Kind.SLOT_CHANGE ? slot < 0 || slot > 8 : slot != -1) throw new IllegalArgumentException("Action slot");
@@ -56,7 +58,7 @@ public final class RollbackInputActions {
         PredictionDeterminism.run(action.sequence(), action.seed(), () -> result[0] = switch (action.kind()) {
             case SWING, OFF_HAND_SWING -> CommonInputHandler.handleSwing(player, Set.of(), new HashSet<>());
             // Releasing an item has no bending activation; the native remainder owns its effects.
-            case RELEASE_USE_ITEM -> CommonInputHandler.InputResult.pass();
+            case RELEASE_USE_ITEM, ATTACK, INTERACT_ENTITY -> CommonInputHandler.InputResult.pass();
             case RIGHT_CLICK -> action.hand() == Hand.OFF ? CommonInputHandler.InputResult.pass() : CommonInputHandler.handleRightClick(player, ClickType.RIGHT_CLICK);
             case RIGHT_CLICK_BLOCK -> action.hand() == Hand.OFF ? CommonInputHandler.InputResult.pass() : CommonInputHandler.handleRightClick(player, ClickType.RIGHT_CLICK_BLOCK);
             case RIGHT_CLICK_ENTITY -> action.hand() == Hand.OFF ? CommonInputHandler.InputResult.pass() : CommonInputHandler.handleRightClickEntity(player);

@@ -553,7 +553,7 @@ public final class FabricMC {
         return new Vec3d(value.getX(), value.getY(), value.getZ());
     }
 
-    static ParticleEffect particle(Particle value, Object data) {
+    public static ParticleEffect particle(Particle value, Object data) {
         if (value == null) return null;
 
         final String particleName = value.name();
@@ -746,7 +746,7 @@ public final class FabricMC {
         return state;
     }
 
-    static void setFallingBlockState(FallingBlockEntity entity, BlockState state) {
+    public static void setFallingBlockState(FallingBlockEntity entity, BlockState state) {
         try {
             Field field = null;
             for (Field candidate : FallingBlockEntity.class.getDeclaredFields()) {

@@ -33,6 +33,7 @@ public final class PaperRollbackWorldServices implements PaperRollbackWorldAcces
         private final long time, lastTick;
         private Snapshot(PaperRollbackWorldServices owner) { this.owner = owner; time = owner.time; lastTick = owner.lastTick; }
     }
+    private final net.minecraft.world.flag.FeatureFlagSet features;
     private final Thread thread = Thread.currentThread();
     private final RollbackWorldSettings settings;
     private final RollbackWorld logical;
@@ -59,7 +60,8 @@ public final class PaperRollbackWorldServices implements PaperRollbackWorldAcces
             throw new IllegalArgumentException("Logical world differs from captured settings");
         }
         this.spatial = Objects.requireNonNull(spatial); this.events = Objects.requireNonNull(events);
-        var nativeRules = new GameRules(Objects.requireNonNull(features));
+        this.features = Objects.requireNonNull(features);
+        var nativeRules = new GameRules(features);
         var available = nativeRules.availableRules().toList(); var keys = new HashSet<String>(); var values = new IdentityHashMap<GameRule<?>, Object>();
         for (var rule : available) {
             String key = rule.getIdentifier().toString(); keys.add(key); var value = settings.rules().get(key);
@@ -94,6 +96,8 @@ public final class PaperRollbackWorldServices implements PaperRollbackWorldAcces
     @Override public RegistryAccess.Frozen registries() { checkThread(); return registries; }
     @Override public RegistryAccess.Frozen registryAccess() { return registries(); }
     @Override public Difficulty difficulty() { checkThread(); return Difficulty.valueOf(logical.conditions().difficulty()); }
+    @Override public net.minecraft.world.flag.FeatureFlagSet terrainFeatures() { checkThread(); return features; }
+    @Override public boolean splitOverstackedLoot() { return policy().splitOverstackedLoot(); }
     @Override public RandomSource random() { checkThread(); return random; }
     @Override public Object rule(Object rule) {
         checkThread(); var value = rules.get(rule); if (value == null) throw new IllegalArgumentException("Rule absent from captured feature set"); return value;
@@ -115,6 +119,9 @@ public final class PaperRollbackWorldServices implements PaperRollbackWorldAcces
     @Override public float jumpExhaustion(boolean sprinting) { return sprinting ? policy().jumpSprintingExhaustion() : policy().jumpWalkingExhaustion(); }
     @Override public PaperRollbackWorldAccess.WorldPolicy worldPolicy() { checkThread(); return worldPolicy; }
     @Override public int containerUpdateRate() { return policy().containerUpdateRate(); }
+    @Override public boolean disablePlayerCrits() { return policy().disablePlayerCrits(); }
+    @Override public boolean disableSprintInterruptionOnAttack() { return policy().disableSprintInterruptionOnAttack(); }
+    @Override public float combatExhaustion() { return policy().combatExhaustion(); }
     @Override public float regenerationExhaustion() { return policy().regenerationExhaustion(); }
     @Override public boolean parrotsStayOnShoulder() { return policy().parrotsStayOnShoulder(); }
     @Override public void event(org.bukkit.event.Event event) { checkThread(); events.event(event); }

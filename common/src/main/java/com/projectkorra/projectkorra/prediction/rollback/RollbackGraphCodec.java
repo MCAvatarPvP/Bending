@@ -117,6 +117,32 @@ public final class RollbackGraphCodec {
             } catch (IOException | NoSuchAlgorithmException exception) { throw new IllegalStateException(exception); }
         }
 
+        /** Extend an already negotiated catalog with the actor identities present at one frontier. */
+        private Catalog(Catalog base, Collection<Binding> additions) {
+            types = base.types;
+            indices = base.indices;
+            layouts = base.layouts;
+            var combined = new ArrayList<>(base.bindings);
+            var names = new HashSet<String>();
+            for (Binding binding : base.bindings) names.add(binding.id());
+            external.putAll(base.external);
+            try {
+                var bytes = new ByteArrayOutputStream();
+                var out = new DataOutputStream(bytes);
+                out.write(base.fingerprint);
+                out.writeInt(additions.size());
+                for (var binding : additions.stream().sorted(Comparator.comparing(Binding::id)).toList()) {
+                    if (!names.add(binding.id()) || external.put(binding.value(), combined.size()) != null)
+                        throw invalid("duplicate actor binding");
+                    combined.add(binding);
+                    schemaString(out, binding.id());
+                    schemaString(out, sharedTypeName(binding.type()));
+                }
+                fingerprint = MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray());
+            } catch (IOException | NoSuchAlgorithmException failure) { throw new IllegalStateException(failure); }
+            bindings = List.copyOf(combined);
+        }
+
         /** Stable schema names for the library relocations used by the Paper artifact. */
         static String sharedTypeName(Class<?> type) {
             String name = type.getName();
@@ -188,6 +214,11 @@ public final class RollbackGraphCodec {
         this.valueViews = Objects.requireNonNull(valueViews);
     }
 
+    public RollbackGraphCodec withBindings(Collection<Binding> additions) {
+        if (Thread.currentThread() != owner || RollbackClock.active()) throw new IllegalStateException("Bind actors between steps");
+        return additions.isEmpty() ? this : new RollbackGraphCodec(new Catalog(catalog, additions), limits, externalBindings, valueViews);
+    }
+
     public byte[] encode(Collection<?> roots) { return encode(roots, ignored -> null); }
 
     /** Projections select participant-only service state before graph discovery. Direct replacements must be bound. */
@@ -245,6 +276,16 @@ public final class RollbackGraphCodec {
 
     public List<Object> decode(byte[] bytes) {
         checkThread();
+        return decodeGraph(bytes);
+    }
+
+    List<Object> decodeRepair(byte[] bytes) {
+        if (Thread.currentThread() != owner || !RollbackDomain.active() || RollbackClock.active())
+            throw new IllegalStateException("Resolve actor references in the confirmed domain");
+        return decodeGraph(bytes);
+    }
+
+    private List<Object> decodeGraph(byte[] bytes) {
         if (bytes.length > limits.maximumWireBytes()) throw invalid("wire budget");
         try {
             var in = new DataInputStream(new ByteArrayInputStream(bytes));

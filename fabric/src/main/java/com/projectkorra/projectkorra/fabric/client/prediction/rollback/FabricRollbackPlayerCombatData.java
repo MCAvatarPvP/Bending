@@ -27,7 +27,10 @@ import java.util.*;
 public final class FabricRollbackPlayerCombatData {
     private FabricRollbackPlayerCombatData() { }
     public static void apply(Map<UUID, FabricRollbackNativePlayerState> states, Map<UUID, RollbackPlayerCombatData> seeds) {
-        requireSetup();
+        requireSetup(); applyBoundary(states, seeds);
+    }
+    static void applyBoundary(Map<UUID, FabricRollbackNativePlayerState> states, Map<UUID, RollbackPlayerCombatData> seeds) {
+        if (RollbackClock.active()) throw new IllegalStateException("Cannot replace native state during a tick");
         if (states.isEmpty() || states.size() > RollbackPlayerCombatData.MAXIMUM_ROSTER || !states.keySet().equals(seeds.keySet())) throw new IllegalArgumentException("Combat import roster changed");
         var roster = new TreeMap<UUID, PlayerEntity>();
         var entityIds = new HashSet<Integer>();

@@ -66,14 +66,33 @@ class FabricRollbackNativeActionsTest {
         }
     }
 
-    @ParameterizedTest @ValueSource(strings = {"attack", "inventory", "break", "creative"})
+    @Test void nativeAttackCapturesTheEntityBeforeLiveDamageOrKnockback() throws Exception {
+        var f = new Fixture();
+        var target = f.roster.players().get(B).ownedPlayer();
+        var position = target.getEntityPos();
+        var velocity = target.getVelocity();
+        float health = target.getHealth();
+        f.player.setYaw(65);
+        f.player.setPitch(-15);
+        try (var lease = f.acquire(f.player)) {
+            f.manager.attackEntity(f.player, target);
+            assertTrue(f.failures.isEmpty());
+            assertEquals(position, target.getEntityPos());
+            assertEquals(velocity, target.getVelocity());
+            assertEquals(health, target.getHealth());
+            f.runtime.tick(101);
+            assertEquals(List.of(new RollbackInputPacket.Edge(1, RollbackInputActions.Kind.ATTACK,
+                    -1, 65, -15, new RollbackInteractionTarget.Actor(target.getId(), null))), f.sent.getFirst().actions());
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"inventory", "break", "creative"})
     void unboundInteractionsStopBeforeTouchingNativeItemsEntitiesOrBlocksEvenWhenCleanupReleasesTheLease(String operation) throws Exception {
         var f = new Fixture(); var target = f.roster.players().get(B).ownedPlayer();
         var stack = new ItemStack(Items.APPLE, 4); f.player.getInventory().setStack(0, stack);
         float health = target.getHealth(); var position = target.getEntityPos(); var velocity = target.getVelocity();
         try (var lease = f.acquire(f.player)) {
             switch (operation) {
-                case "attack" -> f.manager.attackEntity(f.player, target);
                 case "inventory" -> f.manager.clickSlot(0, 36, 0, SlotActionType.PICKUP, f.player);
                 case "break" -> assertFalse(f.manager.attackBlock(BlockPos.ORIGIN, Direction.UP));
                 case "creative" -> f.manager.dropCreativeStack(stack);

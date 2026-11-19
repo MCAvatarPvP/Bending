@@ -25,6 +25,13 @@ public final class PaperRollbackRandomStreams {
         return new RollbackRandom.State(BITS.get(random).get(), HAS.get(cache), VALUE.get(cache));
     }
 
+    static void restore(RandomSource random, RollbackRandom.State state) {
+        if (random.getClass() != LegacyRandomSource.class) throw new IllegalStateException("Unexpected private Paper random source");
+        var cache = CACHE.get(random);
+        if (cache.randomSource != random) throw new IllegalStateException("Private random stream changed owners");
+        BITS.get(random).set(state.bits()); HAS.set(cache, state.hasGaussian()); VALUE.set(cache, state.gaussian());
+    }
+
     public static RollbackRandomStreams capture(PaperRollbackNativeScene scene) {
         var players = new TreeMap<UUID, RollbackRandom.State>();
         scene.roster().forEach((id, state) -> players.put(id, capture(state.ownedPlayer().getRandom())));

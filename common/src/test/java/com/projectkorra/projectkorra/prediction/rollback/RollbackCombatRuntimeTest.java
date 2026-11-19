@@ -41,6 +41,22 @@ class RollbackCombatRuntimeTest {
     private static final RollbackInputActions.Action CLICK = new RollbackInputActions.Action(11, 23, RollbackInputActions.Kind.RIGHT_CLICK, -1);
     private static final RollbackEngine.Limits LIMITS = new RollbackEngine.Limits(3, 1, 50, 50_000_000);
 
+    @Test void checkpointWorkScalesWithExecutedTicksInsteadOfReceivedPackets() throws Exception {
+        withConfig(() -> {
+            var duel = scenario();
+            int before = duel.fixture.checkpointCount;
+            for (int packet = 0; packet < 32; packet++) duel.runtime.submit(A, 1, EMPTY);
+            duel.runtime.frames(0, 0);
+            duel.runtime.reconcile();
+            assertEquals(before, duel.fixture.checkpointCount);
+            duel.runtime.advance();
+            assertEquals(before + 1, duel.fixture.checkpointCount);
+            duel.runtime.submit(B, 1, new Input(List.of(CLICK), false));
+            duel.runtime.reconcile();
+            assertEquals(before + 2, duel.fixture.checkpointCount);
+        });
+    }
+
     @Test void completeTickAndScheduledActionsReplayThroughExistingInputAndCollisionHandlers() throws Exception {
         withConfig(() -> {
             var onTime = scenario();
@@ -392,6 +408,7 @@ class RollbackCombatRuntimeTest {
         final List<String> history = new ArrayList<>();
         RollbackStep<String> effects;
         RollbackRound round;
+        int checkpointCount;
         boolean failWorld;
         void record(String value) { history.add(value); effects.emit(value); }
         @Override public Input predict(UUID participant, Input previous) { return EMPTY; }
@@ -406,7 +423,7 @@ class RollbackCombatRuntimeTest {
         @Override public void end() { history.add("end:" + ProjectKorra.time_step); effects = null; }
         @Override public void onAdded(CoreAbility source, BendingPlayer player, String ability, long expiry) { record("cooldown"); }
         @Override public void onRemoved(BendingPlayer player, String ability) { record("expired"); }
-        @Override public List<String> captureRollbackState() { assertNull(effects); return List.copyOf(history); }
+        @Override public List<String> captureRollbackState() { assertNull(effects); checkpointCount++; return List.copyOf(history); }
         @Override public void restoreRollbackState(List<String> state) { history.clear(); history.addAll(state); }
         @Override public Collection<?> rollbackReferences() { return List.of(player, defender, defence); }
     }

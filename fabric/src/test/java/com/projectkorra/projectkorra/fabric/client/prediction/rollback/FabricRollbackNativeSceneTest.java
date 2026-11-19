@@ -71,15 +71,7 @@ class FabricRollbackNativeSceneTest {
         assertEquals(hunger, second.readControls().exhaustion());
     }
     @Test void bootstrapSceneSharesItsPaperDefinedItemsWithTheImportedRoster() throws Exception {
-        RollbackBootstrapData reference;
-        try (var in = Objects.requireNonNull(getClass().getResourceAsStream("/rollback/duel-bootstrap.base64"))) {
-            reference = RollbackBootstrapData.decode(Base64.getMimeDecoder().decode(in.readAllBytes()), "12".repeat(32),
-                    new FabricRollbackTerrainTransfer(), new RollbackTerrainCodec.Limits(4_096, 32, 1_048_576, 1_048_576, 65_536));
-        }
-        // The historical bootstrap fixture predates the captured lighting seed.
-        var data = new RollbackBootstrapData(reference.session(), reference.challenge(), reference.match(), reference.round(),
-                reference.epochMillis(), reference.epochNanos(), reference.definitions(), reference.sides(), seed(), reference.roster(),
-                reference.configuration(), reference.access(), reference.materials(), reference.tags(), reference.server(), reference.plugins(), reference.bending());
+        var data = bootstrapData();
         var imported = FabricRollbackNativeScene.importState(data, FabricRollbackTestRegistry.simulationRegistries(), FeatureFlags.DEFAULT_ENABLED_FEATURES,
                 unused(RollbackBlockStore.Rules.class), unused(RollbackWorld.Actions.class), new Events(), new Scoreboard(), 100, 128, 300_000);
         var services = new TreeMap<UUID, RollbackRosterViews.Services>();
@@ -93,6 +85,94 @@ class FabricRollbackNativeSceneTest {
         assertSame(imported.scene().logical(), views.world());
     }
 
+    private RollbackBootstrapData bootstrapData() throws Exception {
+        RollbackBootstrapData reference;
+        try (var in = Objects.requireNonNull(getClass().getResourceAsStream("/rollback/duel-bootstrap.base64"))) {
+            reference = RollbackBootstrapData.decode(Base64.getMimeDecoder().decode(in.readAllBytes()), "12".repeat(32),
+                    new FabricRollbackTerrainTransfer(), new RollbackTerrainCodec.Limits(4_096, 32, 1_048_576, 1_048_576, 65_536));
+        }
+        // The historical bootstrap fixture predates the captured lighting seed.
+        return new RollbackBootstrapData(reference.session(), reference.challenge(), reference.match(), reference.round(),
+                reference.epochMillis(), reference.epochNanos(), reference.definitions(), reference.sides(), seed(), reference.roster(),
+                reference.configuration(), reference.access(), reference.materials(), reference.tags(), reference.server(), reference.plugins(), reference.bending());
+    }
+
+    @Test void productionDuelCreatesARealOwnedDisplayAndImportsAuthoritativeState() throws Exception {
+        var data = bootstrapData();
+        var duel = FabricRollbackNativeScene.importDuel(data, FabricRollbackTestRegistry.simulationRegistries(),
+                FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);
+        var world = duel.scene().logical();
+        var pos = new com.projectkorra.projectkorra.platform.mc.Location(world, 1, 4, 1);
+        var server = (net.minecraft.server.world.ServerWorld) duel.scene().roster().world().world();
+        var nativeType = net.minecraft.entity.EntityType.BLOCK_DISPLAY;
+        var before = nativeType.create(server, net.minecraft.entity.SpawnReason.TRIGGERED);
+        var view = world.spawn(pos, com.projectkorra.projectkorra.platform.mc.entity.BlockDisplay.class);
+        var after = nativeType.create(server, net.minecraft.entity.SpawnReason.TRIGGERED);
+        assertEquals(before.getId() + 1, after.getId());
+        var glow = new BlockData(Material.GLOWSTONE); glow.setExactState("minecraft:glowstone"); view.setBlock(glow);
+        var actor = (FabricRollbackActor) duel.actors().registry().get(view.getUniqueId());
+        var nativeDisplay = (net.minecraft.entity.decoration.DisplayEntity.BlockDisplayEntity) actor.owned();
+        assertSame(world, view.getWorld()); assertSame(view, view.handle()); assertSame(view, actor.view());
+        assertTrue(nativeDisplay.getBlockState().isOf(net.minecraft.block.Blocks.GLOWSTONE));
+        assertSame(nativeDisplay, duel.scene().roster().world().world().getEntityAnyDimension(view.getUniqueId()));
+        var saved = duel.actors().registry().exportState();
+        assertEquals(saved, RollbackActorData.decode(saved.encode()));
+        var checkpoint = actor.captureRollbackState();
+        view.setBlock(new FabricRollbackTerrainTransfer().decode(Material.STONE, "minecraft:stone"));
+        checkpoint.restore();
+        assertTrue(nativeDisplay.getBlockState().isOf(net.minecraft.block.Blocks.GLOWSTONE));
+        duel.actors().importState(saved);
+        var restored = (FabricRollbackActor) duel.actors().registry().get(view.getUniqueId());
+        assertNotSame(actor, restored); assertFalse(view.isValid()); assertSame(restored.view(), world.entities().get(view.getEntityId()));
+        var player = duel.scene().roster().players().values().iterator().next();
+        var captured = duel.scene().roster().capture(data.epochNanos());
+        var original = player.ownedPlayer().getEntityPos();
+        player.ownedPlayer().setPosition(5, 4, 5);
+        duel.scene().roster().importConfirmed(captured, data.epochNanos());
+        assertEquals(original, player.ownedPlayer().getEntityPos());
+    }
+
+    @Test void privatePassengerTicksOnceAndEjectDetachesItsNativeVehicle() throws Exception {
+        var duel = FabricRollbackNativeScene.importDuel(bootstrapData(), FabricRollbackTestRegistry.simulationRegistries(),
+                FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);
+        var world = duel.scene().logical();
+        var pos = new com.projectkorra.projectkorra.platform.mc.Location(world, 1, 4, 1);
+        var vehicle = world.spawn(pos, com.projectkorra.projectkorra.platform.mc.entity.BlockDisplay.class);
+        var passenger = world.spawn(pos, com.projectkorra.projectkorra.platform.mc.entity.BlockDisplay.class);
+        var nativeVehicle = duel.actors().nativeEntity(vehicle);
+        var nativePassenger = duel.actors().nativeEntity(passenger);
+        assertTrue(vehicle.addPassenger(passenger));
+        assertSame(nativeVehicle, nativePassenger.getVehicle());
+        int age = nativePassenger.age;
+        new FabricRollbackPhases(duel).tickWorld(1);
+        assertEquals(age + 1, nativePassenger.age);
+        assertTrue(vehicle.eject());
+        assertNull(nativePassenger.getVehicle());
+        assertFalse(passenger.isInsideVehicle());
+    }
+
+    @Test void replayResolvesTheRequestedTargetFromTheCapturedEyeAtTheInputEdge() throws Exception {
+        var duel = FabricRollbackNativeScene.importDuel(bootstrapData(), FabricRollbackTestRegistry.simulationRegistries(),
+                FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);
+        var participants = new ArrayList<>(duel.views().players().values());
+        var player = participants.getFirst();
+        var victim = participants.get(1);
+        ((FabricRollbackNativePlayerState) player.body().kinematicsSource()).ownedPlayer().setPosition(1.5, 4, 1.5);
+        ((FabricRollbackNativePlayerState) victim.body().kinematicsSource()).ownedPlayer().setPosition(1.5, 4, 4.5);
+        var attack = new RollbackInputActions.Action(1, 1, RollbackInputActions.Kind.ATTACK, -1,
+                RollbackInputActions.Hand.MAIN, new RollbackInteractionTarget.Actor(victim.getEntityId(), null));
+        var forward = new RollbackPlayerInput.Edge(attack, 0, 0);
+        assertTrue(RollbackInteractionTarget.allowed(player, forward, 4));
+        assertFalse(RollbackInteractionTarget.allowed(player, forward, 1));
+        assertFalse(RollbackInteractionTarget.allowed(player, new RollbackPlayerInput.Edge(attack, 180, 0), 4));
+        var interaction = new RollbackInputActions.Action(2, 2, RollbackInputActions.Kind.RIGHT_CLICK_ENTITY, -1,
+                RollbackInputActions.Hand.MAIN, new RollbackInteractionTarget.Actor(victim.getEntityId(),
+                new RollbackInteractionTarget.Offset(0, .1F, -.3F)));
+        assertFalse(RollbackInteractionTarget.allowed(player, new RollbackPlayerInput.Edge(interaction, 0, 0), 4));
+        duel.scene().logical().getBlockAt(1, player.getEyeLocation().getBlockY(), 3).setType(Material.STONE, false);
+        assertFalse(RollbackInteractionTarget.allowed(player, forward, 4));
+    }
+
     @Test void rejectsMissingLightAndMismatchedRosterBeforeReturningAScene() throws Exception {
         var seed = seed(); var players = players();
         assertThrows(IllegalArgumentException.class, () -> scene(seed, players, Set.of()));
@@ -100,6 +180,25 @@ class FabricRollbackNativeSceneTest {
                 seed.settings(), seed.border(), seed.environment(), seed.terrain());
         assertThrows(IllegalStateException.class, () -> scene(absent, players, players.players().keySet()));
         assertThrows(IllegalArgumentException.class, () -> scene(seed, new RollbackRosterData(players.worldTime() + 1, players.players()), players.players().keySet()));
+    }
+    @Test void privateNeighborShapesAndVanillaLootRewindTogether() throws Exception {
+        var captured = players();
+        var scene = scene(seed(), captured, captured.players().keySet());
+        var block = scene.logical().getBlockAt(0, 4, 0);
+        var fence = scene.logical().getBlockAt(1, 4, 0);
+        fence.setType(Material.OAK_FENCE, false);
+        block.setType(Material.OAK_PLANKS);
+        assertTrue(fence.getBlockData().getExactState().contains("west=true"));
+        assertEquals(List.of(Material.OAK_PLANKS), block.getDrops().stream().map(item -> item.getType()).toList());
+        block.setType(Material.GRAVEL, false);
+        var checkpoint = new RollbackStateGraph(value -> Proxy.isProxyClass(value.getClass()), field -> true, 600_000)
+                .capture(List.of(scene), List.of());
+        var results = new ArrayList<Material>();
+        for (int i = 0; i < 64; i++) results.add(block.getDrops().iterator().next().getType());
+        assertTrue(results.contains(Material.FLINT));
+        assertTrue(results.contains(Material.GRAVEL));
+        checkpoint.restore();
+        for (var expected : results) assertEquals(expected, block.getDrops().iterator().next().getType());
     }
     private static RollbackRosterData players() throws Exception {
         try (var in = Objects.requireNonNull(FabricRollbackNativeSceneTest.class.getResourceAsStream("/rollback/player-roster.base64"))) {
@@ -120,13 +219,10 @@ class FabricRollbackNativeSceneTest {
         return scene(seed, players, participants, new Events());
     }
     private static FabricRollbackNativeScene scene(RollbackWorldSeed seed, RollbackRosterData players, Set<UUID> participants, FabricRollbackWorldServices.Events<?> events) {
-        var tiles = new Tiles(); var geometry = new FabricRollbackGeometry(seed.minimumY(), seed.maximumY(), tiles);
-        var blocks = (RollbackBlockStore.Rules) Proxy.newProxyInstance(FabricRollbackNativeSceneTest.class.getClassLoader(), new Class<?>[]{RollbackBlockStore.Rules.class}, (proxy, method, args) -> {
-            if (method.getName().equals("geometry")) return geometry.geometry((RollbackBlockStore) args[0], (RollbackBlockStore.Position) args[1], (BlockData) args[2]);
-            if (method.isDefault()) return java.lang.reflect.InvocationHandler.invokeDefault(proxy, method, args);
-            throw new AssertionError("Unexpected block action " + method);
-        });
-        var bindings = new FabricRollbackNativeScene.Bindings(blocks, unused(RollbackItems.class), unused(RollbackWorld.Actions.class), tiles, events, new Scoreboard());
+        var tiles = new FabricRollbackBlockEntities(FabricRollbackTestRegistry.simulationRegistries());
+        var items = new RollbackNativeItems<>(new FabricRollbackItems(FabricRollbackTestRegistry.simulationRegistries()));
+        var blocks = new FabricRollbackBlockRules(items);
+        var bindings = new FabricRollbackNativeScene.Bindings(blocks, items, unused(RollbackWorld.Actions.class), tiles, events, new Scoreboard());
         return new FabricRollbackNativeScene(seed, players, participants, FabricRollbackTestRegistry.simulationRegistries(),
                 FeatureFlags.DEFAULT_ENABLED_FEATURES, bindings, 0, 100, 128, 300_000);
     }

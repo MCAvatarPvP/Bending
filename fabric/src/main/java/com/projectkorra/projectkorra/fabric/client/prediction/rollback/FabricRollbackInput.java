@@ -3,6 +3,7 @@ package com.projectkorra.projectkorra.fabric.client.prediction.rollback;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClientRuntime;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackInputActions;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackMovementInput;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackInteractionTarget;
 import net.minecraft.client.input.Input;
 import net.minecraft.network.packet.Packet;
 import net.minecraft.network.packet.c2s.play.*;
@@ -66,25 +67,30 @@ public final class FabricRollbackInput {
         }
         if (packet instanceof PlayerInteractBlockC2SPacket block) {
             blockUntil = Math.addExact(tick, 2);
-            if (block.getHand() == Hand.MAIN_HAND) action(RollbackInputActions.Kind.RIGHT_CLICK_BLOCK, -1, yaw, pitch);
-            else throw unsupported(packet);
+            var hit = block.getBlockHitResult(); var pos = hit.getBlockPos(); var point = hit.getPos();
+            var target = new RollbackInteractionTarget.Block(pos.getX(), pos.getY(), pos.getZ(),
+                    RollbackInteractionTarget.Face.valueOf(hit.getSide().name()), offset(point.subtract(pos.getX(), pos.getY(), pos.getZ())), hit.isInsideBlock());
+            runtime.action(RollbackInputActions.Kind.RIGHT_CLICK_BLOCK, -1, yaw, pitch, hand(block.getHand()), target);
             return;
         }
         if (packet instanceof PlayerInteractItemC2SPacket item) {
-            // Block-use fallback still requires its own target-bearing native interaction intent.
-            if (blockUntil > tick && item.getHand() == Hand.OFF_HAND) throw unsupported(packet);
             if (blockUntil <= tick) runtime.action(RollbackInputActions.Kind.RIGHT_CLICK, -1, item.getYaw(), item.getPitch(),
                     item.getHand() == Hand.MAIN_HAND ? RollbackInputActions.Hand.MAIN : RollbackInputActions.Hand.OFF);
             return;
         }
         if (packet instanceof PlayerInteractEntityC2SPacket entity) {
+            int networkId = ((com.projectkorra.projectkorra.fabric.mixin.client.RollbackEntityPacketAccess) entity).rollback$entityId();
             entity.handle(new PlayerInteractEntityC2SPacket.Handler() {
-                @Override public void interact(Hand hand) { throw unsupported(packet); }
-                @Override public void interactAt(Hand hand, Vec3d position) {
-                    if (hand != Hand.MAIN_HAND) throw unsupported(packet);
-                    action(RollbackInputActions.Kind.RIGHT_CLICK_ENTITY, -1, yaw, pitch);
+                @Override public void interact(Hand hand) {
+                    runtime.action(RollbackInputActions.Kind.INTERACT_ENTITY, -1, yaw, pitch, hand(hand), new RollbackInteractionTarget.Actor(networkId, null));
                 }
-                @Override public void attack() { throw unsupported(packet); }
+                @Override public void interactAt(Hand hand, Vec3d position) {
+                    runtime.action(RollbackInputActions.Kind.RIGHT_CLICK_ENTITY, -1, yaw, pitch, hand(hand),
+                            new RollbackInteractionTarget.Actor(networkId, offset(position)));
+                }
+                @Override public void attack() {
+                    runtime.action(RollbackInputActions.Kind.ATTACK, -1, yaw, pitch, RollbackInputActions.Hand.MAIN, new RollbackInteractionTarget.Actor(networkId, null));
+                }
             });
             return;
         }
@@ -105,6 +111,8 @@ public final class FabricRollbackInput {
     private void sneak(boolean next, float yaw, float pitch) {
         if (next != sneaking && runtime.action(next ? RollbackInputActions.Kind.SNEAK_START : RollbackInputActions.Kind.SNEAK_STOP, -1, yaw, pitch)) sneaking = next;
     }
+    private static RollbackInputActions.Hand hand(Hand value) { return value == Hand.MAIN_HAND ? RollbackInputActions.Hand.MAIN : RollbackInputActions.Hand.OFF; }
+    private static RollbackInteractionTarget.Offset offset(Vec3d value) { return new RollbackInteractionTarget.Offset((float)value.x, (float)value.y, (float)value.z); }
     private void action(RollbackInputActions.Kind kind, int slot, float yaw, float pitch) { runtime.action(kind, slot, yaw, pitch); }
     private static UnsupportedOperationException unsupported(Packet<?> packet) {
         return new UnsupportedOperationException("Private native input service is not bound for " + packet.getClass().getSimpleName());

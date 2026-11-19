@@ -300,6 +300,7 @@ public final class BukkitMC {
     public static Entity entity(final org.bukkit.entity.Entity value) {
         if (value instanceof org.bukkit.entity.Player p) return player(p);
         if (value instanceof org.bukkit.entity.LivingEntity living) return living(living);
+        if (value instanceof org.bukkit.entity.AreaEffectCloud cloud) return new AreaEffectCloudView(cloud);
         if (value instanceof org.bukkit.entity.FallingBlock falling) return falling(falling);
         if (value instanceof org.bukkit.entity.ShulkerBullet bullet) return shulkerBullet(bullet);
         if (value instanceof org.bukkit.entity.Snowball snowball) return snowball(snowball);

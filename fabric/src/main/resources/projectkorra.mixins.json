@@ -8,6 +8,10 @@
     "ServerPlayNetworkHandlerMixin"
   ],
   "client": [
+    "client.LootEntryRollbackAccess",
+    "client.LootChoiceRollbackMixin",
+    "client.LootTableRollbackMixin",
+    "client.TurtleEggRollbackAccess",
     "client.LivingEntityRollbackHistoryAccess",
     "client.DamageTrackerRollbackAccess",
     "client.EntityRollbackContextAccess",
@@ -22,7 +26,11 @@
     "client.LivingEntityRollbackCombatAccess",
     "client.ItemStackRollbackAccess",
     "client.EntityRollbackControlAccess",
+    "client.EntityRollbackAllocationMixin",
+    "client.ProjectileRollbackAccess",
+    "client.RollbackEntityPacketAccess",
     "client.WorldRollbackRandomAccess",
+    "client.ServerWorldRollbackEntities",
     "client.CheckedRandomRollbackAccess",
     "client.GaussianRollbackAccess",
     "client.HungerManagerRollbackAccess",

@@ -41,6 +41,7 @@ import java.util.function.Predicate;
 public final class FabricRollbackWorldQueries implements FabricRollbackWorldAccess.Queries<Void>, EntityView {
     /** All mutable service state must be owned and checkpointed; no live client/server world may be retained. */
     public interface Services<S> extends RollbackStateCell<S> {
+        default net.minecraft.resource.featuretoggle.FeatureSet terrainFeatures() { throw new IllegalStateException("Terrain feature flags were not supplied"); }
         DynamicRegistryManager.Immutable registries();
         EnvironmentAttributeAccess environmentAttributes();
         WorldBorder border();
@@ -152,6 +153,7 @@ public final class FabricRollbackWorldQueries implements FabricRollbackWorldAcce
                 .orElseThrow(() -> new IllegalStateException("Captured biome is absent from session registries: " + cell.biomeKey()));
     }
     @Override public boolean isRaining() { checkThread(); return logical.hasStorm(); }
+    @Override public net.minecraft.resource.featuretoggle.FeatureSet terrainFeatures() { checkThread(); return services.terrainFeatures(); }
     @Override public Difficulty difficulty() { checkThread(); return Difficulty.valueOf(logical.conditions().difficulty()); }
     @Override public boolean isSkyVisible(BlockPos pos) { getBlockState(pos); return services.skyVisible(logical.terrain(), pos); }
 
@@ -160,6 +162,7 @@ public final class FabricRollbackWorldQueries implements FabricRollbackWorldAcce
         requireRoster(); requireMember(except); requireBounds(bounds); Objects.requireNonNull(predicate);
         var result = new ArrayList<Entity>();
         for (var player : players) if (player != except && !player.isRemoved() && player.getBoundingBox().intersects(bounds) && predicate.test(player)) result.add(player);
+        for (var actor : owner.activeActors()) if (actor != except && !actor.isRemoved() && actor.getBoundingBox().intersects(bounds) && predicate.test(actor)) result.add(actor);
         return List.copyOf(result);
     }
     @Override public <T extends Entity> List<T> getEntitiesByType(TypeFilter<Entity, T> filter, Box bounds, Predicate<? super T> predicate) {
@@ -217,7 +220,7 @@ public final class FabricRollbackWorldQueries implements FabricRollbackWorldAcce
     @Override public Void captureRollbackState() { requireRoster(); return null; }
     @Override public void restoreRollbackState(Void ignored) { requireRoster(); }
     @Override public List<?> rollbackReferences() { requireRoster(); return List.of(logical, services, blockEntities, owner); }
-    private void requireMember(Entity entity) { if (entity != null && !membership.contains(entity)) throw new IllegalArgumentException("Native query contains an unowned entity"); }
+    private void requireMember(Entity entity) { if (entity != null && !membership.contains(entity) && !owner.ownsEntity(entity)) throw new IllegalArgumentException("Native query contains an unowned entity"); }
     private void requireRoster() { checkThread(); if (players == null) throw new IllegalStateException("Bind the native query roster before simulation"); }
     private void requireBounds(Box bounds) {
         var box = new RollbackBlockStore.Box(bounds.minX, bounds.minY, bounds.minZ, bounds.maxX, bounds.maxY, bounds.maxZ);

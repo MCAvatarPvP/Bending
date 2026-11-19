@@ -45,7 +45,8 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap {
         this.lifecycle = Objects.requireNonNull(lifecycle); this.factory = Objects.requireNonNull(factory);
     }
 
-    @Override public boolean supports(Set<UUID> players) { return server.supportsRollbackBootstrap(players); }
+    @Override public boolean supports(Set<UUID> players) { return server.supportsRollbackBootstrap(players)
+            && com.projectkorra.projectkorra.region.BukkitRegionProtectionBootstrap.supportsRollback(); }
 
     @Override public Preparation prepare(Request request) {
         if (!supports(request.sides().keySet())) throw new IllegalStateException("Rollback participants changed before capture");
@@ -115,10 +116,11 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap {
             var bounds = RollbackDuelRuntime.TERRAIN;
             var captureLimits = new PaperRollbackTerrainCapture.Limits(bounds.maximumCells(), 65536,
                     bounds.maximumStorageBytes(), bounds.maximumBlockEntityBytes());
-            captured = PaperRollbackDuelSeed.captureOwned(ownership, request, challenge, definitions.definitions(),
-                    players.values(), services, bending.values(), ProjectKorra.collisionManager, List.of(reservation),
-                    graph, List.of(), seed, Long.rotateLeft(seed, 29), captureLimits);
             var views = bending.values().stream().map(BendingPlayer::getPlayer).toList();
+            var regions = com.projectkorra.projectkorra.region.BukkitRegionProtectionBootstrap.captureRollback(views, request.terrain());
+            captured = PaperRollbackDuelSeed.captureOwned(ownership, request, challenge, definitions.definitions(),
+                    players.values(), services, bending.values(), ProjectKorra.collisionManager, List.of(reservation, regions),
+                    graph, List.of(), seed, Long.rotateLeft(seed, 29), captureLimits);
             var config = RollbackConfiguration.prepare(captured.portable().configuration(), PredictionConfigSync.sources());
             var codec = RollbackGameplayGraph.create(graph.installed(), graph.limits(), RollbackGameplayGraph.Side.LIVE,
                     new RollbackRosterBindings(views.getFirst().getWorld(), views), config, lifecycle, graph.services(),

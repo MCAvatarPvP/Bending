@@ -81,11 +81,27 @@ public final class RollbackEntityBody implements RollbackStateCell<RollbackEntit
         default double eyeHeight() { throw new IllegalStateException("Native entity has no captured eye-height adapter"); }
     }
 
+    /** Spawned actors keep native entity flags and removal in the same body used by their tick. */
+    public interface ActorProperties {
+        boolean valid();
+        boolean dead();
+        void remove();
+        int fireTicks();
+        void fireTicks(int value);
+        boolean silent();
+        void silent(boolean value);
+        boolean invulnerable();
+        void invulnerable(boolean value);
+        boolean gravity();
+        void gravity(boolean value);
+    }
+
     /** All callbacks operate on logical state and a scoped event bus, never live entities. */
     public interface Rules {
         /** Return the accepted pose, or null if cancelled. Caller updates logical position. */
         Pose teleport(RollbackEntityBody entity, Pose destination);
         boolean canMount(RollbackEntityBody vehicle, RollbackEntityBody passenger);
+        default void unmount(RollbackEntityBody vehicle, RollbackEntityBody passenger) { }
     }
 
     /** Implemented by typed platform views so related entities cannot leak native handles. */
@@ -226,14 +242,15 @@ public final class RollbackEntityBody implements RollbackStateCell<RollbackEntit
         return true;
     }
 
-    public boolean valid() { checkThread(); return data.valid; }
-    public boolean dead() { checkThread(); return data.dead; }
+    public boolean valid() { checkThread(); return data.valid && (!(nativeKinematics instanceof ActorProperties a) || a.valid()); }
+    public boolean dead() { checkThread(); return data.dead || (nativeKinematics instanceof ActorProperties a && a.dead()); }
     /** Native physics/health adapters may update liveness without emitting a live removal. */
     public void liveness(boolean valid, boolean dead) { checkThread(); data.valid = valid; data.dead = dead; }
     public void remove() {
         checkThread();
         dismount();
         eject();
+        if (nativeKinematics instanceof ActorProperties a) a.remove();
         data.valid = false;
         data.dead = true;
     }
@@ -248,14 +265,14 @@ public final class RollbackEntityBody implements RollbackStateCell<RollbackEntit
         data.vehicle = null;
         data.passengers.clear();
     }
-    public int fireTicks() { checkThread(); return data.fireTicks; }
-    public void fireTicks(int value) { checkThread(); data.fireTicks = value; }
-    public boolean silent() { checkThread(); return data.silent; }
-    public void silent(boolean value) { checkThread(); data.silent = value; }
-    public boolean invulnerable() { checkThread(); return data.invulnerable; }
-    public void invulnerable(boolean value) { checkThread(); data.invulnerable = value; }
-    public boolean gravity() { checkThread(); return data.gravity; }
-    public void gravity(boolean value) { checkThread(); data.gravity = value; }
+    public int fireTicks() { checkThread(); return nativeKinematics instanceof ActorProperties a ? a.fireTicks() : data.fireTicks; }
+    public void fireTicks(int value) { checkThread(); if (nativeKinematics instanceof ActorProperties a) a.fireTicks(value); data.fireTicks = value; }
+    public boolean silent() { checkThread(); return nativeKinematics instanceof ActorProperties a ? a.silent() : data.silent; }
+    public void silent(boolean value) { checkThread(); if (nativeKinematics instanceof ActorProperties a) a.silent(value); data.silent = value; }
+    public boolean invulnerable() { checkThread(); return nativeKinematics instanceof ActorProperties a ? a.invulnerable() : data.invulnerable; }
+    public void invulnerable(boolean value) { checkThread(); if (nativeKinematics instanceof ActorProperties a) a.invulnerable(value); data.invulnerable = value; }
+    public boolean gravity() { checkThread(); return nativeKinematics instanceof ActorProperties a ? a.gravity() : data.gravity; }
+    public void gravity(boolean value) { checkThread(); if (nativeKinematics instanceof ActorProperties a) a.gravity(value); data.gravity = value; }
     public boolean persistent() { checkThread(); return data.persistent; }
     public void persistent(boolean value) { checkThread(); data.persistent = value; }
     public EntityDamageEvent lastDamage() { checkThread(); return data.lastDamage; }
@@ -281,12 +298,16 @@ public final class RollbackEntityBody implements RollbackStateCell<RollbackEntit
     public boolean eject() {
         checkThread();
         if (data.passengers.isEmpty()) return false;
-        for (RollbackEntityBody passenger : data.passengers) passenger.data.vehicle = null;
+        for (RollbackEntityBody passenger : data.passengers) {
+            rules.unmount(this, passenger);
+            passenger.data.vehicle = null;
+        }
         data.passengers.clear();
         return true;
     }
     private void dismount() {
         if (data.vehicle != null) {
+            data.vehicle.rules.unmount(data.vehicle, this);
             data.vehicle.data.passengers.remove(this);
             data.vehicle = null;
         }

@@ -79,6 +79,10 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
         Geometry geometry(RollbackBlockStore terrain, Position position, BlockData data);
         byte legacyData(RollbackBlockStore terrain, Position position, BlockData data);
         void physics(RollbackBlockStore terrain, Position changed);
+        /** Includes the departing state used by vanilla neighbor notifications. */
+        default void physics(RollbackBlockStore terrain, Position changed, Cell before, Cell after) {
+            physics(terrain, changed);
+        }
         /** Synchronous derived-state update, including writes which suppress block physics. */
         default void changed(RollbackBlockStore terrain, Position position) { }
         /** Platforms with mutable lighting override the immutable capture value. */
@@ -288,11 +292,12 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
         if (++mutations > maximumMutations) throw new IllegalStateException("Block physics mutation budget exceeded");
         mutationDepth++;
         try {
+            Cell before = physics ? cell(position) : null;
             if (blockEntities != null) blockEntities.replacing(position, value, preserveTile);
             overlay.put(position, value);
             dirty.add(position);
             rules.changed(this, position);
-            if (physics) rules.physics(this, position);
+            if (physics) rules.physics(this, position, before, value);
         } finally { mutationDepth--; }
     }
 
@@ -315,6 +320,31 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
         var order = java.util.Comparator.comparingInt(Position::y).thenComparingInt(Position::z).thenComparingInt(Position::x);
         return overlay.entrySet().stream().sorted(Map.Entry.comparingByKey(order))
                 .map(entry -> new Change(entry.getKey(), entry.getValue())).toList();
+    }
+
+    /** Replace the entire overlay, including removal of cells changed only by the client's prediction. */
+    public void importChanges(Seed original, List<Change> changes) {
+        checkThread();
+        if (seed != original || mutationDepth != 0) throw new IllegalStateException("Terrain correction outside its seed or boundary");
+        var updated = new LinkedHashMap<Position, Cell>();
+        Position previous = null;
+        for (var change : changes) {
+            RollbackTerrainDelta.requirePosition(bounds, change.position(), previous);
+            updated.put(change.position(), Objects.requireNonNull(change.value()));
+            previous = change.position();
+        }
+        // Geometry and light callbacks must see the complete new scene.
+        flushBlockEntities();
+        var affected = new java.util.TreeSet<>(RollbackTerrainDelta.ORDER);
+        affected.addAll(overlay.keySet());
+        affected.addAll(updated.keySet());
+        for (var position : affected) {
+            if (blockEntities != null) blockEntities.replacing(position, updated.getOrDefault(position, seed.cell(position)), false);
+        }
+        overlay.clear();
+        overlay.putAll(updated);
+        dirty.clear();
+        for (var position : affected) rules.changed(this, position);
     }
 
     @Override public State captureRollbackState() {

@@ -43,7 +43,10 @@ public final class FabricRollbackPlayerItems {
     }
 
     public static void apply(FabricRollbackNativePlayerState state, RollbackPlayerItems items) {
-        requireBootstrap(); state.use(player -> { apply(player, items); return null; });
+        requireBootstrap(); applyBoundary(state, items);
+    }
+    static void applyBoundary(FabricRollbackNativePlayerState state, RollbackPlayerItems items) {
+        if (RollbackClock.active()) throw new IllegalStateException("Cannot replace native state during a tick"); state.use(player -> { apply(player, items); return null; });
     }
     private static void apply(PlayerEntity player, RollbackPlayerItems seed) {
         if (player.getInventory().size() != seed.inventory().size() || player.getEnderChestInventory().size() != seed.enderChest().size()) {

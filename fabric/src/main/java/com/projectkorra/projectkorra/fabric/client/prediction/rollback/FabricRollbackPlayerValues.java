@@ -212,6 +212,10 @@ public final class FabricRollbackPlayerValues {
     private FabricRollbackPlayerValues() { }
     public static Prepared prepare(RollbackPlayerValues values) {
         if (RollbackClock.active() || RollbackDomain.active()) throw new IllegalStateException("Prepare player values before replay");
+        return prepareBoundary(values);
+    }
+    static Prepared prepareBoundary(RollbackPlayerValues values) {
+        if (RollbackClock.active()) throw new IllegalStateException("Cannot replace native state during a tick");
         var remaining = new TreeMap<>(values.fields());
         var nativeValues = new ArrayList<Object>(FIELDS.size());
         for (Field field : FIELDS) nativeValues.add(FabricRollbackNativeValues.decode(field.type, RollbackPlayerValues.requireField(field.key, remaining.remove(field.key))));
@@ -231,7 +235,10 @@ public final class FabricRollbackPlayerValues {
         /** The native policy/maintenance adapter still has to consume and evolve this state. */
         public RollbackPlayerValues retained() { return retained; }
         public void apply(FabricRollbackNativePlayerState state) {
-            requireBootstrap();
+            requireBootstrap(); applyBoundary(state);
+        }
+        void applyBoundary(FabricRollbackNativePlayerState state) {
+            if (Thread.currentThread() != owner || RollbackClock.active()) throw new IllegalStateException("Cannot replace player values at this boundary");
             state.use(player -> {
                 for (int i = 0; i < FIELDS.size(); i++) FIELDS.get(i).write(player, nativeValues.get(i));
                 if (player instanceof FabricRollbackDamagePlayer owned)

@@ -196,22 +196,22 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
     }
 
     public RollbackEngine.Submission submit(UUID participant, long tick, I input) {
-        requireUsable();
-        return domain.call(() -> engine.submit(participant, tick, input));
+        requireBoundary();
+        return engine.submit(participant, tick, input);
     }
 
     public RollbackEngine.Update<RollbackDomain.Checkpoint, I, E> advance() {
         requireUsable();
-        return domain.call(engine::advance);
+        return domain.step(engine::advance);
     }
 
     public RollbackEngine.Update<RollbackDomain.Checkpoint, I, E> reconcile() {
-        requireUsable();
-        return domain.call(engine::reconcile);
+        requireBoundary();
+        return engine.replayPending() ? domain.step(engine::reconcile) : engine.reconcile();
     }
 
     @Override public RollbackEngine.Update<RollbackDomain.Checkpoint, I, E> correctState(long tick, RollbackDomain.Checkpoint state) {
-        requireUsable(); return domain.call(() -> engine.correctState(tick, state));
+        requireUsable(); return domain.step(() -> engine.correctState(tick, state));
     }
     /**
      * Install validated authoritative data into the existing private objects at the
@@ -223,7 +223,7 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
         if (!engine.replica()) throw new IllegalStateException("Only replicas import repair state");
         if (RollbackDomain.active() || RollbackClock.active()) throw new IllegalStateException("Import requires a live tick boundary");
         if (tick != engine.confirmed().tick()) throw new IllegalArgumentException("State import must match the confirmed frontier");
-        return domain.call(() -> {
+        return domain.step(() -> {
             domain.restore(engine.confirmed().state());
             importer.run();
             return engine.correctState(tick, domain.capture());
@@ -232,16 +232,16 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
 
     @Override public boolean replica() { return engine.replica(); }
     @Override public RollbackEngine.Submission correct(UUID participant, long tick, I input) {
-        requireUsable();
-        return domain.call(() -> engine.correct(participant, tick, input));
+        requireBoundary();
+        return engine.correct(participant, tick, input);
     }
     @Override public RollbackEngine.Update<RollbackDomain.Checkpoint, I, E> confirm(long tick) {
-        requireUsable();
-        return domain.call(() -> engine.confirm(tick));
+        requireBoundary();
+        return engine.replayPending() ? domain.step(() -> engine.confirm(tick)) : engine.confirm(tick);
     }
     @Override public List<RollbackEngine.Frame<RollbackDomain.Checkpoint, I, E>> frames(long from, long through) {
-        requireUsable();
-        return domain.call(() -> engine.frames(from, through));
+        requireBoundary();
+        return engine.frames(from, through);
     }
 
     /** Detached loader payload paired with the exact replay frontier it describes. */
@@ -327,7 +327,7 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
     public RollbackEngine.Diagnostics diagnostics() { return engine.diagnostics(); }
     @Override public List<UUID> participants() { return engine.participants(); }
     @Override public RollbackEngine.Limits limits() { return engine.limits(); }
-    public boolean failed() { return deliveryFailed || domain.failed() || engine.diagnostics().failed(); }
+    public boolean failed() { return deliveryFailed || domain.failed() || engine.failed(); }
 
     /** Called by the authority transport after publishing its confirmed frontier, outside replay. */
     public void deliverConfirmedDefeats(java.util.function.Consumer<RollbackRound.Defeat> delivery) {
@@ -339,6 +339,13 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
         try { round.finalizeThrough(confirmed, delivery); }
         catch (RuntimeException | Error failure) { deliveryFailed = true; throw failure; }
         finally { delivering = false; }
+    }
+
+    /** Input ledgers and detached frame reads stay on the owning thread outside simulation. */
+    private void requireBoundary() {
+        requireUsable();
+        if (RollbackDomain.active() || RollbackClock.active())
+            throw new IllegalStateException("Operation requires a live tick boundary");
     }
 
     private void requireUsable() {

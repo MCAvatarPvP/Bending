@@ -17,7 +17,8 @@ import java.util.UUID;
 /** Base Entity API view. Specialized platform types share the same body delegate. */
 public final class RollbackEntity extends Entity implements RollbackEntityBody.View, RollbackStateCell<Void> {
     private final RollbackEntityBody body;
-    public RollbackEntity(RollbackEntityBody body) { this.body = body; body.bind(this); }
+    public RollbackEntity(RollbackEntityBody body) { this(body, true); }
+    RollbackEntity(RollbackEntityBody body, boolean bind) { this.body = body; if (bind) body.bind(this); }
     @Override public RollbackEntityBody body() { return body; }
     @Override public UUID getUniqueId() { return body.identity().uuid(); }
     @Override public int getEntityId() { return body.identity().networkId(); }

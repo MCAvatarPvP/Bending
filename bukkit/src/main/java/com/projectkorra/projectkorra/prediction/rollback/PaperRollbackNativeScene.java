@@ -68,6 +68,10 @@ public final class PaperRollbackNativeScene implements RollbackStateCell<Void>, 
         world = new PaperRollbackWorldAccess(queries, services, maximumChunks);
         roster = players.instantiate(world, epochNanos, playerServices);
         queries.bindRoster(world, roster);
+        if (bindings.blocks() instanceof PaperRollbackBlockRules nativeRules) {
+            nativeRules.bind(this, geometry);
+            world.bindTerrain(nativeRules);
+        }
     }
     public RollbackWorld logical() { check(); return logical; }
     public Map<UUID, PaperRollbackNativePlayerState> roster() { check(); return roster; }

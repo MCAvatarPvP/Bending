@@ -286,6 +286,9 @@ public final class RollbackEngine<S, I, E> implements RollbackReplicaTimeline<S,
         }
     }
 
+    boolean replayPending() { checkUsable(); return dirtyFrom != Long.MAX_VALUE; }
+    boolean failed() { checkThread(); return failed; }
+
     private void checkUsable() {
         checkThread();
         if (failed) throw new IllegalStateException("Rollback simulation failed; this session cannot continue");

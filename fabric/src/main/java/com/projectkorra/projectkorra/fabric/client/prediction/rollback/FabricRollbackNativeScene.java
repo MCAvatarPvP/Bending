@@ -52,6 +52,30 @@ public final class FabricRollbackNativeScene implements RollbackStateCell<Void>,
         return new Imported(scene, items);
     }
 
+    public record Duel(FabricRollbackNativeScene scene, RollbackNativeItems<net.minecraft.item.ItemStack> items,
+            RollbackRosterViews views, FabricRollbackActors actors, FabricRollbackArenaEvents events, RollbackRound round,
+            RollbackStepOutput<Object> output) { }
+
+    /** Build private gameplay, native body and effect bindings from authenticated bootstrap components. */
+    public static Duel importDuel(RollbackBootstrapData data, DynamicRegistryManager.Immutable registries,
+            FeatureSet features, int maximumMutations, int maximumEntities, int maximumPlayerObjects) {
+        var items = new RollbackNativeItems<>(new FabricRollbackItems(registries));
+        var output = new RollbackStepOutput<Object>();
+        var actors = new FabricRollbackActors(data.session(), maximumEntities, items);
+        var events = new FabricRollbackArenaEvents(output, data.world().settings().policy());
+        var codec = new FabricRollbackItemCodec(registries);
+        var actions = new RollbackArenaActions(output, actors, new FabricRollbackTerrainTransfer(),
+                item -> codec.encode(items.nativeCopy(item)));
+        var bindings = new Bindings(new FabricRollbackBlockRules(items), items, actions, registries, events, new Scoreboard());
+        var scene = new FabricRollbackNativeScene(data.world(), data.roster(), data.sides().keySet(), registries, features,
+                bindings, data.epochNanos(), maximumMutations, maximumEntities, maximumPlayerObjects);
+        actors.bind(scene);
+        var views = FabricRollbackRosterViews.bind(scene.logical(), scene.roster(), data.sides().keySet(), items, actions.players(data.access()));
+        var round = new RollbackRound(data.session(), data.sides());
+        scene.roster().world().bindRound(round, events);
+        return new Duel(scene, items, views, actors, events, round, output);
+    }
+
     private final Thread thread = Thread.currentThread();
     private final RollbackWorld logical;
     private final FabricRollbackLighting lighting;
@@ -81,6 +105,10 @@ public final class FabricRollbackNativeScene implements RollbackStateCell<Void>,
         queries = new FabricRollbackWorldQueries(logical, services, bindings.blockEntities());
         roster = FabricRollbackRoster.instantiate(players, participants, queries, epochNanos, maximumPlayerObjects);
         queries.bindRoster(roster);
+        if (bindings.blocks() instanceof FabricRollbackBlockRules nativeRules) {
+            nativeRules.bind(this, geometry);
+            roster.world().bindTerrain(nativeRules);
+        }
         if (bindings.events() instanceof FabricRollbackArenaEvents events) events.bind(this);
     }
     public RollbackWorld logical() { check(); return logical; }
@@ -102,7 +130,7 @@ public final class FabricRollbackNativeScene implements RollbackStateCell<Void>,
     @Override public void restoreRollbackState(Void ignored) { check(); }
     @Override public List<?> rollbackReferences() {
         check(); var roots = new ArrayList<Object>(List.of(logical, lighting, spatial, services, queries));
-        roots.addAll(roster.players().values()); return List.copyOf(roots);
+        roots.add(roster); return List.copyOf(roots);
     }
     private void check() { if (Thread.currentThread() != thread) throw new IllegalStateException("Native scene crossed threads"); }
 }

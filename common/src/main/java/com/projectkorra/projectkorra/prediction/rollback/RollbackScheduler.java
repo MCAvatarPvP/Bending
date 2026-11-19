@@ -95,7 +95,14 @@ public final class RollbackScheduler implements PKScheduler, RollbackStateCell<R
      * Checkpoint and execute normally, but never export another timer during live restoration.
      */
     public PKTask runServiceTimer(Runnable callback, long delay, long period) {
-        return schedule(callback, delay, period == 0 ? 1 : period, true);
+        return schedule(new ServiceCallback(Objects.requireNonNull(callback)), delay, period == 0 ? 1 : period, true);
+    }
+
+    /** Client repairs retain the service timer and the exact manager it invokes. */
+    private static final class ServiceCallback implements Runnable {
+        private final Runnable callback;
+        private ServiceCallback(Runnable callback) { this.callback = callback; }
+        @Override public void run() { callback.run(); }
     }
 
     private Task schedule(Runnable callback, long delay, long period) {
@@ -123,6 +130,17 @@ public final class RollbackScheduler implements PKScheduler, RollbackStateCell<R
         checkUsable();
         if (imported || tick != 0 || nextId != 1 || !tasks.isEmpty() || running)
             throw new IllegalStateException("Task import requires a fresh private scheduler");
+        installEntries(entries, minimumNextId, maximumNextId);
+    }
+
+    void replaceTasks(List<RollbackTaskBindings.Entry> entries, int minimumNextId, int maximumNextId) {
+        checkUsable();
+        if (running || !RollbackDomain.active() || RollbackClock.active() || !imported || maximumNextId != this.maximumNextId)
+            throw new IllegalStateException("Task correction requires the same settled private scheduler");
+        installEntries(entries, minimumNextId, maximumNextId);
+    }
+
+    private void installEntries(List<RollbackTaskBindings.Entry> entries, int minimumNextId, int maximumNextId) {
         if (entries.size() > maximumTasks) throw new IllegalArgumentException("Imported task budget exceeded");
         if (minimumNextId < 1 || maximumNextId < minimumNextId) throw new IllegalArgumentException("Invalid imported task id reservation");
         var imported = new LinkedHashMap<Integer, Task>();
@@ -135,11 +153,13 @@ public final class RollbackScheduler implements PKScheduler, RollbackStateCell<R
                 throw new IllegalArgumentException("Invalid or already bound imported task handle");
             var callback = Objects.requireNonNull(entry.callback(), "task callback");
             if (callback instanceof RollbackCallback portable) portable.validateTask();
-            var task = new Task(id, callback, Math.max(1, entry.delay()),
-                    entry.period() == 0 ? 1 : entry.period(), imported.size() + 1L, entry.ability(), entry.action(), entry.seed());
+            var task = new Task(id, callback, Math.addExact(tick, Math.max(1, entry.delay())),
+                    entry.period() == 0 ? 1 : entry.period(), imported.size() + 1L, entry.ability(), entry.action(),
+                    entry.seed(), callback instanceof ServiceCallback);
             imported.put(id, task); followingId = Math.max(followingId, Math.incrementExact(id));
         }
         this.maximumNextId = maximumNextId;
+        tasks.clear(); queue.clear();
         tasks.putAll(imported); queue.addAll(imported.values()); nextId = followingId; nextOrder = entries.size() + 1L; this.imported = true;
         for (var entry : entries) entry.handle().bind(imported.get(entry.handle().legacyId()));
     }
@@ -149,12 +169,14 @@ public final class RollbackScheduler implements PKScheduler, RollbackStateCell<R
      * Copy these bindings together with the outgoing gameplay graph while still in its
      * domain. The source scheduler stays owned until the destination is fully prepared.
      */
-    public RollbackTaskBindings.Capture exportTasks() {
+    public RollbackTaskBindings.Capture exportTasks() { return exportTasks(false); }
+
+    RollbackTaskBindings.Capture exportTasks(boolean includeServiceTimers) {
         checkUsable();
         if (running) throw new IllegalStateException("Cannot export a running callback");
         var pending = new ArrayList<RollbackTaskBindings.Pending>();
         for (var task : tasks.values()) {
-            if (task.domainService) continue;
+            if (task.domainService && !includeServiceTimers) continue;
             pending.add(new RollbackTaskBindings.Pending(task, task.callback,
                     Math.max(1, Math.subtractExact(task.due, tick)), task.period,
                     task.ability, task.action, task.seed));
@@ -163,7 +185,7 @@ public final class RollbackScheduler implements PKScheduler, RollbackStateCell<R
             checkUsable();
             if (running) throw new IllegalStateException("Cannot copy running scheduler handles");
             if (!(value instanceof RollbackScheduler.Task task) || task.scheduler() != this) return null;
-            return task.domainService || tasks.get(task.id) != task ? task.id : null;
+            return tasks.get(task.id) != task || task.domainService && !includeServiceTimers ? task.id : null;
         });
     }
 
