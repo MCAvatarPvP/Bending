@@ -4,6 +4,7 @@ import com.projectkorra.projectkorra.platform.chat.ChatMessageType;
 import com.projectkorra.projectkorra.platform.mc.*;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
+import com.projectkorra.projectkorra.platform.mc.entity.Display;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.entity.Projectile;
@@ -69,6 +70,7 @@ public final class RollbackPlayerState implements RollbackStateCell<RollbackPlay
         void blockChange(RollbackPlayerState player, RollbackBlockStore.Position position, BlockData data);
         void particle(RollbackPlayerState player, Particle particle, RollbackEntityBody.Pose position,
                       int count, double x, double y, double z, double extra, Object data, boolean force);
+        void hideDisplay(RollbackPlayerState viewer, UUID display);
         void displayName(RollbackPlayerState player, String name);
         void scoreboard(RollbackPlayerState player, Scoreboard scoreboard);
     }
@@ -194,6 +196,10 @@ public final class RollbackPlayerState implements RollbackStateCell<RollbackPlay
         return capturedAccess == null ? rules.permission(this, permission) : capturedAccess.hasPermission(permission);
     }
     public boolean canSee(Player player) { requireLocal(player); return !hidden.contains(player.getUniqueId()); }
+    public void hideDisplay(Display display) {
+        requireLocal(display);
+        rules.hideDisplay(this, display.getUniqueId());
+    }
     public boolean lineOfSight(Entity entity) { requireLocal(entity); return RollbackPlayerQueries.lineOfSight(this, entity); }
     public Block exactTarget(int range) {
         checkThread();

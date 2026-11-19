@@ -205,6 +205,7 @@ class RollbackPlayerTest {
         @Override public void note(RollbackPlayerState player, RollbackEntityBody.Pose position, Instrument instrument, Note note) { throw new UnsupportedOperationException(); }
         @Override public void blockChange(RollbackPlayerState player, RollbackBlockStore.Position position, BlockData data) { blockPosition = position; blockData = data; }
         @Override public void particle(RollbackPlayerState player, Particle particle, RollbackEntityBody.Pose position, int count, double x, double y, double z, double extra, Object data, boolean force) { throw new UnsupportedOperationException(); }
+        @Override public void hideDisplay(RollbackPlayerState viewer, UUID display) { output.accept("hide " + display); }
         @Override public void displayName(RollbackPlayerState player, String name) { output.accept(name); }
         @Override public void scoreboard(RollbackPlayerState player, Scoreboard scoreboard) { output.accept("scoreboard"); }
     }

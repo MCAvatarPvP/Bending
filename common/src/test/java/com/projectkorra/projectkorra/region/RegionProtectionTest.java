@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.region;
 
 import com.projectkorra.projectkorra.hooks.RegionProtectionHook;
+import com.projectkorra.projectkorra.prediction.authority.PredictionServices;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.World;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
@@ -63,6 +64,27 @@ class RegionProtectionTest {
         RegionProtection.getActiveProtections().put("test", (p, location, ability) -> true);
         RegionProtection.clearCache(player);
         assertTrue(RegionProtection.isRegionProtected(player, origin));
+    }
+
+    @Test void replayQueriesUseOnlyTheBoundPolicyEvenOnLiveCacheHits() {
+        var target = new Location(world, 10, 64, 0);
+        var liveCalls = new AtomicInteger();
+        RegionProtection.registerRegionProtection("live", (p, loc, ability) -> {
+            liveCalls.incrementAndGet();
+            return false;
+        });
+        assertFalse(RegionProtection.isRegionProtected(player, target));
+        var decisions = PredictionServices.builder().bind(RegionProtectionHook.class,
+                (p, loc, ability) -> loc.getBlockX() == 0).build();
+        try (var privateScope = PredictionServices.using(decisions)) {
+            assertTrue(RegionProtection.isRegionProtected(player, target));
+            assertTrue(RegionProtection.isRegionProtectedUncached(player, target, null));
+            origin.setX(1);
+            assertFalse(RegionProtection.isRegionProtected(player, target));
+        }
+        origin.setX(0);
+        assertFalse(RegionProtection.isRegionProtected(player, target));
+        assertEquals(2, liveCalls.get());
     }
 
     @Test void worldlessLocationsStillRunProtectionHooksInsteadOfFailing() {

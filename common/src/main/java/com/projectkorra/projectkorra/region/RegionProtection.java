@@ -1,7 +1,6 @@
 package com.projectkorra.projectkorra.region;
 
-import com.projectkorra.projectkorra.prediction.rollback.RollbackDomain;
-
+import com.projectkorra.projectkorra.prediction.authority.PredictionServices;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.hooks.RegionProtectionHook;
 import com.projectkorra.projectkorra.platform.Platform;
@@ -78,8 +77,11 @@ public class RegionProtection {
      */
     public static boolean isRegionProtected(@NotNull Player player, @Nullable Location location, @Nullable CoreAbility ability) {
         final Location origin = player.getLocation();
+        if (PredictionServices.active()) {
+            return privateDecision(player, origin, location, ability);
+        }
         // Synthetic or not-yet-attached locations have no stable world key.
-        if (RollbackDomain.active() || origin.getWorld() == null || (location != null && location.getWorld() == null)) {
+        if (origin.getWorld() == null || (location != null && location.getWorld() == null)) {
             return isRegionProtectedCached(player, location, ability);
         }
         final RegionProtectionCache cache = BLOCK_CACHE;
@@ -152,7 +154,17 @@ public class RegionProtection {
     /** Main-thread query used to build bounded prediction snapshots without polluting the gameplay cache. */
     public static boolean isRegionProtectedUncached(@NotNull Player player, @Nullable Location location,
                                                       @Nullable CoreAbility ability) {
+        if (PredictionServices.active()) {
+            return privateDecision(player, player.getLocation(), location, ability);
+        }
         return isRegionProtectedCached(player, location, ability);
+    }
+
+    private static boolean privateDecision(Player player, Location origin, Location location, CoreAbility ability) {
+        // The duel binds its captured per-player policy. Live hooks may consult or mutate a live server.
+        var policy = PredictionServices.current(RegionProtectionHook.class, null);
+        return policy != null && ((location != null && policy.isRegionProtected(player, location, ability))
+                || policy.isRegionProtected(player, origin, ability));
     }
 
     /** Invalidates cached decisions after an authoritative client snapshot changes. */

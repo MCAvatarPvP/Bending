@@ -8,6 +8,7 @@ import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.command.CommandSender;
 import com.projectkorra.projectkorra.platform.mc.entity.*;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackDomain;
 import com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent;
 import com.projectkorra.projectkorra.platform.mc.inventory.EntityEquipment;
 import com.projectkorra.projectkorra.platform.mc.inventory.MainHand;
@@ -62,6 +63,10 @@ public final class RollbackPlayer extends Player implements RollbackEntityBody.V
     @Override public boolean addPassenger(Entity value) { return body.addPassenger(value); }
     @Override public List<Entity> getPassengers() { return body.passengers(); }
     @Override public BoundingBox getBoundingBox() { return body.bounds(); }
+    @Override public BoundingBox getCombatBoundingBox() {
+        // Only the private domain installs the ability registry belonging to this rider.
+        return RollbackDomain.active() ? super.getCombatBoundingBox() : getBoundingBox();
+    }
     @Override public boolean isOnGround() { return body.kinematics().onGround(); }
     @Override public double getHeight() { return body.kinematics().height(); }
     @Override public void setMetadata(String key, MetadataValue value) { body.metadata(key, value); }
@@ -143,6 +148,7 @@ public final class RollbackPlayer extends Player implements RollbackEntityBody.V
     @Override public Scoreboard getScoreboard() { return state.scoreboard(); }
     @Override public void setScoreboard(Scoreboard value) { state.scoreboard(value); }
     @Override public boolean canSee(Player player) { return state.canSee(player); }
+    @Override public void hideDisplay(Display display) { state.hideDisplay(display); }
     @Override public boolean hasLineOfSight(Entity entity) { return state.lineOfSight(entity); }
     @Override public Block getTargetBlockExact(int range) { return state.exactTarget(range); }
     @Override public List<Block> getLastTwoTargetBlocks(Set<Material> transparent, int range) { return state.targetBlocks(transparent, range); }

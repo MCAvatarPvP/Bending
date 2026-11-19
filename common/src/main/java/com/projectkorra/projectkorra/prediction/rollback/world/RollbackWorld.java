@@ -4,6 +4,7 @@ import com.projectkorra.projectkorra.platform.mc.*;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.entity.*;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackDomain;
 import com.projectkorra.projectkorra.platform.mc.inventory.ItemStack;
 import com.projectkorra.projectkorra.platform.mc.util.BoundingBox;
 import com.projectkorra.projectkorra.platform.mc.util.RayTraceResult;
@@ -149,6 +150,9 @@ public final class RollbackWorld extends World implements RollbackStateCell<Roll
     @Override public List<Entity> getEntities() { return entities().entities(); }
     @Override public Collection<Player> getPlayers() { return entities().players(); }
     @Override public Collection<Entity> getNearbyEntities(BoundingBox box, Predicate<Entity> filter) { return entities().nearby(box, filter); }
+    @Override public Collection<Entity> getNearbyCombatEntities(BoundingBox box, Predicate<Entity> filter) {
+        return RollbackDomain.active() ? super.getNearbyCombatEntities(box, filter) : getNearbyEntities(box, filter);
+    }
     @Override public Collection<LivingEntity> getNearbyLivingEntities(Location location, double x, double y) {
         return getNearbyLivingEntities(location, x, y, x);
     }

@@ -52,6 +52,7 @@ public final class RollbackLivingEntity extends LivingEntity implements Rollback
     @Override public boolean addPassenger(Entity value) { return body.addPassenger(value); }
     @Override public List<Entity> getPassengers() { return body.passengers(); }
     @Override public BoundingBox getBoundingBox() { return body.bounds(); }
+    @Override public BoundingBox getCombatBoundingBox() { return body.bounds(); }
     @Override public boolean isOnGround() { return body.kinematics().onGround(); }
     @Override public double getHeight() { return body.kinematics().height(); }
     @Override public void setMetadata(String key, MetadataValue value) { body.metadata(key, value); }
