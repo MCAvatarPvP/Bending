@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.firebending.lightning;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
@@ -251,6 +252,12 @@ public class Lightning extends LightningAbility {
      * Once all of the arcs have been created then this ability instance gets
      * removed, but the BukkitRunnables continue until they remove themselves.
      **/
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.startTime = shift.time(this.startTime);
+    }
+
     @Override
     public void progress() {
         if (this.player.isDead() || !this.player.isOnline()) {

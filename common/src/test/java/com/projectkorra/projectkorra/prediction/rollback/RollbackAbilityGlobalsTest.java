@@ -14,6 +14,34 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class RollbackAbilityGlobalsTest {
+    @Test void confirmedParalyzeRetainsTheRemainingStunDurationAfterASlowDuel() throws Exception {
+        try (var fixture = new com.projectkorra.projectkorra.support.AbilityWorld()) {
+            var target = fixture.player(0, 64, 0);
+            var statuses = new RollbackParticipantStatuses();
+            com.projectkorra.projectkorra.util.MovementHandler stun;
+            try (var clock = RollbackClock.at(1_000L, 0, 50_000_000L)) {
+                stun = new com.projectkorra.projectkorra.util.MovementHandler(target, null);
+                stun.stopWithDuration(500L, "stunned");
+                com.projectkorra.projectkorra.util.MovementHandler.handlers.remove(stun);
+                statuses.movement().add(stun);
+            }
+            var shift = RollbackTimeShift.between(1_300L, 10_000L);
+            try {
+                statuses.rebase(shift);
+                statuses.rebase(shift);
+                statuses.merge(Map.of(target.getUniqueId(), target));
+                try (var clock = RollbackClock.at(10_000L, 4, 50_000_000L)) {
+                    com.projectkorra.projectkorra.util.MovementHandler.tickAll();
+                    assertTrue(com.projectkorra.projectkorra.util.MovementHandler.isStopped(target));
+                }
+                try (var clock = RollbackClock.at(10_000L, 5, 50_000_000L)) {
+                    com.projectkorra.projectkorra.util.MovementHandler.tickAll();
+                    assertFalse(com.projectkorra.projectkorra.util.MovementHandler.isStopped(target));
+                }
+            } finally { stun.reset(); }
+        }
+    }
+
     @Test void nearbyExistingStandDeclinesWhileAnOutsideStandContinuesNormally() throws Exception {
         try (var fixture = new com.projectkorra.projectkorra.support.AbilityWorld()) {
             var world = new com.projectkorra.projectkorra.platform.mc.World();

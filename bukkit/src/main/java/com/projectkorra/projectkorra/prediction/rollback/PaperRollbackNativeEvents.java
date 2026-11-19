@@ -93,7 +93,7 @@ final class PaperRollbackNativeEvents {
             methods.replace(CraftStatistic.class.getMethod("getEntityTypeFromStatistic", Stat.class),
                     MethodHandles.lookup().findStatic(PaperRollbackNativeEvents.class, "statisticEntity",
                             MethodType.methodType(org.bukkit.entity.EntityType.class, Stat.class)));
-            Set<String> factories = Set.of("callEntityDamageEvent", "callEntityKnockbackEvent", "callPlayerExhaustionEvent",
+            Set<String> factories = Set.of("callEntityDamageEvent", "callEntityKnockbackEvent", "callArrowBodyCountChangeEvent", "callPlayerExhaustionEvent",
                     "callEntityPotionEffectChangeEvent", "handleStatisticsIncrease", "callToggleSwimEvent", "callToggleGlideEvent", "callFoodLevelChangeEvent", "callPlayerLevelChangeEvent", "callPlayerInteractEvent");
             var found = new java.util.HashSet<String>();
             for (var method : CraftEventFactory.class.getDeclaredMethods()) {

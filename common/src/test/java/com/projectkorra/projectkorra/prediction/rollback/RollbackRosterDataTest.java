@@ -26,6 +26,41 @@ class RollbackRosterDataTest {
         assertThrows(IllegalArgumentException.class, () -> new RollbackRosterData(20, Map.of(A, first, B, player(B, 1, A, List.of()))));
         assertThrows(IllegalArgumentException.class, () -> new RollbackRosterData(20, Map.of(A, player(B, 2, null, List.of()))));
     }
+    @Test void damageHistoryRetainsAProjectileAfterItLeavesTheScene() {
+        var uuid = RollbackActorData.uuid(A, 1);
+        var id = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackEntityBody.Identity(uuid, -1, "snowball",
+                com.projectkorra.projectkorra.platform.mc.entity.EntityType.SNOWBALL);
+        var history = new RollbackActorData(A, 1, List.of(new RollbackActorData.Row(id, new byte[]{23})));
+        var first = player(A, 7, B, List.of());
+        var source = new RollbackPlayerCombatData.Source("minecraft:thrown", uuid, B, null, null, null, false);
+        var combat = new RollbackPlayerCombatData(A, B, B, null, null, false, Map.of(), first.combat().tracker(),
+                List.of(source), 0, List.of(new RollbackPlayerCombatData.Entry(0, 1, null, 0)));
+        var hit = new Player(first.identity(), first.randomSeed(), first.values(), first.vitals(), first.items(), first.context(), combat);
+        var players = Map.of(A, hit, B, player(B, 8, null, List.of()));
+        var data = new RollbackRosterData(45, players, history);
+        var decoded = RollbackRosterData.decode(data.encode());
+        assertEquals(history, decoded.combatActors());
+        assertEquals(source, decoded.players().get(A).combat().sources().getFirst());
+        assertDoesNotThrow(() -> history.requireHistoryFor(new RollbackActorData(A, 1, List.of())));
+        assertThrows(IllegalArgumentException.class, () -> new RollbackRosterData(45, players));
+        assertThrows(IllegalArgumentException.class, () -> new RollbackRosterData(45, Map.of(A, first, B, players.get(B)), history));
+        assertThrows(IllegalArgumentException.class, () -> history.requireHistoryFor(new RollbackActorData(B, 1, List.of())));
+        assertThrows(IllegalArgumentException.class, () -> history.requireHistoryFor(
+                new RollbackActorData(A, 1, List.of(new RollbackActorData.Row(id, new byte[]{99})))));
+        var impostor = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackEntityBody.Identity(uuid, -1, "arrow",
+                com.projectkorra.projectkorra.platform.mc.entity.EntityType.ARROW);
+        assertThrows(IllegalArgumentException.class, () -> history.requireHistoryFor(
+                new RollbackActorData(A, 1, List.of(new RollbackActorData.Row(impostor, new byte[]{23})))));
+    }
+
+    @Test void legacyRosterDecodesWithoutAProjectileHistoryTable() {
+        var data = new RollbackRosterData(5, Map.of(A, player(A, 1, null, List.of())));
+        byte[] modern = data.encode();
+        byte[] legacy = Arrays.copyOf(modern, modern.length - 1);
+        ByteBuffer.wrap(legacy).putInt(1);
+        assertArrayEquals(modern, RollbackRosterData.decode(legacy).encode());
+    }
+
     @Test void malformedLengthsOrderFlagsEnumsAndUtf8RejectBeforeNativeConstruction() {
         byte[] bytes = new RollbackRosterData(20, Map.of(A, player(A, 1, null, List.of()))).encode();
         for (int i = 0; i < bytes.length; i++) {

@@ -138,10 +138,18 @@ public final class RollbackStateGraph {
 
     private final Predicate<Object> external;
     private final Predicate<Field> included;
+    private final java.util.function.Function<Object, Object> externalReference;
     private final int maximumObjects;
 
     public RollbackStateGraph(final Predicate<Object> external, final Predicate<Field> included,
                               final int maximumObjects) {
+        this(external, included, maximumObjects, null);
+    }
+
+    /** A frozen facade may expose one separately owned, mutable referent to be captured with its caller. */
+    public RollbackStateGraph(Predicate<Object> external, Predicate<Field> included, int maximumObjects,
+                              java.util.function.Function<Object, Object> externalReference) {
+        this.externalReference = externalReference;
         this.external = Objects.requireNonNull(external, "external");
         this.included = Objects.requireNonNull(included, "included");
         if (maximumObjects < 1) throw new IllegalArgumentException("maximumObjects");
@@ -259,7 +267,18 @@ public final class RollbackStateGraph {
         final List<Restore> guards = new ArrayList<>();
 
         void visit(final Object value) {
-            if (value == null || scalar(value) || external.test(value) || seen.put(value, Boolean.TRUE) != null) return;
+            if (value == null || scalar(value)) return;
+            if (external.test(value)) {
+                if (externalReference != null) {
+                    Object referent = externalReference.apply(value);
+                    if (referent != null) {
+                        if (external.test(referent)) throw new IllegalStateException("A checkpoint facade must refer to an owned object");
+                        visit(referent);
+                    }
+                }
+                return;
+            }
+            if (seen.put(value, Boolean.TRUE) != null) return;
             if (seen.size() > maximumObjects) throw new IllegalStateException("Rollback state exceeds object budget");
             pending.addLast(value);
         }

@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.prediction.rollback;
 
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Box;
+import com.projectkorra.projectkorra.prediction.rollback.world.RollbackEntityBody.Identity;
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackMovementSolver;
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackNativeQueryShell;
 
@@ -148,6 +149,9 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
     private final PaperRollbackPacketData packetData;
     private PaperRollbackRoundEvents roundEvents;
     private RollbackActorRegistry actors;
+    // Native Entity.equals can match a different object after replay reuses a network ID.
+    // Weak identity keys let a retained damage source keep its body without pinning every previous shot.
+    private final Map<Entity, Identity> issuedActors = new com.google.common.collect.MapMaker().weakKeys().makeMap();
     private RollbackRosterViews rosterViews;
 
     public PaperRollbackWorldAccess(Queries<?> queries, int maximumChunks) {
@@ -430,6 +434,10 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         combat.attack(player, target);
     }
 
+    void projectileImpact(net.minecraft.world.entity.projectile.Projectile projectile, net.minecraft.world.phys.EntityHitResult hit) {
+        checkThread();
+        combat.projectileImpact(projectile, hit);
+    }
     boolean damage(Object player, Object source, float amount) {
         checkThread();
         if (combat == null) throw new IllegalStateException("Native combat services were not supplied");
@@ -562,6 +570,58 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         return ownsPlayer(entity) || (actors != null && actors.get(entity.getUUID()) instanceof PaperRollbackActor owned
                 && owned.entity() == entity && !entity.isRemoved());
     }
+    void issued(PaperRollbackActor actor) {
+        checkThread();
+        Entity entity = actor.entity();
+        if (entity.level() != world || entity.valid || entity.inWorld)
+            throw new IllegalArgumentException("Cannot record a foreign actor for native checkpoints");
+        issuedActors.put(entity, actor.identity());
+    }
+
+    Identity actorIdentity(Entity entity) {
+        checkThread();
+        var issued = issuedActors.get(entity);
+        return issued != null && entity.getId() == issued.networkId() && entity.getUUID().equals(issued.uuid())
+                && (ownsEntity(entity) || retiredActor(entity)) ? issued : null;
+    }
+
+    boolean retiredActor(Entity entity) {
+        if (!entity.isRemoved() || entity.level() != world || entity.valid || entity.inWorld) return false;
+        var id = issuedActors.get(entity);
+        return id != null && entity.getId() == id.networkId() && entity.getUUID().equals(id.uuid());
+    }
+
+    /** Other live bodies have their own state cells; a retained retired body belongs to the referring graph. */
+    @SuppressWarnings("WrapperReferenceEquality")
+    boolean checkpointExternal(Entity root, Object value) {
+        if (value instanceof Entity entity) {
+            if (entity == root) return false;
+            if (ownsEntity(entity)) return true;
+            if (retiredActor(entity)) return false;
+            throw new IllegalStateException("Native checkpoint references an unowned entity");
+        }
+        if (value instanceof org.bukkit.craftbukkit.entity.CraftEntity wrapper) {
+            Entity entity = wrapper.getHandle();
+            if (entity.getBukkitEntityRaw() == wrapper && (entity == root || ownsEntity(entity) || retiredActor(entity))) return true;
+            throw new IllegalStateException("Native checkpoint references an unowned Bukkit entity");
+        }
+        if (value instanceof PaperRollbackNativeScene scene) {
+            if (scene.world() != this) throw new IllegalStateException("Native checkpoint references a foreign scene");
+            return true;
+        }
+        if (value instanceof net.minecraft.world.level.Level level) {
+            if (level != world) throw new IllegalStateException("Native checkpoint references a foreign level");
+            return true;
+        }
+        return value == net.minecraft.world.level.entity.EntityInLevelCallback.NULL;
+    }
+
+    Object checkpointReferent(Object value) {
+        if (value instanceof org.bukkit.craftbukkit.entity.CraftEntity wrapper && retiredActor(wrapper.getHandle()))
+            return wrapper.getHandle();
+        return null;
+    }
+
     void sealPlayers() { checkThread(); playersSealed = true; }
     void beginCheckpoint() { sealPlayers(); checkpointed = true; }
     boolean activeParticipant(java.util.UUID id) { checkThread(); return roundEvents == null || roundEvents.round().active(id); }

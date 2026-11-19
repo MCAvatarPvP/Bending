@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.earthbending.lava;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
 
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -292,6 +293,12 @@ public class LavaFlow extends LavaAbility {
      * determines whether or not the LavaFlow type is Click/Sneaking, and it
      * will remove the ability if any issues arise.
      */
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
+    }
+
     @Override
     public void progress() {
         if (this.shiftCounter > 0 && this.type == AbilityType.SHIFT) {

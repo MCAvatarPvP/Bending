@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.firebending;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
 
 import com.projectkorra.projectkorra.BendingPlayer;
@@ -274,6 +275,12 @@ public class WallOfFire extends FireAbility implements EntityHitboxProvider {
                 if (!this.blocks.contains(b)) this.blocks.add(b);
             }
         }
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
+        shift.timestamps(this.affected);
     }
 
     @Override

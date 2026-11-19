@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.earthbending;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.EarthAbility;
@@ -96,6 +97,11 @@ public class EarthTunnel extends EarthAbility {
 
     public static void setupBendableMaterials() {
         addTags(IGNORED_BLOCKS, ConfigManager.getConfig().getStringList("Abilities.Earth.EarthTunnel.IgnoredBlocks"));
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
     }
 
     @Override

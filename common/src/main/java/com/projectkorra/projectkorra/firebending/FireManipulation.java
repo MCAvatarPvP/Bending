@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.firebending;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
 
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -67,6 +68,12 @@ public class FireManipulation extends FireAbility {
             new FireManipulationStream(player, this);
             this.remove();
         }
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
+        shift.timestamps(this.points);
     }
 
     @Override

@@ -17,6 +17,11 @@ public final class PaperRollbackRosterComponents {
     private PaperRollbackRosterComponents() { }
 
     public static Prepared prepare(Map<UUID, ServerPlayer> targets, RollbackRosterData outgoing, long initialNanos) {
+        return prepare(targets, outgoing, initialNanos, Map.of());
+    }
+
+    static Prepared prepare(Map<UUID, ServerPlayer> targets, RollbackRosterData outgoing, long initialNanos,
+            Map<UUID, net.minecraft.world.entity.Entity> history) {
         boundary();
         var roster = Collections.unmodifiableMap(new TreeMap<>(targets));
         if (!roster.keySet().equals(outgoing.players().keySet()))
@@ -51,7 +56,7 @@ public final class PaperRollbackRosterComponents {
             writes.add(PaperRollbackPlayerVitals.prepare(player, seed.vitals()));
             writes.add(PaperRollbackPlayerItems.prepare(player, seed.items()));
             writes.add(PaperRollbackPlayerContextData.prepare(player, seed.context(), initialNanos));
-            writes.add(new PaperRollbackCombatSeed(seed.combat()).prepare(player, roster));
+            writes.add(new PaperRollbackCombatSeed(seed.combat()).prepare(player, roster, history));
         }
         return new Prepared(guards, moves, writes);
     }

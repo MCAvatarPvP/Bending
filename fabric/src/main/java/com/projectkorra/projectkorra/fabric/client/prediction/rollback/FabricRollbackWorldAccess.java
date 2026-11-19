@@ -142,6 +142,7 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
         checkThread(); if (this.actors != null || checkpointed || RollbackClock.active()) throw new IllegalStateException("Native actors already bound");
         this.actors = Objects.requireNonNull(actors);
     }
+    FabricRollbackActors actors() { checkThread(); return Objects.requireNonNull(actors, "Private damage history requires a bound actor registry"); }
     List<Entity> activeActors() { return actors == null ? List.of() : actors.active(); }
     boolean hiddenProjectileTarget(net.minecraft.entity.projectile.ProjectileEntity projectile, PlayerEntity shooter, PlayerEntity target) {
         if (!ownsEntity(projectile) || !ownsPlayer(target) || actors == null)
@@ -164,7 +165,22 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
         return event.isCancelled() || projectile.isRemoved();
     }
 
-    boolean ownsEntity(Entity entity) { return ownsPlayer(entity) || actors != null && entity != null && actors.actor(entity.getUuid()) == entity; }
+    boolean ownsEntity(Entity entity) {
+        return ownsPlayer(entity) || actors != null && entity != null && !entity.isRemoved() && actors.actor(entity.getUuid()) == entity;
+    }
+    boolean checkpointExternal(Entity root, Object value) {
+        if (value instanceof Entity entity) {
+            if (entity == root) return false;
+            if (ownsEntity(entity)) return true;
+            if (actors != null && actors.retired(entity)) return false;
+            throw new IllegalStateException("Native checkpoint references an unowned entity");
+        }
+        if (value instanceof net.minecraft.world.World level) {
+            if (level != world()) throw new IllegalStateException("Native checkpoint references a foreign world");
+            return true;
+        }
+        return false;
+    }
     private Entity importedEntity(UUID id) {
         var player = importedPlayer(id);
         return player == null && actors != null ? actors.actor(id) : player;

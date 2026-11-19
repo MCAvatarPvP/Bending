@@ -84,15 +84,16 @@ public final class PaperRollbackMatchRestoration {
             var roster = scene.captureRoster(initial.roster(), initial.epochNanos() + elapsed);
             if (roster.worldTime() != Math.addExact(initial.roster().worldTime(), tick))
                 throw new IllegalStateException("Private roster and confirmed clock differ");
-            var actors = PaperRollbackActorRestoration.Captured.capture(initial.session(), scene);
+            var actors = PaperRollbackActorRestoration.Captured.capture(initial.session(), scene, roster.combatActors());
             var registry = scene.world().actors();
             var codec = registry == null ? graph.codec() : graph.codec().withBindings(registry.bindings());
             return new Frame(roster, scene.logical().terrain().changesSince(initial.world().terrain()),
                     graph.bending().exportState(codec, registry), actors, scene.ticks().captureRollbackState(), RollbackClock.millis(), RollbackClock.nanos());
         });
         var terrain = PaperRollbackTerrainWriteback.prepare(world, initial.world().terrain(), frame.changes());
-        var players = PaperRollbackRosterComponents.prepare(live.nativePlayers(), frame.players(), liveNanos);
         var actors = new PaperRollbackActorRestoration(world, live.nativePlayers(), frame.actors());
+        var players = PaperRollbackRosterComponents.prepare(live.nativePlayers(), frame.players(), liveNanos,
+                actors.combatHistory(frame.players().combatActors(), frame.actors().data()));
         var restored = RollbackBendingState.decodeRestoration(views, frame.bending(), live.liveCodec().withBindings(actors.bindings()));
         var tasks = restored.services().stream().filter(RollbackTaskBindings.class::isInstance)
                 .map(RollbackTaskBindings.class::cast).toList();

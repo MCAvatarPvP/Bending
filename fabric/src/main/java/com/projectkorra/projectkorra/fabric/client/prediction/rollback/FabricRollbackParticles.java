@@ -15,6 +15,7 @@ final class FabricRollbackParticles implements RollbackClientRuntime.Output<Roll
     private final UUID viewer;
     private final RollbackReplicaTimeline<RollbackDomain.Checkpoint, RollbackPlayerInput, Object> timeline;
     private final FabricRollbackParticleHistory<Particle> history;
+    private FabricRollbackCloudParticles clouds;
     private long head = -1;
     FabricRollbackParticles(MinecraftClient client, FabricRollbackNativeScene.Duel duel,
             RollbackReplicaTimeline<RollbackDomain.Checkpoint, RollbackPlayerInput, Object> timeline) {
@@ -22,7 +23,7 @@ final class FabricRollbackParticles implements RollbackClientRuntime.Output<Roll
         this.duel = duel;
         this.timeline = timeline;
         viewer = client.player.getUuid();
-        history = new FabricRollbackParticleHistory<>(viewer, this::draw, Particle::markDead);
+        history = new FabricRollbackParticleHistory<>(viewer, this::draw, this::drawCloud, Particle::markDead);
     }
     @Override public void update(RollbackEngine.Update<RollbackDomain.Checkpoint, RollbackPlayerInput, Object> update) {
         long tick = update.head().tick();
@@ -59,6 +60,11 @@ final class FabricRollbackParticles implements RollbackClientRuntime.Output<Roll
         }
         return drawn;
     }
+    private List<Particle> drawCloud(long tick, FabricRollbackCloudParticles.Frame frame) {
+        if (clouds == null) clouds = new FabricRollbackCloudParticles(client.world);
+        return clouds.draw(tick, frame);
+    }
+
     private Object payload(Object data) {
         return switch (data) {
             case null -> null;

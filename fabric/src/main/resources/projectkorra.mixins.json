@@ -38,6 +38,7 @@
     "client.HungerManagerRollbackAccess",
     "client.AreaEffectCloudEntityAccessor",
     "client.AreaEffectCloudPredictionMixin",
+    "client.ClientWorldRollbackParticlesMixin",
     "client.ArrowLifetimeRollbackMixin",
     "client.ItemRulesRollbackMixin",
     "client.ArrowParticlesPredictionMixin",

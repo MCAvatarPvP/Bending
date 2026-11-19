@@ -23,6 +23,7 @@ public record RollbackBootstrapData(UUID session, UUID challenge, UUID match, in
         Objects.requireNonNull(world); Objects.requireNonNull(roster); Objects.requireNonNull(configuration);
         Objects.requireNonNull(access); Objects.requireNonNull(materials); Objects.requireNonNull(tags); Objects.requireNonNull(server); Objects.requireNonNull(plugins);
         requireHash(definitions);
+        if (roster.combatActors() != null) throw invalid("initial roster contains private combat actors");
         sides = Collections.unmodifiableMap(new TreeMap<>(sides));
         if (round < 0 || sides.size() < 2 || sides.size() > RollbackRosterData.MAXIMUM_PLAYERS || sides.containsValue(null)
                 || new HashSet<>(sides.values()).size() < 2 || !sides.keySet().equals(roster.players().keySet())

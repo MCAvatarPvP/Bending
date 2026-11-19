@@ -1,6 +1,7 @@
 package com.jedk1.jedcore.ability.chiblocking;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 
 import com.jedk1.jedcore.JCMethods;
 import com.jedk1.jedcore.JedCore;
@@ -183,6 +184,11 @@ public class DaggerThrow extends ChiAbility implements AddonAbility, DaggerProje
         arrows.add(arrow);
         endTime = RollbackClock.millis() + 500;
         bPlayer.addCooldown("DaggerThrowShot", 100);
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        endTime = shift.time(endTime);
     }
 
     @Override

@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.waterbending;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
@@ -101,6 +102,11 @@ public class WaterBubble extends WaterAbility {
     @Override
     public String getName() {
         return "WaterBubble";
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.lastActivation = shift.time(this.lastActivation);
     }
 
     @Override

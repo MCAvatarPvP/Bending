@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.firebending;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.FireAbility;
@@ -82,6 +83,11 @@ public class BlazeArc extends FireAbility {
         if (isIgnitable(block) && !isWater(block)) {
             createTempFire(block.getLocation(), DISSIPATE_REMOVE_TIME);
         }
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
     }
 
     @Override

@@ -37,9 +37,11 @@ public final class PaperRollbackCombatSeed {
     PaperRollbackCombatSeed(RollbackPlayerCombatData data) { this.data = Objects.requireNonNull(data); }
     public RollbackPlayerCombatData data() { return data; }
 
+    PaperRollbackCombatSeed(ServerPlayer source) { this(source, null); }
+
     @SuppressWarnings("unchecked")
-    PaperRollbackCombatSeed(ServerPlayer source) {
-        var capture = new Capture(source);
+    PaperRollbackCombatSeed(ServerPlayer source, java.util.function.Consumer<Entity> history) {
+        var capture = new Capture(source, history);
         UUID lastHurtByPlayer = capture.reference(source.lastHurtByPlayer);
         UUID lastHurtByMob = capture.reference(source.lastHurtByMob);
         UUID lastHurtMob = capture.entity(LAST_HURT_MOB.get(source));
@@ -67,7 +69,11 @@ public final class PaperRollbackCombatSeed {
 
     /** Validate the complete cohort before any native replicas are allocated. */
     void validate(Set<UUID> roster, RegistryAccess registries) {
-        data.requireRoster(roster);
+        validate(roster, Set.of(), registries);
+    }
+
+    private void validate(Set<UUID> roster, Set<UUID> history, RegistryAccess registries) {
+        data.requireRoster(roster, history);
         var types = registries.lookupOrThrow(Registries.DAMAGE_TYPE);
         for (var source : data.sources()) {
             if (types.get(Identifier.parse(source.type())).isEmpty()) throw new IllegalArgumentException("Unknown imported damage type: " + source.type());
@@ -101,15 +107,19 @@ public final class PaperRollbackCombatSeed {
             return new PaperRollbackCombatSeed(player).data;
         });
     }
-    Runnable prepare(ServerPlayer target, Map<UUID, ServerPlayer> roster) {
+    Runnable prepare(ServerPlayer target, Map<UUID, ServerPlayer> roster) { return prepare(target, roster, Map.of()); }
+
+    Runnable prepare(ServerPlayer target, Map<UUID, ServerPlayer> roster, Map<UUID, Entity> history) {
         if (!target.getUUID().equals(data.owner()) || roster.get(data.owner()) != target) throw new IllegalArgumentException("Combat import target is not in its roster");
-        validate(roster.keySet(), target.registryAccess());
-        var damage = data.sources().stream().map(source -> instantiate(source, target.registryAccess(), roster)).toList();
+        validate(roster.keySet(), history.keySet(), target.registryAccess());
+        var entities = new HashMap<UUID, Entity>(history);
+        entities.putAll(roster);
+        var damage = data.sources().stream().map(source -> instantiate(source, target.registryAccess(), entities)).toList();
         var player = EntityReference.<net.minecraft.world.entity.player.Player>of(resolve(roster, data.lastHurtByPlayer()));
-        var mob = EntityReference.<LivingEntity>of(resolve(roster, data.lastHurtByMob()));
-        var attacked = resolve(roster, data.lastHurtMob()); var explosion = resolve(roster, data.explosionCause());
+        var mob = EntityReference.<LivingEntity>of((LivingEntity) resolve(entities, data.lastHurtByMob()));
+        var attacked = (LivingEntity) resolve(entities, data.lastHurtMob()); var explosion = resolve(entities, data.explosionCause());
         Object2LongMap<Entity> hits = data.hasKinetic() ? new Object2LongOpenHashMap<>() : null;
-        data.kinetic().forEach((id, tick) -> hits.put(resolve(roster, id), tick.longValue()));
+        data.kinetic().forEach((id, tick) -> hits.put(resolve(entities, id), tick.longValue()));
         var entries = data.entries().stream().map(entry -> new CombatEntry(damage.get(entry.source()), entry.damage(),
                 entry.fallLocation() == null ? null : new FallLocation(entry.fallLocation()), entry.fallDistance())).toList();
         var t = data.tracker(); var tracker = new Object[]{t.lastDamageTime(), t.combatStartTime(), t.combatEndTime(), t.inCombat(), t.takingDamage()};
@@ -119,7 +129,7 @@ public final class PaperRollbackCombatSeed {
             TRACKER.apply(target.combatTracker, tracker); target.combatTracker.entries.clear(); target.combatTracker.entries.addAll(entries);
         };
     }
-    private static DamageSource instantiate(Source source, RegistryAccess registries, Map<UUID, ServerPlayer> roster) {
+    private static DamageSource instantiate(Source source, RegistryAccess registries, Map<UUID, Entity> roster) {
         var holder = registries.lookupOrThrow(Registries.DAMAGE_TYPE).get(Identifier.parse(source.type())).orElseThrow();
         var p = source.position(); var position = p == null ? null : new Vec3(p.x(), p.y(), p.z());
         var result = new DamageSource(holder, resolve(roster, source.direct()), resolve(roster, source.causing()), position);
@@ -132,7 +142,7 @@ public final class PaperRollbackCombatSeed {
         if (!TickThread.isTickThread() || RollbackClock.active() || RollbackDomain.active()) throw new IllegalStateException("Import/capture combat at the roster bootstrap boundary");
     }
 
-    private static ServerPlayer resolve(Map<UUID, ServerPlayer> roster, UUID id) {
+    private static <T extends Entity> T resolve(Map<UUID, T> roster, UUID id) {
         return id == null ? null : Objects.requireNonNull(roster.get(id), "Missing imported combat participant: " + id);
     }
 
@@ -140,7 +150,8 @@ public final class PaperRollbackCombatSeed {
         final ServerPlayer owner;
         final IdentityHashMap<DamageSource, Integer> ids = new IdentityHashMap<>();
         final List<Source> sources = new ArrayList<>();
-        Capture(ServerPlayer owner) { this.owner = owner; }
+        final java.util.function.Consumer<Entity> history;
+        Capture(ServerPlayer owner, java.util.function.Consumer<Entity> history) { this.owner = owner; this.history = history; }
 
         UUID reference(EntityReference<?> reference) {
             if (reference == null) return null;
@@ -149,8 +160,10 @@ public final class PaperRollbackCombatSeed {
         }
         UUID entity(Entity entity) {
             if (entity == null) return null;
-            if (!(entity instanceof ServerPlayer) || entity.level() != owner.level()) {
-                throw new IllegalArgumentException("Combat source needs the non-player/world entity import phase");
+            if (entity.level() != owner.level()) throw new IllegalArgumentException("Combat source is in another world");
+            if (!(entity instanceof ServerPlayer)) {
+                if (history == null) throw new IllegalArgumentException("Combat source is outside the captured roster");
+                history.accept(entity);
             }
             return entity.getUUID();
         }

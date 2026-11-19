@@ -2,6 +2,7 @@ package com.projectkorra.projectkorra.waterbending;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackArenaBlockIndices;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
 
 import com.projectkorra.projectkorra.BendingPlayer;
@@ -317,6 +318,11 @@ public class Torrent extends WaterAbility {
                 playIcebendingSound(block.getLocation());
             }
         }
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
     }
 
     @Override

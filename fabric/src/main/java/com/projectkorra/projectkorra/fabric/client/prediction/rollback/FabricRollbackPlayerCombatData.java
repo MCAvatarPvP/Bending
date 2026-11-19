@@ -27,9 +27,9 @@ import java.util.*;
 public final class FabricRollbackPlayerCombatData {
     private FabricRollbackPlayerCombatData() { }
     public static void apply(Map<UUID, FabricRollbackNativePlayerState> states, Map<UUID, RollbackPlayerCombatData> seeds) {
-        requireSetup(); applyBoundary(states, seeds);
+        requireSetup(); applyBoundary(states, seeds, Map.of());
     }
-    static void applyBoundary(Map<UUID, FabricRollbackNativePlayerState> states, Map<UUID, RollbackPlayerCombatData> seeds) {
+    static void applyBoundary(Map<UUID, FabricRollbackNativePlayerState> states, Map<UUID, RollbackPlayerCombatData> seeds, Map<UUID, Entity> history) {
         if (RollbackClock.active()) throw new IllegalStateException("Cannot replace native state during a tick");
         if (states.isEmpty() || states.size() > RollbackPlayerCombatData.MAXIMUM_ROSTER || !states.keySet().equals(seeds.keySet())) throw new IllegalArgumentException("Combat import roster changed");
         var roster = new TreeMap<UUID, PlayerEntity>();
@@ -41,23 +41,25 @@ public final class FabricRollbackPlayerCombatData {
             roster.put(id, player); return null;
         }));
         var prepared = new ArrayList<Runnable>();
-        for (var entry : roster.entrySet()) prepared.add(prepare(entry.getValue(), states.get(entry.getKey()), seeds.get(entry.getKey()), roster));
+        for (var entry : roster.entrySet()) prepared.add(prepare(entry.getValue(), states.get(entry.getKey()), seeds.get(entry.getKey()), roster, history));
         prepared.forEach(Runnable::run);
     }
-    private static Runnable prepare(PlayerEntity target, FabricRollbackNativePlayerState state, RollbackPlayerCombatData data, Map<UUID, PlayerEntity> roster) {
+    private static Runnable prepare(PlayerEntity target, FabricRollbackNativePlayerState state, RollbackPlayerCombatData data, Map<UUID, PlayerEntity> roster, Map<UUID, Entity> history) {
         if (!target.getUuid().equals(data.owner())) throw new IllegalArgumentException("Combat seed belongs to another player");
-        data.requireRoster(roster.keySet());
+        data.requireRoster(roster.keySet(), history.keySet());
+        var entities = new HashMap<UUID, Entity>(history);
+        entities.putAll(roster);
         var registry = target.getEntityWorld().getRegistryManager().getOrThrow(RegistryKeys.DAMAGE_TYPE);
         var sources = data.sources().stream().map(source -> {
             var type = registry.getEntry(Identifier.of(source.type())).orElseThrow(() -> new IllegalArgumentException("Unknown imported damage type " + source.type()));
-            return new ImportedSource(type, resolve(roster, source.direct()), resolve(roster, source.causing()), resolve(roster, source.eventDamager()),
+            return new ImportedSource(type, resolve(entities, source.direct()), resolve(entities, source.causing()), resolve(entities, source.eventDamager()),
                     source.position(), source.knownCause(), source.critical());
         }).toList();
         var lastPlayer = LazyEntityReference.of(resolve(roster, data.lastHurtByPlayer()));
-        var lastMob = LazyEntityReference.<LivingEntity>of(resolve(roster, data.lastHurtByMob()));
-        var attacked = resolve(roster, data.lastHurtMob());
+        var lastMob = LazyEntityReference.<LivingEntity>of(LivingEntity.class.cast(resolve(entities, data.lastHurtByMob())));
+        var attacked = LivingEntity.class.cast(resolve(entities, data.lastHurtMob()));
         Object2LongMap<Entity> hits = data.hasKinetic() ? new Object2LongOpenHashMap<>() : null;
-        data.kinetic().forEach((id, tick) -> hits.put(resolve(roster, id), tick.longValue()));
+        data.kinetic().forEach((id, tick) -> hits.put(resolve(entities, id), tick.longValue()));
         var entries = data.entries().stream().map(entry -> new DamageRecord(sources.get(entry.source()), entry.damage(),
                 entry.fallLocation() == null ? null : new FallLocation(entry.fallLocation()), entry.fallDistance())).toList();
         var living = (LivingEntityRollbackHistoryAccess) target; var tracker = (DamageTrackerRollbackAccess) target.getDamageTracker();
@@ -71,9 +73,12 @@ public final class FabricRollbackPlayerCombatData {
         };
     }
     public static RollbackPlayerCombatData capture(FabricRollbackNativePlayerState state) {
+        return capture(state, entity -> { throw new IllegalArgumentException("Nonplayer combat source requires the scene's actor table"); });
+    }
+    static RollbackPlayerCombatData capture(FabricRollbackNativePlayerState state, java.util.function.Consumer<Entity> actor) {
         requireSetup(); UUID explosion = state.importedExplosionCause();
         return state.use(player -> {
-            var capture = new Capture(player); var living = (LivingEntityRollbackHistoryAccess) player;
+            var capture = new Capture(player, actor); var living = (LivingEntityRollbackHistoryAccess) player;
             var tracker = (DamageTrackerRollbackAccess) player.getDamageTracker();
             var kinetic = living.rollback$kinetic(); var hits = new HashMap<UUID, Long>();
             if (kinetic != null) {
@@ -96,7 +101,7 @@ public final class FabricRollbackPlayerCombatData {
     public static boolean critical(DamageSource source) { return source instanceof ImportedSource imported && imported.critical; }
     public static Entity eventDamager(DamageSource source) { return source instanceof ImportedSource imported ? imported.eventDamager : null; }
     private static UUID reference(LazyEntityReference<?> value) { return value == null ? null : value.getUuid(); }
-    private static PlayerEntity resolve(Map<UUID, PlayerEntity> roster, UUID id) {
+    private static <T extends Entity> T resolve(Map<UUID, T> roster, UUID id) {
         return id == null ? null : Objects.requireNonNull(roster.get(id), "Missing imported combat participant " + id);
     }
     private static void requireSetup() {
@@ -106,10 +111,10 @@ public final class FabricRollbackPlayerCombatData {
     /** Native source semantics plus a stored position and Paper metadata, without mutating final native fields. */
     private static final class ImportedSource extends DamageSource {
         private final Vec3d storedPosition;
-        private final PlayerEntity eventDamager;
+        private final Entity eventDamager;
         private final String knownCause;
         private final boolean critical;
-        ImportedSource(RegistryEntry<DamageType> type, PlayerEntity direct, PlayerEntity causing, PlayerEntity eventDamager, Vector position, String knownCause, boolean critical) {
+        ImportedSource(RegistryEntry<DamageType> type, Entity direct, Entity causing, Entity eventDamager, Vector position, String knownCause, boolean critical) {
             super(type, direct, causing); this.storedPosition = position == null ? null : new Vec3d(position.x(), position.y(), position.z());
             this.eventDamager = eventDamager; this.knownCause = knownCause; this.critical = critical;
         }
@@ -120,10 +125,12 @@ public final class FabricRollbackPlayerCombatData {
         final PlayerEntity owner;
         final IdentityHashMap<DamageSource, Integer> ids = new IdentityHashMap<>();
         final List<Source> sources = new ArrayList<>();
-        Capture(PlayerEntity owner) { this.owner = owner; }
+        final java.util.function.Consumer<Entity> actor;
+        Capture(PlayerEntity owner, java.util.function.Consumer<Entity> actor) { this.owner = owner; this.actor = actor; }
         UUID entity(Entity value) {
             if (value == null) return null;
-            if (!(value instanceof PlayerEntity) || value.getEntityWorld() != owner.getEntityWorld()) throw new IllegalArgumentException("Combat source requires non-player/world import");
+            if (value.getEntityWorld() != owner.getEntityWorld()) throw new IllegalArgumentException("Combat source crosses private worlds");
+            if (!(value instanceof PlayerEntity)) actor.accept(value);
             return value.getUuid();
         }
         int damage(DamageSource source) {

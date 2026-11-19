@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.airbending;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
@@ -188,6 +189,14 @@ public class Suffocate extends AirAbility {
             }
         }
         return false;
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.startedAt = shift.time(this.startedAt);
+        this.lastDamageTime = shift.time(this.lastDamageTime);
+        this.lastSlowTime = shift.time(this.lastSlowTime);
+        this.lastBlindTime = shift.time(this.lastBlindTime);
     }
 
     @Override

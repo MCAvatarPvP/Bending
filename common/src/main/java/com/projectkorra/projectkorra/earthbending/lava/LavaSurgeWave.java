@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.earthbending.lava;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
@@ -175,6 +176,11 @@ public class LavaSurgeWave extends LavaAbility {
         y0 = location.getY();
         z0 = location.getZ();
         return new Vector(x1 - x0, y1 - y0, z1 - z0);
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
     }
 
     @Override

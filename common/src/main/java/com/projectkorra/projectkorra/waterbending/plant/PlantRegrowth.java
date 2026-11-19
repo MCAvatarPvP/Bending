@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.waterbending.plant;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
@@ -66,6 +67,11 @@ public class PlantRegrowth extends PlantAbility {
         } else {
             GeneralMethods.dropItems(this.block, GeneralMethods.getDrops(this.block, this.type, this.data));
         }
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
     }
 
     @Override

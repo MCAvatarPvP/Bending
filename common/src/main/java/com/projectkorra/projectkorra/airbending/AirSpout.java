@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.airbending;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AirAbility;
@@ -302,6 +303,16 @@ public class AirSpout extends AirAbility {
             this.bPlayer.addCooldown(this, this.cooldown);
         }
         super.handleCollision(collision);
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.animTime = shift.time(this.animTime);
+        this.lastStaminaDrainTime = shift.time(this.lastStaminaDrainTime);
+        if (this.lastAnimationNanos != 0) this.lastAnimationNanos = shift.nanos(this.lastAnimationNanos);
+        for (MotionSample sample : this.motionHistory) {
+            shift.once(sample, () -> sample.timeMillis = shift.time(sample.timeMillis));
+        }
     }
 
     @Override
@@ -893,7 +904,7 @@ public class AirSpout extends AirAbility {
     }
 
     private static final class MotionSample {
-        private final long timeMillis;
+        private long timeMillis;
         private final Vector horizontal;
 
         private MotionSample(final long timeMillis, final Vector horizontal) {

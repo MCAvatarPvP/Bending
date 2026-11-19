@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.waterbending.combo;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
@@ -198,6 +199,11 @@ public class IceBullet extends IceAbility implements ComboAbility {
                 this.createBlock(block, mat, data);
             }
         }
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
     }
 
     @Override

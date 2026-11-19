@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.firebending;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
 
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -87,6 +88,11 @@ public class FireJet extends FireAbility {
                 player.setGliding(true);
             }
         }
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
     }
 
     @Override

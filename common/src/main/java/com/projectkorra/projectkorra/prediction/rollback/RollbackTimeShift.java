@@ -28,6 +28,11 @@ public final class RollbackTimeShift {
         return Math.max(1L, timestamp + offset);
     }
 
+    /** Keep a shared table of absolute millisecond stamps and its aliases in place. */
+    public void timestamps(java.util.Map<?, Long> stamps) {
+        if (stamps != null) once(stamps, () -> stamps.replaceAll((key, stamp) -> time(stamp)));
+    }
+
     /** Monotonic timestamps use signed subtraction and wrapping arithmetic, just like System.nanoTime(). */
     public long nanos(long timestamp) { return timestamp + nanoOffset; }
 

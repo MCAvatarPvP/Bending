@@ -38,6 +38,19 @@ public record RollbackActorData(UUID session, int cursor, List<Row> actors) {
             if (bytes > MAXIMUM_BYTES) throw new IllegalArgumentException("Private actor byte budget");
         }
     }
+    /** History-only sources may be absent from the active scene. A shared allocation must describe the same actor. */
+    public void requireHistoryFor(RollbackActorData active) {
+        if (!session.equals(active.session()) || cursor != active.cursor())
+            throw new IllegalArgumentException("Damage history differs from the confirmed allocation");
+        int index = 0;
+        for (var historical : actors) {
+            var id = historical.identity();
+            while (index < active.actors.size() && active.actors.get(index).identity().networkId() > id.networkId()) index++;
+            if (index < active.actors.size() && active.actors.get(index).identity().networkId() == id.networkId()
+                    && !historical.equals(active.actors.get(index)))
+                throw new IllegalArgumentException("Damage history differs from the active actor frame");
+        }
+    }
     private static int modifiedUtfSize(String value) {
         int size = 0;
         for (int i = 0; i < value.length(); i++) {

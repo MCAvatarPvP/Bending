@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.waterbending.util;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
 
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -119,6 +120,11 @@ public class WaterReturn extends WaterAbility {
         water.setItemMeta(meta);
 
         return water;
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
     }
 
     @Override

@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.airbending.combo;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AirAbility;
@@ -98,6 +99,11 @@ public class AirStream extends AirAbility implements ComboAbility {
         if (collision.isRemovingFirst() && this.movementPendingCollision) {
             this.rollbackMovement();
         }
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
     }
 
     @Override

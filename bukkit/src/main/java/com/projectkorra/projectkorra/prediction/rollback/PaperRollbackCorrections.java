@@ -27,9 +27,10 @@ public final class PaperRollbackCorrections {
         return new Settings(initial.definitions(), maximumBytes, intervalTicks, () -> {
             long tick = round.tick();
             long nanos = initial.epochNanos() + Math.multiplyExact(tick, RollbackDuelRuntime.ENGINE.stepNanos());
-            var data = new RollbackConfirmedData(round.exportData(), scene.captureRoster(initial.roster(), nanos),
+            var roster = scene.captureRoster(initial.roster(), nanos);
+            var data = new RollbackConfirmedData(round.exportData(), roster,
                     PaperRollbackRandomStreams.capture(scene), execution.captureRollbackState(),
-                    scene.logical().terrain().changesSince(initial.world().terrain()), actors.exportState(),
+                    scene.logical().terrain().changesSince(initial.world().terrain()), actors.exportState(roster.combatActors()),
                     graph.bending().exportRepair(graph.codec().withBindings(actors.bindings()), actors), scene.ticks().captureRollbackState());
             return data.encode(initial, states, RollbackDuelRuntime.TERRAIN, maximumBytes - RollbackStateCorrection.HEADER_BYTES);
         });

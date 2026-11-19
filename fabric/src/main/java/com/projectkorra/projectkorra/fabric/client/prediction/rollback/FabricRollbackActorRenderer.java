@@ -18,14 +18,13 @@ final class FabricRollbackActorRenderer {
     private final ClientWorld world;
     private final Supplier<List<Entity>> active;
     private Map<UUID, Entity> models = Map.of();
-    private long lastTick = -1;
 
     FabricRollbackActorRenderer(ClientWorld world, Supplier<List<Entity>> active) {
         this.world = world;
         this.active = active;
     }
 
-    void publish(long tick) {
+    void publish() {
         List<Entity> actors = active.get();
         if (actors.isEmpty()) {
             models = Map.of();
@@ -37,21 +36,18 @@ final class FabricRollbackActorRenderer {
                 Entity model = models.get(source.getUuid());
                 if (model == null || model.getType() != source.getType()) model = create(source);
                 copy(source, model);
-                // Vanilla draws cloud particles in its client tick. A correction of the same tick
-                // must not emit a second burst. The copy is never installed in the live entity index.
-                if (model instanceof AreaEffectCloudEntity cloud && tick > lastTick) cloud.tick();
                 next.put(source.getUuid(), model);
             }
             models = next;
         }
-        lastTick = tick;
     }
 
     Entity model(UUID id) { return models.get(id); }
     boolean owns(Entity model) { return models.get(model.getUuid()) == model; }
 
     Iterable<Entity> append(Iterable<Entity> ordinary) {
-        return models.isEmpty() ? ordinary : Iterables.concat(ordinary, models.values());
+        return models.isEmpty() ? ordinary : Iterables.concat(ordinary,
+                Iterables.filter(models.values(), model -> world.getEntity(model.getUuid()) == null));
     }
 
     private Entity create(Entity source) {

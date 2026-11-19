@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.waterbending.ice;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
 
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -200,6 +201,12 @@ public class IceSpikePillar extends IceAbility {
             }
         }
         return true;
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
+        this.removeTimestamp = shift.time(this.removeTimestamp);
     }
 
     @Override

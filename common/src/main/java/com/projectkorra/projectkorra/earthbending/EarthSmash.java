@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.earthbending;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -393,6 +394,13 @@ public class EarthSmash extends EarthAbility {
         this.cooldown = getConfig().getLong("Abilities.Earth.EarthSmash.Cooldown");
         this.flightDuration = getConfig().getLong("Abilities.Earth.EarthSmash.Flight.Duration");
         this.duration = getConfig().getLong("Abilities.Earth.EarthSmash.Duration");
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.delay = shift.time(this.delay);
+        this.flightStartTime = shift.time(this.flightStartTime);
+        this.authoritativeBridgeExpiresAt = shift.time(this.authoritativeBridgeExpiresAt);
     }
 
     @Override

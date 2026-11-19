@@ -161,8 +161,8 @@ public final class PaperRollbackNativePlayerState implements RollbackPlayerState
         // Paper normally shares one RNG across native entities. Rewinding that RNG
         // would alter live entities and other duels, so this replica must own one.
         random = RandomSource.create(randomSeed);
-        graph = new RollbackStateGraph(value -> value == this || value == world || otherEntity(value) || value == world.world() || world.ownsWrapper(value)
-                || (serverServices != null && serverServices.external(value)) || PaperRollbackMetadata.frozen(value), field -> true, maximumObjects);
+        graph = new RollbackStateGraph(value -> value == this || value == world || world.checkpointExternal(player, value)
+                || (serverServices != null && serverServices.external(value)) || PaperRollbackMetadata.frozen(value), field -> true, maximumObjects, world::checkpointReferent);
         PaperRollbackPrivateAccess.initializePlayer(player, bukkit, random);
         PaperRollbackPrivateAccess.initializeHealth(bukkit, initialHealth);
         world.registerPlayer(player, bukkit, this);
@@ -383,15 +383,4 @@ public final class PaperRollbackNativePlayerState implements RollbackPlayerState
         if (serverServices != null) serverServices.check();
         return player;
     }
-
-    @SuppressWarnings("WrapperReferenceEquality")
-    private boolean otherEntity(Object value) {
-        if (value == player || !(value instanceof Entity)) return false;
-        if (!world.ownsPlayer(value)) throw new IllegalStateException("Native player references an unowned entity");
-        // The outer world graph captures every registered player's state cell.
-        // Cross-player target/passenger references keep their identity here rather
-        // than recursively treating a second player's private wrapper as state.
-        return true;
-    }
-
 }

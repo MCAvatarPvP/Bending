@@ -129,6 +129,16 @@ public final class PaperRollbackNativeScene implements RollbackStateCell<Void>, 
         check();
         if (!initial.players().keySet().equals(roster.keySet())) throw new IllegalArgumentException("Outgoing roster changed");
         var current = new TreeMap<UUID, RollbackRosterData.Player>();
+        var rows = new java.util.HashMap<UUID, RollbackActorData.Row>();
+        var sources = new java.util.HashMap<UUID, net.minecraft.world.entity.Entity>();
+        java.util.function.Consumer<net.minecraft.world.entity.Entity> history = entity -> {
+            var identity = world.actorIdentity(entity);
+            if (identity == null) throw new IllegalArgumentException("Combat history references a foreign actor");
+            var previous = sources.putIfAbsent(identity.uuid(), entity);
+            if (previous != null && previous != entity) throw new IllegalArgumentException("Combat actor identity alias conflict");
+            rows.computeIfAbsent(identity.uuid(), id ->
+                    new RollbackActorData.Row(identity, PaperRollbackActor.exportState(entity, identity)));
+        };
         for (var entry : roster.entrySet()) {
             var body = (net.minecraft.server.level.ServerPlayer) entry.getValue().ownedPlayer();
             var original = initial.players().get(entry.getKey());
@@ -136,10 +146,10 @@ public final class PaperRollbackNativeScene implements RollbackStateCell<Void>, 
                     || !body.getUUID().equals(entry.getKey()) || body.getId() != original.identity().entityId())
                 throw new IllegalStateException("Private roster identity changed before handoff");
             // randomSeed is construction metadata. The live handoff writes intrinsic components only.
-            var player = PaperRollbackPlayerSeed.capture(body, nanos).portable(original.randomSeed());
+            var player = PaperRollbackPlayerSeed.capture(body, nanos, history).portable(original.randomSeed());
             current.put(entry.getKey(), player);
         }
-        return new RollbackRosterData(world.world().getGameTime(), current);
+        return new RollbackRosterData(world.world().getGameTime(), current, rows.isEmpty() ? null : world.actors().history(rows.values()));
     }
 
     public PaperRollbackWorldAccess world() { check(); return world; }

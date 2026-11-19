@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.airbending;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
 
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -217,6 +218,11 @@ public class AirScooter extends AirAbility {
                 return;
             }
         }
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.lastStaminaDrainTime = shift.time(this.lastStaminaDrainTime);
     }
 
     @Override

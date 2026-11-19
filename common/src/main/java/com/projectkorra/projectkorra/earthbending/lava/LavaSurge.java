@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.earthbending.lava;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
@@ -183,6 +184,12 @@ public class LavaSurge extends LavaAbility {
             tb.revertBlock();
         }
         this.movingLava.clear();
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
+        this.lastTime = shift.time(this.lastTime);
     }
 
     @Override

@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.waterbending.multiabilities;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
 
 import com.projectkorra.projectkorra.Element;
@@ -219,6 +220,11 @@ public class WaterArms extends WaterAbility {
             return true;
         }
         return false;
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.lastClickTime = shift.time(this.lastClickTime);
     }
 
     @Override

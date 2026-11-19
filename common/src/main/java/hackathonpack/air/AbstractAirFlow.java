@@ -1,6 +1,7 @@
 package hackathonpack.air;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
 
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -71,6 +72,11 @@ abstract class AbstractAirFlow extends AirAbility {
         this.flowDirection = this.player.getLocation().getDirection().multiply(directionMultiplier());
         this.player.getWorld().playSound(this.flowLocation, Sound.valueOf("ITEM_ELYTRA_FLYING"), 0.05F, 1);
         this.bPlayer.addCooldown(this);
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.launchTime = shift.time(this.launchTime);
     }
 
     @Override

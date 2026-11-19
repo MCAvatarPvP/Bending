@@ -44,7 +44,13 @@ public record RollbackPlayerCombatData(UUID owner, UUID lastHurtByPlayer, UUID l
         return Set.copyOf(ids);
     }
     public void requireRoster(Set<UUID> roster) {
-        if (!roster.contains(owner) || !roster.containsAll(references())) throw invalid("entity outside imported roster");
+        requireRoster(roster, Set.of());
+    }
+    public void requireRoster(Set<UUID> roster, Set<UUID> actors) {
+        if (!roster.contains(owner) || lastHurtByPlayer != null && !roster.contains(lastHurtByPlayer))
+            throw invalid("player outside imported roster");
+        for (var id : references())
+            if (!roster.contains(id) && !actors.contains(id)) throw invalid("entity outside imported roster or combat actors");
     }
     public byte[] encode() {
         try {

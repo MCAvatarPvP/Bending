@@ -24,12 +24,14 @@ public final class FabricRollbackRoster implements com.projectkorra.projectkorra
     public static final class Retained {
         private final FabricRollbackRoster owner;
         private final Map<UUID, FabricRollbackPlayerValues.Prepared> values;
-        private Retained(FabricRollbackRoster owner) { this.owner = owner; values = owner.values; }
+        private final Map<UUID, net.minecraft.entity.Entity> history;
+        private Retained(FabricRollbackRoster owner) { this.owner = owner; values = owner.values; history = owner.history; }
     }
     private final Thread thread = Thread.currentThread();
     private final FabricRollbackWorldAccess world;
     private final Map<UUID, FabricRollbackNativePlayerState> players;
     private Map<UUID, FabricRollbackPlayerValues.Prepared> values;
+    private Map<UUID, net.minecraft.entity.Entity> history = Map.of();
     private record Metadata(RollbackRosterData.Identity identity, long randomSeed) { }
     private final Map<UUID, Metadata> metadata;
 
@@ -82,6 +84,7 @@ public final class FabricRollbackRoster implements com.projectkorra.projectkorra
     public RollbackRosterData capture(long capturedNanos) {
         checkThread(); requireSetup();
         var result = new TreeMap<UUID, RollbackRosterData.Player>();
+        var references = new HashMap<UUID, net.minecraft.entity.Entity>();
         players.forEach((id, state) -> {
             var seed = metadata.get(id); var actual = state.identity();
             if (!actual.uuid().equals(id) || actual.networkId() != seed.identity().entityId() || !actual.name().equals(seed.identity().name())) {
@@ -89,12 +92,25 @@ public final class FabricRollbackRoster implements com.projectkorra.projectkorra
             }
             result.put(id, new RollbackRosterData.Player(seed.identity(), seed.randomSeed(), values.get(id).capture(state),
                     FabricRollbackPlayerVitals.capture(state), FabricRollbackPlayerItems.capture(state),
-                    FabricRollbackPlayerContextData.capture(state, capturedNanos), FabricRollbackPlayerCombatData.capture(state)));
+                    FabricRollbackPlayerContextData.capture(state, capturedNanos), FabricRollbackPlayerCombatData.capture(state, entity -> {
+                        var previous = references.putIfAbsent(entity.getUuid(), entity);
+                        if (previous != null && previous != entity) throw new IllegalArgumentException("Combat pointers alias different native actors");
+                    })));
         });
-        return new RollbackRosterData(world.world().getTime(), result);
+        for (var player : result.values()) for (var id : player.combat().references()) {
+            if (players.containsKey(id) || references.containsKey(id)) continue;
+            var body = history.get(id);
+            if (body == null) body = world.actors().actor(id);
+            if (body == null) throw new IllegalArgumentException("Missing combat actor " + id);
+            references.put(id, body);
+        }
+        return new RollbackRosterData(world.world().getTime(), result, references.isEmpty() ? null : world.actors().history(references.values()));
     }
     /** Apply authoritative components to the same native bodies so logical player references retain their identity. */
     public void importConfirmed(RollbackRosterData confirmed, long capturedNanos) {
+        importConfirmed(confirmed, capturedNanos, () -> { });
+    }
+    void importConfirmed(RollbackRosterData confirmed, long capturedNanos, Runnable installActors) {
         checkThread();
         if (RollbackClock.active() || !players.keySet().equals(confirmed.players().keySet())
                 || world.world().getTime() != confirmed.worldTime())
@@ -112,6 +128,9 @@ public final class FabricRollbackRoster implements com.projectkorra.projectkorra
         var previous = new LinkedHashMap<FabricRollbackNativePlayerState, FabricRollbackNativePlayerState.Checkpoint>();
         players.values().forEach(body -> previous.put(body, body.captureRollbackState()));
         try {
+            installActors.run();
+            var combatActors = confirmed.combatActors() == null ? Map.<UUID, net.minecraft.entity.Entity>of()
+                    : world.actors().importHistory(confirmed.combatActors());
             confirmed.players().forEach((id, seed) -> {
                 var body = players.get(id);
                 prepared.get(id).applyBoundary(body);
@@ -119,7 +138,8 @@ public final class FabricRollbackRoster implements com.projectkorra.projectkorra
                 FabricRollbackPlayerItems.applyBoundary(body, seed.items());
                 FabricRollbackPlayerContextData.applyBoundary(body, seed.context(), capturedNanos);
             });
-            FabricRollbackPlayerCombatData.applyBoundary(players, combat);
+            FabricRollbackPlayerCombatData.applyBoundary(players, combat, combatActors);
+            history = combatActors;
             values = Map.copyOf(prepared);
         } catch (RuntimeException | Error failure) {
             previous.forEach(FabricRollbackNativePlayerState::restoreRollbackState);
@@ -131,6 +151,7 @@ public final class FabricRollbackRoster implements com.projectkorra.projectkorra
         checkThread();
         if (saved.owner != this) throw new IllegalArgumentException("Foreign native roster checkpoint");
         values = saved.values;
+        history = saved.history;
     }
     @Override public List<?> rollbackReferences() { checkThread(); return List.copyOf(players.values()); }
 

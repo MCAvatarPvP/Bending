@@ -8,16 +8,23 @@ import java.util.function.Consumer;
 /** Tracks only unconfirmed visual handles. Tick and effect ordinal identify a draw across replay. */
 final class FabricRollbackParticleHistory<P> {
     interface Draw<P> { List<P> draw(long tick, int ordinal, ParticleOutput effect, int count); }
-    private record Visual(ParticleOutput effect, int count) {}
+    interface CloudDraw<P> { List<P> draw(long tick, FabricRollbackCloudParticles.Frame frame); }
+    private record Visual(Object effect, int count) {}
     private record Drawn<P>(Visual visual, List<P> handles) {}
     private final UUID viewer;
     private final Draw<P> draw;
     private final Consumer<P> remove;
+    private final CloudDraw<P> drawCloud;
     private final NavigableMap<Long, Map<Integer, Drawn<P>>> pending = new TreeMap<>();
 
     FabricRollbackParticleHistory(UUID viewer, Draw<P> draw, Consumer<P> remove) {
+        this(viewer, draw, (tick, frame) -> List.of(), remove);
+    }
+
+    FabricRollbackParticleHistory(UUID viewer, Draw<P> draw, CloudDraw<P> drawCloud, Consumer<P> remove) {
         this.viewer = viewer;
         this.draw = draw;
+        this.drawCloud = drawCloud;
         this.remove = remove;
     }
 
@@ -26,14 +33,22 @@ final class FabricRollbackParticleHistory<P> {
         Map<Integer, Drawn<P>> next = null;
         int remaining = 16_384;
         for (int i = 0; i < effects.size() && remaining > 0; i++) {
-            if (!(effects.get(i) instanceof ParticleOutput effect) || effect.viewer() != null && !viewer.equals(effect.viewer())) continue;
-            int count = Math.min(remaining, Math.max(1, effect.count()));
+            Object effect = effects.get(i);
+            int count;
+            if (effect instanceof ParticleOutput particle) {
+                if (particle.viewer() != null && !viewer.equals(particle.viewer())) continue;
+                count = Math.min(remaining, Math.max(1, particle.count()));
+            } else if (effect instanceof FabricRollbackCloudParticles.Frame) {
+                count = 1;
+            } else continue;
             remaining -= count;
             Visual visual = new Visual(effect, count);
             Drawn<P> existing = previous == null ? null : previous.remove(i);
             if (existing == null || !existing.visual().equals(visual)) {
                 if (existing != null) existing.handles().forEach(remove);
-                existing = new Drawn<>(visual, draw.draw(tick, i, effect, count));
+                var handles = effect instanceof FabricRollbackCloudParticles.Frame cloud
+                        ? drawCloud.draw(tick, cloud) : draw.draw(tick, i, (ParticleOutput)effect, count);
+                existing = new Drawn<>(visual, handles);
             }
             if (next == null) next = new HashMap<>();
             next.put(i, existing);

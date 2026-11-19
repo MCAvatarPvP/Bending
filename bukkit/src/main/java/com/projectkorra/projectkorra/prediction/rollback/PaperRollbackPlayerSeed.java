@@ -74,14 +74,19 @@ public final class PaperRollbackPlayerSeed {
     private final PaperRollbackCombatSeed combat;
 
     public static PaperRollbackPlayerSeed capture(ServerPlayer source, long capturedNanos) {
+        return capture(source, capturedNanos, null);
+    }
+
+    static PaperRollbackPlayerSeed capture(ServerPlayer source, long capturedNanos,
+            java.util.function.Consumer<net.minecraft.world.entity.Entity> history) {
         requireCaptureThread();
         Objects.requireNonNull(source, "source player");
         requireImportableBody(source);
-        return new PaperRollbackPlayerSeed(source, capturedNanos);
+        return new PaperRollbackPlayerSeed(source, capturedNanos, history);
     }
 
     @SuppressWarnings("unchecked")
-    private PaperRollbackPlayerSeed(ServerPlayer source, long capturedNanos) {
+    private PaperRollbackPlayerSeed(ServerPlayer source, long capturedNanos, java.util.function.Consumer<net.minecraft.world.entity.Entity> history) {
         worldTime = source.level().getGameTime(); this.capturedNanos = capturedNanos;
         id = source.getUUID(); name = source.getGameProfile().name(); entityId = source.getId();
         information = source.clientInformation(); mode = source.gameMode();
@@ -97,7 +102,7 @@ public final class PaperRollbackPlayerSeed {
         vitals = PaperRollbackPlayerVitals.capture(source);
         items = PaperRollbackPlayerItems.capture(source);
         context = PaperRollbackPlayerContextData.capture(source, capturedNanos);
-        combat = new PaperRollbackCombatSeed(source);
+        combat = new PaperRollbackCombatSeed(source, history);
         if (source.level().getGameTime() != worldTime) throw new IllegalStateException("World advanced during player capture");
     }
 

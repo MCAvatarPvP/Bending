@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.waterbending.healing;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AirAbility;
@@ -98,6 +99,11 @@ public class HealingWaters extends HealingAbility {
         this.brightness = getConfig().getInt("Abilities.Water.HealingWaters.DynamicLight.Brightness");
         this.keepAlive = getConfig().getLong("Abilities.Water.HealingWaters.DynamicLight.KeepAlive");
         this.hex = "00ffff";
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.currTime = shift.time(this.currTime);
     }
 
     @Override

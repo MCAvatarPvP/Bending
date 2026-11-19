@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.airbending.passive;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 
 import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
@@ -49,6 +50,12 @@ public class AirAgility extends AirAbility implements PassiveAbility {
         this.regenRate = getConfig().getDouble("Abilities.Air.AirBlast.RegenRate", 0.25);
         this.showStaminaOnAirBar = getConfig().getBoolean("Abilities.Air.AirBlast.ShowStaminaOnAirBar", true);
         this.airBarInterpolationRate = getConfig().getDouble("Abilities.Air.AirBlast.AirBarInterpolationRate", 3.0);
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.lastAirBlastRegenTime = shift.time(this.lastAirBlastRegenTime);
+        this.lastAirBlastBarUpdateTime = shift.time(this.lastAirBlastBarUpdateTime);
     }
 
     @Override

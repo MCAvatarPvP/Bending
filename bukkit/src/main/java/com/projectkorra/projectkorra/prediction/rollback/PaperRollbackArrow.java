@@ -21,6 +21,13 @@ final class PaperRollbackArrow extends Arrow {
                 ? hitTargetOrDeflectSelf(hit) : ProjectileDeflection.NONE;
     }
 
+    @Override public void remove(RemovalReason reason, org.bukkit.event.entity.EntityRemoveEvent.Cause cause) {
+        if (isRemoved()) return;
+        if (!scene.world().ownsEntity(this) || valid || inWorld) throw new IllegalStateException("Unowned arrow removal");
+        if (cause != null) scene.world().event(new org.bukkit.event.entity.EntityRemoveEvent(getBukkitEntity(), cause));
+        PaperRollbackPrivateAccess.retirePrivateActor(this, reason);
+    }
+
     @Override protected void tickDespawn() {
         var lifetime = scene.services().settings().arrowLifetime();
         int limit = switch (pickup) {
@@ -34,6 +41,8 @@ final class PaperRollbackArrow extends Arrow {
             PaperRollbackPrivateAccess.retirePrivateActor(this);
         }
     }
+
+    @Override protected void onHitEntity(net.minecraft.world.phys.EntityHitResult hit) { scene.world().projectileImpact(this, hit); }
 
     @Override protected void onHitBlock(BlockHitResult hit) {
         boolean cancelled = hitCancelled;

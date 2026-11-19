@@ -67,7 +67,7 @@ final class PaperRollbackServerPlayerServices {
                     requirePlayer(args[0]); return new ServerPlayerGameMode(player);
                 }).instance());
         try {
-            var created = new InputPlayer(server, world.world(), profile, information);
+            var created = new InputPlayer(server, world, profile, information);
             if (created != player) throw new IllegalStateException("Native server constructor changed player identity");
             advancementState.bindPlayer(created);
             connection = new PaperRollbackConnection(world, created);
@@ -114,10 +114,18 @@ final class PaperRollbackServerPlayerServices {
         containerHashes.invalidateAll();
         containerHashes.cleanUp();
     }
-    /** Replaces only the base input decay; all original ServerPlayer tick, damage and travel bodies remain in use. */
-    private static final class InputPlayer extends ServerPlayer {
-        InputPlayer(MinecraftServer server, net.minecraft.server.level.ServerLevel world, GameProfile profile, ClientInformation information) {
-            super(server, world, profile, information);
+    /** Native callers outside the copied player tick enter the same match-owned combat pipeline. */
+    static final class InputPlayer extends ServerPlayer {
+        private final PaperRollbackWorldAccess owner;
+
+        InputPlayer(MinecraftServer server, PaperRollbackWorldAccess owner, GameProfile profile, ClientInformation information) {
+            super(server, owner.world(), profile, information);
+            this.owner = owner;
+        }
+        @Override public boolean hurtServer(net.minecraft.server.level.ServerLevel level,
+                                            net.minecraft.world.damagesource.DamageSource source, float amount) {
+            if (level != owner.world()) throw new IllegalArgumentException("Damage from a different private world");
+            return owner.damage(this, source, amount);
         }
         @Override protected void applyInput() { PaperRollbackMovementFactors.apply(this); }
     }

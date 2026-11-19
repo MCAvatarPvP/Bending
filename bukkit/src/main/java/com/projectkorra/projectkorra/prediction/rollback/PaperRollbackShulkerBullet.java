@@ -22,6 +22,8 @@ final class PaperRollbackShulkerBullet extends ShulkerBullet {
                 ? hitTargetOrDeflectSelf(hit) : ProjectileDeflection.NONE;
     }
 
+    @Override protected void onHitEntity(net.minecraft.world.phys.EntityHitResult hit) { scene.world().projectileImpact(this, hit); }
+
     @Override protected void onHitBlock(BlockHitResult hit) {
         boolean cancelled = hitCancelled;
         if (!cancelled) scene.ticks().projectile(this, hit);

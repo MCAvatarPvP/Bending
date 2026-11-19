@@ -28,7 +28,8 @@ final class PaperRollbackActor implements RollbackActorRegistry.Actor<RollbackSt
             throw new IllegalArgumentException("Actor belongs to a different native world or tracker");
         var body = RollbackEntityBody.nativeBacked(identity, scene.logical(), this, rules);
         view = type == Entity.class ? new RollbackEntity(body) : RollbackTypedEntity.dispatch(type, body, specialized, this);
-        state = new RollbackStateGraph(this::external, field -> true, RollbackDuelRuntime.GRAPH.maximumObjects());
+        state = new RollbackStateGraph(value -> scene.world().checkpointExternal(nativeActor, value) || PaperRollbackMetadata.frozen(value),
+                field -> true, RollbackDuelRuntime.GRAPH.maximumObjects(), scene.world()::checkpointReferent);
     }
     @Override public Identity identity() { return identity; }
     @Override public Entity view() { return view; }
@@ -83,7 +84,9 @@ final class PaperRollbackActor implements RollbackActorRegistry.Actor<RollbackSt
         RollbackEntityBody.logicalBody(view).liveness(!nativeActor.isRemoved(), !nativeActor.isAlive());
     }
 
-    @Override public byte[] exportState() {
+    @Override public byte[] exportState() { return exportState(nativeActor, identity); }
+
+    static byte[] exportState(net.minecraft.world.entity.Entity nativeActor, Identity identity) {
         var output = TagValueOutput.createWithContext(ProblemReporter.DISCARDING, nativeActor.level().registryAccess());
         nativeActor.saveWithoutId(output, false, false, false);
         output.store("UUID", UUIDUtil.CODEC, identity.uuid());
@@ -117,22 +120,4 @@ final class PaperRollbackActor implements RollbackActorRegistry.Actor<RollbackSt
     @Override public void restoreRollbackState(RollbackStateGraph.Snapshot saved) { saved.restore(); }
 
     @Override public Collection<?> rollbackReferences() { return List.of(RollbackEntityBody.logicalBody(view)); }
-
-    private boolean external(Object value) {
-        if (value instanceof net.minecraft.world.level.Level level) {
-            if (level != scene.world().world()) throw new IllegalStateException("Actor references a foreign level");
-            return true;
-        }
-        if (value instanceof net.minecraft.world.entity.Entity entity && entity != nativeActor) {
-            if (!scene.world().ownsEntity(entity)) throw new IllegalStateException("Actor references a foreign entity");
-            return true;
-        }
-        if (value instanceof org.bukkit.craftbukkit.entity.CraftEntity wrapper) {
-            // Paper caches the shooter's Bukkit wrapper in Entity.projectileSource separately from the native owner.
-            if (wrapper != nativeActor.getBukkitEntityRaw() && !scene.world().ownsWrapper(wrapper))
-                throw new IllegalStateException("Actor references a foreign Bukkit entity");
-            return true;
-        }
-        return value == scene || value == EntityInLevelCallback.NULL || PaperRollbackMetadata.frozen(value);
-    }
 }

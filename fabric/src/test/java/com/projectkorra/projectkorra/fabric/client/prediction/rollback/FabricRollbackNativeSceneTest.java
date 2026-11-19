@@ -134,6 +134,56 @@ class FabricRollbackNativeSceneTest {
         assertEquals(original, player.ownedPlayer().getEntityPos());
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void combatRepairRetainsExactActiveAndRemovedProjectileAliasesWithoutPublishingRetiredActors(boolean retired) throws Exception {
+        var bootstrap = bootstrapData();
+        var duel = FabricRollbackNativeScene.importDuel(bootstrap, FabricRollbackTestRegistry.simulationRegistries(),
+                FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);
+        var roster = duel.scene().roster();
+        var participants = duel.views().players().values().stream().toList();
+        var caster = participants.getFirst();
+        var shot = caster.launchProjectile(com.projectkorra.projectkorra.platform.mc.entity.Snowball.class);
+        var original = duel.actors().nativeEntity(shot);
+        var shooter = duel.actors().nativeEntity(caster);
+        var world = roster.world().world();
+        var source = world.getDamageSources().thrown(original, shooter);
+        var bodies = roster.players().values().stream().toList();
+        for (var state : bodies) ((com.projectkorra.projectkorra.fabric.mixin.client.LivingEntityRollbackHistoryAccess)state.ownedPlayer()).rollback$lastDamage(source);
+        var actor = (FabricRollbackActor)duel.actors().registry().get(shot.getUniqueId());
+        var flying = actor.captureRollbackState();
+        original.age = 22;
+        if (retired) original.discard();
+        var frame = RollbackRosterData.decode(roster.capture(bootstrap.epochNanos()).encode());
+        var active = duel.actors().registry().exportState(frame.combatActors());
+        assertEquals(1, frame.combatActors().actors().size());
+        assertEquals(retired ? 0 : 1, active.actors().size());
+        var target = bodies.getLast();
+        var onHit = target.captureRollbackState();
+        flying.restore();
+        original.age = 3;
+        target.restoreRollbackState(onHit);
+        assertEquals(retired, original.isRemoved());
+        if (retired) assertEquals(22, original.age);
+        roster.importConfirmed(frame, bootstrap.epochNanos(), () -> duel.actors().importState(active));
+        var repaired = ((com.projectkorra.projectkorra.fabric.mixin.client.LivingEntityRollbackHistoryAccess)bodies.getFirst().ownedPlayer()).rollback$lastDamage().getSource();
+        assertNotSame(original, repaired);
+        assertEquals(22, repaired.age);
+        for (var state : bodies) {
+            var repairedSource = ((com.projectkorra.projectkorra.fabric.mixin.client.LivingEntityRollbackHistoryAccess)state.ownedPlayer()).rollback$lastDamage();
+            assertSame(repaired, repairedSource.getSource()); assertSame(shooter, repairedSource.getAttacker());
+            state.captureRollbackState();
+        }
+        assertEquals(retired, repaired.isRemoved());
+        assertSame(retired ? null : repaired, world.getEntityAnyDimension(shot.getUniqueId()));
+        assertEquals(retired ? 0 : 1, duel.actors().active().size());
+        assertEquals(frame.combatActors(), roster.capture(bootstrap.epochNanos()).combatActors());
+        var impostor = new net.minecraft.entity.projectile.thrown.SnowballEntity(net.minecraft.entity.EntityType.SNOWBALL, world);
+        impostor.setId(repaired.getId()); impostor.setUuid(repaired.getUuid()); impostor.discard();
+        ((com.projectkorra.projectkorra.fabric.mixin.client.LivingEntityRollbackHistoryAccess)target.ownedPlayer()).rollback$lastDamage(world.getDamageSources().thrown(impostor, shooter));
+        assertThrows(IllegalStateException.class, target::captureRollbackState);
+    }
+
     @Test void nativeDartTargetFilterAndPlayerDamageUseTheCorrectParticipantsScoreboard() throws Exception {
         var ids = new ArrayList<>(bootstrapData().sides().keySet());
         var shooterId = ids.get(0);
@@ -185,8 +235,12 @@ class FabricRollbackNativeSceneTest {
         var bullet = duel.actors().nativeEntity(shot);
         bullet.setNoGravity(true);
         bullet.setVelocity(0, 0, 3);
-        StickyBombImpactScenario.verify(caster, target, shot, duel.actors().registry(), duel.output(),
+        var confirmed = StickyBombImpactScenario.verify(caster, target, shot, duel.actors().registry(), duel.output(),
                 () -> new FabricRollbackPhases(duel).tickWorld(1), wall);
+        assertEquals(List.of("BLOCK_HONEY_BLOCK_STEP"), confirmed.stream().filter(RollbackArenaActions.SoundOutput.class::isInstance)
+                .map(RollbackArenaActions.SoundOutput.class::cast).map(RollbackArenaActions.SoundOutput::sound).toList());
+        assertFalse(confirmed.stream().anyMatch(effect -> effect instanceof FabricRollbackWorldAccess.ParticleOutput
+                || effect instanceof FabricRollbackWorldAccess.SoundOutput));
     }
 
     @Test void nativeDartAndSmokescreenUseTheirOwnedArrowAndPotionCloud() throws Exception {

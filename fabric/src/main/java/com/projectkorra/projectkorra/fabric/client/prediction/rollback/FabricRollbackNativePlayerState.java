@@ -74,7 +74,7 @@ public final class FabricRollbackNativePlayerState implements RollbackPlayerStat
         if (RollbackClock.active()) throw new IllegalStateException("Construct native player state before replay");
         if (player instanceof ServerPlayerEntity) throw new IllegalArgumentException("Server player requires a private connection/event adapter");
         if (player.getEntityWorld() != world.world()) throw new IllegalArgumentException("Native player belongs to another world");
-        graph = new RollbackStateGraph(value -> otherEntity(value) || value == world.world() || registryMetadata(value),
+        graph = new RollbackStateGraph(value -> world.checkpointExternal(player, value) || registryMetadata(value),
                 FabricRollbackNativePlayerState::simulationField, maximumObjects);
         world.registerPlayer(player, this);
     }
@@ -276,12 +276,4 @@ public final class FabricRollbackNativePlayerState implements RollbackPlayerStat
     java.util.UUID importedExplosionCause() { requireIdle(); return importedExplosionCause; }
     void importedExplosionCause(java.util.UUID value) { requireIdle(); importedExplosionCause = value; }
 
-    @SuppressWarnings("WrapperReferenceEquality")
-    private boolean otherEntity(Object value) {
-        if (value == player || !(value instanceof Entity entity)) return false;
-        if (!world.ownsPlayer(entity)) throw new IllegalStateException("Native player references an unowned entity");
-        // The outer world graph snapshots the complete roster; cross-player native
-        // references are identity links to those independently owned state cells.
-        return true;
-    }
 }

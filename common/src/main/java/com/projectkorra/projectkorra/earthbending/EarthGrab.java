@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.earthbending;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
@@ -82,6 +83,11 @@ public class EarthGrab extends EarthAbility {
         this.origin = this.player.getLocation().clone();
         this.direction = this.player.getLocation().getDirection().setY(0).normalize();
         this.lastHit = 0;
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.lastHit = shift.time(this.lastHit);
     }
 
     @Override

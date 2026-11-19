@@ -13,7 +13,9 @@ import java.util.*;
 final class PaperRollbackActorRestoration {
     record Ride(UUID passenger, UUID vehicle) { }
     record Captured(RollbackActorData data, Map<String, Class<?>> contracts, List<Ride> rides) {
-        static Captured capture(UUID session, PaperRollbackNativeScene scene) {
+        static Captured capture(UUID session, PaperRollbackNativeScene scene) { return capture(session, scene, null); }
+
+        static Captured capture(UUID session, PaperRollbackNativeScene scene, RollbackActorData history) {
             var registry = scene.world().actors();
             var contracts = new TreeMap<String, Class<?>>();
             var rides = new ArrayList<Ride>();
@@ -28,12 +30,13 @@ final class PaperRollbackActorRestoration {
                     throw new IllegalStateException("Mount links cross private actor ownership");
                 rides.add(new Ride(passenger.getUUID(), vehicle.getUUID()));
             }
-            return new Captured(registry == null ? new RollbackActorData(session, 0, List.of()) : registry.exportState(),
+            return new Captured(registry == null ? new RollbackActorData(session, 0, List.of()) : registry.exportState(history),
                     Map.copyOf(contracts), List.copyOf(rides));
         }
     }
 
     private final ServerLevel world;
+    private final java.util.function.Function<Entity, org.bukkit.craftbukkit.entity.CraftEntity> wrappers;
     private final List<Entity> actors = new ArrayList<>();
     private final Map<UUID, Entity> bodies = new HashMap<>();
     private final List<RollbackGraphCodec.Binding> bindings = new ArrayList<>();
@@ -42,7 +45,13 @@ final class PaperRollbackActorRestoration {
 
 
     PaperRollbackActorRestoration(ServerLevel world, Map<UUID, ServerPlayer> players, Captured captured) {
+        this(world, players, captured, Entity::getBukkitEntity);
+    }
+
+    PaperRollbackActorRestoration(ServerLevel world, Map<UUID, ServerPlayer> players, Captured captured,
+            java.util.function.Function<Entity, org.bukkit.craftbukkit.entity.CraftEntity> wrappers) {
         this.world = world;
+        this.wrappers = Objects.requireNonNull(wrappers);
         bodies.putAll(players);
         rides = captured.rides();
         try {
@@ -52,14 +61,8 @@ final class PaperRollbackActorRestoration {
         } catch (ReflectiveOperationException failure) { throw new IllegalStateException("Native mount link changed", failure); }
         for (var row : captured.data().actors()) {
             var id = row.identity();
-            var type = BuiltInRegistries.ENTITY_TYPE.getOptional(Identifier.withDefaultNamespace(
-                    id.type().name().toLowerCase(Locale.ROOT))).orElseThrow();
-            var actor = Objects.requireNonNull(type.create(world, EntitySpawnReason.LOAD));
-            if (actor instanceof ServerPlayer || actor.isRemoved() || actor.valid || actor.inWorld)
-                throw new IllegalStateException("Invalid staged actor");
+            var actor = stage(row);
             var craft = actor.getBukkitEntity();
-            PaperRollbackPrivateAccess.initializePlayer(actor, craft, new LegacyRandomSource(0));
-            PaperRollbackActor.restore(actor, id, row.state(), actor.getId());
             actors.add(actor);
             if (bodies.putIfAbsent(actor.getUUID(), actor) != null) throw new IllegalArgumentException("Duplicate actor UUID");
             String binding = "actor/" + id.uuid();
@@ -71,10 +74,42 @@ final class PaperRollbackActorRestoration {
         validate();
     }
 
+    private Entity stage(RollbackActorData.Row row) {
+        var id = row.identity();
+        var type = BuiltInRegistries.ENTITY_TYPE.getOptional(Identifier.withDefaultNamespace(
+                id.type().name().toLowerCase(Locale.ROOT))).orElseThrow();
+        var actor = Objects.requireNonNull(type.create(world, EntitySpawnReason.LOAD));
+        if (actor instanceof ServerPlayer || actor.isRemoved() || actor.valid || actor.inWorld)
+            throw new IllegalStateException("Invalid staged actor");
+        PaperRollbackPrivateAccess.initializePlayer(actor, wrappers.apply(actor), new LegacyRandomSource(0));
+        PaperRollbackActor.restore(actor, id, row.state(), actor.getId());
+        return actor;
+    }
+
+    /** A removed damage source remains available to combat history without joining the live world tracker. */
+    Map<UUID, Entity> combatHistory(RollbackActorData history, RollbackActorData active) {
+        if (history == null) return Map.of();
+        history.requireHistoryFor(active);
+        var result = new HashMap<UUID, Entity>();
+        for (var row : history.actors()) {
+            var id = row.identity();
+            var entity = bodies.get(id.uuid());
+            if (entity == null) {
+                entity = stage(row);
+                PaperRollbackPrivateAccess.retirePrivateActor(entity);
+            } else if (entity instanceof ServerPlayer || !BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).getPath()
+                    .equals(id.type().name().toLowerCase(Locale.ROOT))) {
+                throw new IllegalArgumentException("Combat history aliases another native actor type");
+            }
+            result.put(id.uuid(), entity);
+        }
+        return result;
+    }
+
     List<RollbackGraphCodec.Binding> bindings() { return List.copyOf(bindings); }
 
     void validate() {
-        if (RollbackClock.active() || RollbackDomain.active() || !org.bukkit.Bukkit.isPrimaryThread())
+        if (RollbackClock.active() || RollbackDomain.active() || !ca.spottedleaf.moonrise.common.util.TickThread.isTickThread())
             throw new IllegalStateException("Validate staged actors on the live thread");
         for (var actor : actors) {
             var byUuid = world.getEntity(actor.getUUID()); var byNumber = world.getEntity(actor.getId());

@@ -261,6 +261,164 @@ class PaperRollbackNativeSceneNativeTest {
         });
     }
 
+    @Test void damageHistoryKeepsTheExactRetiredSnowballStateAcrossRewind() throws Exception {
+        onTickThread(() -> {
+            var source = source();
+            var roster = PaperRollbackRosterSeed.capture(source, 0);
+            var scene = scene(seed(), roster, roster.participants());
+            var items = new RollbackNativeItems<>(new PaperRollbackItems(PaperRollbackEnvironmentNativeTest.registries()));
+            var actors = new PaperRollbackActors(new UUID(19, 42), 16, items);
+            actors.bind(scene);
+            var defender = scene.roster().get(source.getFirst().getUUID());
+            var defenderBody = (ServerPlayer) defender.ownedPlayer();
+            var caster = scene.roster().get(source.getLast().getUUID()).ownedPlayer();
+            var ball = actors.spawn(scene.logical(), new RollbackEntityBody.Pose(0, 4, 0, 0, 0),
+                    com.projectkorra.projectkorra.platform.mc.entity.Snowball.class);
+            scene.logical().entities().add(ball);
+            var nativeBall = (PaperRollbackSnowball) actors.nativeEntity(ball);
+            nativeBall.setOwner(caster);
+            var damage = scene.world().world().damageSources().thrown(nativeBall, caster);
+            var lastDamage = net.minecraft.world.entity.LivingEntity.class.getDeclaredField("lastDamageSource");
+            lastDamage.setAccessible(true);
+            lastDamage.set(defenderBody, damage);
+            var actor = (PaperRollbackActor) actors.registry().get(ball.getUniqueId());
+            var flying = actor.captureRollbackState();
+            defender.captureRollbackState();
+            nativeBall.tickCount = 17;
+            PaperRollbackPrivateAccess.retirePrivateActor(nativeBall);
+            assertTrue(actors.registry().active().isEmpty());
+            var impact = defender.captureRollbackState();
+            var wrapperOnly = new RollbackStateGraph(value -> scene.world().checkpointExternal(defenderBody, value)
+                    || PaperRollbackMetadata.frozen(value), field -> true, 50_000, scene.world()::checkpointReferent)
+                    .capture(List.of(nativeBall.getBukkitEntity()), List.of());
+            flying.restore();
+            nativeBall.tickCount = 2;
+            lastDamage.set(defenderBody, null);
+            assertFalse(nativeBall.isRemoved());
+            defender.restoreRollbackState(impact);
+            assertSame(damage, lastDamage.get(defenderBody));
+            assertSame(nativeBall, damage.getDirectEntity());
+            assertTrue(nativeBall.isRemoved());
+            assertEquals(17, nativeBall.tickCount);
+            assertNull(actors.registry().get(nativeBall.getUUID()));
+            flying.restore();
+            assertFalse(nativeBall.isRemoved());
+            wrapperOnly.restore();
+            assertTrue(nativeBall.isRemoved());
+            assertEquals(17, nativeBall.tickCount);
+
+            var originals = new TreeMap<UUID, RollbackRosterData.Player>();
+            var livePlayers = new TreeMap<UUID, ServerPlayer>();
+            for (var player : source) {
+                originals.put(player.getUUID(), PaperRollbackPlayerSeed.capture(player, 0).portable(71));
+                livePlayers.put(player.getUUID(), player);
+            }
+            var initial = new RollbackRosterData(roster.worldTime(), originals);
+            defenderBody.combatTracker.entries.add(new net.minecraft.world.damagesource.CombatEntry(damage, 0, null, 0));
+            var outgoing = RollbackRosterData.decode(scene.captureRoster(initial, 0).encode());
+            var history = outgoing.combatActors();
+            assertEquals(1, history.actors().size());
+            assertEquals(nativeBall.getUUID(), history.actors().getFirst().identity().uuid());
+            var active = PaperRollbackActorRestoration.Captured.capture(history.session(), scene);
+            assertTrue(active.data().actors().isEmpty());
+            ServerPlayer liveTarget = source.getFirst();
+            var stage = new PaperRollbackActorRestoration(liveTarget.level(), livePlayers, active,
+                    body -> PaperRollbackPrivateAccess.actorWrapper(body, liveTarget.level().getCraftServer(),
+                            org.bukkit.entity.EntityType.SNOWBALL));
+            var bodies = stage.combatHistory(history, active.data());
+            var returned = bodies.get(nativeBall.getUUID());
+            assertNotSame(nativeBall, returned);
+            assertSame(liveTarget.level(), returned.level());
+            assertEquals(17, returned.tickCount);
+            assertTrue(returned.isRemoved());
+            assertFalse(returned.valid);
+            assertFalse(returned.inWorld);
+            stage.commit();
+            var gameplay = PaperRollbackRosterComponents.prepare(livePlayers, outgoing, 0, bodies);
+            gameplay.commit();
+            var liveDamage = (net.minecraft.world.damagesource.DamageSource) lastDamage.get(liveTarget);
+            assertSame(liveDamage, liveTarget.combatTracker.entries.getLast().source());
+            assertSame(returned, liveDamage.getDirectEntity());
+            assertSame(source.getLast(), liveDamage.getEntity());
+            assertTrue(stage.bindings().isEmpty());
+            assertNull(liveTarget.level().getEntity(returned.getUUID()));
+
+            var impostor = new PaperRollbackSnowball(scene);
+            impostor.setId(nativeBall.getId());
+            impostor.setUUID(nativeBall.getUUID());
+            PaperRollbackPrivateAccess.retirePrivateActor(impostor);
+            lastDamage.set(defenderBody, scene.world().world().damageSources().thrown(impostor, caster));
+            assertThrows(IllegalStateException.class, defender::captureRollbackState);
+            assertThrows(IllegalArgumentException.class, () -> scene.captureRoster(initial, 0));
+            return null;
+        });
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"Snowball", "Arrow", "ShulkerBullet"})
+    void acceptedPrivateProjectileDamagesOnlyItsPrivateTargetAcrossReplay(String kind) throws Exception {
+        onTickThread(() -> {
+            var roster = PaperRollbackRosterSeed.capture(source(), 0);
+            var damage = new ArrayList<org.bukkit.event.entity.EntityDamageByEntityEvent>();
+            var events = new ArrayList<org.bukkit.event.Event>();
+            var scene = scene(seed(), roster, roster.participants(), new Events() {
+                @Override public void gameEvent(Object event, Object pos, Object source) { }
+                @Override public void output(PaperRollbackCombatAccess.Output output) { }
+                @Override public void event(org.bukkit.event.Event event) {
+                    events.add(event);
+                    if (event instanceof org.bukkit.event.entity.EntityDamageByEntityEvent byEntity) damage.add(byEntity);
+                }
+            });
+            var items = new RollbackNativeItems<>(new PaperRollbackItems(PaperRollbackEnvironmentNativeTest.registries()));
+            var actors = new PaperRollbackActors(UUID.randomUUID(), 16, items);
+            actors.bind(scene);
+            var views = bindAbilityViews(scene, actors, items).players().values().stream().toList();
+            var caster = views.getFirst(); var target = views.getLast();
+            var targetBody = scene.roster().get(target.getUniqueId());
+            actors.nativeEntity(caster).setPos(.5, 4, -2);
+            actors.nativeEntity(target).setPos(.5, 4, 2);
+            var pose = new RollbackEntityBody.Pose(.5, 5.25, .5, 0, 0);
+            com.projectkorra.projectkorra.platform.mc.entity.Projectile shot = switch (kind) {
+                case "Snowball" -> actors.spawn(scene.logical(), pose, com.projectkorra.projectkorra.platform.mc.entity.Snowball.class);
+                case "Arrow" -> actors.spawn(scene.logical(), pose, com.projectkorra.projectkorra.platform.mc.entity.Arrow.class);
+                default -> actors.spawn(scene.logical(), pose, com.projectkorra.projectkorra.platform.mc.entity.ShulkerBullet.class);
+            };
+            scene.logical().entities().add(shot);
+            shot.setShooter(caster);
+            var projectile = actors.nativeEntity(shot);
+            projectile.setNoGravity(true); projectile.setDeltaMovement(0, 0, 3);
+            var actor = (PaperRollbackActor) actors.registry().get(shot.getUniqueId());
+            var graph = new RollbackStateGraph(value -> false, field -> true, 2048);
+            var bus = new RollbackEventBus(256, 16);
+            var platform = (com.projectkorra.projectkorra.platform.ProjectKorraPlatform)Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{com.projectkorra.projectkorra.platform.ProjectKorraPlatform.class}, (proxy, method, args) -> {
+                        if (method.getName().equals("events")) return bus;
+                        throw new AssertionError(method);
+                    });
+            var domain = RollbackDomain.create(graph, List.of(), List.of(), platform, () -> { });
+            var before = targetBody.captureRollbackState();
+            var beforeShooter = scene.roster().get(caster.getUniqueId()).captureRollbackState();
+            var flight = actor.captureRollbackState();
+            var logical = RollbackEntityBody.logicalBody(shot);
+            var logicalBefore = logical.captureRollbackState();
+            double health = target.getHealth();
+            for (int pass = 1; pass <= 2; pass++) {
+                if (pass == 2) {
+                    targetBody.restoreRollbackState(before); scene.roster().get(caster.getUniqueId()).restoreRollbackState(beforeShooter); actor.restoreRollbackState(flight); logical.restoreRollbackState(logicalBefore);
+                }
+                domain.call(() -> { try (var clock = RollbackClock.at(1000, 1, 50_000_000)) { actor.tick(); } return null; });
+                assertTrue(projectile.isRemoved());
+                assertEquals(pass, damage.size());
+                assertSame(projectile.getBukkitEntity(), damage.getLast().getDamager());
+                assertSame(targetBody.ownedPlayer().getBukkitEntity(), damage.getLast().getEntity());
+                if (kind.equals("Snowball")) assertEquals(health, target.getHealth());
+                else assertTrue(target.getHealth() < health);
+            }
+            assertNull(Bukkit.getServer());
+            return null;
+        });
+    }
+
     @Test void privateSnowballImpactDeliversExactLogicalActorsWithoutALiveBukkitServer() throws Exception {
         onTickThread(() -> {
             var roster = PaperRollbackRosterSeed.capture(source(), 0);
@@ -759,7 +917,10 @@ class PaperRollbackNativeSceneNativeTest {
         });
     }
     private static List<ServerPlayer> source() {
-        var world = new PaperRollbackWorldAccess(new PaperRollbackWorldAccessNativeTest.Queries(), new PaperRollbackDamageNativeTest.Combat(), 4);
+        var combat = new PaperRollbackDamageNativeTest.Combat() {
+            @Override public net.minecraft.world.flag.FeatureFlagSet terrainFeatures() { return FeatureFlags.DEFAULT_FLAGS; }
+        };
+        var world = new PaperRollbackWorldAccess(new PaperRollbackWorldAccessNativeTest.Queries(), combat, 4);
         var result = new ArrayList<ServerPlayer>();
         for (int i = 1; i <= 2; i++) {
             var state = PaperRollbackNativePlayerState.serverPlayer(world, new GameProfile(new UUID(0, i), "player" + i),

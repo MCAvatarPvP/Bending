@@ -1,6 +1,7 @@
 package me.simplicitee.project.addons.ability.chi;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -61,6 +62,12 @@ public class NinjaStance extends ChiAbility implements AddonAbility, StanceAbili
 
     public static double getDamageModifier(BendingPlayer bPlayer) {
         return ProjectAddons.instance.getConfig(bPlayer).getDouble("Abilities.Chi.NinjaStance.DamageModifier");
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        stealthStart = shift.time(stealthStart);
+        stealthReadyStart = shift.time(stealthReadyStart);
     }
 
     @Override

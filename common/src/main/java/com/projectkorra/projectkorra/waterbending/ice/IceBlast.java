@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.waterbending.ice;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
 
 import com.projectkorra.projectkorra.BendingPlayer;
@@ -221,6 +222,11 @@ public class IceBlast extends IceAbility {
             new TempBlock(this.sourceBlock, Material.AIR);
             this.source = new TempBlock(this.sourceBlock, Material.PACKED_ICE);
         }
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
     }
 
     @Override

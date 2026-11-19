@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.airbending;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -200,6 +201,18 @@ public class Tornado extends AirAbility {
     @Override
     public String getName() {
         return "Tornado";
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.capturedAt = shift.time(this.capturedAt);
+        this.time = shift.time(this.time);
+        this.lastSoundTime = shift.time(this.lastSoundTime);
+        this.rideStartTime = shift.time(this.rideStartTime);
+        this.lastChargeUpdateTime = shift.time(this.lastChargeUpdateTime);
+        shift.timestamps(this.lastDamageTimes);
+        shift.timestamps(this.pullStartTimes);
+        shift.timestamps(this.lastRestrictedTimes);
     }
 
     @Override

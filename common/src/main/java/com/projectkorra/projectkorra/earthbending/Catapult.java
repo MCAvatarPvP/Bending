@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.earthbending;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
 
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -117,6 +118,11 @@ public class Catapult extends EarthAbility {
             }
         }
         if (bPlayer.areSourceHolesOn()) this.moveEarth(this.origin.clone().subtract(direction), direction, 3, false);
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.stageStart = shift.time(this.stageStart);
     }
 
     @Override

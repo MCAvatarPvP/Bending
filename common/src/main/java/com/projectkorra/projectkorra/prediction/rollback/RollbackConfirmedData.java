@@ -21,6 +21,8 @@ public record RollbackConfirmedData(RollbackRound.Data round, RollbackRosterData
         Objects.requireNonNull(round); Objects.requireNonNull(roster); Objects.requireNonNull(random); Objects.requireNonNull(actors);
         actionSequences = Collections.unmodifiableMap(new TreeMap<>(Map.copyOf(actionSequences)));
         var participants = roster.players().keySet();
+        var history = roster.combatActors();
+        if (history != null) history.requireHistoryFor(actors);
         if (!random.players().keySet().equals(participants) || !actionSequences.keySet().equals(participants)
                 || actionSequences.values().stream().anyMatch(sequence -> sequence < 0)
                 || !participants.containsAll(round.attackers().keySet()) || !participants.containsAll(round.attackers().values()))

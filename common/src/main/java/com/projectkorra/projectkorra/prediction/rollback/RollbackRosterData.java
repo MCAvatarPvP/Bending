@@ -8,8 +8,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 /** Intrinsic native player bootstrap. World, bending graphs and service seeds accompany this component. */
-public record RollbackRosterData(long worldTime, Map<UUID, Player> players) {
-    public static final int VERSION = 1, MAXIMUM_PLAYERS = 128, MAXIMUM_BYTES = 16_777_216;
+public record RollbackRosterData(long worldTime, Map<UUID, Player> players, RollbackActorData combatActors) {
+    public RollbackRosterData(long worldTime, Map<UUID, Player> players) { this(worldTime, players, null); }
+    public static final int VERSION = 2, MAXIMUM_PLAYERS = 128, MAXIMUM_BYTES = 16_777_216;
     public static final int MAXIMUM_PROPERTIES = 64, MAXIMUM_PROPERTY_BYTES = 65_536;
     public enum Mode { SURVIVAL, CREATIVE, ADVENTURE, SPECTATOR }
     public enum Chat { FULL, SYSTEM, HIDDEN }
@@ -50,12 +51,23 @@ public record RollbackRosterData(long worldTime, Map<UUID, Player> players) {
     public RollbackRosterData {
         if (players.isEmpty() || players.size() > MAXIMUM_PLAYERS) throw invalid("roster size");
         players = Collections.unmodifiableMap(new TreeMap<>(players));
+        var historyIds = new HashSet<UUID>();
+        if (combatActors != null) {
+            if (combatActors.actors().isEmpty()) throw invalid("empty combat actor table");
+            for (var row : combatActors.actors()) {
+                var id = row.identity().uuid();
+                if (players.containsKey(id) || !historyIds.add(id)) throw invalid("duplicate combat actor");
+            }
+        }
+        var unused = new HashSet<>(historyIds);
         var entityIds = new HashSet<Integer>();
         for (var entry : players.entrySet()) {
             var player = Objects.requireNonNull(entry.getValue());
             if (!entry.getKey().equals(player.identity().id()) || !entityIds.add(player.identity().entityId())) throw invalid("duplicate/mismatched identity");
-            player.combat().requireRoster(players.keySet());
+            player.combat().requireRoster(players.keySet(), historyIds);
+            unused.removeAll(player.combat().references());
         }
+        if (!unused.isEmpty()) throw invalid("unreferenced combat actors");
     }
 
     public byte[] encode() {
@@ -84,6 +96,8 @@ public record RollbackRosterData(long worldTime, Map<UUID, Player> players) {
                 blob(out, player.values().encode()); blob(out, player.vitals().encode()); blob(out, player.items().encode());
                 blob(out, player.context().encode()); blob(out, player.combat().encode());
             }
+            out.writeBoolean(combatActors != null);
+            if (combatActors != null) blob(out, combatActors.encode());
             return bytes.toByteArray();
         } catch (IOException failure) { throw new IllegalStateException(failure); }
     }
@@ -91,7 +105,8 @@ public record RollbackRosterData(long worldTime, Map<UUID, Player> players) {
         if (bytes.length > MAXIMUM_BYTES) throw invalid("wire budget");
         try {
             var in = new DataInputStream(new ByteArrayInputStream(bytes));
-            if (in.readInt() != VERSION) throw invalid("version");
+            int version = in.readInt();
+            if (version != 1 && version != VERSION) throw invalid("version");
             long time = in.readLong(); int count = bounded(in.readInt(), MAXIMUM_PLAYERS);
             var players = new TreeMap<UUID, Player>(); UUID previous = null;
             for (int i = 0; i < count; i++) {
@@ -109,8 +124,9 @@ public record RollbackRosterData(long worldTime, Map<UUID, Player> players) {
                         RollbackPlayerItems.decode(blob(in, RollbackPlayerItems.MAXIMUM_BYTES)), RollbackPlayerContext.decode(blob(in, RollbackPlayerContext.MAXIMUM_BYTES)),
                         RollbackPlayerCombatData.decode(blob(in, RollbackPlayerCombatData.MAXIMUM_BYTES))));
             }
+            var history = version >= 2 && bool(in) ? RollbackActorData.decode(blob(in, RollbackActorData.MAXIMUM_BYTES)) : null;
             if (in.available() != 0) throw invalid("trailing data");
-            return new RollbackRosterData(time, players);
+            return new RollbackRosterData(time, players, history);
         } catch (IOException failure) { throw new IllegalArgumentException("Invalid player roster: malformed/truncated data", failure); }
     }
     private static void blob(DataOutputStream out, byte[] bytes) throws IOException { out.writeInt(bytes.length); out.write(bytes); }

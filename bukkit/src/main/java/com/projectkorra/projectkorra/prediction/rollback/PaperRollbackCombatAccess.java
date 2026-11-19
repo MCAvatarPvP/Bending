@@ -64,6 +64,7 @@ public final class PaperRollbackCombatAccess {
     private Entity meleeTarget;
     private Vec3 meleeVelocity;
     private final MethodHandle awardStatistic, resetStatistic, mineBlock, miningExhaustion;
+    private final MethodHandle arrowImpact, bulletImpact;
     private final MethodHandle addEffect, removeEffect, setAir, setSwimming, movementStep, playerBodyTick;
     private final MethodHandle serverTick, serverBodyTick, serverJump;
     private final MethodHandle tryGlide, stopGlide;
@@ -123,7 +124,7 @@ public final class PaperRollbackCombatAccess {
         new PaperRollbackStatusEffects(registries).bind(builder);
         Set<String> livingBodies = Set.of("hurtServer", "handleEntityDamage", "actuallyHurt", "knockback", "hurtArmor", "hurtHelmet", "doHurtEquipment",
                 "applyItemBlocking", "blockingItemEffects", "blockUsingItem", "blockedByItem", "startUsingItem", "stopUsingItem",
-                "checkTotemDeathProtection", "addEffect", "removeEffect", "removeEffectNoUpdate", "removeAllEffects",
+                "checkTotemDeathProtection", "setArrowCount", "addEffect", "removeEffect", "removeEffectNoUpdate", "removeAllEffects",
                 "aiStep", "travel", "travelFallFlying", "handleFallFlyingCollisions", "updateFallFlying", "stopFallFlying", "pushEntities", "isImmobile", "jumpFromGround",
                 "releaseUsingItem", "updatingUsingItem", "updateUsingItem", "tick", "baseTick", "tickEffects", "detectEquipmentUpdates", "collectEquipmentChanges", "onBelowWorld", "heal");
         for (Method method : LivingEntity.class.getDeclaredMethods()) if (livingBodies.contains(method.getName())) builder.copy(method);
@@ -193,6 +194,7 @@ public final class PaperRollbackCombatAccess {
             }
             Method entry = Player.class.getDeclaredMethod("hurtServer", ServerLevel.class, DamageSource.class, float.class);
             Method serverEntry = ServerPlayer.class.getDeclaredMethod("hurtServer", ServerLevel.class, DamageSource.class, float.class);
+            builder.copy(PaperRollbackServerPlayerServices.InputPlayer.class.getDeclaredMethod("hurtServer", ServerLevel.class, DamageSource.class, float.class));
             Method award = ServerPlayer.class.getDeclaredMethod("awardStat", Stat.class, int.class);
             Method reset = ServerPlayer.class.getDeclaredMethod("resetStat", Stat.class);
             Method add = LivingEntity.class.getDeclaredMethod("addEffect", net.minecraft.world.effect.MobEffectInstance.class,
@@ -228,7 +230,15 @@ public final class PaperRollbackCombatAccess {
             Method equipment = Player.class.getDeclaredMethod("detectEquipmentUpdates");
             Method cooldownApply = net.minecraft.world.item.component.UseCooldown.class.getDeclaredMethod("apply", ItemStack.class, LivingEntity.class);
             builder.copy(cooldownApply);
+            var arrow = net.minecraft.world.entity.projectile.arrow.AbstractArrow.class;
+            var bullet = net.minecraft.world.entity.projectile.ShulkerBullet.class;
+            var hit = net.minecraft.world.phys.EntityHitResult.class;
+            Method arrowHit = arrow.getDeclaredMethod("onHitEntity", hit), bulletHit = bullet.getDeclaredMethod("onHitEntity", hit);
+            builder.copy(arrowHit).copy(bulletHit).copy(arrow.getDeclaredMethod("doKnockback", LivingEntity.class, DamageSource.class));
             var copied = world.prepareMethods(builder);
+            var impactType = MethodType.methodType(void.class, net.minecraft.world.entity.projectile.Projectile.class, hit);
+            arrowImpact = copied.get(arrowHit).asType(impactType);
+            bulletImpact = copied.get(bulletHit).asType(impactType);
             mount = copied.get(Entity.class.getDeclaredMethod("startRiding", Entity.class, boolean.class, boolean.class));
             unmount = copied.get(Entity.class.getDeclaredMethod("stopRiding"));
             melee = copied.get(attack);
@@ -611,6 +621,18 @@ public final class PaperRollbackCombatAccess {
         if (from instanceof ServerPlayer) {
             state.output(new TargetSoundOutput(source, checkedPosition(x, y, z), sound.location().toString(), category.getName(), volume, pitch, from.random.nextLong()));
         }
+    }
+
+    void projectileImpact(net.minecraft.world.entity.projectile.Projectile projectile, net.minecraft.world.phys.EntityHitResult hit) {
+        ownedId(projectile); ownedId(hit.getEntity());
+        MethodHandle impact = switch (projectile) {
+            case PaperRollbackArrow arrow -> arrowImpact;
+            case PaperRollbackShulkerBullet bullet -> bulletImpact;
+            default -> throw new IllegalArgumentException("No private impact body for projectile");
+        };
+        try { impact.invokeExact(projectile, hit); }
+        catch (RuntimeException | Error failure) { throw failure; }
+        catch (Throwable failure) { throw new IllegalStateException("Private native projectile impact failed", failure); }
     }
 
     boolean damage(Object player, Object source, float amount) {

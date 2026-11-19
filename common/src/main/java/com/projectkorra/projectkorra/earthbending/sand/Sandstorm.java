@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.earthbending.sand;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.SandAbility;
@@ -213,6 +214,12 @@ public class Sandstorm extends SandAbility {
         this.playSandSound(this.center, Sound.ENTITY_BREEZE_WIND_BURST, 1.0F, 0.56F);
         this.playSandSound(this.center, Sound.BLOCK_SAND_BREAK, 0.92F, 0.62F);
         return true;
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.activeSince = shift.time(this.activeSince);
+        this.launchSince = shift.time(this.launchSince);
     }
 
     @Override

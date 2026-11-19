@@ -2,6 +2,7 @@ package com.projectkorra.projectkorra.firebending;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackArenaBlockIndices;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
 
 import com.projectkorra.projectkorra.BendingPlayer;
@@ -245,6 +246,12 @@ public class HeatControl extends FireAbility {
             this.gameplayRandom = PredictionDeterminism.random(
                     this.player == null ? null : this.player.getUniqueId(), getClass().getName() + ":solidify");
         }
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.cookTime = shift.time(this.cookTime);
+        this.solidifyLastBlockTime = shift.time(this.solidifyLastBlockTime);
     }
 
     @Override

@@ -79,7 +79,12 @@ final class FabricRollbackPhases implements RollbackPlayerExecution.Services<Obj
             return null;
         });
     }
-    @Override public void end() { }
+    @Override public void end() {
+        duel.actors().registry().forEachActive(actor -> {
+            if (((FabricRollbackActor)actor).owned() instanceof net.minecraft.entity.AreaEffectCloudEntity cloud)
+                duel.output().accept(FabricRollbackCloudParticles.Frame.capture(cloud));
+        });
+    }
     @Override public Void captureRollbackState() { return null; }
     @Override public void restoreRollbackState(Void ignored) { }
     @Override public List<?> rollbackReferences() { return List.of(duel.scene(), duel.actors()); }

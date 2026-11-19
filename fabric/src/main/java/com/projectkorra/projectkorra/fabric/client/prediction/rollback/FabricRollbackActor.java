@@ -27,14 +27,14 @@ final class FabricRollbackActor implements RollbackActorRegistry.Actor<RollbackS
     private final int lifespan;
 
     <T extends com.projectkorra.projectkorra.platform.mc.entity.Entity> FabricRollbackActor(
-            Entity entity, Identity identity, RollbackWorld world, RollbackEntityBody.Rules policy, int lifespan, Class<T> type, RollbackTypedEntity.Specialized specialized) {
+            Entity entity, Identity identity, RollbackWorld world, FabricRollbackActors policy, FabricRollbackWorldAccess owner, int lifespan, Class<T> type, RollbackTypedEntity.Specialized specialized) {
         this.lifespan = lifespan;
         this.nativeEntity = Objects.requireNonNull(entity); this.identity = Objects.requireNonNull(identity);
         if (entity instanceof PlayerEntity) throw new IllegalArgumentException("Actor cannot own a participant");
         entity.setUuid(identity.uuid()); entity.setId(identity.networkId());
         random = new FabricRollbackPaperRandom(identity.uuid().getMostSignificantBits() ^ identity.uuid().getLeastSignificantBits());
         ((EntityRollbackControlAccess) entity).rollback$random(random);
-        graph = new RollbackStateGraph(value -> value == nativeEntity.getEntityWorld() || value instanceof Entity other && other != nativeEntity
+        graph = new RollbackStateGraph(value -> owner.checkpointExternal(nativeEntity, value)
                 || FabricRollbackNativePlayerState.registryMetadata(value) || value instanceof net.minecraft.block.Block
                 || value instanceof net.minecraft.entity.attribute.DefaultAttributeContainer, FabricRollbackNativePlayerState::simulationField, 65_536);
         body = RollbackEntityBody.nativeBacked(identity, world, this, policy);
@@ -88,7 +88,9 @@ final class FabricRollbackActor implements RollbackActorRegistry.Actor<RollbackS
     @Override public Collection<?> rollbackReferences() { return List.of(body); }
 
     @Override public byte[] exportState() {
-        var e = nativeEntity;
+        return exportState(nativeEntity, identity);
+    }
+    static byte[] exportState(Entity e, Identity identity) {
         var errors = new ErrorReporter.Impl();
         var write = NbtWriteView.create(errors, e.getEntityWorld().getRegistryManager());
         e.writeData(write);
@@ -99,7 +101,7 @@ final class FabricRollbackActor implements RollbackActorRegistry.Actor<RollbackS
         catch (IOException failure) { throw new UncheckedIOException(failure); }
         return new RollbackActorFrame(e.age, new Pose(e.lastX, e.lastY, e.lastZ, e.lastYaw, e.lastPitch),
                 e.horizontalCollision, e.verticalCollision, e.groundCollision, e.velocityDirty, e.knockedBack,
-                random.exportStream(), buffer.toByteArray()).encode();
+                ((FabricRollbackPaperRandom)e.getRandom()).exportStream(), buffer.toByteArray()).encode();
     }
 
     void importState(byte[] bytes) {

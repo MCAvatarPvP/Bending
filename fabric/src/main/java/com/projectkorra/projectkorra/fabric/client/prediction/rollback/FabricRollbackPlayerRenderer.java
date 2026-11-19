@@ -123,7 +123,7 @@ public final class FabricRollbackPlayerRenderer implements AutoCloseable {
         boolean continuous = this.tick >= 0 && tick - this.tick == 1 && revision == this.revision;
         copied.forEach((id, view) -> eyes.put(id, same ? previousEyes.get(id)
                 : continuous ? views.get(id).cameraMotion().eyeHeight() : view.cameraMotion().eyeHeight()));
-        if (actors != null) actors.publish(tick);
+        if (actors != null) actors.publish();
         previousEyes = Map.copyOf(eyes); views = copied; this.tick = tick; this.revision = revision; active = this;
     }
     private FabricRollbackPlayerView lookup(Entity entity) {

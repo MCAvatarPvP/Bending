@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
 public final class StickyBombImpactScenario {
     private StickyBombImpactScenario() { }
 
-    public static void verify(RollbackPlayer caster, RollbackPlayer target, ShulkerBullet shot,
+    public static List<Object> verify(RollbackPlayer caster, RollbackPlayer target, ShulkerBullet shot,
                               RollbackActorRegistry actors, RollbackStepOutput<Object> output, Runnable tick,
                               boolean wall) throws ReflectiveOperationException {
         var old = ConfigManager.defaultConfig;
@@ -57,7 +57,7 @@ public final class StickyBombImpactScenario {
         assertSame(bomb, StickyBomb.forProjectile(shot));
         var stuck = StickyBomb.class.getDeclaredField("stuck"); stuck.setAccessible(true);
         var attached = StickyBomb.class.getDeclaredField("targetEntity"); attached.setAccessible(true);
-        domain.call(() -> {
+        return domain.call(() -> {
             var simulation = new RollbackSimulation<Runnable, Integer, Object>() {
                 public Runnable snapshot() {
                     var ability = graph.capture(List.of(bomb), List.of());
@@ -72,7 +72,7 @@ public final class StickyBombImpactScenario {
                     try (var binding = output.open(step)) { tick.run(); }
                 }
             };
-            var engine = new RollbackEngine<>(simulation, Map.of(caster.getUniqueId(), 0), RollbackDuelRuntime.ENGINE, 0);
+            var engine = RollbackEngine.replica(simulation, Map.of(caster.getUniqueId(), 0), RollbackDuelRuntime.ENGINE, 0, 0);
             for (int pass = 1; pass <= 2; pass++) {
                 if (pass == 1) { engine.advance(); engine.advance(); }
                 else { engine.submit(caster.getUniqueId(), 1, 1); assertEquals(1, engine.reconcile().replayedFrom()); }
@@ -88,7 +88,7 @@ public final class StickyBombImpactScenario {
                 try { assertTrue(stuck.getBoolean(bomb)); assertSame(wall ? null : target, attached.get(bomb)); }
                 catch (IllegalAccessException failure) { throw new AssertionError(failure); }
             }
-            return null;
+            return engine.confirm(2).finalizedEffects().stream().map(RollbackEngine.Effect::value).toList();
         });
     }
     private static <S> Runnable save(RollbackStateCell<S> cell) {

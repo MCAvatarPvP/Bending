@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.earthbending.metal;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
 
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -241,6 +242,11 @@ public class MetalClips extends MetalAbility {
         }
         this.bPlayer.addCooldown("MetalClips Crush", this.crushCooldown);
         DamageHandler.damageEntity(this.targetEntity, this.player, this.crushDamage, this);
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.armorStartTime = shift.time(this.armorStartTime);
     }
 
     @Override

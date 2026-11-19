@@ -57,6 +57,13 @@ public final class RollbackActorRegistry implements RollbackStateCell<RollbackAc
         return found == null ? null : actors.get(-found.getEntityId());
     }
     public List<Actor<?>> active() { check(); prune(); return List.copyOf(actors.values()); }
+
+    /** Inspect visible actors without changing membership while a frame's presentation is being recorded. */
+    public void forEachActive(java.util.function.Consumer<Actor<?>> reader) {
+        check();
+        for (var actor : actors.values()) if (actor.view().isValid()) reader.accept(actor);
+    }
+
     public List<RollbackGraphCodec.Binding> bindings() {
         return active().stream().map(actor -> {
             Entity view = actor.view();
@@ -74,9 +81,34 @@ public final class RollbackActorRegistry implements RollbackStateCell<RollbackAc
         prune();
     }
     private void prune() { actors.values().removeIf(actor -> !actor.view().isValid()); }
-    public RollbackActorData exportState() {
-        return new RollbackActorData(session, cursor, active().stream()
-                .map(actor -> new RollbackActorData.Row(RollbackEntityBody.logicalBody(actor.view()).identity(), actor.exportState())).toList());
+    /** Native damage histories can reference actors after they leave active membership. */
+    public RollbackActorData history(Collection<RollbackActorData.Row> rows) {
+        check();
+        if (rows.isEmpty()) return null;
+        return new RollbackActorData(session, cursor, rows.stream()
+                .sorted(Comparator.comparingInt(row -> -row.identity().networkId())).toList());
+    }
+    public RollbackActorData exportState() { return exportState(null); }
+
+    public void requireAllocation(RollbackActorData data) {
+        check();
+        if (!session.equals(data.session()) || cursor != data.cursor()) throw new IllegalArgumentException("Foreign damage history");
+    }
+    public RollbackActorData exportState(RollbackActorData history) {
+        check();
+        var captured = new HashMap<UUID, RollbackActorData.Row>();
+        if (history != null) {
+            requireAllocation(history);
+            for (var row : history.actors()) captured.put(row.identity().uuid(), row);
+        }
+        var rows = active().stream().map(actor -> {
+            var identity = RollbackEntityBody.logicalBody(actor.view()).identity();
+            var row = captured.get(identity.uuid());
+            if (row == null) return new RollbackActorData.Row(identity, actor.exportState());
+            if (!row.identity().equals(identity)) throw new IllegalArgumentException("Combat source differs from the active actor");
+            return row;
+        }).toList();
+        return new RollbackActorData(session, cursor, rows);
     }
     /** Decode fresh native actors without publishing them, then atomically exchange private membership. */
     public void importState(RollbackWorld target, RollbackActorData data, Function<RollbackActorData.Row, Actor<?>> decode) {

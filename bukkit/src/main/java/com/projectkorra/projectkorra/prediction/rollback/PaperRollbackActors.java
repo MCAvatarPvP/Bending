@@ -132,7 +132,9 @@ public final class PaperRollbackActors implements RollbackArenaActions.Native, R
         requireWorld(world); var id = registry.allocate(world, kind.name(), kind);
         var actor = make(id, type);
         actor.entity().snapTo(pos.x(), pos.y(), pos.z(), pos.yaw(), pos.pitch());
-        return registry.own(actor);
+        registry.own(actor);
+        scene.world().issued(actor);
+        return actor;
     }
     @Override public <T extends Entity> T spawn(RollbackWorld world, Pose pos, Class<T> type) { return type.cast(at(world, pos, kind(type), type).view()); }
     @Override public Entity spawnEntity(RollbackWorld world, Pose pos, EntityType kind) {
@@ -235,6 +237,7 @@ public final class PaperRollbackActors implements RollbackArenaActions.Native, R
             var actor = make(row.identity(), FACADES.getOrDefault(row.identity().type(), LivingEntity.class));
             actor.importState(row.state()); return actor;
         });
+        for (var actor : registry.active()) scene.world().issued((PaperRollbackActor) actor);
     }
     @Override public Void captureRollbackState() { return null; }
     @Override public void restoreRollbackState(Void state) { }

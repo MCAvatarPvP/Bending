@@ -11,6 +11,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 abstract class AreaEffectCloudPredictionMixin {
     @Inject(method = "clientTick", at = @At("HEAD"), cancellable = true)
     private void projectkorra$selectParticles(CallbackInfo callback) {
-        if (FabricPredictionMC.hideOwnedEntityParticles((AreaEffectCloudEntity) (Object) this)) callback.cancel();
+        var cloud = (AreaEffectCloudEntity) (Object) this;
+        if (!(cloud instanceof com.projectkorra.projectkorra.fabric.client.prediction.rollback.FabricRollbackCloudParticles)
+                && FabricPredictionMC.hideOwnedEntityParticles(cloud)) callback.cancel();
     }
 }

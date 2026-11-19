@@ -30,6 +30,8 @@ public final class FabricRollbackActors implements RollbackArenaActions.Native, 
             Map.entry(EntityType.TRIDENT, Trident.class), Map.entry(EntityType.SLIME, Slime.class),
             Map.entry(EntityType.TNT, TNTPrimed.class));
     private final RollbackActorRegistry registry;
+    // Weak identity keys distinguish native bodies created on different branches with the same network ID.
+    private final Map<net.minecraft.entity.Entity, Identity> issued = new com.google.common.collect.MapMaker().weakKeys().makeMap();
     private final RollbackNativeItems<net.minecraft.item.ItemStack> items;
     private FabricRollbackNativeScene scene;
     public FabricRollbackActors(UUID session, int maximum, RollbackNativeItems<net.minecraft.item.ItemStack> items) {
@@ -47,6 +49,11 @@ public final class FabricRollbackActors implements RollbackArenaActions.Native, 
     net.minecraft.entity.Entity actor(UUID id) {
         var found = (FabricRollbackActor) registry.get(id);
         return found == null ? null : found.owned();
+    }
+    boolean retired(net.minecraft.entity.Entity entity) {
+        var id = issued.get(entity);
+        return id != null && entity.isRemoved() && entity.getEntityWorld() == server()
+                && entity.getId() == id.networkId() && entity.getUuid().equals(id.uuid());
     }
     Entity logical(net.minecraft.entity.Entity e) {
         if (e == null) return null;
@@ -76,7 +83,7 @@ public final class FabricRollbackActors implements RollbackArenaActions.Native, 
         if (e instanceof FabricRollbackItemPolicy item) item.rollback$itemRules(scene.services().settings().interactions().items());
         var delegate = FabricMC.entity(e);
         int lifespan = scene.services().settings().actorDespawnTime().getOrDefault(Registries.ENTITY_TYPE.getId(e.getType()).toString(), -1);
-        return new FabricRollbackActor(e, id, scene.logical(), this, lifespan, type, (method, args) -> special(e, delegate, method, args));
+        return new FabricRollbackActor(e, id, scene.logical(), this, scene.roster().world(), lifespan, type, (method, args) -> special(e, delegate, method, args));
     }
     private Object special(net.minecraft.entity.Entity e, Entity delegate, Method method, Object[] args) throws Throwable {
         switch (method.getName()) {
@@ -128,7 +135,9 @@ public final class FabricRollbackActors implements RollbackArenaActions.Native, 
         requireWorld(world); var id = registry.allocate(world, kind.name(), kind);
         var actor = make(id, type);
         actor.owned().refreshPositionAndAngles(pos.x(), pos.y(), pos.z(), pos.yaw(), pos.pitch());
-        return registry.own(actor);
+        registry.own(actor);
+        issued.put(actor.owned(), actor.identity());
+        return actor;
     }
     @Override public <T extends Entity> T spawn(RollbackWorld world, Pose pos, Class<T> type) { return type.cast(at(world, pos, kind(type), type).view()); }
     @Override public Entity spawnEntity(RollbackWorld world, Pose pos, EntityType kind) {
@@ -204,11 +213,46 @@ public final class FabricRollbackActors implements RollbackArenaActions.Native, 
         var rider = nativeEntity(passenger.view());
         if (rider.getVehicle() == nativeEntity(vehicle.view())) rider.stopRiding();
     }
+    RollbackActorData history(Collection<net.minecraft.entity.Entity> references) {
+        var rows = new ArrayList<RollbackActorData.Row>();
+        for (var entity : references) {
+            var id = issued.get(entity);
+            if (id == null || !id.uuid().equals(entity.getUuid()) || id.networkId() != entity.getId()
+                    || !scene.roster().world().ownsEntity(entity) && !retired(entity))
+                throw new IllegalArgumentException("Foreign damage history actor");
+            rows.add(new RollbackActorData.Row(id, FabricRollbackActor.exportState(entity, id)));
+        }
+        return registry.history(rows);
+    }
+    Map<UUID, net.minecraft.entity.Entity> importHistory(RollbackActorData data) {
+        registry.requireAllocation(data);
+        var result = new HashMap<UUID, net.minecraft.entity.Entity>();
+        for (var row : data.actors()) {
+            var id = row.identity();
+            var present = actor(id.uuid());
+            if (present != null) {
+                if (!id.equals(issued.get(present)) || present.isRemoved()) throw new IllegalArgumentException("Conflicting native history actor");
+            } else {
+                var detached = make(id, FACADES.getOrDefault(id.type(), LivingEntity.class));
+                detached.importState(row.state());
+                present = detached.owned();
+                present.discard();
+                issued.put(present, id);
+            }
+            result.put(id.uuid(), present);
+        }
+        return Map.copyOf(result);
+    }
+
     public void importState(RollbackActorData data) {
+        var replacements = new java.util.ArrayList<FabricRollbackActor>();
         registry.importState(scene.logical(), data, row -> {
             var actor = make(row.identity(), FACADES.getOrDefault(row.identity().type(), LivingEntity.class));
-            actor.importState(row.state()); return actor;
+            actor.importState(row.state());
+            replacements.add(actor);
+            return actor;
         });
+        for (var actor : replacements) issued.put(actor.owned(), actor.identity());
     }
     @Override public Void captureRollbackState() { return null; }
     @Override public void restoreRollbackState(Void state) { }
