@@ -44,7 +44,7 @@ final class PaperRollbackPacketDecoder {
                 throw new IllegalArgumentException("Packet output ID/type is not audited");
             bytes.readerIndex(start);
             var packet = codec.decode(bytes);
-            if (bytes.isReadable() || !PaperRollbackConnection.auditedPacket(packet.getClass())
+            if (bytes.isReadable() || !PaperRollbackConnection.auditedPacket(packet)
                     || !output.type().equals(packet.type().id().toString()))
                 throw new IllegalArgumentException("Packet output type or trailing data mismatch");
             return packet;

@@ -21,6 +21,7 @@ public final class PaperRollbackConnection implements RollbackStateCell<Boolean>
     // These native codecs use only primitive packet data and the supplied registry.
     // Other codecs (notably items/chat) still reach live sanitizers or registries.
     private static final java.util.Map<Class<?>, net.minecraft.network.protocol.PacketType<?>> AUDITED_PACKETS = java.util.Map.ofEntries(
+            java.util.Map.entry(ClientboundGameEventPacket.class, GamePacketTypes.CLIENTBOUND_GAME_EVENT),
             java.util.Map.entry(ClientboundSetHealthPacket.class, GamePacketTypes.CLIENTBOUND_SET_HEALTH),
             java.util.Map.entry(ClientboundUpdateAttributesPacket.class, GamePacketTypes.CLIENTBOUND_UPDATE_ATTRIBUTES),
             java.util.Map.entry(ClientboundHurtAnimationPacket.class, GamePacketTypes.CLIENTBOUND_HURT_ANIMATION),
@@ -37,7 +38,11 @@ public final class PaperRollbackConnection implements RollbackStateCell<Boolean>
             java.util.Map.entry(ClientboundCooldownPacket.class, GamePacketTypes.CLIENTBOUND_COOLDOWN));
     /** Includes the play-protocol packet id, encoded against the session's captured registries. */
     public record PacketOutput(UUID target, String type, String payload) implements PaperRollbackCombatAccess.Output { }
-    static boolean auditedPacket(Class<?> type) { return AUDITED_PACKETS.containsKey(type); }
+    static boolean auditedPacket(Packet<?> packet) {
+        if (packet instanceof ClientboundGameEventPacket event)
+            return event.getEvent() == ClientboundGameEventPacket.PLAY_ARROW_HIT_SOUND && event.getParam() == 0;
+        return AUDITED_PACKETS.containsKey(packet.getClass());
+    }
     static boolean auditedType(net.minecraft.network.protocol.PacketType<?> type) { return AUDITED_PACKETS.containsValue(type); }
     private final PaperRollbackWorldAccess world;
     private final ServerPlayer player;
@@ -75,7 +80,7 @@ public final class PaperRollbackConnection implements RollbackStateCell<Boolean>
         check();
         if (packet == null) return;
         if (packet instanceof ClientboundSetEntityMotionPacket velocity && world.consumeMeleeVelocity(player, velocity)) return;
-        if (!AUDITED_PACKETS.containsKey(packet.getClass())) {
+        if (!auditedPacket(packet)) {
             var detached = packetData.capture(packet);
             if (detached != null) { world.output(new PaperRollbackPacketData.Direct(player.getUUID(), detached)); return; }
             throw new IllegalStateException("Packet codec needs a private-state audit: " + packet.type());

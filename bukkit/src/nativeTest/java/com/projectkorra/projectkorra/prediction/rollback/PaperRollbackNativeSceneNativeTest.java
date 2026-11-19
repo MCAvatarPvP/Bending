@@ -319,7 +319,7 @@ class PaperRollbackNativeSceneNativeTest {
             var history = outgoing.combatActors();
             assertEquals(1, history.actors().size());
             assertEquals(nativeBall.getUUID(), history.actors().getFirst().identity().uuid());
-            var active = PaperRollbackActorRestoration.Captured.capture(history.session(), scene);
+            var active = PaperRollbackActorRestoration.Captured.capture(history.session(), scene, history);
             assertTrue(active.data().actors().isEmpty());
             ServerPlayer liveTarget = source.getFirst();
             var stage = new PaperRollbackActorRestoration(liveTarget.level(), livePlayers, active,
@@ -340,8 +340,9 @@ class PaperRollbackNativeSceneNativeTest {
             assertSame(liveDamage, liveTarget.combatTracker.entries.getLast().source());
             assertSame(returned, liveDamage.getDirectEntity());
             assertSame(source.getLast(), liveDamage.getEntity());
+            assertSame(source.getLast(), ((net.minecraft.world.entity.projectile.Projectile) returned).getOwner());
             assertTrue(stage.bindings().isEmpty());
-            assertNull(liveTarget.level().getEntity(returned.getUUID()));
+            assertNull(liveTarget.level().getEntityInAnyDimension(returned.getUUID()));
 
             var impostor = new PaperRollbackSnowball(scene);
             impostor.setId(nativeBall.getId());
@@ -387,6 +388,10 @@ class PaperRollbackNativeSceneNativeTest {
             shot.setShooter(caster);
             var projectile = actors.nativeEntity(shot);
             projectile.setNoGravity(true); projectile.setDeltaMovement(0, 0, 3);
+            if (projectile instanceof PaperRollbackArrow arrow) {
+                arrow.setRemainingFireTicks(80);
+                arrow.addEffect(new net.minecraft.world.effect.MobEffectInstance(net.minecraft.world.effect.MobEffects.WEAKNESS, 80));
+            }
             var actor = (PaperRollbackActor) actors.registry().get(shot.getUniqueId());
             var graph = new RollbackStateGraph(value -> false, field -> true, 2048);
             var bus = new RollbackEventBus(256, 16);
@@ -413,8 +418,74 @@ class PaperRollbackNativeSceneNativeTest {
                 assertSame(targetBody.ownedPlayer().getBukkitEntity(), damage.getLast().getEntity());
                 if (kind.equals("Snowball")) assertEquals(health, target.getHealth());
                 else assertTrue(target.getHealth() < health);
+                if (kind.equals("Arrow")) {
+                    assertTrue(targetBody.ownedPlayer().hasEffect(net.minecraft.world.effect.MobEffects.WEAKNESS));
+                    assertEquals(pass, events.stream().filter(org.bukkit.event.entity.EntityCombustByEntityEvent.class::isInstance).count());
+                }
+                if (kind.equals("ShulkerBullet")) assertTrue(targetBody.ownedPlayer().hasEffect(net.minecraft.world.effect.MobEffects.LEVITATION));
             }
             assertNull(Bukkit.getServer());
+            return null;
+        });
+    }
+
+    @Test void enrolledSnowballHitReachesTheBendingDamageListenerWithItsActorAndDefender() throws Exception {
+        onTickThread(() -> {
+            var captured = PaperRollbackRosterSeed.capture(source(), 0);
+            var events = new ArrayList<org.bukkit.event.entity.EntityDamageByEntityEvent>();
+            var scene = scene(seed(), captured, captured.participants(), new Events() {
+                @Override public void event(org.bukkit.event.Event event) {
+                    if (event instanceof org.bukkit.event.entity.EntityDamageByEntityEvent damage) events.add(damage);
+                }
+                @Override public void output(PaperRollbackCombatAccess.Output output) { }
+                @Override public void gameEvent(Object event, Object pos, Object source) { }
+            });
+            var items = new RollbackNativeItems<>(new PaperRollbackItems(PaperRollbackEnvironmentNativeTest.registries()));
+            var session = new UUID(123, 459);
+            var actors = new PaperRollbackActors(session, 16, items);
+            actors.bind(scene);
+            var roster = bindAbilityViews(scene, actors, items).players();
+            var order = roster.values().stream().toList();
+            var shooter = order.getFirst(); var defender = order.getLast();
+            var round = new RollbackRound(session, Map.of(shooter.getUniqueId(), shooter.getUniqueId(),
+                    defender.getUniqueId(), defender.getUniqueId()));
+            scene.world().bindRound(round);
+            var ball = actors.spawn(scene.logical(), new RollbackEntityBody.Pose(0, 4, 0, 0, 0),
+                    com.projectkorra.projectkorra.platform.mc.entity.Snowball.class);
+            scene.logical().entities().add(ball);
+            ball.setShooter(shooter);
+            var nativeBall = (PaperRollbackSnowball) actors.nativeEntity(ball);
+            var nativeTarget = actors.nativeEntity(defender);
+            var bus = new RollbackEventBus(32, 8);
+            var observed = new ArrayList<com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageByEntityEvent>();
+            var listener = new Object() {
+                @com.projectkorra.projectkorra.platform.mc.event.EventHandler
+                public void onDamage(com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageByEntityEvent event) {
+                    observed.add(event); event.setCancelled(true);
+                }
+            };
+            var platform = (com.projectkorra.projectkorra.platform.ProjectKorraPlatform) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{com.projectkorra.projectkorra.platform.ProjectKorraPlatform.class}, (proxy, method, args) -> {
+                        if (method.getName().equals("events")) return bus;
+                        throw new AssertionError(method);
+                    });
+            var domain = RollbackDomain.create(new RollbackStateGraph(value -> false, field -> true, 2048),
+                    List.of(), List.of(), platform, () -> bus.registerListener(listener));
+            domain.call(() -> {
+                round.beginTick(1);
+                try (var clock = RollbackClock.at(1_000, 1, 50_000_000); var scope = new RollbackControlEvents(roster)) {
+                    nativeBall.preHitTargetOrDeflectSelf(new net.minecraft.world.phys.EntityHitResult(nativeTarget));
+                    assertEquals(1, observed.size());
+                    assertSame(ball, observed.getFirst().getDamager());
+                    assertSame(defender, observed.getFirst().getEntity());
+                    assertEquals(1, events.size());
+                    assertSame(nativeBall.getBukkitEntity(), events.getFirst().getDamager());
+                    assertTrue(events.getFirst().isCancelled());
+                    assertTrue(round.provisionalDefeats().isEmpty());
+                    assertTrue(nativeBall.isRemoved());
+                }
+                return null;
+            });
             return null;
         });
     }

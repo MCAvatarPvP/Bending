@@ -81,5 +81,17 @@ final class FabricRollbackParticleHistory<P> {
     private void cancel(Map<Integer, Drawn<P>> frame) {
         frame.values().forEach(entry -> entry.handles().forEach(remove));
     }
+    /** The ordinary world has started ticking this actor; withdraw any unconfirmed private bursts. */
+    void retireCloud(UUID actor) {
+        for (var frame : pending.values()) {
+            frame.values().removeIf(drawn -> {
+                if (!(drawn.visual().effect() instanceof FabricRollbackCloudParticles.Frame cloud) || !cloud.actor().equals(actor))
+                    return false;
+                drawn.handles().forEach(remove);
+                return true;
+            });
+        }
+    }
+
     void clear() { pending.values().forEach(this::cancel); pending.clear(); }
 }

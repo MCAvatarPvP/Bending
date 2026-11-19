@@ -243,6 +243,85 @@ class FabricRollbackNativeSceneTest {
                 || effect instanceof FabricRollbackWorldAccess.SoundOutput));
     }
 
+    @Test void acceptedHyperionSmokeCreatesOneCloudPerNativePlayerImpactAfterRewind() throws Exception {
+        var duel = FabricRollbackNativeScene.importDuel(bootstrapData(), FabricRollbackTestRegistry.simulationRegistries(),
+                FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);
+        var participants = duel.views().players().values().stream().toList();
+        var caster = participants.getFirst(); var victim = participants.getLast();
+        caster.state().hidden(Set.of());
+        var world = duel.scene().logical();
+        duel.actors().nativeEntity(caster).setPosition(.5, 4, -2);
+        duel.actors().nativeEntity(victim).setPosition(.5, 4, 2);
+        var ball = world.spawn(new com.projectkorra.projectkorra.platform.mc.Location(world, .5, 5.25, .5),
+                com.projectkorra.projectkorra.platform.mc.entity.Snowball.class);
+        ball.setShooter(caster);
+        var body = duel.actors().nativeEntity(ball); body.setNoGravity(true); body.setVelocity(0, 0, 3);
+        var ctor = me.moros.hyperion.abilities.chiblocking.Smokescreen.SmokescreenData.class.getDeclaredConstructor(
+                com.projectkorra.projectkorra.platform.mc.entity.Player.class, int.class, int.class, float.class);
+        ctor.setAccessible(true);
+        ball.setMetadata(me.moros.hyperion.methods.CoreMethods.SMOKESCREEN_KEY, new com.projectkorra.projectkorra.platform.mc.metadata.FixedMetadataValue(
+                new Object(), ctor.newInstance(caster, 80, 40, 4F)));
+        var contacts = new ArrayList<com.projectkorra.projectkorra.platform.mc.event.entity.ProjectileHitEvent>();
+        var damages = new ArrayList<com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageByEntityEvent>();
+        var phases = new FabricRollbackPhases(duel);
+        var execution = new FabricRollbackExecution<>(participants, phases, duel.output());
+        var bus = new RollbackEventBus(256, 16);
+        bus.registerListener(new me.moros.hyperion.listeners.HyperionCommonListener());
+        bus.registerListener(new Object() {
+            @com.projectkorra.projectkorra.platform.mc.event.EventHandler
+            public void contact(com.projectkorra.projectkorra.platform.mc.event.entity.ProjectileHitEvent hit) { contacts.add(hit); }
+            @com.projectkorra.projectkorra.platform.mc.event.EventHandler
+            public void damage(com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageByEntityEvent hit) { damages.add(hit); }
+        });
+        var type = com.projectkorra.projectkorra.platform.ProjectKorraPlatform.class;
+        var platform = (com.projectkorra.projectkorra.platform.ProjectKorraPlatform)Proxy.newProxyInstance(type.getClassLoader(),
+                new Class<?>[]{type}, (proxy, method, args) -> {
+                    if (method.getName().equals("events")) return bus;
+                    throw new AssertionError(method);
+                });
+        var domain = RollbackDomain.create(new RollbackStateGraph(value -> false, field -> true, 2048),
+                List.of(), List.of(), platform, () -> { });
+        var actor = (FabricRollbackActor)duel.actors().registry().get(ball.getUniqueId());
+        var targetState = duel.scene().roster().players().get(victim.getUniqueId());
+        double health = victim.getHealth();
+        domain.call(() -> {
+            var sim = new RollbackSimulation<Runnable, Integer, Object>() {
+                public Runnable snapshot() {
+                    var shot = actor.captureRollbackState(); var target = targetState.captureRollbackState();
+                    var facade = RollbackEntityBody.logicalBody(ball); var facadeState = facade.captureRollbackState();
+                    var entities = world.entities().captureRollbackState(); var owned = duel.actors().registry().captureRollbackState();
+                    var round = duel.round().captureRollbackState(); var services = duel.scene().services().captureRollbackState();
+                    return () -> {
+                        actor.restoreRollbackState(shot); facade.restoreRollbackState(facadeState);
+                        world.entities().restoreRollbackState(entities); duel.actors().registry().restoreRollbackState(owned);
+                        targetState.restoreRollbackState(target); duel.round().restoreRollbackState(round);
+                        duel.scene().services().restoreRollbackState(services);
+                    };
+                }
+                public void restore(Runnable saved) { saved.run(); }
+                public Integer predict(UUID player, Integer previous) { return previous; }
+                public void step(long tick, Map<UUID,Integer> input, RollbackStep<Object> output) {
+                    duel.round().beginTick(tick);
+                    execution.begin(output);
+                    try { phases.tickWorld(tick); } finally { execution.end(); }
+                }
+            };
+            var engine = RollbackEngine.replica(sim, Map.of(caster.getUniqueId(), 0), RollbackDuelRuntime.ENGINE, 0, 0);
+            for (int pass = 1; pass <= 2; pass++) {
+                if (pass == 1) engine.advance(); else { engine.submit(caster.getUniqueId(), 1, 1); engine.reconcile(); }
+                assertEquals(pass, contacts.size()); assertSame(victim, contacts.getLast().getHitEntity());
+                assertFalse(contacts.getLast().isCancelled()); assertTrue(body.isRemoved());
+                assertEquals(pass, damages.size()); assertSame(ball, damages.getLast().getDamager());
+                assertSame(victim, damages.getLast().getEntity());
+                var active = duel.actors().active(); assertEquals(1, active.size());
+                var cloud = assertInstanceOf(net.minecraft.entity.AreaEffectCloudEntity.class, active.getFirst());
+                assertSame(duel.actors().nativeEntity(caster), cloud.getOwner());
+                assertEquals(health, victim.getHealth()); targetState.captureRollbackState();
+            }
+            return null;
+        });
+    }
+
     @Test void nativeDartAndSmokescreenUseTheirOwnedArrowAndPotionCloud() throws Exception {
         var duel = FabricRollbackNativeScene.importDuel(bootstrapData(), FabricRollbackTestRegistry.simulationRegistries(),
                 FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);

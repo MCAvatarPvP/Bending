@@ -235,6 +235,11 @@ public final class PaperRollbackCombatAccess {
             var hit = net.minecraft.world.phys.EntityHitResult.class;
             Method arrowHit = arrow.getDeclaredMethod("onHitEntity", hit), bulletHit = bullet.getDeclaredMethod("onHitEntity", hit);
             builder.copy(arrowHit).copy(bulletHit).copy(arrow.getDeclaredMethod("doKnockback", LivingEntity.class, DamageSource.class));
+            builder.copy(arrow.getDeclaredMethod("doPostHurtEffects", LivingEntity.class));
+            for (Method method : net.minecraft.world.entity.projectile.arrow.Arrow.class.getDeclaredMethods()) {
+                if (method.getName().equals("doPostHurtEffects")) builder.copy(method);
+                else if (method.getName().startsWith("lambda$doPostHurtEffects$")) builder.copyLambda(method);
+            }
             var copied = world.prepareMethods(builder);
             var impactType = MethodType.methodType(void.class, net.minecraft.world.entity.projectile.Projectile.class, hit);
             arrowImpact = copied.get(arrowHit).asType(impactType);
@@ -325,11 +330,11 @@ public final class PaperRollbackCombatAccess {
                 .outputQuery(value -> value.playSound(null, 0, 0, 0, Holder.direct(SoundEvents.PLAYER_HURT), SoundSource.PLAYERS, 1F, 1F), args -> sound(args, false))
                 .nativeAction(value -> value.playSound(null, net.minecraft.core.BlockPos.ZERO, SoundEvents.PLAYER_HURT, SoundSource.PLAYERS, 1F, 1F), args -> nullableOwnedId((Entity) args[0]))
                 .outputQuery(value -> value.playSeededSound(null, 0, 0, 0, Holder.direct(SoundEvents.PLAYER_HURT), SoundSource.PLAYERS, 1F, 1F, 0L), args -> sound(args, true))
-                .nativeAction(value -> value.gameEvent((Entity) null, GameEvent.ENTITY_DAMAGE, Vec3.ZERO), args -> nullableOwnedId((Entity) args[0]))
+                .nativeAction(value -> value.gameEvent((Entity) null, GameEvent.ENTITY_DAMAGE, Vec3.ZERO), args -> requireGameEventSource((Entity) args[0]))
                 .nativeAction(value -> value.gameEvent(GameEvent.PROJECTILE_LAND, net.minecraft.core.BlockPos.ZERO, new GameEvent.Context(null, null)),
-                        args -> nullableOwnedId(((GameEvent.Context)args[2]).sourceEntity()))
+                        args -> requireGameEventSource(((GameEvent.Context)args[2]).sourceEntity()))
                 .outputQuery(value -> value.gameEvent(GameEvent.ENTITY_DAMAGE, Vec3.ZERO, new GameEvent.Context(null, null)), args -> {
-                    nullableOwnedId(((GameEvent.Context) args[2]).sourceEntity());
+                    requireGameEventSource(((GameEvent.Context) args[2]).sourceEntity());
                     position((Vec3) args[1]);
                     state.gameEvent(args[0], args[1], args[2]);
                 });
@@ -718,6 +723,10 @@ public final class PaperRollbackCombatAccess {
     private static Position checkedPosition(double x, double y, double z) {
         if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)) throw new IllegalArgumentException("Native combat position");
         return new Position(x, y, z);
+    }
+    private void requireGameEventSource(Entity entity) {
+        // Vanilla shulker bullets emit ENTITY_DAMAGE after their removal is recorded.
+        if (entity != null && !(entity.isRemoved() && world.actorIdentity(entity) != null)) ownedId(entity);
     }
     private UUID nullableOwnedId(Entity entity) { return entity == null ? null : ownedId(entity); }
     @SuppressWarnings("WrapperReferenceEquality")

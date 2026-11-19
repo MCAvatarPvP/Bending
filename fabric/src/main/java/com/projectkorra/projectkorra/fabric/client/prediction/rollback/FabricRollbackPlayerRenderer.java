@@ -40,6 +40,14 @@ public final class FabricRollbackPlayerRenderer implements AutoCloseable {
     private Map<UUID, FabricRollbackPlayerView> views = Map.of();
     private Map<UUID, Float> previousEyes = Map.of();
     private FabricRollbackActorRenderer actors;
+    private java.util.function.Consumer<UUID> cloudHandoff;
+
+    void bindCloudHandoff(java.util.function.Consumer<UUID> handoff) { cloudHandoff = handoff; }
+
+    public static void cloudTracked(World world, UUID actor) {
+        var owner = active;
+        if (owner != null && owner.world == world && owner.cloudHandoff != null) owner.cloudHandoff.accept(actor);
+    }
     private net.minecraft.client.network.ClientPlayerEntity selector;
     private FabricRollbackNativePlayerState picker;
     private FabricRollbackActors nativeActors;
@@ -165,7 +173,7 @@ public final class FabricRollbackPlayerRenderer implements AutoCloseable {
         var view = owner.lookup(entity);
         return view == null ? null : new CameraView(view, owner.previousEyes.get(view.id()), owner.viewer.equals(view.id()));
     }
-    @Override public void close() { check(); closed = true; actors = null; selector = null; picker = null; nativeActors = null; views = Map.of(); previousEyes = Map.of(); ownedCamera = null; if (active == this) active = null; }
+    @Override public void close() { check(); closed = true; actors = null; cloudHandoff = null; selector = null; picker = null; nativeActors = null; views = Map.of(); previousEyes = Map.of(); ownedCamera = null; if (active == this) active = null; }
     public UUID session() { return session; }
     private void check() { if (thread != Thread.currentThread()) throw new IllegalStateException("Player rendering crossed threads"); }
 }

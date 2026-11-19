@@ -64,7 +64,7 @@ class FabricRollbackActorRendererTest {
                 .constant(ClientWorld::getEnabledFeatures, FeatureFlags.VANILLA_FEATURES)
                 .constant(ClientWorld::getRegistryManager, FabricRollbackTestRegistry.simulationRegistries())
                 .query(w -> w.getEntity(id), null, ignored -> null)
-                .nativeAction(w -> w.addImportantParticleClient(particleType, 0, 0, 0, 0, 0, 0), ignored -> {
+                .outputQuery(w -> w.addImportantParticleClient(particleType, 0, 0, 0, 0, 0, 0), ignored -> {
                     var handle = allocator.newInstance(net.minecraft.client.particle.CloudParticle.class);
                     visuals.add(FabricRollbackCloudParticles.created(handle));
                 }).instance();
@@ -87,7 +87,14 @@ class FabricRollbackActorRendererTest {
         history.frame(2, List.of(FabricRollbackCloudParticles.Frame.capture(source)));
         assertEquals(12, visuals.size());
         assertTrue(visuals.subList(4, 8).stream().noneMatch(net.minecraft.client.particle.Particle::isAlive));
+        source.setUuid(UUID.randomUUID());
+        history.frame(3, List.of(FabricRollbackCloudParticles.Frame.capture(source)));
+        assertEquals(16, visuals.size());
+        history.retireCloud(id);
+        assertTrue(visuals.subList(4, 12).stream().noneMatch(net.minecraft.client.particle.Particle::isAlive));
+        assertTrue(visuals.subList(12, 16).stream().allMatch(net.minecraft.client.particle.Particle::isAlive));
         history.clear();
+        assertTrue(visuals.subList(12, 16).stream().noneMatch(net.minecraft.client.particle.Particle::isAlive));
         assertTrue(ordinary.isAlive());
         assertTrue(visuals.subList(0, 4).stream().allMatch(net.minecraft.client.particle.Particle::isAlive));
         assertTrue(visuals.subList(4, 12).stream().noneMatch(net.minecraft.client.particle.Particle::isAlive));

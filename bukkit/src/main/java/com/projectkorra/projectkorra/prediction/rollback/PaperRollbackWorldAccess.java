@@ -382,6 +382,7 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
 
     @SuppressWarnings("WrapperReferenceEquality")
     private com.projectkorra.projectkorra.prediction.rollback.world.RollbackPlayer logicalPlayer(org.bukkit.entity.Entity nativeEntity) {
+        if (!(nativeEntity instanceof org.bukkit.entity.Player)) return null;
         var player = RollbackControlEvents.player(nativeEntity.getUniqueId());
         if (player != null && (!(player.body().kinematicsSource() instanceof PaperRollbackNativePlayerState state)
                 || state.ownedPlayer().getBukkitEntityRaw() != nativeEntity || !ownsWrapper(nativeEntity))) {
@@ -601,6 +602,7 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
             throw new IllegalStateException("Native checkpoint references an unowned entity");
         }
         if (value instanceof org.bukkit.craftbukkit.entity.CraftEntity wrapper) {
+            if (playerWrappers.containsKey(wrapper)) return true;
             Entity entity = wrapper.getHandle();
             if (entity.getBukkitEntityRaw() == wrapper && (entity == root || ownsEntity(entity) || retiredActor(entity))) return true;
             throw new IllegalStateException("Native checkpoint references an unowned Bukkit entity");
@@ -617,9 +619,9 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
     }
 
     Object checkpointReferent(Object value) {
-        if (value instanceof org.bukkit.craftbukkit.entity.CraftEntity wrapper && retiredActor(wrapper.getHandle()))
-            return wrapper.getHandle();
-        return null;
+        if (!(value instanceof org.bukkit.craftbukkit.entity.CraftEntity wrapper) || playerWrappers.containsKey(wrapper)) return null;
+        Entity entity = wrapper.getHandle();
+        return retiredActor(entity) ? entity : null;
     }
 
     void sealPlayers() { checkThread(); playersSealed = true; }

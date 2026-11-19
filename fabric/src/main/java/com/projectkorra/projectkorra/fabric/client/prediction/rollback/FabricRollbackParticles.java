@@ -76,5 +76,7 @@ final class FabricRollbackParticles implements RollbackClientRuntime.Output<Roll
             default -> data;
         };
     }
+    void retireCloud(UUID actor) { history.retireCloud(actor); }
+
     @Override public void stop(RollbackStartServerEndpoint.Failure failure) { history.clear(); }
 }

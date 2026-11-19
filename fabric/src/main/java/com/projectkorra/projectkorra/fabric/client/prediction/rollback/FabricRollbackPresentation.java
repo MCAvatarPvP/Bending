@@ -25,6 +25,7 @@ public final class FabricRollbackPresentation<S, E> implements RollbackClientRun
                 () -> client.world == world && client.player == player && client.getNetworkHandler() == connection,
                 () -> client.gameRenderer.getCamera().getCameraPos(), position -> WorldRenderer.getLightmapCoordinates(world, position));
         if (actors != null) renderer.bindActors(new FabricRollbackActorRenderer(world, actors::active));
+        if (effects instanceof FabricRollbackParticles particles) renderer.bindCloudHandoff(particles::retireCloud);
         renderer.bindPicking(roster.players().get(player.getUuid()), actors);
         renderer.bindCamera(player.getUuid(), client.gameRenderer.getCamera());
         return new FabricRollbackPresentation<>(roster, player.getUuid(), timeline, effects, renderer);
