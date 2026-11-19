@@ -29,7 +29,7 @@ final class FabricRollbackDigBlocks implements RollbackDigging.Blocks {
     @Override public boolean mayBreak(Position position) {
         var pos = nativePos(position);
         var state = world.getBlockState(pos);
-        var mode = GameMode.byName(player.getGameMode().name().toLowerCase(java.util.Locale.ROOT));
+        var mode = GameMode.valueOf(player.getGameMode().name());
         return duel.round().active(player.getUniqueId()) && !state.isAir() && world.getWorldBorder().contains(pos)
                 && !body.isBlockBreakingRestricted(world, pos, mode)
                 && (!(state.getBlock() instanceof OperatorBlock) || body.isCreativeLevelTwoOp())
@@ -48,7 +48,6 @@ final class FabricRollbackDigBlocks implements RollbackDigging.Blocks {
         var state = world.getBlockState(pos);
         String material = FabricMC.material(state).name();
         var logical = duel.scene().logical();
-        if (CommonBlockBreak.cancelled(player, logical.getBlockAt(pos.getX(), pos.getY(), pos.getZ()))) return;
         var policy = duel.scene().services().settings().interactions();
         switch (policy.breakDecision(pos.getX(), pos.getY(), pos.getZ(), material)) {
             case DENY -> { return; }
@@ -58,6 +57,7 @@ final class FabricRollbackDigBlocks implements RollbackDigging.Blocks {
             }
             case ALLOW -> { }
         }
+        if (CommonBlockBreak.cancelled(player, logical.getBlockAt(pos.getX(), pos.getY(), pos.getZ()))) return;
         var tile = world.getBlockEntity(pos);
         var block = state.getBlock();
         var breaking = block.onBreak(world, pos, state, body);
