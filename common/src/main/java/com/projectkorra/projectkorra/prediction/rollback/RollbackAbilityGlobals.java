@@ -19,6 +19,10 @@ import java.util.*;
 public final class RollbackAbilityGlobals {
     private boolean enrolled;
     private RollbackDigging mining = new RollbackDigging();
+    public static RollbackDigging activeDigging() {
+        var globals = RollbackDomain.abilityGlobals();
+        return globals == null ? null : globals.mining;
+    }
     public static RollbackDigging digging() {
         return Objects.requireNonNull(RollbackDomain.abilityGlobals(), "Missing private ability state").mining;
     }

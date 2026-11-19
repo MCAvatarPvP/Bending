@@ -105,6 +105,28 @@ class FabricRollbackNativeActionsTest {
         }
     }
 
+    @Test void miningCapturesNativeStartStopAndAbortWithoutTouchingTheVisibleBlock() throws Exception {
+        var f = new Fixture();
+        var pos = new BlockPos(1, 0, 1);
+        try (var lease = new FabricRollbackNativeActions(f.manager, f.player, f.player.getEntityWorld(), () -> true,
+                f::packet, f.failures::add, ignored -> new FabricRollbackMiningInput.Material(ItemStack.EMPTY, .6F, false))) {
+            assertTrue(f.manager.attackBlock(pos, Direction.NORTH));
+            assertTrue(f.manager.updateBlockBreakingProgress(pos, Direction.NORTH));
+            assertTrue(f.manager.updateBlockBreakingProgress(pos, Direction.NORTH));
+            f.manager.cancelBlockBreaking();
+            assertTrue(f.manager.attackBlock(pos.up(), Direction.UP));
+            f.manager.cancelBlockBreaking();
+            f.runtime.tick(101);
+            var actions = f.sent.getFirst().actions();
+            assertEquals(List.of(RollbackInputActions.Kind.START_DESTROY_BLOCK, RollbackInputActions.Kind.STOP_DESTROY_BLOCK,
+                    RollbackInputActions.Kind.START_DESTROY_BLOCK, RollbackInputActions.Kind.ABORT_DESTROY_BLOCK),
+                    actions.stream().map(RollbackInputPacket.Edge::kind).toList());
+            assertEquals(new com.projectkorra.projectkorra.prediction.rollback.RollbackInteractionTarget.Dig(1, 0, 1,
+                    com.projectkorra.projectkorra.prediction.rollback.RollbackInteractionTarget.Face.NORTH), actions.getFirst().target());
+            assertTrue(f.failures.isEmpty());
+        }
+    }
+
     @Test void actualClientSwingDropAndBlockUseMethodsAreInterceptedBeforeTheirNativeBodies() throws Exception {
         var f = new Fixture(); var stack = new ItemStack(Items.APPLE, 4); f.player.getInventory().setStack(0, stack);
         var shell = RollbackNativeQueryShell.create(ClientPlayerEntity.class)

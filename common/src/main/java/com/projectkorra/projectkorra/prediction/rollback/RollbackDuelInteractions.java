@@ -5,12 +5,15 @@ import java.io.*;
 import java.util.*;
 
 /** Match rules for physical block breaks and drops. Bending uses its own region and ability rules. */
-public record RollbackDuelInteractions(boolean build, boolean bedWars, Set<String> allowedArenaMaterials, Set<Position> placed, RollbackItemRules items) {
+public record RollbackDuelInteractions(boolean build, boolean bedWars, Set<String> allowedArenaMaterials, Set<Position> placed, RollbackItemRules items, Set<String> liveBreakMaterials) {
+    public RollbackDuelInteractions withLiveBreakMaterials(Set<String> materials) {
+        return new RollbackDuelInteractions(build, bedWars, allowedArenaMaterials, placed, items, materials);
+    }
     public RollbackDuelInteractions(boolean build, boolean bedWars, Set<String> allowedArenaMaterials, Set<Position> placed) {
-        this(build, bedWars, allowedArenaMaterials, placed, RollbackItemRules.DEFAULT);
+        this(build, bedWars, allowedArenaMaterials, placed, RollbackItemRules.DEFAULT, Set.of());
     }
     public RollbackDuelInteractions withItems(RollbackItemRules settings) {
-        return new RollbackDuelInteractions(build, bedWars, allowedArenaMaterials, placed, settings);
+        return new RollbackDuelInteractions(build, bedWars, allowedArenaMaterials, placed, settings, liveBreakMaterials);
     }
     public enum Decision { DENY, ALLOW, LIVE_MATCH }
     public record LiveBreak(UUID player, int x, int y, int z, String material) {
@@ -22,16 +25,21 @@ public record RollbackDuelInteractions(boolean build, boolean bedWars, Set<Strin
 
     public RollbackDuelInteractions {
         Objects.requireNonNull(items);
+        liveBreakMaterials = Set.copyOf(liveBreakMaterials);
+        if (liveBreakMaterials.size() > 8192) throw new IllegalArgumentException("Native break material count");
         if (allowedArenaMaterials.size() > 8192 || placed.size() > 32768 || !build && !placed.isEmpty())
             throw new IllegalArgumentException("Invalid duel block rules");
         allowedArenaMaterials = Set.copyOf(allowedArenaMaterials);
         placed = Set.copyOf(placed);
     }
     public Decision breakDecision(int x, int y, int z, String material) {
-        if (material.contains("BED")) return bedWars ? Decision.LIVE_MATCH : Decision.ALLOW;
+        if (material.contains("BED")) return bedWars ? Decision.LIVE_MATCH : creativeBreakDecision(material);
         if (material.equals("FIRE") || bedWars && (material.equals("OAK_PLANKS") || material.equals("END_STONE"))
-                || allowedArenaMaterials.contains(material) || build && placed.contains(new Position(x,y,z))) return Decision.ALLOW;
+                || allowedArenaMaterials.contains(material) || build && placed.contains(new Position(x,y,z))) return creativeBreakDecision(material);
         return Decision.DENY;
+    }
+    public Decision creativeBreakDecision(String material) {
+        return liveBreakMaterials.contains(material) ? Decision.LIVE_MATCH : Decision.ALLOW;
     }
     public boolean consumeDrop(String material) { return material.equals("GLASS_BOTTLE"); }
 
@@ -44,6 +52,8 @@ public record RollbackDuelInteractions(boolean build, boolean bedWars, Set<Strin
             out.writeInt(position.x()); out.writeInt(position.y()); out.writeInt(position.z());
         }
         items.write(out);
+        out.writeShort(liveBreakMaterials.size());
+        for (String name : new TreeSet<>(liveBreakMaterials)) out.writeUTF(name);
     }
     static RollbackDuelInteractions read(DataInput in) throws IOException {
         boolean build = in.readBoolean(), beds = in.readBoolean();
@@ -59,6 +69,11 @@ public record RollbackDuelInteractions(boolean build, boolean bedWars, Set<Strin
         var placed = new HashSet<Position>();
         for (int i=0; i<count; i++)
             if (!placed.add(new Position(in.readInt(), in.readInt(), in.readInt()))) throw new IllegalArgumentException("Duplicate placed block");
-        return new RollbackDuelInteractions(build, beds, materials, placed, RollbackItemRules.read(in));
+        var items = RollbackItemRules.read(in);
+        int special = in.readUnsignedShort();
+        if (special > 8192) throw new IllegalArgumentException("Native break material count");
+        var live = new HashSet<String>();
+        for (int i = 0; i < special; i++) if (!live.add(in.readUTF())) throw new IllegalArgumentException("Duplicate native break material");
+        return new RollbackDuelInteractions(build, beds, materials, placed, items, live);
     }
 }

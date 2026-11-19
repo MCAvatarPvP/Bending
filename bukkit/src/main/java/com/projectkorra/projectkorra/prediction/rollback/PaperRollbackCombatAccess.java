@@ -41,7 +41,7 @@ import java.util.UUID;
 
 /** Private native player ticks, damage/resurrection and statistics. Unbound world/item and death/spawn paths require further adapters. */
 public final class PaperRollbackCombatAccess {
-    public sealed interface Output permits DamageOutput, StatusOutput, ParticleOutput, SoundOutput, TargetSoundOutput, WaypointOutput, PaperRollbackScoreboards.Change, PaperRollbackScoreboards.Assignment, PaperRollbackAdvancements.Announcement, PaperRollbackConnection.PacketOutput, PaperRollbackPacketData.Output { }
+    public sealed interface Output permits PaperRollbackItemLifecycle.Collection, DamageOutput, StatusOutput, ParticleOutput, SoundOutput, TargetSoundOutput, WaypointOutput, PaperRollbackScoreboards.Change, PaperRollbackScoreboards.Assignment, PaperRollbackAdvancements.Announcement, PaperRollbackConnection.PacketOutput, PaperRollbackPacketData.Output { }
     public record Position(double x, double y, double z) { }
     public record DamageOutput(UUID entity, String type, UUID source, UUID attacker, Position position) implements Output { }
     public record ParticleOutput(String type, Position position, int count, double x, double y, double z,
@@ -63,7 +63,7 @@ public final class PaperRollbackCombatAccess {
     private final MethodHandle damage, serverDamage, melee, use, release, mount, unmount;
     private Entity meleeTarget;
     private Vec3 meleeVelocity;
-    private final MethodHandle awardStatistic, resetStatistic;
+    private final MethodHandle awardStatistic, resetStatistic, mineBlock, miningExhaustion;
     private final MethodHandle addEffect, removeEffect, setAir, setSwimming, movementStep, playerBodyTick;
     private final MethodHandle serverTick, serverBodyTick, serverJump;
     private final MethodHandle tryGlide, stopGlide;
@@ -139,8 +139,10 @@ public final class PaperRollbackCombatAccess {
         // The native break callback mutates owned equipment and emits a captured
         // entity status through the private world.
         for (Method method : ItemStack.class.getDeclaredMethods()) {
-            if (Set.of("hurtAndBreak", "use", "releaseUsing", "applyAfterUseComponentSideEffects").contains(method.getName())) builder.copy(method);
+            if (Set.of("hurtAndBreak", "mineBlock", "use", "releaseUsing", "applyAfterUseComponentSideEffects").contains(method.getName())) builder.copy(method);
         }
+        for (Class<?> owner : java.util.List.of(net.minecraft.world.item.Item.class, net.minecraft.world.item.ShearsItem.class))
+            for (Method method : owner.getDeclaredMethods()) if (method.getName().equals("mineBlock")) builder.copy(method);
         // Shield wear/disable enters item-component and cooldown methods. Copy the
         // entire causal call path so its statistics, events and packets stay private.
         for (Method method : net.minecraft.world.item.component.BlocksAttacks.class.getDeclaredMethods()) {
@@ -231,6 +233,10 @@ public final class PaperRollbackCombatAccess {
             unmount = copied.get(Entity.class.getDeclaredMethod("stopRiding"));
             melee = copied.get(attack);
             use = copied.get(useItem); release = copied.get(LivingEntity.class.getDeclaredMethod("releaseUsingItem"));
+            mineBlock = copied.get(ItemStack.class.getMethod("mineBlock", net.minecraft.world.level.Level.class,
+                    net.minecraft.world.level.block.state.BlockState.class, net.minecraft.core.BlockPos.class, Player.class));
+            miningExhaustion = copied.get(Player.class.getMethod("causeFoodExhaustion", float.class,
+                    org.bukkit.event.entity.EntityExhaustionEvent.ExhaustionReason.class));
             useCooldown = copied.get(cooldownApply);
             playerImmobile = copied.get(Player.class.getDeclaredMethod("isImmobile"));
             serverImmobile = copied.get(ServerPlayer.class.getDeclaredMethod("isImmobile"));
@@ -619,6 +625,19 @@ public final class PaperRollbackCombatAccess {
         }
         catch (RuntimeException | Error failure) { throw failure; }
         catch (Throwable failure) { throw new IllegalStateException("Private native damage failed", failure); }
+    }
+
+    void mine(ItemStack tool, net.minecraft.world.level.block.state.BlockState state, net.minecraft.core.BlockPos at,
+            ServerPlayer player, boolean harvest) {
+        ownedId(player);
+        try {
+            mineBlock.invokeExact(tool, (net.minecraft.world.level.Level) player.level(), state, at, (Player) player);
+            if (harvest) {
+                statistic(player, net.minecraft.stats.Stats.BLOCK_MINED.get(state.getBlock()), 1, false);
+                miningExhaustion.invokeExact((Player) player, .005F, org.bukkit.event.entity.EntityExhaustionEvent.ExhaustionReason.BLOCK_MINED);
+            }
+        } catch (RuntimeException | Error failure) { throw failure; }
+        catch (Throwable failure) { throw new IllegalStateException("Private item mining failed", failure); }
     }
 
     void statistic(Object player, Object statistic, int amount, boolean reset) {

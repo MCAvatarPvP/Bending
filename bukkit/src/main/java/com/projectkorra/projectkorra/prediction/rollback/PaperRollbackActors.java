@@ -72,7 +72,8 @@ public final class PaperRollbackActors implements RollbackArenaActions.Native, R
     private <T extends Entity> PaperRollbackActor make(Identity id, Class<T> type) {
         var key = Identifier.withDefaultNamespace(id.type().name().toLowerCase(Locale.ROOT));
         var nativeType = BuiltInRegistries.ENTITY_TYPE.getOptional(key).orElseThrow();
-        var entity = nativeType == net.minecraft.world.entity.EntityType.SNOWBALL ? new PaperRollbackSnowball(scene)
+        var entity = nativeType == net.minecraft.world.entity.EntityType.ITEM ? new PaperRollbackItemEntity(scene)
+                : nativeType == net.minecraft.world.entity.EntityType.SNOWBALL ? new PaperRollbackSnowball(scene)
                 : nativeType == net.minecraft.world.entity.EntityType.ARROW ? new PaperRollbackArrow(scene)
                 : Objects.requireNonNull(nativeType.create(server(), EntitySpawnReason.TRIGGERED), "Cannot create private actor " + key);
         entity.setId(id.networkId()); entity.setUUID(id.uuid());
@@ -142,10 +143,18 @@ public final class PaperRollbackActors implements RollbackArenaActions.Native, R
         drop.setDeltaMovement(random.nextDouble() * .2 - .1, .2, random.nextDouble() * .2 - .1);
         return (Item) actor.view();
     }
+    void dropBlockResource(net.minecraft.core.BlockPos at, net.minecraft.world.item.ItemStack stack) {
+        var random = server().getRandom();
+        var pose = new Pose(at.getX() + 0.25 + random.nextDouble() * 0.5,
+                at.getY() + 0.25 + random.nextDouble() * 0.5 - net.minecraft.world.entity.EntityType.ITEM.getHeight() / 2,
+                at.getZ() + 0.25 + random.nextDouble() * 0.5, 0, 0);
+        scene.logical().entities().add(dropItem(scene.logical(), pose, items.capture(stack), false));
+    }
+
     /** The native drop input owns the same registered item body exposed to bending and restored on handoff. */
     void dropSelected(net.minecraft.server.level.ServerPlayer player, boolean wholeStack) {
         if (!scene.world().ownsPlayer(player)) throw new IllegalArgumentException("Foreign item dropper");
-        if (player.isSpectator() || !player.isAlive()) return;
+        if (player.isSpectator() || !player.isAlive() || !scene.world().activeParticipant(player.getUUID())) return;
         var inventory = player.getInventory();
         var dropped = inventory.removeFromSelected(wholeStack);
         if (dropped.isEmpty()) return;

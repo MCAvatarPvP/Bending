@@ -38,6 +38,23 @@ class PaperRollbackPlayerAccessNativeTest {
         });
     }
 
+    @Test void snapshotsUnregisteredSharedAbilityStartPermissionForBothPlayers() throws Exception {
+        onTickThread(() -> {
+            var first = new UUID(0, 1);
+            var second = new UUID(0, 2);
+            String node = "bending.funny.abilstart";
+            var roster = List.of(player(first, "SURVIVAL", "RIGHT", Set.of(), Set.of(node)),
+                    player(second, "SURVIVAL", "RIGHT", Set.of(), Set.of()));
+            var snapshot = PaperRollbackPlayerAccess.capture(roster, List.of(), PaperRollbackPlayerAccess.gameplayNodes());
+            var received = RollbackPlayerAccess.decode(snapshot.encode());
+            assertFalse(received.players().get(first).hasPermission(node));
+            assertTrue(received.players().get(second).hasPermission(node));
+            assertTrue(received.players().get(second).hasPermission("bending.element.chi"));
+            assertThrows(IllegalStateException.class, () -> received.players().get(second).hasPermission("bending.unknown"));
+            return null;
+        });
+    }
+
     @Test void cannotCaptureFromAnAsyncThread() {
         assertThrows(IllegalStateException.class, () -> PaperRollbackPlayerAccess.capture(List.of(), List.of(), List.of()));
     }

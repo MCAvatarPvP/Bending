@@ -156,6 +156,77 @@ class PaperRollbackNativeSceneNativeTest {
         });
     }
 
+    @Test void privateMiningHonorsTheKitKeepsNativeDropsAndDefersObjectiveCallbacks() throws Exception {
+        onTickThread(() -> {
+            var configField = io.papermc.paper.configuration.GlobalConfiguration.class.getDeclaredField("instance");
+            configField.setAccessible(true);
+            var previous = configField.get(null);
+            var config = new io.papermc.paper.configuration.GlobalConfiguration();
+            config.misc = new org.objenesis.ObjenesisStd().newInstance(io.papermc.paper.configuration.GlobalConfiguration.Misc.class);
+            configField.set(null, config);
+            try {
+                var roster = PaperRollbackRosterSeed.capture(source(), 0);
+                var initial = seed();
+                var rules = new RollbackDuelInteractions(false, true, Set.of("GOLD_ORE"), Set.of())
+                        .withLiveBreakMaterials(PaperRollbackMining.liveMaterials());
+                assertTrue(rules.liveBreakMaterials().contains("GOLD_ORE"));
+                var arena = new RollbackWorldSeed(initial.world(), initial.name(), initial.minimumY(), initial.maximumY(),
+                        initial.dayTime(), initial.storm(), initial.settings().withInteractions(rules), initial.border(),
+                        initial.environment(), initial.terrain(), initial.light(), initial.scheduledTicks());
+                var events = new ArrayList<org.bukkit.event.Event>();
+                var scene = scene(arena, roster, roster.participants(), new Events() {
+                    @Override public void event(org.bukkit.event.Event event) { events.add(event); }
+                    @Override public void gameEvent(Object event, Object pos, Object context) { }
+                    @Override public void output(PaperRollbackCombatAccess.Output ignored) { }
+                });
+                var items = new RollbackNativeItems<>(new PaperRollbackItems(PaperRollbackEnvironmentNativeTest.registries()));
+                var actors = new PaperRollbackActors(new UUID(72, 44), 16, items);
+                actors.bind(scene);
+                var services = new TreeMap<UUID, RollbackRosterViews.Services>();
+                scene.roster().forEach((id, nativePlayer) -> {
+                    var body = (ServerPlayer) nativePlayer.ownedPlayer();
+                    var profile = new RollbackPlayerState.Profile(body.getGameProfile().name(), "SURVIVAL", "RIGHT", true, false, true, 50);
+                    services.put(id, new RollbackRosterViews.Services(profile, Set.of(),
+                            new com.projectkorra.projectkorra.platform.mc.scoreboard.Scoreboard(),
+                            actors, unused(RollbackPlayerState.Rules.class)));
+                });
+                var views = PaperRollbackRosterViews.bind(scene.logical(), scene.world(), roster.participants(), scene.roster(), items, services);
+                var player = views.players().values().iterator().next();
+                var body = (ServerPlayer) scene.roster().get(player.getUniqueId()).ownedPlayer();
+                var step = new RollbackStep<Object>(1, 10);
+                var mining = new PaperRollbackMining(scene, actors, body, player, step);
+                var pos = new RollbackBlockStore.Position(0, 4, 0);
+                var block = scene.logical().getBlockAt(0, 4, 0);
+                block.setType(Material.STONE, false);
+                assertFalse(mining.mayBreak(pos));
+                block.setType(Material.OAK_PLANKS, false);
+                var axe = new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.DIAMOND_AXE);
+                body.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, axe);
+                try (var clock = RollbackClock.at(1000, 2000, 1, 50_000_000)) {
+                    assertTrue(mining.mayBreak(pos));
+                    assertTrue(mining.delta(pos) > 0);
+                    mining.attack(pos);
+                    mining.destroy(pos);
+                    assertEquals(Material.AIR, block.getType());
+                    assertEquals(1, axe.getDamageValue());
+                    assertEquals(1, body.getStats().getValue(net.minecraft.stats.Stats.BLOCK_MINED, net.minecraft.world.level.block.Blocks.OAK_PLANKS));
+                    var dropped = (net.minecraft.world.entity.item.ItemEntity) actors.active().getFirst();
+                    assertTrue(dropped.getItem().is(net.minecraft.world.item.Items.OAK_PLANKS));
+                    block.setType(Material.GOLD_ORE, false);
+                    assertTrue(mining.mayBreak(pos));
+                    mining.destroy(pos);
+                    assertEquals(Material.GOLD_ORE, block.getType());
+                }
+                assertEquals(1, events.stream().filter(org.bukkit.event.block.BlockBreakEvent.class::isInstance).count());
+                var effects = step.finish();
+                assertEquals(2, effects.size());
+                assertInstanceOf(PaperRollbackMining.Broken.class, effects.getFirst());
+                assertEquals(new RollbackDuelInteractions.LiveBreak(player.getUniqueId(), 0, 4, 0, "GOLD_ORE"), effects.getLast());
+                return null;
+            } finally { configField.set(null, previous); }
+        });
+    }
+
     @Test void itemDropsUseTheSelectedSlotAndRewindTheOwnedThrowerAndActor() throws Exception {
         onTickThread(() -> {
             var configField = io.papermc.paper.configuration.GlobalConfiguration.class.getDeclaredField("instance");
@@ -171,6 +242,7 @@ class PaperRollbackNativeSceneNativeTest {
                     @Override public void event(org.bukkit.event.Event event) {
                         if (event instanceof org.bukkit.event.player.PlayerDropItemEvent drop) events.add(drop);
                     }
+                    @Override public void output(PaperRollbackCombatAccess.Output output) { }
                 });
                 var items = new RollbackNativeItems<>(new PaperRollbackItems(PaperRollbackEnvironmentNativeTest.registries()));
                 var actors = new PaperRollbackActors(new UUID(72, 41), 16, items);
@@ -200,6 +272,13 @@ class PaperRollbackNativeSceneNativeTest {
                         assertEquals(3, player.getStats().getValue(net.minecraft.stats.Stats.ITEM_DROPPED, net.minecraft.world.item.Items.DIAMOND));
                         var state = actors.registry().exportState().encode();
                         if (first == null) first = state; else assertArrayEquals(first, state);
+                        second.setPos(4.5, 4.0, 4.5);
+                        item.tick();
+                        assertEquals(39, item.pickupDelay);
+                        item.setNoPickUpDelay();
+                        item.playerTouch(player);
+                        assertTrue(item.isRemoved());
+                        assertTrue(inventory.contains(new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.DIAMOND)));
                     }
                 }
                 assertEquals(4, events.size());

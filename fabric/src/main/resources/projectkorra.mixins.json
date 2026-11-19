@@ -39,6 +39,7 @@
     "client.AreaEffectCloudEntityAccessor",
     "client.AreaEffectCloudPredictionMixin",
     "client.ArrowLifetimeRollbackMixin",
+    "client.ItemRulesRollbackMixin",
     "client.ArrowParticlesPredictionMixin",
     "client.ShulkerBulletParticlesPredictionMixin",
     "client.BlockCollisionSpliteratorPredictionMixin",

@@ -72,6 +72,7 @@ class FabricRollbackInputTest {
         f.runtime.tick(101);
         assertEquals(List.of(RollbackInputActions.Kind.RIGHT_CLICK_BLOCK), f.sent.getFirst().actions().stream().map(RollbackInputPacket.Edge::kind).toList());
         f.runtime.tick(102);
+        f.runtime.authority(confirmed(f.sent, A, B, 42));
         f.input.packet(new HandSwingC2SPacket(Hand.MAIN_HAND), 102, 0, 0);
         f.runtime.tick(103);
         assertEquals(RollbackInputActions.Kind.SWING, f.sent.getLast().actions().getFirst().kind());
@@ -103,6 +104,13 @@ class FabricRollbackInputTest {
         assertFalse(unprepared.consumePacket(null, null, keepAlive, 100));
         f.input.packet(new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ORIGIN, Direction.DOWN), 100, 0, 0);
         f.runtime.tick(101); assertEquals(List.of(RollbackInputActions.Kind.DROP_ITEM, RollbackInputActions.Kind.SWAP_HANDS), f.sent.getFirst().actions().stream().map(RollbackInputPacket.Edge::kind).toList());
+    }
+
+    static RollbackAuthorityUpdate confirmed(List<RollbackInputPacket> sent, UUID player, UUID peer, long seed) {
+        var idle = new RollbackPlayerInput(new RollbackMovementInput(0, 0, false, 0, 0), false, List.of());
+        var frames = sent.stream().map(packet -> Map.of(player, packet.playerInput(player, seed), peer, idle)).toList();
+        return new RollbackAuthorityUpdate(sent.getFirst().session(), 1, 0, frames.size(), frames.size(), 1, frames,
+                Map.of(player, List.of(), peer, List.of()));
     }
 
     private static final class Fixture {

@@ -652,7 +652,11 @@ public final class RollbackGraphCodec {
         for (int index = 0; index < entries.size(); index++) {
             Entry entry = entries.get(index);
             var node = nodes.get(index);
-            node.children = Arrays.stream(entry.references).mapToObj(nodes::get).toList();
+            if (entry.references.length != 0) {
+                var children = new ArrayList<RollbackStateTransfer.Node>(entry.references.length);
+                for (int reference : entry.references) children.add(nodes.get(reference));
+                node.children = children;
+            }
             int n = node.children.size(), size = n - (sorted(entry.kind) ? 1 : 0);
             Object target = switch (entry.kind) {
                 case NULL -> null;
@@ -667,7 +671,7 @@ public final class RollbackGraphCodec {
                 case DOUBLE -> new Double((Double) entry.value);
                 case CHAR -> new Character((Character) entry.value);
                 case STRING, UUID, OPTIONAL_INT, OPTIONAL_LONG, OPTIONAL_DOUBLE, PRIMITIVE_ARRAY -> entry.value;
-                case ENUM -> RollbackEnumSchema.constants(catalog.type(entry.type))[(Integer) entry.value];
+                case ENUM -> RollbackEnumSchema.constant(catalog.type(entry.type), (Integer) entry.value);
                 case CLASS -> catalog.type(entry.type);
                 case ARRAY -> Array.newInstance(catalog.type(entry.type), n);
                 case OBJECT -> catalog.layout(entry.type).allocator.newInstance();

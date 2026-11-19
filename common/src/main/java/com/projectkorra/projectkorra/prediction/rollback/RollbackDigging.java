@@ -18,7 +18,14 @@ public final class RollbackDigging {
         float delta(Position pos);
         void destroy(Position pos);
     }
-    private record Mining(Position pos, long began) {}
+    static final class Mining {
+        private final int x, y, z;
+        private final long began;
+        Mining(Position pos, long began) {
+            this.x = pos.x(); this.y = pos.y(); this.z = pos.z(); this.began = began;
+        }
+        Position position() { return new Position(x, y, z); }
+    }
     private final Map<UUID, Mining> mining = new HashMap<>();
     private final Map<UUID, Mining> delayed = new HashMap<>();
 
@@ -39,7 +46,7 @@ public final class RollbackDigging {
             }
             case STOP_DESTROY_BLOCK -> {
                 var current = mining.get(player);
-                if (current == null || !current.pos.equals(pos)) return;
+                if (current == null || !current.position().equals(pos)) return;
                 mining.remove(player);
                 if (!blocks.mayBreak(pos)) return;
                 if (progress(current, tick, blocks) >= .7F) blocks.destroy(pos);
@@ -52,13 +59,13 @@ public final class RollbackDigging {
     public void tick(UUID player, long tick, Blocks blocks) {
         var pending = delayed.get(player);
         if (pending == null) return;
-        if (!blocks.mayBreak(pending.pos)) delayed.remove(player);
+        if (!blocks.mayBreak(pending.position())) delayed.remove(player);
         else if (progress(pending, tick, blocks) >= 1F) {
             delayed.remove(player);
-            blocks.destroy(pending.pos);
+            blocks.destroy(pending.position());
         }
     }
     private static float progress(Mining mine, long tick, Blocks blocks) {
-        return blocks.delta(mine.pos) * (tick - mine.began + 1);
+        return blocks.delta(mine.position()) * (tick - mine.began + 1);
     }
 }

@@ -64,6 +64,18 @@ final class PaperRollbackPresentation {
     }
     void publish(RollbackEngine.Effect<Object> effect, long confirmed) {
         Object event = effect.value();
+        if (event instanceof PaperRollbackItemLifecycle.Collection collected) {
+            var collector = body(collected.collector());
+            var actor = body(collected.item());
+            if (collector != null && actor != null) tracked(collected.collector(), true,
+                    new net.minecraft.network.protocol.game.ClientboundTakeItemEntityPacket(actor.getEntityId(), collector.getEntityId(), collected.count()));
+            return;
+        }
+        if (event instanceof PaperRollbackMining.Broken broken) {
+            ((org.bukkit.craftbukkit.CraftWorld) world).getHandle().levelEvent(2001,
+                    new net.minecraft.core.BlockPos(broken.x(), broken.y(), broken.z()), broken.state());
+            return;
+        }
         if (event instanceof PaperRollbackConnection.PacketOutput || event instanceof PaperRollbackPacketData.Direct directPacket
                 && !(directPacket.data() instanceof PaperRollbackPacketData.Advancements
                 || directPacket.data() instanceof PaperRollbackPacketData.EntityStatus || directPacket.data() instanceof PaperRollbackPacketData.Animation)) {

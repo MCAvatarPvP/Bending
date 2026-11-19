@@ -40,7 +40,7 @@ public final class PaperRollbackWorldSeed {
         var items = new RollbackItemRules(world.spigotConfig.itemDespawnRate, overrides, world.spigotConfig.itemMerge,
                 paper.entities.behavior.onlyMergeItemsHorizontally, paper.fixes.fixItemsMergingThroughWalls);
         var settings = PaperRollbackWorldSettings.capture(world, randomSeed, soundSeed)
-                .withStructures(structures).withInteractions(interactions.withItems(items));
+                .withStructures(structures).withInteractions(interactions.withItems(items).withLiveBreakMaterials(PaperRollbackMining.liveMaterials()));
         var border = PaperRollbackBorder.capture(world.getWorldBorder());
         var environment = PaperRollbackEnvironment.capture(world);
         boolean storm = bukkit.hasStorm();

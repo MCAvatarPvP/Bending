@@ -366,6 +366,11 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
                 .query(value -> value.getNonSpectatingEntities(net.minecraft.entity.LivingEntity.class, probeBox), List.of(), args ->
                         otherEntities(new Object[]{null, args[1], (Predicate<Entity>) entity ->
                                 ((Class<?>) args[0]).isInstance(entity) && !entity.isSpectator()}))
+                .query(value -> value.getEntitiesByClass(Entity.class, probeBox, entity -> true), List.of(), args -> {
+                    var type = (Class<?>) args[0];
+                    var filter = (Predicate<Entity>)args[2];
+                    return otherEntities(new Object[]{null, args[1], (Predicate<Entity>) entity -> type.isInstance(entity) && filter.test(entity)});
+                })
                 .query(value -> value.getOtherEntities(null, probeBox, entity -> true), List.of(), this::otherEntities)
                 .nativeQuery(value -> value.getOtherEntities(null, probeBox), List.of(), args -> check((Box) args[1]))
                 .nativeQuery(value -> value.getCrammedEntities(null, probeBox), List.of(), args -> check((Box) args[1]))

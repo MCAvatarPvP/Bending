@@ -44,7 +44,7 @@ public final class PaperRollbackExecution<E> extends RollbackPlayerExecution<E> 
         var target = edge.action().target();
         if (target == null) return true;
         var nativePlayer = (ServerPlayer) state(player).ownedPlayer();
-        return RollbackInteractionTarget.allowed(player, edge, target instanceof RollbackInteractionTarget.Block
+        return RollbackInteractionTarget.allowed(player, edge, RollbackInteractionTarget.targetsBlock(target)
                 ? nativePlayer.blockInteractionRange() : nativePlayer.entityInteractionRange(), candidate -> {
             var body = com.projectkorra.projectkorra.prediction.rollback.world.RollbackEntityBody.logicalBody(candidate);
             var entity = switch (body.kinematicsSource()) {

@@ -10,10 +10,11 @@ import java.util.List;
 final class PaperRollbackPhases implements RollbackPlayerExecution.Services<Object, Void> {
     private final PaperRollbackNativeScene scene;
     private final PaperRollbackActors actors;
+    private RollbackStep<Object> step;
     PaperRollbackPhases(PaperRollbackNativeScene scene, PaperRollbackActors actors) {
         this.scene = scene; this.actors = actors;
     }
-    @Override public void begin(RollbackStep<Object> effects) { scene.services().advanceTick(effects.tick()); }
+    @Override public void begin(RollbackStep<Object> effects) { scene.services().advanceTick(effects.tick()); step = effects; }
     @Override public void action(RollbackPlayer player, RollbackPlayerInput.Edge edge, CommonInputHandler.InputResult result) {
         if (result.cancelEvent()) return;
         var state = scene.roster().get(player.getUniqueId());
@@ -22,6 +23,12 @@ final class PaperRollbackPhases implements RollbackPlayerExecution.Services<Obje
         var hand = edge.action().hand() == RollbackInputActions.Hand.OFF ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
         switch (edge.action().kind()) {
             case SNEAK_START, SNEAK_STOP -> { }
+            case START_DESTROY_BLOCK, STOP_DESTROY_BLOCK, ABORT_DESTROY_BLOCK -> {
+                var target = (RollbackInteractionTarget.Dig) edge.action().target();
+                var pos = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Position(target.x(), target.y(), target.z());
+                RollbackAbilityGlobals.digging().action(body.getUUID(), step.tick(), edge.action().kind(), pos,
+                        new PaperRollbackMining(scene, actors, body, player, step));
+            }
             case RELEASE_USE_ITEM -> scene.world().releaseItem(body);
             case RIGHT_CLICK -> scene.world().useItem(body, hand);
             case DROP_ITEM, DROP_ALL_ITEMS -> actors.dropSelected(body,
@@ -48,8 +55,16 @@ final class PaperRollbackPhases implements RollbackPlayerExecution.Services<Obje
             default -> throw new IllegalArgumentException("Unexpected native input remainder " + edge.action().kind());
         }
     }
-    @Override public void tickWorld(long tick) { actors.registry().tick(); }
-    @Override public void end() { }
+    @Override public void tickWorld(long tick) {
+        var mining = RollbackAbilityGlobals.digging();
+        for (var entry : scene.roster().entrySet()) {
+            var player = (RollbackPlayer) scene.logical().entities().get(entry.getKey());
+            mining.tick(entry.getKey(), tick, new PaperRollbackMining(scene, actors,
+                    (ServerPlayer) entry.getValue().ownedPlayer(), player, step));
+        }
+        actors.registry().tick();
+    }
+    @Override public void end() { step = null; }
     @Override public Void captureRollbackState() { return null; }
     @Override public void restoreRollbackState(Void state) { }
     @Override public List<?> rollbackReferences() { return List.of(scene, actors); }

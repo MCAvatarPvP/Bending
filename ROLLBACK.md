@@ -55,11 +55,11 @@ implemented by the plugin and verified against the packaged Paper version.
 
 Two Minecraft 1.21.11 Fabric clients and stock Paper 1.21.11 build 132 run the matching ProjectKorra 1.10.35 jars with Neptune 2.3. The loopback test adds 50 ms in each direction for one participant and 10 ms for the other.
 
-- Both clients opted in, completed the bootstrap and started the same private session. The November 19 run reached 19 Paper simulation ticks before a native advancement queried the arena's structures. Paper restored both players, and both clients automatically renegotiated ordinary prediction in the active Neptune round.
-- In that round, a physical Paralyze attack produced one local action and one claim for the defender. Paper applied and released the stun, and the caster received the cooldown. Neptune rejected the same attack in the lobby.
-- One Smokescreen swing produced a single Paper snowball and accepted impact. The caster's renderer and particle engine used the predicted cloud. The defender's renderer and particle engine used the authoritative cloud. Both were observed through Minecraft's render predicate on the actual clients.
-- Simultaneous Rope Darts reached both clients. A short overlap between the local arrow and two server arrows was visible in the render predicate before the local arrow retired. The follow-up build tests the ordering of the launch receipt and native spawn.
-- The first 19-frame trial measured a 26.2 ms median server simulation frame and a 114.9 ms maximum. Cold scene construction still exceeded the 50 ms server tick budget. Longer active-duel measurements are required for a capacity estimate.
+- Both clients opted in and started the same private session. A cold run reached 57 server simulation ticks. A later run with real Rope Dart input exposed a missing permission decision in the shared ability-start listener. Paper restored both players and the clients automatically renegotiated ordinary prediction in the same Neptune round.
+- In ordinary prediction, a physical Paralyze attack produced one local action and one claim for the defender. Paper applied and released the stun, and the caster received the cooldown. Neptune rejected the same attack in the lobby.
+- One Smokescreen swing produced a single Paper snowball and accepted impact. The caster rendered the predicted cloud and the defender rendered the authoritative cloud. A canceled impact removed the provisional cloud on the caster and produced no cloud for the defender.
+- In ordinary prediction, simultaneous Rope Darts produced one native arrow per caster. Across 60 samples on each client, the native renderer and particle probes reported at most two visible arrows, including the frame when the local arrow handed off to its server counterpart.
+- Across all 57 cold server simulation ticks the median was 17.52 ms, p95 was 47.88 ms and the maximum was 137.6 ms. World and player setup are measured separately and still exceed 50 ms on a cold server. This run covered one duel.
 
 ## Implementation history
 

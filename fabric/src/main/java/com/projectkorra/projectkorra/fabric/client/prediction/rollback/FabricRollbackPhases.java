@@ -67,10 +67,11 @@ final class FabricRollbackPhases implements RollbackPlayerExecution.Services<Obj
     }
     @Override public void tickWorld(long tick) {
         FabricRollbackGliding.use(duel.scene().roster().world(), () -> {
-            if (RollbackDomain.active()) {
+            var digging = RollbackAbilityGlobals.activeDigging();
+            if (digging != null) {
                 for (var player : duel.views().players().values()) {
                     var state = duel.scene().roster().players().get(player.getUniqueId());
-                    RollbackAbilityGlobals.digging().tick(player.getUniqueId(), tick,
+                    digging.tick(player.getUniqueId(), tick,
                             new FabricRollbackDigBlocks(duel, player, state.ownedPlayer()));
                 }
             }

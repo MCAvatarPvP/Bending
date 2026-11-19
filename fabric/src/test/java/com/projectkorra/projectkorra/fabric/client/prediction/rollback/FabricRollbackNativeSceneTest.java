@@ -215,6 +215,67 @@ class FabricRollbackNativeSceneTest {
         assertTrue(snowball.isRemoved());
     }
 
+    @Test void capturedKitRulesAllowAPlayerToMinePlanksAndKeepUntouchedArenaStone() throws Exception {
+        var rules = new RollbackDuelInteractions(false, false, Set.of("OAK_PLANKS"), Set.of());
+        var settings = FabricRollbackWorldServicesTest.settings().withInteractions(rules);
+        var duel = FabricRollbackNativeScene.importDuel(bootstrapData(seed(settings)), FabricRollbackTestRegistry.simulationRegistries(),
+                FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);
+        var caster = duel.views().players().values().iterator().next();
+        var body = duel.scene().roster().players().get(caster.getUniqueId()).ownedPlayer();
+        body.getAbilities().creativeMode = false;
+        body.getAbilities().allowModifyWorld = true;
+        body.setStackInHand(net.minecraft.util.Hand.MAIN_HAND, new net.minecraft.item.ItemStack(net.minecraft.item.Items.DIAMOND_AXE));
+        var blocks = new FabricRollbackDigBlocks(duel, caster, body);
+        var logical = duel.scene().logical();
+        var at = new RollbackBlockStore.Position(2, 10, 2);
+        var block = logical.getBlockAt(at.x(), at.y(), at.z());
+        block.setType(Material.STONE, false);
+        blocks.destroy(at);
+        assertEquals(Material.STONE, block.getType());
+        block.setType(Material.OAK_PLANKS, false);
+        assertTrue(blocks.mayBreak(at));
+        assertTrue(blocks.delta(at) > 0);
+        blocks.attack(at);
+        var engine = new RollbackEngine<>(new RollbackSimulation<Integer, Integer, Object>() {
+            public Integer snapshot() { return 0; }
+            public void restore(Integer ignored) { }
+            public Integer predict(UUID who, Integer previous) { return previous; }
+            public void step(long tick, Map<UUID, Integer> inputs, RollbackStep<Object> effects) {
+                try (var binding = duel.output().open(effects)) { blocks.destroy(at); }
+            }
+        }, Map.of(caster.getUniqueId(), 0), RollbackDuelRuntime.ENGINE, 0);
+        engine.advance();
+        assertEquals(Material.AIR, block.getType());
+        var drop = (net.minecraft.entity.ItemEntity)duel.actors().active().getFirst();
+        assertTrue(drop.getStack().isOf(net.minecraft.item.Items.OAK_PLANKS));
+    }
+
+    @Test void privateInventoryDropConsumesOnlyTheRequestedStackAndItsNativeItemHasTheKitLifetime() throws Exception {
+        var rules = RollbackDuelInteractions.STANDARD.withItems(new RollbackItemRules(6000, Map.of("minecraft:diamond", 3), 2.5, false, true));
+        var settings = FabricRollbackWorldServicesTest.settings().withInteractions(rules);
+        var duel = FabricRollbackNativeScene.importDuel(bootstrapData(seed(settings)), FabricRollbackTestRegistry.simulationRegistries(),
+                FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);
+        var caster = duel.views().players().values().iterator().next();
+        var body = duel.scene().roster().players().get(caster.getUniqueId()).ownedPlayer();
+        body.setPosition(2, 3, 2);
+        body.setStackInHand(net.minecraft.util.Hand.MAIN_HAND, new net.minecraft.item.ItemStack(net.minecraft.item.Items.DIAMOND, 4));
+        duel.actors().dropSelected(body, false);
+        assertEquals(3, body.getMainHandStack().getCount());
+        var drop = (net.minecraft.entity.ItemEntity) duel.actors().active().getFirst();
+        assertEquals(1, drop.getStack().getCount());
+        assertEquals(body.getEyeY() - (double).3F, drop.getY());
+        assertSame(duel.actors().logical(drop), duel.scene().logical().entities().get(drop.getUuid()));
+        var phases = new FabricRollbackPhases(duel);
+        phases.tickWorld(1); phases.tickWorld(2);
+        assertFalse(drop.isRemoved());
+        phases.tickWorld(3);
+        assertTrue(drop.isRemoved());
+        body.setStackInHand(net.minecraft.util.Hand.MAIN_HAND, new net.minecraft.item.ItemStack(net.minecraft.item.Items.GLASS_BOTTLE, 2));
+        duel.actors().dropSelected(body, true);
+        assertTrue(body.getMainHandStack().isEmpty());
+        assertTrue(duel.actors().active().isEmpty());
+    }
+
     @Test void aPassiveAirScooterPassengerStillSamplesNativePlayerControls() throws Exception {
         var duel = FabricRollbackNativeScene.importDuel(bootstrapData(), FabricRollbackTestRegistry.simulationRegistries(),
                 FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);

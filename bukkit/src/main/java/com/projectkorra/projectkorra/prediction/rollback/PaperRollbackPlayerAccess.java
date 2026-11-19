@@ -1,12 +1,18 @@
 package com.projectkorra.projectkorra.prediction.rollback;
 
 import ca.spottedleaf.moonrise.common.util.TickThread;
+import com.projectkorra.projectkorra.Element;
+import com.projectkorra.projectkorra.ability.util.MultiAbilityManager;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.PassiveAbility;
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackPlayerState;
 import org.bukkit.entity.Player;
 import org.bukkit.permissions.Permission;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 /** Resolves the server's permission provider once at capture, including explicit denials and child nodes. */
@@ -42,9 +48,38 @@ public final class PaperRollbackPlayerAccess {
         return new RollbackPlayerAccess(captured);
     }
 
-    /** Mirrors the generic ability/passive permission construction, without a list of selected abilities. */
+    private static final class InstalledPermissions {
+        static final Set<String> NODES = load();
+
+        private static Set<String> load() {
+            var nodes = new TreeSet<String>();
+            try {
+                var resources = PaperRollbackPlayerAccess.class.getClassLoader().getResources(
+                        "META-INF/projectkorra/rollback-gameplay.permissions");
+                if (!resources.hasMoreElements()) throw new IllegalStateException("Missing rollback gameplay permission inventory");
+                while (resources.hasMoreElements()) {
+                    try (var reader = new BufferedReader(new InputStreamReader(resources.nextElement().openStream(), StandardCharsets.UTF_8))) {
+                        for (String node; (node = reader.readLine()) != null;) add(nodes, node);
+                    }
+                }
+            } catch (IOException failure) {
+                throw new IllegalStateException("Cannot read rollback gameplay permission inventory", failure);
+            }
+            return Collections.unmodifiableSet(nodes);
+        }
+    }
+
+    /** Includes shared listener checks and runtime permission names from the installed gameplay registries. */
     public static Set<String> gameplayNodes() {
-        var result = new TreeSet<String>();
+        var result = new TreeSet<>(InstalledPermissions.NODES);
+        for (var element : Element.getAllElements()) add(result, "bending.element." + element.getName());
+        for (var sub : Element.getAllSubElements()) {
+            var parents = sub instanceof Element.MultiSubElement multi ? multi.getParentElements() : new Element[]{sub.getParentElement()};
+            for (var parent : parents) add(result, "bending." + parent.getName() + "." + sub.getName() + sub.getType().getBending());
+        }
+        for (var multi : MultiAbilityManager.multiAbilityList) {
+            for (var mode : multi.getAbilities()) add(result, "bending.ability." + multi.getName() + "." + mode.getName());
+        }
         for (var ability : CoreAbility.getAbilities()) {
             if (ability == null || ability.getName() == null || ability.getName().isBlank()) throw new IllegalStateException("Registered ability has no permission identity");
             add(result, "bending.ability." + ability.getName());

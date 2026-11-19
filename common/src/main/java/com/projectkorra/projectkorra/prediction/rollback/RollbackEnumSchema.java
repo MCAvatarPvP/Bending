@@ -48,12 +48,20 @@ final class RollbackEnumSchema {
         return keyType;
     }
     static List<String> names(Class<?> type) { return NAMES.get(type); }
-    static Object[] constants(Class<?> type) {
-        Object[] values = type.getEnumConstants();
-        var names = names(type);
-        if (values.length != names.size()) throw new IllegalArgumentException("Enum schema differs from its local bytecode");
-        for (int i = 0; i < values.length; i++) if (!((Enum<?>) values[i]).name().equals(names.get(i)))
-            throw new IllegalArgumentException("Enum ordinal differs from its local declaration order");
-        return values;
-    }
+    // Bind only when an encoded constant is actually imported. Schema negotiation
+    // uses class-file names so unrelated gameplay enums can stay uninitialized.
+    private static final ClassValue<Object[]> CONSTANTS = new ClassValue<>() {
+        @Override protected Object[] computeValue(Class<?> type) {
+            Object[] values = type.getEnumConstants();
+            List<String> names = names(type);
+            if (values.length != names.size()) throw new IllegalArgumentException("Enum schema differs from its local bytecode");
+            for (int i = 0; i < values.length; i++) {
+                if (!((Enum<?>) values[i]).name().equals(names.get(i)))
+                    throw new IllegalArgumentException("Enum ordinal differs from its local declaration order");
+            }
+            return values;
+        }
+    };
+
+    static Object constant(Class<?> type, int ordinal) { return CONSTANTS.get(type)[ordinal]; }
 }

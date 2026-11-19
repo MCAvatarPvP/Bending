@@ -31,6 +31,26 @@ class RollbackGraphCodecTest {
     private static final RollbackGraphCodec.Limits LIMITS = new RollbackGraphCodec.Limits(10_000, 100_000, 1_048_576, 65_536);
     private enum Axis { X, Y, Z }
 
+    private static boolean dormantInitialized;
+    private enum Dormant {
+        ONLY;
+        static { dormantInitialized = true; }
+    }
+
+    @Test void enumSchemaStaysLazyWhileMaterializingAllMaterialOrdinalsAcrossImports() {
+        var type = com.projectkorra.projectkorra.platform.mc.Material.class;
+        var catalog = new RollbackGraphCodec.Catalog(List.of(), List.of(type, Dormant.class), List.of());
+        var codec = new RollbackGraphCodec(catalog, LIMITS);
+        var materials = Arrays.asList(type.getEnumConstants());
+        var bytes = codec.encode(materials);
+        for (int iteration = 0; iteration < 2; iteration++) {
+            var decoded = codec.decode(bytes);
+            assertEquals(materials.size(), decoded.size());
+            for (int i = 0; i < materials.size(); i++) assertSame(materials.get(i), decoded.get(i));
+        }
+        assertFalse(dormantInitialized);
+    }
+
     @Test void rejectedOpaqueReferenceReportsTheOwningGameplayField() {
         var service = new Service("live");
         var key = new Key(service, "owner");

@@ -49,7 +49,7 @@ class RollbackAbilityGlobalsTest {
             Catapult.restoreRollbackLanding(owner.getUniqueId(), true);
             BlockSource.restoreRollbackSources(owner, source(owner, block));
             try {
-                var codec = new RollbackGraphCodec(new RollbackGraphCodec.Catalog(List.of(RollbackAbilityGlobals.class, RollbackParticipantStatuses.class, BlockSourceInformation.class,
+                var codec = new RollbackGraphCodec(new RollbackGraphCodec.Catalog(List.of(RollbackAbilityGlobals.class, RollbackDigging.class, RollbackDigging.Mining.class, RollbackParticipantStatuses.class, BlockSourceInformation.class,
                         com.projectkorra.projectkorra.util.MovementHandler.class, com.projectkorra.projectkorra.platform.mc.Location.class),
                         List.of(BlockSourceType.class, ClickType.class), List.of(new RollbackGraphCodec.Binding("player", Player.class, owner),
                         new RollbackGraphCodec.Binding("block", Block.class, block))), new RollbackGraphCodec.Limits(256, 2048, 32768, 1024));
@@ -183,7 +183,7 @@ class RollbackAbilityGlobalsTest {
             set(fallingType, outsideIce, "expirationTime", -1L);
             me.moros.hyperion.util.BendingFallingBlock.resume(outsideIce);
             try {
-                var codec = new RollbackGraphCodec(new RollbackGraphCodec.Catalog(List.of(RollbackAbilityGlobals.class,
+                var codec = new RollbackGraphCodec(new RollbackGraphCodec.Catalog(List.of(RollbackAbilityGlobals.class, RollbackDigging.class, RollbackDigging.Mining.class,
                         RollbackParticipantStatuses.class, RollbackAddonActors.class, standType, fallingType,
                         me.moros.hyperion.util.BendingFallingBlock.ExpiryOrder.class, me.moros.hyperion.util.TempArmorStand.ExpiryOrder.class),
                         List.of(), List.of(new RollbackGraphCodec.Binding("stand", com.projectkorra.projectkorra.platform.mc.entity.ArmorStand.class, stand),

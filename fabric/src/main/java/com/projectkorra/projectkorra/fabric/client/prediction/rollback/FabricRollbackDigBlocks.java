@@ -30,14 +30,21 @@ final class FabricRollbackDigBlocks implements RollbackDigging.Blocks {
         var pos = nativePos(position);
         var state = world.getBlockState(pos);
         var mode = GameMode.valueOf(player.getGameMode().name());
-        return duel.round().active(player.getUniqueId()) && !state.isAir() && world.getWorldBorder().contains(pos)
+        var rules = duel.scene().services().settings().interactions();
+        var material = FabricMC.material(state).name();
+        var decision = creative() ? rules.creativeBreakDecision(material) : rules.breakDecision(pos.getX(), pos.getY(), pos.getZ(), material);
+        return decision != RollbackDuelInteractions.Decision.DENY && !body.isSpectator() && body.isAlive()
+                && duel.round().active(player.getUniqueId()) && !state.isAir() && world.getWorldBorder().contains(pos)
                 && !body.isBlockBreakingRestricted(world, pos, mode)
                 && (!(state.getBlock() instanceof OperatorBlock) || body.isCreativeLevelTwoOp())
                 && body.getMainHandStack().canMine(state, world, pos, body);
     }
     @Override public void attack(Position position) {
         var pos = nativePos(position);
-        world.getBlockState(pos).onBlockBreakStart(world, pos, body);
+        var state = world.getBlockState(pos);
+        // Objective interactions and native-only hooks are delivered by the live match.
+        if (!duel.scene().services().settings().interactions().liveBreakMaterials().contains(FabricMC.material(state).name()))
+            state.onBlockBreakStart(world, pos, body);
     }
     @Override public float delta(Position position) {
         var pos = nativePos(position);
@@ -49,7 +56,7 @@ final class FabricRollbackDigBlocks implements RollbackDigging.Blocks {
         String material = FabricMC.material(state).name();
         var logical = duel.scene().logical();
         var policy = duel.scene().services().settings().interactions();
-        switch (policy.breakDecision(pos.getX(), pos.getY(), pos.getZ(), material)) {
+        switch (creative() ? policy.creativeBreakDecision(material) : policy.breakDecision(pos.getX(), pos.getY(), pos.getZ(), material)) {
             case DENY -> { return; }
             case LIVE_MATCH -> {
                 duel.output().accept(new RollbackDuelInteractions.LiveBreak(player.getUniqueId(), pos.getX(), pos.getY(), pos.getZ(), material));

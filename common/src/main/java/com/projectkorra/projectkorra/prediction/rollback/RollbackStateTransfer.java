@@ -341,6 +341,11 @@ public final class RollbackStateTransfer {
 
     }
 
+    private static boolean allReady(List<Node> nodes) {
+        for (int i = 0; i < nodes.size(); i++) if (!nodes.get(i).ready) return false;
+        return true;
+    }
+
     static void finish(List<Node> ordered, Limits limits) {
         // Mutable shells exist before references are installed, so ordinary cycles
         // are legal. Deferred wrappers need targets, not completed child graphs.
@@ -358,11 +363,11 @@ public final class RollbackStateTransfer {
                 }
                 if (node.populated) continue;
                 List<Node> construction = node.construction == null ? node.children : node.construction;
-                if (!node.ready && node.create != null && construction.stream().allMatch(child -> child.ready)) {
+                if (!node.ready && node.create != null && allReady(construction)) {
                     node.ready(node.create.get());
                     changed = true;
                 }
-                if (node.ready && !node.indexed && node.children.stream().allMatch(child -> child.ready)) {
+                if (node.ready && !node.indexed && allReady(node.children)) {
                     if (node.fill != null) node.fill.run();
                     node.populated = true;
                     changed = true;
@@ -370,7 +375,7 @@ public final class RollbackStateTransfer {
             }
         } while (changed);
         for (Node node : ordered) {
-            if (!node.ready || !node.children.stream().allMatch(child -> child.ready) || (!node.indexed && !node.populated)) {
+            if (!node.ready || !allReady(node.children) || (!node.indexed && !node.populated)) {
                 throw new IllegalStateException("Cyclic immutable import requires an adapter: " + node.source.getClass().getName());
             }
         }

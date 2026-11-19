@@ -179,6 +179,8 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
                 .outputQuery(value -> value.sendToTrackingPlayersAndSelf(null, null), args -> trackedPacket((Entity) args[0], (net.minecraft.network.protocol.Packet<?>) args[1], true))
                 .instance();
         EntityLookup lookup = RollbackNativeQueryShell.create(EntityLookup.class)
+                .outputQuery(value -> value.getEntities(Entity.class, null, Native.BOX, new ArrayList<>(), null),
+                        args -> outputEntities(args[3], entitiesOfClass(args)))
                 .outputQuery(value -> value.getHardCollidingEntities(null, Native.BOX, new ArrayList<>(), null), args ->
                         outputEntities(args[2], entities(args[0], args[1], true, args[3])))
                 .instance();
@@ -331,6 +333,10 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         checkThread();
         if (scoreboards == null) throw new IllegalStateException("Native scoreboard services were not supplied");
         return scoreboards;
+    }
+    void mine(net.minecraft.world.item.ItemStack tool, net.minecraft.world.level.block.state.BlockState state,
+            BlockPos at, net.minecraft.server.level.ServerPlayer player, boolean harvest) {
+        combat.mine(tool, state, at, player, harvest);
     }
     void statistic(Object player, Object statistic, int amount, boolean reset) {
         checkThread();
@@ -557,6 +563,7 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
     }
     void sealPlayers() { checkThread(); playersSealed = true; }
     void beginCheckpoint() { sealPlayers(); checkpointed = true; }
+    boolean activeParticipant(java.util.UUID id) { checkThread(); return roundEvents == null || roundEvents.round().active(id); }
     boolean ownsPlayer(Object player) { checkThread(); return players.containsKey(player); }
     boolean ownsWrapper(Object wrapper) {
         checkThread();
@@ -633,6 +640,14 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
             if (predicate == null || ((Predicate<Object>) predicate).test(entity)) selected.add(entity);
         }
         return List.copyOf(selected);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<?> entitiesOfClass(Object[] args) {
+        var type = (Class<?>) args[0];
+        var predicate = (Predicate<Object>) args[4];
+        return entities(args[1], args[2], false, (Predicate<Object>)
+                entity -> type.isInstance(entity) && (predicate == null || predicate.test(entity)));
     }
 
     @SuppressWarnings("unchecked")

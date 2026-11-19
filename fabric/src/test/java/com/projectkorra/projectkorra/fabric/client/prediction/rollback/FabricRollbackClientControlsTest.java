@@ -115,6 +115,7 @@ class FabricRollbackClientControlsTest {
         keys.next = keys(false, true, false, false); runtime.nativeTick(101); runtime.tick(101);
         assertEquals(List.of(new RollbackInputPacket.Edge(1, RollbackInputActions.Kind.GLIDE_START, -1, -60, -15)), sent.getFirst().actions());
         runtime.nativeTick(102); runtime.tick(102); assertTrue(sent.getLast().actions().isEmpty());
+        runtime.authority(FabricRollbackInputTest.confirmed(sent, A, B, 55));
         assertFalse(player.isGliding());
         runtime.packet(new net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket(visible,
                 net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket.Mode.START_FALL_FLYING), 102);
@@ -151,6 +152,7 @@ class FabricRollbackClientControlsTest {
         for (int i = 1; i <= 4; i++) {
             keys.next = i == 2 ? PlayerInput.DEFAULT : keys(false, true, false, false);
             runtime.nativeTick(100 + i); runtime.tick(100 + i);
+            if (i == 2) runtime.authority(FabricRollbackInputTest.confirmed(sent, A, B, 55));
         }
         assertEquals(4, sent.size()); assertTrue(sent.get(0).actions().isEmpty()); assertTrue(sent.get(1).actions().isEmpty());
         assertEquals(List.of(new RollbackInputPacket.Edge(1, RollbackInputActions.Kind.FLIGHT_START, -1, 75, -20)), sent.get(2).actions());

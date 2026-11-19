@@ -33,6 +33,7 @@ public final class PaperRollbackNativeScene implements RollbackStateCell<Void>, 
     private final RollbackWorld logical;
     private final PaperRollbackLighting lighting;
     private PaperRollbackScheduledTicks ticks;
+    private PaperRollbackItemLifecycle itemLifecycle;
     private final PaperRollbackGeometry geometry;
     private final PaperRollbackSpatial spatial;
     private final PaperRollbackWorldServices services;
@@ -117,6 +118,7 @@ public final class PaperRollbackNativeScene implements RollbackStateCell<Void>, 
             nativeRules.bind(this, geometry);
             world.bindTerrain(nativeRules);
         }
+        itemLifecycle = new PaperRollbackItemLifecycle(world);
         world.finishNativePreparation();
     }
     public RollbackWorld logical() { check(); return logical; }
@@ -141,6 +143,7 @@ public final class PaperRollbackNativeScene implements RollbackStateCell<Void>, 
 
     public PaperRollbackWorldAccess world() { check(); return world; }
     public PaperRollbackWorldServices services() { check(); return services; }
+    PaperRollbackItemLifecycle itemLifecycle() { check(); return itemLifecycle; }
     PaperRollbackScheduledTicks ticks() { check(); return ticks; }
     public PaperRollbackLighting lighting() { check(); return lighting; }
     /** Darkness is resolved after construction from the same rewindable world clock and weather. */
