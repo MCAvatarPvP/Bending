@@ -28,6 +28,10 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
     @FunctionalInterface
     public interface SimulationFactory {
         default boolean ready() { return true; }
+        default java.util.function.Supplier<Simulation> prepare(RollbackDuelRuntime setup, PaperRollbackDuelSeed captured,
+                ServerLevel source, Map<UUID, PaperRollbackRosterSeed.Services> services) {
+            return () -> open(setup, captured, source, services);
+        }
         Simulation open(RollbackDuelRuntime setup, PaperRollbackDuelSeed captured, ServerLevel source,
                         Map<UUID, PaperRollbackRosterSeed.Services> services);
     }
@@ -42,6 +46,7 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
     private final SimulationFactory factory;
     private final PaperRollbackTerrainChunks terrainChunks;
     private final RollbackDuelRuntime definitions;
+    private final java.util.concurrent.CompletableFuture<Void> classSchemas;
     private final Set<Enrollment> pendingAcquisition = new LinkedHashSet<>();
 
     /** Packet movement received between ticks still belongs to the live player until Paper processes its contacts. */
@@ -60,6 +65,9 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
         this.server = Objects.requireNonNull(server); this.platform = Objects.requireNonNull(platform);
         this.lifecycle = Objects.requireNonNull(lifecycle); this.factory = Objects.requireNonNull(factory);
         definitions = new RollbackDuelRuntime(getClass().getClassLoader());
+        classSchemas = java.util.concurrent.CompletableFuture.runAsync(
+                () -> RollbackGameplayCatalog.create(definitions.installed(), List.of()),
+                task -> plugin.getServer().getScheduler().runTaskAsynchronously(plugin, task));
     }
 
     @Override public boolean supports(Set<UUID> players) { return server.supportsRollbackBootstrap(players)
@@ -86,10 +94,13 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
         private PaperRollbackBootstraps.Transfer transfer;
         private java.util.concurrent.CompletableFuture<byte[]> encodedBootstrap;
         private java.util.concurrent.CompletableFuture<Map<UUID, PaperRollbackRosterSeed.Services>> nativeServices;
+        private java.util.function.Supplier<Simulation> assembly;
+        private int lastAssemblyTick;
         private Simulation simulation;
         private PaperRollbackMatchRuntime<Object> runtime;
         private PaperRollbackMatchRestoration restoration;
         private boolean acquired, running, cleanupPending, released, stopped;
+        private final List<RollbackDuelInteractions.LiveBreak> matchBreaks = new ArrayList<>();
         private Prepared prepared;
         private Throwable acquisitionFailure;
 
@@ -131,7 +142,10 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
             if (acquisitionFailure instanceof RuntimeException failure) throw failure;
             if (acquisitionFailure instanceof Error error) throw error;
             if (!acquired) {
-                if (chunks.poll() && terrainReady() && factory.ready()) pendingAcquisition.add(this);
+                if (chunks.poll() && terrainReady() && factory.ready() && classSchemas.isDone()) {
+                    classSchemas.join();
+                    pendingAcquisition.add(this);
+                }
                 return null;
             }
             if (captured == null) {
@@ -140,12 +154,24 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
                 long time = RollbackTiming.start();
                 try { capture(); } finally { RollbackTiming.finish(time, "enroll.capture"); }
                 terrain = null;
+                lastAssemblyTick = Bukkit.getCurrentTick();
+                return null;
             }
             if (simulation == null) {
-                if (!nativeServices.isDone()) return null;
                 ownership.requireReady();
-                openSimulation(nativeServices.join());
-                nativeServices = null;
+                int tick = Bukkit.getCurrentTick();
+                if (lastAssemblyTick == tick) return null;
+                lastAssemblyTick = tick;
+                if (assembly == null) {
+                    if (!nativeServices.isDone()) return null;
+                    assembly = Objects.requireNonNull(factory.prepare(definitions, captured, level, nativeServices.join()));
+                    nativeServices = null;
+                    return null;
+                }
+                simulation = assembly.get();
+                if (simulation == null) return null;
+                assembly = null;
+                openRuntime();
             }
             if (transfer == null) {
                 if (!encodedBootstrap.isDone() || !simulation.nativeMethods().isDone()) return null;
@@ -196,7 +222,8 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
             globals.requireNoInitialActors(views.getFirst().getWorld(), request.terrain(), ids);
             globals.bindLayers(layerLease.seed());
             time = RollbackTiming.finish(time, "enroll.participantGlobals");
-            captured = PaperRollbackDuelSeed.captureOwned(ownership, request, challenge, definitions.definitions(),
+            var rules = request.interactions() == null ? PaperRollbackMatchRules.capture(request, players.values().iterator().next().getBukkitEntity()) : request.interactions();
+            captured = PaperRollbackDuelSeed.captureOwned(ownership, request.withInteractions(rules), challenge, definitions.definitions(),
                     players.values(), services, bending.values(), ProjectKorra.collisionManager, List.of(reservation, regions, globals),
                     graph, List.of(), seed, Long.rotateLeft(seed, 29), CAPTURE_LIMITS, terrain,
                     codec -> live = new PaperRollbackMatchRestoration.LiveRoster(players, bending, reservation, original, codec, layerLease));
@@ -211,14 +238,14 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
             nativeServices = PaperRollbackAdvancements.prepareRoster(services, level.registryAccess());
             RollbackTiming.finish(time, "enroll.advancementCatalogue");
         }
-        private void openSimulation(Map<UUID, PaperRollbackRosterSeed.Services> services) {
+        private void openRuntime() {
             long seed = RollbackDuelRuntime.seed(request.session());
-            long time = RollbackTiming.start();
-            simulation = Objects.requireNonNull(factory.open(definitions, captured, level, services));
-            RollbackTiming.finish(time, "enroll.simulation");
             runtime = new PaperRollbackMatchRuntime<>(request, seed, simulation.combat(), server, new RollbackServerRuntime.Output<>() {
                 @Override public void update(RollbackEngine.Update<RollbackDomain.Checkpoint, RollbackPlayerInput, Object> update) {
                     simulation.presentation().accept(update);
+                    for (var effect : update.finalizedEffects()) {
+                        if (effect.value() instanceof RollbackDuelInteractions.LiveBreak hit) matchBreaks.add(hit);
+                    }
                 }
                 @Override public void stop(RollbackStartServerEndpoint.Failure failure) { release(); }
             }, simulation.corrections());
@@ -234,8 +261,28 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
         @Override public void tick(long tick) {
             if (stopped || released || !running) throw new IllegalStateException("Duel authority is not running");
             long time = RollbackTiming.start();
-            try { ownership.requireReady(); runtime.tick(tick); }
+            try {
+                ownership.requireReady();
+                runtime.tick(tick);
+                if (!matchBreaks.isEmpty() && !stopped && !released) applyMatchBreaks();
+            }
             finally { RollbackTiming.finish(time, "server.tick"); }
+        }
+        private void applyMatchBreaks() {
+            // Neptune's bed objective, cancellation and team messages require real event listeners.
+            // Stop at the confirmed checkpoint before asking the real player to break the block once.
+            var confirmed = List.copyOf(matchBreaks);
+            matchBreaks.clear();
+            stopBeforeMutation();
+            for (var hit : confirmed) {
+                var player = Bukkit.getPlayer(hit.player());
+                if (!players.containsKey(hit.player()) || player == null || !player.isOnline()
+                        || !player.getWorld().getUID().equals(request.world())) continue;
+                var pos = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Position(hit.x(), hit.y(), hit.z());
+                if (!request.terrain().contains(pos)) continue;
+                var block = player.getWorld().getBlockAt(hit.x(), hit.y(), hit.z());
+                if (block.getType().name().equals(hit.material())) player.breakBlock(block);
+            }
         }
         private void stopBeforeMutation() {
             if (!server.stopNegotiatedRollback(request.session()))
@@ -263,6 +310,7 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
                     else ownership.abort(() -> { if (layerLease != null) layerLease.abort(); });
                 } catch (RuntimeException | Error failure) { cleanupPending = true; throw failure; }
             }
+            assembly = null;
             if (terrain != null) { terrain.terrain().cancel(false); terrain = null; }
             if (encodedBootstrap != null) { encodedBootstrap.cancel(false); encodedBootstrap = null; }
             if (nativeServices != null) { nativeServices.cancel(false); nativeServices = null; }

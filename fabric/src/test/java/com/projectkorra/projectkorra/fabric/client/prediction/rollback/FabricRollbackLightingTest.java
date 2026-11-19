@@ -15,10 +15,30 @@ import net.minecraft.world.chunk.light.*;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import java.util.*;
+import com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore;
+import com.projectkorra.projectkorra.prediction.rollback.world.RollbackTerrainSeed;
+import com.projectkorra.projectkorra.prediction.rollback.world.RollbackLightSeed;
+import com.projectkorra.projectkorra.platform.mc.Material;
+import com.projectkorra.projectkorra.platform.mc.block.Biome;
 import static org.junit.jupiter.api.Assertions.*;
 
 class FabricRollbackLightingTest {
     @BeforeAll static void bootstrap() { SharedConstants.createGameVersion(); Bootstrap.initialize(); }
+    @Test void uniformSolidSectionsBlockLightFromAnInsertedEmitter() {
+        var bounds = new RollbackBlockStore.Bounds(-16, 0, -16, 32, 16, 32);
+        var rock = Material.STONE.createBlockData(); rock.setExactState("minecraft:stone");
+        var cell = new RollbackBlockStore.Cell(rock, null, Biome.DESERT, (byte) 0, 0.8, 0.4);
+        var builder = new RollbackTerrainSeed.Builder(bounds, 1_000_000);
+        builder.append(cell, 48 * 48 * 16);
+        var dark = RollbackLightSeed.capture(bounds, 48 * 48 * 16, p -> 0, p -> 0);
+        var lighting = new FabricRollbackLighting(builder.finish(), dark, FabricRollbackTestRegistry.simulationRegistries(), false);
+        var middle = new RollbackBlockStore.Position(7, 8, 7);
+        var glow = Material.GLOWSTONE.createBlockData(); glow.setExactState("minecraft:glowstone");
+        lighting.apply(Map.of(middle, glow));
+        assertEquals(15, lighting.block(middle));
+        assertEquals(0, lighting.block(middle.offset(1, 0, 0)));
+    }
+
     @Test void nativeLightingPropagatesAndRetractsInsideDetachedChunks() {
         var height = HeightLimitView.create(0, 32);
         var palettes = PalettesFactory.fromRegistryManager(FabricRollbackTestRegistry.simulationRegistries());

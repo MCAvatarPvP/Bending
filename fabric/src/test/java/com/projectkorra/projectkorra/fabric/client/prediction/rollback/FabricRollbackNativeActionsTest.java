@@ -86,7 +86,7 @@ class FabricRollbackNativeActionsTest {
         }
     }
 
-    @ParameterizedTest @ValueSource(strings = {"inventory", "break", "creative"})
+    @ParameterizedTest @ValueSource(strings = {"inventory", "creative"})
     void unboundInteractionsStopBeforeTouchingNativeItemsEntitiesOrBlocksEvenWhenCleanupReleasesTheLease(String operation) throws Exception {
         var f = new Fixture(); var target = f.roster.players().get(B).ownedPlayer();
         var stack = new ItemStack(Items.APPLE, 4); f.player.getInventory().setStack(0, stack);
@@ -94,7 +94,6 @@ class FabricRollbackNativeActionsTest {
         try (var lease = f.acquire(f.player)) {
             switch (operation) {
                 case "inventory" -> f.manager.clickSlot(0, 36, 0, SlotActionType.PICKUP, f.player);
-                case "break" -> assertFalse(f.manager.attackBlock(BlockPos.ORIGIN, Direction.UP));
                 case "creative" -> f.manager.dropCreativeStack(stack);
                 default -> throw new AssertionError(operation);
             }
@@ -123,7 +122,10 @@ class FabricRollbackNativeActionsTest {
             f.runtime.tick(101);
             assertEquals(List.of(RollbackInputActions.Kind.SWING, RollbackInputActions.Kind.RIGHT_CLICK_BLOCK), f.sent.getFirst().actions().stream().map(RollbackInputPacket.Edge::kind).toList());
             assertFalse(player.dropSelectedItem(true));
-            assertEquals(1, f.failures.size()); assertEquals(4, stack.getCount()); assertSame(stack, f.player.getMainHandStack());
+            f.runtime.tick(102);
+            assertTrue(f.failures.isEmpty());
+            assertEquals(List.of(RollbackInputActions.Kind.DROP_ALL_ITEMS), f.sent.getLast().actions().stream().map(RollbackInputPacket.Edge::kind).toList());
+            assertEquals(4, stack.getCount()); assertSame(stack, f.player.getMainHandStack());
         }
     }
 
@@ -148,7 +150,7 @@ class FabricRollbackNativeActionsTest {
         try (var owner = new FabricRollbackNativeActions(f.manager, f.player, f.player.getEntityWorld(), () -> true, f::packet, failure -> { throw cleanup; })) {
             assertSame(cleanup, assertThrows(IllegalStateException.class, () -> f.manager.clickSlot(0, 36, 0, SlotActionType.PICKUP, f.player)));
             assertThrows(IllegalStateException.class, () -> f.acquire(f.player));
-            assertSame(cleanup, assertThrows(IllegalStateException.class, () -> f.manager.attackBlock(BlockPos.ORIGIN, Direction.UP)));
+            assertSame(cleanup, assertThrows(IllegalStateException.class, () -> f.manager.clickSlot(0, 36, 0, SlotActionType.PICKUP, f.player)));
             owner.close();
             try (var replacement = f.acquire(f.player)) {
                 owner.close(); assertSame(ActionResult.CONSUME, f.manager.interactItem(f.player, Hand.MAIN_HAND));

@@ -48,7 +48,7 @@ public final class FabricRollbackExecution<E> extends RollbackPlayerExecution<E>
     @Override protected boolean validTarget(RollbackPlayer player, com.projectkorra.projectkorra.prediction.rollback.RollbackPlayerInput.Edge edge) {
         if (edge.action().target() == null) return true;
         var nativePlayer = state(player).ownedPlayer();
-        var range = edge.action().target() instanceof com.projectkorra.projectkorra.prediction.rollback.RollbackInteractionTarget.Block
+        var range = com.projectkorra.projectkorra.prediction.rollback.RollbackInteractionTarget.targetsBlock(edge.action().target())
                 ? nativePlayer.getBlockInteractionRange() : nativePlayer.getEntityInteractionRange();
         return com.projectkorra.projectkorra.prediction.rollback.RollbackInteractionTarget.allowed(player, edge, range, candidate -> {
             var entity = ((net.minecraft.server.world.ServerWorld) nativePlayer.getEntityWorld()).getEntityAnyDimension(candidate.getUniqueId());

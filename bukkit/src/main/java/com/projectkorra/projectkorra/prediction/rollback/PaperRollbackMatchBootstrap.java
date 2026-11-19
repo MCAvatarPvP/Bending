@@ -26,7 +26,14 @@ public interface PaperRollbackMatchBootstrap {
      * The runtime must use RollbackCombatRuntime.deliverConfirmedDefeats, never provisional results.
      */
     record Request(UUID session, UUID match, int round, UUID world, Bounds terrain, Map<UUID, UUID> sides,
-                   java.util.function.Consumer<RollbackRound.Defeat> confirmedDefeats) {
+                   java.util.function.Consumer<RollbackRound.Defeat> confirmedDefeats, RollbackDuelInteractions interactions) {
+        public Request(UUID session, UUID match, int round, UUID world, Bounds terrain, Map<UUID, UUID> sides,
+                java.util.function.Consumer<RollbackRound.Defeat> confirmedDefeats) {
+            this(session, match, round, world, terrain, sides, confirmedDefeats, null);
+        }
+        Request withInteractions(RollbackDuelInteractions current) {
+            return new Request(session, match, round, world, terrain, sides, confirmedDefeats, Objects.requireNonNull(current));
+        }
         public Request {
             Objects.requireNonNull(session); Objects.requireNonNull(match); Objects.requireNonNull(world);
             Objects.requireNonNull(terrain); Objects.requireNonNull(confirmedDefeats);

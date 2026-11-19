@@ -7,6 +7,12 @@ class RollbackLightSeedTest {
     @Test void sectionNibblesMatchIndividualCellsAcrossChunkAndSectionBoundaries() {
         var bounds = new RollbackBlockStore.Bounds(-32, -16, -16, 16, 16, 16);
         var seed = RollbackLightSeed.capture(bounds, 49152, p -> (p.x() + p.y()) & 15, p -> (p.x() - p.z()) & 15);
+        byte[] canonical = seed.encode();
+        assertArrayEquals(canonical, RollbackLightSeed.decode(canonical, 49152).encode());
+        for (int i = 0; i < 49152; i++) {
+            int x = -32 + i % 48, z = -16 + (i / 48) % 32, y = -16 + i / (32 * 48);
+            assertEquals((((x + y) & 15) << 4) | ((x - z) & 15), canonical[28 + i] & 255);
+        }
         for (int x = -32; x < 16; x += 16) for (int y = -16; y < 16; y += 16) for (int z = -16; z < 16; z += 16) {
             var section = seed.section(x, y, z);
             assertTrue(section.hasSkyLight());

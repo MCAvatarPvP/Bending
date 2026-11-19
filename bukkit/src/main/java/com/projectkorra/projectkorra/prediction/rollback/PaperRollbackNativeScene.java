@@ -32,12 +32,13 @@ public final class PaperRollbackNativeScene implements RollbackStateCell<Void>, 
     private final Thread thread = Thread.currentThread();
     private final RollbackWorld logical;
     private final PaperRollbackLighting lighting;
-    private final PaperRollbackScheduledTicks ticks;
+    private PaperRollbackScheduledTicks ticks;
+    private final PaperRollbackGeometry geometry;
     private final PaperRollbackSpatial spatial;
     private final PaperRollbackWorldServices services;
     private final PaperRollbackWorldQueries queries;
     private final PaperRollbackWorldAccess world;
-    private final Map<UUID, PaperRollbackNativePlayerState> roster;
+    private Map<UUID, PaperRollbackNativePlayerState> roster;
 
     /** Builds a match scene with Neptune's last-stage lethal-hit policy installed before its first checkpoint. */
     public PaperRollbackNativeScene(RollbackWorldSeed seed, PaperRollbackRosterSeed players, RollbackRound round,
@@ -53,6 +54,37 @@ public final class PaperRollbackNativeScene implements RollbackStateCell<Void>, 
             RegistryAccess.Frozen registries, FeatureFlagSet features, Bindings bindings,
             Map<UUID, PaperRollbackRosterSeed.Services> playerServices,
             long epochNanos, int maximumMutations, int maximumEntities, int maximumChunks) {
+        this(seed, players, participants, registries, features, bindings, playerServices, maximumMutations, maximumEntities, maximumChunks);
+        finish(seed, bindings, players.instantiate(world, epochNanos, playerServices));
+    }
+
+    /** Construct the bound world, then import one native player per poll before publishing it. */
+    static java.util.function.Supplier<PaperRollbackNativeScene> prepare(RollbackWorldSeed seed, PaperRollbackRosterSeed players,
+            RollbackRound round, RegistryAccess.Frozen registries, FeatureFlagSet features, Bindings bindings,
+            Map<UUID, PaperRollbackRosterSeed.Services> playerServices, long epochNanos,
+            int maximumMutations, int maximumEntities, int maximumChunks) {
+        long time = RollbackTiming.start();
+        var scene = new PaperRollbackNativeScene(seed, players, round.participants(), registries, features, bindings, playerServices,
+                maximumMutations, maximumEntities, maximumChunks);
+        var roster = players.prepare(scene.world, epochNanos, playerServices);
+        RollbackTiming.finish(time, "scene.nativeWorld");
+        return () -> {
+            long start = RollbackTiming.start();
+            if (roster.advance()) {
+                RollbackTiming.finish(start, "scene.nativePlayer");
+                return null;
+            }
+            scene.finish(seed, bindings, roster.finish());
+            scene.world.bindRound(round);
+            RollbackTiming.finish(start, "scene.nativeBindings");
+            return scene;
+        };
+    }
+
+    private PaperRollbackNativeScene(RollbackWorldSeed seed, PaperRollbackRosterSeed players, Set<UUID> participants,
+            RegistryAccess.Frozen registries, FeatureFlagSet features, Bindings bindings,
+            Map<UUID, PaperRollbackRosterSeed.Services> playerServices,
+            int maximumMutations, int maximumEntities, int maximumChunks) {
         if (!TickThread.isTickThread() || RollbackDomain.active() || RollbackClock.active()) throw new IllegalStateException("Assemble native scene before replay");
         Objects.requireNonNull(seed); Objects.requireNonNull(players); Objects.requireNonNull(bindings);
         playerServices = Map.copyOf(playerServices);
@@ -64,7 +96,7 @@ public final class PaperRollbackNativeScene implements RollbackStateCell<Void>, 
         var dimension = registries.lookupOrThrow(Registries.DIMENSION_TYPE).get(Identifier.parse(seed.environment().dimensionType()))
                 .orElseThrow(() -> new IllegalArgumentException("Unknown captured dimension")).value();
         lighting = new PaperRollbackLighting(seed.terrain(), seed.requireLight(), registries, dimension.hasSkyLight());
-        var geometry = new PaperRollbackGeometry(seed.minimumY(), seed.maximumY(), bindings.blockEntities());
+        geometry = new PaperRollbackGeometry(seed.minimumY(), seed.maximumY(), bindings.blockEntities());
         logical = new RollbackWorld(seed.identity(), seed.conditions(), seed.terrain(), lighting.rules(bindings.blocks(), this),
                 maximumMutations, maximumEntities, bindings.items(), new RollbackWorldQueries(geometry), bindings.actions());
         if (bindings.blockEntities() instanceof PaperRollbackBlockEntities tiles) tiles.bind(logical.terrain());
@@ -72,7 +104,11 @@ public final class PaperRollbackNativeScene implements RollbackStateCell<Void>, 
         services = new PaperRollbackWorldServices(seed.settings(), logical, registries, features, spatial, bindings.events());
         queries = new PaperRollbackWorldQueries(logical, services, bindings.blockEntities());
         world = new PaperRollbackWorldAccess(queries, services, maximumChunks, bindings.compile());
-        roster = players.instantiate(world, epochNanos, playerServices);
+    }
+
+    private void finish(RollbackWorldSeed seed, Bindings bindings, Map<UUID, PaperRollbackNativePlayerState> bodies) {
+        if (roster != null) throw new IllegalStateException("Native scene already assembled");
+        roster = bodies;
         queries.bindRoster(world, roster);
         ticks = new PaperRollbackScheduledTicks(world, seed.ticks());
         services.bindTicks(ticks);
@@ -81,6 +117,7 @@ public final class PaperRollbackNativeScene implements RollbackStateCell<Void>, 
             nativeRules.bind(this, geometry);
             world.bindTerrain(nativeRules);
         }
+        world.finishNativePreparation();
     }
     public RollbackWorld logical() { check(); return logical; }
     public Map<UUID, PaperRollbackNativePlayerState> roster() { check(); return roster; }

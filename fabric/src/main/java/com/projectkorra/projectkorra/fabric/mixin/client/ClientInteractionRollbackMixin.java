@@ -59,14 +59,17 @@ abstract class ClientInteractionRollbackMixin {
     }
     @WrapMethod(method = "attackBlock")
     private boolean projectkorra$attackBlock(BlockPos pos, Direction direction, Operation<Boolean> original) {
-        if (FabricRollbackNativeActions.packet((ClientPlayerInteractionManager) (Object) this, null,
-                () -> new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.START_DESTROY_BLOCK, pos, direction))) return false;
+        if (FabricRollbackNativeActions.mine((ClientPlayerInteractionManager) (Object) this, pos, direction, false)) return true;
         return original.call(pos, direction);
     }
     @WrapMethod(method = "updateBlockBreakingProgress")
     private boolean projectkorra$mining(BlockPos pos, Direction direction, Operation<Boolean> original) {
-        if (FabricRollbackNativeActions.unsupported((ClientPlayerInteractionManager) (Object) this, null, "continued block breaking")) return false;
+        if (FabricRollbackNativeActions.mine((ClientPlayerInteractionManager) (Object) this, pos, direction, true)) return true;
         return original.call(pos, direction);
+    }
+    @Inject(method = "cancelBlockBreaking", at = @At("HEAD"), cancellable = true)
+    private void projectkorra$cancelMining(CallbackInfo callback) {
+        if (FabricRollbackNativeActions.mine((ClientPlayerInteractionManager) (Object) this, null, null, false)) callback.cancel();
     }
     @Inject(method = "breakBlock", at = @At("HEAD"), cancellable = true)
     private void projectkorra$break(BlockPos pos, CallbackInfoReturnable<Boolean> callback) {

@@ -13,12 +13,35 @@ import net.minecraft.world.level.chunk.status.ChunkStatus;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import java.util.*;
+import com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore;
+import com.projectkorra.projectkorra.prediction.rollback.world.RollbackTerrainSeed;
+import com.projectkorra.projectkorra.prediction.rollback.world.RollbackLightSeed;
+import com.projectkorra.projectkorra.platform.mc.Material;
+import com.projectkorra.projectkorra.platform.mc.block.Biome;
 import static com.projectkorra.projectkorra.prediction.rollback.PaperRollbackWorldAccessNativeTest.onTickThread;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Native propagation feasibility against detached sections, with no live world or chunk scheduler. */
 class PaperRollbackLightingNativeTest {
     @BeforeAll static void bootstrap() { PaperRollbackDamageNativeTest.bootstrap(); }
+    @Test void uniformSolidSectionsBlockLightFromAnInsertedEmitter() throws Exception {
+        onTickThread(() -> {
+            var bounds = new RollbackBlockStore.Bounds(-16, 0, -16, 32, 16, 32);
+            var rock = Material.STONE.createBlockData(); rock.setExactState("minecraft:stone");
+            var cell = new RollbackBlockStore.Cell(rock, null, Biome.DESERT, (byte) 0, 0.8, 0.4);
+            var builder = new RollbackTerrainSeed.Builder(bounds, 1_000_000);
+            builder.append(cell, 48 * 48 * 16);
+            var dark = RollbackLightSeed.capture(bounds, 48 * 48 * 16, p -> 0, p -> 0);
+            var lighting = new PaperRollbackLighting(builder.finish(), dark, (RegistryAccess) new PaperRollbackDamageNativeTest.Combat().registryAccess(), false);
+            var middle = new RollbackBlockStore.Position(7, 8, 7);
+            var glow = Material.GLOWSTONE.createBlockData(); glow.setExactState("minecraft:glowstone");
+            lighting.apply(Map.of(middle, glow));
+            assertEquals(15, lighting.block(middle));
+            assertEquals(0, lighting.block(middle.offset(1, 0, 0)));
+            return null;
+        });
+    }
+
     @Test void nativeLightingPropagatesAndRetractsInsideDetachedChunks() throws Exception {
         onTickThread(() -> {
             var registry = (RegistryAccess) new PaperRollbackDamageNativeTest.Combat().registryAccess();

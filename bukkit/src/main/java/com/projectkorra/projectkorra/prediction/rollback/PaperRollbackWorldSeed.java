@@ -17,6 +17,11 @@ public final class PaperRollbackWorldSeed {
 
     static RollbackWorldSeed capture(ServerLevel world, Bounds bounds, long randomSeed, long soundSeed,
             PaperRollbackTerrainCapture.Limits limits, PaperRollbackTerrainCapture.Prepared prepared) {
+        return capture(world, bounds, randomSeed, soundSeed, limits, prepared, RollbackDuelInteractions.STANDARD);
+    }
+
+    static RollbackWorldSeed capture(ServerLevel world, Bounds bounds, long randomSeed, long soundSeed,
+            PaperRollbackTerrainCapture.Limits limits, PaperRollbackTerrainCapture.Prepared prepared, RollbackDuelInteractions interactions) {
         Objects.requireNonNull(world); Objects.requireNonNull(bounds); Objects.requireNonNull(limits);
         if (!TickThread.isTickThread() || RollbackClock.active() || RollbackDomain.active()) {
             throw new IllegalStateException("Capture the match world on the live tick thread before replay");
@@ -27,7 +32,15 @@ public final class PaperRollbackWorldSeed {
                 bounds, bukkit.getMinHeight(), bukkit.getMaxHeight(), limits.maximumCells());
         long tick = world.getGameTime(), day = world.getDayTime();
         var structures = PaperRollbackStructureCapture.capture(world, bounds, limits.maximumLoadedChunks());
-        var settings = PaperRollbackWorldSettings.capture(world, randomSeed, soundSeed).withStructures(structures);
+        var paper = world.paperConfig();
+        var despawn = paper.entities.spawning.altItemDespawnRate;
+        var overrides = new java.util.TreeMap<String, Integer>();
+        if (despawn.enabled) despawn.items.forEach((item, ticks) ->
+                overrides.put(net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(item).toString(), ticks));
+        var items = new RollbackItemRules(world.spigotConfig.itemDespawnRate, overrides, world.spigotConfig.itemMerge,
+                paper.entities.behavior.onlyMergeItemsHorizontally, paper.fixes.fixItemsMergingThroughWalls);
+        var settings = PaperRollbackWorldSettings.capture(world, randomSeed, soundSeed)
+                .withStructures(structures).withInteractions(interactions.withItems(items));
         var border = PaperRollbackBorder.capture(world.getWorldBorder());
         var environment = PaperRollbackEnvironment.capture(world);
         boolean storm = bukkit.hasStorm();

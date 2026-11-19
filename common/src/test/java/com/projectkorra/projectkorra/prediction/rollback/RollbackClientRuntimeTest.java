@@ -73,23 +73,43 @@ class RollbackClientRuntimeTest {
         var f = new Fixture(3); f.runtime.start(ANCHOR);
         for (int tick = 1; tick <= 4; tick++) f.runtime.tick(ANCHOR + tick);
         assertEquals(3, f.engine.head().tick()); assertEquals(0, f.engine.confirmed().tick());
-        assertEquals(List.of(1001L, 1002L, 1003L, 1004L), f.sent.stream().map(RollbackInputPacket::clientTick).toList());
-        var publications = new ArrayList<RollbackAuthorityUpdate>();
+        assertEquals(List.of(1001L, 1002L), f.sent.stream().map(RollbackInputPacket::clientTick).toList());
         for (int tick = 1; tick <= 4; tick++) {
             assertEquals(RollbackSession.Status.ACCEPTED, f.server.receive(f.connection, f.sent.get(tick - 1)).status());
-            f.server.advance(); publications.add(f.server.publish());
+            f.server.advance(); f.runtime.authority(f.server.publish());
         }
-        publications.forEach(f.runtime::authority);
+        assertEquals(List.of(1001L, 1002L, 1003L, 1004L), f.sent.stream().map(RollbackInputPacket::clientTick).toList());
         f.runtime.tick(ANCHOR + 5);
         assertEquals(5, f.engine.head().tick()); assertEquals(2, f.engine.confirmed().tick());
         assertEquals(1005, f.sent.getLast().clientTick()); assertFalse(f.runtime.failed());
     }
 
+    @Test void aColdServerFrameRetainsPhysicalTicksAndDeliversAQueuedEdgeExactlyOnce() {
+        var f = new Fixture(3);
+        f.runtime.start(ANCHOR);
+        for (int t = 1; t <= 24; t++) {
+            if (t == 16) f.runtime.action(RollbackInputActions.Kind.RIGHT_CLICK, -1, 30, 10);
+            f.runtime.tick(ANCHOR + t);
+        }
+        assertEquals(2, f.sent.size());
+        for (int t = 1; t <= 24; t++) {
+            var packet = f.sent.get(t-1);
+            assertEquals(ANCHOR + t, packet.clientTick());
+            assertEquals(t == 16 ? 1 : 0, packet.actions().size());
+            assertEquals(RollbackSession.Status.ACCEPTED, f.server.receive(f.connection, packet).status());
+            f.server.advance(); f.runtime.authority(f.server.publish());
+        }
+        assertEquals(24, f.sent.size());
+        assertEquals(1, f.engine.head().state().actions());
+        assertFalse(f.runtime.failed());
+    }
+
     @Test void prolongedAuthorityLossAndClockJumpsCannotRewriteTheInputAnchor() {
         var full = new Fixture(1); full.runtime.start(ANCHOR);
-        full.runtime.tick(ANCHOR + 1); full.runtime.tick(ANCHOR + 2); full.runtime.tick(ANCHOR + 3);
-        assertThrows(IllegalStateException.class, () -> full.runtime.tick(ANCHOR + 4));
-        assertTrue(full.runtime.failed()); assertEquals(3, full.sent.size());
+        int limit = RollbackClientRuntime.MAX_WAITING_TICKS + 2;
+        for (int tick = 1; tick <= limit; tick++) full.runtime.tick(ANCHOR + tick);
+        assertThrows(IllegalStateException.class, () -> full.runtime.tick(ANCHOR + limit + 1));
+        assertTrue(full.runtime.failed()); assertEquals(2, full.sent.size());
         assertEquals(0, full.engine.confirmed().tick());
         var skipped = new Fixture(8); skipped.runtime.start(ANCHOR);
         assertThrows(IllegalStateException.class, () -> skipped.runtime.tick(ANCHOR + 2));

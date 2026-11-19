@@ -144,6 +144,26 @@ public final class FabricRollbackActors implements RollbackArenaActions.Native, 
         drop.setVelocity(random.nextDouble() * .2 - .1, .2, random.nextDouble() * .2 - .1);
         return (Item) actor.view();
     }
+    void dropSelected(net.minecraft.entity.player.PlayerEntity player, boolean all) {
+        if (!scene.roster().world().ownsPlayer(player)) throw new IllegalArgumentException("Foreign item dropper");
+        if (player.isSpectator() || !player.isAlive()) return;
+        var stack = player.getInventory().dropSelectedItem(all);
+        if (stack.isEmpty()) return;
+        var position = new Pose(player.getX(), player.getEyeY() - (double) .3F, player.getZ(), 0, 0);
+        var actor = at(scene.logical(), position, EntityType.ITEM, Item.class);
+        var drop = (net.minecraft.entity.ItemEntity) actor.owned();
+        drop.setStack(stack);
+        drop.setThrower(player);
+        drop.setPickupDelay(40);
+        var velocity = RollbackItemThrow.motion(player.getPitch(), player.getYaw(),
+                net.minecraft.util.math.MathHelper::sin, net.minecraft.util.math.MathHelper::cos, player.getRandom()::nextFloat);
+        drop.setVelocity(velocity.x(), velocity.y(), velocity.z());
+        scene.logical().entities().add(actor.view());
+        if (scene.services().settings().interactions().consumeDrop(items.capture(stack).getType().name())) actor.view().remove();
+        player.increaseStat(net.minecraft.stat.Stats.DROPPED.getOrCreateStat(stack.getItem()), stack.getCount());
+        player.incrementStat(net.minecraft.stat.Stats.DROP);
+    }
+
     @Override public FallingBlock fallingBlock(RollbackWorld world, Pose pos, BlockData data) {
         var actor = at(world, pos, EntityType.FALLING_BLOCK, FallingBlock.class);
         var falling = (net.minecraft.entity.FallingBlockEntity) actor.owned();

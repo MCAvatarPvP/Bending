@@ -36,7 +36,7 @@ final class PaperRollbackMenu {
                     MethodHandles.constant(HandlerList.class, handlers));
             methods.replace(HandlerList.class.getMethod("getRegisteredListeners"), MethodHandles.lookup()
                     .findVirtual(PaperRollbackMenu.class, "privateListeners", MethodType.methodType(RegisteredListener[].class, HandlerList.class)).bindTo(this));
-            var copied = methods.build();
+            var copied = world.prepareMethods(methods);
             changed = copied.get(changedMethod).asType(MethodType.methodType(void.class, ContainerListener.class, AbstractContainerMenu.class, int.class, ItemStack.class));
             changedWithPrevious = copied.get(previousMethod).asType(MethodType.methodType(void.class, ContainerListener.class, AbstractContainerMenu.class, int.class, ItemStack.class, ItemStack.class));
             dataChanged = copied.get(dataMethod).asType(MethodType.methodType(void.class, ContainerListener.class, AbstractContainerMenu.class, int.class, int.class));

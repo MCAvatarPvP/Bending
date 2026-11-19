@@ -64,11 +64,12 @@ import java.util.function.Predicate;
 public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> {
     public enum WaypointAction { TRACK, UPDATE, UNTRACK }
     /** Detached provisional presentation. Delivery belongs to the session's revision/finalization bridge. */
-    public sealed interface Output permits DamageOutput, StatusOutput, ParticleOutput, SoundOutput, FabricRollbackPacketData.HeldSlot, FabricRollbackPacketData.Tracked { }
+    public sealed interface Output permits DamageOutput, StatusOutput, WorldEventOutput, ParticleOutput, SoundOutput, FabricRollbackPacketData.HeldSlot, FabricRollbackPacketData.Tracked { }
     public record Position(double x, double y, double z) { }
     public record DamageOutput(UUID entity, String type, UUID source, UUID attacker, Position position) implements Output { }
     public record ParticleOutput(String particle, Position position, int count, double x, double y, double z, double speed) implements Output { }
     public record StatusOutput(UUID entity, byte status) implements Output { }
+    public record WorldEventOutput(UUID except, int event, int x, int y, int z, int data) implements Output { }
     public record SoundOutput(UUID excludedSource, Position position, String sound, String category,
                               float volume, float pitch, long seed) implements Output { }
     /** Includes logical terrain, entity eligibility and the captured border; no live-world fallback. */
@@ -342,6 +343,11 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
                     @SuppressWarnings("unchecked") var event = (RegistryEntry<GameEvent>) args[0];
                     queries.gameEvent(event, (Vec3d) args[1], emitter);
                 })
+                .outputQuery(value -> value.syncWorldEvent(null, 0, BlockPos.ORIGIN, 0), args -> {
+                    var pos = (BlockPos) args[2];
+                    queries.output(new WorldEventOutput(nullableOwnedId((Entity) args[0]), (int) args[1], pos.getX(), pos.getY(), pos.getZ(), (int) args[3]));
+                })
+                .nativeAction(value -> value.syncWorldEvent(0, BlockPos.ORIGIN, 0), args -> checkThread())
                 .nativeAction(value -> value.tickEntity(null), args -> requireTickTree((Entity) args[0]))
                 // World's server-side body is empty. Sprinting still consumes the
                 // player's native RNG before this call, exactly as it does on Paper.

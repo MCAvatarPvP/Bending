@@ -142,6 +142,39 @@ public final class PaperRollbackActors implements RollbackArenaActions.Native, R
         drop.setDeltaMovement(random.nextDouble() * .2 - .1, .2, random.nextDouble() * .2 - .1);
         return (Item) actor.view();
     }
+    /** The native drop input owns the same registered item body exposed to bending and restored on handoff. */
+    void dropSelected(net.minecraft.server.level.ServerPlayer player, boolean wholeStack) {
+        if (!scene.world().ownsPlayer(player)) throw new IllegalArgumentException("Foreign item dropper");
+        if (player.isSpectator() || !player.isAlive()) return;
+        var inventory = player.getInventory();
+        var dropped = inventory.removeFromSelected(wholeStack);
+        if (dropped.isEmpty()) return;
+        var position = new Pose(player.getX(), player.getEyeY() - (double) 0.3F, player.getZ(), 0, 0);
+        var actor = at(scene.logical(), position, EntityType.ITEM, Item.class);
+        var item = (net.minecraft.world.entity.item.ItemEntity) actor.entity();
+        item.setItem(dropped);
+        item.setThrower(player);
+        item.setPickUpDelay(40);
+        var velocity = RollbackItemThrow.motion(player.getXRot(), player.getYRot(),
+                net.minecraft.util.Mth::sin, net.minecraft.util.Mth::cos, player.getRandom()::nextFloat);
+        item.setDeltaMovement(velocity.x(), velocity.y(), velocity.z());
+        scene.logical().entities().add(actor.view());
+        var event = new org.bukkit.event.player.PlayerDropItemEvent(player.getBukkitEntity(),
+                (org.bukkit.entity.Item) item.getBukkitEntity());
+        scene.world().event(event);
+        if (event.isCancelled()) {
+            var returned = item.getItem();
+            if (inventory.getSelectedItem().isEmpty()) inventory.setItem(inventory.getSelectedSlot(), returned);
+            else if (!inventory.add(inventory.getSelectedSlot(), returned))
+                throw new IllegalStateException("Cancelled drop no longer fits the private inventory");
+            actor.view().remove();
+            return;
+        }
+        if (scene.services().settings().interactions().consumeDrop(
+                org.bukkit.craftbukkit.util.CraftMagicNumbers.getMaterial(dropped.getItem()).name())) actor.view().remove();
+        scene.world().statistic(player, net.minecraft.stats.Stats.ITEM_DROPPED.get(dropped.getItem()), dropped.getCount(), false);
+        scene.world().statistic(player, net.minecraft.stats.Stats.CUSTOM.get(net.minecraft.stats.Stats.DROP), 1, false);
+    }
     @Override public FallingBlock fallingBlock(RollbackWorld world, Pose pos, BlockData data) {
         var actor = at(world, pos, EntityType.FALLING_BLOCK, FallingBlock.class);
         var falling = (net.minecraft.world.entity.item.FallingBlockEntity) actor.entity();

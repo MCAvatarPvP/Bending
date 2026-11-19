@@ -20,10 +20,17 @@ public final class FabricRollbackNativeActions implements AutoCloseable {
     private final BooleanSupplier current;
     private final Consumer<Packet<?>> input;
     private final Consumer<Throwable> fail;
+    private final FabricRollbackMiningInput mining;
     private boolean closed;
 
     public FabricRollbackNativeActions(ClientPlayerInteractionManager manager, PlayerEntity player, World world,
             BooleanSupplier current, Consumer<Packet<?>> input, Consumer<Throwable> fail) {
+        this(manager, player, world, current, input, fail, ignored -> FabricRollbackMiningInput.Material.FROZEN);
+    }
+    FabricRollbackNativeActions(ClientPlayerInteractionManager manager, PlayerEntity player, World world,
+            BooleanSupplier current, Consumer<Packet<?>> input, Consumer<Throwable> fail,
+            java.util.function.Function<net.minecraft.util.math.BlockPos, FabricRollbackMiningInput.Material> terrain) {
+        mining = new FabricRollbackMiningInput(terrain, packet -> capture(() -> packet));
         this.manager = Objects.requireNonNull(manager); this.player = Objects.requireNonNull(player); this.world = Objects.requireNonNull(world);
         this.current = Objects.requireNonNull(current); this.input = Objects.requireNonNull(input); this.fail = Objects.requireNonNull(fail);
         if (active != null || player.getEntityWorld() != world || !current.getAsBoolean()) throw new IllegalStateException("Native actions already owned or client changed");
@@ -35,6 +42,18 @@ public final class FabricRollbackNativeActions implements AutoCloseable {
     }
     public static boolean playerPacket(PlayerEntity player, Supplier<Packet<?>> packet) {
         var owner = active; return owner != null && owner.player == player && owner.capture(packet);
+    }
+    public static boolean mine(ClientPlayerInteractionManager manager, net.minecraft.util.math.BlockPos pos,
+                               net.minecraft.util.math.Direction side, boolean continued) {
+        var owner = match(manager, null);
+        if (owner == null) return false;
+        try {
+            owner.check();
+            if (!owner.current.getAsBoolean()) throw new IllegalStateException("Native mining client changed");
+            if (pos == null) owner.mining.cancel();
+            else owner.mining.hit(pos, side, continued);
+        } catch (RuntimeException | Error failure) { owner.fail.accept(failure); }
+        return true;
     }
     public static boolean unsupported(ClientPlayerInteractionManager manager, PlayerEntity player, String action) {
         var owner = match(manager, player);

@@ -16,6 +16,7 @@ class RollbackInputPacketTest {
         return switch (kind) {
             case ATTACK, INTERACT_ENTITY -> new RollbackInteractionTarget.Actor(42, null);
             case RIGHT_CLICK_ENTITY -> new RollbackInteractionTarget.Actor(42, offset);
+            case START_DESTROY_BLOCK, STOP_DESTROY_BLOCK, ABORT_DESTROY_BLOCK -> new RollbackInteractionTarget.Dig(1, 2, 3, RollbackInteractionTarget.Face.UP);
             case RIGHT_CLICK_BLOCK -> new RollbackInteractionTarget.Block(1, 2, 3, RollbackInteractionTarget.Face.UP, offset, false);
             default -> null;
         };
@@ -71,7 +72,9 @@ class RollbackInputPacketTest {
         var block = new RollbackInteractionTarget.Block(5, 65, -3, RollbackInteractionTarget.Face.UP, hit, false);
         var edges = List.of(new RollbackInputPacket.Edge(1, RollbackInputActions.Kind.RIGHT_CLICK_BLOCK, -1, 45, 12, RollbackInputActions.Hand.OFF, block),
                 new RollbackInputPacket.Edge(2, RollbackInputActions.Kind.RIGHT_CLICK_ENTITY, -1, 45, 12, RollbackInputActions.Hand.MAIN, new RollbackInteractionTarget.Actor(-7, hit)),
-                new RollbackInputPacket.Edge(3, RollbackInputActions.Kind.ATTACK, -1, 45, 12, RollbackInputActions.Hand.MAIN, new RollbackInteractionTarget.Actor(2, null)));
+                new RollbackInputPacket.Edge(3, RollbackInputActions.Kind.ATTACK, -1, 45, 12, RollbackInputActions.Hand.MAIN, new RollbackInteractionTarget.Actor(2, null)),
+                new RollbackInputPacket.Edge(4, RollbackInputActions.Kind.START_DESTROY_BLOCK, -1, 45, 12, RollbackInputActions.Hand.MAIN,
+                        new RollbackInteractionTarget.Dig(5, 65, -3, RollbackInteractionTarget.Face.UP)));
         var encoded = packet(edges);
         assertEquals(encoded, RollbackInputPacket.decode(encoded.encode()));
         var frame = encoded.playerInput(PLAYER, 99);

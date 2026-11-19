@@ -33,6 +33,21 @@ class RollbackWorldSettingsTest {
         assertThrows(IllegalArgumentException.class, () -> settings(Map.of()));
         assertThrows(IllegalArgumentException.class, () -> RollbackWorldSettings.decode(new byte[RollbackWorldSettings.MAXIMUM_BYTES + 1]));
     }
+    @Test void physicalKitRulesTravelWithTheArenaAndPreserveTheOrdinaryBendingKit() {
+        var base = settings(Map.of("test:rule", new RollbackWorldSettings.Flag(true)));
+        var position = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Position(7, 83, -6);
+        var custom = new RollbackDuelInteractions(true, true, java.util.Set.of("WHITE_WOOL"), java.util.Set.of(position));
+        var restored = RollbackWorldSettings.decode(base.withInteractions(custom).encode()).interactions();
+        assertEquals(custom, restored);
+        assertEquals(RollbackDuelInteractions.Decision.ALLOW, restored.breakDecision(7, 83, -6, "STONE"));
+        assertEquals(RollbackDuelInteractions.Decision.DENY, restored.breakDecision(7, 82, -6, "STONE"));
+        assertEquals(RollbackDuelInteractions.Decision.ALLOW, restored.breakDecision(0, 0, 0, "WHITE_WOOL"));
+        assertEquals(RollbackDuelInteractions.Decision.LIVE_MATCH, restored.breakDecision(0, 0, 0, "RED_BED"));
+        assertTrue(restored.consumeDrop("GLASS_BOTTLE"));
+        assertFalse(restored.consumeDrop("IRON_INGOT"));
+        assertEquals(RollbackDuelInteractions.STANDARD, RollbackWorldSettings.decode(base.encode()).interactions());
+    }
+
     @Test void oversizedAndInvalidPolicyRejectBeforeEncoding() {
         var rules = new HashMap<String, RollbackWorldSettings.Rule>();
         for (int i = 0; i <= RollbackWorldSettings.MAXIMUM_RULES; i++) rules.put("test:rule" + i, new RollbackWorldSettings.Flag(true));

@@ -72,7 +72,7 @@ public final class PaperRollbackStatistics implements RollbackStateCell<PaperRol
             methods.copy(incrementMethod).copy(setMethod)
                     .read(SpigotConfig.class.getField("disableStatSaving"), MethodHandles.constant(boolean.class, seed.disabled()))
                     .read(SpigotConfig.class.getField("forcedStats"), MethodHandles.constant(Map.class, seed.forced()));
-            var copied = methods.build();
+            var copied = world.prepareMethods(methods);
             increment = copied.get(incrementMethod); set = copied.get(setMethod);
         } catch (ReflectiveOperationException failure) { throw new IllegalStateException("Native statistics methods changed", failure); }
         counter = RollbackNativeQueryShell.create(ServerStatsCounter.class)

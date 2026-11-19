@@ -175,64 +175,7 @@ public class PKListener implements Listener {
     public void onBlockBreak(final BlockBreakEvent event) {
         final var block = BukkitMC.block(event.getBlock());
         final var player = BukkitMC.player(event.getPlayer());
-        final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-        final String abil = bPlayer.getBoundAbilityName();
-        CoreAbility ability;
-
-        if (Illumination.isIlluminationTorch(block.getRelative(com.projectkorra.projectkorra.platform.mc.block.BlockFace.UP))) {
-            TempBlock torch = TempBlock.get(block.getRelative(com.projectkorra.projectkorra.platform.mc.block.BlockFace.UP));
-            var user = Illumination.getBlocks().get(torch);
-            Illumination illumination = CoreAbility.getAbility(user, Illumination.class);
-            if (illumination != null) {
-                illumination.remove();
-            }
-        }
-
-        if (bPlayer.isElementToggled(Element.WATER) && bPlayer.isToggled()) {
-            if (abil != null && abil.equalsIgnoreCase("Surge")) {
-                ability = CoreAbility.getAbility(SurgeWall.class);
-            } else if (abil != null && abil.equalsIgnoreCase("Torrent")) {
-                ability = CoreAbility.getAbility(Torrent.class);
-            } else if (abil != null && abil.equalsIgnoreCase("WaterSpout")) {
-                ability = CoreAbility.getAbility(WaterSpoutWave.class);
-            } else {
-                ability = CoreAbility.getAbility(abil);
-            }
-
-            if (ability instanceof WaterAbility && !((WaterAbility) ability).allowBreakPlants() && WaterAbility.isPlantbendable(player, block.getType(), false)) {
-                event.setCancelled(true);
-                return;
-            }
-        }
-
-        final EarthBlast blast = EarthBlast.getBlastFromSource(block);
-        if (blast != null) {
-            blast.remove();
-        }
-
-        if (PhaseChange.getFrozenBlocksAsBlock().contains(block)) {
-            if (PhaseChange.thaw(block)) {
-                event.setCancelled(true);
-            }
-        } else if (SurgeWall.getWallBlocks().containsKey(block)) {
-            event.setCancelled(true);
-        } else if (Illumination.isIlluminationTorch(block)) {
-            event.setCancelled(true);
-        } else if (!SurgeWave.canThaw(block)) {
-            SurgeWave.thaw(block);
-            event.setCancelled(true);
-        } else if (LavaFlow.isLavaFlowBlock(block)) {
-            LavaFlow.removeBlock(block);
-        } else if (EarthAbility.getMovedEarth().containsKey(block)) {
-            EarthAbility.removeRevertIndex(block);
-        } else if (TempBlock.isTempBlock(block)) {
-            event.setCancelled(true);
-            TempBlock.revertBlock(block, com.projectkorra.projectkorra.platform.mc.Material.AIR);
-        } else if (DensityShift.isPassiveSand(block)) {
-            DensityShift.revertSand(block);
-        } else if (WaterBubble.isAir(block)) {
-            event.setCancelled(true);
-        }
+        event.setCancelled(com.projectkorra.projectkorra.listener.CommonBlockBreak.cancelled(player, block));
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)

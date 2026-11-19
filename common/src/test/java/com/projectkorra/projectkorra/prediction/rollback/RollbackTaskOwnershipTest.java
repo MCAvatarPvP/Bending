@@ -33,19 +33,58 @@ class RollbackTaskOwnershipTest {
         var constructor = com.projectkorra.projectkorra.util.StatisticsManager.class.getDeclaredConstructor();
         constructor.setAccessible(true);
         var statistics = constructor.newInstance();
-        statistics.store(A); // An enrolled UUID reachable from the shared persistence callback.
+        statistics.store(A);
+        statistics.store(B);
         var backend = new RollbackLiveSchedulerTest.Backend();
         var scheduler = new RollbackLiveScheduler(backend, () -> backend.tick, callback -> callback);
         var handle = scheduler.runTimer(statistics, 57, 100);
         var mine = new Callback(List.of(statistics, A));
         scheduler.runLater(mine, 57);
-        var lease = scheduler.prepare(ownership());
-        try {
-            var capture = lease.freeze(8);
-            assertEquals(List.of(mine), capture.bindings().entries().stream().map(RollbackTaskBindings.Entry::callback).toList());
-            assertFalse(handle.cancelled());
-            assertEquals(57, scheduler.managerDelay(statistics.getClass(), 100));
-        } finally { lease.restore(); }
+        var checked = new ArrayList<UUID>();
+        var players = (com.projectkorra.projectkorra.platform.PKPlayers) java.lang.reflect.Proxy.newProxyInstance(
+                getClass().getClassLoader(), new Class<?>[]{com.projectkorra.projectkorra.platform.PKPlayers.class}, (self, method, args) -> {
+                    if (!method.getName().equals("getPlayer")) throw new AssertionError(method);
+                    checked.add((UUID) args[0]);
+                    return player((UUID) args[0]);
+                });
+        var platform = (com.projectkorra.projectkorra.platform.ProjectKorraPlatform) java.lang.reflect.Proxy.newProxyInstance(
+                getClass().getClassLoader(), new Class<?>[]{com.projectkorra.projectkorra.platform.ProjectKorraPlatform.class},
+                (self, method, args) -> switch (method.getName()) {
+                    case "scheduler" -> scheduler;
+                    case "players" -> players;
+                    default -> throw new AssertionError(method);
+                });
+        try (var ignored = com.projectkorra.projectkorra.platform.Platform.using(platform)) {
+            var flightConstructor = com.projectkorra.projectkorra.util.FlightHandler.class.getDeclaredConstructor();
+            flightConstructor.setAccessible(true);
+            var flights = flightConstructor.newInstance();
+            var duelist = player(A);
+            var outsider = player(B);
+            flights.createInstance(duelist, 0, "duelist");
+            flights.createInstance(outsider, 0, "outside");
+            flights.startCleanup();
+            var roster = RollbackLiveOwnership.prepare(Set.of(A));
+            var lease = scheduler.prepare(ownership());
+            roster.acquire();
+            try {
+                var capture = lease.freeze(8);
+                assertEquals(List.of(mine), capture.bindings().entries().stream().map(RollbackTaskBindings.Entry::callback).toList());
+                assertFalse(handle.cancelled());
+                assertEquals(57, scheduler.managerDelay(statistics.getClass(), 100));
+                for (int tick = 0; tick < 57; tick++) backend.advance();
+                assertEquals(List.of(B), checked);
+                assertNotNull(flights.getInstance(duelist));
+                assertNull(flights.getInstance(outsider));
+                assertEquals(0, mine.calls);
+            } finally {
+                lease.restore();
+                roster.restoreAndRelease(() -> {});
+            }
+            for (int tick = 0; tick < 100; tick++) backend.advance();
+            assertEquals(List.of(B, A), checked);
+            assertNull(flights.getInstance(duelist));
+            assertEquals(1, mine.calls);
+        }
     }
 
     @Test void sharedCallbackCannotPartiallyFreezeAnotherPlayersWork() {

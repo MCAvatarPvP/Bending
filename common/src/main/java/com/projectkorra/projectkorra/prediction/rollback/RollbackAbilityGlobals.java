@@ -18,6 +18,10 @@ import java.util.*;
 /** Per-participant delayed Catapult landings and block-source selections. */
 public final class RollbackAbilityGlobals {
     private boolean enrolled;
+    private RollbackDigging mining = new RollbackDigging();
+    public static RollbackDigging digging() {
+        return Objects.requireNonNull(RollbackDomain.abilityGlobals(), "Missing private ability state").mining;
+    }
     private RollbackAddonActors addonActors;
     public RollbackAddonActors addonActors() {
         if (addonActors == null) addonActors = new RollbackAddonActors();
@@ -119,6 +123,7 @@ public final class RollbackAbilityGlobals {
         copy.elementExpiryDelay = elementExpiryDelay;
         copy.enrolled = enrolled; copy.landings = landings; copy.sources = sources; copy.statuses = statuses;
         copy.addonActors = addonActors;
+        copy.mining = mining;
         copy.falling = falling; copy.stands = stands;
         copy.unleasedIndices = unleasedIndices;
         copy.layers = layers == null ? null : layers.portable();

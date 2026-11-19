@@ -13,7 +13,7 @@ import java.util.UUID;
  */
 public record RollbackInputPacket(UUID session, long clientTick, RollbackMovementInput movement,
                                   boolean sprinting, List<Edge> actions) {
-    public static final int VERSION = 7;
+    public static final int VERSION = 8;
     public static final String CHANNEL = "projectkorra:rollback_input";
     public static final int MAXIMUM_BYTES = 47 + 46 * RollbackPlayerInput.MAXIMUM_ACTIONS;
 

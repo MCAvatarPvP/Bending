@@ -106,6 +106,7 @@ public final class PaperRollbackWorldServices implements PaperRollbackWorldAcces
     @Override public net.minecraft.world.flag.FeatureFlagSet terrainFeatures() { checkThread(); return features; }
     @Override public RollbackStructurePieces structures() { return settings.structures(); }
     @Override public RollbackWorldSettings.ArrowLifetime arrowLifetime() { return settings.arrowLifetime(); }
+    @Override public RollbackItemRules itemRules() { return settings.interactions().items(); }
     @Override public java.util.Map<String, Integer> actorDespawnTimes() { return settings.actorDespawnTime(); }
     @Override public boolean splitOverstackedLoot() { return policy().splitOverstackedLoot(); }
     @Override public RandomSource random() { checkThread(); return random; }

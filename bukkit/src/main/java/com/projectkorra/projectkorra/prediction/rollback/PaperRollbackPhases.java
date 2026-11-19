@@ -24,6 +24,8 @@ final class PaperRollbackPhases implements RollbackPlayerExecution.Services<Obje
             case SNEAK_START, SNEAK_STOP -> { }
             case RELEASE_USE_ITEM -> scene.world().releaseItem(body);
             case RIGHT_CLICK -> scene.world().useItem(body, hand);
+            case DROP_ITEM, DROP_ALL_ITEMS -> actors.dropSelected(body,
+                    edge.action().kind() == RollbackInputActions.Kind.DROP_ALL_ITEMS);
             case ATTACK, INTERACT_ENTITY, RIGHT_CLICK_ENTITY -> {
                 var selected = (RollbackInteractionTarget.Actor) edge.action().target();
                 var view = scene.logical().entities().get(selected.networkId());

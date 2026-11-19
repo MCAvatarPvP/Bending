@@ -58,6 +58,9 @@ public final class FabricRollbackClientRuntime<S, E> implements FabricRollbackSt
     }
     @Override public RollbackClientRuntime.Repair<S, E> stateRepair() { return repair; }
     @Override public void correction(RollbackStateCorrection correction) { simulate(() -> runtime.correction(correction)); }
+    @Override public FabricRollbackMiningInput.Material mining(net.minecraft.util.math.BlockPos pos) {
+        return controls == null ? FabricRollbackMiningInput.Material.FROZEN : controls.mining(pos);
+    }
     @Override public boolean ownsNativeTick() { return controls != null; }
     @Override public void nativeTick(long tick) {
         if (controls == null) throw new IllegalStateException("Native ticking has no private control source");

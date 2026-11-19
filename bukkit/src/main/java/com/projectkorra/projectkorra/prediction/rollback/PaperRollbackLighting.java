@@ -55,13 +55,19 @@ public final class PaperRollbackLighting implements RollbackStateCell<PaperRollb
             var chunk = new ProtoChunk(new ChunkPos(x, z), UpgradeData.EMPTY, height, containers, null);
             chunk.setPersistedStatus(ChunkStatus.LIGHT); chunk.setLightCorrect(true);
             var sections = chunk.getSections();
-            var sky = emptyLayers(hasSky); var block = emptyLayers(false);
+            var sky = boundaryLayers(hasSky); var block = boundaryLayers(false);
             for (int i = 0; i < sections.length; i++) {
                 int y = bounds.minY() + (i << 4);
                 var photons = light.section(x << 4, y, z << 4);
                 if (!hasSky && photons.hasSkyLight()) throw new IllegalArgumentException("Sky light in a dimension without sky lighting");
                 sky[i + 1] = new SWMRNibbleArray(photons.sky());
                 block[i + 1] = new SWMRNibbleArray(photons.block());
+                int uniform = terrain.uniformPalette(x << 4, y, z << 4);
+                if (uniform >= 0) {
+                    var state = palette.get(uniform);
+                    if (state != air) sections[i] = new LevelChunkSection(new PalettedContainer<>(state, containers.blockStatesStrategy()), containers.createForBiomes());
+                    continue;
+                }
                 var section = sections[i];
                 for (int dy = 0; dy < 16; dy++) for (int dz = 0; dz < 16; dz++) {
                     int row = ((y - bounds.minY() + dy) * depth + (z << 4) - bounds.minZ() + dz) * width + (x << 4) - bounds.minX();
@@ -135,13 +141,13 @@ public final class PaperRollbackLighting implements RollbackStateCell<PaperRollb
             return delegate instanceof RollbackStateCell<?> ? List.of(PaperRollbackLighting.this, delegate) : List.of(PaperRollbackLighting.this);
         }
     }
-    private SWMRNibbleArray[] emptyLayers(boolean sky) {
+    private SWMRNibbleArray[] boundaryLayers(boolean sky) {
         var result = new SWMRNibbleArray[sectionCount + 2];
-        for (int i = 0; i < result.length; i++) {
-            result[i] = new SWMRNibbleArray();
-            if (sky && i == result.length - 1) result[i].setFull(); else result[i].setZero();
-            result[i].updateVisible();
-        }
+        result[0] = new SWMRNibbleArray();
+        result[0].setZero();
+        var top = new SWMRNibbleArray();
+        if (sky) top.setFull(); else top.setZero();
+        result[result.length - 1] = top;
         return result;
     }
     public Bounds bounds() { check(); return bounds; }

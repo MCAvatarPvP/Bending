@@ -18,9 +18,33 @@ public final class RollbackTerrainSeed implements RollbackBlockStore.Seed {
     private final List<Cell> palette;
     private final int[] cells;
     private final double[] temperatures;
+    private final int[] uniformSections;
     RollbackTerrainSeed(Bounds bounds, List<Cell> palette, int[] cells, double[] temperatures) {
         this.temperatures = temperatures;
         this.bounds = bounds; this.palette = List.copyOf(palette); this.cells = cells;
+        if (((bounds.minX() | bounds.minY() | bounds.minZ() | bounds.maxX() | bounds.maxY() | bounds.maxZ()) & 15) == 0) {
+            uniformSections = new int[cells.length / 4096];
+            int index = 0;
+            for (int y = bounds.minY(); y < bounds.maxY(); y += 16) for (int z = bounds.minZ(); z < bounds.maxZ(); z += 16)
+                for (int x = bounds.minX(); x < bounds.maxX(); x += 16) uniformSections[index++] = findUniform(x, y, z);
+        } else uniformSections = null;
+    }
+    private int findUniform(int x, int y, int z) {
+        int width = bounds.maxX() - bounds.minX(), depth = bounds.maxZ() - bounds.minZ();
+        int origin = ((y - bounds.minY()) * depth + z - bounds.minZ()) * width + x - bounds.minX();
+        int first = cells[origin];
+        for (int dy = 0; dy < 16; dy++) for (int dz = 0; dz < 16; dz++) {
+            int row = origin + (dy * depth + dz) * width;
+            for (int dx = 0; dx < 16; dx++) if (cells[row + dx] != first) return -1;
+        }
+        return first;
+    }
+    /** Palette index for all 4,096 cells, or -1 when individual state reads are needed. */
+    public int uniformPalette(int x, int y, int z) {
+        if (((x | y | z) & 15) != 0 || uniformSections == null || x < bounds.minX() || y < bounds.minY() || z < bounds.minZ()
+                || x >= bounds.maxX() || y >= bounds.maxY() || z >= bounds.maxZ()) return -1;
+        return uniformSections[(((y - bounds.minY()) >> 4) * ((bounds.maxZ() - bounds.minZ()) >> 4) + ((z - bounds.minZ()) >> 4))
+                * ((bounds.maxX() - bounds.minX()) >> 4) + ((x - bounds.minX()) >> 4)];
     }
     @Override public Bounds bounds() { return bounds; }
     public int paletteSize() { return palette.size(); }

@@ -65,20 +65,45 @@ public final class PaperRollbackRosterSeed {
     /** On failure discard the candidate private world; nothing ever mutates the source roster. */
     public Map<UUID, PaperRollbackNativePlayerState> instantiate(PaperRollbackWorldAccess world, long initialNanos,
                                                                Map<UUID, Services> services) {
-        requireSetup(); Objects.requireNonNull(world, "private world"); Objects.requireNonNull(services, "player services");
-        if (!services.keySet().equals(players.keySet())) throw new IllegalArgumentException("Import requires services for exactly the captured roster");
-        var importedServices = Map.copyOf(services);
-        world.requireRosterImport(players.size());
-        for (var seed : players.values()) seed.validateRoster(world, players.keySet());
-        var result = new LinkedHashMap<UUID, PaperRollbackNativePlayerState>();
-        var nativePlayers = new LinkedHashMap<UUID, ServerPlayer>();
-        for (var seed : players.values()) {
-            var service = importedServices.get(seed.id());
-            var state = seed.instantiateBody(world, initialNanos, service.randomSeed(), service.maximumObjects(), service.statistics(), service.advancements());
-            result.put(seed.id(), state); nativePlayers.put(seed.id(), (ServerPlayer) state.ownedPlayer());
+        var preparation = prepare(world, initialNanos, services);
+        while (preparation.advance()) { /* Synchronous callers request the whole roster. */ }
+        return preparation.finish();
+    }
+
+    Preparation prepare(PaperRollbackWorldAccess world, long initialNanos, Map<UUID, Services> services) {
+        return new Preparation(world, initialNanos, services);
+    }
+
+    final class Preparation {
+        private final PaperRollbackWorldAccess world;
+        private final long initialNanos;
+        private final Map<UUID, Services> services;
+        private final Iterator<PaperRollbackPlayerSeed> remaining = players.values().iterator();
+        private final Map<UUID, PaperRollbackNativePlayerState> bodies = new LinkedHashMap<>();
+        private final Map<UUID, ServerPlayer> natives = new LinkedHashMap<>();
+
+        private Preparation(PaperRollbackWorldAccess world, long initialNanos, Map<UUID, Services> services) {
+            requireSetup();
+            this.world = Objects.requireNonNull(world); this.initialNanos = initialNanos; this.services = Map.copyOf(services);
+            if (!this.services.keySet().equals(players.keySet())) throw new IllegalArgumentException("Import requires services for exactly the captured roster");
+            world.requireRosterImport(players.size());
+            for (var seed : players.values()) seed.validateRoster(world, players.keySet());
         }
-        for (var seed : players.values()) seed.bindCombat(nativePlayers.get(seed.id()), nativePlayers);
-        return Collections.unmodifiableMap(result);
+        boolean advance() {
+            requireSetup();
+            if (!remaining.hasNext()) return false;
+            var seed = remaining.next();
+            var service = services.get(seed.id());
+            var state = seed.instantiateBody(world, initialNanos, service.randomSeed(), service.maximumObjects(), service.statistics(), service.advancements());
+            bodies.put(seed.id(), state); natives.put(seed.id(), (ServerPlayer) state.ownedPlayer());
+            return true;
+        }
+        Map<UUID, PaperRollbackNativePlayerState> finish() {
+            requireSetup();
+            if (remaining.hasNext()) throw new IllegalStateException("Native roster is incomplete");
+            for (var seed : players.values()) seed.bindCombat(natives.get(seed.id()), natives);
+            return Collections.unmodifiableMap(bodies);
+        }
     }
 
     private static void requireSetup() {

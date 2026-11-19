@@ -72,8 +72,7 @@ public final class PaperRollbackCombatAccess {
     private final WorldConfiguration worldConfiguration;
     private final PaperRollbackNativeEvents events;
 
-    PaperRollbackCombatAccess(PaperRollbackWorldAccess world, PaperRollbackWorldAccess.Combat<?> state,
-            java.util.function.Consumer<Runnable> compile) {
+    PaperRollbackCombatAccess(PaperRollbackWorldAccess world, PaperRollbackWorldAccess.Combat<?> state) {
         this.world = world; this.state = state;
         registries = (RegistryAccess) Objects.requireNonNull(state.registryAccess(), "captured native registries");
         damageRegistry = registries.lookupOrThrow(Registries.DAMAGE_TYPE);
@@ -91,6 +90,16 @@ public final class PaperRollbackCombatAccess {
         worldConfiguration.entities = allocator.newInstance(WorldConfiguration.Entities.class);
         worldConfiguration.entities.behavior = allocator.newInstance(WorldConfiguration.Entities.Behavior.class);
         worldConfiguration.entities.spawning = allocator.newInstance(WorldConfiguration.Entities.Spawning.class);
+        var itemRules = state.itemRules();
+        var itemRates = allocator.newInstance(WorldConfiguration.Entities.Spawning.AltItemDespawnRate.class);
+        itemRates.enabled = !itemRules.overrides().isEmpty();
+        itemRates.items = new it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap<>();
+        itemRules.overrides().forEach((name, ticks) -> itemRates.items.put(
+                net.minecraft.core.registries.BuiltInRegistries.ITEM.getOptional(net.minecraft.resources.Identifier.parse(name)).orElseThrow(),
+                ticks.intValue()));
+        worldConfiguration.entities.spawning.altItemDespawnRate = itemRates;
+        worldConfiguration.entities.behavior.onlyMergeItemsHorizontally = itemRules.horizontalOnly();
+        worldConfiguration.fixes.fixItemsMergingThroughWalls = itemRules.blockWalls();
         var ordinaryArrowRate = allocator.newInstance(org.spigotmc.SpigotWorldConfig.class);
         ordinaryArrowRate.arrowDespawnRate = state.arrowLifetime().unpickableTicks();
         worldConfiguration.entities.spawning.nonPlayerArrowDespawnRate =
@@ -217,7 +226,7 @@ public final class PaperRollbackCombatAccess {
             Method equipment = Player.class.getDeclaredMethod("detectEquipmentUpdates");
             Method cooldownApply = net.minecraft.world.item.component.UseCooldown.class.getDeclaredMethod("apply", ItemStack.class, LivingEntity.class);
             builder.copy(cooldownApply);
-            var copied = builder.prepare(compile);
+            var copied = world.prepareMethods(builder);
             mount = copied.get(Entity.class.getDeclaredMethod("startRiding", Entity.class, boolean.class, boolean.class));
             unmount = copied.get(Entity.class.getDeclaredMethod("stopRiding"));
             melee = copied.get(attack);

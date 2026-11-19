@@ -21,6 +21,13 @@ final class FabricRollbackPhases implements RollbackPlayerExecution.Services<Obj
             switch (edge.action().kind()) {
                 case SNEAK_START, SNEAK_STOP -> { /* The common dispatcher already wrote the private native control. */ }
                 case RELEASE_USE_ITEM -> body.stopUsingItem();
+                case DROP_ITEM, DROP_ALL_ITEMS -> duel.actors().dropSelected(body, edge.action().kind() == RollbackInputActions.Kind.DROP_ALL_ITEMS);
+                case START_DESTROY_BLOCK, ABORT_DESTROY_BLOCK, STOP_DESTROY_BLOCK -> {
+                    var target = (RollbackInteractionTarget.Dig) edge.action().target();
+                    var pos = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Position(target.x(), target.y(), target.z());
+                    RollbackAbilityGlobals.digging().action(player.getUniqueId(), duel.round().tick(), edge.action().kind(), pos,
+                            new FabricRollbackDigBlocks(duel, player, body));
+                }
                 case RIGHT_CLICK -> {
                     var stack = body.getStackInHand(hand);
                     if (body.isSpectator() || body.getItemCooldownManager().isCoolingDown(stack)) break;
@@ -60,6 +67,13 @@ final class FabricRollbackPhases implements RollbackPlayerExecution.Services<Obj
     }
     @Override public void tickWorld(long tick) {
         FabricRollbackGliding.use(duel.scene().roster().world(), () -> {
+            if (RollbackDomain.active()) {
+                for (var player : duel.views().players().values()) {
+                    var state = duel.scene().roster().players().get(player.getUniqueId());
+                    RollbackAbilityGlobals.digging().tick(player.getUniqueId(), tick,
+                            new FabricRollbackDigBlocks(duel, player, state.ownedPlayer()));
+                }
+            }
             duel.actors().registry().tick();
             return null;
         });

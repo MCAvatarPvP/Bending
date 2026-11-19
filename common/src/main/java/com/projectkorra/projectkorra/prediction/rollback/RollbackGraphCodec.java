@@ -50,6 +50,13 @@ public final class RollbackGraphCodec {
 
     /** An explicit, immutable allowlist. Symbols allow enums, class values and array component types. */
     public static final class Catalog {
+        // Only immutable class signatures are shared. Each catalog supplies its own bound identities.
+        private static final ClassValue<byte[]> OBJECT_SCHEMAS = new ClassValue<>() {
+            @Override protected byte[] computeValue(Class<?> type) { return schemaRow(type, RollbackStateTransfer.LAYOUTS.get(type)); }
+        };
+        private static final ClassValue<byte[]> SYMBOL_SCHEMAS = new ClassValue<>() {
+            @Override protected byte[] computeValue(Class<?> type) { return schemaRow(type, null); }
+        };
         private final List<Class<?>> types;
         private final Map<Class<?>, Integer> indices;
         private final Map<Class<?>, RollbackStateTransfer.Layout> layouts;
@@ -90,31 +97,37 @@ public final class RollbackGraphCodec {
                 previous = binding.id();
             }
             try {
-                var bytes = new ByteArrayOutputStream();
-                var out = new DataOutputStream(bytes);
+                var digest = MessageDigest.getInstance("SHA-256");
+                var out = new DataOutputStream(new java.security.DigestOutputStream(OutputStream.nullOutputStream(), digest));
                 out.writeInt(VERSION);
                 out.writeInt(types.size());
-                for (Class<?> type : types) {
-                    schemaString(out, sharedTypeName(type));
-                    var layout = layouts.get(type);
-                    out.writeInt(layout == null ? -1 : layout.fields.size());
-                    if (layout != null) for (var access : layout.fields) {
-                        schemaString(out, sharedTypeName(access.field.getDeclaringClass()));
-                        schemaString(out, access.field.getName());
-                        schemaString(out, sharedTypeName(access.field.getType()));
-                        out.writeInt(access.field.getModifiers());
-                    }
-                    List<String> constants = type.isEnum() ? RollbackEnumSchema.names(type) : List.of();
-                    out.writeInt(constants.size());
-                    for (String constant : constants) schemaString(out, constant);
-                }
+                for (Class<?> type : types) out.write((layouts.containsKey(type) ? OBJECT_SCHEMAS : SYMBOL_SCHEMAS).get(type));
                 out.writeInt(this.bindings.size());
                 for (Binding binding : this.bindings) {
                     schemaString(out, binding.id());
                     schemaString(out, sharedTypeName(binding.type()));
                 }
-                fingerprint = MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray());
+                fingerprint = digest.digest();
             } catch (IOException | NoSuchAlgorithmException exception) { throw new IllegalStateException(exception); }
+        }
+
+        private static byte[] schemaRow(Class<?> type, RollbackStateTransfer.Layout layout) {
+            try {
+                var bytes = new ByteArrayOutputStream();
+                var out = new DataOutputStream(bytes);
+                schemaString(out, sharedTypeName(type));
+                out.writeInt(layout == null ? -1 : layout.fields.size());
+                if (layout != null) for (var access : layout.fields) {
+                    schemaString(out, sharedTypeName(access.field.getDeclaringClass()));
+                    schemaString(out, access.field.getName());
+                    schemaString(out, sharedTypeName(access.field.getType()));
+                    out.writeInt(access.field.getModifiers());
+                }
+                List<String> constants = type.isEnum() ? RollbackEnumSchema.names(type) : List.of();
+                out.writeInt(constants.size());
+                for (String constant : constants) schemaString(out, constant);
+                return bytes.toByteArray();
+            } catch (IOException failure) { throw new UncheckedIOException(failure); }
         }
 
         /** Extend an already negotiated catalog with the actor identities present at one frontier. */

@@ -57,6 +57,12 @@ public final class FabricRollbackLighting implements RollbackStateCell<FabricRol
                 if (!hasSky && photons.hasSkyLight()) throw new IllegalArgumentException("Sky light in a dimension without sky lighting");
                 sky[i + 1] = new ChunkNibbleArray(photons.sky());
                 block[i + 1] = new ChunkNibbleArray(photons.block());
+                int uniform = terrain.uniformPalette(x << 4, y, z << 4);
+                if (uniform >= 0) {
+                    var state = palette.get(uniform);
+                    if (state != air) sections[i] = new ChunkSection(new PalettedContainer<>(state, palettes.blockStatesStrategy()), sections[i].getBiomeContainer());
+                    continue;
+                }
                 var section = sections[i];
                 for (int dy = 0; dy < 16; dy++) for (int dz = 0; dz < 16; dz++) {
                     int row = ((y - bounds.minY() + dy) * depth + (z << 4) - bounds.minZ() + dz) * width + (x << 4) - bounds.minX();
@@ -114,7 +120,8 @@ public final class FabricRollbackLighting implements RollbackStateCell<FabricRol
     }
     private ChunkNibbleArray[] layers(boolean sky) {
         var result = new ChunkNibbleArray[height.countVerticalSections() + 2];
-        for (int i = 0; i < result.length; i++) result[i] = new ChunkNibbleArray(sky && i == result.length - 1 ? 15 : 0);
+        result[0] = new ChunkNibbleArray(0);
+        result[result.length - 1] = new ChunkNibbleArray(sky ? 15 : 0);
         return result;
     }
     /** Build a complete replacement before publishing any restored chunk or light engine. */

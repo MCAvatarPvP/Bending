@@ -143,6 +143,7 @@ public final class FabricRollbackBootstraps {
             @Override public RollbackClientRuntime.Repair<?, ?> stateRepair() { return captured.prepared.runtime().stateRepair(); }
             @Override public void correction(RollbackStateCorrection correction) { captured.prepared.runtime().correction(correction); }
             @Override public void nativeTick(long tick) { captured.prepared.runtime().nativeTick(tick); }
+            @Override public FabricRollbackMiningInput.Material mining(net.minecraft.util.math.BlockPos pos) { return captured.prepared.runtime().mining(pos); }
             @Override public void packet(Packet<?> packet, long tick) { captured.prepared.runtime().packet(packet, tick); }
             @Override public void start(long tick) { captured.prepared.runtime().start(tick); }
             @Override public void tick(long tick) { captured.prepared.runtime().tick(tick); }

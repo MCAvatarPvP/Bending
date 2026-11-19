@@ -19,6 +19,40 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class PaperRollbackNativeSceneNativeTest {
     @BeforeAll static void bootstrap() { PaperRollbackDamageNativeTest.bootstrap(); }
+    @Test void interruptedPartialRosterCanBeDiscardedBeforeACompleteStagedImport() throws Exception {
+        onTickThread(() -> {
+            var live = source();
+            var roster = PaperRollbackRosterSeed.capture(live, 0);
+            var settings = seed();
+            var round = new RollbackRound(new UUID(7, 11), Map.of(live.getFirst().getUUID(), new UUID(0, 1),
+                    live.getLast().getUUID(), new UUID(0, 2)));
+            var registry = PaperRollbackEnvironmentNativeTest.registries();
+            var services = new TreeMap<UUID, PaperRollbackRosterSeed.Services>();
+            roster.participants().forEach(id -> services.put(id, new PaperRollbackRosterSeed.Services(id.getLeastSignificantBits(),
+                    300_000, PaperRollbackStatistics.Seed.fresh(), PaperRollbackAdvancements.Seed.empty())));
+            java.util.function.Supplier<java.util.function.Supplier<PaperRollbackNativeScene>> prepare = () -> {
+                var items = new RollbackNativeItems<>(new PaperRollbackItems(registry));
+                var bindings = new PaperRollbackNativeScene.Bindings(new PaperRollbackBlockRules(items), items,
+                        unused(RollbackWorld.Actions.class), registry, new Events());
+                return PaperRollbackNativeScene.prepare(settings, roster, round, registry, FeatureFlags.DEFAULT_FLAGS,
+                        bindings, services, 0, 100, 128, 9);
+            };
+            var abandoned = prepare.get();
+            assertNull(abandoned.get());
+            var complete = prepare.get();
+            assertNull(complete.get()); assertNull(complete.get());
+            var scene = complete.get();
+            assertEquals(roster.participants(), scene.roster().keySet());
+            for (var source : live) {
+                var copy = (ServerPlayer) scene.roster().get(source.getUUID()).ownedPlayer();
+                assertNotSame(copy, source); assertNotSame(copy.level(), source.level());
+                assertEquals(source.position(), copy.position());
+                assertEquals(source.getHealth(), copy.getHealth());
+            }
+            return null;
+        });
+    }
+
     @Test void privateSnowballImpactDeliversExactLogicalActorsWithoutALiveBukkitServer() throws Exception {
         onTickThread(() -> {
             var roster = PaperRollbackRosterSeed.capture(source(), 0);
@@ -119,6 +153,59 @@ class PaperRollbackNativeSceneNativeTest {
             assertSame(target, events.getFirst().getHitEntity());
             assertNull(Bukkit.getServer());
             return null;
+        });
+    }
+
+    @Test void itemDropsUseTheSelectedSlotAndRewindTheOwnedThrowerAndActor() throws Exception {
+        onTickThread(() -> {
+            var configField = io.papermc.paper.configuration.GlobalConfiguration.class.getDeclaredField("instance");
+            configField.setAccessible(true);
+            var previous = configField.get(null);
+            var config = new io.papermc.paper.configuration.GlobalConfiguration();
+            config.misc = new org.objenesis.ObjenesisStd().newInstance(io.papermc.paper.configuration.GlobalConfiguration.Misc.class);
+            configField.set(null, config);
+            try {
+                var roster = PaperRollbackRosterSeed.capture(source(), 0);
+                var events = new ArrayList<org.bukkit.event.player.PlayerDropItemEvent>();
+                var scene = scene(seed(), roster, roster.participants(), new Events() {
+                    @Override public void event(org.bukkit.event.Event event) {
+                        if (event instanceof org.bukkit.event.player.PlayerDropItemEvent drop) events.add(drop);
+                    }
+                });
+                var items = new RollbackNativeItems<>(new PaperRollbackItems(PaperRollbackEnvironmentNativeTest.registries()));
+                var actors = new PaperRollbackActors(new UUID(72, 41), 16, items);
+                actors.bind(scene);
+                var player = (ServerPlayer) scene.roster().values().iterator().next().ownedPlayer();
+                var inventory = player.getInventory();
+                var diamonds = new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.DIAMOND, 3);
+                inventory.setItem(inventory.getSelectedSlot(), diamonds);
+                var frame = new RollbackStateGraph(v -> Proxy.isProxyClass(v.getClass()), f -> true, 600_000)
+                        .capture(List.of(scene, actors), List.of());
+                byte[] first = null;
+                for (int attempt = 0; attempt < 2; attempt++) {
+                    if (attempt > 0) frame.restore();
+                    try (var clock = RollbackClock.at(1000, 2000, 1, 50_000_000)) {
+                        actors.dropSelected(player, false);
+                        assertEquals(2, inventory.getSelectedItem().getCount());
+                        var item = (net.minecraft.world.entity.item.ItemEntity) actors.active().getFirst();
+                        assertEquals(1, item.getItem().getCount());
+                        assertEquals(40, item.pickupDelay);
+                        assertEquals(player.getUUID(), item.thrower.getUUID());
+                        assertEquals(player.getEyeY() - (double) 0.3F, item.getY());
+                        actors.dropSelected(player, true);
+                        assertTrue(inventory.getSelectedItem().isEmpty());
+                        assertEquals(2, actors.active().size());
+                        var second = (net.minecraft.world.entity.item.ItemEntity) actors.active().getLast();
+                        assertEquals(2, second.getItem().getCount());
+                        assertEquals(3, player.getStats().getValue(net.minecraft.stats.Stats.ITEM_DROPPED, net.minecraft.world.item.Items.DIAMOND));
+                        var state = actors.registry().exportState().encode();
+                        if (first == null) first = state; else assertArrayEquals(first, state);
+                    }
+                }
+                assertEquals(4, events.size());
+                assertNull(Bukkit.getServer());
+                return null;
+            } finally { configField.set(null, previous); }
         });
     }
 

@@ -16,6 +16,18 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.*;
 
 class RollbackGraphCodecTest {
+    static final class WireRow { int count; String label; }
+    enum WireState { START, END }
+
+    @Test void cachedClassRowsRetainTheNegotiatedObjectAndSymbolFingerprints() {
+        var binding = List.of(new RollbackGraphCodec.Binding("fixture", Object.class, new Object()));
+        var full = new RollbackGraphCodec.Catalog(List.of(WireRow.class), List.of(WireState.class), binding);
+        var symbols = new RollbackGraphCodec.Catalog(List.of(), List.of(WireState.class, WireRow.class), binding);
+        assertEquals("d39490f24e559d42de65405ccefa34cb97a1f125ae593d02900bf400676c35cf",
+                java.util.HexFormat.of().formatHex(full.fingerprint()));
+        assertEquals("4b6e8094f24cd56b04fd02ee1dd9d2a4f21a6cbb957d76dc780b0b3ab7e594cb",
+                java.util.HexFormat.of().formatHex(symbols.fingerprint()));
+    }
     private static final RollbackGraphCodec.Limits LIMITS = new RollbackGraphCodec.Limits(10_000, 100_000, 1_048_576, 65_536);
     private enum Axis { X, Y, Z }
 

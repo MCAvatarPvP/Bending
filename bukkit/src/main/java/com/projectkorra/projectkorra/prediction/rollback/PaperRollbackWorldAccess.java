@@ -50,6 +50,7 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         default net.minecraft.world.flag.FeatureFlagSet terrainFeatures() { throw new IllegalStateException("Terrain feature flags were not supplied"); }
         default RollbackStructurePieces structures() { return RollbackStructurePieces.EMPTY; }
         default RollbackWorldSettings.ArrowLifetime arrowLifetime() { return RollbackWorldSettings.ArrowLifetime.DEFAULT; }
+        default RollbackItemRules itemRules() { return RollbackItemRules.DEFAULT; }
         default java.util.Map<String, Integer> actorDespawnTimes() { return java.util.Map.of(); }
         default boolean splitOverstackedLoot() { return true; }
         Object rule(Object nativeRule);
@@ -132,6 +133,7 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         return terrainRules;
     }
     private final Thread thread = Thread.currentThread();
+    private java.util.function.Consumer<Runnable> bootstrapCompiler;
     private final Queries<?> queries;
     private final int minimumY, height, minimumSection, sectionCount, maximumChunks;
     private final Map<Long, LevelChunk> chunks = new HashMap<>();
@@ -157,6 +159,7 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
 
     PaperRollbackWorldAccess(Queries<?> queries, Combat<?> combatState, int maximumChunks,
             java.util.function.Consumer<Runnable> compile) {
+        this.bootstrapCompiler = Objects.requireNonNull(compile);
         this.queries = Objects.requireNonNull(queries, "queries");
         this.combatState = combatState;
         packetData = combatState == null ? null : new PaperRollbackPacketData((net.minecraft.core.RegistryAccess) combatState.registryAccess());
@@ -266,7 +269,7 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
                 .query(value -> value.getBlockCollisions(null, Native.BOX), List.of(), args -> collision("getBlockCollisions", args));
         scoreboards = combatState == null ? null : new PaperRollbackScoreboards(this,
                 (net.minecraft.core.RegistryAccess) combatState.registryAccess(), combatState::output);
-        combat = combatState == null ? null : new PaperRollbackCombatAccess(this, combatState, compile);
+        combat = combatState == null ? null : new PaperRollbackCombatAccess(this, combatState);
         if (combat != null) {
             combat.bind(shell);
             var structures = new PaperRollbackStructures(combatState.structures(), (net.minecraft.core.RegistryAccess) combatState.registryAccess());
@@ -277,6 +280,8 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         PaperRollbackPrivateAccess.initializeConfig(world);
         if (combatState != null) {
             world.spigotConfig.arrowDespawnRate = combatState.arrowLifetime().groundTicks();
+            world.spigotConfig.itemDespawnRate = combatState.itemRules().despawnTicks();
+            world.spigotConfig.itemMerge = combatState.itemRules().mergeRadius();
             world.spigotConfig.tridentDespawnRate = combatState.arrowLifetime().tridentTicks();
         }
         world.moonrise$setEntityLookup(lookup);
@@ -285,6 +290,17 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
     ServerLevel world() { checkThread(); return world; }
     boolean usesQueries(Queries<?> candidate) { checkThread(); return queries == candidate; }
     int playerCount() { checkThread(); return playerOrder.size(); }
+    Map<java.lang.reflect.Method, java.lang.invoke.MethodHandle> prepareMethods(
+            com.projectkorra.projectkorra.prediction.rollback.world.RollbackNativeMethods methods) {
+        checkThread();
+        return bootstrapCompiler == null ? methods.build() : methods.prepare(bootstrapCompiler);
+    }
+
+    void finishNativePreparation() {
+        checkThread();
+        bootstrapCompiler = null;
+    }
+
     void bindEvents(com.projectkorra.projectkorra.prediction.rollback.world.RollbackNativeMethods methods) {
         checkThread();
         if (combat == null) throw new IllegalStateException("Native event services were not supplied");

@@ -215,6 +215,54 @@ class FabricRollbackNativeSceneTest {
         assertTrue(snowball.isRemoved());
     }
 
+    @Test void aPassiveAirScooterPassengerStillSamplesNativePlayerControls() throws Exception {
+        var duel = FabricRollbackNativeScene.importDuel(bootstrapData(), FabricRollbackTestRegistry.simulationRegistries(),
+                FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);
+        var caster = duel.views().players().values().iterator().next();
+        var seat = duel.scene().logical().spawn(caster.getLocation(), com.projectkorra.projectkorra.platform.mc.entity.Slime.class);
+        seat.setSize(1);
+        assertTrue(seat.addPassenger(caster));
+        var player = duel.scene().roster().players().get(caster.getUniqueId());
+        var controls = new FabricRollbackClientControls(player);
+        var input = new net.minecraft.client.input.Input() {
+            @Override public void tick() {
+                playerInput = new net.minecraft.util.PlayerInput(true, false, false, false, false, false, true);
+                movementVector = new net.minecraft.util.math.Vec2f(0, 1);
+            }
+        };
+        controls.tick(1, input, 7, false);
+        assertFalse(controls.sprinting(1));
+        assertSame(duel.actors().nativeEntity(seat), player.ownedPlayer().getVehicle());
+        assertNull(player.ownedPlayer().getControllingVehicle());
+    }
+
+    @Test void stickyBombUsesNativeGravityOnceAndRetainsItsShooterAfterFlightReplay() throws Exception {
+        var duel = FabricRollbackNativeScene.importDuel(bootstrapData(), FabricRollbackTestRegistry.simulationRegistries(),
+                FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);
+        var caster = duel.views().players().values().iterator().next();
+        var world = duel.scene().logical();
+        var origin = new com.projectkorra.projectkorra.platform.mc.Location(world, 1, 16, 1);
+        var bomb = world.spawn(origin, com.projectkorra.projectkorra.platform.mc.entity.ShulkerBullet.class, shot -> {
+            shot.setGravity(true);
+            shot.setSilent(true);
+            shot.setInvulnerable(true);
+            shot.setPersistent(true);
+            shot.setShooter(caster);
+            shot.setVelocity(new com.projectkorra.projectkorra.platform.mc.util.Vector(0, 0, .5));
+        });
+        var actor = (FabricRollbackActor) duel.actors().registry().get(bomb.getUniqueId());
+        var checkpoint = actor.captureRollbackState();
+        var phases = new FabricRollbackPhases(duel);
+        phases.tickWorld(1);
+        var position = actor.owned().getEntityPos();
+        assertEquals(15.96, position.y, 1e-6);
+        assertEquals(1.5, position.z, 1e-6);
+        checkpoint.restore();
+        phases.tickWorld(1);
+        assertEquals(position, actor.owned().getEntityPos());
+        assertSame(duel.actors().nativeEntity(caster), ((net.minecraft.entity.projectile.ShulkerBulletEntity) actor.owned()).getOwner());
+    }
+
     @Test void aFlyingPrivateArrowDespawnUsesTheCapturedGraceAndPickupLimit() throws Exception {
         var original = FabricRollbackWorldServicesTest.settings();
         var policy = new RollbackWorldSettings.ArrowLifetime(1, 8, 4, 2, 6);

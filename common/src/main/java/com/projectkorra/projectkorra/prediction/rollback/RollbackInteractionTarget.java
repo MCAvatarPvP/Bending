@@ -26,6 +26,15 @@ public sealed interface RollbackInteractionTarget {
         }
         private static boolean component(float value) { return value >= -.500001F && value <= 1.500001F; }
     }
+    /** Native dig input specifies a block and face, with no exact hit vector. */
+    record Dig(int x, int y, int z, Face face) implements RollbackInteractionTarget {
+        public Dig {
+            Objects.requireNonNull(face);
+            if (Math.abs((long) x) > 30_000_000 || Math.abs((long) z) > 30_000_000 || y < -2048 || y > 2047)
+                throw new IllegalArgumentException("Invalid block dig position");
+        }
+    }
+    static boolean targetsBlock(RollbackInteractionTarget target) { return target instanceof Block || target instanceof Dig; }
     record Actor(int networkId, Offset hit) implements RollbackInteractionTarget {
         public Actor {
             if (hit != null && (Math.abs(hit.x) > 128 || Math.abs(hit.y) > 128 || Math.abs(hit.z) > 128))
@@ -35,6 +44,7 @@ public sealed interface RollbackInteractionTarget {
     static void validate(RollbackInputActions.Kind kind, RollbackInteractionTarget target) {
         boolean valid = switch (kind) {
             case RIGHT_CLICK_BLOCK -> target instanceof Block;
+            case START_DESTROY_BLOCK, ABORT_DESTROY_BLOCK, STOP_DESTROY_BLOCK -> target instanceof Dig;
             case RIGHT_CLICK_ENTITY -> target instanceof Actor actor && actor.hit != null;
             case ATTACK, INTERACT_ENTITY -> target instanceof Actor actor && actor.hit == null;
             default -> target == null;
@@ -55,6 +65,21 @@ public sealed interface RollbackInteractionTarget {
         eye.setPitch(edge.pitch());
         var dir = eye.getDirection();
         Predicate<Entity> otherTarget = candidate -> !candidate.getUniqueId().equals(player.getUniqueId()) && pickable.test(candidate);
+        if (target instanceof Dig dig) {
+            var pos = new RollbackBlockStore.Position(dig.x, dig.y, dig.z);
+            if (!world.terrain().bounds().contains(pos)) return false;
+            if (edge.action().kind() == RollbackInputActions.Kind.ABORT_DESTROY_BLOCK) return true;
+            // Limit the trace to the farthest corner of the requested block. The view
+            // may be next to the arena edge even when the target is well within reach.
+            double dx = Math.abs(dig.x + .5 - eye.getX()) + .5;
+            double dy = Math.abs(dig.y + .5 - eye.getY()) + .5;
+            double dz = Math.abs(dig.z + .5 - eye.getZ()) + .5;
+            var hit = world.traceBlocks(eye, dir, Math.min(range, Math.sqrt(dx * dx + dy * dy + dz * dz)), FluidCollisionMode.NEVER, false, player);
+            if (hit == null || !hit.block().equals(pos) || !hit.face().name().equals(dig.face.name())) return false;
+            double distance = hit.result().getHitPosition().subtract(eye.toVector()).length();
+            var closest = world.rayTrace(eye, dir, Math.min(range, distance), FluidCollisionMode.NEVER, false, 0, otherTarget);
+            return closest == null || closest.getHitEntity() == null;
+        }
         if (target instanceof Block block) {
             var pos = new RollbackBlockStore.Position(block.x, block.y, block.z);
             if (!world.terrain().bounds().contains(pos)) return false;
@@ -86,13 +111,17 @@ public sealed interface RollbackInteractionTarget {
     }
 
     static int size(RollbackInteractionTarget target) {
-        return target instanceof Block ? 27 : target instanceof Actor a ? (a.hit == null ? 5 : 17) : 1;
+        return target instanceof Block ? 27 : target instanceof Dig ? 14 : target instanceof Actor a ? (a.hit == null ? 5 : 17) : 1;
     }
     static void write(DataOutput out, RollbackInteractionTarget target) throws IOException {
         if (target == null) { out.writeByte(0); return; }
         if (target instanceof Actor a) {
             out.writeByte(a.hit == null ? 1 : 2); out.writeInt(a.networkId);
             if (a.hit != null) offset(out, a.hit); return;
+        }
+        if (target instanceof Dig dig) {
+            out.writeByte(4); out.writeInt(dig.x); out.writeInt(dig.y); out.writeInt(dig.z); out.writeByte(dig.face.ordinal());
+            return;
         }
         var b = (Block) target;
         out.writeByte(3); out.writeInt(b.x); out.writeInt(b.y); out.writeInt(b.z); out.writeByte(b.face.ordinal()); offset(out, b.hit); out.writeBoolean(b.inside);
@@ -108,6 +137,11 @@ public sealed interface RollbackInteractionTarget {
                 var offset = offset(in); int inside = in.readUnsignedByte();
                 if (inside > 1) throw new IllegalArgumentException("Invalid inside-block flag");
                 yield new Block(x, y, z, Face.values()[face], offset, inside != 0);
+            }
+            case 4 -> {
+                int x = in.readInt(), y = in.readInt(), z = in.readInt(), face = in.readUnsignedByte();
+                if (face >= Face.values().length) throw new IllegalArgumentException("Unknown dig face");
+                yield new Dig(x, y, z, Face.values()[face]);
             }
             default -> throw new IllegalArgumentException("Unknown interaction target");
         };

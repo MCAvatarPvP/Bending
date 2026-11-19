@@ -40,6 +40,14 @@ public final class PaperRollbackDuelFactory implements PaperRollbackDuels.Simula
 
     @Override public PaperRollbackDuels.Simulation open(RollbackDuelRuntime setup, PaperRollbackDuelSeed captured,
             ServerLevel source, Map<UUID, PaperRollbackRosterSeed.Services> services) {
+        var stages = prepare(setup, captured, source, services);
+        PaperRollbackDuels.Simulation result;
+        do { result = stages.get(); } while (result == null);
+        return result;
+    }
+
+    @Override public java.util.function.Supplier<PaperRollbackDuels.Simulation> prepare(RollbackDuelRuntime setup,
+            PaperRollbackDuelSeed captured, ServerLevel source, Map<UUID, PaperRollbackRosterSeed.Services> services) {
         var data = captured.portable();
         var output = new RollbackStepOutput<Object>();
         var round = new RollbackRound(data.session(), data.sides());
@@ -53,35 +61,45 @@ public final class PaperRollbackDuelFactory implements PaperRollbackDuels.Simula
         var compilation = new java.util.ArrayList<Runnable>();
         var binds = new PaperRollbackNativeScene.Bindings(new PaperRollbackBlockRules(items), items, actions,
                 new PaperRollbackBlockEntities(registries), events, compilation::add);
-        long time = RollbackTiming.start();
-        var scene = new PaperRollbackNativeScene(data.world(), captured.nativeRoster(), round, registries,
+        var roster = PaperRollbackNativeScene.prepare(data.world(), captured.nativeRoster(), round, registries,
                 source.enabledFeatures(), binds, services, data.epochNanos(), 65_536, 16_384, 500_000);
-        time = RollbackTiming.finish(time, "scene.nativeImport");
-        var nativeMethods = CompletableFuture.runAsync(() -> compilation.forEach(Runnable::run),
-                task -> plugin.getServer().getScheduler().runTaskAsynchronously(plugin, task));
-        actors.bind(scene);
-        events.bind(scene);
-        var views = PaperRollbackRosterViews.bind(scene.logical(), scene.world(), round.participants(), scene.roster(),
-                items, actions.players(data.access()));
-        var execution = new PaperRollbackExecution<>(views.players().values(), new PaperRollbackPhases(scene, actors), output);
-        var identity = new RollbackPlatform.Identity("bukkit", plugin.getDataFolder().toPath(), plugin.getLogger());
-        var match = setup.open(data, round, views, identity, new PaperRollbackServerBlocks(), items,
-                execution, List.of(scene, actors), false);
-        RollbackTiming.finish(time, "scene.gameplayImport");
-        var corrections = PaperRollbackCorrections.forMatch(data, scene, execution, round, actors.registry(),
-                match.graph(), RollbackStateCorrection.MAXIMUM_BYTES, 20);
-        var ids = new java.util.TreeMap<UUID, Integer>();
-        var peers = new java.util.ArrayList<RollbackSession.Peer>();
-        data.roster().players().forEach((id, row) -> {
-            var player = source.getServer().getPlayerList().getPlayer(id);
-            if (player == null || player.level() != source || player.getId() != row.identity().entityId())
-                throw new IllegalStateException("Live presentation roster changed");
-            ids.put(id, player.getId());
-            peers.add(new RollbackSession.Peer(id, player.connection, 0));
-        });
-        var direct = PaperRollbackDirectPackets.bind(peers, source.getWorld().getUID(), ids, registries);
-        var presentation = new PaperRollbackPresentation(source.getWorld(), plugin, listener, codec, direct, ids.keySet());
-        return new PaperRollbackDuels.Simulation(scene, match.graph(), match.combat(),
-                update -> update.finalizedEffects().forEach(effect -> presentation.publish(effect, update.confirmed().tick())), corrections, nativeMethods);
+        return new java.util.function.Supplier<>() {
+            private PaperRollbackNativeScene scene;
+            private CompletableFuture<Void> nativeMethods;
+
+            @Override public PaperRollbackDuels.Simulation get() {
+                if (scene == null) {
+                    scene = roster.get();
+                    if (scene != null) nativeMethods = CompletableFuture.runAsync(() -> compilation.forEach(Runnable::run),
+                            task -> plugin.getServer().getScheduler().runTaskAsynchronously(plugin, task));
+                    return null;
+                }
+                long time = RollbackTiming.start();
+                actors.bind(scene);
+                events.bind(scene);
+                var views = PaperRollbackRosterViews.bind(scene.logical(), scene.world(), round.participants(), scene.roster(),
+                        items, actions.players(data.access()));
+                var execution = new PaperRollbackExecution<>(views.players().values(), new PaperRollbackPhases(scene, actors), output);
+                var identity = new RollbackPlatform.Identity("bukkit", plugin.getDataFolder().toPath(), plugin.getLogger());
+                var match = setup.open(data, round, views, identity, new PaperRollbackServerBlocks(), items,
+                        execution, List.of(scene, actors), false);
+                RollbackTiming.finish(time, "scene.gameplayImport");
+                var corrections = PaperRollbackCorrections.forMatch(data, scene, execution, round, actors.registry(),
+                        match.graph(), RollbackStateCorrection.MAXIMUM_BYTES, 20);
+                var ids = new java.util.TreeMap<UUID, Integer>();
+                var peers = new java.util.ArrayList<RollbackSession.Peer>();
+                data.roster().players().forEach((id, row) -> {
+                    var player = source.getServer().getPlayerList().getPlayer(id);
+                    if (player == null || player.level() != source || player.getId() != row.identity().entityId())
+                        throw new IllegalStateException("Live presentation roster changed");
+                    ids.put(id, player.getId());
+                    peers.add(new RollbackSession.Peer(id, player.connection, 0));
+                });
+                var direct = PaperRollbackDirectPackets.bind(peers, source.getWorld().getUID(), ids, registries);
+                var presentation = new PaperRollbackPresentation(source.getWorld(), plugin, listener, codec, direct, ids.keySet());
+                return new PaperRollbackDuels.Simulation(scene, match.graph(), match.combat(),
+                        update -> update.finalizedEffects().forEach(effect -> presentation.publish(effect, update.confirmed().tick())), corrections, nativeMethods);
+            }
+        };
     }
 }

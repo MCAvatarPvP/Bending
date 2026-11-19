@@ -23,6 +23,24 @@ class RollbackTerrainSeedTest {
                 });
     }
 
+    @Test void uniformPaletteDetectsIndependentSectionsAndPartialBoundaries() {
+        var bounds = new Bounds(-16, -16, 0, 32, 0, 16);
+        var builder = new RollbackTerrainSeed.Builder(bounds, 100_000);
+        var air = cell(Material.AIR, (byte) 0, "minecraft:plains", null);
+        var stone = cell(Material.STONE, (byte) 0, "minecraft:plains", null);
+        for (int row = 0; row < 256; row++) {
+            builder.append(air, 16); builder.append(stone, 16);
+            if (row == 255) { builder.append(air, 15); builder.append(stone); }
+            else builder.append(air, 16);
+        }
+        var terrain = builder.finish();
+        assertEquals(Material.AIR, terrain.palette().get(terrain.uniformPalette(-16, -16, 0)).data().getMaterial());
+        assertEquals(Material.STONE, terrain.palette().get(terrain.uniformPalette(0, -16, 0)).data().getMaterial());
+        assertEquals(-1, terrain.uniformPalette(16, -16, 0));
+        assertEquals(-1, terrain.uniformPalette(-15, -16, 0));
+        assertEquals(-1, terrain.uniformPalette(32, -16, 0));
+    }
+
     @Test void indexedCoordinatesPaletteAndDetachedTileDataSurviveOverlayRewind() {
         var bounds = new Bounds(-1, -2, -3, 1, 0, -1);
         var builder = new RollbackTerrainSeed.Builder(bounds, 8_192);

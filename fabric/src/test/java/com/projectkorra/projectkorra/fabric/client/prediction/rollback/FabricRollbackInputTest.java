@@ -94,7 +94,7 @@ class FabricRollbackInputTest {
         var f = new Fixture(); f.runtime.start(100);
         var drop = new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.DROP_ITEM, BlockPos.ORIGIN, Direction.DOWN);
         assertTrue(FabricRollbackInput.gameplay(drop));
-        assertThrows(UnsupportedOperationException.class, () -> f.input.packet(drop, 100, 0, 0));
+        f.input.packet(drop, 100, 0, 0);
         var keepAlive = new KeepAliveC2SPacket(1);
         assertFalse(FabricRollbackInput.gameplay(keepAlive));
         assertFalse(FabricRollbackInput.gameplay(new CommandExecutionC2SPacket("neptune latency")));
@@ -102,7 +102,7 @@ class FabricRollbackInputTest {
         assertFalse(unprepared.consumePacket(null, null, drop, 100));
         assertFalse(unprepared.consumePacket(null, null, keepAlive, 100));
         f.input.packet(new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ORIGIN, Direction.DOWN), 100, 0, 0);
-        f.runtime.tick(101); assertEquals(RollbackInputActions.Kind.SWAP_HANDS, f.sent.getFirst().actions().getFirst().kind());
+        f.runtime.tick(101); assertEquals(List.of(RollbackInputActions.Kind.DROP_ITEM, RollbackInputActions.Kind.SWAP_HANDS), f.sent.getFirst().actions().stream().map(RollbackInputPacket.Edge::kind).toList());
     }
 
     private static final class Fixture {

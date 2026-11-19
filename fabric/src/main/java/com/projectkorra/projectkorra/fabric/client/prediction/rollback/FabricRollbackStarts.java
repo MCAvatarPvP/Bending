@@ -29,6 +29,7 @@ import java.util.function.BooleanSupplier;
 public final class FabricRollbackStarts {
     public interface NativeRuntime extends RollbackStartClientEndpoint.Runtime {
         void packet(Packet<?> packet, long tick);
+        default FabricRollbackMiningInput.Material mining(net.minecraft.util.math.BlockPos pos) { return FabricRollbackMiningInput.Material.FROZEN; }
         default RollbackClientRuntime.Repair<?, ?> stateRepair() { return null; }
         default boolean ownsNativeTick() { return false; }
         default void nativeTick(long tick) { throw new IllegalStateException("Private native controls are not bound"); }
@@ -62,7 +63,8 @@ public final class FabricRollbackStarts {
         try {
             clientTick = tick;
             nativeActions = new FabricRollbackNativeActions(captured.manager(), captured.player(), captured.world(), () -> current(client, captured),
-                    packet -> consumePacket(client, captured.connection(), packet, clientTick), this::nativeFailure);
+                    packet -> consumePacket(client, captured.connection(), packet, clientTick), this::nativeFailure,
+                    pos -> runtime instanceof NativeRuntime owner ? owner.mining(pos) : FabricRollbackMiningInput.Material.FROZEN);
             if (runtime instanceof NativeRuntime nativeRuntime && nativeRuntime.ownsNativeTick()) {
                 nativeTicks = new FabricRollbackNativeTick(captured.player(), captured.world(), () -> current(client, captured),
                         () -> { if (endpoint.acceptsAuthority()) nativeRuntime.nativeTick(Math.incrementExact(clientTick)); }, this::nativeFailure);

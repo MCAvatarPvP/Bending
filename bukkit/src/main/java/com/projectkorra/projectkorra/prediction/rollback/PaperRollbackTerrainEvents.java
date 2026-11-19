@@ -119,7 +119,7 @@ final class PaperRollbackTerrainEvents {
             copy(methods, net.minecraft.world.level.block.PointedDripstoneBlock.class, Set.of("onProjectileHit"));
             copy(methods, net.minecraft.world.level.block.DecoratedPotBlock.class, Set.of("onProjectileHit"));
             copy(methods, CraftEventFactory.class, Set.of("callBlockIgniteEvent", "callEntityChangeBlockEvent", "handleBellRingEvent"));
-            var compiled = methods.build();
+            var compiled = access.prepareMethods(methods);
             projectileHit = compiled.get(impact);
             blockTick = compiled.get(block);
             fluidTick = compiled.get(fluid);

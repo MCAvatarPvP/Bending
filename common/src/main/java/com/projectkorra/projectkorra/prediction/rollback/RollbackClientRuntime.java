@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.prediction.rollback;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Objects;
 import java.util.UUID;
@@ -35,7 +36,11 @@ public final class RollbackClientRuntime<S, E> implements RollbackStartClientEnd
     private final Output<S, E> output;
     // Network identity and pending physical input must never rewind with the simulation.
     private final ArrayList<RollbackInputPacket.Edge> actions = new ArrayList<>();
-    private long sequence, anchor, clientTick;
+    // The sampler never changes an edge's tick. Brief stalls may fill the engine's history before
+    // Paper publishes its next frame, so retain the original packets separately from rewindable state.
+    static final int MAX_WAITING_TICKS = 200;
+    private final ArrayDeque<RollbackInputPacket> waitingPrediction = new ArrayDeque<>(), waitingSend = new ArrayDeque<>();
+    private long sequence, anchor, clientTick, proposedThrough, authorityHead;
     private Phase phase = Phase.PREPARED;
     private boolean busy;
 
@@ -90,27 +95,59 @@ public final class RollbackClientRuntime<S, E> implements RollbackStartClientEnd
             long target = Math.subtractExact(tick, anchor);
             var controls = Objects.requireNonNull(held.get(), "held controls");
             var packet = new RollbackInputPacket(session, tick, controls.movement(), controls.sprinting(), actions);
-            var admitted = replica.propose(target, packet.playerInput(player, seed));
-            if (admitted != RollbackEngine.Submission.ACCEPTED) {
-                throw new IllegalStateException("Local input left the retained clock window: " + admitted);
-            }
+            if (waitingSend.size() >= MAX_WAITING_TICKS) throw new IllegalStateException("Rollback authority did not advance within the input queue budget");
             actions.clear(); clientTick = tick;
+            waitingPrediction.addLast(packet);
+            waitingSend.addLast(packet);
+            admitSamples();
             var state = timeline.diagnostics();
-            // Never age out an unconfirmed hit to keep a slow/missing server connection moving.
-            // Input retains its original tick while waiting; exceeding the bounded window stops.
-            var update = state.tick() < target && state.tick() - state.confirmedTick() < timeline.limits().rollbackTicks()
+            var update = state.tick() < target && state.tick() < proposedThrough
+                    && state.tick() - state.confirmedTick() < timeline.limits().rollbackTicks()
                     ? replica.advance() : replica.reconcile();
             output.update(update);
-            if (phase == Phase.RUNNING) send.accept(packet);
+            sendAvailable();
         } catch (RuntimeException | Error failure) { fail(); throw failure; }
         finally { busy = false; }
+    }
+
+    private void admitSamples() {
+        var state = timeline.diagnostics();
+        while (!waitingPrediction.isEmpty()) {
+            var packet = waitingPrediction.getFirst();
+            long tick = packet.clientTick() - anchor;
+            if (tick > state.tick() && tick - state.tick() - 1 > timeline.limits().futureTicks()) return;
+            if (tick > state.confirmedTick()) {
+                var result = replica.propose(tick, packet.playerInput(player, seed));
+                if (result != RollbackEngine.Submission.ACCEPTED) throw new IllegalStateException("Local rollback input rejected: " + result);
+            }
+            proposedThrough = tick;
+            waitingPrediction.removeFirst();
+        }
+    }
+
+    private void sendAvailable() {
+        long confirmed = timeline.diagnostics().confirmedTick();
+        while (phase == Phase.RUNNING && !waitingSend.isEmpty()) {
+            var packet = waitingSend.getFirst();
+            long tick = packet.clientTick() - anchor;
+            if (tick > proposedThrough || tick > authorityHead && tick - authorityHead - 1 > timeline.limits().futureTicks()) return;
+            waitingSend.removeFirst();
+            if (tick > confirmed) send.accept(packet);
+        }
     }
 
     @Override public void authority(RollbackAuthorityUpdate update) {
         enter(Phase.RUNNING);
         try {
             var corrected = replica.receive(update);
-            if (corrected != null) output.update(corrected);
+            if (corrected != null) {
+                authorityHead = update.headTick();
+                output.update(corrected);
+                if (phase == Phase.RUNNING) {
+                    admitSamples();
+                    sendAvailable();
+                }
+            }
         } catch (RuntimeException | Error failure) { fail(); throw failure; }
         finally { busy = false; }
     }
@@ -128,7 +165,7 @@ public final class RollbackClientRuntime<S, E> implements RollbackStartClientEnd
     @Override public void stop(RollbackStartServerEndpoint.Failure failure) {
         checkThread(); Objects.requireNonNull(failure);
         if (phase == Phase.STOPPED) return;
-        phase = Phase.STOPPED; actions.clear();
+        phase = Phase.STOPPED; actions.clear(); waitingPrediction.clear(); waitingSend.clear();
         output.stop(failure);
     }
     public boolean running() { checkThread(); return phase == Phase.RUNNING; }

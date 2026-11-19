@@ -54,6 +54,24 @@ public final class FabricRollbackInput {
             if (blockUntil <= tick) action(swing.getHand() == Hand.OFF_HAND ? RollbackInputActions.Kind.OFF_HAND_SWING : RollbackInputActions.Kind.SWING, -1, yaw, pitch);
             return;
         }
+        if (packet instanceof PlayerActionC2SPacket nativeAction) {
+            var kind = switch (nativeAction.getAction()) {
+                case START_DESTROY_BLOCK -> RollbackInputActions.Kind.START_DESTROY_BLOCK;
+                case ABORT_DESTROY_BLOCK -> RollbackInputActions.Kind.ABORT_DESTROY_BLOCK;
+                case STOP_DESTROY_BLOCK -> RollbackInputActions.Kind.STOP_DESTROY_BLOCK;
+                case DROP_ITEM -> RollbackInputActions.Kind.DROP_ITEM;
+                case DROP_ALL_ITEMS -> RollbackInputActions.Kind.DROP_ALL_ITEMS;
+                default -> null;
+            };
+            if (kind != null) {
+                var pos = nativeAction.getPos();
+                var dig = kind == RollbackInputActions.Kind.DROP_ITEM || kind == RollbackInputActions.Kind.DROP_ALL_ITEMS
+                        ? null : new RollbackInteractionTarget.Dig(pos.getX(), pos.getY(), pos.getZ(),
+                                RollbackInteractionTarget.Face.valueOf(nativeAction.getDirection().name()));
+                runtime.action(kind, -1, yaw, pitch, RollbackInputActions.Hand.MAIN, dig);
+                return;
+            }
+        }
         if (packet instanceof PlayerActionC2SPacket action && action.getAction() == PlayerActionC2SPacket.Action.SWAP_ITEM_WITH_OFFHAND) {
             action(RollbackInputActions.Kind.SWAP_HANDS, -1, yaw, pitch); return;
         }

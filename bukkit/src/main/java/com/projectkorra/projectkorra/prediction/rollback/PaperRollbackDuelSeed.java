@@ -148,7 +148,8 @@ public record PaperRollbackDuelSeed(PaperRollbackRosterSeed nativeRoster, Rollba
         time = RollbackTiming.finish(time, "seed.eligibility");
         var graph = RollbackBendingState.encode(bending.values(), collisions, services, sourceCodec);
         time = RollbackTiming.finish(time, "seed.bendingGraph");
-        var worldSeed = PaperRollbackWorldSeed.capture(world, request.terrain(), randomSeed, soundSeed, terrainLimits, prepared);
+        var worldSeed = PaperRollbackWorldSeed.capture(world, request.terrain(), randomSeed, soundSeed, terrainLimits, prepared,
+                request.interactions() == null ? RollbackDuelInteractions.STANDARD : request.interactions());
         time = RollbackTiming.finish(time, "seed.world");
         var portable = new RollbackBootstrapData(request.session(), challenge, request.match(), request.round(), millis, nanos, definitions,
                 request.sides(), worldSeed, nativeRoster.portable(playerServices), configuration, access, RollbackMaterials.capture(com.projectkorra.projectkorra.platform.Platform.materials()), PaperRollbackTags.capture(), RollbackServer.Metadata.capture(com.projectkorra.projectkorra.platform.Platform.server()), PaperRollbackPlugins.capture(), graph);

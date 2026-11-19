@@ -60,8 +60,10 @@ public final class FabricRollbackClientControls {
         boolean automaticJump = autoJump.take();
         if (automaticJump) input.jump();
         source.use(player -> {
-            if (player.hasVehicle()) {
-                throw new UnsupportedOperationException("Rollback mount controls are not bound");
+            // Bending seats (such as AirScooter's slime) carry the passenger using the
+            // owned actor's native tick. They receive no steering or mount-jump packets.
+            if (player.getControllingVehicle() != null) {
+                throw new UnsupportedOperationException("Rollback input for a player-controlled vehicle is unavailable");
             }
             reading = player; probe.input = input; probe.activeItemStack = player.getActiveItem();
             probe.horizontalCollision = player.horizontalCollision; probe.collidedSoftly = player.collidedSoftly;
@@ -107,6 +109,16 @@ public final class FabricRollbackClientControls {
                 tick = next;
                 return null;
             } finally { reading = null; probe.input = null; probe.activeItemStack = ItemStack.EMPTY; }
+        });
+    }
+    FabricRollbackMiningInput.Material mining(net.minecraft.util.math.BlockPos pos) {
+        check();
+        return source.use(player -> {
+            var world = player.getEntityWorld();
+            if (!world.isPosLoaded(pos)) return FabricRollbackMiningInput.Material.FROZEN;
+            var state = world.getBlockState(pos);
+            return new FabricRollbackMiningInput.Material(player.getMainHandStack(),
+                    state.isAir() ? 0 : state.calcBlockBreakingDelta(player, world, pos), player.isCreative());
         });
     }
     public boolean sprinting(long expectedTick) {
