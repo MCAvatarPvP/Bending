@@ -134,6 +134,15 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
         public double temperature() { return temperature; }
         public double humidity() { return humidity; }
 
+        private Cell(Cell base, double temperature) {
+            data = base.data; blockEntity = base.blockEntity; biome = base.biome;
+            biomeKey = base.biomeKey; noiseBiomeKey = base.noiseBiomeKey; light = base.light;
+            this.temperature = temperature; humidity = base.humidity;
+        }
+        Cell atTemperature(double value) {
+            return Double.compare(temperature, value) == 0 ? this : new Cell(this, value);
+        }
+
         private Cell withBlockEntity(byte[] bytes) {
             return new Cell(data, bytes, biome, biomeKey, noiseBiomeKey, light, temperature, humidity);
         }

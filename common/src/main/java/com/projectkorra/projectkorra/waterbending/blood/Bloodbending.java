@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.waterbending.blood;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantAbilityIndices;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 
 import com.projectkorra.projectkorra.BendingPlayer;
@@ -27,7 +28,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 public class Bloodbending extends BloodAbility {
 
-    private static final Map<Entity, Player> TARGETED_ENTITIES = new ConcurrentHashMap<Entity, Player>();
     private static final Set<EntityType> BLOODLESS_ENTITIES = bloodless();
 
     private boolean canOnlyBeUsedAtNight;
@@ -97,7 +97,7 @@ public class Bloodbending extends BloodAbility {
                     }
                     DamageHandler.damageEntity(entity, 0, this);
                     AirAbility.breakBreathbendingHold(entity);
-                    TARGETED_ENTITIES.put(entity, player);
+                    RollbackParticipantAbilityIndices.current().bloodTargets.put(entity, player);
                 }
             }
         } else {
@@ -138,7 +138,7 @@ public class Bloodbending extends BloodAbility {
             DamageHandler.damageEntity(this.target, 0, this);
             HorizontalVelocityTracker.remove(this.target);
             AirAbility.breakBreathbendingHold(this.target);
-            TARGETED_ENTITIES.put(this.target, player);
+            RollbackParticipantAbilityIndices.current().bloodTargets.put(this.target, player);
         }
         this.start();
     }
@@ -175,28 +175,28 @@ public class Bloodbending extends BloodAbility {
     }
 
     public static boolean isBloodbent(final Entity entity) {
-        return entity != null ? TARGETED_ENTITIES.containsKey(entity) : null;
+        return entity != null ? RollbackParticipantAbilityIndices.current().bloodTargets.containsKey(entity) : null;
     }
 
     public static Location getBloodbendingLocation(final Entity entity) {
-        return entity != null ? TARGETED_ENTITIES.get(entity).getLocation() : null;
+        return entity != null ? RollbackParticipantAbilityIndices.current().bloodTargets.get(entity).getLocation() : null;
     }
 
     public static Vector getBloodbendingVector(final Entity entity) {
-        if (!TARGETED_ENTITIES.containsKey(entity)) {
+        if (!RollbackParticipantAbilityIndices.current().bloodTargets.containsKey(entity)) {
             return null;
         }
 
-        final Bloodbending bb = getAbility(TARGETED_ENTITIES.get(entity), Bloodbending.class);
+        final Bloodbending bb = getAbility(RollbackParticipantAbilityIndices.current().bloodTargets.get(entity), Bloodbending.class);
         return bb.vector;
     }
 
     public static BendingPlayer getBloodbender(final Entity entity) {
-        if (!TARGETED_ENTITIES.containsKey(entity)) {
+        if (!RollbackParticipantAbilityIndices.current().bloodTargets.containsKey(entity)) {
             return null;
         }
 
-        final Bloodbending bb = getAbility(TARGETED_ENTITIES.get(entity), Bloodbending.class);
+        final Bloodbending bb = getAbility(RollbackParticipantAbilityIndices.current().bloodTargets.get(entity), Bloodbending.class);
         return bb.getBendingPlayer();
     }
 
@@ -206,7 +206,7 @@ public class Bloodbending extends BloodAbility {
 
     /** Drops entity handles belonging to a world/runtime that no longer exists. */
     public static void discardAllTracking() {
-        TARGETED_ENTITIES.clear();
+        RollbackParticipantAbilityIndices.current().bloodTargets.clear();
     }
 
     @Override
@@ -221,7 +221,7 @@ public class Bloodbending extends BloodAbility {
 
     private void launch() {
         final Location location = this.player.getLocation();
-        for (final Entity entity : TARGETED_ENTITIES.keySet()) {
+        for (final Entity entity : RollbackParticipantAbilityIndices.current().bloodTargets.keySet()) {
             final Location target = entity.getLocation().clone();
             Vector vector = new Vector(0, 0, 0);
             if (location.getWorld().equals(target.getWorld())) {
@@ -250,9 +250,9 @@ public class Bloodbending extends BloodAbility {
         }
 
         if (!this.canBeUsedOnUndeadMobs) {
-            for (final Entity entity : TARGETED_ENTITIES.keySet()) {
+            for (final Entity entity : RollbackParticipantAbilityIndices.current().bloodTargets.keySet()) {
                 if (GeneralMethods.isUndead(entity)) {
-                    TARGETED_ENTITIES.remove(entity);
+                    RollbackParticipantAbilityIndices.current().bloodTargets.remove(entity);
                 }
             }
         }
@@ -286,13 +286,13 @@ public class Bloodbending extends BloodAbility {
                 }
 
                 entities.add(entity);
-                if (!TARGETED_ENTITIES.containsKey(entity) && !BLOODLESS_ENTITIES.contains(entity.getType())) {
+                if (!RollbackParticipantAbilityIndices.current().bloodTargets.containsKey(entity) && !BLOODLESS_ENTITIES.contains(entity.getType())) {
                     DamageHandler.damageEntity(entity, 0, this);
-                    TARGETED_ENTITIES.put(entity, this.player);
+                    RollbackParticipantAbilityIndices.current().bloodTargets.put(entity, this.player);
                 }
 
                 if (this.player.getWorld() != entity.getLocation().getWorld()) {
-                    TARGETED_ENTITIES.remove(entity);
+                    RollbackParticipantAbilityIndices.current().bloodTargets.remove(entity);
                     continue;
                 }
                 GeneralMethods.setVelocity(this, entity, this.vector);
@@ -307,37 +307,37 @@ public class Bloodbending extends BloodAbility {
                 AirAbility.breakBreathbendingHold(entity);
             }
 
-            for (final Entity entity : TARGETED_ENTITIES.keySet()) {
-                if (!entities.contains(entity) && this.player.equals(TARGETED_ENTITIES.get(entity))) {
-                    TARGETED_ENTITIES.remove(entity);
+            for (final Entity entity : RollbackParticipantAbilityIndices.current().bloodTargets.keySet()) {
+                if (!entities.contains(entity) && this.player.equals(RollbackParticipantAbilityIndices.current().bloodTargets.get(entity))) {
+                    RollbackParticipantAbilityIndices.current().bloodTargets.remove(entity);
                 }
             }
         } else {
-            for (final Entity entity : TARGETED_ENTITIES.keySet()) {
+            for (final Entity entity : RollbackParticipantAbilityIndices.current().bloodTargets.keySet()) {
                 if (entity instanceof Player) {
                     final BendingPlayer targetBPlayer = BendingPlayer.getBendingPlayer((Player) entity);
                     if (targetBPlayer != null && !targetBPlayer.canBeBloodbent()) {
-                        TARGETED_ENTITIES.remove(entity);
+                        RollbackParticipantAbilityIndices.current().bloodTargets.remove(entity);
                         continue;
                     } else if (targetBPlayer.isAvatarState()) {
-                        TARGETED_ENTITIES.remove(entity);
+                        RollbackParticipantAbilityIndices.current().bloodTargets.remove(entity);
                         continue;
                     }
                 }
 
                 final Location newLocation = entity.getLocation();
                 if (this.player.getWorld() != newLocation.getWorld()) {
-                    TARGETED_ENTITIES.remove(entity);
+                    RollbackParticipantAbilityIndices.current().bloodTargets.remove(entity);
                     continue;
                 }
             }
 
-            if (!TARGETED_ENTITIES.containsKey(this.target)) {
+            if (!RollbackParticipantAbilityIndices.current().bloodTargets.containsKey(this.target)) {
                 this.remove();
                 return;
             }
 
-            if (!this.player.equals(TARGETED_ENTITIES.get(this.target))) {
+            if (!this.player.equals(RollbackParticipantAbilityIndices.current().bloodTargets.get(this.target))) {
                 this.remove();
                 return;
             }
@@ -379,9 +379,9 @@ public class Bloodbending extends BloodAbility {
                 this.bPlayer.addCooldown(this); // Prevents spamming.
             }
         }
-        for (final Entity e : TARGETED_ENTITIES.keySet()) {
-            if (this.player.equals(TARGETED_ENTITIES.get(e))) {
-                TARGETED_ENTITIES.remove(e);
+        for (final Entity e : RollbackParticipantAbilityIndices.current().bloodTargets.keySet()) {
+            if (this.player.equals(RollbackParticipantAbilityIndices.current().bloodTargets.get(e))) {
+                RollbackParticipantAbilityIndices.current().bloodTargets.remove(e);
             }
         }
 

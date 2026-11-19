@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.prediction.rollback;
 
+import com.projectkorra.projectkorra.Element;
+import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.listener.CommonAbilityLifecycleListener;
 import java.util.*;
@@ -67,6 +69,18 @@ public final class RollbackGameplayGraph {
         var bending = RollbackBendingState.decode(expected, graph, codec);
         return new Imported(configuration, codec, bending);
     }
+    /** Registries compare these definitions by identity. Both endpoints resolve their own installed instances. */
+    static List<RollbackGraphCodec.Binding> definitionBindings() {
+        var bindings = new ArrayList<>(CoreAbility.rollbackAttributeBindings());
+        bindings.add(new RollbackGraphCodec.Binding("common/ProjectKorra", ProjectKorra.class, ProjectKorra.plugin));
+        var elements = new LinkedHashSet<Element>(Arrays.asList(Element.getAllElements()));
+        elements.addAll(Arrays.asList(Element.getAllSubElements()));
+        for (var element : elements) {
+            bindings.add(new RollbackGraphCodec.Binding("element/" + element.getName(), element.getClass(), element));
+        }
+        return bindings;
+    }
+
     /** Additional bindings supply loader/addon service identities; they cannot replace core bindings. */
     public static RollbackGraphCodec create(Collection<Class<?>> installed, RollbackGraphCodec.Limits limits,
             Side side, RollbackRosterBindings roster, RollbackConfiguration configuration,
@@ -77,7 +91,7 @@ public final class RollbackGameplayGraph {
         Objects.requireNonNull(side); Objects.requireNonNull(roster); Objects.requireNonNull(configuration);
         var bindings = new ArrayList<>(roster.bindings());
         bindings.addAll(side == Side.LIVE ? configuration.sourceBindings() : configuration.bindings());
-        bindings.addAll(CoreAbility.rollbackAttributeBindings());
+        bindings.addAll(definitionBindings());
         bindings.add(Objects.requireNonNull(lifecycle).rollbackEffectsBinding());
         bindings.addAll(List.copyOf(additional));
         // Catalog rejects duplicate IDs and duplicate bound identities before any graph is captured.

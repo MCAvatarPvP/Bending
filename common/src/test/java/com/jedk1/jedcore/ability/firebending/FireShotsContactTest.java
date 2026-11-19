@@ -49,8 +49,6 @@ class FireShotsContactTest {
     private Map<Class<?>, Object> managers;
     private Map<Class<?>, Object> previousManagers;
     private com.jedk1.jedcore.configuration.Config previousJedCore;
-    private Field timerAbility;
-    private Object previousTimerAbility;
     private TestShots ability;
     private boolean authoritative;
     private final CooldownSync.Listener side = new CooldownSync.Listener() {
@@ -76,9 +74,6 @@ class FireShotsContactTest {
         managers = (Map<Class<?>, Object>) managerField.get(null);
         previousManagers = new HashMap<>(managers);
         managers.put(FlightHandler.class, null);
-        timerAbility = FireDamageTimer.class.getDeclaredField("ability");
-        timerAbility.setAccessible(true);
-        previousTimerAbility = timerAbility.get(null);
         caster.eyeHeight = 1.62;
         BendingPlayer.getPlayers().put(caster.getUniqueId(), new BendingPlayer(caster) {
             @Override public boolean canBend(CoreAbility source) { return true; }
@@ -122,7 +117,8 @@ class FireShotsContactTest {
         CooldownSync.clear(side);
         PredictedContactSync.clear(reporter);
         FireDamageTimer.getInstances().remove(target);
-        timerAbility.set(null, previousTimerAbility);
+        com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantAbilityIndices.current().flameAbilities.remove(target);
+        com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantAbilityIndices.current().flameTimes.remove(target);
         BendingPlayer.getPlayers().remove(caster.getUniqueId());
         JedCoreConfig.config = previousJedCore;
         if (previousAttributes == null) attributes.remove(TestShots.class);

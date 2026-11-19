@@ -38,8 +38,32 @@ import java.util.stream.Collectors;
 
 public class TempArmorStand {
     private static final Map<ArmorStand, TempArmorStand> instances = new ConcurrentHashMap<>();
-    private static final Queue<TempArmorStand> tasQueue = new PriorityQueue<>(Comparator.comparingLong(TempArmorStand::getExpirationTime));
-
+    public static final class ExpiryOrder implements Comparator<TempArmorStand> {
+        @Override public int compare(TempArmorStand left, TempArmorStand right) {
+            return Long.compare(left.getExpirationTime(), right.getExpirationTime());
+        }
+    }
+    private static final Queue<TempArmorStand> tasQueue = new PriorityQueue<>(new ExpiryOrder());
+    private static Map<ArmorStand, TempArmorStand> members() {
+        var duel = com.projectkorra.projectkorra.prediction.rollback.RollbackAddonActors.current();
+        return duel == null ? instances : duel.stands;
+    }
+    private static Queue<TempArmorStand> expiry() {
+        var duel = com.projectkorra.projectkorra.prediction.rollback.RollbackAddonActors.current();
+        return duel == null ? tasQueue : duel.standExpiry;
+    }
+    public static Set<TempArmorStand> managed() {
+        var result = new HashSet<>(members().values());
+        result.addAll(expiry());
+        return result;
+    }
+    public static void resume(TempArmorStand actor) {
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active())
+            throw new IllegalStateException("Restore confirmed actors on the live server");
+        var existing = instances.putIfAbsent(actor.armorStand, actor);
+        if (existing != null && existing != actor) throw new IllegalStateException("Temporary actor ownership changed");
+        if (existing == null) tasQueue.add(actor);
+    }
     private final ArmorStand armorStand;
     private final CoreAbility ability;
     private final Material headMaterial;
@@ -61,30 +85,33 @@ public class TempArmorStand {
         });
         expirationTime = RollbackClock.millis() + delay;
         ability = abilityInstance;
-        instances.put(armorStand, this);
-        tasQueue.add(this);
+        members().put(armorStand, this);
+        expiry().add(this);
         particles = showRemoveParticles;
         showParticles(true);
     }
 
     public static boolean isTempArmorStand(ArmorStand as) {
-        return instances.containsKey(as);
+        return members().containsKey(as);
     }
 
     public static TempArmorStand get(ArmorStand as) {
-        return instances.get(as);
+        return members().get(as);
     }
 
     public static Set<TempArmorStand> getFromAbility(CoreAbility ability) {
-        return instances.values().stream().filter(tas -> tas.getAbility().equals(ability)).collect(Collectors.toSet());
+        return members().values().stream().filter(tas -> tas.getAbility().equals(ability)).collect(Collectors.toSet());
     }
 
+    public static final class Manager implements Runnable {
+        @Override public void run() { manage(); }
+    }
     public static void manage() {
         final long currentTime = RollbackClock.millis();
-        while (!tasQueue.isEmpty()) {
-            final TempArmorStand tas = tasQueue.peek();
+        while (!expiry().isEmpty()) {
+            final TempArmorStand tas = expiry().peek();
             if (currentTime > tas.getExpirationTime()) {
-                tasQueue.poll();
+                expiry().poll();
                 tas.remove();
             } else {
                 return;
@@ -93,9 +120,9 @@ public class TempArmorStand {
     }
 
     public static void removeAll() {
-        tasQueue.clear();
-        instances.keySet().forEach(Entity::remove);
-        instances.clear();
+        expiry().clear();
+        members().keySet().forEach(Entity::remove);
+        members().clear();
     }
 
     public void showParticles(boolean show) {
@@ -118,7 +145,8 @@ public class TempArmorStand {
     }
 
     public void remove() {
-        instances.remove(armorStand);
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackAddonActors.current() != null) expiry().remove(this);
+        members().remove(armorStand, this);
         showParticles(particles);
         armorStand.remove();
     }

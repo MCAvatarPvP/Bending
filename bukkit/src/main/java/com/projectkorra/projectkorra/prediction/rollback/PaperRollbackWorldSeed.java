@@ -12,6 +12,11 @@ public final class PaperRollbackWorldSeed {
 
     public static RollbackWorldSeed capture(ServerLevel world, Bounds bounds, long randomSeed, long soundSeed,
                                             PaperRollbackTerrainCapture.Limits limits) {
+        return capture(world, bounds, randomSeed, soundSeed, limits, null);
+    }
+
+    static RollbackWorldSeed capture(ServerLevel world, Bounds bounds, long randomSeed, long soundSeed,
+            PaperRollbackTerrainCapture.Limits limits, PaperRollbackTerrainCapture.Prepared prepared) {
         Objects.requireNonNull(world); Objects.requireNonNull(bounds); Objects.requireNonNull(limits);
         if (!TickThread.isTickThread() || RollbackClock.active() || RollbackDomain.active()) {
             throw new IllegalStateException("Capture the match world on the live tick thread before replay");
@@ -25,8 +30,9 @@ public final class PaperRollbackWorldSeed {
         var border = PaperRollbackBorder.capture(world.getWorldBorder());
         var environment = PaperRollbackEnvironment.capture(world);
         boolean storm = bukkit.hasStorm();
-        var terrain = PaperRollbackTerrainCapture.capture(world, bounds, limits);
-        var light = PaperRollbackLightCapture.capture(world, bounds, limits.maximumCells());
+        var terrain = prepared == null ? PaperRollbackTerrainCapture.capture(world, bounds, limits) : prepared.terrain().join();
+        var light = prepared == null ? PaperRollbackLightCapture.capture(world, bounds, limits.maximumCells()) : prepared.light();
+        if (!terrain.bounds().equals(bounds) || !light.bounds().equals(bounds)) throw new IllegalStateException("Prepared terrain bounds changed");
         if (world.getGameTime() != tick || world.getDayTime() != day || settings.gameTime() != tick) {
             throw new IllegalStateException("Match world advanced during bootstrap capture");
         }

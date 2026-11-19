@@ -15,7 +15,7 @@ import java.util.*;
 
 /** Shared detached arena format. Native adapters bake facade edits and validate registry state on import. */
 public final class RollbackTerrainCodec {
-    public static final int VERSION = 1;
+    public static final int VERSION = 2;
     public record Limits(int maximumCells, int maximumPalette, int maximumWireBytes, long maximumStorageBytes, int maximumBlockEntityBytes) {
         public Limits {
             if (maximumCells < 1 || maximumCells > 16_777_216 || maximumPalette < 1 || maximumPalette > maximumCells
@@ -37,7 +37,7 @@ public final class RollbackTerrainCodec {
                 || (long) seed.cellCount() * Integer.BYTES > limits.maximumStorageBytes()) throw new IllegalArgumentException("Terrain exceeds wire/storage budget");
         var bytes = new ByteArrayOutputStream(Math.min(limits.maximumWireBytes(), 8192));
         try {
-            var out = bounded(bytes, limits); out.writeInt(VERSION);
+            var out = bounded(bytes, limits); out.writeInt(seed.hasTemperatures() ? VERSION : 1);
             var bounds = seed.bounds(); out.writeInt(bounds.minX()); out.writeInt(bounds.minY()); out.writeInt(bounds.minZ());
             out.writeInt(bounds.maxX()); out.writeInt(bounds.maxY()); out.writeInt(bounds.maxZ());
             out.writeInt(seed.cellCount()); out.writeInt(seed.paletteSize());
@@ -45,6 +45,11 @@ public final class RollbackTerrainCodec {
             for (Cell cell : seed.palette()) {
                 storage = Math.addExact(storage, writeCell(out, cell, states, limits));
                 if (storage > limits.maximumStorageBytes()) throw new IllegalArgumentException("Terrain palette storage budget");
+            }
+            if (seed.hasTemperatures()) {
+                if ((long) seed.cellCount() * Double.BYTES > limits.maximumStorageBytes() - storage)
+                    throw new IllegalArgumentException("Terrain temperature storage budget");
+                writeTemperatures(out, seed, limits);
             }
             int runs = 0;
             for (int i = 0; i < seed.cellCount(); i++) if (i == 0 || seed.paletteIndex(i) != seed.paletteIndex(i - 1)) runs++;
@@ -63,7 +68,8 @@ public final class RollbackTerrainCodec {
         if (bytes.length > limits.maximumWireBytes()) throw new IllegalArgumentException("Terrain exceeds wire byte budget");
         try {
             var in = new DataInputStream(new ByteArrayInputStream(bytes));
-            if (in.readInt() != VERSION) throw new IllegalArgumentException("Unsupported terrain version");
+            int version = in.readInt();
+            if (version != 1 && version != VERSION) throw new IllegalArgumentException("Unsupported terrain version");
             var bounds = new Bounds(in.readInt(), in.readInt(), in.readInt(), in.readInt(), in.readInt(), in.readInt());
             int cells = in.readInt(), entries = in.readInt();
             long volume = ((long) bounds.maxX() - bounds.minX()) * ((long) bounds.maxY() - bounds.minY()) * ((long) bounds.maxZ() - bounds.minZ());
@@ -78,6 +84,12 @@ public final class RollbackTerrainCodec {
                 storage = Math.addExact(storage, cell.storage());
                 if (storage > limits.maximumStorageBytes()) throw new IllegalArgumentException("Terrain palette storage budget");
                 palette.add(cell);
+            }
+            double[] temperatures = null;
+            if (version == VERSION) {
+                if ((long) cells * Double.BYTES > limits.maximumStorageBytes() - storage)
+                    throw new IllegalArgumentException("Terrain temperature storage budget");
+                temperatures = readTemperatures(in, cells);
             }
             int runs = in.readInt();
             if (runs < 1 || runs > cells || (long) runs * 8 != in.available()) throw new IllegalArgumentException("Terrain run/trailing-data bounds");
@@ -94,12 +106,61 @@ public final class RollbackTerrainCodec {
             if (total != cells || nextPalette != entries) throw new IllegalArgumentException("Incomplete terrain region or unused palette");
             var decoded = new ArrayList<Cell>(entries);
             for (var cell : palette) decoded.add(cell.decode(states));
-            var builder = new RollbackTerrainSeed.Builder(bounds, limits.maximumStorageBytes());
             in.reset();
+            if (temperatures != null) {
+                var indices = new int[cells];
+                int next = 0;
+                for (int i = 0; i < runs; i++) {
+                    int count = in.readInt(), index = in.readInt();
+                    Arrays.fill(indices, next, next + count, index);
+                    next += count;
+                }
+                return new RollbackTerrainSeed(bounds, decoded, indices, temperatures);
+            }
+            var builder = new RollbackTerrainSeed.Builder(bounds, limits.maximumStorageBytes());
             for (int i = 0; i < runs; i++) { int count = in.readInt(), index = in.readInt(); builder.append(decoded.get(index), count); }
             return builder.finish();
         } catch (IOException malformed) { throw new IllegalArgumentException("Truncated terrain payload", malformed); }
         catch (ArithmeticException overflow) { throw new IllegalArgumentException("Terrain dimensions/storage overflow", overflow); }
+    }
+
+    /** The native climate API returns floats. Preserve double precision whenever a caller supplied more. */
+    private static void writeTemperatures(DataOutputStream out, RollbackTerrainSeed seed, Limits limits) throws IOException {
+        boolean floats = true;
+        for (int i = 0; i < seed.cellCount(); i++) {
+            double t = seed.temperature(i);
+            if ((double)(float)t != t) { floats = false; break; }
+        }
+        out.writeByte(floats ? Float.BYTES : Double.BYTES);
+        var packed = new ByteArrayOutputStream();
+        var compressor = new java.util.zip.Deflater(java.util.zip.Deflater.BEST_SPEED);
+        try (var values = new DataOutputStream(new BufferedOutputStream(
+                new java.util.zip.DeflaterOutputStream(bounded(packed, limits), compressor)))) {
+            for (int i = 0; i < seed.cellCount(); i++) {
+                if (floats) values.writeFloat((float)seed.temperature(i));
+                else values.writeDouble(seed.temperature(i));
+            }
+        } finally { compressor.end(); }
+        out.writeInt(packed.size());
+        packed.writeTo(out);
+    }
+    private static double[] readTemperatures(DataInputStream in, int cells) throws IOException {
+        int width = in.readUnsignedByte(), size = in.readInt();
+        if ((width != Float.BYTES && width != Double.BYTES) || size < 1 || size > in.available() - 12)
+            throw new IllegalArgumentException("Invalid terrain temperature stream");
+        var packed = new ByteArrayInputStream(in.readNBytes(size));
+        var inflater = new java.util.zip.Inflater();
+        try (var values = new DataInputStream(new BufferedInputStream(new java.util.zip.InflaterInputStream(packed, inflater)))) {
+            var result = new double[cells];
+            for (int i = 0; i < cells; i++) {
+                double t = width == Float.BYTES ? values.readFloat() : values.readDouble();
+                if (!Double.isFinite(t)) throw new IllegalArgumentException("Nonfinite terrain temperature");
+                result[i] = t;
+            }
+            if (values.read() != -1 || !inflater.finished() || inflater.getRemaining() != 0 || packed.available() != 0)
+                throw new IllegalArgumentException("Trailing terrain temperature data");
+            return result;
+        } finally { inflater.end(); }
     }
 
     static DataOutputStream bounded(ByteArrayOutputStream bytes, Limits limits) {

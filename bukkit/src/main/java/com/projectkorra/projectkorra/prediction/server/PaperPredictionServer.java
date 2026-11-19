@@ -128,6 +128,12 @@ public final class PaperPredictionServer extends PaperPredictionSnapshots {
         return rollbackBootstraps.begin(data, terrainLimits, limits, ready);
     }
 
+    public PaperRollbackBootstraps.Transfer beginEncodedRollbackBootstrap(RollbackBootstrapData data, byte[] encoded,
+            RollbackBootstrapServerEndpoint.Limits limits, java.util.function.BooleanSupplier ready) {
+        if (active != this) throw new IllegalStateException("Prediction server is not active");
+        return rollbackBootstraps.beginEncoded(data, encoded, limits, ready);
+    }
+
     /** Install only the complete capture/transfer/native-ownership implementation. */
     public void installRollbackMatchBootstrap(PaperRollbackMatchBootstrap bootstrap) {
         if (active != this || !Bukkit.isPrimaryThread() || rollbackMatchBootstrap != null) {

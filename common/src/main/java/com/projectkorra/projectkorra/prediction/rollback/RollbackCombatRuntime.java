@@ -179,6 +179,11 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
                         execution.tickWorld(tick);
                         RollbackAbilityGlobals.requireIsolatedManagers();
                         state.manager.run();
+                        var globals = RollbackDomain.abilityGlobals();
+                        if (globals != null) globals.progressMaintenance(tick);
+                        var earth = RollbackEarthTerrain.current();
+                        if (earth != null) earth.scanDue(tick, com.projectkorra.projectkorra.BendingPlayer.getPlayers().values().stream()
+                                .map(com.projectkorra.projectkorra.BendingPlayer::getPlayer).toList());
                     } catch (RuntimeException | Error exception) {
                         failure = exception;
                         throw exception;

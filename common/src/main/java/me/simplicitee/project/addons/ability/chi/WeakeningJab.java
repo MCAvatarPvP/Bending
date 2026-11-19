@@ -1,5 +1,6 @@
 package me.simplicitee.project.addons.ability.chi;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantAbilityIndices;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -22,7 +23,6 @@ import java.util.Set;
 
 public class WeakeningJab extends ChiAbility implements ComboAbility, AddonAbility {
 
-    private static Set<Integer> entities = new HashSet<>();
 
     @Attribute(Attribute.DURATION)
     public long duration;
@@ -44,14 +44,14 @@ public class WeakeningJab extends ChiAbility implements ComboAbility, AddonAbili
         duration = ProjectAddons.instance.getConfig(bPlayer).getLong("Combos.Chi.WeakeningJab.Duration");
         cooldown = ProjectAddons.instance.getConfig(bPlayer).getLong("Combos.Chi.WeakeningJab.Cooldown");
 
-        if (entity != null && !entities.contains(entity.getEntityId())) {
-            entities.add(entity.getEntityId());
+        if (entity != null && !RollbackParticipantAbilityIndices.current().weakness.containsKey(entity)) {
+            RollbackParticipantAbilityIndices.current().weakness.put(entity, player);
             start();
         }
     }
 
     public static boolean isAffected(Entity e) {
-        return entities.contains(e.getEntityId());
+        return RollbackParticipantAbilityIndices.current().weakness.containsKey(e);
     }
 
     public static double getModifier() {
@@ -94,7 +94,7 @@ public class WeakeningJab extends ChiAbility implements ComboAbility, AddonAbili
     @Override
     public void remove() {
         super.remove();
-        entities.remove(entity.getEntityId());
+        RollbackParticipantAbilityIndices.current().weakness.remove(entity, player);
         bPlayer.addCooldown(this);
     }
 

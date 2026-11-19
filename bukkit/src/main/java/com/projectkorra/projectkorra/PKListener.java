@@ -1178,17 +1178,6 @@ public class PKListener implements Listener {
             }
         }
 
-        final Integer id = event.getEntity().getEntityId();
-        final Smokescreen smokescreen = Smokescreen.getSnowballs().get(id);
-        if (smokescreen != null) {
-            final var loc = BukkitMC.location(event.getEntity().getLocation());
-            Smokescreen.playEffect(loc);
-            for (final var en : GeneralMethods.getEntitiesAroundPoint(loc, smokescreen.getRadius())) {
-                smokescreen.applyBlindness(en);
-            }
-
-            Smokescreen.getSnowballs().remove(id);
-        }
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)

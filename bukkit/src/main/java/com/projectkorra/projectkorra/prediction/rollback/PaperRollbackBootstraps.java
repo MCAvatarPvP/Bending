@@ -47,13 +47,33 @@ public final class PaperRollbackBootstraps {
                           RollbackBootstrapServerEndpoint.Limits limits, BooleanSupplier ready) {
         requireThread();
         if (!supports(data.sides().keySet())) throw new IllegalStateException("Bootstrap roster does not support the transport");
+        return beginEncoded(data, data.encode(new PaperRollbackTerrainTransfer(), terrainLimits), limits, ready);
+    }
+
+    /** Only captured, unmodified Paper terrain is passed here. Its palette already holds each canonical native string. */
+    static java.util.concurrent.CompletableFuture<byte[]> encodeCaptured(RollbackBootstrapData data,
+            RollbackTerrainCodec.Limits limits) {
+        return java.util.concurrent.CompletableFuture.supplyAsync(() -> data.encode(new RollbackTerrainCodec.BlockStates() {
+            @Override public String encode(com.projectkorra.projectkorra.platform.mc.block.data.BlockData block) {
+                return Objects.requireNonNull(block.getExactState(), "Missing captured native block state");
+            }
+            @Override public com.projectkorra.projectkorra.platform.mc.block.data.BlockData decode(
+                    com.projectkorra.projectkorra.platform.mc.Material material, String exact) {
+                throw new UnsupportedOperationException("Capture encoder");
+            }
+        }, limits));
+    }
+
+    public Transfer beginEncoded(RollbackBootstrapData data, byte[] encoded,
+            RollbackBootstrapServerEndpoint.Limits limits, BooleanSupplier ready) {
+        requireThread();
+        if (!supports(data.sides().keySet())) throw new IllegalStateException("Bootstrap roster does not support the transport");
         var peers = new ArrayList<RollbackBootstrapServerEndpoint.Peer>(); var captured = new IdentityHashMap<Object, UUID>();
         for (UUID id : data.sides().keySet()) {
             Player player = Bukkit.getPlayer(id); Object connection = PaperRollbackIngress.connection(player);
             if (!data.world().world().equals(player.getWorld().getUID()) || worlds.containsKey(connection)) throw new IllegalStateException("Bootstrap world changed or connection reserved");
             peers.add(new RollbackBootstrapServerEndpoint.Peer(id, connection)); captured.put(connection, data.world().world());
         }
-        byte[] encoded = data.encode(new PaperRollbackTerrainTransfer(), terrainLimits);
         var offer = new RollbackBootstrapPacket.Offer(data.session(), data.challenge(), RollbackStartNegotiation.VERSION,
                 data.definitions(), RollbackBootstrapData.fingerprint(encoded), encoded.length);
         worlds.putAll(captured);

@@ -314,6 +314,23 @@ class RollbackLiveSchedulerTest {
         assertEquals(4, scheduler.runNow(() -> {}).legacyId(), "Failed submission must not recycle a logical ID");
     }
 
+    @Test void privateMaintenancePreservesLiveTimerPhaseAcrossRepeatedTicks() {
+        var backend = new Backend();
+        var scheduler = scheduler(backend);
+        class Ticker implements Runnable { public void run() { } }
+        var handle = scheduler.runTimer(new Ticker(), 4, 20);
+        backend.advance();
+        long delay = scheduler.managerDelay(Ticker.class, 20);
+        assertEquals(3, delay);
+        assertFalse(RollbackBendingMaintenance.due(2, delay));
+        assertTrue(RollbackBendingMaintenance.due(3, delay));
+        assertFalse(RollbackBendingMaintenance.due(22, delay));
+        assertTrue(RollbackBendingMaintenance.due(23, delay));
+        assertTrue(RollbackBendingMaintenance.due(3, delay));
+        handle.cancel();
+        assertFalse(RollbackBendingMaintenance.due(3, scheduler.managerDelay(Ticker.class, 20)));
+    }
+
     @Test void selectorMutationIsRejectedBeforeOwnershipChanges() {
         var backend = new Backend(); var scheduler = scheduler(backend); AtomicInteger calls = new AtomicInteger(); scheduler.runNow(calls::incrementAndGet);
         var lease = scheduler.prepare(work -> { scheduler.runNow(() -> {}); return true; });

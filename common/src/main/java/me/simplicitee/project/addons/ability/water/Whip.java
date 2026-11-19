@@ -1,5 +1,6 @@
 package me.simplicitee.project.addons.ability.water;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantAbilityIndices;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
@@ -28,8 +29,6 @@ import java.util.UUID;
 public class Whip
         extends WaterAbility
         implements AddonAbility {
-    private static final Map<UUID, Block> SOURCES = new HashMap<>();
-    private static final Map<UUID, BukkitTask> SOURCE_PARTICLES = new HashMap<>();
 
     private long cooldown;
     private double range;
@@ -57,12 +56,12 @@ public class Whip
             unsource(player);
             return;
         }
-        SOURCES.put(player.getUniqueId(), source);
+        RollbackParticipantAbilityIndices.current().whipSources.put(player.getUniqueId(), source);
         startSourceParticles(player, source);
     }
 
     public static void unsource(Player player) {
-        SOURCES.remove(player.getUniqueId());
+        RollbackParticipantAbilityIndices.current().whipSources.remove(player.getUniqueId());
         stopSourceParticles(player);
     }
 
@@ -71,7 +70,7 @@ public class Whip
         BukkitTask task = ProjectKorra.plugin.getServer().getScheduler().runTaskTimer(ProjectKorra.plugin, new Runnable() {
             @Override
             public void run() {
-                Block heldSource = SOURCES.get(player.getUniqueId());
+                Block heldSource = RollbackParticipantAbilityIndices.current().whipSources.get(player.getUniqueId());
                 if (!player.isOnline() || !player.isSneaking() || heldSource == null || !heldSource.equals(source)) {
                     unsource(player);
                     return;
@@ -79,11 +78,11 @@ public class Whip
                 playFocusWaterEffect(source);
             }
         }, 0L, 4L);
-        SOURCE_PARTICLES.put(player.getUniqueId(), task);
+        RollbackParticipantAbilityIndices.current().whipParticles.put(player.getUniqueId(), task);
     }
 
     private static void stopSourceParticles(Player player) {
-        BukkitTask task = SOURCE_PARTICLES.remove(player.getUniqueId());
+        BukkitTask task = RollbackParticipantAbilityIndices.current().whipParticles.remove(player.getUniqueId());
         if (task != null) {
             task.cancel();
         }
@@ -99,7 +98,7 @@ public class Whip
             }
             this.sourceBlock = this.player.getEyeLocation().clone().getBlock();
         } else {
-            this.sourceBlock = SOURCES.remove(this.player.getUniqueId());
+            this.sourceBlock = RollbackParticipantAbilityIndices.current().whipSources.remove(this.player.getUniqueId());
             stopSourceParticles(this.player);
         }
         if (this.sourceBlock == null) {

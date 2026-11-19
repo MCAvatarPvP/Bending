@@ -19,6 +19,7 @@
 
 package me.moros.hyperion.abilities.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantAbilityIndices;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.EarthAbility;
@@ -45,8 +46,6 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class EarthGlove extends EarthAbility implements AddonAbility {
-    private static final Map<UUID, Side> lastUsedSide = new ConcurrentHashMap<>();
-    private static final Map<UUID, EarthGlove> ACTIVE_GLOVE_PARTS = new ConcurrentHashMap<>();
     private static final List<GlovePart> GLOVE_MODEL = List.of(
             new GlovePart("palm", 0.0F, 0.0F, 0.0F,
                     0.52F, 0.46F, 0.34F, 0.0F),
@@ -102,7 +101,7 @@ public class EarthGlove extends EarthAbility implements AddonAbility {
     public static void attemptDestroy(final Player player) {
         for (Entity targetedEntity : GeneralMethods.getEntitiesAroundPoint(player.getEyeLocation(), 8)) {
             if (targetedEntity instanceof BlockDisplay && player.hasLineOfSight(targetedEntity)) {
-                final EarthGlove ability = ACTIVE_GLOVE_PARTS.get(targetedEntity.getUniqueId());
+                final EarthGlove ability = RollbackParticipantAbilityIndices.current().gloveParts.get(targetedEntity.getUniqueId());
                 if (ability != null && !player.equals(ability.getPlayer())) {
                     ability.shatterGlove();
                     return;
@@ -174,11 +173,11 @@ public class EarthGlove extends EarthAbility implements AddonAbility {
 
     private boolean launchEarthGlove() {
         final Location gloveSpawnLocation;
-        Side side = lastUsedSide.get(player.getUniqueId());
+        Side side = RollbackParticipantAbilityIndices.current().gloveSides.get(player.getUniqueId());
         if (side != null && bPlayer.isOnCooldown(getCooldownForSide(side))) {
             return false;
         }
-        side = lastUsedSide.compute(player.getUniqueId(), (u, s) -> (s == null || s == Side.LEFT) ? Side.RIGHT : Side.LEFT);
+        side = RollbackParticipantAbilityIndices.current().gloveSides.compute(player.getUniqueId(), (u, s) -> (s == null || s == Side.LEFT) ? Side.RIGHT : Side.LEFT);
         bPlayer.addCooldown(getCooldownForSide(side), cooldown);
         if (side == Side.RIGHT) {
             gloveSpawnLocation = GeneralMethods.getRightSide(player.getLocation(), 0.5).add(0, 0.8, 0);
@@ -216,7 +215,7 @@ public class EarthGlove extends EarthAbility implements AddonAbility {
             display.setTeleportDuration(1);
             display.setViewRange(32.0F);
             this.gloveParts.add(display);
-            ACTIVE_GLOVE_PARTS.put(display.getUniqueId(), this);
+            RollbackParticipantAbilityIndices.current().gloveParts.put(display.getUniqueId(), this);
         }
         final BlockDisplay anchor = this.gloveParts.get(0);
         this.updateGloveModel();
@@ -388,7 +387,7 @@ public class EarthGlove extends EarthAbility implements AddonAbility {
     public void remove() {
         for (final BlockDisplay part : List.copyOf(this.gloveParts)) {
             if (part == null) continue;
-            ACTIVE_GLOVE_PARTS.remove(part.getUniqueId(), this);
+            RollbackParticipantAbilityIndices.current().gloveParts.remove(part.getUniqueId(), this);
             if (part.isValid()) part.remove();
         }
         this.gloveParts.clear();

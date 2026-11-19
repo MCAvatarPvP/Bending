@@ -31,17 +31,25 @@ public class RevertChecker implements Runnable {
     private long time;
     private Future<Set<Map<String, Integer>>> returnFuture;
 
+    public static Map<Block, Block> earthQueue() {
+        var arena = com.projectkorra.projectkorra.prediction.rollback.RollbackEarthTerrain.current();
+        return arena == null ? earthRevertQueue : arena.earthQueue;
+    }
+    public static Map<Integer, Integer> airQueue() {
+        var arena = com.projectkorra.projectkorra.prediction.rollback.RollbackEarthTerrain.current();
+        return arena == null ? airRevertQueue : arena.airQueue;
+    }
     public RevertChecker(final ProjectKorra bending) {
         this.plugin = bending;
     }
 
     public static void revertAirBlocks() {
-        for (final int ID : airRevertQueue.keySet()) {
+        for (final int ID : airQueue().keySet()) {
             final Information info = EarthAbility.getTempAirLocations().get(ID);
 
             // It was already reverted/removed somewhere else.
             if (info == null) {
-                airRevertQueue.remove(ID);
+                airQueue().remove(ID);
                 continue;
             }
 
@@ -53,38 +61,38 @@ public class RevertChecker implements Runnable {
                     EarthAbility.revertAirBlock(ID);
                 }
 
-                airRevertQueue.remove(ID);
+                airQueue().remove(ID);
             });
         }
     }
 
     public static void revertEarthBlocks() {
-        for (final Block block : earthRevertQueue.keySet()) {
+        for (final Block block : earthQueue().keySet()) {
             Platform.chunks().getChunkAtAsync(block.getLocation()).thenAccept(result -> {
                 if (EarthAbility.getMovedEarth().containsKey(block)) {
                     RaiseEarth.revertExpiredBlock(block);
                 }
 
-                earthRevertQueue.remove(block);
+                earthQueue().remove(block);
             });
         }
     }
 
     /** Drops queued old-world restores without touching either world. */
     public static void discardAll() {
-        earthRevertQueue.clear();
-        airRevertQueue.clear();
+        earthQueue().clear();
+        airQueue().clear();
     }
 
     private void addToAirRevertQueue(final int i) {
-        if (!airRevertQueue.containsKey(i)) {
-            airRevertQueue.put(i, i);
+        if (!airQueue().containsKey(i)) {
+            airQueue().put(i, i);
         }
     }
 
     private void addToRevertQueue(final Block block) {
-        if (!earthRevertQueue.containsKey(block)) {
-            earthRevertQueue.put(block, block);
+        if (!earthQueue().containsKey(block)) {
+            earthQueue().put(block, block);
         }
     }
 
@@ -104,7 +112,7 @@ public class RevertChecker implements Runnable {
                 final Map<Block, Information> earth = new HashMap<>(EarthAbility.getMovedEarth());
 
                 for (final Block block : earth.keySet()) {
-                    if (earthRevertQueue.containsKey(block)) {
+                    if (earthQueue().containsKey(block)) {
                         continue;
                     }
 
@@ -122,7 +130,7 @@ public class RevertChecker implements Runnable {
                 final Map<Integer, Information> air = new HashMap<>(EarthAbility.getTempAirLocations());
 
                 for (final Integer i : air.keySet()) {
-                    if (airRevertQueue.containsKey(i)) {
+                    if (airQueue().containsKey(i)) {
                         continue;
                     }
 

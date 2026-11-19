@@ -1,5 +1,6 @@
 package me.simplicitee.project.addons.ability.air;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantAbilityIndices;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.platform.mc.Location;
@@ -12,7 +13,6 @@ import java.util.HashMap;
 
 public class VocalMimicry extends SoundAbility implements AddonAbility {
 
-    private static HashMap<Player, Sound> selected = new HashMap<>();
 
     @Attribute("Volume")
     private float volume;
@@ -26,13 +26,13 @@ public class VocalMimicry extends SoundAbility implements AddonAbility {
 
         volume = (float) ProjectAddons.instance.getConfig(bPlayer).getDouble("Abilities.Air.VocalMimicry.Volume");
         pitch = (float) ProjectAddons.instance.getConfig(bPlayer).getDouble("Abilities.Air.VocalMimicry.Pitch");
-        sound = (selected.containsKey(player) ? selected.get(player) : Sound.BLOCK_NOTE_BLOCK_DIDGERIDOO);
+        sound = (RollbackParticipantAbilityIndices.current().sounds.containsKey(player) ? RollbackParticipantAbilityIndices.current().sounds.get(player) : Sound.BLOCK_NOTE_BLOCK_DIDGERIDOO);
 
         start();
     }
 
     public static void selectSound(Player player, Sound sound) {
-        selected.put(player, sound);
+        RollbackParticipantAbilityIndices.current().sounds.put(player, sound);
     }
 
     @Override

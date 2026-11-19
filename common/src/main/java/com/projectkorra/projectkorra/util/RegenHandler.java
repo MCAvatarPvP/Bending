@@ -64,7 +64,8 @@ public class RegenHandler implements Runnable {
         long now = RollbackClock.millis();
 
         for (Player player : Platform.players().<Player>onlinePlayers()) {
-            if (!player.isOnline() || player.isDead() || player.getHealth() >= player.getMaxHealth())
+            if (com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership.blocks(player.getUniqueId())
+                    || !player.isOnline() || player.isDead() || player.getHealth() >= player.getMaxHealth())
                 continue;
             BendingPlayer bendingPlayer = BendingPlayer.getBendingPlayer(player);
             if (bendingPlayer == null || now - bendingPlayer.getLastHealthRegen() < regenInterval(bendingPlayer))

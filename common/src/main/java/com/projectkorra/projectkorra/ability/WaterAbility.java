@@ -45,7 +45,7 @@ public abstract class WaterAbility extends ElementalAbility {
     public static boolean isBendableWaterTempBlock(final TempBlock tempBlock) {
         boolean isIceBendableTorrent = ConfigManager.getConfig().getBoolean("Abilities.Water.Torrent.IsIceBendable");
         return PhaseChange.getFrozenBlocksMap().containsKey(tempBlock) || HeatControl.getMeltedBlocks().contains(tempBlock)
-                || SurgeWall.SOURCE_BLOCKS.contains(tempBlock) || Torrent.getFrozenBlocks().containsKey(tempBlock) && isIceBendableTorrent || WaterManipulation.getAffectedBlocks().containsKey(tempBlock.getBlock());
+                || SurgeWall.getSourceBlocks().contains(tempBlock) || Torrent.getFrozenBlocks().containsKey(tempBlock) && isIceBendableTorrent || WaterManipulation.getAffectedBlocks().containsKey(tempBlock.getBlock());
     }
 
     public static Material getIceMaterial(final Player player) {

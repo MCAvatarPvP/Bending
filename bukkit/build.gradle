@@ -108,7 +108,7 @@ sourceSets.main.java.srcDir(generatePaperItemCatalog)
 sourceSets {
     paperLegacyData {
         compileClasspath += paperSchemaClasspath
-        runtimeClasspath += configurations.runtimeClasspath + paperSchemaClasspath
+        runtimeClasspath = output + paperSchemaClasspath
     }
 }
 def paperLegacyResources = layout.buildDirectory.dir('generated/resources/paperLegacyData')

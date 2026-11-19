@@ -26,6 +26,18 @@ public class RaiseEarth extends EarthAbility {
     private static final ConcurrentHashMap<BlockKey, Integer> COLUMN_BLOCKS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<Block, Integer> ACTIVE_BLOCKS = new ConcurrentHashMap<>();
 
+    public static ConcurrentHashMap<BlockKey, Integer> walls() {
+        var state = com.projectkorra.projectkorra.prediction.rollback.RollbackEarthTerrain.current();
+        return state == null ? WALL_BLOCKS : state.walls;
+    }
+    public static ConcurrentHashMap<BlockKey, Integer> columns() {
+        var state = com.projectkorra.projectkorra.prediction.rollback.RollbackEarthTerrain.current();
+        return state == null ? COLUMN_BLOCKS : state.columns;
+    }
+    public static ConcurrentHashMap<Block, Integer> activeBlocks() {
+        var state = com.projectkorra.projectkorra.prediction.rollback.RollbackEarthTerrain.current();
+        return state == null ? ACTIVE_BLOCKS : state.active;
+    }
     private int distance;
     @Attribute(Attribute.HEIGHT)
     private int height;
@@ -128,7 +140,7 @@ public class RaiseEarth extends EarthAbility {
     }
 
     public static boolean blockInAllAffectedBlocks(final Block block) {
-        return block != null && ACTIVE_BLOCKS.containsKey(block);
+        return block != null && activeBlocks().containsKey(block);
     }
 
     public static boolean isBlockingAbility(final Block block) {
@@ -180,7 +192,7 @@ public class RaiseEarth extends EarthAbility {
             return;
         }
 
-        WALL_BLOCKS.remove(blockKey(block));
+        walls().remove(blockKey(block));
 
         for (final RaiseEarth raiseEarth : getAbilities(RaiseEarth.class)) {
             raiseEarth.removeTrackedWallBlock(block);
@@ -192,7 +204,7 @@ public class RaiseEarth extends EarthAbility {
             return;
         }
 
-        COLUMN_BLOCKS.remove(blockKey(block));
+        columns().remove(blockKey(block));
 
         for (final RaiseEarth raiseEarth : getAbilities(RaiseEarth.class)) {
             raiseEarth.removeTrackedColumnBlock(block);
@@ -222,7 +234,7 @@ public class RaiseEarth extends EarthAbility {
     }
 
     private static void untrackActiveBlock(final Block block) {
-        ACTIVE_BLOCKS.computeIfPresent(block, (ignored, references) -> references > 1 ? references - 1 : null);
+        activeBlocks().computeIfPresent(block, (ignored, references) -> references > 1 ? references - 1 : null);
     }
 
     private static boolean containsAffectedBlock(final RaiseEarth raiseEarth, final Block block) {
@@ -235,11 +247,11 @@ public class RaiseEarth extends EarthAbility {
     }
 
     private static boolean containsWallBlock(final Block block) {
-        return block != null && WALL_BLOCKS.containsKey(blockKey(block));
+        return block != null && walls().containsKey(blockKey(block));
     }
 
     private static boolean containsColumnBlock(final Block block) {
-        return block != null && COLUMN_BLOCKS.containsKey(blockKey(block));
+        return block != null && columns().containsKey(blockKey(block));
     }
 
     private static boolean isSameBlock(final Block first, final Block second) {
@@ -252,7 +264,7 @@ public class RaiseEarth extends EarthAbility {
 
     /** Clears persistent wall identity during a full bending-runtime shutdown. */
     public static void clearWallBlocks() {
-        WALL_BLOCKS.clear();
+        walls().clear();
         for (final RaiseEarth raiseEarth : getAbilities(RaiseEarth.class)) {
             raiseEarth.wallBlocks.clear();
         }
@@ -260,7 +272,7 @@ public class RaiseEarth extends EarthAbility {
 
     /** Clears persistent column identity during a full bending-runtime shutdown. */
     public static void clearColumnBlocks() {
-        COLUMN_BLOCKS.clear();
+        columns().clear();
         for (final RaiseEarth raiseEarth : getAbilities(RaiseEarth.class)) {
             raiseEarth.columnBlocks.clear();
         }
@@ -273,9 +285,9 @@ public class RaiseEarth extends EarthAbility {
 
     /** Clears all coordinate indexes without invoking an Earth restore. */
     public static void clearAllTracking() {
-        WALL_BLOCKS.clear();
-        COLUMN_BLOCKS.clear();
-        ACTIVE_BLOCKS.clear();
+        walls().clear();
+        columns().clear();
+        activeBlocks().clear();
         for (final RaiseEarth raiseEarth : getAbilities(RaiseEarth.class)) {
             raiseEarth.affectedBlocks.clear();
             raiseEarth.wallBlocks.clear();
@@ -314,7 +326,7 @@ public class RaiseEarth extends EarthAbility {
         for (int i = 0; i <= this.distance; i++) {
             thisBlock = this.block.getWorld().getBlockAt(this.location.clone().add(this.direction.clone().multiply(-i)));
             this.affectedBlocks.put(thisBlock, thisBlock);
-            ACTIVE_BLOCKS.merge(thisBlock, 1, Integer::sum);
+            activeBlocks().merge(thisBlock, 1, Integer::sum);
             if (Collapse.blockInAllAffectedBlocks(thisBlock)) {
                 Collapse.revert(thisBlock);
             }
@@ -367,7 +379,7 @@ public class RaiseEarth extends EarthAbility {
     private void trackWallBlocks() {
         for (final Block affected : this.affectedBlocks.keySet()) {
             if (this.wallBlocks.add(affected)) {
-                WALL_BLOCKS.merge(blockKey(affected), 1, Integer::sum);
+                walls().merge(blockKey(affected), 1, Integer::sum);
             }
         }
     }
@@ -381,14 +393,14 @@ public class RaiseEarth extends EarthAbility {
                 continue;
             }
             if (this.columnBlocks.add(affected)) {
-                COLUMN_BLOCKS.merge(blockKey(affected), 1, Integer::sum);
+                columns().merge(blockKey(affected), 1, Integer::sum);
             }
         }
     }
 
     private void clearTrackedWallBlocks() {
         for (final Block wallBlock : this.wallBlocks) {
-            WALL_BLOCKS.computeIfPresent(blockKey(wallBlock),
+            walls().computeIfPresent(blockKey(wallBlock),
                     (ignored, references) -> references > 1 ? references - 1 : null);
         }
         this.wallBlocks.clear();
@@ -396,17 +408,26 @@ public class RaiseEarth extends EarthAbility {
 
     private void clearTrackedColumnBlocks() {
         for (final Block columnBlock : this.columnBlocks) {
-            COLUMN_BLOCKS.computeIfPresent(blockKey(columnBlock),
+            columns().computeIfPresent(blockKey(columnBlock),
                     (ignored, references) -> references > 1 ? references - 1 : null);
         }
         this.columnBlocks.clear();
     }
 
     private static BlockKey blockKey(final Block block) {
-        return new BlockKey(block.getWorld().getName(), block.getX(), block.getY(), block.getZ());
+        return BlockKey.of(block);
     }
 
-    private record BlockKey(String world, int x, int y, int z) {
+    public static final class BlockKey {
+        private final String world;
+        private final int x, y, z;
+        private BlockKey(String world, int x, int y, int z) { this.world = world; this.x = x; this.y = y; this.z = z; }
+        public static BlockKey of(Block block) { return new BlockKey(block.getWorld().getName(), block.getX(), block.getY(), block.getZ()); }
+        public boolean inside(String expectedWorld, com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Bounds bounds) {
+            return world.equals(expectedWorld) && bounds.contains(new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Position(x, y, z));
+        }
+        @Override public boolean equals(Object other) { return other instanceof BlockKey b && x == b.x && y == b.y && z == b.z && world.equals(b.world); }
+        @Override public int hashCode() { return ((31 * world.hashCode() + x) * 31 + y) * 31 + z; }
     }
 
     private void removeTrackedWallBlock(final Block block) {

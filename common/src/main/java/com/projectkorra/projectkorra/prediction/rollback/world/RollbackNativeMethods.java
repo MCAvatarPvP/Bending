@@ -364,7 +364,7 @@ public final class RollbackNativeMethods {
                             if (opcode != Opcodes.INVOKESPECIAL || !targetName.equals("<init>") || !allocating.equals(targetOwner)) idle();
                             try {
                                 Class<?> constructed = load(targetOwner, owner.getClassLoader());
-                                var signature = MethodType.fromMethodDescriptorString(targetDescriptor, owner.getClassLoader());
+                                var signature = runtimeSignature(targetDescriptor, owner.getClassLoader());
                                 MethodHandle factory = factories.get(constructed.getDeclaredConstructor(signature.parameterArray()));
                                 if (factory == null) throw new IllegalArgumentException("Unbound constructor for substituted allocation: " + targetOwner + targetDescriptor);
                                 allocating = null;
@@ -375,12 +375,11 @@ public final class RollbackNativeMethods {
                         if (!targetName.equals("<init>")) {
                             Method resolved = resolve(targetOwner, targetName, targetDescriptor, owner.getClassLoader());
                             MethodHandle replacement = (opcode == Opcodes.INVOKEVIRTUAL || opcode == Opcodes.INVOKEINTERFACE ? virtualCalls : calls).get(resolved);
-                            MethodType invocation = MethodType.fromMethodDescriptorString(targetDescriptor, owner.getClassLoader());
+                            MethodType invocation = MethodType.methodType(resolved.getReturnType(), resolved.getParameterTypes());
                             if (opcode != Opcodes.INVOKESTATIC) invocation = invocation.insertParameterTypes(0, load(targetOwner, owner.getClassLoader()));
                             if (replacement == null && opcode == Opcodes.INVOKESPECIAL) {
                                 try {
-                                    replacement = lookup.findSpecial(load(targetOwner, owner.getClassLoader()), targetName,
-                                            MethodType.fromMethodDescriptorString(targetDescriptor, owner.getClassLoader()), owner);
+                                    replacement = lookup.unreflectSpecial(resolved, owner);
                                 } catch (ReflectiveOperationException failure) { throw new IllegalStateException("Native super call unavailable", failure); }
                             }
                             if (replacement == null && !Modifier.isPublic(resolved.getModifiers())
@@ -430,7 +429,7 @@ public final class RollbackNativeMethods {
                             int slot = data.size(); data.add(lambda);
                             super.visitLdcInsn(new ConstantDynamic("_", "Ljava/lang/invoke/MethodHandle;", CLASS_DATA, slot));
                             for (int i = 0; i < captures.length; i++) super.visitVarInsn(captures[i].getOpcode(Opcodes.ILOAD), locals[i]);
-                            desc = MethodType.fromMethodDescriptorString(desc, owner.getClassLoader()).insertParameterTypes(0, MethodHandle.class).descriptorString();
+                            desc = runtimeSignature(desc, owner.getClassLoader()).insertParameterTypes(0, MethodHandle.class).descriptorString();
                         }
                         super.visitInvokeDynamicInsn(name, desc, bootstrap, arguments);
                     }
@@ -456,28 +455,65 @@ public final class RollbackNativeMethods {
         } catch (ReflectiveOperationException failure) { throw new IllegalStateException("Native body definition failed: " + method, failure); }
     }
 
+    // These names came from the running native class bytes. Stock Paper rewrites
+    // string-based reflection calls as plugin mapping lookups, even for Mojang-mapped
+    // plugins. A second translation can turn Fluid into FluidState. Resolve the
+    // actual JVM descriptors through the native defining loader.
     private static Class<?> load(String internalName, ClassLoader loader) {
-        try { return Class.forName(internalName.replace('/', '.'), false, loader); }
-        catch (ClassNotFoundException failure) { throw new IllegalStateException("Native call owner unavailable: " + internalName, failure); }
+        if (internalName.startsWith("[")) return runtimeType(Type.getType(internalName), loader);
+        try {
+            var root = loader == null ? ClassLoader.getPlatformClassLoader() : loader;
+            return root.loadClass(internalName.replace('/', '.'));
+        } catch (ClassNotFoundException failure) { throw new IllegalStateException("Native call owner unavailable: " + internalName, failure); }
+    }
+    private static MethodType runtimeSignature(String descriptor, ClassLoader loader) {
+        Type[] types = Type.getArgumentTypes(descriptor);
+        var parameters = new Class<?>[types.length];
+        for (int i = 0; i < parameters.length; i++) parameters[i] = runtimeType(types[i], loader);
+        return MethodType.methodType(runtimeType(Type.getReturnType(descriptor), loader), parameters);
+    }
+    private static Class<?> runtimeType(Type type, ClassLoader loader) {
+        return switch (type.getSort()) {
+            case Type.VOID -> void.class;
+            case Type.BOOLEAN -> boolean.class;
+            case Type.BYTE -> byte.class;
+            case Type.CHAR -> char.class;
+            case Type.SHORT -> short.class;
+            case Type.INT -> int.class;
+            case Type.LONG -> long.class;
+            case Type.FLOAT -> float.class;
+            case Type.DOUBLE -> double.class;
+            case Type.OBJECT -> load(type.getInternalName(), loader);
+            case Type.ARRAY -> {
+                Class<?> element = runtimeType(type.getElementType(), loader);
+                for (int i = 0; i < type.getDimensions(); i++) element = element.arrayType();
+                yield element;
+            }
+            default -> throw new IllegalArgumentException("Unsupported native type " + type);
+        };
     }
     private static java.lang.reflect.Field resolveField(Class<?> owner, String name) {
         for (Class<?> current = owner; current != null; current = current.getSuperclass()) {
-            try { return current.getDeclaredField(name); }
-            catch (NoSuchFieldException ignored) { }
+            for (var field : current.getDeclaredFields()) if (field.getName().equals(name)) return field;
         }
-        try { return owner.getField(name); }
-        catch (NoSuchFieldException failure) { throw new IllegalStateException("Native field unavailable: " + owner + "." + name, failure); }
+        for (var field : owner.getFields()) if (field.getName().equals(name)) return field;
+        throw new IllegalStateException("Native field unavailable: " + owner + "." + name);
     }
-    private static Method resolve(String owner, String name, String descriptor, ClassLoader loader) {
-        Class<?> type = load(owner, loader);
-        var signature = MethodType.fromMethodDescriptorString(descriptor, loader);
-        for (Class<?> current = type; current != null; current = current.getSuperclass()) {
-            for (Method method : current.getDeclaredMethods()) {
-                if (method.getName().equals(name) && type(method).returnType() == signature.returnType()
-                        && java.util.Arrays.equals(method.getParameterTypes(), signature.parameterArray())) return method;
+    private static final ClassValue<Map<String, Method>> RUNTIME_METHODS = new ClassValue<>() {
+        @Override protected Map<String, Method> computeValue(Class<?> owner) {
+            var methods = new java.util.HashMap<String, Method>();
+            for (Class<?> current = owner; current != null; current = current.getSuperclass()) {
+                for (Method method : current.getDeclaredMethods())
+                    methods.putIfAbsent(method.getName() + Type.getMethodDescriptor(method), method);
             }
+            for (Method method : owner.getMethods())
+                methods.putIfAbsent(method.getName() + Type.getMethodDescriptor(method), method);
+            return Map.copyOf(methods);
         }
-        try { return type.getMethod(name, signature.parameterArray()); }
-        catch (NoSuchMethodException failure) { throw new IllegalStateException("Native call method unavailable: " + owner + "." + name + descriptor, failure); }
+    };
+    private static Method resolve(String owner, String name, String descriptor, ClassLoader loader) {
+        var method = RUNTIME_METHODS.get(load(owner, loader)).get(name + descriptor);
+        if (method == null) throw new IllegalStateException("Native call method unavailable: " + owner + "." + name + descriptor);
+        return method;
     }
 }

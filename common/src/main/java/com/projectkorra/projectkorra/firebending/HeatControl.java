@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.firebending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackArenaBlockIndices;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
 
@@ -38,7 +39,12 @@ import java.util.*;
 public class HeatControl extends FireAbility {
 
     private static final Material[] COOKABLE_MATERIALS = {Material.BEEF, Material.CHICKEN, Material.COD, Material.PORKCHOP, Material.POTATO, Material.RABBIT, Material.MUTTON, Material.SALMON, Material.KELP, Material.WET_SPONGE, Material.CHORUS_FRUIT, Material.STICK};
-    private static final Map<Block, TempBlock> MELTED_BLOCKS = new HashMap<>();
+    private static final Map<Block, TempBlock> MELTED_BLOCKS = RollbackArenaBlockIndices.live().melted;
+
+    public static Map<Block, TempBlock> meltedLayers() {
+        var indices = RollbackArenaBlockIndices.current();
+        return indices == null ? MELTED_BLOCKS : indices.melted;
+    }
     private HeatControlType heatControlType;
 
     // HeatControl Cook variables.
@@ -171,16 +177,16 @@ public class HeatControl extends FireAbility {
 
         if (isMeltableIce(block) && !TempBlock.isTempBlock(block) && WaterManipulation.canPhysicsChange(block)) {
             final TempBlock tb = new TempBlock(block, Material.WATER);
-            MELTED_BLOCKS.put(block, tb);
+            meltedLayers().put(block, tb);
 
             new BukkitRunnable() {
                 @Override
                 public void run() {
-                    final TempBlock melted = MELTED_BLOCKS.get(block);
+                    final TempBlock melted = meltedLayers().get(block);
                     if (melted != null) {
                         melted.revertBlock();
                     }
-                    MELTED_BLOCKS.remove(block);
+                    meltedLayers().remove(block);
                 }
             }.runTaskLater(ProjectKorra.plugin, 5 * 20 * 60);
         }
@@ -208,12 +214,12 @@ public class HeatControl extends FireAbility {
     }
 
     public static Collection<TempBlock> getMeltedBlocks() {
-        return MELTED_BLOCKS.values();
+        return meltedLayers().values();
     }
 
     /** Drops old-world melted-ice ownership without restoring blocks. */
     public static void discardAllTracking() {
-        MELTED_BLOCKS.clear();
+        meltedLayers().clear();
     }
 
     public void setFields() {

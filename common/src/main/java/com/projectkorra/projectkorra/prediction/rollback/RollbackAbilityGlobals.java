@@ -18,8 +18,23 @@ import java.util.*;
 /** Per-participant delayed Catapult landings and block-source selections. */
 public final class RollbackAbilityGlobals {
     private boolean enrolled;
+    private RollbackAddonActors addonActors;
+    public RollbackAddonActors addonActors() {
+        if (addonActors == null) addonActors = new RollbackAddonActors();
+        return addonActors;
+    }
+    private boolean runMaintenance;
+    private long regenerationDelay, elementExpiryDelay;
+
     private RollbackParticipantStatuses statuses = new RollbackParticipantStatuses();
     private TempBlock.RollbackLayers layers;
+    private RollbackArenaBlockIndices unleasedIndices;
+
+    RollbackArenaBlockIndices blockIndices() {
+        if (layers != null) return layers.abilityIndices();
+        if (unleasedIndices == null) unleasedIndices = new RollbackArenaBlockIndices();
+        return unleasedIndices;
+    }
     private Map<FallingBlock, TempFallingBlock> falling = new LinkedHashMap<>();
     private Set<TempArmorStand> stands = new LinkedHashSet<>();
     private Set<UUID> landings = new LinkedHashSet<>();
@@ -38,10 +53,25 @@ public final class RollbackAbilityGlobals {
         return data;
     }
 
+    public void captureMaintenance(RollbackLiveScheduler scheduler) {
+        regenerationDelay = scheduler.managerDelay(com.projectkorra.projectkorra.util.RegenHandler.class, 20);
+        elementExpiryDelay = scheduler.managerDelay(com.projectkorra.projectkorra.BendingManager.TempElementsRunnable.class, 20);
+        long standsDelay = scheduler.managerDelay(me.moros.hyperion.util.TempArmorStand.Manager.class, 1);
+        long fallingDelay = scheduler.managerDelay(me.moros.hyperion.util.BendingFallingBlock.Manager.class, 5);
+        if (standsDelay > 0 || fallingDelay > 0) addonActors().timerDelays(standsDelay, fallingDelay);
+        runMaintenance = true;
+    }
+
+    void progressMaintenance(long tick) {
+        if (runMaintenance) RollbackBendingMaintenance.run(tick, regenerationDelay, elementExpiryDelay);
+        if (addonActors != null) addonActors.tick(tick);
+    }
+
     RollbackParticipantStatuses participantStatuses() { return statuses; }
 
     /** An already-live temporary actor cannot become part of a newly captured native scene. */
     public void requireNoInitialActors(World world, RollbackBlockStore.Bounds bounds, Set<UUID> participants) {
+        RollbackAddonActors.requireNoInitialActors(entity -> inside(world, bounds, entity), participants);
         for (var entry : TempFallingBlock.instances.entrySet()) {
             var ability = entry.getValue().getAbility();
             if (inside(world, bounds, entry.getKey()) || ability != null && ability.getPlayer() != null && participants.contains(ability.getPlayer().getUniqueId()))
@@ -74,12 +104,17 @@ public final class RollbackAbilityGlobals {
     }
     RollbackAbilityGlobals portable() {
         var copy = new RollbackAbilityGlobals();
+        copy.runMaintenance = runMaintenance;
+        copy.regenerationDelay = regenerationDelay;
+        copy.elementExpiryDelay = elementExpiryDelay;
         copy.enrolled = enrolled; copy.landings = landings; copy.sources = sources; copy.statuses = statuses;
+        copy.addonActors = addonActors;
         copy.falling = falling; copy.stands = stands;
+        copy.unleasedIndices = unleasedIndices;
         copy.layers = layers == null ? null : layers.portable();
         return copy;
     }
-    void install() {
+    public void install() {
         RollbackDomain.installAbilityGlobals(this);
         if (layers != null) layers.install();
     }
@@ -104,6 +139,7 @@ public final class RollbackAbilityGlobals {
     /** Resolve each key against the canonical roster before touching any live membership. */
     void validate(Map<UUID, Player> roster) {
         statuses.validate(roster);
+        if (addonActors != null) addonActors.validateOwners(roster);
         if (!falling.isEmpty() || !stands.isEmpty()) {
             var world = roster.values().iterator().next().getWorld();
             for (var stand : stands) if (stand.getArmorStand() == null || stand.getArmorStand().getWorld().handle() != world.handle())
@@ -131,6 +167,26 @@ public final class RollbackAbilityGlobals {
         }
     }
 
+    public void validateTemporaryActors(RollbackActorData data) {
+        if (stands.isEmpty() && falling.isEmpty() && addonActors == null) return;
+        var registered = new HashSet<UUID>();
+        for (var row : data.actors()) registered.add(row.identity().uuid());
+        var referenced = new HashSet<UUID>();
+        for (var stand : stands) requireTemporaryActor(stand.getArmorStand(), registered, referenced);
+        for (var block : falling.keySet()) requireTemporaryActor(block, registered, referenced);
+        if (addonActors != null) addonActors.validateActors(registered, referenced);
+    }
+
+    static void requireTemporaryActor(Entity entity, Set<UUID> registered, Set<UUID> referenced) {
+        if (entity == null || !registered.contains(entity.getUniqueId()) || !referenced.add(entity.getUniqueId()))
+            throw new IllegalStateException("Temporary bending actor is missing or duplicated in the confirmed scene");
+    }
+
+    public static void validateInstalledActors(RollbackActorData data) {
+        var globals = RollbackDomain.abilityGlobals();
+        if (globals != null) globals.validateTemporaryActors(data);
+    }
+
     void merge(Map<UUID, Player> roster) {
         if (RollbackDomain.active() || RollbackClock.active()) throw new IllegalStateException("Restore participant registries outside replay");
         validate(roster);
@@ -138,6 +194,11 @@ public final class RollbackAbilityGlobals {
             var previous = TempFallingBlock.instances.get(entry.getKey());
             if (previous != null && previous != entry.getValue()) throw new IllegalStateException("Temporary falling block already has a live owner");
         }
+        for (var live : TempArmorStand.getTempStands()) for (var stand : stands) {
+            if (live != stand && live.getArmorStand().getUniqueId().equals(stand.getArmorStand().getUniqueId()))
+                throw new IllegalStateException("Temporary armor stand already has a live owner");
+        }
+        if (addonActors != null) addonActors.merge();
         statuses.merge(roster);
         TempFallingBlock.instances.putAll(falling);
         TempArmorStand.getTempStands().addAll(stands);

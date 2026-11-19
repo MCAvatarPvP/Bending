@@ -101,8 +101,10 @@ public final class PaperRollbackMatchRestoration {
         var plan = new PaperRollbackMatchRestoration(terrain, players, gameplay, tasks.getFirst(), actors, frame.scheduledTicks(), frame.players().worldTime());
         if (live.layers() != null) {
             plan.layerLease = live.layers();
-            plan.settledLayers = restored.services().stream().filter(RollbackAbilityGlobals.class::isInstance).map(RollbackAbilityGlobals.class::cast)
-                    .findFirst().orElseThrow().capturedLayers();
+            var globals = restored.services().stream().filter(RollbackAbilityGlobals.class::isInstance).map(RollbackAbilityGlobals.class::cast)
+                    .findFirst().orElseThrow();
+            globals.validateTemporaryActors(frame.actors().data());
+            plan.settledLayers = globals.capturedLayers();
             plan.layerLease.validate(plan.settledLayers);
         }
         return plan;

@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.firebending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantAbilityIndices;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
 
@@ -30,7 +31,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class FireBlastCharged extends FireAbility {
 
-    private static final Map<Entity, FireBlastCharged> EXPLOSIONS = new ConcurrentHashMap<>();
     public static List<UUID> funPlayers = new ArrayList<>();
     private boolean coolSpiral;
 
@@ -134,7 +134,7 @@ public class FireBlastCharged extends FireAbility {
     }
 
     public static FireBlastCharged getFireball(final Entity entity) {
-        return entity != null ? EXPLOSIONS.get(entity) : null;
+        return entity != null ? RollbackParticipantAbilityIndices.current().explosions.get(entity) : null;
     }
 
     public static boolean isCharging(final Player player) {
@@ -167,12 +167,12 @@ public class FireBlastCharged extends FireAbility {
     }
 
     public static Map<Entity, FireBlastCharged> getExplosions() {
-        return EXPLOSIONS;
+        return RollbackParticipantAbilityIndices.current().explosions;
     }
 
     /** Drops outgoing-world projectile ownership. */
     public static void discardAllTracking() {
-        EXPLOSIONS.clear();
+        RollbackParticipantAbilityIndices.current().explosions.clear();
     }
 
     @Deprecated

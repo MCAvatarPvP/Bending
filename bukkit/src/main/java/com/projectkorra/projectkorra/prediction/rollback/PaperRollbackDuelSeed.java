@@ -38,6 +38,16 @@ public record PaperRollbackDuelSeed(PaperRollbackRosterSeed nativeRoster, Rollba
             Collection<BendingPlayer> bendingPlayers, CollisionManager collisions, Collection<?> gameplayServices,
             GraphSetup graph, Collection<String> additionalPermissionNodes,
             long randomSeed, long soundSeed, PaperRollbackTerrainCapture.Limits terrainLimits) {
+        return captureOwned(ownership, request, challenge, definitions, players, playerServices, bendingPlayers, collisions,
+                gameplayServices, graph, additionalPermissionNodes, randomSeed, soundSeed, terrainLimits, null);
+    }
+
+    static PaperRollbackDuelSeed captureOwned(PaperRollbackLiveOwnership ownership,
+            PaperRollbackMatchBootstrap.Request request, UUID challenge, String definitions,
+            Collection<ServerPlayer> players, Map<UUID, PaperRollbackRosterSeed.Services> playerServices,
+            Collection<BendingPlayer> bendingPlayers, CollisionManager collisions, Collection<?> gameplayServices,
+            GraphSetup graph, Collection<String> additionalPermissionNodes,
+            long randomSeed, long soundSeed, PaperRollbackTerrainCapture.Limits terrainLimits, PaperRollbackTerrainCapture.Prepared prepared) {
         Objects.requireNonNull(graph); Objects.requireNonNull(request);
         return Objects.requireNonNull(ownership).capture(request.sides().keySet(), tasks -> {
             var services = new ArrayList<Object>(gameplayServices);
@@ -52,7 +62,7 @@ public record PaperRollbackDuelSeed(PaperRollbackRosterSeed nativeRoster, Rollba
                         var configuration = RollbackConfiguration.prepare(data, PredictionConfigSync.sources());
                         return RollbackGameplayGraph.create(graph.installed(), graph.limits(), RollbackGameplayGraph.Side.LIVE,
                                 bindings, configuration, graph.lifecycle(), graph.services(), new PaperRollbackGraphViews());
-                    }, additionalPermissionNodes, randomSeed, soundSeed, terrainLimits);
+                    }, additionalPermissionNodes, randomSeed, soundSeed, terrainLimits, prepared);
             ownership.holdScheduledTerrain(players.iterator().next().level(), seed.portable().world());
             return seed;
         });
@@ -84,14 +94,14 @@ public record PaperRollbackDuelSeed(PaperRollbackRosterSeed nativeRoster, Rollba
             long randomSeed, long soundSeed, PaperRollbackTerrainCapture.Limits terrainLimits) {
         Objects.requireNonNull(sourceCodec);
         return capture(request, challenge, definitions, players, playerServices, bendingPlayers, collisions,
-                gameplayServices, ignored -> sourceCodec, additionalPermissionNodes, randomSeed, soundSeed, terrainLimits);
+                gameplayServices, ignored -> sourceCodec, additionalPermissionNodes, randomSeed, soundSeed, terrainLimits, null);
     }
     private static PaperRollbackDuelSeed capture(PaperRollbackMatchBootstrap.Request request, UUID challenge, String definitions,
             Collection<ServerPlayer> players, Map<UUID, PaperRollbackRosterSeed.Services> playerServices,
             Collection<BendingPlayer> bendingPlayers, CollisionManager collisions, Collection<?> gameplayServices,
             java.util.function.Function<RollbackConfiguration.Data, RollbackGraphCodec> codecFactory,
             Collection<String> additionalPermissionNodes, long randomSeed, long soundSeed,
-            PaperRollbackTerrainCapture.Limits terrainLimits) {
+            PaperRollbackTerrainCapture.Limits terrainLimits, PaperRollbackTerrainCapture.Prepared prepared) {
         if (!TickThread.isTickThread() || RollbackClock.active() || RollbackDomain.active()) {
             throw new IllegalStateException("Capture a duel on the live server tick thread before replay");
         }
@@ -126,7 +136,7 @@ public record PaperRollbackDuelSeed(PaperRollbackRosterSeed nativeRoster, Rollba
         if (services.stream().noneMatch(RollbackAbilityGlobals.class::isInstance))
             services.add(RollbackAbilityGlobals.capture(bending.values().stream().map(BendingPlayer::getPlayer).toList()));
         var graph = RollbackBendingState.encode(bending.values(), collisions, services, sourceCodec);
-        var worldSeed = PaperRollbackWorldSeed.capture(world, request.terrain(), randomSeed, soundSeed, terrainLimits);
+        var worldSeed = PaperRollbackWorldSeed.capture(world, request.terrain(), randomSeed, soundSeed, terrainLimits, prepared);
         var portable = new RollbackBootstrapData(request.session(), challenge, request.match(), request.round(), millis, nanos, definitions,
                 request.sides(), worldSeed, nativeRoster.portable(playerServices), configuration, access, RollbackMaterials.capture(com.projectkorra.projectkorra.platform.Platform.materials()), PaperRollbackTags.capture(), RollbackServer.Metadata.capture(com.projectkorra.projectkorra.platform.Platform.server()), PaperRollbackPlugins.capture(), graph);
         if (world.getGameTime() != tick) throw new IllegalStateException("World advanced during duel capture");

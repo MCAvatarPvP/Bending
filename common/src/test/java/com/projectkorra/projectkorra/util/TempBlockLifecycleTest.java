@@ -42,49 +42,142 @@ class TempBlockLifecycleTest {
 
     @Test
     void arenaLeasePreservesOutsideLayersAndRestoresAbortedLavaAliases() throws Exception {
-        var arena = new FakeBlock(Material.STONE);
-        var outside = new FakeBlock(Material.DIRT);
-        var player = new java.util.UUID(4, 8);
-        var bounds = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Bounds(0, 60, 0, 16, 76, 16);
-        var owner = TempBlock.class.getDeclaredField("ownerId");
-        owner.setAccessible(true);
-        var ice = new TempBlock(arena, Material.ICE);
-        var outsideLayer = new TempBlock(outside, Material.WATER);
-        owner.set(ice, player);
-        var lava = com.projectkorra.projectkorra.earthbending.lava.LavaFlow.getTempLandBlocks();
-        lava.put(arena, ice);
-        var ref = new java.util.concurrent.atomic.AtomicReference<TempBlock.RollbackLayers.Lease>();
-        var lease = TempBlock.RollbackLayers.capture(arena.getWorld(), bounds, java.util.Set.of(player), () -> ref.get().abort());
-        ref.set(lease);
-        try {
-            lease.detach();
-            assertNull(TempBlock.get(arena));
-            assertNull(TempBlock.getActiveLayer(ice.getLayerId()));
-            assertSame(outsideLayer, TempBlock.get(outside));
-            assertFalse(lava.containsKey(arena));
-            assertThrows(IllegalStateException.class, () -> TempBlock.RollbackLayers.capture(arena.getWorld(), bounds, java.util.Set.of(player), () -> {}));
-            new TempBlock(outside, Material.SAND);
-            new TempBlock(arena, Material.GLASS);
-            assertSame(ice, lava.get(arena));
-            assertSame(ice, TempBlock.getActiveLayer(ice.getLayerId()));
-            assertEquals(2, TempBlock.getAll(arena).size());
-            assertEquals(2, TempBlock.getAll(outside).size());
-        } finally { lease.abort(); lava.remove(arena); }
+        try (var fixture = new com.projectkorra.projectkorra.support.AbilityWorld()) {
+            var arena = new FakeBlock(Material.STONE);
+            var outside = new FakeBlock(Material.DIRT);
+            var player = new java.util.UUID(4, 8);
+            var bounds = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Bounds(0, 60, 0, 16, 76, 16);
+            var owner = TempBlock.class.getDeclaredField("ownerId");
+            owner.setAccessible(true);
+            var ice = new TempBlock(arena, Material.ICE);
+            var outsideLayer = new TempBlock(outside, Material.WATER);
+            owner.set(ice, player);
+            var lava = com.projectkorra.projectkorra.earthbending.lava.LavaFlow.getTempLandBlocks();
+            lava.put(arena, ice);
+            var ref = new java.util.concurrent.atomic.AtomicReference<TempBlock.RollbackLayers.Lease>();
+            var lease = TempBlock.RollbackLayers.capture(arena.getWorld(), bounds, java.util.Set.of(player), () -> ref.get().abort());
+            ref.set(lease);
+            try {
+                lease.detach();
+                assertNull(TempBlock.get(arena));
+                assertNull(TempBlock.getActiveLayer(ice.getLayerId()));
+                assertSame(outsideLayer, TempBlock.get(outside));
+                assertFalse(lava.containsKey(arena));
+                assertThrows(IllegalStateException.class, () -> TempBlock.RollbackLayers.capture(arena.getWorld(), bounds, java.util.Set.of(player), () -> {}));
+                new TempBlock(outside, Material.SAND);
+                new TempBlock(arena, Material.GLASS);
+                assertSame(ice, lava.get(arena));
+                assertSame(ice, TempBlock.getActiveLayer(ice.getLayerId()));
+                assertEquals(2, TempBlock.getAll(arena).size());
+                assertEquals(2, TempBlock.getAll(outside).size());
+            } finally { lease.abort(); lava.remove(arena); }
+        }
     }
 
     @Test
     void crossingAttachmentsOrUnownedTerrainDeclineWithoutDetachment() throws Exception {
-        var arena = new FakeBlock(Material.STONE); var outside = new FakeBlock(Material.DIRT);
-        var first = new TempBlock(arena, Material.ICE);
-        var second = new TempBlock(outside, Material.SAND);
-        var player = new java.util.UUID(2, 3);
-        var bounds = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Bounds(0, 60, 0, 16, 76, 16);
-        assertThrows(IllegalStateException.class, () -> TempBlock.RollbackLayers.capture(arena.getWorld(), bounds, java.util.Set.of(player), () -> {}));
-        var owner = TempBlock.class.getDeclaredField("ownerId"); owner.setAccessible(true); owner.set(first, player);
-        first.addAttachedBlock(second);
-        assertThrows(IllegalStateException.class, () -> TempBlock.RollbackLayers.capture(arena.getWorld(), bounds, java.util.Set.of(player), () -> {}));
-        assertSame(first, TempBlock.get(arena));
-        assertSame(second, TempBlock.get(outside));
+        try (var fixture = new com.projectkorra.projectkorra.support.AbilityWorld()) {
+            var arena = new FakeBlock(Material.STONE); var outside = new FakeBlock(Material.DIRT);
+            var first = new TempBlock(arena, Material.ICE);
+            var second = new TempBlock(outside, Material.SAND);
+            var player = new java.util.UUID(2, 3);
+            var bounds = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Bounds(0, 60, 0, 16, 76, 16);
+            assertThrows(IllegalStateException.class, () -> TempBlock.RollbackLayers.capture(arena.getWorld(), bounds, java.util.Set.of(player), () -> {}));
+            var owner = TempBlock.class.getDeclaredField("ownerId"); owner.setAccessible(true); owner.set(first, player);
+            first.addAttachedBlock(second);
+            assertThrows(IllegalStateException.class, () -> TempBlock.RollbackLayers.capture(arena.getWorld(), bounds, java.util.Set.of(player), () -> {}));
+            assertSame(first, TempBlock.get(arena));
+            assertSame(second, TempBlock.get(outside));
+        }
+    }
+
+    @Test
+    void confirmedPrivateLayersAndMovedEarthReturnWithTheirAliasesAndOriginalOwners() throws Exception {
+        try (var fixture = new com.projectkorra.projectkorra.support.AbilityWorld()) {
+            var arena = new FakeBlock(Material.STONE);
+            var local = new FakeBlock(Material.ICE);
+            var outside = new FakeBlock(Material.DIRT);
+            var player = new java.util.UUID(9, 4);
+            var bounds = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Bounds(0, 60, 0, 16, 76, 16);
+            var original = new TempBlock(arena, Material.ICE);
+            var owner = TempBlock.class.getDeclaredField("ownerId");
+            owner.setAccessible(true);
+            owner.set(original, player);
+            var outsideLayer = new TempBlock(outside, Material.SAND);
+            var moved = com.projectkorra.projectkorra.ability.EarthAbility.getMovedEarth();
+            var air = com.projectkorra.projectkorra.ability.EarthAbility.getTempAirLocations();
+            var earth = new Information();
+            earth.setBlock(arena); earth.setState(original.getState()); earth.setPredictionOwner(player);
+            moved.put(arena, earth); air.put(earth.getID(), earth);
+            var unaffected = new Information();
+            unaffected.setBlock(outside); unaffected.setState(outside.getState());
+            moved.put(outside, unaffected);
+            var walls = com.projectkorra.projectkorra.earthbending.RaiseEarth.walls();
+            var wall = com.projectkorra.projectkorra.earthbending.RaiseEarth.BlockKey.of(arena);
+            walls.put(wall, 1);
+            var lava = com.projectkorra.projectkorra.earthbending.lava.LavaFlow.getTempLandBlocks();
+            var lease = TempBlock.RollbackLayers.capture(arena.getWorld(), bounds, java.util.Set.of(player), () -> {});
+            try {
+                lease.detach();
+                assertFalse(moved.containsKey(arena));
+                assertFalse(walls.containsKey(wall));
+                assertSame(unaffected, moved.get(outside));
+                var imported = transfer(lease.seed(), local);
+                var globals = new com.projectkorra.projectkorra.prediction.rollback.RollbackAbilityGlobals();
+                globals.bindLayers(imported);
+                var graph = new com.projectkorra.projectkorra.prediction.rollback.RollbackStateGraph(value ->
+                        value instanceof Block || value instanceof BlockState || value instanceof World || value instanceof BlockData,
+                        field -> true, 2048);
+                var domain = com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.create(graph, List.of(), List.of(),
+                        com.projectkorra.projectkorra.platform.Platform.current(), globals::install);
+                var checkpoint = domain.call(() -> {
+                    var previous = TempBlock.get(local);
+                    assertEquals(original.getLayerId(), previous.getLayerId());
+                    var next = new TempBlock(local, Material.WATER.createBlockData(), 1000);
+                    imported.land().put(local, next);
+                    imported.earth().moved.get(local).setInteger(73);
+                    imported.earth().earthQueue.put(local, local);
+                    return domain.capture();
+                });
+                var privateState = domain.call(() -> {
+                    TempBlock.get(local).discard();
+                    imported.earth().moved.get(local).setInteger(92);
+                    domain.restore(checkpoint);
+                    assertSame(imported.land().get(local), TempBlock.get(local));
+                    return imported.portable();
+                });
+                var confirmed = transfer(privateState, arena);
+                lease.merge(confirmed);
+                lease.merge(confirmed);
+                assertEquals(2, TempBlock.getAll(arena).size());
+                assertSame(lava.get(arena), TempBlock.get(arena));
+                assertSame(TempBlock.get(arena), TempBlock.getActiveLayer(TempBlock.get(arena).getLayerId()));
+                assertEquals(73, moved.get(arena).getInteger());
+                assertSame(moved.get(arena), air.get(earth.getID()));
+                assertSame(arena, RevertChecker.earthQueue().get(arena));
+                assertEquals(1, walls.get(wall));
+                original.discard();
+                assertSame(TempBlock.getAll(arena).getFirst(), TempBlock.getActiveLayer(original.getLayerId()));
+                assertSame(outsideLayer, TempBlock.get(outside));
+                assertSame(unaffected, moved.get(outside));
+            } finally {
+                lease.abort(); lava.remove(arena); moved.remove(arena); moved.remove(outside); air.remove(earth.getID());
+                RevertChecker.earthQueue().remove(arena); walls.remove(wall);
+            }
+        }
+    }
+
+    private static TempBlock.RollbackLayers transfer(TempBlock.RollbackLayers source, FakeBlock target) {
+        var copier = new com.projectkorra.projectkorra.prediction.rollback.RollbackStateTransfer(
+                type -> type.getName().startsWith("com.projectkorra."), value -> {
+                    Object result;
+                    if (value instanceof Block) result = target;
+                    else if (value instanceof FakeState state) result = new FakeState(target, state.getBlockData());
+                    else if (value instanceof BlockData data) result = data.clone();
+                    else return null;
+                    return new com.projectkorra.projectkorra.prediction.rollback.RollbackStateTransfer.Replacement(result);
+                }, new com.projectkorra.projectkorra.prediction.rollback.RollbackStateTransfer.Limits(2048, 16384));
+        return (TempBlock.RollbackLayers) copier.copy(List.of(source)).getFirst();
     }
 
     @Test

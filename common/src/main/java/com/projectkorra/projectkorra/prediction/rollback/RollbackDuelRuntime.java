@@ -67,7 +67,7 @@ public final class RollbackDuelRuntime {
         external.addAll(imported.configuration().references());
         external.addAll(handles.values());
         external.add(items);
-        external.addAll(com.projectkorra.projectkorra.ability.CoreAbility.rollbackAttributeBindings().stream()
+        external.addAll(RollbackGameplayGraph.definitionBindings().stream()
                 .map(RollbackGraphCodec.Binding::value).toList());
         var state = new RollbackStateGraph(external::contains, field -> true, GRAPH.maximumObjects());
         var environment = new RollbackCombatRuntime.Environment(state, List.of(), sceneRoots, platform, items,

@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.firebending.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantAbilityIndices;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 
 import com.projectkorra.projectkorra.Element;
@@ -12,16 +13,12 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.util.DamageHandler;
 
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class FireDamageTimer {
 
     private static final int MAX_TICKS = 90;
     private static final double DAMAGE = 1;
     private static final long BUFFER = 30;
-    private static final Map<Entity, Player> INSTANCES = new ConcurrentHashMap<>();
-    private static final Map<Entity, Long> TIMES = new ConcurrentHashMap<>();
-    private static Ability ability = null;
 
     /**
      * Deprecated. Use FireDamageTimer#FireDamageTimer(final Entity entity, Final Player source, Ability abil)
@@ -44,36 +41,36 @@ public class FireDamageTimer {
             return;
         }
 
-        INSTANCES.put(entity, source);
-        ability = abil;
+        var indices = RollbackParticipantAbilityIndices.current();
+        indices.flames.put(entity, source);
+        var causes = indices.flameAbilities;
+        if (abil == null) causes.remove(entity);
+        else causes.put(entity, abil);
     }
 
     public static boolean isEnflamed(final Entity entity) {
-        if (INSTANCES.containsKey(entity)) {
-            if (TIMES.containsKey(entity)) {
-                final long time = TIMES.get(entity);
-                if (RollbackClock.millis() < time + BUFFER) {
-                    return false;
-                }
-            }
-            TIMES.put(entity, RollbackClock.millis());
-            return true;
-        } else {
-            return false;
-        }
+        var indices = RollbackParticipantAbilityIndices.current();
+        if (!indices.flames.containsKey(entity)) return false;
+        Long previous = indices.flameTimes.get(entity);
+        long now = RollbackClock.millis();
+        if (previous != null && now < previous + BUFFER) return false;
+        indices.flameTimes.put(entity, now);
+        return true;
     }
 
     public static void dealFlameDamage(final Entity entity, final double damage) {
-        if (INSTANCES.containsKey(entity) && entity instanceof LivingEntity) {
+        var indices = RollbackParticipantAbilityIndices.current();
+        if (indices.flames.containsKey(entity) && entity instanceof LivingEntity) {
             if (entity instanceof Player) {
                 if (!HeatControl.canBurn((Player) entity)) {
                     return;
                 }
             }
             final LivingEntity Lentity = (LivingEntity) entity;
-            final Player source = INSTANCES.get(entity);
+            final Player source = indices.flames.get(entity);
 
             // damages the entity.
+            Ability ability = indices.flameAbilities.get(entity);
             if (ability == null) {
                 DamageHandler.damageEntity(Lentity, source, damage, CoreAbility.getAbilitiesByElement(Element.FIRE).get(0), false, true);
             } else {
@@ -91,9 +88,12 @@ public class FireDamageTimer {
     }
 
     public static void handleFlames() {
-        for (final Entity entity : INSTANCES.keySet()) {
+        var indices = RollbackParticipantAbilityIndices.current();
+        for (final Entity entity : indices.flames.keySet()) {
             if (entity.getFireTicks() <= 0) {
-                INSTANCES.remove(entity);
+                indices.flames.remove(entity);
+                indices.flameTimes.remove(entity);
+                indices.flameAbilities.remove(entity);
             }
         }
     }
@@ -106,13 +106,14 @@ public class FireDamageTimer {
      * alight with firebending.
      */
     public static Map<Entity, Player> getInstances() {
-        return INSTANCES;
+        return RollbackParticipantAbilityIndices.current().flames;
     }
 
     /** Drops outgoing-world entity references without applying damage. */
     public static void discardAllTracking() {
-        INSTANCES.clear();
-        TIMES.clear();
-        ability = null;
+        var indices = RollbackParticipantAbilityIndices.current();
+        indices.flames.clear();
+        indices.flameTimes.clear();
+        indices.flameAbilities.clear();
     }
 }

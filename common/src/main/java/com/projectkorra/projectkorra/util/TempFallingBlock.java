@@ -60,7 +60,7 @@ public class TempFallingBlock {
     public static void manage() {
         long time = RollbackClock.millis();
 
-        for (TempFallingBlock tfb : activeBlocks().values()) {
+        for (TempFallingBlock tfb : List.copyOf(activeBlocks().values())) {
             FallingBlock fb = tfb.getFallingBlock();
             if (fb == null) {
                 tfb.remove();

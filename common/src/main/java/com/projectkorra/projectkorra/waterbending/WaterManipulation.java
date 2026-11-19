@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.waterbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackArenaBlockIndices;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
 
@@ -35,7 +36,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class WaterManipulation extends WaterAbility {
 
-    private static final Map<Block, Block> AFFECTED_BLOCKS = new ConcurrentHashMap<>();
+    private static final Map<Block, Block> AFFECTED_BLOCKS = RollbackArenaBlockIndices.live().water;
 
     private static final BlockData WATER_6 = GeneralMethods.getWaterData(6);
     private static final BlockData WATER_7 = GeneralMethods.getWaterData(7);
@@ -171,7 +172,7 @@ public class WaterManipulation extends WaterAbility {
     }
 
     public static boolean canFlowFromTo(final Block from, final Block to) {
-        if (AFFECTED_BLOCKS.containsKey(to) || AFFECTED_BLOCKS.containsKey(from)) {
+        if (getAffectedBlocks().containsKey(to) || getAffectedBlocks().containsKey(from)) {
             return false;
         } else if (WaterSpout.getAffectedBlocks().containsKey(to) || WaterSpout.getAffectedBlocks().containsKey(from)) {
             return false;
@@ -188,7 +189,7 @@ public class WaterManipulation extends WaterAbility {
     }
 
     public static boolean canPhysicsChange(final Block block) {
-        if (AFFECTED_BLOCKS.containsKey(block)) {
+        if (getAffectedBlocks().containsKey(block)) {
             return false;
         } else if (WaterSpout.getAffectedBlocks().containsKey(block)) {
             return false;
@@ -245,8 +246,8 @@ public class WaterManipulation extends WaterAbility {
         if (!handledPrepare && WaterReturn.hasWaterBottle(player)) {
             final Location eyeLoc = player.getEyeLocation();
             final Block block = eyeLoc.add(eyeLoc.getDirection().normalize()).getBlock();
-            if (!AFFECTED_BLOCKS.containsKey(block)) {
-                AFFECTED_BLOCKS.put(block, block);
+            if (!getAffectedBlocks().containsKey(block)) {
+                getAffectedBlocks().put(block, block);
             }
 
             if (isTransparent(player, block) && isTransparent(player, eyeLoc.getBlock())) {
@@ -339,12 +340,13 @@ public class WaterManipulation extends WaterAbility {
     }
 
     public static Map<Block, Block> getAffectedBlocks() {
-        return AFFECTED_BLOCKS;
+        var indices = RollbackArenaBlockIndices.current();
+        return indices == null ? AFFECTED_BLOCKS : indices.water;
     }
 
     /** Drops old-world moving-water coordinates without writing their blocks. */
     public static void discardAllTracking() {
-        AFFECTED_BLOCKS.clear();
+        getAffectedBlocks().clear();
     }
 
     private void setFields() {
@@ -388,11 +390,11 @@ public class WaterManipulation extends WaterAbility {
             this.removeWater(block);
             return;
         }
-        if (AFFECTED_BLOCKS.containsKey(block)) {
+        if (getAffectedBlocks().containsKey(block)) {
             if (!GeneralMethods.isAdjacentToThreeOrMoreSources(block)) {
                 block.setType(Material.AIR);
             }
-            AFFECTED_BLOCKS.remove(block);
+            getAffectedBlocks().remove(block);
         }
     }
 
@@ -637,29 +639,29 @@ public class WaterManipulation extends WaterAbility {
             this.removeWater(block);
             return;
         }
-        if (AFFECTED_BLOCKS.containsKey(block)) {
+        if (getAffectedBlocks().containsKey(block)) {
             if (!GeneralMethods.isAdjacentToThreeOrMoreSources(block) && !isTransformableBlock(block)) {
                 block.setType(Material.AIR);
             }
-            AFFECTED_BLOCKS.remove(block);
+            getAffectedBlocks().remove(block);
         }
     }
 
     private void removeWater(final Block block) {
         if (block != null) {
-            if (AFFECTED_BLOCKS.containsKey(block)) {
+            if (getAffectedBlocks().containsKey(block)) {
                 if (!GeneralMethods.isAdjacentToThreeOrMoreSources(block) && !isTransformableBlock(block)) {
                     block.setType(Material.AIR);
                 }
-                AFFECTED_BLOCKS.remove(block);
+                getAffectedBlocks().remove(block);
             }
         }
     }
 
     private void addWater(final Block block) {
         if (!isWater(block)) {
-            if (!AFFECTED_BLOCKS.containsKey(block)) {
-                AFFECTED_BLOCKS.put(block, block);
+            if (!getAffectedBlocks().containsKey(block)) {
+                getAffectedBlocks().put(block, block);
             }
             if (PhaseChange.getFrozenBlocksAsBlock().contains(block)) {
                 PhaseChange.thaw(block);
@@ -667,7 +669,7 @@ public class WaterManipulation extends WaterAbility {
             if (this.source != null) this.source.revertBlock();
             this.source = new TempBlock(block, WATER, this);
         } else {
-            if (isWater(block) && !AFFECTED_BLOCKS.containsKey(block)) {
+            if (isWater(block) && !getAffectedBlocks().containsKey(block)) {
                 ParticleEffect.WATER_BUBBLE.display(block.getLocation().clone().add(.5, .5, .5), 5, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0);
             }
         }

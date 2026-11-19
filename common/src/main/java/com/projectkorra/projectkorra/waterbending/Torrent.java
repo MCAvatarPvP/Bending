@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.waterbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackArenaBlockIndices;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
 
@@ -23,15 +24,31 @@ import com.projectkorra.projectkorra.util.*;
 import com.projectkorra.projectkorra.util.colliders.AABB;
 import com.projectkorra.projectkorra.waterbending.plant.PlantRegrowth;
 import com.projectkorra.projectkorra.waterbending.util.WaterReturn;
-import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class Torrent extends WaterAbility {
 
+    /** The creating participant and ability instance travel with each frozen layer. */
+    public static final class FrozenSource {
+        private final Player player;
+        private final int abilityId;
+        FrozenSource(Player player, int abilityId) {
+            this.player = player;
+            this.abilityId = abilityId;
+        }
+        public Player player() { return player; }
+        public int abilityId() { return abilityId; }
+    }
+
     private static final double CLEANUP_RANGE = 50;
-    private static final Map<TempBlock, Pair<Player, Integer>> FROZEN_BLOCKS = new ConcurrentHashMap<>();
+    private static final Map<TempBlock, Torrent.FrozenSource> FROZEN_BLOCKS = RollbackArenaBlockIndices.live().torrent;
+
+    public static Map<TempBlock, Torrent.FrozenSource> frozenSources() {
+        var indices = RollbackArenaBlockIndices.current();
+        return indices == null ? FROZEN_BLOCKS : indices.torrent;
+    }
 
     private boolean sourceSelected;
     private boolean settingUp;
@@ -160,14 +177,14 @@ public class Torrent extends WaterAbility {
     }
 
     public static void progressAllCleanup() {
-        for (final TempBlock block : FROZEN_BLOCKS.keySet()) {
-            final Player player = FROZEN_BLOCKS.get(block).getLeft();
+        for (final TempBlock block : frozenSources().keySet()) {
+            final Player player = frozenSources().get(block).player();
             final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
             if (bPlayer == null) {
-                FROZEN_BLOCKS.remove(block);
+                frozenSources().remove(block);
                 continue;
             } else if (!isIce(block.getBlock())) {
-                FROZEN_BLOCKS.remove(block);
+                frozenSources().remove(block);
                 continue;
             } else if (!player.isOnline()) {
                 thaw(block);
@@ -184,7 +201,7 @@ public class Torrent extends WaterAbility {
     public static void thaw(final Block block) {
         if (TempBlock.isTempBlock(block)) {
             final TempBlock tblock = TempBlock.get(block);
-            if (FROZEN_BLOCKS.containsKey(tblock)) {
+            if (frozenSources().containsKey(tblock)) {
                 thaw(tblock);
             }
         }
@@ -192,7 +209,7 @@ public class Torrent extends WaterAbility {
 
     public static void thaw(final TempBlock block) {
         block.revertBlock();
-        FROZEN_BLOCKS.remove(block);
+        frozenSources().remove(block);
     }
 
     /**
@@ -202,17 +219,17 @@ public class Torrent extends WaterAbility {
      * @param origin part of the ice mass created by a torrent
      */
     public static void massThaw(final TempBlock origin) {
-        if (FROZEN_BLOCKS.containsKey(origin)) {
-            final Player creator = FROZEN_BLOCKS.get(origin).getLeft();
-            final int id = FROZEN_BLOCKS.get(origin).getRight();
+        if (frozenSources().containsKey(origin)) {
+            final Player creator = frozenSources().get(origin).player();
+            final int id = frozenSources().get(origin).abilityId();
 
-            for (final TempBlock tb : FROZEN_BLOCKS.keySet()) {
+            for (final TempBlock tb : frozenSources().keySet()) {
                 if (tb.equals(origin)) {
                     continue;
                 }
 
-                final Player check = FROZEN_BLOCKS.get(tb).getLeft();
-                final int id2 = FROZEN_BLOCKS.get(tb).getRight();
+                final Player check = frozenSources().get(tb).player();
+                final int id2 = frozenSources().get(tb).abilityId();
                 if (creator.equals(check) && id == id2) {
                     thaw(tb);
                 }
@@ -226,20 +243,20 @@ public class Torrent extends WaterAbility {
         if (TempBlockSync.hasAuthoritativeEffect(block, "Torrent")) return false;
         if (TempBlock.isTempBlock(block)) {
             final TempBlock tblock = TempBlock.get(block);
-            return !FROZEN_BLOCKS.containsKey(tblock);
+            return !frozenSources().containsKey(tblock);
         }
         return true;
     }
 
     public static void removeCleanup() {
-        for (final TempBlock block : FROZEN_BLOCKS.keySet()) {
+        for (final TempBlock block : frozenSources().keySet()) {
             thaw(block);
         }
     }
 
     /** Drops frozen-layer ownership after a complete world/runtime shutdown. */
     public static void discardAllTracking() {
-        FROZEN_BLOCKS.clear();
+        frozenSources().clear();
     }
 
     public static boolean wasBrokenFor(final Player player, final Block block) {
@@ -261,8 +278,8 @@ public class Torrent extends WaterAbility {
 
     public static Map<TempBlock, Player> getFrozenBlocks() {
         final Map<TempBlock, Player> blocks = new HashMap<>();
-        for (final TempBlock tb : FROZEN_BLOCKS.keySet()) {
-            blocks.put(tb, FROZEN_BLOCKS.get(tb).getLeft());
+        for (final TempBlock tb : frozenSources().keySet()) {
+            blocks.put(tb, frozenSources().get(tb).player());
         }
         return blocks;
     }
@@ -293,7 +310,7 @@ public class Torrent extends WaterAbility {
                 }
                 final TempBlock tblock = new TempBlock(block, getIceData(), this);
                 tblock.setCanSuffocate(false);
-                FROZEN_BLOCKS.put(tblock, Pair.of(this.player, this.getId()));
+                frozenSources().put(tblock, new FrozenSource(this.player, this.getId()));
                 if (this.revert) {
                     tblock.setRevertTime(this.revertTime + this.gameplayRandom.nextInt(1001) - 500L);
                 }
@@ -334,7 +351,7 @@ public class Torrent extends WaterAbility {
                     if (TempBlock.isTempBlock(this.sourceBlock)) {
                         final TempBlock origin = TempBlock.get(this.sourceBlock);
 
-                        if (FROZEN_BLOCKS.containsKey(origin)) {
+                        if (frozenSources().containsKey(origin)) {
                             massThaw(origin);
                         } else if (isBendableWaterTempBlock(origin)) {
                             origin.revertBlock();

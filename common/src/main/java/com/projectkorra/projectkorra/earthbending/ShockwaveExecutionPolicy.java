@@ -1,10 +1,12 @@
 package com.projectkorra.projectkorra.earthbending;
 
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /** Small, dependency-free policies for keeping Shockwave's radial work bounded. */
-final class ShockwaveExecutionPolicy {
+public final class ShockwaveExecutionPolicy {
     private ShockwaveExecutionPolicy() {
     }
 
@@ -15,22 +17,25 @@ final class ShockwaveExecutionPolicy {
         return Math.max(1, (int) Math.ceil(2.0 * Math.PI * range));
     }
 
-    static final class MovedColumns {
-        private final Set<ColumnKey> columns = ConcurrentHashMap.newKeySet();
+    public static final class MovedColumns {
+        private final Map<String, Set<Long>> worlds = new HashMap<>();
 
-        boolean mark(final String world, final int x, final int z) {
-            return this.columns.add(new ColumnKey(world, x, z));
+        public boolean mark(final String world, final int x, final int z) {
+            return worlds.computeIfAbsent(world, unused -> new HashSet<>()).add(key(x, z));
         }
 
-        boolean contains(final String world, final int x, final int z) {
-            return this.columns.contains(new ColumnKey(world, x, z));
+        public boolean contains(final String world, final int x, final int z) {
+            var columns = worlds.get(world);
+            return columns != null && columns.contains(key(x, z));
         }
 
-        void clear() {
-            this.columns.clear();
+        public void remove(final String world, final int x, final int z) {
+            var columns = worlds.get(world);
+            if (columns != null && columns.remove(key(x, z)) && columns.isEmpty()) worlds.remove(world);
         }
-    }
 
-    private record ColumnKey(String world, int x, int z) {
+        public void clear() { worlds.clear(); }
+
+        private static long key(int x, int z) { return (long) x << 32 | Integer.toUnsignedLong(z); }
     }
 }

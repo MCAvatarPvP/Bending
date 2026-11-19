@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.firebending.combo;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantAbilityIndices;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 
 import com.jedk1.jedcore.ability.firebending.FirePunch;
@@ -41,7 +42,6 @@ public final class LightningPunch extends LightningAbility implements ComboAbili
     private static final String CONFIG = "Abilities.Fire.LightningPunch.";
     private static final Color FLASH_COLOR = Color.fromRGB(105, 205, 255);
     private static final List<String> INPUT = List.of("LightningBurst:LEFT_CLICK", "FirePunch:SLOT_CHANGE");
-    private static final Map<UUID, PendingHit> PENDING_HITS = new HashMap<>();
     @Attribute(Attribute.DAMAGE) private double damage;
     @Attribute(Attribute.COOLDOWN) private long cooldown;
     private long missCooldown;
@@ -65,7 +65,7 @@ public final class LightningPunch extends LightningAbility implements ComboAbili
         if (!isStarted() || isRemoved()) return;
         // The finishing input may already have prepared the ordinary FirePunch.
         for (FirePunch punch : getAbilities(player, FirePunch.class)) punch.remove();
-        final PendingHit pending = PENDING_HITS.remove(player.getUniqueId());
+        final PendingHit pending = RollbackParticipantAbilityIndices.current().hits.remove(player.getUniqueId());
         if (pending != null && RollbackClock.nanos() - pending.createdAt < 250_000_000L) queueHit(pending.target);
     }
 
@@ -94,8 +94,8 @@ public final class LightningPunch extends LightningAbility implements ComboAbili
         final BendingPlayer bending = BendingPlayer.getBendingPlayer(player);
         if (bending == null || !isPendingFinisher(player, bending.getBoundAbilityName(), ClickType.LEFT_CLICK)) return false;
         final PendingHit pending = new PendingHit(target, RollbackClock.nanos());
-        PENDING_HITS.put(player.getUniqueId(), pending);
-        Platform.scheduler().runLater(() -> PENDING_HITS.remove(player.getUniqueId(), pending), 2);
+        RollbackParticipantAbilityIndices.current().hits.put(player.getUniqueId(), pending);
+        Platform.scheduler().runLater(() -> RollbackParticipantAbilityIndices.current().hits.remove(player.getUniqueId(), pending), 2);
         return true;
     }
 
@@ -223,5 +223,13 @@ public final class LightningPunch extends LightningAbility implements ComboAbili
     @Override public boolean isHarmlessAbility() { return false; }
     @Override public boolean isSneakAbility() { return false; }
 
-    private record PendingHit(LivingEntity target, long createdAt) { }
+    public static final class PendingHit {
+        private final LivingEntity target;
+        private final long createdAt;
+        PendingHit(LivingEntity target, long createdAt) {
+            this.target = target;
+            this.createdAt = createdAt;
+        }
+        public LivingEntity target() { return target; }
+    }
 }

@@ -18,6 +18,18 @@ import java.util.List;
 
 /** Shared combat event rules, captured with the ordinary gameplay listener graph. */
 public final class CommonAbilityCombatListener {
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onProjectileHit(com.projectkorra.projectkorra.platform.mc.event.entity.ProjectileHitEvent event) {
+        var projectile = event.getEntity();
+        if (projectile == null) return;
+        var smoke = com.projectkorra.projectkorra.chiblocking.Smokescreen.getSnowballs().remove(projectile.getEntityId());
+        if (smoke == null) return;
+        var location = projectile.getLocation();
+        com.projectkorra.projectkorra.chiblocking.Smokescreen.playEffect(location);
+        for (var target : com.projectkorra.projectkorra.GeneralMethods.getEntitiesAroundPoint(location, smoke.getRadius()))
+            smoke.applyBlindness(target);
+    }
+
     @EventHandler
     public void onHorizontalCollision(final HorizontalVelocityChangeEvent e) {
         if (e.getEntity() instanceof LivingEntity) {

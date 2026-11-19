@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.waterbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackArenaBlockIndices;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
 
@@ -34,9 +35,14 @@ import java.util.Random;
 
 public class SurgeWall extends WaterAbility {
 
-    public static final List<TempBlock> SOURCE_BLOCKS = new ArrayList<>();
-    private static final Map<Block, Block> AFFECTED_BLOCKS = new ConcurrentHashMap<>();
-    private static final Map<Block, Player> WALL_BLOCKS = new ConcurrentHashMap<>();
+    public static final List<TempBlock> SOURCE_BLOCKS = RollbackArenaBlockIndices.live().surgeSources;
+
+    public static List<TempBlock> getSourceBlocks() {
+        var indices = RollbackArenaBlockIndices.current();
+        return indices == null ? SOURCE_BLOCKS : indices.surgeSources;
+    }
+    private static final Map<Block, Block> AFFECTED_BLOCKS = RollbackArenaBlockIndices.live().surge;
+    private static final Map<Block, Player> WALL_BLOCKS = RollbackArenaBlockIndices.live().walls;
     private boolean progressing;
     private boolean settingUp;
     private boolean forming;
@@ -111,7 +117,7 @@ public class SurgeWall extends WaterAbility {
 
             if (isTransparent(player, block) && isTransparent(player, eyeLoc.getBlock())) {
                 final TempBlock tempBlock = new TempBlock(block, Material.WATER);
-                SOURCE_BLOCKS.add(tempBlock);
+                getSourceBlocks().add(tempBlock);
 
                 wave = new SurgeWave(player);
                 wave.setCanHitSelf(false);
@@ -123,7 +129,7 @@ public class SurgeWall extends WaterAbility {
                     WaterReturn.emptyWaterBottle(player);
                 }
 
-                SOURCE_BLOCKS.remove(tempBlock);
+                getSourceBlocks().remove(tempBlock);
                 tempBlock.revertBlock();
             }
         }
@@ -163,20 +169,20 @@ public class SurgeWall extends WaterAbility {
 
                 if (isTransparent(player, block) && isTransparent(player, eyeLoc.getBlock())) {
                     final TempBlock tempBlock = new TempBlock(block, Material.WATER);
-                    SOURCE_BLOCKS.add(tempBlock);
+                    getSourceBlocks().add(tempBlock);
 
                     wall = new SurgeWall(player);
                     wall.moveWater();
 
                     if (!wall.progressing) {
-                        SOURCE_BLOCKS.remove(tempBlock);
+                        getSourceBlocks().remove(tempBlock);
                         tempBlock.revertBlock();
                         wall.remove();
                     } else {
                         WaterReturn.emptyWaterBottle(player);
                     }
 
-                    SOURCE_BLOCKS.remove(tempBlock);
+                    getSourceBlocks().remove(tempBlock);
                     tempBlock.revertBlock();
                     return;
                 }
@@ -200,15 +206,15 @@ public class SurgeWall extends WaterAbility {
     }
 
     public static void removeAllCleanup() {
-        for (final Block block : AFFECTED_BLOCKS.keySet()) {
+        for (final Block block : getAffectedBlocks().keySet()) {
             TempBlock.revertBlock(block, Material.AIR);
-            AFFECTED_BLOCKS.remove(block);
-            WALL_BLOCKS.remove(block);
+            getAffectedBlocks().remove(block);
+            getWallBlocks().remove(block);
         }
-        for (final Block block : WALL_BLOCKS.keySet()) {
+        for (final Block block : getWallBlocks().keySet()) {
             TempBlock.revertBlock(block, Material.AIR);
-            AFFECTED_BLOCKS.remove(block);
-            WALL_BLOCKS.remove(block);
+            getAffectedBlocks().remove(block);
+            getWallBlocks().remove(block);
         }
     }
 
@@ -225,18 +231,20 @@ public class SurgeWall extends WaterAbility {
     }
 
     public static Map<Block, Block> getAffectedBlocks() {
-        return AFFECTED_BLOCKS;
+        var indices = RollbackArenaBlockIndices.current();
+        return indices == null ? AFFECTED_BLOCKS : indices.surge;
     }
 
     public static Map<Block, Player> getWallBlocks() {
-        return WALL_BLOCKS;
+        var indices = RollbackArenaBlockIndices.current();
+        return indices == null ? WALL_BLOCKS : indices.walls;
     }
 
     /** Drops every source/wall index after the backing TempBlocks are retired. */
     public static void discardAllTracking() {
-        SOURCE_BLOCKS.clear();
-        AFFECTED_BLOCKS.clear();
-        WALL_BLOCKS.clear();
+        getSourceBlocks().clear();
+        getAffectedBlocks().clear();
+        getWallBlocks().clear();
     }
 
     private void freezeThaw() {
@@ -255,8 +263,8 @@ public class SurgeWall extends WaterAbility {
         tempBlocks.values().forEach(TempBlock::revertBlock);
         tempBlocks.clear();
 
-        for (final Block block : WALL_BLOCKS.keySet()) {
-            if (this.player.equals(WALL_BLOCKS.get(block))) {
+        for (final Block block : getWallBlocks().keySet()) {
+            if (this.player.equals(getWallBlocks().get(block))) {
                 tempBlocks.put(block, new TempBlock(block, getIceData(), this).setCanSuffocate(false));
                 playIcebendingSound(block.getLocation());
             }
@@ -269,8 +277,8 @@ public class SurgeWall extends WaterAbility {
         tempBlocks.values().forEach(TempBlock::revertBlock);
         tempBlocks.clear();
 
-        for (final Block block : WALL_BLOCKS.keySet()) {
-            if (this.player.equals(WALL_BLOCKS.get(block))) {
+        for (final Block block : getWallBlocks().keySet()) {
+            if (this.player.equals(getWallBlocks().get(block))) {
                 tempBlocks.put(block, new TempBlock(block, Material.WATER.createBlockData(), this));
             }
         }
@@ -399,11 +407,11 @@ public class SurgeWall extends WaterAbility {
 
                         if (RegionProtection.isRegionProtected(this, block.getLocation())) {
                             continue;
-                        } else if (WALL_BLOCKS.containsKey(block)) {
+                        } else if (getWallBlocks().containsKey(block)) {
                             blocks.add(block);
                         } else if (!blocks.contains(block) && (ElementalAbility.isAir(block.getType()) || FireAbility.isFire(block.getType()) || this.isWaterbendable(block)) && this.isTransparent(block)) {
                             if (!isWater(block) || frozen) {
-                                WALL_BLOCKS.put(block, this.player);
+                                getWallBlocks().put(block, this.player);
                                 this.addWallBlock(block);
                             } else if (isWater(block) && !frozen) {
                                 ParticleEffect.WATER_BUBBLE.display(block.getLocation().clone().add(.5, .5, .5), 1, RollbackRandom.shared().nextDouble(0, 0.5), RollbackRandom.shared().nextDouble(0, 0.5), RollbackRandom.shared().nextDouble(0, 0.5), 0);
@@ -415,8 +423,8 @@ public class SurgeWall extends WaterAbility {
                     }
                 }
 
-                for (final Block blocki : WALL_BLOCKS.keySet()) {
-                    if (this.player.equals(WALL_BLOCKS.get(blocki)) && !blocks.contains(blocki)) {
+                for (final Block blocki : getWallBlocks().keySet()) {
+                    if (this.player.equals(getWallBlocks().get(blocki)) && !blocks.contains(blocki)) {
                         this.finalRemoveWater(blocki);
                     }
 
@@ -494,8 +502,8 @@ public class SurgeWall extends WaterAbility {
         this.returnWater();
         this.finalRemoveWater(this.sourceBlock);
 
-        for (final Block block : WALL_BLOCKS.keySet()) {
-            if (this.player.equals(WALL_BLOCKS.get(block))) {
+        for (final Block block : getWallBlocks().keySet()) {
+            if (this.player.equals(getWallBlocks().get(block))) {
                 this.finalRemoveWater(block);
             }
         }
@@ -503,35 +511,35 @@ public class SurgeWall extends WaterAbility {
 
     private void removeWater(final Block block) {
         if (block != null) {
-            if (AFFECTED_BLOCKS.containsKey(block)) {
+            if (getAffectedBlocks().containsKey(block)) {
                 if (!GeneralMethods.isAdjacentToThreeOrMoreSources(block)) {
                     TempBlock tb = tempBlocks.get(block);
                     if (tb != null) {
                         tb.revertBlock();
                     }
                 }
-                AFFECTED_BLOCKS.remove(block);
+                getAffectedBlocks().remove(block);
             }
         }
     }
 
     private void finalRemoveWater(final Block block) {
         if (block != null) {
-            if (AFFECTED_BLOCKS.containsKey(block)) {
+            if (getAffectedBlocks().containsKey(block)) {
 
                 TempBlock tb = tempBlocks.get(block);
                 if (tb != null) {
                     tb.revertBlock();
                 }
 
-                AFFECTED_BLOCKS.remove(block);
+                getAffectedBlocks().remove(block);
             }
-            if (WALL_BLOCKS.containsKey(block)) {
+            if (getWallBlocks().containsKey(block)) {
                 TempBlock tb = tempBlocks.get(block);
                 if (tb != null) {
                     tb.revertBlock();
                 }
-                WALL_BLOCKS.remove(block);
+                getWallBlocks().remove(block);
             }
         }
     }
@@ -541,7 +549,7 @@ public class SurgeWall extends WaterAbility {
             return;
         } else if (!TempBlock.isTempBlock(block)) {
             tempBlocks.put(block, new TempBlock(block, Material.WATER.createBlockData(), this));
-            AFFECTED_BLOCKS.put(block, block);
+            getAffectedBlocks().put(block, block);
         }
     }
 

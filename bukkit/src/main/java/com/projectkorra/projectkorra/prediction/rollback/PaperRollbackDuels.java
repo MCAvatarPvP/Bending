@@ -32,13 +32,16 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
                         Map<UUID, PaperRollbackRosterSeed.Services> services);
     }
 
+    private static final PaperRollbackTerrainCapture.Limits CAPTURE_LIMITS = new PaperRollbackTerrainCapture.Limits(
+            RollbackDuelRuntime.TERRAIN.maximumCells(), 65536, RollbackDuelRuntime.TERRAIN.maximumStorageBytes(),
+            RollbackDuelRuntime.TERRAIN.maximumBlockEntityBytes());
     private static final int RESERVED_IDS = 65_536;
     private final PaperPredictionServer server;
     private final BukkitProjectKorraPlatform platform;
     private final CommonAbilityLifecycleListener lifecycle;
     private final SimulationFactory factory;
     private final PaperRollbackTerrainChunks terrainChunks;
-    private RollbackDuelRuntime definitions;
+    private final RollbackDuelRuntime definitions;
     private final Set<Enrollment> pendingAcquisition = new LinkedHashSet<>();
 
     /** Packet movement received between ticks still belongs to the live player until Paper processes its contacts. */
@@ -56,6 +59,7 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
         terrainChunks = new PaperRollbackTerrainChunks(plugin);
         this.server = Objects.requireNonNull(server); this.platform = Objects.requireNonNull(platform);
         this.lifecycle = Objects.requireNonNull(lifecycle); this.factory = Objects.requireNonNull(factory);
+        definitions = new RollbackDuelRuntime(getClass().getClassLoader());
     }
 
     @Override public boolean supports(Set<UUID> players) { return server.supportsRollbackBootstrap(players)
@@ -64,7 +68,6 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
 
     @Override public Preparation prepare(Request request) {
         if (!supports(request.sides().keySet())) throw new IllegalStateException("Rollback participants changed before capture");
-        if (definitions == null) definitions = new RollbackDuelRuntime(getClass().getClassLoader());
         return new Enrollment(request);
     }
 
@@ -78,8 +81,10 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
         private final PaperRollbackTerrainChunks.Lease chunks;
         private PaperRollbackMatchRestoration.LiveRoster live;
         private com.projectkorra.projectkorra.util.TempBlock.RollbackLayers.Lease layerLease;
+        private PaperRollbackTerrainCapture.Prepared terrain;
         private PaperRollbackDuelSeed captured;
         private PaperRollbackBootstraps.Transfer transfer;
+        private java.util.concurrent.CompletableFuture<byte[]> encodedBootstrap;
         private Simulation simulation;
         private PaperRollbackMatchRuntime<Object> runtime;
         private PaperRollbackMatchRestoration restoration;
@@ -123,16 +128,41 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
             if (acquisitionFailure instanceof RuntimeException failure) throw failure;
             if (acquisitionFailure instanceof Error error) throw error;
             if (!acquired) {
-                if (chunks.poll()) pendingAcquisition.add(this);
+                if (chunks.poll() && terrainReady()) pendingAcquisition.add(this);
                 return null;
             }
             if (captured == null) {
-                if (!ownership.pollReady(level.getServer().packetProcessor())) return null;
+                if (!ownership.pollReady(level.getServer().packetProcessor()) || !terrainReady()) return null;
+                if (!terrain.matches(level)) { terrain = null; return null; }
                 capture();
+                terrain = null;
+            }
+            if (transfer == null) {
+                if (!encodedBootstrap.isDone()) return null;
+                ownership.requireReady();
+                transfer = server.beginEncodedRollbackBootstrap(captured.portable(), encodedBootstrap.join(),
+                        RollbackDuelRuntime.TRANSFER, () -> {
+                            if (stopped || released) return false;
+                            ownership.requireReady();
+                            return true;
+                        });
+                encodedBootstrap = null;
             }
             if (!transfer.poll()) return null;
             prepared = new Prepared(challenge, transfer.offer().fingerprint(), transfer.handoff(), RollbackDuelRuntime.CLOCK, this);
             return prepared;
+        }
+
+        private boolean terrainReady() {
+            if (terrain == null) {
+                var world = level.getWorld();
+                var bounds = com.projectkorra.projectkorra.prediction.rollback.world.RollbackLightingBounds.capture(
+                        request.terrain(), world.getMinHeight(), world.getMaxHeight(), CAPTURE_LIMITS.maximumCells());
+                terrain = PaperRollbackTerrainCapture.prepare(level, bounds, CAPTURE_LIMITS);
+            }
+            if (!terrain.terrain().isDone()) return false;
+            terrain.terrain().join();
+            return true;
         }
 
         private void capture() {
@@ -143,20 +173,24 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
             var services = PaperRollbackRosterSeed.captureServices(players.values(), seed, RollbackDuelRuntime.GRAPH.maximumObjects());
             var graph = new PaperRollbackDuelSeed.GraphSetup(definitions.installed(), RollbackDuelRuntime.GRAPH,
                     lifecycle, pluginBindings());
-            var bounds = RollbackDuelRuntime.TERRAIN;
-            var captureLimits = new PaperRollbackTerrainCapture.Limits(bounds.maximumCells(), 65536,
-                    bounds.maximumStorageBytes(), bounds.maximumBlockEntityBytes());
             var views = bending.values().stream().map(BendingPlayer::getPlayer).toList();
             var regions = com.projectkorra.projectkorra.region.BukkitRegionProtectionBootstrap.captureRollback(views, request.terrain());
             layerLease = com.projectkorra.projectkorra.util.TempBlock.RollbackLayers.capture(views.getFirst().getWorld(),
                     request.terrain(), ids, this::stopBeforeMutation);
+            layerLease.seed().earth().revertCheckDelay(platform.rollbackScheduler().earthRevertDelay(ProjectKorra.plugin.revertChecker));
             var globals = RollbackAbilityGlobals.capture(views);
+            globals.captureMaintenance(platform.rollbackScheduler());
             globals.requireNoInitialActors(views.getFirst().getWorld(), request.terrain(), ids);
             globals.bindLayers(layerLease.seed());
             captured = PaperRollbackDuelSeed.captureOwned(ownership, request, challenge, definitions.definitions(),
                     players.values(), services, bending.values(), ProjectKorra.collisionManager, List.of(reservation, regions, globals),
-                    graph, List.of(), seed, Long.rotateLeft(seed, 29), captureLimits);
+                    graph, List.of(), seed, Long.rotateLeft(seed, 29), CAPTURE_LIMITS, terrain);
+            // The live scheduler uses this monitor to enter async callbacks. Check again at ownership transfer.
+            synchronized (platform.rollbackScheduler()) {
+                platform.rollbackScheduler().earthRevertDelay(ProjectKorra.plugin.revertChecker);
+                encodedBootstrap = PaperRollbackBootstraps.encodeCaptured(captured.portable(), RollbackDuelRuntime.TERRAIN);
             layerLease.detach();
+            }
             var config = RollbackConfiguration.prepare(captured.portable().configuration(), PredictionConfigSync.sources());
             var codec = RollbackGameplayGraph.create(graph.installed(), graph.limits(), RollbackGameplayGraph.Side.LIVE,
                     new RollbackRosterBindings(views.getFirst().getWorld(), views), config, lifecycle, graph.services(),
@@ -169,10 +203,6 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
                 }
                 @Override public void stop(RollbackStartServerEndpoint.Failure failure) { release(); }
             }, simulation.corrections());
-            transfer = server.beginRollbackBootstrap(captured.portable(), bounds, RollbackDuelRuntime.TRANSFER, () -> {
-                if (stopped || released) return false;
-                ownership.requireReady(); return true;
-            });
         }
 
         @Override public void start(RollbackStartNegotiation negotiation, long tick) {
@@ -212,6 +242,8 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
                     else ownership.abort(() -> { if (layerLease != null) layerLease.abort(); });
                 } catch (RuntimeException | Error failure) { cleanupPending = true; throw failure; }
             }
+            if (terrain != null) { terrain.terrain().cancel(false); terrain = null; }
+            if (encodedBootstrap != null) { encodedBootstrap.cancel(false); encodedBootstrap = null; }
             chunks.close();
             released = true;
         }

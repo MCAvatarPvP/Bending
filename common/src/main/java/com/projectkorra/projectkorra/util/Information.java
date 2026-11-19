@@ -29,10 +29,21 @@ public class Information {
     private long predictionActionSequence;
 
     public Information() {
-        this.id = ID++;
-        if (ID >= Integer.MAX_VALUE) {
-            ID = Integer.MIN_VALUE;
-        }
+        var earth = com.projectkorra.projectkorra.prediction.rollback.RollbackEarthTerrain.current();
+        this.id = earth == null ? nextLiveId() : earth.nextId();
+    }
+
+    private static synchronized int nextLiveId() {
+        int id = ID++;
+        if (ID >= Integer.MAX_VALUE) ID = Integer.MIN_VALUE;
+        return id;
+    }
+    public static synchronized int reserveRollbackIds(int capacity) {
+        if (capacity < 1 || ID > Integer.MAX_VALUE - capacity)
+            throw new IllegalStateException("Moved-earth ID space cannot reserve this duel");
+        int first = ID;
+        ID += capacity;
+        return first;
     }
 
     public Block getBlock() {

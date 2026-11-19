@@ -19,6 +19,15 @@ class RollbackGraphCodecTest {
     private static final RollbackGraphCodec.Limits LIMITS = new RollbackGraphCodec.Limits(10_000, 100_000, 1_048_576, 65_536);
     private enum Axis { X, Y, Z }
 
+    @Test void rejectedOpaqueReferenceReportsTheOwningGameplayField() {
+        var service = new Service("live");
+        var key = new Key(service, "owner");
+        key.extra = Optional.of(new Object());
+        var failure = assertThrows(IllegalArgumentException.class, () -> codec(service).encode(List.of(key)));
+        assertTrue(failure.getMessage().contains("explicit binding required for java.lang.Object"));
+        assertTrue(failure.getMessage().contains(".extra[0]"));
+    }
+
     @Test @SuppressWarnings({"unchecked", "rawtypes"})
     void preservesCyclesFinalFieldsHashDependenciesComparatorsAndRemapsExternalHandles() {
         var sourceService = new Service("source");

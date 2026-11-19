@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.waterbending.multiabilities;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantAbilityIndices;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 
 import com.projectkorra.projectkorra.Element;
@@ -25,7 +26,6 @@ import java.util.HashMap;
 
 public class WaterArmsWhip extends WaterAbility {
 
-    private static final HashMap<LivingEntity, WaterArmsWhip> GRABBED_ENTITIES = new HashMap<LivingEntity, WaterArmsWhip>();
     private boolean reverting;
     private boolean hasDamaged;
     private boolean grappled;
@@ -108,7 +108,7 @@ public class WaterArmsWhip extends WaterAbility {
             if (waw.grabbed) {
                 waw.grabbed = false;
                 if (waw.grabbedEntity != null) {
-                    GRABBED_ENTITIES.remove(waw.grabbedEntity);
+                    RollbackParticipantAbilityIndices.current().grabbed.remove(waw.grabbedEntity);
                     GeneralMethods.setVelocity(this, waw.grabbedEntity, waw.grabbedEntity.getVelocity().multiply(2.5));
                 }
                 return;
@@ -125,7 +125,7 @@ public class WaterArmsWhip extends WaterAbility {
     }
 
     public static void checkValidEntities() {
-        GRABBED_ENTITIES.entrySet().removeIf(entry -> entry.getValue().isRemoved() || entry.getValue().grabbedEntity == null);
+        RollbackParticipantAbilityIndices.current().grabbed.entrySet().removeIf(entry -> entry.getValue().isRemoved() || entry.getValue().grabbedEntity == null);
     }
 
     public static void progressAllCleanup() {
@@ -133,11 +133,11 @@ public class WaterArmsWhip extends WaterAbility {
     }
 
     public static void removeAllCleanup() {
-        GRABBED_ENTITIES.clear();
+        RollbackParticipantAbilityIndices.current().grabbed.clear();
     }
 
     public static HashMap<LivingEntity, WaterArmsWhip> getGrabbedEntities() {
-        return GRABBED_ENTITIES;
+        return RollbackParticipantAbilityIndices.current().grabbed;
     }
 
     private void createInstance() {
@@ -316,11 +316,11 @@ public class WaterArmsWhip extends WaterAbility {
             case GRAB:
                 if (this.grabbedEntity == null) {
                     for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(location, 2)) {
-                        if (entity instanceof LivingEntity && entity.getEntityId() != this.player.getEntityId() && !GRABBED_ENTITIES.containsKey(entity)) {
+                        if (entity instanceof LivingEntity && entity.getEntityId() != this.player.getEntityId() && !RollbackParticipantAbilityIndices.current().grabbed.containsKey(entity)) {
                             if (GeneralMethods.isRegionProtectedFromBuild(this, entity.getLocation()) || ((entity instanceof Player) && Commands.invincible.contains(((Player) entity).getName()))) {
                                 continue;
                             }
-                            GRABBED_ENTITIES.put((LivingEntity) entity, this);
+                            RollbackParticipantAbilityIndices.current().grabbed.put((LivingEntity) entity, this);
                             this.grabbedEntity = (LivingEntity) entity;
                             this.grabbed = true;
                             this.reverting = true;
@@ -339,14 +339,14 @@ public class WaterArmsWhip extends WaterAbility {
         if (this.grabbedEntity != null && this.grabbed) {
             if (!this.waterArms.canDisplayActiveArm() || this.grabbedEntity.isDead()) {
                 this.grabbed = false;
-                GRABBED_ENTITIES.remove(this.grabbedEntity);
+                RollbackParticipantAbilityIndices.current().grabbed.remove(this.grabbedEntity);
                 return;
             }
             if (this.grabbedEntity instanceof Player && hasAbility((Player) this.grabbedEntity, WaterArmsWhip.class)) {
                 final WaterArmsWhip waw = getAbility((Player) this.grabbedEntity, WaterArmsWhip.class);
                 if (waw.getAbility().equals(Whip.GRAB)) {
                     this.grabbed = false;
-                    GRABBED_ENTITIES.remove(this.grabbedEntity);
+                    RollbackParticipantAbilityIndices.current().grabbed.remove(this.grabbedEntity);
                     return;
                 }
             }

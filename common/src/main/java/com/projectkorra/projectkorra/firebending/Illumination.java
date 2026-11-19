@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.firebending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackArenaBlockIndices;
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.Element.SubElement;
@@ -25,7 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class Illumination extends FireAbility {
 
-    private static final Map<Block, Player> BLOCKS = new ConcurrentHashMap<>();
+    private static final Map<Block, Player> BLOCKS = RollbackArenaBlockIndices.live().illumination;
     private static boolean MODERN = GeneralMethods.getMCVersion() >= 1170;
     private static Material LIGHT;
     @Attribute(Attribute.COOLDOWN)
@@ -79,12 +80,13 @@ public class Illumination extends FireAbility {
     }
 
     public static Map<Block, Player> getBlocks() {
-        return BLOCKS;
+        var indices = RollbackArenaBlockIndices.current();
+        return indices == null ? BLOCKS : indices.illumination;
     }
 
     /** Drops outgoing-world fake-light ownership. */
     public static void discardAllTracking() {
-        BLOCKS.clear();
+        getBlocks().clear();
     }
 
     /**
@@ -177,7 +179,7 @@ public class Illumination extends FireAbility {
 
     private void revert() {
         if (this.block != null) {
-            BLOCKS.remove(this.block);
+            getBlocks().remove(this.block);
             this.block.getWorld().getPlayers().forEach(p -> p.sendBlockChange(this.block.getLocation(), this.block.getBlockData()));
         }
     }
@@ -257,7 +259,7 @@ public class Illumination extends FireAbility {
             }
         }
 
-        BLOCKS.put(this.block, this.player);
+        getBlocks().put(this.block, this.player);
     }
 
     @Override

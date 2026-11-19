@@ -244,7 +244,13 @@ public final class RollbackGraphCodec {
         int[] rootIds = new int[bounded(roots.size(), limits.maximumReferences(), "roots")];
         int root = 0;
         for (Object value : roots) rootIds[root++] = capture.reference(value);
-        for (int index = 0; index < capture.sources.size(); index++) capture.entries.add(capture.scan(capture.sources.get(index)));
+        for (int index = 0; index < capture.sources.size(); index++) {
+            try {
+                capture.entries.add(capture.scan(capture.sources.get(index)));
+            } catch (IllegalArgumentException failure) {
+                throw new IllegalArgumentException(failure.getMessage() + " at " + capture.path(index, rootIds), failure);
+            }
+        }
         try {
             var bytes = new ByteArrayOutputStream();
             var out = new DataOutputStream(new FilterOutputStream(bytes) {
@@ -318,6 +324,40 @@ public final class RollbackGraphCodec {
         final Budget budget = new Budget();
 
         Capture(Function<Object, RollbackStateTransfer.Replacement> projections) { this.projections = projections; }
+        // Sources are discovered breadth-first. Reconstruct the first path only on failure.
+        String path(int target, int[] roots) {
+            int[] parent = new int[target + 1];
+            int[] slot = new int[target + 1];
+            Arrays.fill(parent, -1);
+            for (int i = 0; i < roots.length; i++) {
+                int id = roots[i];
+                if (id <= target && parent[id] == -1) {
+                    parent[id] = id;
+                    slot[id] = i;
+                }
+            }
+            for (int i = 0; i < entries.size() && parent[target] == -1; i++) {
+                int[] children = entries.get(i).references;
+                for (int j = 0; j < children.length; j++) {
+                    int child = children[j];
+                    if (child <= target && parent[child] == -1) {
+                        parent[child] = i;
+                        slot[child] = j;
+                    }
+                }
+            }
+            var parts = new ArrayDeque<String>();
+            int id = target;
+            while (parent[id] != id && parent[id] >= 0) {
+                int owner = parent[id];
+                Entry entry = entries.get(owner);
+                parts.addFirst(entry.kind == Kind.OBJECT ? "." + catalog.layout(entry.type).fields.get(slot[id]).field.getName()
+                        : "[" + slot[id] + "]");
+                id = owner;
+            }
+            Object root = sources.get(id);
+            return "root[" + slot[id] + "](" + (root == null ? "null" : root.getClass().getName()) + ")" + String.join("", parts);
+        }
         int reference(Object source) {
             budget.add(1);
             Integer old = ids.get(source);

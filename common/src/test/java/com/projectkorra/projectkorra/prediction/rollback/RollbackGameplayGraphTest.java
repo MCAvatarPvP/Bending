@@ -170,6 +170,7 @@ class RollbackGameplayGraphTest {
                 sourceRoster, configuration, lifecycle, List.of(), new RollbackGraphViews());
         var first = new com.projectkorra.projectkorra.BendingPlayer(a);
         var second = new com.projectkorra.projectkorra.BendingPlayer(b);
+        first.getElements().add(com.projectkorra.projectkorra.Element.FIRE);
         first.getCooldowns().put("arbitrary-ability", new com.projectkorra.projectkorra.util.Cooldown(12345, false));
         byte[] bytes = RollbackBendingState.encode(List.of(first, second),
                 new com.projectkorra.projectkorra.ability.util.CollisionManager(), List.of(lifecycle), sender);
@@ -177,6 +178,7 @@ class RollbackGameplayGraphTest {
                 data, Map.of(), targetRoster, lifecycle, List.of());
         assertSame(privateA, imported.bending().players().get(a.getUniqueId()).getPlayer());
         assertNotSame(first, imported.bending().players().get(a.getUniqueId()));
+        assertSame(com.projectkorra.projectkorra.Element.FIRE, imported.bending().players().get(a.getUniqueId()).getElements().getFirst());
         assertEquals(List.of(imported.configuration(), imported), imported.roots());
         assertEquals(12345, imported.bending().players().get(a.getUniqueId()).getCooldowns().get("arbitrary-ability").getCooldown());
         imported.bending().players().get(a.getUniqueId()).getCooldowns().clear();

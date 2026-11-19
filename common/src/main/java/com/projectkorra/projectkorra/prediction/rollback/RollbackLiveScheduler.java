@@ -93,7 +93,28 @@ public final class RollbackLiveScheduler implements PKScheduler {
     }
     @Override public boolean isPrimaryThread() { return backend.isPrimaryThread(); }
 
-    /** Returns the cleanup owner before any native cancellation. Call freeze at the capture boundary. */
+    /** Read a normal manager timer's phase at enrollment without suspending its work for other players. */
+    public synchronized long managerDelay(Class<? extends Runnable> type, long period) {
+        primary();
+        long delay = -1;
+        for (var task : tasks.values()) {
+            if (task.work.callback().getClass() != type || task.cancelled || task.complete || task.nativeTask.cancelled()) continue;
+            if (delay != -1 || task.period != period || task.running != 0 || task.frozen != null || task.work.asynchronous())
+                throw new IllegalStateException("Cannot determine active manager cadence for " + type.getName());
+            delay = Math.max(1, Math.subtractExact(task.due, clock.getAsLong()));
+        }
+        return delay;
+    }
+
+    /** Read the remaining delay of the existing earth scan without suspending or changing it. */
+    public synchronized long earthRevertDelay(PKTask handle) {
+        primary();
+        if (handle == null) return -1;
+        if (!(handle instanceof RollbackLiveScheduler.Task task) || task.scheduler() != this || !(task.work.callback() instanceof com.projectkorra.projectkorra.util.RevertChecker)
+                || task.period != 200 || task.running != 0 || task.frozen != null) throw new IllegalStateException("Live earth reversion is not ready for capture");
+        return task.cancelled || task.complete || task.nativeTask.cancelled() ? -1 : Math.max(1, Math.subtractExact(task.due, clock.getAsLong()));
+    }
+
     public synchronized Lease prepare(Predicate<Work> selector) {
         primary(); mutation(); return new Lease(Objects.requireNonNull(selector));
     }

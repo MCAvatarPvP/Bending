@@ -34,6 +34,29 @@ public final class PaperRollbackTerrainCapture {
         }
     }
 
+    /** Detach native section palettes in one boundary, then evaluate every coordinate away from the tick thread. */
+    public static Prepared prepare(ServerLevel source, Bounds bounds, Limits limits) {
+        var snapshot = PaperRollbackTerrainImage.capture(source, bounds, limits, true);
+        return new Prepared(snapshot);
+    }
+
+    public static final class Prepared {
+        private final PaperRollbackTerrainImage image;
+        private final java.util.concurrent.CompletableFuture<PaperRollbackTerrainImage.Result> result;
+        private final java.util.concurrent.CompletableFuture<RollbackTerrainSeed> terrain;
+        private Prepared(PaperRollbackTerrainImage image) {
+            this.image = image;
+            result = java.util.concurrent.CompletableFuture.supplyAsync(image::expand);
+            terrain = result.thenApply(PaperRollbackTerrainImage.Result::terrain);
+        }
+        public java.util.concurrent.CompletableFuture<RollbackTerrainSeed> terrain() { return terrain; }
+        public com.projectkorra.projectkorra.prediction.rollback.world.RollbackLightSeed light() {
+            if (!result.isDone()) throw new IllegalStateException("Prepared terrain is still expanding");
+            return result.join().light();
+        }
+        public boolean matches(ServerLevel source) { return image.matches(source); }
+    }
+
     public static RollbackTerrainSeed capture(ServerLevel source, Bounds bounds, Limits limits) {
         Objects.requireNonNull(source, "source world"); Objects.requireNonNull(bounds, "bounds"); Objects.requireNonNull(limits, "limits");
         if (!TickThread.isTickThread() || RollbackClock.active()) throw new IllegalStateException("Capture terrain on the server tick thread before replay");
@@ -59,7 +82,7 @@ public final class PaperRollbackTerrainCapture {
         net.minecraft.world.level.block.state.BlockState lastState = null;
         net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome> lastNoise = null, lastSmoothed = null;
         Cell lastCell = null;
-        int runLength = 0;
+
         LevelChunk chunk = null;
         for (int y = bounds.minY(); y < bounds.maxY(); y++) for (int z = bounds.minZ(); z < bounds.maxZ(); z++) for (int x = bounds.minX(); x < bounds.maxX(); x++) {
             position.set(x, y, z);
@@ -71,11 +94,11 @@ public final class PaperRollbackTerrainCapture {
             double temperature = smoothed.value().getTemperature(position, source.getSeaLevel());
             // Repeated cells use the same palette entry. Tile data is position-specific.
             if (!nativeState.hasBlockEntity() && nativeState == lastState && noise == lastNoise && smoothed == lastSmoothed
-                    && lastCell.light() == light && Double.compare(lastCell.temperature(), temperature) == 0) {
-                runLength++;
+                    && lastCell.light() == light) {
+                builder.repeatAtTemperature(temperature);
                 continue;
             }
-            if (runLength != 0) builder.append(lastCell, runLength);
+
             var data = states.computeIfAbsent(nativeState, state -> {
                 var nativeData = CraftBlockData.fromData(state);
                 var detached = BukkitMC.blockData(nativeData);
@@ -96,9 +119,9 @@ public final class PaperRollbackTerrainCapture {
             lastState = nativeState;
             lastNoise = noise;
             lastSmoothed = smoothed;
-            runLength = 1;
+            builder.append(lastCell);
         }
-        if (runLength != 0) builder.append(lastCell, runLength);
+
         if (source.getGameTime() != tick) throw new IllegalStateException("World advanced during synchronous terrain capture");
         return builder.finish();
     }
@@ -111,7 +134,7 @@ public final class PaperRollbackTerrainCapture {
         return tag;
     }
 
-    private static byte[] encode(CompoundTag tag, int maximumBytes) {
+    static byte[] encode(CompoundTag tag, int maximumBytes) {
         var bytes = new ByteArrayOutputStream(Math.min(maximumBytes, 1024));
         var bounded = new OutputStream() {
             private void room(int count) {

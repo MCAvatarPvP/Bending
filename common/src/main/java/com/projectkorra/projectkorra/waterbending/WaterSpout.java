@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.waterbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackArenaBlockIndices;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
 
@@ -28,7 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class WaterSpout extends WaterAbility {
 
-    private static final Map<Block, Block> AFFECTED_BLOCKS = new ConcurrentHashMap<Block, Block>();
+    private static final Map<Block, Block> AFFECTED_BLOCKS = RollbackArenaBlockIndices.live().spout;
     private final List<TempBlock> blocks = new ArrayList<TempBlock>();
 
     @Attribute("CanBendOnPackedIce")
@@ -134,12 +135,13 @@ public class WaterSpout extends WaterAbility {
     }
 
     public static Map<Block, Block> getAffectedBlocks() {
-        return AFFECTED_BLOCKS;
+        var indices = RollbackArenaBlockIndices.current();
+        return indices == null ? AFFECTED_BLOCKS : indices.spout;
     }
 
     /** Drops old-world column coordinates without writing their blocks. */
     public static void discardAllTracking() {
-        AFFECTED_BLOCKS.clear();
+        getAffectedBlocks().clear();
     }
 
     private void hop() {
@@ -174,7 +176,7 @@ public class WaterSpout extends WaterAbility {
             final Block block = loc.getBlock();
             if ((!TempBlock.isTempBlock(block)) && (ElementalAbility.isAir(block.getType()) || !GeneralMethods.isSolid(block))) {
                 this.blocks.add(new TempBlock(block, GeneralMethods.getWaterData(7), this));
-                AFFECTED_BLOCKS.put(block, block);
+                getAffectedBlocks().put(block, block);
             }
         }
     }
@@ -182,7 +184,7 @@ public class WaterSpout extends WaterAbility {
     @Override
     public void progress() {
         for (final TempBlock tb : this.blocks) {
-            AFFECTED_BLOCKS.remove(tb.getBlock());
+            getAffectedBlocks().remove(tb.getBlock());
             tb.revertBlock();
         }
         if (this.player.isDead() || !this.player.isOnline() || !this.bPlayer.canBendIgnoreBindsCooldowns(this)) {
@@ -220,7 +222,7 @@ public class WaterSpout extends WaterAbility {
 
                 if (!TempBlock.isTempBlock(block)) {
                     this.blocks.add(new TempBlock(block, Material.WATER.createBlockData(), this));
-                    AFFECTED_BLOCKS.put(block, block);
+                    getAffectedBlocks().put(block, block);
                 }
                 this.rotateParticles(block);
             }
@@ -258,7 +260,7 @@ public class WaterSpout extends WaterAbility {
             final List<TempBlock> ownedBlocks = new ArrayList<>(this.blocks);
             this.blocks.clear();
             for (final TempBlock tb : ownedBlocks) {
-                AFFECTED_BLOCKS.remove(tb.getBlock());
+                getAffectedBlocks().remove(tb.getBlock());
                 try {
                     tb.revertBlock();
                 } catch (RuntimeException failure) {

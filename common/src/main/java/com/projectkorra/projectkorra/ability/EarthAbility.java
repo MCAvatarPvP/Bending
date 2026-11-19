@@ -84,13 +84,13 @@ public abstract class EarthAbility extends ElementalAbility {
     public static void addTempAirBlock(final Block block) {
         Information info;
 
-        if (MOVED_EARTH.containsKey(block)) {
+        if (getMovedEarth().containsKey(block)) {
             // Preserve the legacy dual registration until the caller moves or
             // restores this coordinate. EarthBlast reads the moved-earth entry
             // after creating its temporary source hole so it can carry the
             // original pre-RaiseEarth state forward. Consuming it here loses
             // that state and turns the later restore into a permanent ghost.
-            info = MOVED_EARTH.get(block);
+            info = getMovedEarth().get(block);
         } else {
             info = new Information();
 
@@ -101,7 +101,7 @@ public abstract class EarthAbility extends ElementalAbility {
         final Information lifecycle = info;
         DirectBlockSync.runEarthLifecycle(lifecycle, () -> block.setType(Material.AIR, false));
         info.setTime(RollbackClock.millis());
-        TEMP_AIR_LOCATIONS.put(info.getID(), info);
+        getTempAirLocations().put(info.getID(), info);
     }
 
     public static void displaySandParticle(final Location loc, final int amount, final double xOffset, final double yOffset, final double zOffset, final double speed, final boolean red) {
@@ -184,7 +184,8 @@ public abstract class EarthAbility extends ElementalAbility {
     }
 
     public static Map<Block, Information> getMovedEarth() {
-        return MOVED_EARTH;
+        var arena = com.projectkorra.projectkorra.prediction.rollback.RollbackEarthTerrain.current();
+        return arena == null ? MOVED_EARTH : arena.moved;
     }
 
     /**
@@ -218,11 +219,13 @@ public abstract class EarthAbility extends ElementalAbility {
     }
 
     public static HashSet<Block> getPreventEarthbendingBlocks() {
-        return PREVENT_EARTHBENDING;
+        var arena = com.projectkorra.projectkorra.prediction.rollback.RollbackEarthTerrain.current();
+        return arena == null ? PREVENT_EARTHBENDING : arena.prevented;
     }
 
     public static ArrayList<Block> getPreventPhysicsBlocks() {
-        return PREVENT_PHYSICS;
+        var arena = com.projectkorra.projectkorra.prediction.rollback.RollbackEarthTerrain.current();
+        return arena == null ? PREVENT_PHYSICS : arena.physics;
     }
 
     public static ChatColor getSubChatColor() {
@@ -234,14 +237,15 @@ public abstract class EarthAbility extends ElementalAbility {
     }
 
     public static Map<Integer, Information> getTempAirLocations() {
-        return TEMP_AIR_LOCATIONS;
+        var arena = com.projectkorra.projectkorra.prediction.rollback.RollbackEarthTerrain.current();
+        return arena == null ? TEMP_AIR_LOCATIONS : arena.air;
     }
 
     public static boolean isEarthbendable(final Player player, final String abilityName, final Block block) {
         final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
         final BlockData visibleData = player == null ? null : TempBlock.getVisibleData(block, player.getUniqueId());
         final Material visibleType = visibleData == null ? block.getType() : visibleData.getMaterial();
-        if (bPlayer == null || !isEarthbendable(visibleType, true, true, true) || PREVENT_EARTHBENDING.contains(block)
+        if (bPlayer == null || !isEarthbendable(visibleType, true, true, true) || getPreventEarthbendingBlocks().contains(block)
                 || RegionProtection.isRegionProtected(player, block.getLocation(), CoreAbility.getAbility(abilityName))) {
             return false;
         }
@@ -346,17 +350,17 @@ public abstract class EarthAbility extends ElementalAbility {
     }
 
     public static void removeAllEarthbendedBlocks() {
-        for (final Block block : MOVED_EARTH.keySet()) {
+        for (final Block block : getMovedEarth().keySet()) {
             revertBlock(block);
         }
-        for (final Integer i : TEMP_AIR_LOCATIONS.keySet()) {
+        for (final Integer i : getTempAirLocations().keySet()) {
             revertAirBlock(i, true);
         }
     }
 
     public static void removeRevertIndex(final Block block) {
-        if (MOVED_EARTH.containsKey(block)) {
-            final Information info = MOVED_EARTH.get(block);
+        if (getMovedEarth().containsKey(block)) {
+            final Information info = getMovedEarth().get(block);
             if (block.getType() == Material.SANDSTONE && info.getType() == Material.SAND) {
                 DirectBlockSync.runEarthLifecycle(info, () -> block.setType(Material.SAND, false));
             }
@@ -370,7 +374,7 @@ public abstract class EarthAbility extends ElementalAbility {
 
     private static Information retireMovedEarth(final Block block) {
         RaiseEarth.revertRaisedAffectedBlock(block);
-        return MOVED_EARTH.remove(block);
+        return getMovedEarth().remove(block);
     }
 
     public static void revertAirBlock(final int i) {
@@ -378,11 +382,11 @@ public abstract class EarthAbility extends ElementalAbility {
     }
 
     public static void revertAirBlock(final int i, final boolean force) {
-        if (!TEMP_AIR_LOCATIONS.containsKey(i)) {
+        if (!getTempAirLocations().containsKey(i)) {
             return;
         }
 
-        final Information info = TEMP_AIR_LOCATIONS.get(i);
+        final Information info = getTempAirLocations().get(i);
         DirectBlockSync.runEarthLifecycle(info, () -> revertAirBlock0(i, force, info));
     }
 
@@ -390,21 +394,21 @@ public abstract class EarthAbility extends ElementalAbility {
         final Block block = info.getState().getBlock();
 
         if (!ElementalAbility.isAir(block.getType()) && !block.isLiquid()) {
-            if (force || !MOVED_EARTH.containsKey(block)) {
-                TEMP_AIR_LOCATIONS.remove(i);
+            if (force || !getMovedEarth().containsKey(block)) {
+                getTempAirLocations().remove(i);
             } else {
                 info.setTime(info.getTime() + 10000);
             }
             return;
         } else {
             info.getState().update(true, false);
-            TEMP_AIR_LOCATIONS.remove(i);
+            getTempAirLocations().remove(i);
         }
     }
 
     public static void revertAirBlock(Block block) {
         if (block == null) return;
-        for (final Map.Entry<Integer, Information> entry : TEMP_AIR_LOCATIONS.entrySet()) {
+        for (final Map.Entry<Integer, Information> entry : getTempAirLocations().entrySet()) {
             final Information info = entry.getValue();
             if (info != null && block.equals(info.getBlock())) {
                 // Information ids begin at Integer.MIN_VALUE and are map keys;
@@ -421,7 +425,7 @@ public abstract class EarthAbility extends ElementalAbility {
             retireMovedEarth(block);
             return false;
         }
-        final Information info = MOVED_EARTH.get(block);
+        final Information info = getMovedEarth().get(block);
         if (info == null) return true;
         return DirectBlockSync.callEarthLifecycle(info, () -> revertBlock0(block, info));
     }
@@ -447,7 +451,7 @@ public abstract class EarthAbility extends ElementalAbility {
             return true;
         }
 
-        if (MOVED_EARTH.containsKey(sourceblock)) {
+        if (getMovedEarth().containsKey(sourceblock)) {
             addTempAirBlock(block);
             retireMovedEarth(block);
             return true;
@@ -495,10 +499,10 @@ public abstract class EarthAbility extends ElementalAbility {
      * old-world handles must never be progressed by the next world's manager.
      */
     public static void discardAllEarthbendingState() {
-        MOVED_EARTH.clear();
-        TEMP_AIR_LOCATIONS.clear();
-        PREVENT_EARTHBENDING.clear();
-        PREVENT_PHYSICS.clear();
+        getMovedEarth().clear();
+        getTempAirLocations().clear();
+        getPreventEarthbendingBlocks().clear();
+        getPreventPhysicsBlocks().clear();
         DensityShift.getSandBlocks().clear();
         RaiseEarth.clearAllTracking();
         Ripple.progressAllCleanup();
@@ -602,9 +606,9 @@ public abstract class EarthAbility extends ElementalAbility {
 
             for (double j = -2; j <= chainlength; j++) {
                 final Block checkblock = location.clone().add(negnorm.clone().multiply(j)).getBlock();
-                if (!PREVENT_PHYSICS.contains(checkblock)) {
+                if (!getPreventPhysicsBlocks().contains(checkblock)) {
                     blocks.add(checkblock);
-                    PREVENT_PHYSICS.add(checkblock);
+                    getPreventPhysicsBlocks().add(checkblock);
                 }
             }
 
@@ -672,7 +676,7 @@ public abstract class EarthAbility extends ElementalAbility {
                     }
                     if (block == null) {
                         for (final Block checkblock : blocks) {
-                            PREVENT_PHYSICS.remove(checkblock);
+                            getPreventPhysicsBlocks().remove(checkblock);
                         }
                         return false;
                     }
@@ -691,12 +695,12 @@ public abstract class EarthAbility extends ElementalAbility {
                 }
             } else {
                 for (final Block checkblock : blocks) {
-                    PREVENT_PHYSICS.remove(checkblock);
+                    getPreventPhysicsBlocks().remove(checkblock);
                 }
                 return false;
             }
             for (final Block checkblock : blocks) {
-                PREVENT_PHYSICS.remove(checkblock);
+                getPreventPhysicsBlocks().remove(checkblock);
             }
             return true;
         }
@@ -719,9 +723,9 @@ public abstract class EarthAbility extends ElementalAbility {
         // coordinates after each movement step; other moves intentionally
         // invalidate Collapse eligibility for the altered coordinate.
         RaiseEarth.revertRaisedAffectedBlock(source);
-        if (MOVED_EARTH.containsKey(source)) {
-            info = MOVED_EARTH.get(source);
-            MOVED_EARTH.remove(source);
+        if (getMovedEarth().containsKey(source)) {
+            info = getMovedEarth().get(source);
+            getMovedEarth().remove(source);
         } else {
             info = new Information();
             info.setBlock(source);
@@ -730,7 +734,7 @@ public abstract class EarthAbility extends ElementalAbility {
         }
         stampPredictionCause(info, this);
         info.setTime(RollbackClock.millis());
-        MOVED_EARTH.put(target, info);
+        getMovedEarth().put(target, info);
 
         Material targetMat = info.getState().getType();
         EarthCosmetic cos = bPlayer.getEarthCosmetic();

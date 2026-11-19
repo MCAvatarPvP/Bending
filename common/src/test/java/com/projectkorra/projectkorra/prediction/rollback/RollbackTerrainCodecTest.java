@@ -80,6 +80,48 @@ class RollbackTerrainCodecTest {
         assertEquals(0, calls.get());
     }
 
+    @Test void varyingTemperaturesUseOneDiscretePaletteEntryAndRoundTripExactly() {
+        int count = 131072;
+        var bounds = new Bounds(0, 0, 0, 128, 8, 128);
+        var limits = new RollbackTerrainCodec.Limits(count, 1, count * 10, count * 16L, 1024);
+        var block = cell(Material.AIR, "minecraft:air", null);
+        for (boolean precise : new boolean[]{false, true}) {
+            var builder = new RollbackTerrainSeed.Builder(bounds, limits.maximumStorageBytes());
+            builder.append(block);
+            for (int i = 1; i < count; i++) builder.repeatAtTemperature(precise ? Math.scalb((double)i, -30) + .3 : (float)(.3 + i * .000001));
+            var seed = builder.finish();
+            assertEquals(1, seed.paletteSize());
+            var bytes = RollbackTerrainCodec.encode(seed, STATES, limits);
+            var copy = RollbackTerrainCodec.decode(bytes, STATES, limits);
+            assertTrue(bytes.length < count * (precise ? Double.BYTES : Float.BYTES));
+            for (int i = 0; i < count; i++) {
+                var pos = new Position(i % 128, i / 16384, (i / 128) % 128);
+                assertEquals(Double.doubleToRawLongBits(seed.cell(pos).temperature()),
+                        Double.doubleToRawLongBits(copy.cell(pos).temperature()));
+            }
+        }
+    }
+
+    @Test void malformedClimateStreamsAndStorageBoundsFailBeforeNativeDecoding() {
+        var builder = new RollbackTerrainSeed.Builder(new Bounds(0, 0, 0, 128, 1, 1), 4096);
+        builder.append(cell(Material.STONE, "minecraft:stone", null));
+        for (int i = 1; i < 128; i++) builder.repeatAtTemperature(i / 701.0);
+        var seed = builder.finish();
+        byte[] bytes = RollbackTerrainCodec.encode(seed, STATES, LIMITS);
+        var tooSmall = new RollbackTerrainCodec.Limits(128, 1, 4096, 1500, 128);
+        assertThrows(IllegalArgumentException.class, () -> RollbackTerrainCodec.encode(seed, STATES, tooSmall));
+        var decoder = new RollbackTerrainCodec.BlockStates() {
+            @Override public String encode(BlockData data) { throw new AssertionError(); }
+            @Override public BlockData decode(Material material, String exact) { throw new AssertionError("Unsafe native decode"); }
+        };
+        assertThrows(IllegalArgumentException.class, () -> RollbackTerrainCodec.decode(bytes, decoder, tooSmall));
+        var compressed = bytes.clone();
+        // One final discrete run occupies twelve bytes, immediately following the checksummed climate stream.
+        compressed[compressed.length - 13] ^= 1;
+        assertThrows(IllegalArgumentException.class, () -> RollbackTerrainCodec.decode(compressed, decoder, LIMITS));
+        assertThrows(IllegalArgumentException.class, () -> RollbackTerrainCodec.decode(Arrays.copyOf(bytes, bytes.length - 2), decoder, LIMITS));
+    }
+
     @Test void tileBytesAndNativeMaterialIdentityCannotBypassBudgets() {
         var builder = new RollbackTerrainSeed.Builder(new Bounds(0, 0, 0, 1, 1, 1), 16384);
         builder.append(cell(Material.CHEST, "minecraft:chest", new byte[4097]));

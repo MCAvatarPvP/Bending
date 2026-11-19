@@ -63,7 +63,9 @@ class LightningPunchTest {
         backup(ComboManager.class, "COMBO_ABILITIES");
         backup(ComboManager.class, "RECENTLY_USED");
         backup(ComboManager.class, "SCHEDULED_COMBO_ABILITY");
-        backup(LightningPunch.class, "PENDING_HITS");
+        var pending = com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantAbilityIndices.current().hits;
+        var savedHits = new HashMap<>(pending);
+        restores.add(() -> { pending.clear(); pending.putAll(savedHits); });
         map(Manager.class, "MANAGERS").put(FlightHandler.class, null);
         final Field color = field(Element.class, "color");
         final Object previousColor = color.get(Element.LIGHTNING);

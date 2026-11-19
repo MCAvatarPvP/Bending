@@ -237,7 +237,7 @@ class TempBlockAbilityLifecycleBoundaryTest {
         String surge = common("com/projectkorra/projectkorra/waterbending/SurgeWave.java");
 
         assertTrue(spear.contains("private static final Map<Block, TempBlock> TRACKED_BLOCKS"));
-        assertTrue(spear.contains("TRACKED_BLOCKS.remove(block, layer)"));
+        assertTrue(spear.contains("trackedLayers().remove(block, layer)"));
         assertTrue(waterArms.contains("WaterArmsSpear.expireBlocks(ignoreTime)"));
         assertFalse(waterArms.contains("TempBlock.revertBlock(block, Material.AIR)"));
         assertTrue(waterArms.contains("AbilityExecutionContext.run(waterArms"),
