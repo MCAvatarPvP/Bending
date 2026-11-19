@@ -186,6 +186,10 @@ class FabricRollbackNativeSceneTest {
         assertTrue(predicate.test(world, 2, 3, 4));
         assertTrue(predicate.test(world, 5, 9, 8));
         assertFalse(predicate.test(world, 6, 3, 4));
+        assertTrue(world.isPosLoaded(new net.minecraft.util.math.BlockPos(-16, -64, -16)));
+        assertFalse(world.isPosLoaded(new net.minecraft.util.math.BlockPos(-16, -65, -16)));
+        assertFalse(world.isPosLoaded(new net.minecraft.util.math.BlockPos(4, 320, 4)));
+        assertFalse(predicate.test(world, 32, 3, 4));
         assertSame(village.value(), world.getStructureAccessor().getStructureContaining(new net.minecraft.util.math.BlockPos(4, 6, 6), allowed).getStructure());
     }
 

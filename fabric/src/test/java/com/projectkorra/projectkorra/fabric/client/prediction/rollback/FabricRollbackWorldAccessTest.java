@@ -434,6 +434,10 @@ class FabricRollbackWorldAccessTest {
         @Override public int getHeight() { return 384; }
         @Override public int getBottomY() { return -64; }
         @Override public BlockView getChunkAsView(int x, int z) { return this; }
+        @Override public boolean isPosLoaded(BlockPos pos) {
+            return logical.terrain.bounds().contains(new RollbackBlockStore.Position(pos.getX(), pos.getY(), pos.getZ()))
+                    && isChunkLoaded(pos.getX() >> 4, pos.getZ() >> 4);
+        }
         @Override public boolean isChunkLoaded(int x, int z) { return loaded && x >= -1 && x <= 0 && z >= -1 && z <= 0; }
         @Override public net.minecraft.world.attribute.EnvironmentAttributeAccess environmentAttributes() {
             return new net.minecraft.world.attribute.EnvironmentAttributeAccess() {

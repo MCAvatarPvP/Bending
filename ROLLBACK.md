@@ -1,6 +1,6 @@
 # Combat rollback implementation
 
-This is an implementation in progress, not an enabled gameplay feature yet.
+The experiment runs on stock Paper and the matching Fabric mod. Eligible Neptune duels can enroll both participants. The multiplayer verification below records the latest tested behavior.
 
 The requested result is generic rollback for ProjectKorra combat, connected to
 Neptune duels and the predicting Fabric client. There must be no list of selected
@@ -53,15 +53,17 @@ implemented by the plugin and verified against the packaged Paper version.
 
 ## Multiplayer verification
 
-On November 19, 2026, two Minecraft 1.21.11 Fabric clients running ProjectKorra
-1.10.35 joined a stock Paper 1.21.11 server with Neptune. Both negotiated exact
-prediction, opted into rollback, and entered the same Neptune duel. During the
-round, the server reported that the rollback bootstrap was absent. This run verified
-client compatibility, preferences and ordinary duel startup. Rollback activation,
-a delayed-input replay seen by both players, and live restoration still need a
-successful run with the production bootstrap installed.
+Two Minecraft 1.21.11 Fabric clients and stock Paper 1.21.11 build 132 run the matching ProjectKorra 1.10.35 jars with Neptune 2.3. The loopback test adds 50 ms in each direction for one participant and 10 ms for the other.
 
-## Current foundation
+- Both clients opted in, completed the bootstrap and started the same private session. The November 19 run reached 19 Paper simulation ticks before a native advancement queried the arena's structures. Paper restored both players, and both clients automatically renegotiated ordinary prediction in the active Neptune round.
+- In that round, a physical Paralyze attack produced one local action and one claim for the defender. Paper applied and released the stun, and the caster received the cooldown. Neptune rejected the same attack in the lobby.
+- One Smokescreen swing produced a single Paper snowball and accepted impact. The caster's renderer and particle engine used the predicted cloud. The defender's renderer and particle engine used the authoritative cloud. Both were observed through Minecraft's render predicate on the actual clients.
+- Simultaneous Rope Darts reached both clients. A short overlap between the local arrow and two server arrows was visible in the render predicate before the local arrow retired. The follow-up build tests the ordering of the launch receipt and native spawn.
+- The first 19-frame trial measured a 26.2 ms median server simulation frame and a 114.9 ms maximum. Cold scene construction still exceeded the 50 ms server tick budget. Longer active-duel measurements are required for a capacity estimate.
+
+## Implementation history
+
+The entries below record individual development checkpoints in chronological order. Runtime milestones above supersede earlier descriptions of pending integration.
 
 ### Installed gameplay catalog
 

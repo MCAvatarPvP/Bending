@@ -71,6 +71,9 @@ public final class RollbackTaskOwnership implements Predicate<RollbackLiveSchedu
             if (value instanceof Player player) { player(player.getUniqueId()); return; }
             if (value instanceof OfflineBendingPlayer player) { player(player.getUUID()); return; }
             if (value instanceof CoreAbility ability && ability.getPlayer() != null) { player(ability.getPlayer().getUniqueId()); return; }
+            // Participant rows are transferred through the manager's roster projection. Its single
+            // persistence timer must continue serving the live world even when those rows exist.
+            if (value.getClass() == com.projectkorra.projectkorra.util.StatisticsManager.class) return;
             if (owned.contains(value)) { member = true; return; }
             if (value instanceof UUID id) { if (participants.contains(id)) member = true; return; }
             if (value instanceof String || value instanceof Enum<?> || value instanceof Class<?>

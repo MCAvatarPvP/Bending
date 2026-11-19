@@ -135,6 +135,10 @@ public final class FabricRollbackWorldQueries implements FabricRollbackWorldAcce
     @Override public int getHeight() { checkThread(); return Math.subtractExact(logical.getMaxHeight(), logical.getMinHeight()); }
     @Override public int getBottomY() { checkThread(); return logical.getMinHeight(); }
     @Override public BlockView getChunkAsView(int x, int z) { return isChunkLoaded(x, z) ? this : null; }
+    @Override public boolean isPosLoaded(BlockPos pos) {
+        checkThread();
+        return logical.terrain().bounds().contains(key(pos)) && logical.isChunkLoaded(pos.getX() >> 4, pos.getZ() >> 4);
+    }
     @Override public boolean isChunkLoaded(int x, int z) {
         checkThread(); var b = logical.terrain().bounds();
         if (x < (b.minX() >> 4) || x > ((b.maxX() - 1) >> 4) || z < (b.minZ() >> 4) || z > ((b.maxZ() - 1) >> 4)) {

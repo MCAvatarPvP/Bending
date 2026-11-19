@@ -22,7 +22,7 @@ import java.util.function.Predicate;
 final class PaperRollbackStructures {
     private final RollbackStructurePieces pieces;
     private final Map<String, Holder.Reference<Structure>> registry = new HashMap<>();
-    private final Map<Structure, StructureStart> matches = new HashMap<>();
+    private final Map<RollbackStructurePieces.Piece, StructureStart> matches = new HashMap<>();
 
     PaperRollbackStructures(RollbackStructurePieces pieces, RegistryAccess access) {
         this.pieces = pieces;
@@ -51,9 +51,14 @@ final class PaperRollbackStructures {
     private StructureStart find(BlockPos pos, Predicate<Holder<Structure>> filter) {
         for (var piece : pieces.at(pos.getX(), pos.getY(), pos.getZ())) {
             var holder = registry.get(piece.structure());
-            if (filter.test(holder)) return matches.computeIfAbsent(holder.value(), structure ->
-                    RollbackNativeQueryShell.create(StructureStart.class)
-                            .constant(StructureStart::isValid, true).constant(StructureStart::getStructure, structure).instance());
+            if (filter.test(holder)) return matches.computeIfAbsent(piece, row -> {
+                var box = new net.minecraft.world.level.levelgen.structure.BoundingBox(row.minX(), row.minY(), row.minZ(),
+                        row.maxX(), row.maxY(), row.maxZ());
+                var nativePiece = RollbackNativeQueryShell.create(net.minecraft.world.level.levelgen.structure.StructurePiece.class)
+                        .constant(net.minecraft.world.level.levelgen.structure.StructurePiece::getBoundingBox, box).instance();
+                var parts = new net.minecraft.world.level.levelgen.structure.pieces.PiecesContainer(java.util.List.of(nativePiece));
+                return new StructureStart(holder.value(), new net.minecraft.world.level.ChunkPos(pos), 0, parts);
+            });
         }
         return StructureStart.INVALID_START;
     }

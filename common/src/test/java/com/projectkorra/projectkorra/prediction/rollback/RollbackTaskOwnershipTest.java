@@ -29,6 +29,25 @@ class RollbackTaskOwnershipTest {
         backend.advance(); assertEquals(0, mine.calls); assertEquals(1, other.calls);
         lease.restore(); backend.advance(); assertEquals(1, mine.calls); assertEquals(1, other.calls);
     }
+    @Test void statisticsPersistenceContinuesOnItsLiveCadenceWhenTheManagerContainsDuelistRows() throws Exception {
+        var constructor = com.projectkorra.projectkorra.util.StatisticsManager.class.getDeclaredConstructor();
+        constructor.setAccessible(true);
+        var statistics = constructor.newInstance();
+        statistics.store(A); // An enrolled UUID reachable from the shared persistence callback.
+        var backend = new RollbackLiveSchedulerTest.Backend();
+        var scheduler = new RollbackLiveScheduler(backend, () -> backend.tick, callback -> callback);
+        var handle = scheduler.runTimer(statistics, 57, 100);
+        var mine = new Callback(List.of(statistics, A));
+        scheduler.runLater(mine, 57);
+        var lease = scheduler.prepare(ownership());
+        try {
+            var capture = lease.freeze(8);
+            assertEquals(List.of(mine), capture.bindings().entries().stream().map(RollbackTaskBindings.Entry::callback).toList());
+            assertFalse(handle.cancelled());
+            assertEquals(57, scheduler.managerDelay(statistics.getClass(), 100));
+        } finally { lease.restore(); }
+    }
+
     @Test void sharedCallbackCannotPartiallyFreezeAnotherPlayersWork() {
         var backend = new RollbackLiveSchedulerTest.Backend();
         var scheduler = new RollbackLiveScheduler(backend, () -> backend.tick, callback -> callback);

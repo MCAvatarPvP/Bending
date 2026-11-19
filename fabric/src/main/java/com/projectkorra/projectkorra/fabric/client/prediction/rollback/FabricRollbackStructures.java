@@ -20,7 +20,8 @@ final class FabricRollbackStructures {
     private final RollbackStructurePieces pieces;
     private final RollbackBlockStore.Bounds bounds;
     private final Registry<Structure> registry;
-    private final Map<Structure, StructureStart> starts = new IdentityHashMap<>();
+    private record StartKey(Structure structure, RollbackStructurePieces.Piece piece) { }
+    private final Map<StartKey, StructureStart> starts = new HashMap<>();
 
     FabricRollbackStructures(RollbackStructurePieces pieces, RollbackBlockStore.Bounds bounds, DynamicRegistryManager registries) {
         this.pieces = pieces;
@@ -52,8 +53,10 @@ final class FabricRollbackStructures {
         // Criterion holders carry their own keys even on a connection without the worldgen registry.
         for (var piece : at(pos)) {
             for (var entry : allowed) {
-                if (entry.getKey().isPresent() && entry.getKey().get().getValue().toString().equals(piece.structure()))
-                    return start(entry.value());
+                Identifier id = entry.getKey().map(RegistryKey::getValue).orElseGet(
+                        () -> registry == null ? null : registry.getId(entry.value()));
+                if (id == null) throw new IllegalStateException("No registry identity for native structure criterion holder");
+                if (id.toString().equals(piece.structure())) return start(entry.value(), piece);
             }
         }
         return StructureStart.DEFAULT;
@@ -64,13 +67,18 @@ final class FabricRollbackStructures {
             if (registry == null) throw new IllegalStateException("Native structure registry unavailable for " + piece.structure());
             var entry = registry.getEntry(Identifier.of(piece.structure())).orElseThrow(
                     () -> new IllegalStateException("Missing native structure definition " + piece.structure()));
-            if (matches.test(entry)) return start(entry.value());
+            if (matches.test(entry)) return start(entry.value(), piece);
         }
         return StructureStart.DEFAULT;
     }
 
-    private StructureStart start(Structure structure) {
-        return starts.computeIfAbsent(structure, value -> RollbackNativeQueryShell.create(StructureStart.class)
-                .constant(StructureStart::hasChildren, true).constant(StructureStart::getStructure, value).instance());
+    private StructureStart start(Structure structure, RollbackStructurePieces.Piece piece) {
+        return starts.computeIfAbsent(new StartKey(structure, piece), key -> {
+            var box = new net.minecraft.util.math.BlockBox(piece.minX(), piece.minY(), piece.minZ(), piece.maxX(), piece.maxY(), piece.maxZ());
+            var section = RollbackNativeQueryShell.create(net.minecraft.structure.StructurePiece.class)
+                    .constant(net.minecraft.structure.StructurePiece::getBoundingBox, box).instance();
+            return new StructureStart(structure, new net.minecraft.util.math.ChunkPos(piece.minX() >> 4, piece.minZ() >> 4),
+                    0, new net.minecraft.structure.StructurePiecesList(List.of(section)));
+        });
     }
 }

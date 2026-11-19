@@ -94,11 +94,16 @@ public final class ClientProjectilePairs<E> {
     boolean tracked(int id) { return pairs.containsKey(id) || pending.containsKey(id) || previews.containsKey(id); }
 
     E remove(int id, UUID uuid, String type, LongUnaryOperator localSequence) {
-        Pair<E> pair = resolve(id, localSequence);
+        Pair<E> pair = pairs.get(id);
+        Receipt receipt = pending.get(id);
+        ProjectileOwner owner = pair != null ? pair.owner : receipt == null ? null : receipt.owner;
+        if (owner != null && (!owner.entityUuid().equals(uuid) || !owner.type().equals(type))) return null;
+        Preview preview = previews.get(id);
+        if (preview != null && preview.uuid.equals(uuid)) previews.remove(id);
+        pair = resolve(id, localSequence);
         pairs.remove(id);
         pending.remove(id);
-        previews.remove(id);
-        return pair != null && pair.owner.entityUuid().equals(uuid) && pair.owner.type().equals(type) ? pair.entity : null;
+        return pair == null ? null : pair.entity;
     }
 
     void expire(long minTick) { pending.values().removeIf(receipt -> receipt.tick < minTick); }

@@ -5,6 +5,7 @@ import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackDomain;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership;
 import com.projectkorra.projectkorra.storage.DBConnection;
 import com.projectkorra.projectkorra.storage.StatisticsRepository;
 import com.projectkorra.projectkorra.storage.StorageException;
@@ -206,14 +207,17 @@ public class StatisticsManager extends Manager implements Runnable {
     @Override
     public void run() {
         requireLiveStorage();
-        for (final UUID uuid : this.STORAGE) {
+        var pending = this.STORAGE.iterator();
+        while (pending.hasNext()) {
+            UUID uuid = pending.next();
+            if (RollbackLiveOwnership.blocks(uuid)) continue;
             // Confirm that the player is offline.
             final Player player = ProjectKorra.plugin.getServer().getPlayer(uuid);
             if (player == null) {
                 this.save(uuid, true);
             }
+            pending.remove();
         }
-        this.STORAGE.clear();
     }
 
     public Map<String, Integer> getKeysByName() {

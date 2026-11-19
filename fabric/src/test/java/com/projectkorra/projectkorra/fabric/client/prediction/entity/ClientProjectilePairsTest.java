@@ -43,6 +43,8 @@ class ClientProjectilePairsTest {
         assertFalse(shots.hide(90, server, "ARROW", mapping));
         Shot shot = new Shot();
         shots.launch(7, 1, caster, "ARROW", "RopeDart", shot);
+        assertNull(shots.remove(90, null, null, mapping), "the initial vanilla addEntity clears an empty ID");
+        assertNull(shots.remove(90, UUID.randomUUID(), "ARROW", mapping), "the prior occupant may share the numeric ID");
         assertFalse(shots.hide(90, server, "ARROW", id -> 0));
         assertFalse(shots.hide(91, server, "ARROW", mapping));
         assertTrue(shots.hide(90, server, "ARROW", mapping));
@@ -61,6 +63,8 @@ class ClientProjectilePairsTest {
         cloud.alive = false;
         assertFalse(shots.hide(125, server, "AREA_EFFECT_CLOUD", mapping));
         assertNull(shots.remove(125, UUID.randomUUID(), "AREA_EFFECT_CLOUD", mapping));
+        assertTrue(shots.tracked(125));
+        assertSame(cloud, shots.remove(125, server, "AREA_EFFECT_CLOUD", mapping));
         assertFalse(shots.tracked(125));
     }
 

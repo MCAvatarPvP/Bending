@@ -334,6 +334,11 @@ public final class ClientEntityReconciliation {
     }
 
     public boolean removeAlias(final int serverEntityId) {
+        // ClientWorld.addEntity calls removeEntity on the incoming ID even on its first spawn.
+        // Its ownership receipt already exists at that point. Only retire an actual prior entity.
+        ClientWorld world = MinecraftClient.getInstance().world;
+        if (!authoritativeAliases.containsKey(serverEntityId)
+                && (world == null || world.getEntityById(serverEntityId) == null)) return false;
         final boolean hidden = removeHidden(serverEntityId);
         final Entity entity = authoritativeAliases.remove(serverEntityId);
         if (entity == null) return hidden;

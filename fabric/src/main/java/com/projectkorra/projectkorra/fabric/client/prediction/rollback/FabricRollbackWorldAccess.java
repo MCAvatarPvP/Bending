@@ -74,6 +74,7 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
     /** Includes logical terrain, entity eligibility and the captured border; no live-world fallback. */
     public interface Queries<S> extends CollisionView, RollbackStateCell<S> {
         boolean isChunkLoaded(int x, int z);
+        boolean isPosLoaded(BlockPos pos);
         EnvironmentAttributeAccess environmentAttributes();
         boolean isRaining();
         boolean isSkyVisible(BlockPos pos);
@@ -379,6 +380,7 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
                 .query(World::getHeight, 1, args -> queries.getHeight())
                 .query(World::getBottomY, 0, args -> queries.getBottomY())
                 .query(World::getTopYInclusive, 0, args -> Math.addExact(queries.getBottomY(), queries.getHeight()) - 1)
+                .query(value -> value.isPosLoaded(BlockPos.ORIGIN), false, args -> queries.isPosLoaded((BlockPos) args[0]))
                 .query(value -> value.isChunkLoaded(0, 0), false, args -> queries.isChunkLoaded((int) args[0], (int) args[1]))
                 .nativeQuery(value -> value.isRegionLoaded(0, 0, 0, 0), false, args ->
                         checkRegion((int) args[0], (int) args[1], (int) args[2], (int) args[3]))
