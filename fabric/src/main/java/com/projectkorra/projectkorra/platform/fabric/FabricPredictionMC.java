@@ -63,7 +63,6 @@ import com.projectkorra.projectkorra.platform.model.PKPlayer;
 import com.projectkorra.projectkorra.platform.model.PKWorld;
 import com.projectkorra.projectkorra.platform.model.PKVec3;
 import com.projectkorra.projectkorra.util.TempBlock;
-import java.lang.reflect.Field;
 import java.util.HashSet;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
@@ -414,8 +413,7 @@ public final class FabricPredictionMC {
                 return type.cast(new ClientSnowball(entity));
             }
             if (type == AreaEffectCloud.class) {
-                AreaEffectCloudEntity entity = new AreaEffectCloudEntity(
-                        value, location.getX(), location.getY(), location.getZ());
+                AreaEffectCloudEntity entity = new PredictedCloud(value, location);
                 addPredictedEntity(value, entity);
                 return type.cast(new ClientAreaEffectCloud(entity));
             }
@@ -786,6 +784,7 @@ public final class FabricPredictionMC {
                         world, value, new net.minecraft.item.ItemStack(Items.ARROW), null);
                 entity.setVelocity(value, value.getPitch(), value.getYaw(), 0.0F, 3.0F, 1.0F);
                 addPredictedEntity(world, entity);
+                ExactPredictionRuntime.trackLaunchedProjectile(entity, value);
                 return type.cast(new ClientArrow(entity));
             }
             if (type == Snowball.class) {
@@ -1133,7 +1132,11 @@ public final class FabricPredictionMC {
         @Override public World getWorld() { return world((ClientWorld) value.getEntityWorld()); }
         @Override public Vector getVelocity() { return commonVector(value.getVelocity()); }
         @Override public void setVelocity(Vector velocity) { ExactPredictionRuntime.setPredictedVelocity(value, nativeVector(velocity)); }
-        @Override public void setShooter(Object shooter) { value.setOwner(nativeEntity(shooter)); }
+        @Override public void setShooter(Object shooter) {
+            var owner = nativeEntity(shooter);
+            value.setOwner(owner);
+            ExactPredictionRuntime.trackLaunchedProjectile(value, owner);
+        }
         @Override public void setGravity(boolean gravity) { value.setNoGravity(!gravity); }
         @Override public void setSilent(boolean silent) { value.setSilent(silent); }
         @Override public void setInvulnerable(boolean invulnerable) { value.setInvulnerable(invulnerable); }
@@ -1150,6 +1153,27 @@ public final class FabricPredictionMC {
         @Override public Object nativeHandle() { return value; }
     }
 
+    public static boolean hideCloudParticles(AreaEffectCloudEntity cloud) {
+        boolean localVisuals = com.projectkorra.projectkorra.fabric.client.config.ClientBendingConfig.isVisualsEnabled();
+        if (cloud instanceof PredictedCloud) return !localVisuals;
+        return localVisuals && ExactPredictionRuntime.hideDisplayFallback(cloud);
+    }
+
+    /** ClientWorld runs only the particle phase; a predicted cloud owns its original expiry. */
+    private static final class PredictedCloud extends AreaEffectCloudEntity {
+        PredictedCloud(ClientWorld world, Location origin) {
+            super(world, origin.getX(), origin.getY(), origin.getZ());
+        }
+        @Override public void tick() {
+            if (getDuration() != -1 && age - getWaitTime() >= getDuration()) {
+                discard();
+                return;
+            }
+            setWaiting(age < getWaitTime());
+            super.tick();
+        }
+    }
+
     private static final class ClientAreaEffectCloud extends AreaEffectCloud implements ClientBacked {
         private final AreaEffectCloudEntity value;
         private ClientAreaEffectCloud(AreaEffectCloudEntity value) { this.value = value; }
@@ -1162,8 +1186,7 @@ public final class FabricPredictionMC {
         @Override public void setVelocity(Vector velocity) { ExactPredictionRuntime.setPredictedVelocity(value, nativeVector(velocity)); }
         @Override public void setParticle(Particle particle) { value.setParticleType(FabricMC.particle(particle, null)); }
         @Override public void setColor(Color color) {
-            value.setParticleType(TintedParticleEffect.create(ParticleTypes.ENTITY_EFFECT,
-                    0xFF000000 | color.asRGB()));
+            FabricMC.cloudColor(value, color);
         }
         @Override public void setDuration(int duration) { value.setDuration(duration); }
         @Override public void setRadius(float radius) {
@@ -1173,6 +1196,7 @@ public final class FabricPredictionMC {
         @Override public void setSource(Entity entity) {
             net.minecraft.entity.Entity owner = nativeEntity(entity);
             value.setOwner(owner instanceof net.minecraft.entity.LivingEntity living ? living : null);
+            ExactPredictionRuntime.trackLaunchedProjectile(value, owner);
         }
         @Override public void setRadiusOnUse(float radius) { value.setRadiusOnUse(radius); }
         @Override public void setRadiusPerTick(float radius) { value.setRadiusGrowth(radius); }
@@ -1182,8 +1206,7 @@ public final class FabricPredictionMC {
         }
         @Override public void setWaitTime(int ticks) { value.setWaitTime(ticks); }
         @Override public void addCustomEffect(PotionEffect effect, boolean overwrite) {
-            value.addEffect(new StatusEffectInstance(FabricMC.status(effect.getType()),
-                    effect.getDuration(), effect.getAmplifier()));
+            FabricMC.cloudEffect(value, effect, overwrite);
         }
         @Override public void remove() { value.discard(); }
         @Override public boolean isDead() { return !value.isAlive(); }
@@ -1214,7 +1237,11 @@ public final class FabricPredictionMC {
         @Override public Vector getVelocity() { return commonVector(value.getVelocity()); }
         @Override public void setVelocity(Vector velocity) { ExactPredictionRuntime.setPredictedVelocity(value, nativeVector(velocity)); }
         @Override public Object getShooter() { return entity(value.getOwner()); }
-        @Override public void setShooter(Object shooter) { value.setOwner(nativeEntity(shooter)); }
+        @Override public void setShooter(Object shooter) {
+            var owner = nativeEntity(shooter);
+            value.setOwner(owner);
+            ExactPredictionRuntime.trackLaunchedProjectile(value, owner);
+        }
         @Override public void setPickupStatus(PickupStatus status) {
             value.pickupType = PersistentProjectileEntity.PickupPermission.valueOf(status.name());
         }
@@ -1230,7 +1257,7 @@ public final class FabricPredictionMC {
         @Override public int getEntityId() { return value.getId(); }
         @Override public boolean isOnGround() { return value.isOnGround(); }
         @Override public Block getAttachedBlock() {
-            if (!isInGround()) return null;
+            if (!isInBlock()) return null;
             return block((ClientWorld) value.getEntityWorld(), value.getBlockPos());
         }
         @Override public BoundingBox getBoundingBox() { return commonBox(value.getBoundingBox()); }
@@ -1240,15 +1267,8 @@ public final class FabricPredictionMC {
         @Override public void removeMetadata(String key, Object owner) { FabricPredictionMC.removeMetadata(value, key); }
         @Override public Object handle() { return value; }
         @Override public Object nativeHandle() { return value; }
-        private boolean isInGround() {
-            try {
-                Field field = PersistentProjectileEntity.class.getDeclaredField("inGroundTime");
-                field.setAccessible(true);
-                return field.getInt(value) > 0;
-            } catch (ReflectiveOperationException ignored) {
-                return false;
-            }
-        }
+        @Override public boolean isInBlock() { return FabricMC.arrowInGround(value); }
+        @Override public boolean isInWaterOrBubbleColumn() { return FabricMC.inWaterOrBubble(value); }
     }
 
     private static final class ClientSlime extends Slime implements ClientBacked {

@@ -73,6 +73,7 @@ public final class PaperRollbackActors implements RollbackArenaActions.Native, R
         var key = Identifier.withDefaultNamespace(id.type().name().toLowerCase(Locale.ROOT));
         var nativeType = BuiltInRegistries.ENTITY_TYPE.getOptional(key).orElseThrow();
         var entity = nativeType == net.minecraft.world.entity.EntityType.SNOWBALL ? new PaperRollbackSnowball(scene)
+                : nativeType == net.minecraft.world.entity.EntityType.ARROW ? new PaperRollbackArrow(scene)
                 : Objects.requireNonNull(nativeType.create(server(), EntitySpawnReason.TRIGGERED), "Cannot create private actor " + key);
         entity.setId(id.networkId()); entity.setUUID(id.uuid());
         entity.spawnReason = org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.CUSTOM;
@@ -89,6 +90,14 @@ public final class PaperRollbackActors implements RollbackArenaActions.Native, R
             case "getEyeLocation": {
                 var at = e.getEyePosition(); return new Pose(at.x, at.y, at.z, e.getYRot(), e.getXRot()).at(scene.logical());
             }
+            case "setDamage": ((net.minecraft.world.entity.projectile.arrow.AbstractArrow) e).setBaseDamage((int) args[0]); return null;
+            case "getPickupStatus": return Arrow.PickupStatus.valueOf(((net.minecraft.world.entity.projectile.arrow.AbstractArrow) e).pickup.name());
+            case "setPickupStatus":
+                ((net.minecraft.world.entity.projectile.arrow.AbstractArrow) e).pickup =
+                        net.minecraft.world.entity.projectile.arrow.AbstractArrow.Pickup.valueOf(((Arrow.PickupStatus) args[0]).name());
+                return null;
+            case "isInBlock": return ((net.minecraft.world.entity.projectile.arrow.AbstractArrow) e).isInGround();
+            case "isInWaterOrBubbleColumn": return e.isInWater() || e.level().getBlockState(e.blockPosition()).is(net.minecraft.world.level.block.Blocks.BUBBLE_COLUMN);
             case "setShooter": ((Projectile) e).setOwner(nativeEntity((Entity) args[0])); return null;
             case "getShooter": return logical(((Projectile) e).getOwner());
             case "setSize": ((org.bukkit.entity.Slime) craft).setSize((int) args[0]); return null;

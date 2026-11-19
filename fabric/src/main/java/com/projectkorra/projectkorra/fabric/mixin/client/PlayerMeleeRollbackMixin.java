@@ -9,6 +9,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(PlayerEntity.class)
 abstract class PlayerMeleeRollbackMixin {
+    @com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation(method = "attack", at = @At(
+            value = "INVOKE", target = "Lnet/minecraft/entity/Entity;sidedDamage(Lnet/minecraft/entity/damage/DamageSource;F)Z"))
+    private boolean projectkorra$observeMeleeContact(Entity victim, net.minecraft.entity.damage.DamageSource source,
+            float amount, com.llamalad7.mixinextras.injector.wrapoperation.Operation<Boolean> original) {
+        com.projectkorra.projectkorra.fabric.client.PredictionClient.nativeMeleeDamage((PlayerEntity) (Object) this, victim, amount);
+        return original.call(victim, source, amount);
+    }
+
     @Inject(method = "isCriticalHit", at = @At("HEAD"), cancellable = true)
     private void projectkorra$critical(Entity target, CallbackInfoReturnable<Boolean> result) {
         if (FabricRollbackMelee.disableCrits((PlayerEntity) (Object) this)) result.setReturnValue(false);

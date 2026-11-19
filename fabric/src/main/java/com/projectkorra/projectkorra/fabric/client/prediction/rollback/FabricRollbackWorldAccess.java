@@ -149,7 +149,7 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
             event.setHitBlock(shot.getWorld().getBlockAt(pos.getX(), pos.getY(), pos.getZ()));
         }
         com.projectkorra.projectkorra.platform.Platform.events().call(event);
-        return event.isCancelled();
+        return event.isCancelled() || projectile.isRemoved();
     }
 
     boolean ownsEntity(Entity entity) { return ownsPlayer(entity) || actors != null && entity != null && actors.actor(entity.getUuid()) == entity; }

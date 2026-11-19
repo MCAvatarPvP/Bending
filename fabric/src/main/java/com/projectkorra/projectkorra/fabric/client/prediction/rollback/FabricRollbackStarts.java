@@ -84,6 +84,10 @@ public final class FabricRollbackStarts {
                         @Override public void correction(RollbackStateCorrection correction) { runtime.correction(correction); }
                         @Override public void authority(RollbackAuthorityUpdate update) { runtime.authority(update); }
                         @Override public void stop(RollbackStartServerEndpoint.Failure failure) {
+                            var logger = org.slf4j.LoggerFactory.getLogger(FabricRollbackStarts.class);
+                            if (failure.cause() == null) logger.info("Rollback session {} stopped: {} ({})",
+                                    session, failure.detail(), failure.reason());
+                            else logger.warn("Rollback session " + session + " stopped: " + failure.detail(), failure.cause());
                             runtime.stop(failure);
                             release(captured);
                         }

@@ -816,14 +816,27 @@ public class PKListener implements Listener {
         CommonDamageHandler.fall(BukkitMC.damageEvent(event));
     }
 
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onMeleeTarget(io.papermc.paper.event.player.PrePlayerAttackEntityEvent event) {
+        var prediction = PaperPredictionServer.activeInstance();
+        if (prediction != null) prediction.observePhysicalAttack(event.getPlayer(), event.getAttacked(),
+                !event.isCancelled() && event.willAttack());
+    }
+
+    private static void withMeleeOwner(EntityDamageByEntityEvent event, Runnable handler) {
+        var prediction = PaperPredictionServer.activeInstance();
+        if (prediction == null) handler.run();
+        else prediction.meleeDamage(event, handler);
+    }
+
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onCommonEntityDamageByEntity(final EntityDamageByEntityEvent event) {
-        CommonDamageHandler.forwardByEntity(BukkitMC.damageEvent(event), BukkitMC.entity(event.getDamager()), Platform.events());
+        withMeleeOwner(event, () -> CommonDamageHandler.forwardByEntity(BukkitMC.damageEvent(event), BukkitMC.entity(event.getDamager()), Platform.events()));
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onPlayerDamageByPlayer(final EntityDamageByEntityEvent e) {
-        CommonDamageHandler.byEntity(BukkitMC.damageEvent(e), BukkitMC.entity(e.getDamager()));
+        withMeleeOwner(e, () -> CommonDamageHandler.byEntity(BukkitMC.damageEvent(e), BukkitMC.entity(e.getDamager())));
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
@@ -1172,7 +1185,7 @@ public class PKListener implements Listener {
             commonEvent.setEntity(commonProjectile);
             commonEvent.setHitEntity(BukkitMC.entity(event.getHitEntity()));
             commonEvent.setHitBlock(BukkitMC.block(event.getHitBlock()));
-            Platform.events().call(commonEvent);
+            PaperPredictionServer.projectileImpact(event.getEntity(), () -> Platform.events().call(commonEvent));
             if (commonEvent.isCancelled()) {
                 event.setCancelled(true);
             }

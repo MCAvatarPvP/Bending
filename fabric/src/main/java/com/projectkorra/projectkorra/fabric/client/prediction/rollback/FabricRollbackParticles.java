@@ -8,39 +8,45 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.particle.Particle;
 import java.util.*;
 
-/** Keeps provisional particles removable until their tick is finalized and Paper supplies the authoritative presentation. */
+/** Presents each reconciled particle once and lets confirmed particles finish their normal lifetime. */
 final class FabricRollbackParticles implements RollbackClientRuntime.Output<RollbackDomain.Checkpoint, Object> {
     private final MinecraftClient client;
     private final FabricRollbackNativeScene.Duel duel;
     private final UUID viewer;
-    private final NavigableMap<Long, List<Particle>> provisional = new TreeMap<>();
-    private long head = -1, revision = -1;
-    FabricRollbackParticles(MinecraftClient client, FabricRollbackNativeScene.Duel duel) {
-        this.client = client; this.duel = duel; viewer = client.player.getUuid();
+    private final RollbackReplicaTimeline<RollbackDomain.Checkpoint, RollbackPlayerInput, Object> timeline;
+    private final FabricRollbackParticleHistory<Particle> history;
+    private long head = -1;
+    FabricRollbackParticles(MinecraftClient client, FabricRollbackNativeScene.Duel duel,
+            RollbackReplicaTimeline<RollbackDomain.Checkpoint, RollbackPlayerInput, Object> timeline) {
+        this.client = client;
+        this.duel = duel;
+        this.timeline = timeline;
+        viewer = client.player.getUuid();
+        history = new FabricRollbackParticleHistory<>(viewer, this::draw, Particle::markDead);
     }
     @Override public void update(RollbackEngine.Update<RollbackDomain.Checkpoint, RollbackPlayerInput, Object> update) {
-        if (update.replayedFrom() >= 0) clear(provisional.tailMap(update.replayedFrom(), true));
-        clear(provisional.headMap(update.confirmed().tick(), true));
         long tick = update.head().tick();
-        if (tick <= update.confirmed().tick() || tick == head && revision == update.revision()) return;
-        head = tick; revision = update.revision();
-        clear(provisional.subMap(tick, true, tick, true));
-        var drawn = new ArrayList<Particle>();
-        provisional.put(tick, drawn);
-        var random = new Random(tick ^ viewer.getLeastSignificantBits());
-        int remaining = 16_384;
-        for (Object item : update.head().effects()) {
-            if (remaining == 0) break;
-            if (item instanceof RollbackArenaActions.ParticleOutput effect && (effect.viewer() == null || effect.viewer().equals(viewer)))
-                remaining -= draw(effect, random, drawn, remaining);
+        if (!com.projectkorra.projectkorra.fabric.client.config.ClientBendingConfig.isVisualsEnabled()) {
+            history.clear();
+            head = tick;
+            return;
         }
+        history.confirm(update.confirmed().tick(), update.finalizedEffects());
+        long first = update.replayedFrom() < 0 ? head + 1 : Math.min(head + 1, update.replayedFrom());
+        first = Math.max(first, update.confirmed().tick() + 1);
+        if (first == tick) history.frame(tick, update.head().effects());
+        else if (first < tick) {
+            for (var frame : timeline.frames(first, tick)) history.frame(frame.tick(), frame.effects());
+        }
+        head = tick;
     }
-    private int draw(RollbackArenaActions.ParticleOutput event, Random rng, List<Particle> drawn, int remaining) {
+    private List<Particle> draw(long tick, int ordinal, RollbackArenaActions.ParticleOutput event, int attempts) {
         var particle = FabricMC.particle(com.projectkorra.projectkorra.platform.mc.Particle.valueOf(event.particle()), payload(event.data()));
-        if (particle == null) return 0;
+        if (particle == null) return List.of();
+        var rng = new Random(viewer.getLeastSignificantBits() ^ tick * 31 + ordinal);
+        var drawn = new ArrayList<Particle>();
         var pos = event.position();
         int count = event.count();
-        int attempts = Math.min(remaining, Math.max(1, count));
         for (int i = 0; i < attempts; i++) {
             double x = pos.x(), y = pos.y(), z = pos.z();
             double dx = event.x(), dy = event.y(), dz = event.z();
@@ -51,7 +57,7 @@ final class FabricRollbackParticles implements RollbackClientRuntime.Output<Roll
             var visual = client.particleManager.addParticle(particle, x, y, z, dx * event.extra(), dy * event.extra(), dz * event.extra());
             if (visual != null) drawn.add(visual);
         }
-        return attempts;
+        return drawn;
     }
     private Object payload(Object data) {
         return switch (data) {
@@ -64,9 +70,5 @@ final class FabricRollbackParticles implements RollbackClientRuntime.Output<Roll
             default -> data;
         };
     }
-    private void clear(Map<Long, List<Particle>> range) {
-        range.values().forEach(effects -> effects.forEach(Particle::markDead));
-        range.clear();
-    }
-    @Override public void stop(RollbackStartServerEndpoint.Failure failure) { clear(provisional); }
+    @Override public void stop(RollbackStartServerEndpoint.Failure failure) { history.clear(); }
 }

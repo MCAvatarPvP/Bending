@@ -248,6 +248,66 @@ public abstract class PaperPredictionInput extends PaperPredictionEffects {
         return best;
     }
 
+    private Action announceInput(Player player, Session session, PaperPredictionProtocol.InputKind kind, long sequence,
+                                 long clientSequence, int slot, String ability, Location origin, boolean predictable) {
+        Action action = null;
+        if (predictable) {
+            action = new Action(player.getUniqueId(), sequence, tick, kind, slot, ability, origin.getX(), origin.getY(),
+                    origin.getZ(), origin.getYaw(), origin.getPitch(), PredictionActionSeed.from(kind.name(), slot,
+                    ability, origin.getX(), origin.getY(), origin.getZ(), origin.getYaw(), origin.getPitch()), true);
+            action.clientSequence = clientSequence;
+            session.actions.put(sequence, action);
+            while (session.actions.size() > 128) session.actions.remove(session.actions.keySet().iterator().next());
+        }
+        send(player, PaperPredictionProtocol.NATIVE_ACTION, PaperPredictionProtocol.nativeAction(session.session, sequence,
+                predictable ? clientSequence : 0L, tick, kind, slot, ability, origin.getX(), origin.getY(), origin.getZ(),
+                origin.getYaw(), origin.getPitch(), predictable));
+        return action;
+    }
+
+    public void observePhysicalAttack(Player player, org.bukkit.entity.Entity target, boolean accepted) {
+        var session = sessions.get(player.getUniqueId());
+        if (session != null) session.melee.attack(tick, target.getEntityId(), target.getUniqueId(), accepted);
+    }
+
+    public void meleeDamage(org.bukkit.event.entity.EntityDamageByEntityEvent event, Runnable listener) {
+        if (!(event.getDamager() instanceof Player player)
+                || event.getCause() != org.bukkit.event.entity.EntityDamageEvent.DamageCause.ENTITY_ATTACK
+                || rollbackInputs.blocksLegacy(player.getUniqueId())
+                || !(event.getEntity() instanceof org.bukkit.entity.LivingEntity living)
+                || com.projectkorra.projectkorra.util.DamageHandler.isReceivingDamage(BukkitMC.living(living))) {
+            listener.run();
+            return;
+        }
+        var session = sessions.get(player.getUniqueId());
+        if (session == null || !session.ready) { listener.run(); return; }
+        if (session.meleeEvent != event) {
+            var tag = session.melee.damage(tick, living.getEntityId(), living.getUniqueId());
+            if (tag == null || tag.slot() != player.getInventory().getHeldItemSlot()) { listener.run(); return; }
+            var common = BukkitMC.player(player);
+            var bender = BendingPlayer.getBendingPlayer(common);
+            var kind = PaperPredictionProtocol.InputKind.LEFT_CLICK;
+            String ability = logicalInputAbility(common, bender, kind, bender == null ? "" : bender.getAbilities().get(tag.slot() + 1));
+            if (!ability.equalsIgnoreCase(tag.ability()) || !session.supportedAbilities.contains(ability.toLowerCase(Locale.ROOT))) {
+                listener.run();
+                return;
+            }
+            session.meleeSwing = announceInput(player, session, kind, ++session.lastSequence, tag.sequence(),
+                    tag.slot(), ability, player.getEyeLocation(), true);
+            session.meleeEvent = event;
+        }
+        var action = session.meleeSwing;
+        var before = identitySet(CoreAbility.getAbilitiesByInstances());
+        runWithOwnerAndSequence(action.owner, action.sequence, listener);
+        for (var created : CoreAbility.getAbilitiesByInstances()) {
+            if (!before.contains(created) && created.getPlayer() != null && action.owner.equals(created.getPlayer().getUniqueId())) {
+                abilityCreationActions.putIfAbsent(created, action);
+                abilityActions.put(created, action);
+                action.meleeCreations.add(created.getName());
+            }
+        }
+    }
+
     protected CommonInputHandler.InputResult processInput(
             Player player, Session session, PaperPredictionProtocol.InputKind kind,
             Supplier<CommonInputHandler.InputResult> nativeInput) {
@@ -255,7 +315,7 @@ public abstract class PaperPredictionInput extends PaperPredictionEffects {
         if (player == null || !player.isOnline() || sessions.get(player.getUniqueId()) != session) {
             return nativeInput.get();
         }
-        final long sequence = ++session.lastSequence;
+        session.melee.clear();
         final Location origin = player.getEyeLocation();
         BendingPlayer bending = BendingPlayer.getBendingPlayer(BukkitMC.player(player));
         com.projectkorra.projectkorra.platform.mc.entity.Player commonPlayer = BukkitMC.player(player);
@@ -272,22 +332,15 @@ public abstract class PaperPredictionInput extends PaperPredictionEffects {
         // packet on the same ordered connection. Attach it before emitting any
         // authoritative receipt so every downstream subsystem receives the
         // exact cross-runtime identity instead of guessing by pose.
-        final Action action = predictable
-                ? new Action(player.getUniqueId(), sequence, tick,
-                kind, selectedSlot, abilityName, origin.getX(), origin.getY(), origin.getZ(),
-                origin.getYaw(), origin.getPitch(),
-                PredictionActionSeed.from(kind.name(), selectedSlot, abilityName,
-                        origin.getX(), origin.getY(), origin.getZ(), origin.getYaw(), origin.getPitch()), true)
-                : null;
-        if (action != null) {
-            action.clientSequence = clientActionSequence;
-            session.actions.put(sequence, action);
-        }
-        send(player, PaperPredictionProtocol.NATIVE_ACTION,
-                PaperPredictionProtocol.nativeAction(session.session, sequence,
-                        action == null ? 0L : action.clientSequence, tick, kind, selectedSlot,
-                        abilityName, origin.getX(), origin.getY(), origin.getZ(), origin.getYaw(),
-                        origin.getPitch(), predictable));
+        var preceding = session.meleeSwing;
+        session.meleeSwing = null;
+        session.meleeEvent = null;
+        boolean sameSwing = preceding != null && kind == PaperPredictionProtocol.InputKind.LEFT_CLICK
+                && preceding.clientSequence == clientActionSequence && preceding.selectedSlot == selectedSlot
+                && preceding.ability.equalsIgnoreCase(abilityName) && tick - preceding.acceptedTick <= 2 && predictable;
+        final long sequence = sameSwing ? preceding.sequence : ++session.lastSequence;
+        final Action action = sameSwing ? preceding : announceInput(player, session, kind, sequence,
+                clientActionSequence, selectedSlot, abilityName, origin, predictable);
 
         final PaperPredictionProtocol.InputVeto veto = consumeInputVeto(session, clientActionSequence);
         final boolean locallyRejectedOnCooldown = predictable && clientActionSequence > 0L
@@ -327,9 +380,9 @@ public abstract class PaperPredictionInput extends PaperPredictionEffects {
         }
         final boolean comboRecorded = latestComboInput(commonPlayer) != comboBefore;
         while (session.actions.size() > 128) session.actions.remove(session.actions.keySet().iterator().next());
-        boolean createdAnyAbility = false;
-        boolean createdMatchingAbility = false;
-        final List<String> createdAbilities = new ArrayList<>();
+        final List<String> createdAbilities = new ArrayList<>(action.meleeCreations);
+        boolean createdAnyAbility = !createdAbilities.isEmpty();
+        boolean createdMatchingAbility = createdAbilities.stream().anyMatch(abilityName::equalsIgnoreCase);
         for (CoreAbility candidate : CoreAbility.getAbilitiesByInstances()) {
             if (candidate.getPlayer() == null || !candidate.getPlayer().getUniqueId().equals(player.getUniqueId()))
                 continue;
@@ -387,7 +440,7 @@ public abstract class PaperPredictionInput extends PaperPredictionEffects {
             }
         }
         action.locallyPredicted = createdAnyAbility || trackingResult.handled()
-                || action.tempBlockOrdinal > 0 || action.tempFallingBlockOrdinal > 0
+                || action.tempBlockOrdinal > 0 || action.tempFallingBlockOrdinal > 0 || action.projectileOrdinal > 0
                 || !action.directBlockOrdinals.isEmpty() || !action.velocityOrdinals.isEmpty()
                 || !action.abilityStateOrdinals.isEmpty() || !action.glidingStateOrdinals.isEmpty();
         flushTempBlocks();

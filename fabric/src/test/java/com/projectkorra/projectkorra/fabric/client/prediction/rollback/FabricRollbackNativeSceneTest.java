@@ -132,6 +132,44 @@ class FabricRollbackNativeSceneTest {
         assertEquals(original, player.ownedPlayer().getEntityPos());
     }
 
+    @Test void nativeDartAndSmokescreenUseTheirOwnedArrowAndPotionCloud() throws Exception {
+        var duel = FabricRollbackNativeScene.importDuel(bootstrapData(), FabricRollbackTestRegistry.simulationRegistries(),
+                FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);
+        var caster = duel.views().players().values().iterator().next();
+        var arrow = caster.launchProjectile(com.projectkorra.projectkorra.platform.mc.entity.Arrow.class);
+        var nativeArrow = (net.minecraft.entity.projectile.ArrowEntity) duel.actors().nativeEntity(arrow);
+        arrow.setDamage(0);
+        arrow.setCritical(true);
+        arrow.setPickupStatus(com.projectkorra.projectkorra.platform.mc.entity.Arrow.PickupStatus.DISALLOWED);
+        assertSame(caster, arrow.getShooter());
+        assertTrue(nativeArrow.isCritical());
+        assertEquals(net.minecraft.entity.projectile.PersistentProjectileEntity.PickupPermission.DISALLOWED, nativeArrow.pickupType);
+        assertFalse(arrow.isInBlock());
+        assertFalse(arrow.isInWaterOrBubbleColumn());
+
+        var cloud = duel.scene().logical().spawn(caster.getEyeLocation(), com.projectkorra.projectkorra.platform.mc.entity.AreaEffectCloud.class);
+        var nativeCloud = (net.minecraft.entity.AreaEffectCloudEntity) duel.actors().nativeEntity(cloud);
+        var effect = com.projectkorra.projectkorra.platform.mc.potion.PotionEffectType.BLINDNESS;
+        cloud.addCustomEffect(new com.projectkorra.projectkorra.platform.mc.potion.PotionEffect(effect, 40, 2), false);
+        cloud.setSource(caster);
+        cloud.setDuration(80);
+        cloud.setRadius(4.0F);
+        cloud.setColor(com.projectkorra.projectkorra.platform.mc.Color.BLACK);
+        cloud.setWaitTime(0);
+        cloud.setReapplicationDelay(10);
+        cloud.addCustomEffect(new com.projectkorra.projectkorra.platform.mc.potion.PotionEffect(effect, 5, 1), false);
+        var access = (com.projectkorra.projectkorra.fabric.mixin.client.AreaEffectCloudEntityAccessor) nativeCloud;
+        var contents = access.projectkorra$potionContents();
+        assertEquals(1, contents.customEffects().size());
+        assertEquals(2, contents.customEffects().getFirst().getAmplifier());
+        assertEquals(0, contents.customColor().orElseThrow());
+        assertEquals(80, nativeCloud.getDuration());
+        assertEquals(4F, nativeCloud.getRadius());
+        assertSame(duel.actors().nativeEntity(caster), nativeCloud.getOwner());
+        cloud.addCustomEffect(new com.projectkorra.projectkorra.platform.mc.potion.PotionEffect(effect, 5, 1), true);
+        assertEquals(1, access.projectkorra$potionContents().customEffects().getFirst().getAmplifier());
+    }
+
     @Test void privatePassengerTicksOnceAndEjectDetachesItsNativeVehicle() throws Exception {
         var duel = FabricRollbackNativeScene.importDuel(bootstrapData(), FabricRollbackTestRegistry.simulationRegistries(),
                 FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);

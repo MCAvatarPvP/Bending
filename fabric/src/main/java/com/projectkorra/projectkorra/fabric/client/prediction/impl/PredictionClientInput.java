@@ -65,6 +65,13 @@ public abstract class PredictionClientInput extends PredictionClientTick {
         // counter from its native callback. The vanilla packet remains the
         // only event which schedules gameplay.
         long sequence = ++nextSequence;
+        meleeContacts.entrySet().removeIf(entry -> sequence - entry.getKey() > 512);
+        if (kind == PredictionPayloads.InputKind.LEFT_CLICK && acceptedAttack != null
+                && Float.isFinite(acceptedAttack.damage()) && acceptedAttack.tick() == clientTick && currentNativeInputPacket instanceof HandSwingC2SPacket swing
+                && swing.getHand() == Hand.MAIN_HAND) {
+            meleeContacts.put(sequence, acceptedAttack);
+        }
+        acceptedAttack = null;
         int selectedSlot = serverVisibleSelectedSlot(client);
         int localSlot = client.player.getInventory().getSelectedSlot();
         String ability = ExactPredictionRuntime.inputAbilityName(selectedSlot, binds.get(selectedSlot + 1), kind);

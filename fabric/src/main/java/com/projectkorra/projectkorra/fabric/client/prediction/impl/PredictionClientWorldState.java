@@ -142,6 +142,11 @@ public abstract class PredictionClientWorldState extends PredictionClientServerS
         if (client.player != null) ExactPredictionRuntime.noteAbilityStateOwner(client.player, owner);
     }
 
+    protected void onProjectileOwner(MinecraftClient client, PredictionPayloads.ProjectileOwner receipt) {
+        if (active && receipt.sessionId().equals(sessionId) && client.player != null
+                && client.player.getUuid().equals(receipt.owner())) ExactPredictionRuntime.noteProjectileOwner(receipt);
+    }
+
     protected void onTempFallingBlock(MinecraftClient client,
                                     PredictionPayloads.TempFallingBlockReceipt receipt) {
         if (client.player != null) ExactPredictionRuntime.noteTempFallingBlock(client.player, receipt);

@@ -87,6 +87,8 @@ public abstract class PaperPredictionTransport extends PaperPredictionUtilities 
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, RollbackInputPacket.CHANNEL, this);
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, RollbackStartPacket.CLIENT_CHANNEL, this);
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, RollbackBootstrapPacket.CLIENT_CHANNEL, this);
+        Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.PROJECTILE_OWNER, this);
+        Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.MELEE_ACTION, this);
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.HELLO, this);
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.CLIENT_DISABLED, this);
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, PaperPredictionProtocol.READY, this);
@@ -136,6 +138,8 @@ public abstract class PaperPredictionTransport extends PaperPredictionUtilities 
         messenger.registerOutgoingPluginChannel(plugin, RollbackStartPacket.SERVER_CHANNEL);
         messenger.registerOutgoingPluginChannel(plugin, RollbackAuthorityChunk.CHANNEL);
         messenger.registerOutgoingPluginChannel(plugin, RollbackStateCorrectionChunk.CHANNEL);
+        messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.PROJECTILE_OWNER, this);
+        messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.MELEE_ACTION, this);
         messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.HELLO, this);
         messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.CLIENT_DISABLED, this);
         messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.READY, this);
@@ -153,6 +157,7 @@ public abstract class PaperPredictionTransport extends PaperPredictionUtilities 
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.VELOCITY_OWNER_V2);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.ABILITY_STATE_OWNER);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.GLIDING_STATE_OWNER);
+        messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.PROJECTILE_OWNER);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.TEMP_FALLING_BLOCK);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.TEMP_FALLING_BLOCK_PREPARE);
         messenger.registerOutgoingPluginChannel(plugin, PaperPredictionProtocol.DIRECT_BLOCK);
@@ -232,6 +237,7 @@ public abstract class PaperPredictionTransport extends PaperPredictionUtilities 
 
     @Override
     public void onPluginMessageReceived(String channel, Player player, byte[] message) {
+        if (PaperPredictionProtocol.PROJECTILE_OWNER.equals(channel)) return; // Advertises support to exact clients.
         Runnable handling = () -> {
             try {
                 switch (channel) {
@@ -244,6 +250,12 @@ public abstract class PaperPredictionTransport extends PaperPredictionUtilities 
                     case PaperPredictionProtocol.READY -> onReady(player, PaperPredictionProtocol.readReady(message));
                     case PaperPredictionProtocol.INPUT_VETO -> onInputVeto(player,
                             PaperPredictionProtocol.readInputVeto(message));
+                    case PaperPredictionProtocol.MELEE_ACTION -> {
+                        var tag = PaperPredictionProtocol.readMeleeAction(message);
+                        var session = valid(player, tag.session());
+                        if (session != null && session.ready && !rollbackInputs.blocksLegacy(player.getUniqueId()))
+                            session.melee.offer(tag, tick);
+                    }
                     case PaperPredictionProtocol.ACTION_TAG -> onActionTag(player,
                             PaperPredictionProtocol.readActionTag(message));
                     case PaperPredictionProtocol.HIT_CLAIM -> onHitClaim(player,
@@ -262,6 +274,12 @@ public abstract class PaperPredictionTransport extends PaperPredictionUtilities 
     @Override
     public void run() {
         tick++;
+        for (var session : sessions.values()) {
+            if (session.meleeSwing != null && tick - session.meleeSwing.acceptedTick > 2) {
+                session.meleeSwing = null;
+                session.meleeEvent = null;
+            }
+        }
         rollbackStarts.tick(tick);
         rollbackInputs.tick();
         recordPlayerHistory();

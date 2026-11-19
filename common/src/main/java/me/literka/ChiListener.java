@@ -3,7 +3,6 @@ package me.literka;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
 
 import com.projectkorra.projectkorra.BendingPlayer;
-import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.ability.Ability;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.event.*;
@@ -26,8 +25,6 @@ import me.literka.util.Utils;
 import java.util.*;
 
 public class ChiListener implements Listener {
-    private final Set<UUID> ability = new HashSet<>();
-
 
     @EventHandler
     public void onSwing(PlayerSwingEvent event) {
@@ -85,12 +82,11 @@ public class ChiListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST)
     public void onEntityHit(EntityDamageByEntityEvent event) {
-        DamageCause cause = event.getCause();
-        if (ability.remove(event.getDamager().getUniqueId())) return;
+        if (event.getEntity() instanceof LivingEntity target && DamageHandler.isReceivingDamage(target)) return;
 
         if (event.getDamager() instanceof Player p) {
             BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(p);
-            if (bPlayer.isChiBlocked() && !ChiRework.config().getBoolean("General.AllowHitsOnBlock")) {
+            if (bPlayer != null && bPlayer.isChiBlocked() && !ChiRework.config().getBoolean("General.AllowHitsOnBlock")) {
                 event.setCancelled(true);
                 return;
             }
@@ -107,7 +103,7 @@ public class ChiListener implements Listener {
         if (event.getDamager() instanceof Player player && event.getEntity() instanceof LivingEntity le) {
             BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
 
-            if (bPlayer == null || DamageHandler.isReceivingDamage(le)) return;
+            if (bPlayer == null) return;
 
             if (canActivateHitAbility(bPlayer, "Uppercut")) {
                 new Uppercut(player, le);
@@ -175,19 +171,8 @@ public class ChiListener implements Listener {
         if (!(event.getDamager() instanceof Player damager)) return;
         if (!(event.getEntity() instanceof Player victim)) return;
 
-        BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(victim);
-        boolean oldChi = !bPlayer.getElements().contains(ChiRework.MODERN_CHI);
-        boolean cancel;
-
-        if (oldChi) {
-            cancel = ChiRework.config().getBoolean("Abilities.RopeDart.OldCancelOnHit");
-        } else {
-            cancel = ChiRework.config().getBoolean("Abilities.RopeDart.CancelOnHit");
-        }
         RopeDart ropeDart = CoreAbility.getAbility(victim, RopeDart.class);
-        if (ropeDart != null && cancel) {
-            ropeDart.removeWithCooldown();
-        }
+        if (!event.isCancelled() && ropeDart != null && ropeDart.cancelsOnHit()) ropeDart.removeWithCooldown();
     }
 
     @EventHandler
@@ -237,7 +222,8 @@ public class ChiListener implements Listener {
 
         if (!(event.getEntity() instanceof Arrow arrow)) return;
 
-        if (arrow.hasMetadata("ropedart") &&
+        RopeDart dart = RopeDart.forProjectile(arrow);
+        if (dart != null &&
                 (event.getHitEntity() instanceof ShulkerBullet || event.getHitEntity() instanceof FallingBlock)) {
             event.setCancelled(true);
         }
@@ -245,13 +231,14 @@ public class ChiListener implements Listener {
         if (event.getHitEntity() instanceof Player p) {
             Deflect deflect = CoreAbility.getAbility(p, Deflect.class);
             if (deflect != null) {
+                if (dart != null) dart.deflected(p);
                 deflect.onProjectileHit(event);
                 return;
             }
         }
 
-        if (arrow.hasMetadata("ropedart") && event.getHitEntity() instanceof LivingEntity le) {
-            ((RopeDart) arrow.getMetadata("ropedart").get(0).value()).setTarget(le);
+        if (dart != null && event.getHitEntity() instanceof LivingEntity le) {
+            if (!event.isCancelled()) dart.setTarget(le);
             event.setCancelled(true);
         }
 
@@ -279,7 +266,6 @@ public class ChiListener implements Listener {
         Player source = event.getSource();
         if (source == null) return;
         BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(source);
-        ability.add(event.getSource().getUniqueId());
 
         if (event.getEntity() instanceof LivingEntity le && event.getAbility().getName().equalsIgnoreCase("FlyingKick")) {
             boolean canFusion = ChiRework.config().getBoolean("Abilities.Uppercut.AllowFlyingKickFusion");
@@ -304,48 +290,13 @@ public class ChiListener implements Listener {
 
         Entity affected = event.getAffected();
         String abilityName = ability.getName();
-        Player player;
-        CoreAbility abil;
         List<String> cancel;
-
-        if (affected.hasMetadata("ropedart")) {
-            abil = (RopeDart) affected.getMetadata("ropedart").get(0).value();
-            player = abil.getPlayer();
-
-            BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-            boolean oldChi = bPlayer.getElements().contains(Element.CHI);
-
-            if (oldChi) {
-                cancel = ChiRework.config().getStringList("Abilities.RopeDart.OldCancelVelocityAbilities");
-            } else {
-                cancel = ChiRework.config().getStringList("Abilities.RopeDart.CancelVelocityAbilities");
-            }
-
-            for (String name : cancel) {
-                if (abilityName.equalsIgnoreCase(name)) {
-                    event.setCancelled(true);
-                    break;
-                }
-            }
-        } else if ((abil = CoreAbility.getAbility(player = ability.getPlayer(), RopeDart.class)) != null && player.getUniqueId() == affected.getUniqueId()) {
-            BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-            boolean oldChi = bPlayer.getElements().contains(Element.CHI);
-
-            if (oldChi) {
-                cancel = ChiRework.config().getStringList("Abilities.RopeDart.OldCancellingAbilities");
-            } else {
-                cancel = ChiRework.config().getStringList("Abilities.RopeDart.CancellingAbilities");
-            }
-
-            for (String name : cancel) {
-                if (abilityName.equalsIgnoreCase(name)) {
-                    if (abil instanceof RopeDart ropeDart) {
-                        ropeDart.removeWithCooldown();
-                    } else {
-                        abil.remove();
-                    }
-                }
-            }
+        RopeDart projectile = affected instanceof Arrow arrow ? RopeDart.forProjectile(arrow) : null;
+        if (projectile != null) {
+            if (projectile.cancelsVelocity(abilityName, true)) event.setCancelled(true);
+        } else if (ability.getPlayer() != null && ability.getPlayer().getUniqueId().equals(affected.getUniqueId())) {
+            RopeDart dart = CoreAbility.getAbility(ability.getPlayer(), RopeDart.class);
+            if (dart != null && dart.cancelsVelocity(abilityName, false)) dart.removeWithCooldown();
         } else if (affected.hasMetadata("stickybomb")) {
             cancel = ChiRework.config().getStringList("Abilities.StickyBomb.CancelVelocityAbilities");
 
@@ -370,29 +321,29 @@ public class ChiListener implements Listener {
         Player player = event.getPlayer();
         BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
         if (bPlayer != null) bPlayer.unblockChi();
-        Utils.chiblocks.remove(player);
-        StickyBomb.cooldowns.remove(player);
-        StickyBomb.throwTime.remove(player);
+        Utils.chiBlocks().remove(player);
+        StickyBomb.cooldowns().remove(player);
+        StickyBomb.throwTimes().remove(player);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
-        Utils.chiblocks.remove(player);
-        StickyBomb.cooldowns.remove(player);
-        StickyBomb.throwTime.remove(player);
+        Utils.chiBlocks().remove(player);
+        StickyBomb.cooldowns().remove(player);
+        StickyBomb.throwTimes().remove(player);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onReload(BendingReloadEvent event) {
         Platform.scheduler().runLater(() -> {
-            for (Map.Entry<Player, Long> entry : Utils.chiblocks.entrySet()) {
+            for (Map.Entry<Player, Long> entry : Utils.chiBlocks().entrySet()) {
                 BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(entry.getKey());
                 if (bPlayer != null) bPlayer.unblockChi();
             }
-            Utils.chiblocks.clear();
-            StickyBomb.cooldowns.clear();
-            StickyBomb.throwTime.clear();
+            Utils.chiBlocks().clear();
+            StickyBomb.cooldowns().clear();
+            StickyBomb.throwTimes().clear();
             ChiRework.config.reload();
             ChiRework.plugin.setupConfig();
             Platform.logger().info("Reloaded ChiRework");

@@ -544,6 +544,37 @@ public final class PredictionPayloads {
         @Override public Id<TempFallingBlockPrepare> getId() { return ID; }
     }
 
+    public record MeleeAction(UUID sessionId, long localSequence, int slot, String ability, int targetId,
+                              UUID targetUuid) implements CustomPayload {
+        public static final Id<MeleeAction> ID = id("melee_action");
+        public static final PacketCodec<RegistryByteBuf, MeleeAction> CODEC = PacketCodec.of(MeleeAction::write, MeleeAction::new);
+        private MeleeAction(RegistryByteBuf buf) {
+            this(buf.readUuid(), buf.readVarLong(), buf.readVarInt(), buf.readString(128), buf.readVarInt(), buf.readUuid());
+        }
+        private void write(RegistryByteBuf buf) {
+            buf.writeUuid(sessionId); buf.writeVarLong(localSequence); buf.writeVarInt(slot); buf.writeString(ability, 128);
+            buf.writeVarInt(targetId); buf.writeUuid(targetUuid);
+        }
+        @Override public Id<MeleeAction> getId() { return ID; }
+    }
+
+    public record ProjectileOwner(UUID sessionId, long actionSequence, int ordinal, UUID owner, int entityId,
+                                  UUID entityUuid, String ability, String type) implements CustomPayload {
+        public static final Id<ProjectileOwner> ID = id("projectile_owner");
+        public static final PacketCodec<RegistryByteBuf, ProjectileOwner> CODEC =
+                PacketCodec.of(ProjectileOwner::write, ProjectileOwner::new);
+        private ProjectileOwner(RegistryByteBuf buf) {
+            this(buf.readUuid(), buf.readVarLong(), buf.readVarInt(), buf.readUuid(), buf.readVarInt(),
+                    buf.readUuid(), buf.readString(128), buf.readString(64));
+        }
+        private void write(RegistryByteBuf buf) {
+            buf.writeUuid(sessionId); buf.writeVarLong(actionSequence); buf.writeVarInt(ordinal);
+            buf.writeUuid(owner); buf.writeVarInt(entityId); buf.writeUuid(entityUuid);
+            buf.writeString(ability, 128); buf.writeString(type, 64);
+        }
+        @Override public Id<ProjectileOwner> getId() { return ID; }
+    }
+
     public record TempFallingBlockReceipt(long serverTick, long actionSequence, int spawnOrdinal,
                                           UUID abilityOwner, int serverEntityId,
                                           String ability) implements CustomPayload {
@@ -724,6 +755,8 @@ public final class PredictionPayloads {
         PayloadTypeRegistry.playS2C().register(AbilityStateOwner.ID, AbilityStateOwner.CODEC);
         PayloadTypeRegistry.playS2C().register(GlidingStateOwner.ID, GlidingStateOwner.CODEC);
         PayloadTypeRegistry.playS2C().register(TempFallingBlockPrepare.ID, TempFallingBlockPrepare.CODEC);
+        PayloadTypeRegistry.playC2S().register(MeleeAction.ID, MeleeAction.CODEC);
+        PayloadTypeRegistry.playS2C().register(ProjectileOwner.ID, ProjectileOwner.CODEC);
         PayloadTypeRegistry.playS2C().register(TempFallingBlockReceipt.ID, TempFallingBlockReceipt.CODEC);
         PayloadTypeRegistry.playS2C().register(DirectBlockReceipt.ID, DirectBlockReceipt.CODEC);
         PayloadTypeRegistry.playS2C().register(AbilityRemoved.ID, AbilityRemoved.CODEC);

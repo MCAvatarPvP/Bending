@@ -42,6 +42,27 @@ public class BoundingBox {
         return new BoundingBox(new Vector(min.x - amount, min.y - amount, min.z - amount), new Vector(max.x + amount, max.y + amount, max.z + amount));
     }
 
+    /** First point inside this closed box along start + t * delta, from 0 to 1. */
+    public double segmentEntry(Vector start, Vector delta) {
+        double[] origin = {start.getX(), start.getY(), start.getZ()};
+        double[] step = {delta.getX(), delta.getY(), delta.getZ()};
+        double[] lower = {getMinX(), getMinY(), getMinZ()};
+        double[] upper = {getMaxX(), getMaxY(), getMaxZ()};
+        double entry = 0, exit = 1;
+        for (int axis = 0; axis < 3; axis++) {
+            if (step[axis] == 0) {
+                if (origin[axis] < lower[axis] || origin[axis] > upper[axis]) return Double.POSITIVE_INFINITY;
+                continue;
+            }
+            double a = (lower[axis] - origin[axis]) / step[axis];
+            double b = (upper[axis] - origin[axis]) / step[axis];
+            entry = Math.max(entry, Math.min(a, b));
+            exit = Math.min(exit, Math.max(a, b));
+            if (entry > exit) return Double.POSITIVE_INFINITY;
+        }
+        return entry;
+    }
+
     public BoundingBox shift(double x, double y, double z) {
         return new BoundingBox(new Vector(min.x + x, min.y + y, min.z + z), new Vector(max.x + x, max.y + y, max.z + z));
     }

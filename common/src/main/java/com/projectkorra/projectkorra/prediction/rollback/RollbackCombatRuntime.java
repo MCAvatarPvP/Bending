@@ -170,42 +170,40 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
                         state.manager = new BendingManager();
                     });
         }
-        var engine = domain.call(() -> {
-            var simulation = new RollbackSimulation<RollbackDomain.Checkpoint, I, E>() {
-                @Override public RollbackDomain.Checkpoint snapshot() { return domain.capture(); }
-                @Override public void restore(RollbackDomain.Checkpoint snapshot) { domain.restore(snapshot); }
-                @Override public I predict(UUID participant, I previous) { return execution.predict(participant, previous); }
-                @Override public void step(long tick, Map<UUID, I> inputs, RollbackStep<E> effects) {
-                    Throwable failure = null;
-                    try {
-                        RollbackAbilityGlobals.requireIsolatedManagers();
-                        if (round != null) round.beginTick(tick);
-                        execution.begin(effects);
-                        scheduler.advance(tick);
-                        // The engine supplies UUID order, independent of network arrival order.
-                        inputs.forEach(execution::input);
-                        execution.tickWorld(tick);
-                        RollbackAbilityGlobals.requireIsolatedManagers();
-                        state.manager.run();
-                        var globals = RollbackDomain.abilityGlobals();
-                        if (globals != null) globals.progressMaintenance(tick);
-                        var earth = RollbackEarthTerrain.current();
-                        if (earth != null) earth.scanDue(tick);
-                    } catch (RuntimeException | Error exception) {
-                        failure = exception;
-                        throw exception;
-                    } finally {
-                        try { execution.end(); }
-                        catch (RuntimeException | Error cleanupFailure) {
-                            if (failure == null) throw cleanupFailure;
-                            if (failure != cleanupFailure) failure.addSuppressed(cleanupFailure);
-                        }
+        var simulation = new RollbackSimulation<RollbackDomain.Checkpoint, I, E>() {
+            @Override public RollbackDomain.Checkpoint snapshot() { return domain.capture(); }
+            @Override public void restore(RollbackDomain.Checkpoint snapshot) { domain.restore(snapshot); }
+            @Override public I predict(UUID participant, I previous) { return execution.predict(participant, previous); }
+            @Override public void step(long tick, Map<UUID, I> inputs, RollbackStep<E> effects) {
+                Throwable failure = null;
+                try {
+                    RollbackAbilityGlobals.requireIsolatedManagers();
+                    if (round != null) round.beginTick(tick);
+                    execution.begin(effects);
+                    scheduler.advance(tick);
+                    // The engine supplies UUID order, independent of network arrival order.
+                    inputs.forEach(execution::input);
+                    execution.tickWorld(tick);
+                    RollbackAbilityGlobals.requireIsolatedManagers();
+                    state.manager.run();
+                    var globals = RollbackDomain.abilityGlobals();
+                    if (globals != null) globals.progressMaintenance(tick);
+                    var earth = RollbackEarthTerrain.current();
+                    if (earth != null) earth.scanDue(tick);
+                } catch (RuntimeException | Error exception) {
+                    failure = exception;
+                    throw exception;
+                } finally {
+                    try { execution.end(); }
+                    catch (RuntimeException | Error cleanupFailure) {
+                        if (failure == null) throw cleanupFailure;
+                        if (failure != cleanupFailure) failure.addSuppressed(cleanupFailure);
                     }
                 }
-            };
-            return replica ? RollbackEngine.replica(simulation, orderedInputs, limits, epochMillis, epochNanos)
-                    : new RollbackEngine<>(simulation, orderedInputs, limits, epochMillis, epochNanos);
-        });
+            }
+        };
+        var engine = new RollbackEngine<>(simulation, orderedInputs, limits, epochMillis, epochNanos,
+                replica, domain.bootstrappedState());
         return new RollbackCombatRuntime<>(domain, engine, round);
     }
 

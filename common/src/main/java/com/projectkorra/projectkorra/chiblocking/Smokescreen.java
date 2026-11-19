@@ -54,9 +54,8 @@ public class Smokescreen extends ChiAbility {
 
         for (int i = 0; i < 125; i++) {
             final Location newLoc = new Location(loc.getWorld(), loc.getX() + x, loc.getY() + y, loc.getZ() + z);
-            for (int direction = 0; direction < 8; direction++) {
-                ParticleUtil.spawn(Particle.SMALL_GUST, newLoc, 4, 0.5, 0.5, 0.5);
-            }
+            // All gusts at this point have the same spread and speed in one packet.
+            ParticleUtil.spawn(Particle.SMALL_GUST, newLoc, 32, 0.5, 0.5, 0.5);
             if (z == 2) {
                 z = -2;
             }
@@ -74,7 +73,7 @@ public class Smokescreen extends ChiAbility {
         String name = player.getName();
         Long started = indices.smokeTimes.get(name);
         var smoke = indices.smokeEffects.get(name);
-        if (started != null && (smoke == null || started + smoke.duration >= RollbackClock.millis())) {
+        if (started != null && (smoke == null || RollbackClock.millis() - started >= smoke.duration * 1_000L)) {
             indices.smokeTimes.remove(name);
             indices.smokeEffects.remove(name);
             indices.smokeNames.remove(name);

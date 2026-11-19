@@ -39,6 +39,9 @@ import java.util.function.Function;
  * entity exactly as an alias would.</p>
  */
 public final class ClientEntityReconciliation {
+    private final ClientProjectilePairs<Entity> projectiles = new ClientProjectilePairs<>(entity -> !entity.isRemoved());
+    private final java.util.function.LongUnaryOperator localSequence;
+
     private final Map<Integer, Entity> authoritativeAliases = new HashMap<>();
     private final Set<Integer> tempFallingAliases = new HashSet<>();
     private final Set<Integer> hiddenTempFallingEntities = new HashSet<>();
@@ -57,15 +60,37 @@ public final class ClientEntityReconciliation {
     private final Map<Integer, Long> observedFallingBlockSpawns = new HashMap<>();
     private final Function<String, BlockState> blockStateDecoder;
 
-    public ClientEntityReconciliation(final Function<String, BlockState> blockStateDecoder) {
+    public ClientEntityReconciliation(final Function<String, BlockState> blockStateDecoder,
+                                      java.util.function.LongUnaryOperator localSequence) {
+        this.localSequence = localSequence;
         this.blockStateDecoder = blockStateDecoder;
     }
 
     public void trackSpawn(final long actionSequence, final Entity entity,
                            final boolean allowDisplayFallback) {
         if (actionSequence <= 0L || entity == null) return;
-        predictedSpawns.put(entity, new PredictedSpawn(actionSequence, entity.getEntityPos(), allowDisplayFallback));
+        predictedSpawns.put(entity, new PredictedSpawn(actionSequence, entity.getEntityPos(), allowDisplayFallback, false));
     }
+
+    public static String projectileType(EntityType<?> type) {
+        if (type == EntityType.ARROW) return "ARROW";
+        if (type == EntityType.SNOWBALL) return "SNOWBALL";
+        if (type == EntityType.AREA_EFFECT_CLOUD) return "AREA_EFFECT_CLOUD";
+        return null;
+    }
+
+    public boolean needsLaunchIdentity(Entity entity) {
+        PredictedSpawn spawn = predictedSpawns.get(entity);
+        return spawn != null && !spawn.playerLaunch;
+    }
+
+    public void trackLaunch(long sequence, int ordinal, Entity shooter, Entity projectile, String ability) {
+        predictedSpawns.computeIfPresent(projectile, (entity, spawn) ->
+                new PredictedSpawn(spawn.actionSequence, spawn.origin, spawn.allowDisplayFallback, true));
+        projectiles.launch(sequence, ordinal, shooter.getUuid(), projectileType(projectile.getType()), ability, projectile);
+    }
+
+    public void projectileOwner(PredictionPayloads.ProjectileOwner receipt, long tick) { projectiles.receipt(receipt, tick); }
 
     public boolean isPredictedOwned(final Entity entity) {
         return entity != null && predictedSpawns.containsKey(entity);
@@ -154,8 +179,12 @@ public final class ClientEntityReconciliation {
     }
 
     public boolean reconcileSpawn(final EntitySpawnS2CPacket packet,
-                                  final ClientWorld world, final long tick) {
+                                  final ClientWorld world, final long tick, final boolean projectileReceipts) {
         if (packet == null || world == null) return false;
+        // Keep the server entity tracked and moving while its matching local launch is visible.
+        if (projectileReceipts && (packet.getEntityType() == EntityType.AREA_EFFECT_CLOUD
+                || packet.getEntityData() != 0 && projectileType(packet.getEntityType()) != null))
+            return false;
         if (authoritativeAliases.containsKey(packet.getEntityId())
                 || hiddenTempFallingEntities.contains(packet.getEntityId())) return true;
 
@@ -189,7 +218,8 @@ public final class ClientEntityReconciliation {
         double bestDistance = 1;
         for (Map.Entry<Entity, PredictedSpawn> entry : predictedSpawns.entrySet()) {
             final Entity candidate = entry.getKey();
-            if (candidate == null || candidate.getType() != packet.getEntityType()
+            if (candidate == null || projectileReceipts && entry.getValue().playerLaunch
+                    || candidate.getType() != packet.getEntityType()
                     || authoritativeAliases.containsValue(candidate)
                     || displayFallbacks.isPaired(candidate)
                     || hiddenPredictedDisplays.containsValue(candidate)
@@ -237,7 +267,10 @@ public final class ClientEntityReconciliation {
     }
 
     public boolean hideDisplayFallback(final Entity entity) {
-        return entity instanceof DisplayEntity && displayFallbacks.hide(entity.getId());
+        if (entity == null) return false;
+        if (entity instanceof DisplayEntity) return displayFallbacks.hide(entity.getId());
+        String type = projectileType(entity.getType());
+        return type != null && projectiles.hide(entity.getId(), entity.getUuid(), type, localSequence);
     }
 
     public Entity aliasedEntity(final int serverEntityId) {
@@ -253,6 +286,8 @@ public final class ClientEntityReconciliation {
     public boolean removeHidden(final int serverEntityId) {
         // A fallback is a real vanilla entity: let vanilla destroy it as usual.
         displayFallbacks.remove(serverEntityId);
+        final Entity local = projectiles.remove(serverEntityId, localSequence);
+        if (local != null && !local.isRemoved()) local.discard();
         final VisibleAuthorityPair visible = visibleAuthorityPairs.remove(serverEntityId);
         if (visible != null && visible.discardWithAuthority && !visible.predicted.isRemoved()) {
             visible.predicted.discard();
@@ -271,6 +306,7 @@ public final class ClientEntityReconciliation {
     }
 
     public void expire(final long tick, final int actionRetentionTicks) {
+        projectiles.expire(tick - actionRetentionTicks);
         observedFallingBlockSpawns.entrySet().removeIf(
                 entry -> tick - entry.getValue() > actionRetentionTicks);
         serverTempFallingPrepares.entrySet().removeIf(
@@ -281,6 +317,7 @@ public final class ClientEntityReconciliation {
 
     /** Removes bookkeeping for an action whose normal retention window ended. */
     public void retireAction(final long actionSequence) {
+        projectiles.retire(actionSequence);
         predictedSpawns.entrySet().removeIf(entry -> entry.getValue().actionSequence == actionSequence);
         predictedTempFallingBlocks.keySet().removeIf(key -> key.actionSequence == actionSequence);
         predictedTempFallingOwners.entrySet().removeIf(
@@ -292,6 +329,7 @@ public final class ClientEntityReconciliation {
 
     /** Removes all partial entity state created by a locally failed input. */
     public void rollbackAction(final long actionSequence, final Collection<Entity> spawned) {
+        projectiles.rollback(actionSequence);
         final Set<Entity> actionEntities = spawned == null
                 ? Set.of() : java.util.Collections.newSetFromMap(new IdentityHashMap<>());
         if (spawned != null) actionEntities.addAll(spawned);
@@ -314,6 +352,7 @@ public final class ClientEntityReconciliation {
         hiddenTempFallingEntities.clear();
         hiddenPredictedDisplays.clear();
         displayFallbacks.clear();
+        projectiles.clear();
         visibleAuthorityPairs.clear();
         predictedSpawns.clear();
         predictedTempFallingBlocks.clear();
@@ -342,7 +381,7 @@ public final class ClientEntityReconciliation {
     }
 
     private record VisibleAuthorityPair(Entity predicted, boolean discardWithAuthority) { }
-    private record PredictedSpawn(long actionSequence, Vec3d origin, boolean allowDisplayFallback) { }
+    private record PredictedSpawn(long actionSequence, Vec3d origin, boolean allowDisplayFallback, boolean playerLaunch) { }
     private record TempFallingBlockKey(long actionSequence, int spawnOrdinal) { }
     private record PredictedTempFallingBlock(Entity entity, String ability) { }
     public record PredictedTempFallingOwner(long actionSequence, String ability,

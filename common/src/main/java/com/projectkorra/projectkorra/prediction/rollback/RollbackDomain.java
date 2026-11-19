@@ -126,6 +126,9 @@ public final class RollbackDomain {
         return domain;
     }
 
+    /** Engine construction can retain the checkpoint already taken immediately after bootstrap. */
+    Checkpoint bootstrappedState() { checkThread(); return Objects.requireNonNull(state); }
+
     public static RollbackPrivateRegistries importingRegistries() {
         var domain = ACTIVE.get();
         return domain == null ? null : domain.registries;
@@ -210,7 +213,10 @@ public final class RollbackDomain {
         checkActive();
         var roots = new ArrayList<Object>(local);
         if (globals != null) roots.add(globals);
-        return new Checkpoint(this, graph.capture(roots, shared), globals);
+        long time = RollbackTiming.start();
+        var saved = graph.capture(roots, shared);
+        RollbackTiming.finish(time, "domain.checkpoint", saved.objectCount());
+        return new Checkpoint(this, saved, globals);
     }
 
     public void restore(Checkpoint checkpoint) {
@@ -218,7 +224,9 @@ public final class RollbackDomain {
         Objects.requireNonNull(checkpoint, "checkpoint");
         if (checkpoint.owner != this) throw new IllegalArgumentException("Checkpoint belongs to another rollback domain");
         globals = checkpoint.globals;
+        long time = RollbackTiming.start();
         checkpoint.snapshot.restore();
+        RollbackTiming.finish(time, "domain.restore", checkpoint.objectCount());
     }
 
     public static final class Checkpoint {

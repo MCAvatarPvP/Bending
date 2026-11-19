@@ -185,11 +185,16 @@ public abstract class ExactPredictionInput extends ExactPredictionStartup {
                                     final Supplier<Void> nativeInput = () -> {
                                         switch (kind) {
                                             case LEFT_CLICK:
-                                                CommonInputHandler.handleSwing(player, Set.of(), new HashSet());
-                                                com.projectkorra.projectkorra.platform.mc.entity.Entity target = GeneralMethods.getTargetedEntity(player, 3.0);
-                                                if (target instanceof LivingEntity living && !target.equals(player)) {
-                                                    CommonInputHandler.handleEntityLeftClick(player, living);
+                                                // Vanilla sends a successful attack before its hand-swing packet.
+                                                var nativeTarget = com.projectkorra.projectkorra.fabric.client.PredictionClient.meleeTarget(sequence);
+                                                if (nativeTarget != null && FabricPredictionMC.entity(nativeTarget) instanceof LivingEntity living) {
+                                                    var hit = new com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent(
+                                                            living, com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause.ENTITY_ATTACK,
+                                                            com.projectkorra.projectkorra.fabric.client.PredictionClient.meleeDamage(sequence));
+                                                    com.projectkorra.projectkorra.listener.CommonDamageHandler.forwardByEntity(hit, player, this.platform.events());
+                                                    if (!hit.isCancelled()) com.projectkorra.projectkorra.listener.CommonDamageHandler.byEntity(hit, player);
                                                 }
+                                                CommonInputHandler.handleSwing(player, Set.of(), new HashSet());
                                                 break;
                                             case SNEAK_START:
                                                 com.projectkorra.projectkorra.fabric.client.PredictionClient.withInputSneaking(

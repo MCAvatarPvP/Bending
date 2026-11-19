@@ -189,7 +189,7 @@ public abstract class ExactPredictionState
     );
     protected final ClientSoundAuthority soundAuthority = new ClientSoundAuthority();
     protected final ClientEntityReconciliation entityReconciliation = new ClientEntityReconciliation(
-            ExactPredictionState::materialState
+            ExactPredictionState::materialState, nativeActions::localSequence
     );
     protected final ClientBlockVisualOverlay blockVisualOverlay = new ClientBlockVisualOverlay();
     protected final ClientDirectBlockAuthority directBlockAuthority;
@@ -447,6 +447,7 @@ public abstract class ExactPredictionState
         final Map<String, Integer> directBlockOrdinals = new HashMap<>();
         final Set<UUID> claimedTargets = new HashSet<>();
         int tempFallingBlockOrdinal;
+        int projectileOrdinal;
         int tempBlockOrdinal;
         boolean reconciled;
         boolean nativeConfirmed;

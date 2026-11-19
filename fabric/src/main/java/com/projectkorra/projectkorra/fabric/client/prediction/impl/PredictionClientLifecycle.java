@@ -71,6 +71,8 @@ public abstract class PredictionClientLifecycle extends PredictionClientInput {
         cosmetics = PredictionPayloads.PlayerCosmetics.empty();
         regionProtection = RegionProtectionAuthority.Snapshot.empty();
         pendingHitClaims.clear();
+        meleeContacts.clear();
+        acceptedAttack = null;
         currentNativeInputPacket = null;
         pendingTaggedPacket = null;
         pendingActionTag = null;

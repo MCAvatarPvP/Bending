@@ -17,6 +17,11 @@ import java.util.function.Function;
 /** Participant-owned targeting, delayed hits, and charged selections from core and bundled abilities. */
 public final class RollbackParticipantAbilityIndices {
     private static final RollbackParticipantAbilityIndices LIVE = new RollbackParticipantAbilityIndices();
+    public static RollbackParticipantAbilityIndices live() { return LIVE; }
+
+    public final Map<Player, Long> chiBlocks = new ConcurrentHashMap<>();
+    public final Map<Player, List<Long>> bombCooldowns = new HashMap<>();
+    public final Map<Player, Long> bombThrows = new HashMap<>();
     public final Map<Integer, Smokescreen> smokeShots = new ConcurrentHashMap<>();
     public final Map<String, Long> smokeTimes = new ConcurrentHashMap<>();
     public final Map<String, Smokescreen> smokeEffects = new ConcurrentHashMap<>();
@@ -67,6 +72,14 @@ public final class RollbackParticipantAbilityIndices {
                 }
             }
         }
+        transfer.map(LIVE.chiBlocks, chiBlocks, Player::getUniqueId, ignored -> null);
+        transfer.map(LIVE.bombCooldowns, bombCooldowns, Player::getUniqueId, ignored -> null);
+        if (operation == RollbackArenaBlockIndices.Operation.CAPTURE) {
+            // Keep the source validation independent of later edits to a live cooldown list.
+            var copies = new IdentityHashMap<List<Long>, List<Long>>();
+            bombCooldowns.replaceAll((player, deadlines) -> copies.computeIfAbsent(deadlines, ArrayList::new));
+        }
+        transfer.map(LIVE.bombThrows, bombThrows, Player::getUniqueId, ignored -> null);
         transfer.map(LIVE.bloodTargets, bloodTargets, RollbackParticipantAbilityIndices::player, Player::getUniqueId);
         transfer.map(LIVE.grabbed, grabbed, RollbackParticipantAbilityIndices::player, RollbackParticipantAbilityIndices::caster);
         transfer.map(LIVE.explosions, explosions, RollbackParticipantAbilityIndices::player, RollbackParticipantAbilityIndices::caster);

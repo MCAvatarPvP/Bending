@@ -15,6 +15,9 @@ public interface AreaEffectCloudEntityAccessor {
         throw new AssertionError();
     }
 
+    @Accessor("potionContentsComponent")
+    net.minecraft.component.type.PotionContentsComponent projectkorra$potionContents();
+
     @Accessor("reapplicationDelay")
     void projectkorra$setReapplicationDelay(int ticks);
 }

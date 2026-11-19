@@ -112,6 +112,9 @@ public abstract class PredictionClientState {
     /** Local start times used only to estimate receipt latency. */
     protected final Map<Long, Long> actionStartedAtMillis = new LinkedHashMap<>();
     protected final List<PendingHitClaim> pendingHitClaims = new ArrayList<>();
+    protected final Map<Long, MeleeContact> meleeContacts = new LinkedHashMap<>();
+    protected MeleeContact acceptedAttack;
+    protected record MeleeContact(int entityId, UUID entityUuid, long tick, float damage) { }
     protected Packet<?> currentNativeInputPacket;
     protected Packet<?> pendingTaggedPacket;
     protected PendingActionTag pendingActionTag;

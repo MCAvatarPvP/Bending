@@ -29,6 +29,17 @@ public class NamespacedKey {
         return key;
     }
 
+    @Override
+    public boolean equals(Object other) {
+        return this == other || other instanceof NamespacedKey that
+                && namespace.equals(that.namespace) && key.equals(that.key);
+    }
+
+    @Override
+    public int hashCode() {
+        return 31 * namespace.hashCode() + key.hashCode();
+    }
+
     public Object handle() {
         return this;
     }

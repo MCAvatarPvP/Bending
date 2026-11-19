@@ -37,6 +37,8 @@ public final class PaperPredictionProtocol {
     public static final String VELOCITY_OWNER_V2 = "projectkorra:velocity_owner_v2";
     public static final String ABILITY_STATE_OWNER = "projectkorra:ability_state_owner";
     public static final String GLIDING_STATE_OWNER = "projectkorra:gliding_state_owner";
+    public static final String MELEE_ACTION = "projectkorra:melee_action";
+    public static final String PROJECTILE_OWNER = "projectkorra:projectile_owner";
     public static final String TEMP_FALLING_BLOCK = "projectkorra:temp_falling_block";
     public static final String TEMP_FALLING_BLOCK_PREPARE = "projectkorra:temp_falling_prepare";
     public static final String DIRECT_BLOCK = "projectkorra:direct_block";
@@ -88,6 +90,15 @@ public final class PaperPredictionProtocol {
         ActionTag result = new ActionTag(reader.uuid(), reader.varLong(),
                 reader.enumeration(InputKind.values()), reader.varInt(), reader.string(128));
         reader.finished();
+        return result;
+    }
+
+    public record MeleeAction(UUID session, long sequence, int slot, String ability, int targetId, UUID target) { }
+
+    public static MeleeAction readMeleeAction(byte[] data) {
+        Reader in = new Reader(data);
+        var result = new MeleeAction(in.uuid(), in.varLong(), in.varInt(), in.string(128), in.varInt(), in.uuid());
+        in.finished();
         return result;
     }
 
@@ -279,6 +290,12 @@ public final class PaperPredictionProtocol {
                                    UUID abilityOwner, int serverEntityId, String ability) {
         return new Writer().i64(serverTick).varLong(actionSequence).varInt(spawnOrdinal)
                 .uuid(abilityOwner).varInt(serverEntityId).string(ability, 128).bytes();
+    }
+
+    public static byte[] projectileOwner(UUID session, long sequence, int ordinal, UUID owner, int entityId,
+                                         UUID entityUuid, String ability, String type) {
+        return new Writer().uuid(session).varLong(sequence).varInt(ordinal).uuid(owner).varInt(entityId)
+                .uuid(entityUuid).string(ability, 128).string(type, 64).bytes();
     }
 
     public static byte[] tempFallingBlockPrepare(long serverTick, long actionSequence, int spawnOrdinal,

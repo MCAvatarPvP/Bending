@@ -1014,6 +1014,29 @@ public final class FabricMC {
         return nativeStack;
     }
 
+    public static void cloudColor(net.minecraft.entity.AreaEffectCloudEntity cloud, Color color) {
+        var potion = ((com.projectkorra.projectkorra.fabric.mixin.client.AreaEffectCloudEntityAccessor) cloud).projectkorra$potionContents();
+        cloud.setPotionContents(new net.minecraft.component.type.PotionContentsComponent(potion.potion(), java.util.Optional.of(color.asRGB()), potion.customEffects(), potion.customName()));
+    }
+
+    public static void cloudEffect(net.minecraft.entity.AreaEffectCloudEntity cloud, PotionEffect effect, boolean overwrite) {
+        var potion = ((com.projectkorra.projectkorra.fabric.mixin.client.AreaEffectCloudEntityAccessor) cloud).projectkorra$potionContents();
+        var type = status(effect.getType());
+        var effects = new java.util.ArrayList<>(potion.customEffects());
+        if (!overwrite && effects.stream().anyMatch(current -> current.getEffectType().equals(type))) return;
+        effects.removeIf(current -> current.getEffectType().equals(type));
+        effects.add(new StatusEffectInstance(type, effect.getDuration(), effect.getAmplifier()));
+        cloud.setPotionContents(new net.minecraft.component.type.PotionContentsComponent(potion.potion(), potion.customColor(), effects, potion.customName()));
+    }
+
+    public static boolean arrowInGround(PersistentProjectileEntity arrow) {
+        return ((com.projectkorra.projectkorra.fabric.mixin.client.ProjectileRollbackAccess) arrow).rollback$inGround();
+    }
+
+    public static boolean inWaterOrBubble(net.minecraft.entity.Entity entity) {
+        return entity.isTouchingWater() || entity.getBlockStateAtPos().isOf(net.minecraft.block.Blocks.BUBBLE_COLUMN);
+    }
+
     static RegistryEntry<StatusEffect> status(
             PotionEffectType type) {
         return switch (type.name()) {
@@ -2809,13 +2832,7 @@ public final class FabricMC {
             return isInGround() ? block((ServerWorld) value.getEntityWorld(), value.getBlockPos()) : null;
         }
         private boolean isInGround() {
-            try {
-                Field field = PersistentProjectileEntity.class.getDeclaredField("inGroundTime");
-                field.setAccessible(true);
-                return field.getInt(value) > 0;
-            } catch (ReflectiveOperationException ignored) {
-                return false;
-            }
+            return FabricMC.arrowInGround(value);
         }
     }
 

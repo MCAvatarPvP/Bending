@@ -20,6 +20,11 @@ public abstract class WorldRendererRollbackMixin {
     private void projectkorra$rollbackExtraction(Camera camera, Frustum frustum, RenderTickCounter ticks, WorldRenderState states, Operation<Void> original) {
         try (var scope = FabricRollbackPlayerRenderer.extracting()) { original.call(camera, frustum, ticks, states); }
     }
+    @com.llamalad7.mixinextras.injector.ModifyExpressionValue(method = "fillEntityRenderStates",
+            at = @At(value = "INVOKE", target = "Lnet/minecraft/client/world/ClientWorld;getEntities()Ljava/lang/Iterable;"))
+    private Iterable<Entity> projectkorra$renderReplicaActors(Iterable<Entity> ordinary) {
+        return FabricRollbackPlayerRenderer.renderEntities(ordinary);
+    }
     @Redirect(method = "fillEntityRenderStates", at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/Entity;getBlockPos()Lnet/minecraft/util/math/BlockPos;"))
     private BlockPos projectkorra$rollbackChunkPosition(Entity entity) { return FabricRollbackPlayerRenderer.blockPos(entity); }
 }

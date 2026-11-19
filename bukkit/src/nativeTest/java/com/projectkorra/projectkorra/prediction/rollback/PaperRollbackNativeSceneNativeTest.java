@@ -36,6 +36,8 @@ class PaperRollbackNativeSceneNativeTest {
             var pose = new RollbackEntityBody.Pose(0, 4, 0, 0, 0);
             var ball = actors.spawn(scene.logical(), pose, com.projectkorra.projectkorra.platform.mc.entity.Snowball.class);
             var target = actors.spawn(scene.logical(), pose, com.projectkorra.projectkorra.platform.mc.entity.BlockDisplay.class);
+            var dart = actors.spawn(scene.logical(), pose, com.projectkorra.projectkorra.platform.mc.entity.Arrow.class);
+            scene.logical().entities().add(dart);
             scene.logical().entities().add(ball);
             scene.logical().entities().add(target);
             var events = new ArrayList<com.projectkorra.projectkorra.platform.mc.event.entity.ProjectileHitEvent>();
@@ -64,16 +66,32 @@ class PaperRollbackNativeSceneNativeTest {
                     nativeBall.preHitTargetOrDeflectSelf(new net.minecraft.world.phys.BlockHitResult(pos.getCenter(),
                             net.minecraft.core.Direction.UP, pos, false));
                     assertTrue(nativeBall.isRemoved());
+
+                    var nativeDart = (PaperRollbackArrow) actors.actor(dart.getUniqueId());
+                    dart.setDamage(0);
+                    dart.setPickupStatus(com.projectkorra.projectkorra.platform.mc.entity.Arrow.PickupStatus.DISALLOWED);
+                    assertEquals(com.projectkorra.projectkorra.platform.mc.entity.Arrow.PickupStatus.DISALLOWED, dart.getPickupStatus());
+                    dart.setShooter(target);
+                    assertSame(target, dart.getShooter());
+                    nativeDart.preHitTargetOrDeflectSelf(new net.minecraft.world.phys.EntityHitResult(actors.actor(target.getUniqueId())));
+                    assertFalse(nativeDart.isRemoved());
+                    assertFalse(dart.isInBlock());
+                    assertFalse(dart.isInWaterOrBubbleColumn());
+                    nativeDart.preHitTargetOrDeflectSelf(new net.minecraft.world.phys.BlockHitResult(pos.getCenter(),
+                            net.minecraft.core.Direction.UP, pos, false));
+                    assertTrue(dart.isInBlock());
                 }
                 return null;
             });
-            assertEquals(2, events.size());
+            assertEquals(4, events.size());
+            assertSame(dart, events.get(2).getEntity());
+            assertSame(target, events.get(2).getHitEntity());
             assertEquals(4, events.getLast().getHitBlock().getY());
-            assertEquals(List.of(net.minecraft.world.level.gameevent.GameEvent.PROJECTILE_LAND), blockHits);
+            assertEquals(List.of(net.minecraft.world.level.gameevent.GameEvent.PROJECTILE_LAND, net.minecraft.world.level.gameevent.GameEvent.PROJECTILE_LAND), blockHits);
             assertEquals(1, removed.size());
             assertEquals(org.bukkit.event.entity.EntityRemoveEvent.Cause.HIT,
                     ((org.bukkit.event.entity.EntityRemoveEvent)removed.getFirst()).getCause());
-            assertEquals(List.of(new PaperRollbackCombatAccess.StatusOutput(ball.getUniqueId(), (byte)3)), outputs);
+            assertEquals(new PaperRollbackCombatAccess.StatusOutput(ball.getUniqueId(), (byte)3), outputs.getFirst());
             assertSame(ball, events.getFirst().getEntity());
             assertSame(target, events.getFirst().getHitEntity());
             assertNull(Bukkit.getServer());

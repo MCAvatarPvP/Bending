@@ -511,7 +511,7 @@ public abstract class CoreAbility implements Ability {
                 for (var attribute : entry.getValue().entrySet()) {
                     var target = live.get(attribute.getKey());
                     if (!attribute.getValue().sameRollbackDefinition(target))
-                        throw new IllegalStateException("Live ability attribute definition differs");
+                        throw new IllegalStateException("Live ability attribute definition differs: " + entry.getKey().getName() + "#" + attribute.getKey());
                     result.put(attribute.getValue(), target);
                 }
             }

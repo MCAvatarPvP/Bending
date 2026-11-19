@@ -121,13 +121,17 @@ public record PaperRollbackDuelSeed(PaperRollbackRosterSeed nativeRoster, Rollba
             }
         }
         long tick = world.getGameTime(), millis = System.currentTimeMillis(), nanos = System.nanoTime();
+        long time = RollbackTiming.start();
         var configuration = RollbackConfiguration.captureData(PredictionConfigSync.sources());
+        time = RollbackTiming.finish(time, "seed.configuration");
         var sourceCodec = Objects.requireNonNull(codecFactory.apply(configuration));
+        time = RollbackTiming.finish(time, "seed.gameplaySchema");
         var nativeRoster = PaperRollbackRosterSeed.capture(nativePlayers.values(), nanos);
         var permissionNodes = new ArrayList<>(PaperRollbackPlayerAccess.gameplayNodes());
         permissionNodes.addAll(Objects.requireNonNull(additionalPermissionNodes));
         var access = PaperRollbackPlayerAccess.capture(nativePlayers.values().stream().map(ServerPlayer::getBukkitEntity).toList(),
                 org.bukkit.Bukkit.getPluginManager().getPermissions(), permissionNodes);
+        time = RollbackTiming.finish(time, "seed.rosterAndPermissions");
         var services = new ArrayList<Object>(gameplayServices);
         if (services.stream().anyMatch(RollbackEventBindings.class::isInstance))
             throw new IllegalArgumentException("Duel capture owns event registration capture");
@@ -138,10 +142,14 @@ public record PaperRollbackDuelSeed(PaperRollbackRosterSeed nativeRoster, Rollba
         else RollbackLiveRegistryEligibility.requireAvailable();
         if (services.stream().noneMatch(RollbackAbilityGlobals.class::isInstance))
             services.add(RollbackAbilityGlobals.capture(bending.values().stream().map(BendingPlayer::getPlayer).toList()));
+        time = RollbackTiming.finish(time, "seed.eligibility");
         var graph = RollbackBendingState.encode(bending.values(), collisions, services, sourceCodec);
+        time = RollbackTiming.finish(time, "seed.bendingGraph");
         var worldSeed = PaperRollbackWorldSeed.capture(world, request.terrain(), randomSeed, soundSeed, terrainLimits, prepared);
+        time = RollbackTiming.finish(time, "seed.world");
         var portable = new RollbackBootstrapData(request.session(), challenge, request.match(), request.round(), millis, nanos, definitions,
                 request.sides(), worldSeed, nativeRoster.portable(playerServices), configuration, access, RollbackMaterials.capture(com.projectkorra.projectkorra.platform.Platform.materials()), PaperRollbackTags.capture(), RollbackServer.Metadata.capture(com.projectkorra.projectkorra.platform.Platform.server()), PaperRollbackPlugins.capture(), graph);
+        RollbackTiming.finish(time, "seed.platformMetadata");
         if (world.getGameTime() != tick) throw new IllegalStateException("World advanced during duel capture");
         return new PaperRollbackDuelSeed(nativeRoster, portable);
     }

@@ -76,18 +76,18 @@ public final class RollbackEngine<S, I, E> implements RollbackReplicaTimeline<S,
     /** Supply both clock anchors when importing runtime timers created before the session. */
     public RollbackEngine(final RollbackSimulation<S, I, E> simulation, final Map<UUID, I> initialInputs,
                           final Limits limits, final long epochMillis, final long epochNanos) {
-        this(simulation, initialInputs, limits, epochMillis, epochNanos, false);
+        this(simulation, initialInputs, limits, epochMillis, epochNanos, false, null);
     }
 
     /** Client history is retained until explicitly confirmed; rollbackTicks is its unconfirmed capacity. */
     public static <S, I, E> RollbackEngine<S, I, E> replica(RollbackSimulation<S, I, E> simulation,
             Map<UUID, I> initialInputs, Limits limits, long epochMillis, long epochNanos) {
-        if (limits.rollbackTicks() < 1) throw new IllegalArgumentException("Client prediction requires retained history");
-        return new RollbackEngine<>(simulation, initialInputs, limits, epochMillis, epochNanos, true);
+        return new RollbackEngine<>(simulation, initialInputs, limits, epochMillis, epochNanos, true, null);
     }
 
-    private RollbackEngine(final RollbackSimulation<S, I, E> simulation, final Map<UUID, I> initialInputs,
-                           final Limits limits, final long epochMillis, final long epochNanos, boolean replica) {
+    RollbackEngine(final RollbackSimulation<S, I, E> simulation, final Map<UUID, I> initialInputs,
+                   final Limits limits, final long epochMillis, final long epochNanos, boolean replica, S initialState) {
+        if (replica && limits.rollbackTicks() < 1) throw new IllegalArgumentException("Client prediction requires retained history");
         this.simulation = Objects.requireNonNull(simulation, "simulation");
         this.limits = Objects.requireNonNull(limits, "limits");
         this.replica = replica;
@@ -97,7 +97,7 @@ public final class RollbackEngine<S, I, E> implements RollbackReplicaTimeline<S,
         final Map<UUID, I> ordered = new TreeMap<>(initialInputs);
         ordered.forEach((id, input) -> Objects.requireNonNull(input, "initial input"));
         participants = List.copyOf(ordered.keySet());
-        head = new Frame<>(0, simulation.snapshot(), ordered, List.of());
+        head = new Frame<>(0, initialState == null ? simulation.snapshot() : initialState, ordered, List.of());
         confirmed = head;
         frames.put(0L, head);
     }

@@ -696,6 +696,10 @@ public final class BukkitMC {
         return (org.bukkit.entity.Entity) value.handle();
     }
 
+    private static void recordAbilityOwner(org.bukkit.entity.Entity actor, ProjectileSource source) {
+        if (source instanceof org.bukkit.entity.Player owner) PaperPredictionServer.projectileSpawned(owner, actor);
+    }
+
     private static Object projectileSource(final ProjectileSource source) {
         if (source instanceof org.bukkit.entity.Player player) return player(player);
         if (source instanceof org.bukkit.entity.LivingEntity living) return living(living);
@@ -2511,10 +2515,12 @@ public final class BukkitMC {
         @SuppressWarnings("unchecked")
         public <T extends Projectile> T launchProjectile(Class<T> type) {
             if (type == Arrow.class) {
-                return (T) arrow(value.launchProjectile(org.bukkit.entity.Arrow.class));
+                return (T) arrow(value.launchProjectile(org.bukkit.entity.Arrow.class, null,
+                        shot -> PaperPredictionServer.projectileSpawned(value, shot)));
             }
             if (type == Snowball.class) {
-                return (T) snowball(value.launchProjectile(org.bukkit.entity.Snowball.class));
+                return (T) snowball(value.launchProjectile(org.bukkit.entity.Snowball.class, null,
+                        shot -> PaperPredictionServer.projectileSpawned(value, shot)));
             }
             throw new IllegalArgumentException("Unsupported projectile type " + type.getName());
         }
@@ -3573,6 +3579,7 @@ public final class BukkitMC {
         public void setSource(Entity entity) {
             if (entity != null && entity.handle() instanceof ProjectileSource source) {
                 value.setSource(source);
+                recordAbilityOwner(value, source);
             }
         }
 
@@ -3725,8 +3732,10 @@ public final class BukkitMC {
         public void setShooter(Object shooter) {
             if (shooter instanceof ProjectileSource source) {
                 value.setShooter(source);
+                recordAbilityOwner(value, source);
             } else if (shooter instanceof Entity entity && entity.handle() instanceof ProjectileSource source) {
                 value.setShooter(source);
+                recordAbilityOwner(value, source);
             }
         }
 
@@ -4065,8 +4074,10 @@ public final class BukkitMC {
         public void setShooter(Object shooter) {
             if (shooter instanceof ProjectileSource source) {
                 value.setShooter(source);
+                recordAbilityOwner(value, source);
             } else if (shooter instanceof Entity entity && entity.handle() instanceof ProjectileSource source) {
                 value.setShooter(source);
+                recordAbilityOwner(value, source);
             }
         }
 

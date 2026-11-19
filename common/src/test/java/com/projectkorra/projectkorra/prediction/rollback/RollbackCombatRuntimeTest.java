@@ -45,6 +45,7 @@ class RollbackCombatRuntimeTest {
         withConfig(() -> {
             var duel = scenario();
             int before = duel.fixture.checkpointCount;
+            assertEquals(1, before, "frame zero reuses the completed bootstrap checkpoint");
             for (int packet = 0; packet < 32; packet++) duel.runtime.submit(A, 1, EMPTY);
             duel.runtime.frames(0, 0);
             duel.runtime.reconcile();

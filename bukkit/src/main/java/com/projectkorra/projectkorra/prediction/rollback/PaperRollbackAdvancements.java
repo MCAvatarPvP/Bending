@@ -290,12 +290,17 @@ public final class PaperRollbackAdvancements implements RollbackStateCell<PaperR
     @Override public Checkpoint captureRollbackState() {
         requirePlayer();
         if (!initialized) throw new IllegalStateException("Advancement listeners are not initialized");
-        return new Checkpoint(this, graph.capture(checkpointRoots, List.of()), PaperRollbackPrivateAccess.advancementFirstPacket(tracker));
+        long time = RollbackTiming.start();
+        var saved = graph.capture(checkpointRoots, List.of());
+        RollbackTiming.finish(time, "advancements.checkpoint", saved.objectCount());
+        return new Checkpoint(this, saved, PaperRollbackPrivateAccess.advancementFirstPacket(tracker));
     }
     @Override public void restoreRollbackState(Checkpoint saved) {
         requirePlayer();
         if (Objects.requireNonNull(saved, "checkpoint").owner != this) throw new IllegalArgumentException("Advancement checkpoint belongs to another player");
+        long time = RollbackTiming.start();
         saved.state.restore();
+        RollbackTiming.finish(time, "advancements.restore", saved.state.objectCount());
         PaperRollbackPrivateAccess.advancementFirstPacket(tracker, saved.firstPacket);
     }
     @Override public List<?> rollbackReferences() { check(); return List.of(world); }

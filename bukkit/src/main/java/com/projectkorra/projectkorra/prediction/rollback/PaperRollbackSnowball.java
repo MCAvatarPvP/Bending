@@ -1,16 +1,11 @@
 package com.projectkorra.projectkorra.prediction.rollback;
 
-import com.projectkorra.projectkorra.platform.Platform;
-import com.projectkorra.projectkorra.platform.mc.entity.Entity;
-import com.projectkorra.projectkorra.platform.mc.event.entity.ProjectileHitEvent;
-import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.entity.projectile.ProjectileDeflection;
 import net.minecraft.world.entity.projectile.ThrowableProjectile;
 import net.minecraft.world.entity.projectile.throwableitemprojectile.Snowball;
 import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import org.bukkit.event.entity.EntityRemoveEvent;
 import java.lang.invoke.MethodHandle;
@@ -33,25 +28,10 @@ final class PaperRollbackSnowball extends Snowball {
         this.scene = scene;
     }
 
-    private Entity logical(net.minecraft.world.entity.Entity entity) {
-        if (!scene.world().ownsEntity(entity)) throw new IllegalStateException("Projectile impact crosses the scene");
-        var view = scene.logical().entities().get(entity.getUUID());
-        if (view == null) throw new IllegalStateException("Projectile impact has no logical owner");
-        return view;
-    }
-
     @Override public ProjectileDeflection preHitTargetOrDeflectSelf(HitResult hit) {
-        if (!RollbackDomain.active() || !RollbackClock.active()) throw new IllegalStateException("Private projectile outside replay");
-        var event = new ProjectileHitEvent();
-        event.setEntity((com.projectkorra.projectkorra.platform.mc.entity.Projectile) logical(this));
-        if (hit instanceof EntityHitResult target) event.setHitEntity(logical(target.getEntity()));
-        if (hit instanceof BlockHitResult target) {
-            BlockPos pos = target.getBlockPos();
-            event.setHitBlock(scene.logical().getBlockAt(pos.getX(), pos.getY(), pos.getZ()));
-        }
-        Platform.events().call(event);
-        hitCancelled = event.isCancelled();
-        return hit.getType() == HitResult.Type.BLOCK || !hitCancelled ? hitTargetOrDeflectSelf(hit) : ProjectileDeflection.NONE;
+        hitCancelled = PaperRollbackProjectileHits.cancelled(scene, this, hit);
+        return !isRemoved() && (hit.getType() == HitResult.Type.BLOCK || !hitCancelled)
+                ? hitTargetOrDeflectSelf(hit) : ProjectileDeflection.NONE;
     }
 
     @Override protected void onHitBlock(BlockHitResult hit) {

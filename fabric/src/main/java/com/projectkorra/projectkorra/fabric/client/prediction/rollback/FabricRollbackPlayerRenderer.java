@@ -39,7 +39,14 @@ public final class FabricRollbackPlayerRenderer implements AutoCloseable {
     private final ToIntFunction<BlockPos> light;
     private Map<UUID, FabricRollbackPlayerView> views = Map.of();
     private Map<UUID, Float> previousEyes = Map.of();
+    private FabricRollbackActorRenderer actors;
     private UUID viewer;
+    void bindActors(FabricRollbackActorRenderer actors) { this.actors = Objects.requireNonNull(actors); }
+    public static Iterable<Entity> renderEntities(Iterable<Entity> ordinary) {
+        var owner = active;
+        if (owner == null || EXTRACTION.get() == null || owner.actors == null || !owner.current.getAsBoolean()) return ordinary;
+        return owner.actors.append(ordinary);
+    }
     private Camera ownedCamera;
     private long tick = -1, revision = -1;
     private boolean closed;
@@ -73,6 +80,7 @@ public final class FabricRollbackPlayerRenderer implements AutoCloseable {
         boolean continuous = this.tick >= 0 && tick - this.tick == 1 && revision == this.revision;
         copied.forEach((id, view) -> eyes.put(id, same ? previousEyes.get(id)
                 : continuous ? views.get(id).cameraMotion().eyeHeight() : view.cameraMotion().eyeHeight()));
+        if (actors != null) actors.publish(tick);
         previousEyes = Map.copyOf(eyes); views = copied; this.tick = tick; this.revision = revision; active = this;
     }
     private FabricRollbackPlayerView lookup(Entity entity) {
@@ -114,7 +122,7 @@ public final class FabricRollbackPlayerRenderer implements AutoCloseable {
         var view = owner.lookup(entity);
         return view == null ? null : new CameraView(view, owner.previousEyes.get(view.id()), owner.viewer.equals(view.id()));
     }
-    @Override public void close() { check(); closed = true; views = Map.of(); previousEyes = Map.of(); ownedCamera = null; if (active == this) active = null; }
+    @Override public void close() { check(); closed = true; actors = null; views = Map.of(); previousEyes = Map.of(); ownedCamera = null; if (active == this) active = null; }
     public UUID session() { return session; }
     private void check() { if (thread != Thread.currentThread()) throw new IllegalStateException("Player rendering crossed threads"); }
 }

@@ -43,8 +43,8 @@ public final class FabricRollbackDuelFactory implements FabricRollbackBootstraps
                 var match = setup.open(data, duel.round(), duel.views(), identity, new FabricRollbackServerBlocks(),
                         duel.items(), execution, List.of(duel.scene(), duel.actors()), true);
                 var repair = FabricRollbackConfirmed.repair(data, match, duel, execution, maximumBytes());
-                presentation = FabricRollbackPresentation.prepare(client, data.session(), duel.scene().roster(), match.combat(),
-                        new FabricRollbackParticles(client, duel));
+                presentation = FabricRollbackPresentation.prepare(client, data.session(), duel.scene().roster(), duel.actors(), match.combat(),
+                        new FabricRollbackParticles(client, duel, match.combat()));
                 var runtime = new FabricRollbackClientRuntime<>(data.session(), RollbackDuelRuntime.seed(data.session()), player,
                         match.combat(), send, presentation, duel.scene().roster().players().get(player.getUuid()),
                         () -> client.options.getSprintWindow().getValue(), () -> client.options.getAutoJump().getValue(), repair);

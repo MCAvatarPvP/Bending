@@ -104,6 +104,8 @@ public abstract class PredictionClientApi extends PredictionClientLifecycle {
                 (payload, context) -> PredictionClient.instance().onAbilityStateOwner(context.client(), payload));
         ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.GlidingStateOwner.ID,
                 (payload, context) -> PredictionClient.instance().onGlidingStateOwner(context.client(), payload));
+        ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.ProjectileOwner.ID,
+                (payload, context) -> PredictionClient.instance().onProjectileOwner(context.client(), payload));
         ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.TempFallingBlockReceipt.ID,
                 (payload, context) -> PredictionClient.instance().onTempFallingBlock(context.client(), payload));
         ClientPlayNetworking.registerGlobalReceiver(PredictionPayloads.TempFallingBlockPrepare.ID,
@@ -227,6 +229,31 @@ public abstract class PredictionClientApi extends PredictionClientLifecycle {
         PredictionClient.instance().acceptedNativeInputPacket0(packet);
     }
 
+    public static void nativeMeleeDamage(net.minecraft.entity.player.PlayerEntity attacker,
+                                         net.minecraft.entity.Entity victim, float damage) {
+        if (!(attacker instanceof ClientPlayerEntity) || attacker != MinecraftClient.getInstance().player || !(damage > 0) || !Float.isFinite(damage)) return;
+        var owner = PredictionClient.instance();
+        var contact = owner.acceptedAttack;
+        if (contact != null && contact.tick() == owner.clientTick && contact.entityId() == victim.getId()
+                && contact.entityUuid().equals(victim.getUuid())) {
+            owner.acceptedAttack = new MeleeContact(victim.getId(), victim.getUuid(), owner.clientTick, damage);
+        }
+    }
+
+    public static float meleeDamage(long localActionSequence) {
+        var contact = PredictionClient.instance().meleeContacts.get(localActionSequence);
+        return contact == null ? 0.0F : contact.damage();
+    }
+
+    /** Re-resolves the original packet target at execution and at deferred replay. */
+    public static net.minecraft.entity.LivingEntity meleeTarget(long localActionSequence) {
+        var contact = PredictionClient.instance().meleeContacts.get(localActionSequence);
+        var world = MinecraftClient.getInstance().world;
+        if (contact == null || world == null) return null;
+        return world.getEntityById(contact.entityId()) instanceof net.minecraft.entity.LivingEntity target
+                && target.isAlive() && target.getUuid().equals(contact.entityUuid()) ? target : null;
+    }
+
     public static void beforeVanillaPacket(MinecraftClient client, Packet<?> packet) {
         if (!ClientBendingConfig.isEnabled()) return;
         PredictionClient owner = PredictionClient.instance();
@@ -239,6 +266,7 @@ public abstract class PredictionClientApi extends PredictionClientLifecycle {
                 owner.pendingTaggedPacket = null;
                 owner.pendingActionTag = null;
             }
+            if (!(packet instanceof HandSwingC2SPacket)) owner.acceptedAttack = null;
             owner.currentNativeInputPacket = packet;
         }
         if (packet instanceof UpdateSelectedSlotC2SPacket selectedSlot) {

@@ -1,6 +1,7 @@
 package me.literka.util;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantAbilityIndices;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
 
 import com.projectkorra.projectkorra.BendingPlayer;
@@ -24,11 +25,17 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class Utils {
 
-    public static Map<Player, Long> chiblocks = new ConcurrentHashMap<>();
+    public static Map<Player, Long> chiblocks = RollbackParticipantAbilityIndices.live().chiBlocks;
+
+    public static Map<Player, Long> chiBlocks() { return RollbackParticipantAbilityIndices.current().chiBlocks; }
+
+    /** The same periodic task runs on the server and against each enrolled private roster. */
+    public static final class Maintenance implements Runnable {
+        @Override public void run() { tick(); }
+    }
 
     public static boolean willChiBlock(Player player, double chance) {
         BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
@@ -45,15 +52,16 @@ public class Utils {
 
         bPlayer.blockChi();
         player.getWorld().playSound(player.getLocation(), Sound.ENTITY_ENDER_DRAGON_HURT, 1F, 0.0F);
-        chiblocks.put(player, RollbackClock.millis() + duration);
+        chiBlocks().put(player, RollbackClock.millis() + duration);
     }
 
     private static void processChiBlocks() {
+        var chiblocks = chiBlocks();
         for (Map.Entry<Player, Long> entry : chiblocks.entrySet()) {
             Player player = entry.getKey();
             long time = entry.getValue();
             BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-            if (bPlayer == null) return;
+            if (bPlayer == null) continue;
 
             sendActionBar(Element.CHI.getColor() + "* Chiblocked *", player);
 
@@ -66,7 +74,7 @@ public class Utils {
     }
 
     private static void processBombCooldowns() {
-        for (Map.Entry<Player, List<Long>> entry : StickyBomb.cooldowns.entrySet()) {
+        for (Map.Entry<Player, List<Long>> entry : StickyBomb.cooldowns().entrySet()) {
             Player player = entry.getKey();
             BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
 

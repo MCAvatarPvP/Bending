@@ -5,6 +5,7 @@
   "mixins": [
     "FlowableFluidMixin",
     "ProjectileEntityMixin",
+    "client.ProjectileRollbackAccess",
     "ServerPlayNetworkHandlerMixin"
   ],
   "client": [
@@ -29,7 +30,6 @@
     "client.EntityRollbackControlAccess",
     "client.EntityRollbackAllocationMixin",
     "client.PlayerMeleeRollbackMixin",
-    "client.ProjectileRollbackAccess",
     "client.RollbackEntityPacketAccess",
     "client.WorldRollbackRandomAccess",
     "client.ServerWorldRollbackEntities",
@@ -37,6 +37,7 @@
     "client.GaussianRollbackAccess",
     "client.HungerManagerRollbackAccess",
     "client.AreaEffectCloudEntityAccessor",
+    "client.AreaEffectCloudPredictionMixin",
     "client.BlockCollisionSpliteratorPredictionMixin",
     "client.ClientConnectionMovementMixin",
     "client.ChunkRendererRegionPredictionMixin",

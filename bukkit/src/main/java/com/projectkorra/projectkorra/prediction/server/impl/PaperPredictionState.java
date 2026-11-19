@@ -188,6 +188,10 @@ public abstract class PaperPredictionState implements PluginMessageListener, Run
         public final LinkedHashMap<Long, Action> actions = new LinkedHashMap<>();
         public final ArrayDeque<PaperPredictionProtocol.InputVeto> inputVetoes = new ArrayDeque<>();
         public final NativeActionTagStream actionTags = new NativeActionTagStream();
+        public final com.projectkorra.projectkorra.prediction.action.NativeMeleeActionStream melee =
+                new com.projectkorra.projectkorra.prediction.action.NativeMeleeActionStream();
+        Action meleeSwing;
+        org.bukkit.event.entity.EntityDamageByEntityEvent meleeEvent;
         public final RateLimiter claimLimiter = new RateLimiter();
         public final LinkedHashMap<DirectBlockCause, Integer> directBlockOrdinals = new LinkedHashMap<>();
         public final Set<String> predictedCooldowns = new HashSet<>();
@@ -246,6 +250,8 @@ public abstract class PaperPredictionState implements PluginMessageListener, Run
         public final Map<String, Integer> directBlockOrdinals = new HashMap<>();
         public final Map<UUID, Claim> claims = new HashMap<>();
         public long clientSequence;
+        public final List<String> meleeCreations = new ArrayList<>();
+        public int projectileOrdinal;
         public int tempFallingBlockOrdinal;
         public int tempBlockOrdinal;
         public boolean locallyPredicted;

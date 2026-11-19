@@ -97,12 +97,23 @@ public final class FabricRollbackActors implements RollbackArenaActions.Native, 
                 return items.capture(stack);
             }
             case "setHelmet": ((net.minecraft.entity.LivingEntity) e).equipStack(net.minecraft.entity.EquipmentSlot.HEAD, items.nativeCopy((ItemStack) args[0])); return null;
+            case "setDamage": ((net.minecraft.entity.projectile.PersistentProjectileEntity)e).setDamage((int)args[0]); return null;
+            case "setCritical": ((net.minecraft.entity.projectile.PersistentProjectileEntity)e).setCritical((boolean)args[0]); return null;
+            case "setPickupStatus": ((net.minecraft.entity.projectile.PersistentProjectileEntity)e).pickupType =
+                    net.minecraft.entity.projectile.PersistentProjectileEntity.PickupPermission.valueOf(((Arrow.PickupStatus)args[0]).name()); return null;
+            case "getPickupStatus": return Arrow.PickupStatus.valueOf(((net.minecraft.entity.projectile.PersistentProjectileEntity)e).pickupType.name());
+            case "isInBlock": return FabricMC.arrowInGround((net.minecraft.entity.projectile.PersistentProjectileEntity)e);
+            case "isInWaterOrBubbleColumn": return FabricMC.inWaterOrBubble(e);
             case "getAttachedBlock": {
                 var arrow = (net.minecraft.entity.projectile.PersistentProjectileEntity) e;
                 var pos = e.getBlockPos();
-                return ((com.projectkorra.projectkorra.fabric.mixin.client.ProjectileRollbackAccess) arrow).rollback$inGround() ? scene.logical().getBlockAt(pos.getX(), pos.getY(), pos.getZ()) : null;
+                return FabricMC.arrowInGround(arrow) ? scene.logical().getBlockAt(pos.getX(), pos.getY(), pos.getZ()) : null;
             }
             case "setRadius": ((net.minecraft.entity.AreaEffectCloudEntity)e).setRadius((float)args[0]); return null;
+            case "setParticle": ((net.minecraft.entity.AreaEffectCloudEntity)e).setParticleType(FabricMC.particle((com.projectkorra.projectkorra.platform.mc.Particle)args[0], null)); return null;
+            case "setColor": FabricMC.cloudColor((net.minecraft.entity.AreaEffectCloudEntity)e, (com.projectkorra.projectkorra.platform.mc.Color)args[0]); return null;
+            case "addCustomEffect": FabricMC.cloudEffect((net.minecraft.entity.AreaEffectCloudEntity)e, (com.projectkorra.projectkorra.platform.mc.potion.PotionEffect)args[0], (boolean)args[1]); return null;
+            case "setReapplicationDelay": ((com.projectkorra.projectkorra.fabric.mixin.client.AreaEffectCloudEntityAccessor)e).projectkorra$setReapplicationDelay((int)args[0]); return null;
             case "setDuration": ((net.minecraft.entity.AreaEffectCloudEntity)e).setDuration((int)args[0]); return null;
             case "setWaitTime": ((net.minecraft.entity.AreaEffectCloudEntity)e).setWaitTime((int)args[0]); return null;
             case "setRadiusOnUse": ((net.minecraft.entity.AreaEffectCloudEntity)e).setRadiusOnUse((float)args[0]); return null;

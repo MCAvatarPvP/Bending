@@ -15,11 +15,16 @@ public final class FabricRollbackPresentation<S, E> implements RollbackClientRun
     private boolean stopped;
     public static <S, E> FabricRollbackPresentation<S, E> prepare(MinecraftClient client, UUID session, FabricRollbackRoster roster,
             RollbackReplicaTimeline<S, RollbackPlayerInput, E> timeline, RollbackClientRuntime.Output<S, E> effects) {
+        return prepare(client, session, roster, null, timeline, effects);
+    }
+    public static <S, E> FabricRollbackPresentation<S, E> prepare(MinecraftClient client, UUID session, FabricRollbackRoster roster, FabricRollbackActors actors,
+            RollbackReplicaTimeline<S, RollbackPlayerInput, E> timeline, RollbackClientRuntime.Output<S, E> effects) {
         if (!client.isOnThread() || client.world == null || client.player == null || client.getNetworkHandler() == null) throw new IllegalStateException("No render-thread client session");
         var world = client.world; var player = client.player; var connection = client.getNetworkHandler();
         var renderer = new FabricRollbackPlayerRenderer(session, world, roster.players().keySet(),
                 () -> client.world == world && client.player == player && client.getNetworkHandler() == connection,
                 () -> client.gameRenderer.getCamera().getCameraPos(), position -> WorldRenderer.getLightmapCoordinates(world, position));
+        if (actors != null) renderer.bindActors(new FabricRollbackActorRenderer(world, actors::active));
         renderer.bindCamera(player.getUuid(), client.gameRenderer.getCamera());
         return new FabricRollbackPresentation<>(roster, player.getUuid(), timeline, effects, renderer);
     }

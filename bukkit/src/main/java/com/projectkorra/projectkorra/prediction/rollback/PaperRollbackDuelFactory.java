@@ -32,8 +32,10 @@ public final class PaperRollbackDuelFactory implements PaperRollbackDuels.Simula
                 stack -> codec.encode(items.nativeCopy(stack)));
         var events = new PaperRollbackArenaEvents(output, data.world().settings().policy());
         var binds = new PaperRollbackNativeScene.Bindings(new PaperRollbackBlockRules(items), items, actions, registries, events);
+        long time = RollbackTiming.start();
         var scene = new PaperRollbackNativeScene(data.world(), captured.nativeRoster(), round, registries,
                 source.enabledFeatures(), binds, services, data.epochNanos(), 65_536, 16_384, 500_000);
+        time = RollbackTiming.finish(time, "scene.nativeImport");
         actors.bind(scene);
         events.bind(scene);
         var views = PaperRollbackRosterViews.bind(scene.logical(), scene.world(), round.participants(), scene.roster(),
@@ -42,6 +44,7 @@ public final class PaperRollbackDuelFactory implements PaperRollbackDuels.Simula
         var identity = new RollbackPlatform.Identity("bukkit", plugin.getDataFolder().toPath(), plugin.getLogger());
         var match = setup.open(data, round, views, identity, new PaperRollbackServerBlocks(), items,
                 execution, List.of(scene, actors), false);
+        RollbackTiming.finish(time, "scene.gameplayImport");
         var corrections = PaperRollbackCorrections.forMatch(data, scene, execution, round, actors.registry(),
                 match.graph(), RollbackStateCorrection.MAXIMUM_BYTES, 20);
         var ids = new java.util.TreeMap<UUID, Integer>();
@@ -54,7 +57,7 @@ public final class PaperRollbackDuelFactory implements PaperRollbackDuels.Simula
             peers.add(new RollbackSession.Peer(id, player.connection, 0));
         });
         var direct = PaperRollbackDirectPackets.bind(peers, source.getWorld().getUID(), ids, registries);
-        var presentation = new PaperRollbackPresentation(source.getWorld(), plugin, listener, codec, direct);
+        var presentation = new PaperRollbackPresentation(source.getWorld(), plugin, listener, codec, direct, ids.keySet());
         return new PaperRollbackDuels.Simulation(scene, match.graph(), match.combat(),
                 update -> update.finalizedEffects().forEach(effect -> presentation.publish(effect, update.confirmed().tick())), corrections);
     }

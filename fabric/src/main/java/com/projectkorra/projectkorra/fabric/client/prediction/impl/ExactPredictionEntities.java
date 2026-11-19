@@ -188,7 +188,7 @@ public abstract class ExactPredictionEntities extends ExactPredictionPlayerState
         // Re-enter that action so impact-spawned effects reconcile to Paper.
         ExactPredictionRuntime.runWithAction(
                 impactAction, () -> this.platform.events().call(event));
-        return event.isCancelled();
+        return event.isCancelled() || projectile.isRemoved();
     }
 
     protected void trackSpawn0(Entity entity) {
@@ -200,6 +200,17 @@ public abstract class ExactPredictionEntities extends ExactPredictionPlayerState
                     AbilityExecutionContext.current() instanceof MetalCable
                             || owner.inputAbility.equalsIgnoreCase("MetalCable"));
         }
+    }
+
+    protected void trackLaunchedProjectile0(Entity projectile, Entity shooter) {
+        if (projectile == null || shooter == null || MinecraftClient.getInstance().player != shooter) return;
+        long sequence = currentAction();
+        Action owner = actions.get(sequence);
+        if (owner == null || !entityReconciliation.needsLaunchIdentity(projectile)) return;
+        CoreAbility source = AbilityExecutionContext.current();
+        String name = source != null && source.getPlayer() != null && shooter.getUuid().equals(source.getPlayer().getUniqueId())
+                ? source.getName() : owner.inputAbility;
+        entityReconciliation.trackLaunch(sequence, ++owner.projectileOrdinal, shooter, projectile, name);
     }
 
     public int beforeSpawn(CoreAbility ability, Location location, BlockData blockData) {
@@ -247,7 +258,9 @@ public abstract class ExactPredictionEntities extends ExactPredictionPlayerState
     }
 
     protected boolean reconcileSpawn0(EntitySpawnS2CPacket packet) {
-        return this.ready && this.entityReconciliation.reconcileSpawn(packet, MinecraftClient.getInstance().world, this.tick);
+        return this.ready && this.entityReconciliation.reconcileSpawn(packet, MinecraftClient.getInstance().world, this.tick,
+                net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.canSend(
+                        com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.ProjectileOwner.ID));
     }
 
     protected long currentAction() {

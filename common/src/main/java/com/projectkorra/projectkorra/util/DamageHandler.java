@@ -218,14 +218,16 @@ public class DamageHandler {
 
             final EntityDamageByEntityEvent finalEvent = DAMAGE_EVENT_PASSER.createEvent(source, entity, damage);
             final double prevHealth = lent.getHealth();
-            BEING_DAMAGED.add(lent); //Stops StackOverflows
-
-            if (doSourcelessDamage) {
-                lent.damage(damage);
-            } else {
-                lent.damage(damage, source);
+            boolean outermost = BEING_DAMAGED.add(lent);
+            try {
+                if (doSourcelessDamage) {
+                    lent.damage(damage);
+                } else {
+                    lent.damage(damage, source);
+                }
+            } finally {
+                if (outermost) BEING_DAMAGED.remove(lent);
             }
-            BEING_DAMAGED.remove(lent);
 
             final double nextHealth = lent.getHealth();
             entity.setLastDamageCause(finalEvent);

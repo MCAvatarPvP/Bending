@@ -129,18 +129,16 @@ public class DaggerThrow extends ChiAbility implements AddonAbility {
     }
 
     public boolean removeArrowFromInventory() {
-        for (ItemStack item : player.getInventory().getContents()) {
-            if (item == null || item.getType() != Material.ARROW) return false;
-
+        var inventory = player.getInventory();
+        for (int slot = 0; slot < inventory.getSize(); slot++) {
+            ItemStack item = inventory.getItem(slot);
+            if (item == null || item.getType() != Material.ARROW || item.getAmount() <= 0) continue;
             if (item.getAmount() == 1) {
-                boolean empty = player.getInventory().removeItem(item).isEmpty();
-                ItemStack offHand = player.getInventory().getItemInOffHand();
-
-                if (!empty && offHand != null && offHand.getType() == Material.ARROW && offHand.getAmount() == 1) {
-                    player.getInventory().setItemInOffHand(null);
-                }
-            } else if (item.getAmount() > 1) item.setAmount(item.getAmount() - 1);
-
+                inventory.clear(slot);
+            } else {
+                item.setAmount(item.getAmount() - 1);
+                inventory.setItem(slot, item);
+            }
             return true;
         }
         return false;

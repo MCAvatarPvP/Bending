@@ -42,6 +42,29 @@ import com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime;
 public abstract class PredictionClientNativeInput extends PredictionClientState {
     protected void prepareAcceptedNativeInputPacket0(final Packet<?> packet) {
         if (packet == null || packet != currentNativeInputPacket) return;
+        acceptedAttack = null;
+        final MinecraftClient client = MinecraftClient.getInstance();
+        if (active && readySent && sessionId != null && client.player != null && client.world != null && packet instanceof PlayerInteractEntityC2SPacket entity) {
+            entity.handle(new PlayerInteractEntityC2SPacket.Handler() {
+                @Override public void interact(Hand hand) { }
+                @Override public void interactAt(Hand hand, Vec3d pos) { }
+                @Override public void attack() {
+                    int id = ((com.projectkorra.projectkorra.fabric.mixin.client.RollbackEntityPacketAccess) entity).rollback$entityId();
+                    if (client.world.getEntityById(id) instanceof net.minecraft.entity.LivingEntity target
+                            && target != client.player && target.isAlive()) {
+                        if (ClientPlayNetworking.canSend(PredictionPayloads.MeleeAction.ID)) {
+                            int slot = serverVisibleSelectedSlot(client);
+                            String ability = ExactPredictionRuntime.inputAbilityName(slot, binds.get(slot + 1), PredictionPayloads.InputKind.LEFT_CLICK);
+                            if (ability != null && !ability.isBlank() && ExactPredictionRuntime.supports(ability)) {
+                                ClientPlayNetworking.send(new PredictionPayloads.MeleeAction(sessionId, nextSequence + 1,
+                                        slot, ability, id, target.getUuid()));
+                            }
+                        }
+                        acceptedAttack = new MeleeContact(id, target.getUuid(), clientTick, Float.NaN);
+                    }
+                }
+            });
+        }
         if (packet == pendingTaggedPacket) {
             final PendingActionTag tag = pendingActionTag;
             pendingTaggedPacket = null;

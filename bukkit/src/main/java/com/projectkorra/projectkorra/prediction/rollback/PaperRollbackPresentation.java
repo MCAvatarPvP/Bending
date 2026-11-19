@@ -16,7 +16,9 @@ final class PaperRollbackPresentation {
     private final PKListener listener;
     private final PaperRollbackItemCodec items;
     private final PaperRollbackDirectPackets direct;
-    PaperRollbackPresentation(World world, JavaPlugin plugin, PKListener listener, PaperRollbackItemCodec items, PaperRollbackDirectPackets direct) {
+    private final java.util.Set<UUID> participants;
+    PaperRollbackPresentation(World world, JavaPlugin plugin, PKListener listener, PaperRollbackItemCodec items, PaperRollbackDirectPackets direct, java.util.Set<UUID> participants) {
+        this.participants = java.util.Set.copyOf(participants);
         this.world = world; this.plugin = plugin; this.listener = listener; this.items = items; this.direct = direct;
     }
     private Player viewer(UUID id) {
@@ -52,6 +54,10 @@ final class PaperRollbackPresentation {
             case com.projectkorra.projectkorra.prediction.rollback.world.RollbackItemData item -> BukkitMC.item(items.decodeBukkit(item));
             default -> data;
         };
+    }
+    private boolean rendersParticles(Player viewer) {
+        return participants.contains(viewer.getUniqueId()) && com.projectkorra.projectkorra.prediction.server.PaperPredictionServer
+                .rendersReplicaParticles(viewer.getUniqueId());
     }
     void publish(RollbackEngine.Effect<Object> effect, long confirmed) {
         Object event = effect.value();
@@ -108,12 +114,18 @@ final class PaperRollbackPresentation {
             var particle = com.projectkorra.projectkorra.platform.mc.Particle.valueOf(visual.particle());
             var pos = BukkitMC.location(at(visual.position()));
             var payload = particleData(visual.data());
-            if (visual.viewer() == null) BukkitMC.world(world).spawnParticle(particle, pos, visual.count(), visual.x(),
-                    visual.y(), visual.z(), visual.extra(), payload);
-            else {
+            if (visual.viewer() == null) {
+                var origin = at(visual.position());
+                // Match the native non-forced broadcast radius. Each opted-in replica draws its own copy.
+                for (var player : world.getNearbyPlayers(origin, 32)) {
+                    if (player.getLocation().distanceSquared(origin) < 32 * 32 && !rendersParticles(player))
+                        BukkitMC.player(player).spawnParticle(particle, pos, visual.count(), visual.x(),
+                                visual.y(), visual.z(), visual.extra(), payload, false);
+                }
+            } else {
                 var player = viewer(visual.viewer());
-                if (player != null) BukkitMC.player(player).spawnParticle(particle, pos, visual.count(), visual.x(),
-                        visual.y(), visual.z(), visual.extra(), payload, visual.force());
+                if (player != null && !rendersParticles(player)) BukkitMC.player(player).spawnParticle(particle, pos,
+                        visual.count(), visual.x(), visual.y(), visual.z(), visual.extra(), payload, visual.force());
             }
         } else if (event instanceof RollbackArenaActions.EffectOutput visual) {
             Object data = visual.data();

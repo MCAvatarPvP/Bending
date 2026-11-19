@@ -1,6 +1,7 @@
 package me.literka.abilities;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantAbilityIndices;
 
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
@@ -34,8 +35,11 @@ public class StickyBomb extends ModernChiAbility implements AddonAbility {
 
     private static final double SHULKER_BULLET_GRAVITY = 0.04;
 
-    public static Map<Player, List<Long>> cooldowns = new HashMap<>();
-    public static Map<Player, Long> throwTime = new HashMap<>();
+    public static Map<Player, List<Long>> cooldowns = RollbackParticipantAbilityIndices.live().bombCooldowns;
+    public static Map<Player, Long> throwTime = RollbackParticipantAbilityIndices.live().bombThrows;
+
+    public static Map<Player, List<Long>> cooldowns() { return RollbackParticipantAbilityIndices.current().bombCooldowns; }
+    public static Map<Player, Long> throwTimes() { return RollbackParticipantAbilityIndices.current().bombThrows; }
 
     @Attribute(Attribute.COOLDOWN)
     private long cooldown;
@@ -61,6 +65,8 @@ public class StickyBomb extends ModernChiAbility implements AddonAbility {
     public StickyBomb(Player player) {
         super(player);
 
+        var cooldowns = cooldowns();
+        var throwTime = throwTimes();
         cooldowns.putIfAbsent(player, new ArrayList<>());
         int limit = ChiRework.config().getInt("Abilities.StickyBomb.Limit");
         Collection<StickyBomb> abilities = CoreAbility.getAbilities(player, StickyBomb.class);
@@ -235,7 +241,7 @@ public class StickyBomb extends ModernChiAbility implements AddonAbility {
         shulkerBullet.remove();
         location.getWorld().playSound(this.location, Sound.ENTITY_GENERIC_EXPLODE, 1, 1.5f);
         new ParticleEffect().type(Particle.EXPLOSION_EMITTER).location(location).count(1).speed(0).spawn();
-        List<Long> list = cooldowns.get(player);
+        List<Long> list = cooldowns().get(player);
         if (list != null) list.add(RollbackClock.millis() + getCooldown());
         remove();
     }
@@ -243,7 +249,7 @@ public class StickyBomb extends ModernChiAbility implements AddonAbility {
     @Override
     public String getMovePreview(Player player) {
         int limit = ChiRework.config().getInt("Abilities.StickyBomb.Limit");
-        int bombs = cooldowns.getOrDefault(player, Collections.emptyList()).size() + CoreAbility.getAbilities(player, StickyBomb.class).size();
+        int bombs = cooldowns().getOrDefault(player, Collections.emptyList()).size() + CoreAbility.getAbilities(player, StickyBomb.class).size();
 
         int availableBombs = limit - bombs;
         if (availableBombs == limit) return super.getMovePreview(player);

@@ -118,8 +118,10 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
         private void acquireAtBoundary() {
             if (stopped || released) return;
             acquired = true;
+            long time = RollbackTiming.start();
             try { ownership.acquire(); }
             catch (RuntimeException | Error failure) { acquisitionFailure = failure; }
+            finally { RollbackTiming.finish(time, "enroll.acquire"); }
         }
 
         @Override public Prepared poll() {
@@ -134,7 +136,8 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
             if (captured == null) {
                 if (!ownership.pollReady(level.getServer().packetProcessor()) || !terrainReady()) return null;
                 if (!terrain.matches(level)) { terrain = null; return null; }
-                capture();
+                long time = RollbackTiming.start();
+                try { capture(); } finally { RollbackTiming.finish(time, "enroll.capture"); }
                 terrain = null;
             }
             if (transfer == null) {
@@ -170,7 +173,9 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
             var ids = request.sides().keySet();
             var reservation = CoreAbility.reserveRollbackIds(ids, RESERVED_IDS);
             var original = CoreAbility.captureRollbackRegistry(ids, reservation);
+            long time = RollbackTiming.start();
             var services = PaperRollbackRosterSeed.captureServices(players.values(), seed, RollbackDuelRuntime.GRAPH.maximumObjects());
+            time = RollbackTiming.finish(time, "enroll.playerServices");
             var graph = new PaperRollbackDuelSeed.GraphSetup(definitions.installed(), RollbackDuelRuntime.GRAPH,
                     lifecycle, pluginBindings());
             var views = bending.values().stream().map(BendingPlayer::getPlayer).toList();
@@ -182,9 +187,11 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
             globals.captureMaintenance(platform.rollbackScheduler());
             globals.requireNoInitialActors(views.getFirst().getWorld(), request.terrain(), ids);
             globals.bindLayers(layerLease.seed());
+            time = RollbackTiming.finish(time, "enroll.participantGlobals");
             captured = PaperRollbackDuelSeed.captureOwned(ownership, request, challenge, definitions.definitions(),
                     players.values(), services, bending.values(), ProjectKorra.collisionManager, List.of(reservation, regions, globals),
                     graph, List.of(), seed, Long.rotateLeft(seed, 29), CAPTURE_LIMITS, terrain);
+            time = RollbackTiming.finish(time, "enroll.seed");
             encodedBootstrap = PaperRollbackBootstraps.encodeCaptured(captured.portable(), RollbackDuelRuntime.TERRAIN);
             // The live scheduler uses this monitor to enter async callbacks. Check again at ownership transfer.
             synchronized (platform.rollbackScheduler()) {
@@ -196,7 +203,9 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
                     new RollbackRosterBindings(views.getFirst().getWorld(), views), config, lifecycle, graph.services(),
                     new PaperRollbackGraphViews());
             live = new PaperRollbackMatchRestoration.LiveRoster(players, bending, reservation, original, codec, layerLease);
+            time = RollbackTiming.finish(time, "enroll.liveBindings");
             simulation = Objects.requireNonNull(factory.open(definitions, captured, level, services));
+            RollbackTiming.finish(time, "enroll.simulation");
             runtime = new PaperRollbackMatchRuntime<>(request, seed, simulation.combat(), server, new RollbackServerRuntime.Output<>() {
                 @Override public void update(RollbackEngine.Update<RollbackDomain.Checkpoint, RollbackPlayerInput, Object> update) {
                     simulation.presentation().accept(update);
@@ -214,7 +223,9 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
         }
         @Override public void tick(long tick) {
             if (stopped || released || !running) throw new IllegalStateException("Duel authority is not running");
-            ownership.requireReady(); runtime.tick(tick);
+            long time = RollbackTiming.start();
+            try { ownership.requireReady(); runtime.tick(tick); }
+            finally { RollbackTiming.finish(time, "server.tick"); }
         }
         private void stopBeforeMutation() {
             if (!server.stopNegotiatedRollback(request.session()))

@@ -89,6 +89,8 @@ public abstract class PredictionClientServerState extends PredictionClientNative
             readySent = false;
             actionStartedAtMillis.clear();
             pendingHitClaims.clear();
+            meleeContacts.clear();
+            acceptedAttack = null;
             currentNativeInputPacket = null;
             pendingTaggedPacket = null;
             pendingActionTag = null;

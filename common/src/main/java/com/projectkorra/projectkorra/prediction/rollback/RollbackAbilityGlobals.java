@@ -29,7 +29,7 @@ public final class RollbackAbilityGlobals {
         var globals = RollbackDomain.abilityGlobals();
         return globals == null ? null : globals.previousWorldPhase;
     }
-    private long regenerationDelay, elementExpiryDelay;
+    private long regenerationDelay, elementExpiryDelay, chiMaintenanceDelay;
 
     private RollbackParticipantStatuses statuses = new RollbackParticipantStatuses();
     private TempBlock.RollbackLayers layers;
@@ -63,6 +63,7 @@ public final class RollbackAbilityGlobals {
     public void captureMaintenance(RollbackLiveScheduler scheduler) {
         regenerationDelay = scheduler.managerDelay(com.projectkorra.projectkorra.util.RegenHandler.class, 20);
         elementExpiryDelay = scheduler.managerDelay(com.projectkorra.projectkorra.BendingManager.TempElementsRunnable.class, 20);
+        chiMaintenanceDelay = scheduler.managerDelay(me.literka.util.Utils.Maintenance.class, 1);
         long standsDelay = scheduler.managerDelay(me.moros.hyperion.util.TempArmorStand.Manager.class, 1);
         long fallingDelay = scheduler.managerDelay(me.moros.hyperion.util.BendingFallingBlock.Manager.class, 5);
         if (standsDelay > 0 || fallingDelay > 0) addonActors().timerDelays(standsDelay, fallingDelay);
@@ -71,6 +72,7 @@ public final class RollbackAbilityGlobals {
 
     void progressMaintenance(long tick) {
         if (runMaintenance) RollbackBendingMaintenance.run(tick, regenerationDelay, elementExpiryDelay);
+        if (chiMaintenanceDelay > 0 && tick >= chiMaintenanceDelay) me.literka.util.Utils.tick();
         if (addonActors != null) addonActors.tick(tick);
     }
 
