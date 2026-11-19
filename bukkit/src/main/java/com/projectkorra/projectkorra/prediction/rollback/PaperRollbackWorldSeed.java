@@ -17,6 +17,7 @@ public final class PaperRollbackWorldSeed {
             throw new IllegalStateException("Capture the match world on the live tick thread before replay");
         }
         var bukkit = world.getWorld();
+        var scheduled = PaperRollbackLiveScheduledTicks.capture(world, bounds);
         bounds = com.projectkorra.projectkorra.prediction.rollback.world.RollbackLightingBounds.capture(
                 bounds, bukkit.getMinHeight(), bukkit.getMaxHeight(), limits.maximumCells());
         long tick = world.getGameTime(), day = world.getDayTime();
@@ -30,6 +31,6 @@ public final class PaperRollbackWorldSeed {
             throw new IllegalStateException("Match world advanced during bootstrap capture");
         }
         return new RollbackWorldSeed(bukkit.getUID(), bukkit.getName(), bounds.minY(), bounds.maxY(), day, storm,
-                settings, border, environment, terrain, light);
+                settings, border, environment, terrain, light, scheduled);
     }
 }

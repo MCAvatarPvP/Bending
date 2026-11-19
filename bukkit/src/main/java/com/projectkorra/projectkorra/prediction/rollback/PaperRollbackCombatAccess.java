@@ -41,9 +41,11 @@ import java.util.UUID;
 
 /** Private native player ticks, damage/resurrection and statistics. Unbound world/item and death/spawn paths require further adapters. */
 public final class PaperRollbackCombatAccess {
-    public sealed interface Output permits DamageOutput, StatusOutput, SoundOutput, TargetSoundOutput, WaypointOutput, PaperRollbackScoreboards.Change, PaperRollbackScoreboards.Assignment, PaperRollbackAdvancements.Announcement, PaperRollbackConnection.PacketOutput, PaperRollbackPacketData.Output { }
+    public sealed interface Output permits DamageOutput, StatusOutput, ParticleOutput, SoundOutput, TargetSoundOutput, WaypointOutput, PaperRollbackScoreboards.Change, PaperRollbackScoreboards.Assignment, PaperRollbackAdvancements.Announcement, PaperRollbackConnection.PacketOutput, PaperRollbackPacketData.Output { }
     public record Position(double x, double y, double z) { }
     public record DamageOutput(UUID entity, String type, UUID source, UUID attacker, Position position) implements Output { }
+    public record ParticleOutput(String type, Position position, int count, double x, double y, double z,
+                                 double speed) implements Output { }
     public record StatusOutput(UUID entity, byte status) implements Output { }
     public record SoundOutput(UUID excludedSource, Position position, String sound, String category,
                               float volume, float pitch, long seed) implements Output { }
@@ -58,7 +60,7 @@ public final class PaperRollbackCombatAccess {
     private final RegistryAccess registries;
     private final Registry<DamageType> damageRegistry;
     private final DamageSources damageSources;
-    private final MethodHandle damage, serverDamage, melee, use, release;
+    private final MethodHandle damage, serverDamage, melee, use, release, mount, unmount;
     private final MethodHandle awardStatistic, resetStatistic;
     private final MethodHandle addEffect, removeEffect, setAir, setSwimming, movementStep, playerBodyTick;
     private final MethodHandle serverTick, serverBodyTick, serverJump;
@@ -85,6 +87,8 @@ public final class PaperRollbackCombatAccess {
         worldConfiguration.tickRates = allocator.newInstance(WorldConfiguration.TickRates.class);
         worldConfiguration.entities = allocator.newInstance(WorldConfiguration.Entities.class);
         worldConfiguration.entities.behavior = allocator.newInstance(WorldConfiguration.Entities.Behavior.class);
+        worldConfiguration.entities.spawning = allocator.newInstance(WorldConfiguration.Entities.Spawning.class);
+        worldConfiguration.entities.spawning.despawnTime = new it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap<>();
         var builder = new RollbackNativeMethods();
         events = new PaperRollbackNativeEvents(world::event, world::ownsWrapper,
                 block -> block instanceof org.bukkit.craftbukkit.block.CraftBlock craft && craft.getHandle() == world.world());
@@ -140,6 +144,7 @@ public final class PaperRollbackCombatAccess {
             for (Method method : ServerPlayer.class.getDeclaredMethods()) {
                 if (method.getName().startsWith("lambda$updateScoreForCriteria$")) builder.copyLambda(method);
             }
+            builder.copy(ServerPlayer.class.getDeclaredMethod("updateUsingItem", ItemStack.class));
             builder.copy(ServerPlayer.class.getDeclaredMethod("tickRegeneration"));
             builder.copy(net.minecraft.world.food.FoodData.class.getDeclaredMethod("tick", ServerPlayer.class));
             builder.replace(System.class.getMethod("nanoTime"),
@@ -179,6 +184,11 @@ public final class PaperRollbackCombatAccess {
             builder.copy(useItem);
             for (var method : net.minecraft.world.item.Item.class.getDeclaredMethods())
                 if (Set.of("use", "releaseUsing").contains(method.getName())) builder.copy(method);
+            for (var type : new Class<?>[]{Entity.class, LivingEntity.class, Player.class, ServerPlayer.class}) {
+                for (var method : type.getDeclaredMethods()) {
+                    if (Set.of("startRiding", "addPassenger", "removePassenger", "removeVehicle", "stopRiding").contains(method.getName())) builder.copy(method);
+                }
+            }
             var sendSound = MethodType.methodType(void.class, Player.class, double.class, double.class, double.class,
                     SoundEvent.class, SoundSource.class, float.class, float.class);
             builder.replace(Player.class.getDeclaredMethod("sendSoundEffect", sendSound.parameterArray()),
@@ -191,6 +201,8 @@ public final class PaperRollbackCombatAccess {
             Method cooldownApply = net.minecraft.world.item.component.UseCooldown.class.getDeclaredMethod("apply", ItemStack.class, LivingEntity.class);
             builder.copy(cooldownApply);
             var copied = builder.build();
+            mount = copied.get(Entity.class.getDeclaredMethod("startRiding", Entity.class, boolean.class, boolean.class));
+            unmount = copied.get(Entity.class.getDeclaredMethod("stopRiding"));
             melee = copied.get(attack);
             use = copied.get(useItem); release = copied.get(LivingEntity.class.getDeclaredMethod("releaseUsingItem"));
             useCooldown = copied.get(cooldownApply);
@@ -253,6 +265,16 @@ public final class PaperRollbackCombatAccess {
                 .query(ServerLevel::getRandom, null, args -> state.random())
                 .query(value -> value.getRandomSequence(null), null, args -> state.random())
                 .query(ServerLevel::enabledFeatures, null, args -> state.terrainFeatures())
+                .query(value -> value.sendParticles(net.minecraft.core.particles.ParticleTypes.DAMAGE_INDICATOR,
+                        0, 0, 0, 0, 0, 0, 0, 0), 0, args -> {
+                    if (!(args[0] instanceof net.minecraft.core.particles.SimpleParticleType type))
+                        throw new IllegalArgumentException("Native melee presentation requires simple particles");
+                    int count = (int) args[4];
+                    state.output(new ParticleOutput(net.minecraft.core.registries.BuiltInRegistries.PARTICLE_TYPE.getKey(type).toString(),
+                            checkedPosition((double) args[1], (double) args[2], (double) args[3]), count,
+                            (double) args[5], (double) args[6], (double) args[7], (double) args[8]));
+                    return world.playerCount();
+                })
                 .outputQuery(value -> value.broadcastDamageEvent(null, null), args -> damageOutput((Entity) args[0], (DamageSource) args[1]))
                 .outputQuery(value -> value.broadcastEntityEvent(null, (byte) 0), args -> state.output(new StatusOutput(ownedId((Entity) args[0]), (byte) args[1])))
                 .outputQuery(value -> value.playSound(null, 0, 0, 0, SoundEvents.PLAYER_HURT, SoundSource.PLAYERS, 1F, 1F), args -> sound(args, false))
@@ -483,6 +505,19 @@ public final class PaperRollbackCombatAccess {
                 throw new IllegalStateException("Entity interaction requires an owned native callback: " + target.getType());
             player.interactOn(target, hand);
         }
+    }
+
+    boolean mount(Entity rider, Entity vehicle) {
+        ownedId(rider); ownedId(vehicle);
+        try { return (boolean) mount.invokeExact(rider, vehicle, true, true); }
+        catch (RuntimeException | Error failure) { throw failure; }
+        catch (Throwable failure) { throw new IllegalStateException("Private native mount failed", failure); }
+    }
+    void unmount(Entity rider) {
+        ownedId(rider);
+        try { unmount.invokeExact(rider); }
+        catch (RuntimeException | Error failure) { throw failure; }
+        catch (Throwable failure) { throw new IllegalStateException("Private native dismount failed", failure); }
     }
 
     void attack(ServerPlayer nativePlayer, Entity target) {

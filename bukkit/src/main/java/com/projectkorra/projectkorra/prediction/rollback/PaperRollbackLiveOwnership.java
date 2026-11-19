@@ -9,6 +9,18 @@ import java.util.function.Predicate;
 
 /** Coordinates live roster gates; capture/terrain and client bootstrap are owned by the caller. */
 public final class PaperRollbackLiveOwnership {
+    private PaperRollbackLiveScheduledTicks scheduledTerrain;
+    void holdScheduledTerrain(net.minecraft.server.level.ServerLevel level, RollbackWorldSeed seed) {
+        checkThread();
+        if (!capturing || scheduledTerrain != null) throw new IllegalStateException("Scheduled terrain requires one owned capture");
+        scheduledTerrain = PaperRollbackLiveScheduledTicks.prepare(level, seed);
+        scheduledTerrain.acquire();
+    }
+    void stageScheduledTerrain(RollbackScheduledTicks outgoing, long frontier) {
+        checkThread();
+        if (scheduledTerrain == null) throw new IllegalStateException("Live terrain queues were not captured");
+        scheduledTerrain.stage(outgoing, frontier);
+    }
     private final Thread owner = Thread.currentThread();
     private final PaperRollbackLifecycle lifecycle;
     private final Runnable stopBeforeMutation;
@@ -131,7 +143,10 @@ public final class PaperRollbackLiveOwnership {
         try {
             Runnable commit = () -> {
                 nativeCleanup = true;
-                nativeState.restoreAndRelease(restoreState);
+                nativeState.restoreAndRelease(() -> {
+                    restoreState.run();
+                    if (scheduledTerrain != null) scheduledTerrain.restore();
+                });
                 nativeCleanup = false;
                 common.restoreAndRelease(() -> { });
                 if (events != null) events.release();

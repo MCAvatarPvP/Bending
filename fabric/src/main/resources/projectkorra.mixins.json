@@ -27,6 +27,7 @@
     "client.ItemStackRollbackAccess",
     "client.EntityRollbackControlAccess",
     "client.EntityRollbackAllocationMixin",
+    "client.PlayerMeleeRollbackMixin",
     "client.ProjectileRollbackAccess",
     "client.RollbackEntityPacketAccess",
     "client.WorldRollbackRandomAccess",

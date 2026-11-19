@@ -27,6 +27,7 @@ public final class PaperRollbackNativeScene implements RollbackStateCell<Void>, 
     private final Thread thread = Thread.currentThread();
     private final RollbackWorld logical;
     private final PaperRollbackLighting lighting;
+    private final PaperRollbackScheduledTicks ticks;
     private final PaperRollbackSpatial spatial;
     private final PaperRollbackWorldServices services;
     private final PaperRollbackWorldQueries queries;
@@ -68,6 +69,9 @@ public final class PaperRollbackNativeScene implements RollbackStateCell<Void>, 
         world = new PaperRollbackWorldAccess(queries, services, maximumChunks);
         roster = players.instantiate(world, epochNanos, playerServices);
         queries.bindRoster(world, roster);
+        ticks = new PaperRollbackScheduledTicks(world.world(), seed.ticks());
+        services.bindTicks(ticks);
+        world.bindTicks(ticks);
         if (bindings.blocks() instanceof PaperRollbackBlockRules nativeRules) {
             nativeRules.bind(this, geometry);
             world.bindTerrain(nativeRules);
@@ -95,13 +99,14 @@ public final class PaperRollbackNativeScene implements RollbackStateCell<Void>, 
 
     public PaperRollbackWorldAccess world() { check(); return world; }
     public PaperRollbackWorldServices services() { check(); return services; }
+    PaperRollbackScheduledTicks ticks() { check(); return ticks; }
     public PaperRollbackLighting lighting() { check(); return lighting; }
     /** Darkness is resolved after construction from the same rewindable world clock and weather. */
     @Override public int getAsInt() { check(); return spatial.environmentAttributes().skyDarkness(); }
     @Override public Void captureRollbackState() { check(); return null; }
     @Override public void restoreRollbackState(Void ignored) { check(); }
     @Override public List<?> rollbackReferences() {
-        check(); var roots = new ArrayList<Object>(List.of(logical, lighting, spatial, services, queries));
+        check(); var roots = new ArrayList<Object>(List.of(logical, lighting, spatial, services, queries, ticks));
         roots.addAll(roster.values()); return List.copyOf(roots);
     }
     private void check() { if (Thread.currentThread() != thread) throw new IllegalStateException("Native scene crossed threads"); }

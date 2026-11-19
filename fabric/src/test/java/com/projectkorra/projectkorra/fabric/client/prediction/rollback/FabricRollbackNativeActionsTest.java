@@ -82,7 +82,7 @@ class FabricRollbackNativeActionsTest {
             assertEquals(health, target.getHealth());
             f.runtime.tick(101);
             assertEquals(List.of(new RollbackInputPacket.Edge(1, RollbackInputActions.Kind.ATTACK,
-                    -1, 65, -15, new RollbackInteractionTarget.Actor(target.getId(), null))), f.sent.getFirst().actions());
+                    -1, 65, -15, RollbackInputActions.Hand.MAIN, new RollbackInteractionTarget.Actor(target.getId(), null))), f.sent.getFirst().actions());
         }
     }
 

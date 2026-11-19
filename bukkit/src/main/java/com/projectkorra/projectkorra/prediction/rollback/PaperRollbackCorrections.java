@@ -30,7 +30,7 @@ public final class PaperRollbackCorrections {
             var data = new RollbackConfirmedData(round.exportData(), scene.captureRoster(initial.roster(), nanos),
                     PaperRollbackRandomStreams.capture(scene), execution.captureRollbackState(),
                     scene.logical().terrain().changesSince(initial.world().terrain()), actors.exportState(),
-                    graph.bending().exportRepair(graph.codec().withBindings(actors.bindings())));
+                    graph.bending().exportRepair(graph.codec().withBindings(actors.bindings())), scene.ticks().captureRollbackState());
             return data.encode(initial, states, RollbackDuelRuntime.TERRAIN, maximumBytes - RollbackStateCorrection.HEADER_BYTES);
         });
     }

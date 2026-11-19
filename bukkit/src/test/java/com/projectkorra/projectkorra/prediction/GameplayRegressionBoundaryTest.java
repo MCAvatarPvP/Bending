@@ -191,7 +191,7 @@ class GameplayRegressionBoundaryTest {
                         && earth.contains("RaiseEarth.clearAllTracking()"),
                 "auxiliary earth ownership may not survive a client-world replacement");
         assertTrue(sources.contains("public static void clearAll()")
-                        && sources.contains("playerSources.clear()"),
+                        && sources.contains("sources().clear()"),
                 "source selections from the outgoing world may not be consumed after a world switch");
     }
 

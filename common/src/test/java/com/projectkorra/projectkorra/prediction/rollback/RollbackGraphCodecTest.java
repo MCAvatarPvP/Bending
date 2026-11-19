@@ -171,6 +171,23 @@ class RollbackGraphCodecTest {
         assertEquals(1, ((ArrayDeque) roots.get(1)).size());
     }
 
+    @Test void dynamicBindingsResolveToTheRecipientActorAtThatFrontier() {
+        var original = codec(new Service("authority"));
+        var receiver = codec(new Service("client"));
+        var arrow = new Service("server arrow");
+        var localArrow = new Service("client arrow");
+        String id = "actor/" + new UUID(0, 31);
+        var bind = new RollbackGraphCodec.Binding(id, Service.class, arrow);
+        byte[] graph = original.withBindings(List.of(bind)).encode(List.of(arrow, arrow));
+        var decoded = receiver.withBindings(List.of(new RollbackGraphCodec.Binding(id, Service.class, localArrow))).decode(graph);
+        assertSame(localArrow, decoded.getFirst());
+        assertSame(localArrow, decoded.getLast());
+        assertThrows(IllegalArgumentException.class, () -> receiver.decode(graph));
+        assertThrows(IllegalArgumentException.class, () -> receiver.withBindings(List.of(
+                new RollbackGraphCodec.Binding("actor/other", Service.class, localArrow))).decode(graph));
+        assertThrows(IllegalArgumentException.class, () -> original.withBindings(List.of(bind, bind)));
+    }
+
     @Test void catalogsAreOrderIndependentButSchemaBindingAndEnumContractsMustMatch() {
         var service = new Service("a");
         var a = codec(service);

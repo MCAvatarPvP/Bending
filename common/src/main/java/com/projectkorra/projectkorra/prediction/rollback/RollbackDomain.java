@@ -35,6 +35,7 @@ public final class RollbackDomain {
     private final PredictionServices.Bindings prediction;
     private final RollbackConfiguration configuration;
     private Checkpoint state;
+    private RollbackAbilityGlobals globals = new RollbackAbilityGlobals();
     private boolean failed, outsideRestoreFailed;
 
     private RollbackDomain(RollbackStateGraph graph, Collection<Field> shared, Collection<?> local,
@@ -138,7 +139,7 @@ public final class RollbackDomain {
              var configurationScope = configuration.using();
              var itemScope = items == null ? null : RollbackItemScope.using(items);
              var predictionScope = PredictionServices.using(prediction)) {
-            if (initial != null) initial.snapshot.restore();
+            if (initial != null) restore(initial);
             T result = operation.get();
             if (retain != null) state = retain.apply(result);
             return result;
@@ -163,20 +164,25 @@ public final class RollbackDomain {
     /** Snapshot/restore methods are used by RollbackSimulation while this domain is installed. */
     public Checkpoint capture() {
         checkActive();
-        return new Checkpoint(this, graph.capture(local, shared));
+        var roots = new ArrayList<Object>(local);
+        roots.add(globals);
+        return new Checkpoint(this, graph.capture(roots, shared), globals);
     }
 
     public void restore(Checkpoint checkpoint) {
         checkActive();
         Objects.requireNonNull(checkpoint, "checkpoint");
         if (checkpoint.owner != this) throw new IllegalArgumentException("Checkpoint belongs to another rollback domain");
+        globals = checkpoint.globals;
         checkpoint.snapshot.restore();
     }
 
     public static final class Checkpoint {
         private final RollbackDomain owner;
         private final RollbackStateGraph.Snapshot snapshot;
-        private Checkpoint(RollbackDomain owner, RollbackStateGraph.Snapshot snapshot) {
+        private final RollbackAbilityGlobals globals;
+        private Checkpoint(RollbackDomain owner, RollbackStateGraph.Snapshot snapshot, RollbackAbilityGlobals globals) {
+            this.globals = globals;
             this.owner = owner;
             this.snapshot = snapshot;
         }
@@ -184,6 +190,15 @@ public final class RollbackDomain {
     }
 
     public boolean failed() { checkThread(); return failed; }
+
+    static RollbackAbilityGlobals abilityGlobals() {
+        var domain = ACTIVE.get();
+        return domain == null ? null : domain.globals;
+    }
+
+    static void installAbilityGlobals(RollbackAbilityGlobals globals) {
+        Objects.requireNonNull(ACTIVE.get(), "Private registry installation requires a domain").globals = Objects.requireNonNull(globals);
+    }
 
     /** True only while private session state and services are installed on this thread. */
     public static boolean active() { return ACTIVE.get() != null; }

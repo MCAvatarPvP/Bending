@@ -16,6 +16,7 @@ public final class FabricRollbackConfirmed {
             return match.combat().importConfirmedState(tick, () -> {
                 var scene = duel.scene();
                 scene.logical().terrain().importChanges(initial.world().terrain(), data.terrain());
+                if (data.scheduledTicks() != null) scene.ticks().restoreRollbackState(data.scheduledTicks());
                 duel.actors().importState(data.actors());
                 scene.roster().importConfirmed(data.roster(), nanos);
                 scene.restoreStreams(data.random());

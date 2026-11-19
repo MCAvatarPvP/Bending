@@ -6,13 +6,13 @@ import com.projectkorra.projectkorra.ability.EarthAbility;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.ability.WaterAbility;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
-import com.projectkorra.projectkorra.configuration.PKConfiguration;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 
 import java.util.HashMap;
+import java.util.Map;
 
 /**
  * BlockSource is a class that handles water and earth bending sources. When a
@@ -25,9 +25,32 @@ import java.util.HashMap;
  */
 public class BlockSource {
     private static HashMap<Player, HashMap<BlockSourceType, HashMap<ClickType, BlockSourceInformation>>> playerSources = new HashMap<Player, HashMap<BlockSourceType, HashMap<ClickType, BlockSourceInformation>>>();
-    private static PKConfiguration config = ConfigManager.defaultConfig.get();
     // The player should never need to grab source blocks from farther than this.
-    private static double MAX_RANGE = config.getDouble("Abilities.Water.WaterManipulation.SelectRange");
+    private static Double maxRange;
+    private static double selectionRange() {
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active())
+            return ConfigManager.defaultConfig.get().getDouble("Abilities.Water.WaterManipulation.SelectRange");
+        if (maxRange == null) maxRange = ConfigManager.defaultConfig.get().getDouble("Abilities.Water.WaterManipulation.SelectRange");
+        return maxRange;
+    }
+
+    private static Map<Player, HashMap<BlockSourceType, HashMap<ClickType, BlockSourceInformation>>> sources() {
+        return com.projectkorra.projectkorra.prediction.rollback.RollbackAbilityGlobals.sources(playerSources);
+    }
+
+    public static HashMap<BlockSourceType, HashMap<ClickType, BlockSourceInformation>> captureRollbackSources(Player player) {
+        var selected = sources().get(player);
+        if (selected == null) return null;
+        var copy = new HashMap<BlockSourceType, HashMap<ClickType, BlockSourceInformation>>();
+        selected.forEach((type, clicks) -> copy.put(type, new HashMap<>(clicks)));
+        return copy;
+    }
+
+    public static void restoreRollbackSources(Player player, HashMap<BlockSourceType, HashMap<ClickType, BlockSourceInformation>> selections) {
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) throw new IllegalStateException("Restore on live server");
+        if (selections == null) playerSources.remove(player);
+        else playerSources.put(player, selections);
+    }
 
     /**
      * Updates all of the player's sources.
@@ -54,7 +77,7 @@ public class BlockSource {
             removeSource(player, BlockSourceType.SNOW, clickType);
             removeSource(player, BlockSourceType.MUD, clickType);
 
-            final Block waterBlock = WaterAbility.getWaterSourceBlock(player, MAX_RANGE, true);
+            final Block waterBlock = WaterAbility.getWaterSourceBlock(player, selectionRange(), true);
             if (waterBlock != null) {
                 putSource(player, waterBlock, BlockSourceType.WATER, clickType);
                 if (ElementalAbility.isPlant(waterBlock)) {
@@ -76,7 +99,7 @@ public class BlockSource {
             removeSource(player, BlockSourceType.MUD, clickType);
             removeSource(player, BlockSourceType.LAVA, clickType);
 
-            final Block earthBlock = EarthAbility.getEarthSourceBlock(player, null, MAX_RANGE);
+            final Block earthBlock = EarthAbility.getEarthSourceBlock(player, null, selectionRange());
             if (earthBlock != null) {
                 putSource(player, earthBlock, BlockSourceType.EARTH, clickType);
                 if (ElementalAbility.isMetal(earthBlock)) {
@@ -89,7 +112,7 @@ public class BlockSource {
 
             // We need to handle lava differently, since getEarthSourceBlock doesn't account for lava.
             // We should only select the lava source if it is closer than the earth.
-            final Block lavaBlock = EarthAbility.getLavaSourceBlock(player, MAX_RANGE);
+            final Block lavaBlock = EarthAbility.getLavaSourceBlock(player, selectionRange());
             final double earthDist = earthBlock != null ? earthBlock.getLocation().distanceSquared(player.getLocation()) : Double.MAX_VALUE;
             final double lavaDist = lavaBlock != null ? lavaBlock.getLocation().distanceSquared(player.getLocation()) : Double.MAX_VALUE;
             if (lavaBlock != null && lavaDist <= earthDist) {
@@ -108,32 +131,31 @@ public class BlockSource {
      * @param clickType  the type of click, either SHIFT_DOWN or LEFT_CLICK.
      */
     private static void putSource(final Player player, final Block block, final BlockSourceType sourceType, final ClickType clickType) {
-        if (!playerSources.containsKey(player)) {
-            playerSources.put(player, new HashMap<BlockSourceType, HashMap<ClickType, BlockSourceInformation>>());
+        if (!sources().containsKey(player)) {
+            sources().put(player, new HashMap<BlockSourceType, HashMap<ClickType, BlockSourceInformation>>());
         }
-        if (!playerSources.get(player).containsKey(sourceType)) {
-            playerSources.get(player).put(sourceType, new HashMap<ClickType, BlockSourceInformation>());
+        if (!sources().get(player).containsKey(sourceType)) {
+            sources().get(player).put(sourceType, new HashMap<ClickType, BlockSourceInformation>());
         }
         final BlockSourceInformation info = new BlockSourceInformation(player, block, sourceType, clickType);
-        playerSources.get(player).get(sourceType).put(clickType, info);
+        sources().get(player).get(sourceType).put(clickType, info);
     }
 
     public static void removeSource(final Player player, final BlockSourceType sourceType, final ClickType clickType) {
-        if (!playerSources.containsKey(player)) return;
-        if (!playerSources.get(player).containsKey(sourceType)) return;
-        playerSources.get(player).get(sourceType).put(clickType, null);
+        if (!sources().containsKey(player)) return;
+        if (!sources().get(player).containsKey(sourceType)) return;
+        sources().get(player).get(sourceType).put(clickType, null);
     }
 
     /** Drops every cached world-scoped source without mutating a block. */
     public static void clearAll() {
-        playerSources.clear();
+        sources().clear();
     }
 
     /** Reloads the cached selection range after config.yml changes. */
     public static void reload() {
         clearAll();
-        config = ConfigManager.defaultConfig.get();
-        MAX_RANGE = config.getDouble("Abilities.Water.WaterManipulation.SelectRange");
+        maxRange = ConfigManager.defaultConfig.get().getDouble("Abilities.Water.WaterManipulation.SelectRange");
     }
 
     /**
@@ -146,14 +168,14 @@ public class BlockSource {
      * @return a valid bendable block, or null if none was found.
      */
     public static BlockSourceInformation getBlockSourceInformation(final Player player, final BlockSourceType sourceType, final ClickType clickType) {
-        if (!playerSources.containsKey(player)) {
+        if (!sources().containsKey(player)) {
             return null;
-        } else if (!playerSources.get(player).containsKey(sourceType)) {
+        } else if (!sources().get(player).containsKey(sourceType)) {
             return null;
-        } else if (!playerSources.get(player).get(sourceType).containsKey(clickType)) {
+        } else if (!sources().get(player).get(sourceType).containsKey(clickType)) {
             return null;
         }
-        return playerSources.get(player).get(sourceType).get(clickType);
+        return sources().get(player).get(sourceType).get(clickType);
     }
 
     /**

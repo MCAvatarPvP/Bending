@@ -24,6 +24,22 @@ final class PaperRollbackPresentation {
         return player != null && player.getWorld() == world ? player : null;
     }
     private Location at(Pose pos) { return new Location(world, pos.x(), pos.y(), pos.z(), pos.yaw(), pos.pitch()); }
+    private Location at(PaperRollbackCombatAccess.Position pos) { return new Location(world, pos.x(), pos.y(), pos.z()); }
+    private org.bukkit.craftbukkit.entity.CraftEntity body(UUID id) {
+        if (id == null) return null;
+        var entity = world.getEntity(id);
+        if (entity == null) entity = viewer(id);
+        return (org.bukkit.craftbukkit.entity.CraftEntity) entity;
+    }
+    @SuppressWarnings("unchecked")
+    private void tracked(UUID target, boolean includeSelf, net.minecraft.network.protocol.Packet<?> packet) {
+        var entity = body(target);
+        if (entity == null) return;
+        var level = ((org.bukkit.craftbukkit.CraftWorld) world).getHandle();
+        var clientbound = (net.minecraft.network.protocol.Packet<? super net.minecraft.network.protocol.game.ClientGamePacketListener>) packet;
+        if (includeSelf) level.getChunkSource().sendToTrackingPlayersAndSelf(entity.getHandle(), clientbound);
+        else level.getChunkSource().sendToTrackingPlayers(entity.getHandle(), clientbound);
+    }
     private Object particleData(Object data) {
         return switch (data) {
             case null -> null;
@@ -45,7 +61,44 @@ final class PaperRollbackPresentation {
             direct.deliver(new RollbackEngine.Effect<>(effect.tick(), effect.ordinal(), (PaperRollbackCombatAccess.Output) event), confirmed);
             return;
         }
-        if (event instanceof CommonAbilityLifecycleListener.Effect lifecycle) {
+        if (event instanceof PaperRollbackCombatAccess.SoundOutput sound) {
+            var at = at(sound.position());
+            double maximum = Math.max(16, 16 * sound.volume());
+            var category = SoundCategory.valueOf(sound.category().toUpperCase(java.util.Locale.ROOT));
+            for (var player : world.getPlayers()) {
+                if (player.getUniqueId().equals(sound.excludedSource()) || player.getLocation().distanceSquared(at) > maximum * maximum) continue;
+                player.playSound(at, sound.sound(), category, sound.volume(), sound.pitch(), sound.seed());
+            }
+        } else if (event instanceof PaperRollbackCombatAccess.TargetSoundOutput sound) {
+            var player = viewer(sound.target());
+            if (player != null) player.playSound(at(sound.position()), sound.sound(), SoundCategory.valueOf(
+                    sound.category().toUpperCase(java.util.Locale.ROOT)), sound.volume(), sound.pitch(), sound.seed());
+        } else if (event instanceof PaperRollbackCombatAccess.ParticleOutput visual) {
+            var nativeType = org.bukkit.Registry.PARTICLE_TYPE.get(NamespacedKey.fromString(visual.type()));
+            if (nativeType != null) world.spawnParticle(nativeType, at(visual.position()), visual.count(), visual.x(), visual.y(), visual.z(), visual.speed());
+        } else if (event instanceof PaperRollbackCombatAccess.StatusOutput status) {
+            var target = body(status.entity());
+            if (target != null) tracked(status.entity(), true, new net.minecraft.network.protocol.game.ClientboundEntityEventPacket(target.getHandle(), status.status()));
+        } else if (event instanceof PaperRollbackCombatAccess.DamageOutput damage) {
+            var target = body(damage.entity()); if (target == null) return;
+            var level = ((org.bukkit.craftbukkit.CraftWorld) world).getHandle();
+            var type = level.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.DAMAGE_TYPE)
+                    .get(net.minecraft.resources.Identifier.parse(damage.type())).orElseThrow();
+            var attacker = body(damage.attacker()); var source = body(damage.source());
+            var origin = java.util.Optional.ofNullable(damage.position()).map(p -> new net.minecraft.world.phys.Vec3(p.x(), p.y(), p.z()));
+            tracked(damage.entity(), true, new net.minecraft.network.protocol.game.ClientboundDamageEventPacket(
+                    target.getEntityId(), type, attacker == null ? -1 : attacker.getEntityId(), source == null ? -1 : source.getEntityId(), origin));
+        } else if (event instanceof PaperRollbackPacketData.Tracked tracked) {
+            var entity = body(tracked.entity()); if (entity == null) return;
+            var level = ((org.bukkit.craftbukkit.CraftWorld) world).getHandle();
+            net.minecraft.network.protocol.Packet<?> packet = switch (tracked.data()) {
+                case PaperRollbackPacketData.Animation a -> new net.minecraft.network.protocol.game.ClientboundAnimatePacket(entity.getHandle(), a.animation());
+                case PaperRollbackPacketData.EntityStatus s -> new net.minecraft.network.protocol.game.ClientboundEntityEventPacket(entity.getHandle(), s.status());
+                case PaperRollbackPacketData.Equipment e -> new PaperRollbackPacketData(level.registryAccess()).rebuildInventory(e, unused -> entity.getEntityId());
+                default -> throw new IllegalArgumentException("Unsupported tracked native output");
+            };
+            tracked(tracked.entity(), tracked.includeSelf(), packet);
+        } else if (event instanceof CommonAbilityLifecycleListener.Effect lifecycle) {
             listener.publishLifecycleEffect(lifecycle);
         } else if (event instanceof RollbackArenaActions.Message message) {
             var player = viewer(message.player());

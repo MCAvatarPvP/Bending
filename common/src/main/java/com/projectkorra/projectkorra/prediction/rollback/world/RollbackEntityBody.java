@@ -288,7 +288,8 @@ public final class RollbackEntityBody implements RollbackStateCell<RollbackEntit
         }
         if (data.passengers.size() >= 64) throw new IllegalStateException("Passenger budget exceeded");
         if (!rules.canMount(this, passenger)) return false;
-        passenger.dismount();
+        // Successful native mount already transferred the passenger from the old vehicle.
+        if (passenger.data.vehicle != null) passenger.data.vehicle.data.passengers.remove(passenger);
         data.passengers.add(passenger);
         passenger.data.vehicle = this;
         return true;

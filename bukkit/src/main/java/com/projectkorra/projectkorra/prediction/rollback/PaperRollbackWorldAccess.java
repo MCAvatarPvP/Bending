@@ -102,6 +102,17 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         static final AABB BOX = new AABB(0, 0, 0, 1, 1, 1);
     }
 
+    private PaperRollbackScheduledTicks scheduledTicks;
+    void bindTicks(PaperRollbackScheduledTicks ticks) {
+        checkThread();
+        if (scheduledTicks != null) throw new IllegalStateException("Native tick scheduler already bound");
+        scheduledTicks = Objects.requireNonNull(ticks);
+    }
+    private PaperRollbackScheduledTicks scheduled() {
+        checkThread();
+        if (scheduledTicks == null) throw new IllegalStateException("Private scheduled terrain was not supplied");
+        return scheduledTicks;
+    }
     private PaperRollbackBlockRules terrainRules;
     void bindTerrain(PaperRollbackBlockRules rules) {
         checkThread();
@@ -171,6 +182,16 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
                 .constant(ServerLevel::getMaxSectionY, maximumY >> 4)
                 .constant(ServerLevel::getSectionsCount, sectionCount)
                 .constant(ServerLevel::getChunkSource, source)
+                .query(ServerLevel::getBlockTicks, null, args -> scheduled().blocks())
+                .query(ServerLevel::getFluidTicks, null, args -> scheduled().fluids())
+                .outputQuery(value -> value.scheduleTick(BlockPos.ZERO, Blocks.AIR, 1),
+                        args -> scheduled().schedule((BlockPos) args[0], args[1], (int) args[2], net.minecraft.world.ticks.TickPriority.NORMAL))
+                .outputQuery(value -> value.scheduleTick(BlockPos.ZERO, Blocks.AIR, 1, net.minecraft.world.ticks.TickPriority.NORMAL),
+                        args -> scheduled().schedule((BlockPos) args[0], args[1], (int) args[2], (net.minecraft.world.ticks.TickPriority) args[3]))
+                .outputQuery(value -> value.scheduleTick(BlockPos.ZERO, net.minecraft.world.level.material.Fluids.EMPTY, 1),
+                        args -> scheduled().schedule((BlockPos) args[0], args[1], (int) args[2], net.minecraft.world.ticks.TickPriority.NORMAL))
+                .outputQuery(value -> value.scheduleTick(BlockPos.ZERO, net.minecraft.world.level.material.Fluids.EMPTY, 1, net.minecraft.world.ticks.TickPriority.NORMAL),
+                        args -> scheduled().schedule((BlockPos) args[0], args[1], (int) args[2], (net.minecraft.world.ticks.TickPriority) args[3]))
                 .query(value -> value.getChunkIfLoadedImmediately(BlockPos.ZERO), null,
                         args -> chunk(((BlockPos) args[0]).getX() >> 4, ((BlockPos) args[0]).getZ() >> 4))
                 .query(value -> value.getSectionIndex(0), 0, args -> ((int) args[0] >> 4) - minimumSection)
@@ -209,6 +230,8 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
                 .query(value -> value.getEntityInAnyDimension(null), null, args -> importedEntity((java.util.UUID) args[0]))
                 .query(value -> value.getPlayerByUUID(null), null, args -> importedPlayer((java.util.UUID) args[0]))
                 .query(value -> value.getEntities((Entity) null, Native.BOX, entity -> true), List.of(), args -> entities(args[0], args[1], false, args[2]))
+                .query(value -> value.getEntities(net.minecraft.world.level.entity.EntityTypeTest.forClass(Entity.class),
+                        Native.BOX, entity -> true), List.of(), args -> typedEntities(args[0], args[1], args[2]))
                 .query(value -> value.getEntityCollisions(null, Native.BOX), List.of(), args -> {
                     bounds(args[1]); return List.copyOf(queries.getEntityCollisions((Entity) args[0], (AABB) args[1]));
                 })
@@ -333,6 +356,8 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         checkThread(); if (!ownsPlayer(player) || !ownsEntity(target)) throw new IllegalArgumentException("Foreign entity interaction");
         combat.interact(player, target, hand, offset);
     }
+    boolean mount(Entity rider, Entity vehicle) { checkThread(); return combat.mount(rider, vehicle); }
+    void unmount(Entity rider) { checkThread(); combat.unmount(rider); }
     void attack(net.minecraft.server.level.ServerPlayer player, Entity target) {
         checkThread();
         if (combat == null || !ownsPlayer(player) || !ownsEntity(target)) throw new IllegalArgumentException("Foreign melee body");
@@ -531,6 +556,12 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
                 .instance();
         chunks.put(key, result);
         return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<?> typedEntities(Object filter, Object box, Object predicate) {
+        var type = (net.minecraft.world.level.entity.EntityTypeTest<Entity, ?>) filter;
+        return entities(null, box, false, (Predicate<Entity>) value -> type.tryCast(value) != null && ((Predicate<Entity>) predicate).test(value));
     }
 
     @SuppressWarnings("unchecked")

@@ -156,6 +156,14 @@ final class PaperRollbackNativeEvents {
         org.bukkit.entity.Entity target = event instanceof EntityEvent entity ? entity.getEntity()
                 : event instanceof PlayerEvent player ? player.getPlayer() : null;
         boolean local = target != null && owned.test(target);
+        if (event instanceof org.bukkit.event.vehicle.VehicleEnterEvent entered) {
+            local = owned.test(entered.getVehicle()); requireOwned(entered.getEntered());
+        } else if (event instanceof org.bukkit.event.vehicle.VehicleExitEvent exited) {
+            local = owned.test(exited.getVehicle()); requireOwned(exited.getExited());
+        }
+        if (event instanceof org.bukkit.event.entity.EntityMountEvent mounted) requireOwned(mounted.getMount());
+        if (event instanceof org.bukkit.event.entity.EntityDismountEvent dismounted) requireOwned(dismounted.getDismounted());
+        if (event instanceof io.papermc.paper.event.player.PrePlayerAttackEntityEvent attack) requireOwned(attack.getAttacked());
         if (event instanceof org.bukkit.event.block.BlockReceiveGameEvent received) {
             local = ownedBlock.test(received.getBlock());
             requireOwned(received.getEntity());

@@ -79,6 +79,7 @@ public final class FabricRollbackNativeScene implements RollbackStateCell<Void>,
     private final Thread thread = Thread.currentThread();
     private final RollbackWorld logical;
     private final FabricRollbackLighting lighting;
+    private final FabricRollbackScheduledTicks ticks;
     private final FabricRollbackSpatial spatial;
     private final FabricRollbackWorldServices services;
     private final FabricRollbackWorldQueries queries;
@@ -105,6 +106,9 @@ public final class FabricRollbackNativeScene implements RollbackStateCell<Void>,
         queries = new FabricRollbackWorldQueries(logical, services, bindings.blockEntities());
         roster = FabricRollbackRoster.instantiate(players, participants, queries, epochNanos, maximumPlayerObjects);
         queries.bindRoster(roster);
+        ticks = new FabricRollbackScheduledTicks((net.minecraft.server.world.ServerWorld) roster.world().world(), seed.ticks());
+        services.bindTicks(ticks);
+        roster.world().bindTicks(ticks);
         if (bindings.blocks() instanceof FabricRollbackBlockRules nativeRules) {
             nativeRules.bind(this, geometry);
             roster.world().bindTerrain(nativeRules);
@@ -123,13 +127,14 @@ public final class FabricRollbackNativeScene implements RollbackStateCell<Void>,
         services.restoreStreams(streams.world(), streams.sound());
         bodies.forEach((id, random) -> random.restoreStream(streams.players().get(id)));
     }
+    FabricRollbackScheduledTicks ticks() { check(); return ticks; }
     public FabricRollbackLighting lighting() { check(); return lighting; }
     /** Darkness is resolved after construction from the same rewindable world clock and weather. */
     @Override public int getAsInt() { check(); return spatial.environmentAttributes().skyDarkness(); }
     @Override public Void captureRollbackState() { check(); return null; }
     @Override public void restoreRollbackState(Void ignored) { check(); }
     @Override public List<?> rollbackReferences() {
-        check(); var roots = new ArrayList<Object>(List.of(logical, lighting, spatial, services, queries));
+        check(); var roots = new ArrayList<Object>(List.of(logical, lighting, spatial, services, queries, ticks));
         roots.add(roster); return List.copyOf(roots);
     }
     private void check() { if (Thread.currentThread() != thread) throw new IllegalStateException("Native scene crossed threads"); }

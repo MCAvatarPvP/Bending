@@ -57,6 +57,27 @@ class PaperRollbackDamageNativeTest {
         return new RegistryDataLoader.RegistryData<>(type.registryKey(), type.codec(), false);
     }
 
+    @Test void confirmedMeleeHitsAnOwnedPlayerWithoutAGlobalBukkitManager() throws Exception {
+        onTickThread(() -> {
+            var combat = new Combat();
+            var world = new PaperRollbackWorldAccess(new PaperRollbackWorldAccessNativeTest.Queries(), combat, 4);
+            var info = net.minecraft.server.level.ClientInformation.createDefault();
+            var first = PaperRollbackNativePlayerState.serverPlayer(world, new GameProfile(new UUID(0, 145), "first"),
+                    info, GameType.SURVIVAL, 81, 200_000);
+            var second = PaperRollbackNativePlayerState.serverPlayer(world, new GameProfile(new UUID(0, 146), "second"),
+                    info, GameType.SURVIVAL, 82, 200_000);
+            var attacker = (net.minecraft.server.level.ServerPlayer) first.ownedPlayer();
+            var target = (net.minecraft.server.level.ServerPlayer) second.ownedPlayer();
+            attacker.setPos(0, 1, 0); target.setPos(0, 1, 1);
+            try (var clock = RollbackClock.at(1000, 2000, 3, 50_000_000)) {
+                world.attack(attacker, target);
+            }
+            assertTrue(target.getHealth() < target.getMaxHealth());
+            assertTrue(combat.events.contains(io.papermc.paper.event.player.PrePlayerAttackEntityEvent.class.getName()));
+            return null;
+        });
+    }
+
     @Test void nativeReleaseRoutesEventBeforePrivateItemEffectsAndRewinds() throws Exception {
         onTickThread(() -> {
             var combat = new Combat();

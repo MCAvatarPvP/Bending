@@ -87,6 +87,9 @@ public final class FabricRollbackArenaEvents implements FabricRollbackWorldServi
     @Override public void death(PlayerEntity player, DamageSource source) { player.onDeath(source); }
     @Override public int shieldDisable(PlayerEntity player, LivingEntity attacker, ItemStack shield, int ticks) { return ticks; }
     @Override public int itemCooldown(PlayerEntity player, ItemStack item, int ticks) { return ticks; }
+    @Override public boolean disablePlayerCrits() { return policy.disablePlayerCrits(); }
+    @Override public boolean disableSprintInterruptionOnAttack() { return policy.disableSprintInterruptionOnAttack(); }
+    @Override public float combatExhaustion() { return policy.combatExhaustion(); }
     @Override public boolean skipDamageTickWhenShieldBlocked() { return policy.skipBlockedDamageTick(); }
     @Override public Void captureRollbackState() { return null; }
     @Override public void restoreRollbackState(Void unused) { }

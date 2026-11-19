@@ -45,7 +45,7 @@ public record PaperRollbackDuelSeed(PaperRollbackRosterSeed nativeRoster, Rollba
                     || service instanceof RollbackTaskBindings.Capture))
                 throw new IllegalArgumentException("Owned capture supplies its own task bindings");
             services.add(tasks);
-            return capture(request, challenge, definitions, players, playerServices, bendingPlayers, collisions,
+            var seed = capture(request, challenge, definitions, players, playerServices, bendingPlayers, collisions,
                     services, data -> {
                         var roster = bendingPlayers.stream().map(BendingPlayer::getPlayer).toList();
                         var bindings = new RollbackRosterBindings(roster.getFirst().getWorld(), roster);
@@ -53,6 +53,8 @@ public record PaperRollbackDuelSeed(PaperRollbackRosterSeed nativeRoster, Rollba
                         return RollbackGameplayGraph.create(graph.installed(), graph.limits(), RollbackGameplayGraph.Side.LIVE,
                                 bindings, configuration, graph.lifecycle(), graph.services(), new PaperRollbackGraphViews());
                     }, additionalPermissionNodes, randomSeed, soundSeed, terrainLimits);
+            ownership.holdScheduledTerrain(players.iterator().next().level(), seed.portable().world());
+            return seed;
         });
     }
     /** Production capture: include frozen callbacks and verify ownership before and after encoding. */
@@ -69,8 +71,10 @@ public record PaperRollbackDuelSeed(PaperRollbackRosterSeed nativeRoster, Rollba
                     || service instanceof RollbackTaskBindings.Capture))
                 throw new IllegalArgumentException("Owned capture supplies its own task bindings");
             services.add(tasks);
-            return capture(request, challenge, definitions, players, playerServices, bendingPlayers,
+            var seed = capture(request, challenge, definitions, players, playerServices, bendingPlayers,
                     collisions, services, sourceCodec, additionalPermissionNodes, randomSeed, soundSeed, terrainLimits);
+            ownership.holdScheduledTerrain(players.iterator().next().level(), seed.portable().world());
+            return seed;
         });
     }
     public static PaperRollbackDuelSeed capture(PaperRollbackMatchBootstrap.Request request, UUID challenge, String definitions,
@@ -119,6 +123,7 @@ public record PaperRollbackDuelSeed(PaperRollbackRosterSeed nativeRoster, Rollba
         if (services.stream().anyMatch(RollbackEventBindings.class::isInstance))
             throw new IllegalArgumentException("Duel capture owns event registration capture");
         services.add(RollbackEventBindings.capture(com.projectkorra.projectkorra.platform.Platform.events()));
+        services.add(RollbackAbilityGlobals.capture(bending.values().stream().map(BendingPlayer::getPlayer).toList()));
         var graph = RollbackBendingState.encode(bending.values(), collisions, services, sourceCodec);
         var portable = new RollbackBootstrapData(request.session(), challenge, request.match(), request.round(), millis, nanos, definitions,
                 request.sides(), worldSeed, nativeRoster.portable(playerServices), configuration, access, RollbackMaterials.capture(com.projectkorra.projectkorra.platform.Platform.materials()), PaperRollbackTags.capture(), RollbackServer.Metadata.capture(com.projectkorra.projectkorra.platform.Platform.server()), PaperRollbackPlugins.capture(), graph);

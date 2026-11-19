@@ -164,12 +164,12 @@ public final class PaperRollbackActors implements RollbackArenaActions.Native, R
         return bounds.contains(new RollbackBlockStore.Position(loc.getBlockX(), loc.getBlockY(), loc.getBlockZ())) ? pos : null;
     }
     @Override public boolean canMount(RollbackEntityBody vehicle, RollbackEntityBody passenger) {
-        return nativeEntity(passenger.view()).startRiding(nativeEntity(vehicle.view()), true, true);
+        return scene.world().mount(nativeEntity(passenger.view()), nativeEntity(vehicle.view()));
     }
     @Override public void unmount(RollbackEntityBody vehicle, RollbackEntityBody passenger) {
         var rider = nativeEntity(passenger.view());
         if (rider.getVehicle() != nativeEntity(vehicle.view())) throw new IllegalStateException("Private mount edge changed");
-        rider.stopRiding();
+        scene.world().unmount(rider);
     }
     public void importState(RollbackActorData data) {
         registry.importState(scene.logical(), data, row -> {

@@ -16,7 +16,7 @@ import java.util.*;
 import java.util.function.Consumer;
 
 /** Owns the complete live side of a Neptune round from freeze through confirmed writeback. */
-public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap {
+public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, org.bukkit.event.Listener {
     public record Simulation(PaperRollbackNativeScene scene, RollbackGameplayGraph.Imported graph,
             RollbackCombatRuntime<RollbackPlayerInput, Object> combat,
             Consumer<RollbackEngine.Update<RollbackDomain.Checkpoint, RollbackPlayerInput, Object>> presentation,
@@ -38,6 +38,17 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap {
     private final CommonAbilityLifecycleListener lifecycle;
     private final SimulationFactory factory;
     private RollbackDuelRuntime definitions;
+    private final Set<Enrollment> pendingAcquisition = new LinkedHashSet<>();
+
+    /** Packet movement received between ticks still belongs to the live player until Paper processes its contacts. */
+    @org.bukkit.event.EventHandler(priority = org.bukkit.event.EventPriority.MONITOR)
+    public void onTickEnd(com.destroystokyo.paper.event.server.ServerTickEndEvent event) {
+        if (pendingAcquisition.isEmpty()) return;
+        var ready = List.copyOf(pendingAcquisition);
+        pendingAcquisition.clear();
+        for (var enrollment : ready) enrollment.acquireAtBoundary();
+    }
+
 
     public PaperRollbackDuels(PaperPredictionServer server, BukkitProjectKorraPlatform platform,
             CommonAbilityLifecycleListener lifecycle, SimulationFactory factory) {
@@ -69,6 +80,7 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap {
         private PaperRollbackMatchRestoration restoration;
         private boolean acquired, running, cleanupPending, released, stopped;
         private Prepared prepared;
+        private Throwable acquisitionFailure;
 
         private Enrollment(Request request) {
             this.request = request;
@@ -92,10 +104,19 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap {
                     RESERVED_IDS, this::stopBeforeMutation);
         }
 
+        private void acquireAtBoundary() {
+            if (stopped || released) return;
+            acquired = true;
+            try { ownership.acquire(); }
+            catch (RuntimeException | Error failure) { acquisitionFailure = failure; }
+        }
+
         @Override public Prepared poll() {
             if (stopped || released) throw new IllegalStateException("Duel preparation expired");
             if (prepared != null) return prepared;
-            if (!acquired) { acquired = true; ownership.acquire(); }
+            if (acquisitionFailure instanceof RuntimeException failure) throw failure;
+            if (acquisitionFailure instanceof Error error) throw error;
+            if (!acquired) { pendingAcquisition.add(this); return null; }
             if (captured == null) {
                 if (!ownership.pollReady(level.getServer().packetProcessor())) return null;
                 capture();
@@ -163,6 +184,7 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap {
             release();
         }
         private void release() {
+            pendingAcquisition.remove(this);
             if (released) return;
             if (acquired) {
                 if (cleanupPending && !ownership.pollCleanup(level.getServer().packetProcessor()))

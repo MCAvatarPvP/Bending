@@ -19,6 +19,32 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class PaperRollbackNativeSceneNativeTest {
     @BeforeAll static void bootstrap() { PaperRollbackDamageNativeTest.bootstrap(); }
+    @Test void confirmedDisplayRetainsIdentityBlockStateAndGraphBindingAcrossRepair() throws Exception {
+        onTickThread(() -> {
+            var roster = PaperRollbackRosterSeed.capture(source(), 0);
+            var scene = scene(seed(), roster, roster.participants());
+            var items = new RollbackNativeItems<>(new PaperRollbackItems(PaperRollbackEnvironmentNativeTest.registries()));
+            var session = new UUID(33, 81);
+            var actors = new PaperRollbackActors(session, 32, items);
+            actors.bind(scene);
+            var pos = new RollbackEntityBody.Pose(0, 4, 0, 0, 0);
+            var display = actors.spawn(scene.logical(), pos, com.projectkorra.projectkorra.platform.mc.entity.BlockDisplay.class);
+            scene.logical().entities().add(display);
+            display.setBlock(new PaperRollbackTerrainTransfer().decode(Material.OAK_PLANKS, "minecraft:oak_planks"));
+            var saved = actors.registry().exportState();
+            var bindings = actors.registry().bindings();
+            assertEquals(1, bindings.size()); assertSame(display, bindings.getFirst().value());
+            actors.importState(saved);
+            var restored = actors.registry().bindings().getFirst();
+            assertNotSame(display, restored.value()); assertEquals(bindings.getFirst().id(), restored.id());
+            assertEquals(com.projectkorra.projectkorra.platform.mc.entity.BlockDisplay.class, restored.type());
+            var now = actors.registry().exportState();
+            assertArrayEquals(saved.encode(), now.encode());
+            assertNull(Bukkit.getServer());
+            return null;
+        });
+    }
+
     @Test void nativeSceneImportsOwnedServerBodiesAndRewindsTerrainLightClockAndPlayers() throws Exception {
         onTickThread(() -> {
             var source = source(); var sourcePositions = source.stream().map(ServerPlayer::position).toList(); var captured = PaperRollbackRosterSeed.capture(source, 0); var seed = seed();
@@ -100,6 +126,34 @@ class PaperRollbackNativeSceneNativeTest {
                 for (var expected : results) assertEquals(expected, block.getDrops().iterator().next().getType());
                 assertNull(Bukkit.getServer());
             } finally { configField.set(null, previous); }
+            return null;
+        });
+    }
+    @Test void realBlockAndFluidQueuesDeduplicateAndRewind() throws Exception {
+        onTickThread(() -> {
+            var captured = PaperRollbackRosterSeed.capture(source(), 0);
+            var scene = scene(seed(), captured, captured.participants());
+            var queues = scene.ticks();
+            var logical = scene.logical().getBlockAt(0, 4, 0);
+            logical.setType(Material.STONE, false);
+            var pos = new net.minecraft.core.BlockPos(0, 4, 0);
+            var world = scene.world().world();
+            world.scheduleTick(pos, net.minecraft.world.level.block.Blocks.STONE, 2);
+            world.scheduleTick(pos, net.minecraft.world.level.block.Blocks.STONE, 2);
+            world.scheduleTick(pos, net.minecraft.world.level.material.Fluids.EMPTY, 1);
+            var bytes = queues.captureRollbackState().encode();
+            assertEquals(2, RollbackScheduledTicks.decode(bytes).entries().size());
+            assertEquals(3, queues.captureRollbackState().nextOrder());
+            var snapshot = new RollbackStateGraph(value -> Proxy.isProxyClass(value.getClass()), field -> true, 600_000)
+                    .capture(List.of(scene), List.of());
+            scene.services().advanceTick(1);
+            assertEquals(1, queues.captureRollbackState().entries().size());
+            scene.services().advanceTick(2);
+            assertTrue(queues.captureRollbackState().entries().isEmpty());
+            snapshot.restore();
+            assertArrayEquals(bytes, queues.captureRollbackState().encode());
+            scene.services().advanceTick(1);
+            assertEquals(RollbackScheduledTicks.Kind.BLOCK, queues.captureRollbackState().entries().getFirst().kind());
             return null;
         });
     }

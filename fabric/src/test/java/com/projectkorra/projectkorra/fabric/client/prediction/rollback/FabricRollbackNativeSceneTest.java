@@ -146,9 +146,9 @@ class FabricRollbackNativeSceneTest {
         int age = nativePassenger.age;
         new FabricRollbackPhases(duel).tickWorld(1);
         assertEquals(age + 1, nativePassenger.age);
-        assertTrue(vehicle.eject());
+        assertTrue(RollbackEntityBody.logicalBody(vehicle).eject());
         assertNull(nativePassenger.getVehicle());
-        assertFalse(passenger.isInsideVehicle());
+        assertFalse(RollbackEntityBody.logicalBody(passenger).insideVehicle());
     }
 
     @Test void replayResolvesTheRequestedTargetFromTheCapturedEyeAtTheInputEdge() throws Exception {
@@ -199,6 +199,31 @@ class FabricRollbackNativeSceneTest {
         assertTrue(results.contains(Material.GRAVEL));
         checkpoint.restore();
         for (var expected : results) assertEquals(expected, block.getDrops().iterator().next().getType());
+    }
+    @Test void realBlockAndFluidQueuesDeduplicateAndRewind() throws Exception {
+        var captured = players();
+        var scene = scene(seed(), captured, captured.players().keySet());
+        var queues = scene.ticks();
+        var logical = scene.logical().getBlockAt(0, 4, 0);
+        logical.setType(Material.STONE, false);
+        var pos = new net.minecraft.util.math.BlockPos(0, 4, 0);
+        var world = scene.roster().world().world();
+        world.scheduleBlockTick(pos, net.minecraft.block.Blocks.STONE, 2);
+        world.scheduleBlockTick(pos, net.minecraft.block.Blocks.STONE, 2);
+        world.scheduleFluidTick(pos, net.minecraft.fluid.Fluids.EMPTY, 1);
+        var bytes = queues.captureRollbackState().encode();
+        assertEquals(2, RollbackScheduledTicks.decode(bytes).entries().size());
+        assertEquals(3, queues.captureRollbackState().nextOrder());
+        var snapshot = new RollbackStateGraph(value -> Proxy.isProxyClass(value.getClass()), field -> true, 600_000)
+                .capture(List.of(scene), List.of());
+        scene.services().advanceTick(1);
+        assertEquals(1, queues.captureRollbackState().entries().size());
+        scene.services().advanceTick(2);
+        assertTrue(queues.captureRollbackState().entries().isEmpty());
+        snapshot.restore();
+        assertArrayEquals(bytes, queues.captureRollbackState().encode());
+        scene.services().advanceTick(1);
+        assertEquals(RollbackScheduledTicks.Kind.BLOCK, queues.captureRollbackState().entries().getFirst().kind());
     }
     private static RollbackRosterData players() throws Exception {
         try (var in = Objects.requireNonNull(FabricRollbackNativeSceneTest.class.getResourceAsStream("/rollback/player-roster.base64"))) {

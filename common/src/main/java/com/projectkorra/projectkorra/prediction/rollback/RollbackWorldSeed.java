@@ -15,8 +15,17 @@ import java.util.*;
 /** The same detached arena, clock, native policy and environment for both loaders. */
 public record RollbackWorldSeed(UUID world, String name, int minimumY, int maximumY, long dayTime, boolean storm,
                                 RollbackWorldSettings settings, RollbackBorderData border,
-                                RollbackEnvironmentData environment, RollbackTerrainSeed terrain, RollbackLightSeed light) {
-    public static final int VERSION = 2;
+                                RollbackEnvironmentData environment, RollbackTerrainSeed terrain, RollbackLightSeed light,
+                                RollbackScheduledTicks scheduledTicks) {
+    public RollbackWorldSeed(UUID world, String name, int minimumY, int maximumY, long dayTime, boolean storm,
+            RollbackWorldSettings settings, RollbackBorderData border, RollbackEnvironmentData environment,
+            RollbackTerrainSeed terrain, RollbackLightSeed light) {
+        this(world, name, minimumY, maximumY, dayTime, storm, settings, border, environment, terrain, light, null);
+    }
+    public RollbackScheduledTicks ticks() {
+        return scheduledTicks == null ? RollbackScheduledTicks.empty(terrain.bounds()) : scheduledTicks;
+    }
+    public static final int VERSION = 3;
     public static final int MAXIMUM_BYTES = 134_217_728;
     private static final int MAXIMUM_NAME_BYTES = 1_024;
 
@@ -40,6 +49,10 @@ public record RollbackWorldSeed(UUID world, String name, int minimumY, int maxim
             throw invalid("terrain must cover the world's full build height");
         }
         if (light != null && !light.bounds().equals(terrain.bounds())) throw invalid("light/terrain bounds differ");
+        if (scheduledTicks != null) {
+            scheduledTicks.requireCaptureBounds(terrain.bounds());
+            if (light == null) throw invalid("scheduled terrain requires captured light");
+        }
         var bounds = terrain.bounds();
         long columns = ((long) Math.floorDiv(bounds.maxX() - 1, 16) - Math.floorDiv(bounds.minX(), 16) + 1)
                 * ((long) Math.floorDiv(bounds.maxZ() - 1, 16) - Math.floorDiv(bounds.minZ(), 16) + 1);
@@ -64,15 +77,17 @@ public record RollbackWorldSeed(UUID world, String name, int minimumY, int maxim
     public byte[] encode(RollbackTerrainCodec.BlockStates states, RollbackTerrainCodec.Limits limits) {
         var terrainBytes = RollbackTerrainCodec.encode(terrain, states, limits);
         byte[] lightBytes = light == null ? null : light.encode();
+        byte[] ticks = scheduledTicks == null ? null : scheduledTicks.encode();
         var rules = settings.encode(); var borderBytes = border.encode(); var weather = environment.encode(); var nameBytes = textBytes(name);
-        long size = 57L + nameBytes.length + rules.length + borderBytes.length + weather.length + terrainBytes.length + (lightBytes == null ? 0 : 4L + lightBytes.length);
+        long size = 57L + nameBytes.length + rules.length + borderBytes.length + weather.length + terrainBytes.length + (lightBytes == null ? 0 : 4L + lightBytes.length) + (ticks == null ? 0 : 4L + ticks.length);
         if (size > MAXIMUM_BYTES) throw invalid("wire budget");
         try {
             var bytes = new ByteArrayOutputStream((int) size); var out = new DataOutputStream(bytes);
-            out.writeInt(lightBytes == null ? 1 : VERSION); out.writeLong(world.getMostSignificantBits()); out.writeLong(world.getLeastSignificantBits());
+            out.writeInt(ticks != null ? VERSION : lightBytes != null ? 2 : 1); out.writeLong(world.getMostSignificantBits()); out.writeLong(world.getLeastSignificantBits());
             blob(out, nameBytes); out.writeInt(minimumY); out.writeInt(maximumY); out.writeLong(dayTime); out.writeBoolean(storm);
             blob(out, rules); blob(out, borderBytes); blob(out, weather); blob(out, terrainBytes);
             if (lightBytes != null) blob(out, lightBytes);
+            if (ticks != null) blob(out, ticks);
             if (bytes.size() > MAXIMUM_BYTES) throw invalid("wire budget");
             return bytes.toByteArray();
         } catch (IOException impossible) { throw new UncheckedIOException(impossible); }
@@ -84,7 +99,7 @@ public record RollbackWorldSeed(UUID world, String name, int minimumY, int maxim
         try {
             var in = new DataInputStream(new ByteArrayInputStream(bytes));
             int version = in.readInt();
-            if (version != 1 && version != VERSION) throw invalid("version");
+            if (version < 1 || version > VERSION) throw invalid("version");
             var world = new UUID(in.readLong(), in.readLong());
             var name = StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
                     .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(blob(in, MAXIMUM_NAME_BYTES))).toString();
@@ -95,8 +110,9 @@ public record RollbackWorldSeed(UUID world, String name, int minimumY, int maxim
             var environment = RollbackEnvironmentData.decode(blob(in, RollbackEnvironmentData.MAXIMUM_BYTES));
             var terrain = RollbackTerrainCodec.decode(blob(in, limits.maximumWireBytes()), states, limits);
             var light = version == 1 ? null : RollbackLightSeed.decode(blob(in, 28 + Math.min(limits.maximumCells(), 16_777_216)), limits.maximumCells());
+            var ticks = version >= 3 ? RollbackScheduledTicks.decode(blob(in, RollbackScheduledTicks.MAXIMUM_BYTES)) : null;
             if (in.available() != 0) throw invalid("trailing data");
-            return new RollbackWorldSeed(world, name, min, max, day, storm, settings, border, environment, terrain, light);
+            return new RollbackWorldSeed(world, name, min, max, day, storm, settings, border, environment, terrain, light, ticks);
         } catch (IOException malformed) { throw new IllegalArgumentException("Invalid world seed: truncated/malformed data", malformed); }
     }
 

@@ -202,7 +202,11 @@ public final class PaperRollbackPlayerSeed {
         if (source.isSleeping() || source.isPassenger() || !source.getPassengers().isEmpty() || source.getCamera() != source
                 || source.fishing != null || !source.getEnderPearls().isEmpty() || source.portalProcess != null
                 || source.isChangingDimension || !MOVEMENTS.get(source).isEmpty()) {
-            throw new IllegalStateException("Player has active world/entity state requiring the world import phase");
+            throw new IllegalStateException("Cannot capture world interactions for " + source.getUUID()
+                    + " (sleeping=" + source.isSleeping() + ", mounted=" + source.isPassenger() + ", passengers=" + source.getPassengers().size()
+                    + ", remoteCamera=" + (source.getCamera() != source) + ", fishing=" + (source.fishing != null)
+                    + ", pearls=" + source.getEnderPearls().size() + ", portal=" + (source.portalProcess != null)
+                    + ", changingDimension=" + source.isChangingDimension + ", pendingMovements=" + MOVEMENTS.get(source).size() + ")");
         }
         for (Object value : LOCATION_ENCHANTMENTS.get(source).values()) {
             if (!((Map<?, ?>) value).isEmpty()) throw new IllegalStateException("Active location effects require world-state import");

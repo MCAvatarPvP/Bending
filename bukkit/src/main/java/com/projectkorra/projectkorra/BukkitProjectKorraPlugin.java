@@ -73,8 +73,10 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
         registerExternalActionBarHook();
         try {
             this.prediction = PaperPredictionServer.start(this);
-            this.prediction.installRollbackMatchBootstrap(new PaperRollbackDuels(this.prediction, platform,
-                    listener.lifecycleEvents(), new PaperRollbackDuelFactory(this, listener)));
+            var duels = new PaperRollbackDuels(this.prediction, platform,
+                    listener.lifecycleEvents(), new PaperRollbackDuelFactory(this, listener));
+            getServer().getPluginManager().registerEvents(duels, this);
+            this.prediction.installRollbackMatchBootstrap(duels);
             // Lifecycle metadata precedes every physical TempBlock write. A
             // compatible caster renders its client-owned lifecycle and hides
             // every Paper layer owned by that accepted action; remote and

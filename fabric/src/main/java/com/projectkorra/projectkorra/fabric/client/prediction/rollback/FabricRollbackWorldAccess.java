@@ -64,9 +64,10 @@ import java.util.function.Predicate;
 public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> {
     public enum WaypointAction { TRACK, UPDATE, UNTRACK }
     /** Detached provisional presentation. Delivery belongs to the session's revision/finalization bridge. */
-    public sealed interface Output permits DamageOutput, StatusOutput, SoundOutput, FabricRollbackPacketData.HeldSlot, FabricRollbackPacketData.Tracked { }
+    public sealed interface Output permits DamageOutput, StatusOutput, ParticleOutput, SoundOutput, FabricRollbackPacketData.HeldSlot, FabricRollbackPacketData.Tracked { }
     public record Position(double x, double y, double z) { }
     public record DamageOutput(UUID entity, String type, UUID source, UUID attacker, Position position) implements Output { }
+    public record ParticleOutput(String particle, Position position, int count, double x, double y, double z, double speed) implements Output { }
     public record StatusOutput(UUID entity, byte status) implements Output { }
     public record SoundOutput(UUID excludedSource, Position position, String sound, String category,
                               float volume, float pitch, long seed) implements Output { }
@@ -127,6 +128,9 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
         /** Return -1 to cancel only cooldown installation; shield use still stops. */
         int itemCooldown(PlayerEntity player, net.minecraft.item.ItemStack item, int ticks);
         boolean skipDamageTickWhenShieldBlocked();
+        default boolean disablePlayerCrits() { return false; }
+        default boolean disableSprintInterruptionOnAttack() { return false; }
+        default float combatExhaustion() { return .1F; }
     }
     private FabricRollbackActors actors;
     void bindActors(FabricRollbackActors actors) {
@@ -194,6 +198,17 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
     private final World world;
     private final FabricRollbackPacketData packetData;
     private final Thread thread = Thread.currentThread();
+    private FabricRollbackScheduledTicks scheduledTicks;
+    void bindTicks(FabricRollbackScheduledTicks ticks) {
+        checkThread();
+        if (scheduledTicks != null) throw new IllegalStateException("Native tick scheduler already bound");
+        scheduledTicks = Objects.requireNonNull(ticks);
+    }
+    private FabricRollbackScheduledTicks scheduled() {
+        checkThread();
+        if (scheduledTicks == null) throw new IllegalStateException("Private scheduled terrain was not supplied");
+        return scheduledTicks;
+    }
     private FabricRollbackBlockRules terrainRules;
     void bindTerrain(FabricRollbackBlockRules rules) {
         checkThread();
@@ -257,12 +272,31 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
                 .constant(World::getDamageSources, damageSources)
                 .constant(ServerWorld::getGameRules, gameRules)
                 .constant(ServerWorld::getChunkManager, chunks)
+                .query(ServerWorld::getBlockTickScheduler, null, args -> scheduled().blocks())
+                .query(ServerWorld::getFluidTickScheduler, null, args -> scheduled().fluids())
+                .outputQuery(value -> value.scheduleBlockTick(BlockPos.ORIGIN, Blocks.AIR, 1),
+                        args -> scheduled().schedule((BlockPos) args[0], args[1], (int) args[2], net.minecraft.world.tick.TickPriority.NORMAL))
+                .outputQuery(value -> value.scheduleBlockTick(BlockPos.ORIGIN, Blocks.AIR, 1, net.minecraft.world.tick.TickPriority.NORMAL),
+                        args -> scheduled().schedule((BlockPos) args[0], args[1], (int) args[2], (net.minecraft.world.tick.TickPriority) args[3]))
+                .outputQuery(value -> value.scheduleFluidTick(BlockPos.ORIGIN, Fluids.EMPTY, 1),
+                        args -> scheduled().schedule((BlockPos) args[0], args[1], (int) args[2], net.minecraft.world.tick.TickPriority.NORMAL))
+                .outputQuery(value -> value.scheduleFluidTick(BlockPos.ORIGIN, Fluids.EMPTY, 1, net.minecraft.world.tick.TickPriority.NORMAL),
+                        args -> scheduled().schedule((BlockPos) args[0], args[1], (int) args[2], (net.minecraft.world.tick.TickPriority) args[3]))
                 .query(World::getTime, 0L, args -> queries.time())
                 .query(World::getDifficulty, Difficulty.NORMAL, args -> queries.difficulty())
                 .query(World::getRandom, null, args -> Objects.requireNonNull(queries.random(), "private world random"))
                 .query(value -> value.getOrCreateRandom(null), null, args -> queries.random())
                 .query(World::getEnabledFeatures, null, args -> queries.terrainFeatures())
                 .outputQuery(value -> value.sendEntityDamage(null, null), args -> entityDamage((Entity) args[0], (DamageSource) args[1]))
+                .query(value -> value.spawnParticles(net.minecraft.particle.ParticleTypes.DAMAGE_INDICATOR,
+                        0, 0, 0, 0, 0, 0, 0, 0), 0, args -> {
+                    if (!(args[0] instanceof net.minecraft.particle.SimpleParticleType type))
+                        throw new IllegalArgumentException("Native melee presentation requires simple particles");
+                    queries.output(new ParticleOutput(net.minecraft.registry.Registries.PARTICLE_TYPE.getId(type).toString(),
+                            new Position((double) args[1], (double) args[2], (double) args[3]), (int) args[4],
+                            (double) args[5], (double) args[6], (double) args[7], (double) args[8]));
+                    return players.size();
+                })
                 .outputQuery(value -> value.sendEntityStatus(null, (byte) 0), args ->
                         queries.output(new StatusOutput(ownedId((Entity) args[0]), (byte) args[1])))
                 .outputQuery(value -> value.playSound(null, 0, 0, 0, SoundEvents.ENTITY_PLAYER_HURT, SoundCategory.PLAYERS, 1, 1),
@@ -298,6 +332,9 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
                 .query(value -> value.getPlayerAnyDimension(null), null, args -> importedPlayer((UUID) args[0]))
                 .query(value -> value.getEntityAnyDimension(null), null, args -> importedEntity((UUID) args[0]))
                 .query(value -> value.getPlayerByUuid(null), null, args -> importedPlayer((UUID) args[0]))
+                .query(value -> value.getNonSpectatingEntities(net.minecraft.entity.LivingEntity.class, probeBox), List.of(), args ->
+                        otherEntities(new Object[]{null, args[1], (Predicate<Entity>) entity ->
+                                ((Class<?>) args[0]).isInstance(entity) && !entity.isSpectator()}))
                 .query(value -> value.getOtherEntities(null, probeBox, entity -> true), List.of(), this::otherEntities)
                 .nativeQuery(value -> value.getOtherEntities(null, probeBox), List.of(), args -> check((Box) args[1]))
                 .nativeQuery(value -> value.getCrammedEntities(null, probeBox), List.of(), args -> check((Box) args[1]))

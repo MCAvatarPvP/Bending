@@ -52,6 +52,12 @@ public final class FabricRollbackWorldServices implements FabricRollbackWorldQue
         private Snapshot(FabricRollbackWorldServices owner) { this.owner = owner; time = owner.time; lastTick = owner.lastTick; }
     }
     private final FeatureSet features;
+    private FabricRollbackScheduledTicks scheduledTicks;
+    void bindTicks(FabricRollbackScheduledTicks ticks) {
+        checkThread();
+        if (scheduledTicks != null) throw new IllegalStateException("Native tick scheduler already bound");
+        scheduledTicks = Objects.requireNonNull(ticks);
+    }
     private final Thread thread = Thread.currentThread();
     private final RollbackWorldSettings settings;
     private final RollbackWorld logical;
@@ -107,6 +113,7 @@ public final class FabricRollbackWorldServices implements FabricRollbackWorldQue
         spatial.advanceTick(next);
         logical.conditions(conditions);
         time = next; lastTick = tick;
+        if (scheduledTicks != null) scheduledTicks.advance(next);
     }
     @Override public FeatureSet terrainFeatures() { checkThread(); return features; }
     @Override public DynamicRegistryManager.Immutable registries() { checkThread(); return registries; }

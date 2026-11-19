@@ -1,6 +1,5 @@
 package com.projectkorra.projectkorra.prediction.rollback;
 
-import com.projectkorra.projectkorra.platform.bukkit.BukkitMC;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
@@ -39,11 +38,18 @@ final class PaperRollbackActorRestoration {
     private final Map<UUID, Entity> bodies = new HashMap<>();
     private final List<RollbackGraphCodec.Binding> bindings = new ArrayList<>();
     private final List<Ride> rides;
+    private final java.lang.invoke.MethodHandle setVehicle;
+
 
     PaperRollbackActorRestoration(ServerLevel world, Map<UUID, ServerPlayer> players, Captured captured) {
         this.world = world;
         bodies.putAll(players);
         rides = captured.rides();
+        try {
+            var vehicle = Entity.class.getDeclaredField("vehicle");
+            vehicle.setAccessible(true);
+            setVehicle = java.lang.invoke.MethodHandles.lookup().unreflectSetter(vehicle);
+        } catch (ReflectiveOperationException failure) { throw new IllegalStateException("Native mount link changed", failure); }
         for (var row : captured.data().actors()) {
             var id = row.identity();
             var type = BuiltInRegistries.ENTITY_TYPE.getOptional(Identifier.withDefaultNamespace(
@@ -95,8 +101,14 @@ final class PaperRollbackActorRestoration {
         }
         for (var ride : rides) {
             var passenger = bodies.get(ride.passenger()); var vehicle = bodies.get(ride.vehicle());
-            if (passenger.getVehicle() != vehicle && !passenger.startRiding(vehicle, true, true))
-                throw new IllegalStateException("World declined restored mount");
+            if (passenger.getVehicle() == null) {
+                try { setVehicle.invokeExact(passenger, vehicle); }
+                catch (Throwable failure) { throw new IllegalStateException("Could not restore mounted actor", failure); }
+            }
+            if (!vehicle.passengers.contains(passenger))
+                vehicle.passengers = com.google.common.collect.ImmutableList.<Entity>builder().addAll(vehicle.passengers).add(passenger).build();
+            // The standard tracker observes passengers on its next sendChanges tick.
+
         }
     }
 }

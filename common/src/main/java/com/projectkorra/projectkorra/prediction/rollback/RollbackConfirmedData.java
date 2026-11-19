@@ -9,8 +9,13 @@ import java.util.*;
 
 /** Detached components of the confirmed duel; construction metadata comes from the authenticated bootstrap. */
 public record RollbackConfirmedData(RollbackRound.Data round, RollbackRosterData roster, RollbackRandomStreams random,
-        Map<UUID, Long> actionSequences, List<Change> terrain, RollbackActorData actors, byte[] bending) {
-    public static final int VERSION = 1;
+        Map<UUID, Long> actionSequences, List<Change> terrain, RollbackActorData actors, byte[] bending,
+        RollbackScheduledTicks scheduledTicks) {
+    public RollbackConfirmedData(RollbackRound.Data round, RollbackRosterData roster, RollbackRandomStreams random,
+            Map<UUID, Long> actionSequences, List<Change> terrain, RollbackActorData actors, byte[] bending) {
+        this(round, roster, random, actionSequences, terrain, actors, bending, null);
+    }
+    public static final int VERSION = 2;
 
     public RollbackConfirmedData {
         Objects.requireNonNull(round); Objects.requireNonNull(roster); Objects.requireNonNull(random); Objects.requireNonNull(actors);
@@ -36,6 +41,14 @@ public record RollbackConfirmedData(RollbackRound.Data round, RollbackRosterData
             if (player.identity().entityId() != start.identity().entityId() || player.randomSeed() != start.randomSeed())
                 throw new IllegalArgumentException("Confirmed body differs from enrolled identity");
         });
+        if (initial.world().scheduledTicks() != null && scheduledTicks == null)
+            throw new IllegalArgumentException("Confirmed checkpoint is missing native terrain queues");
+        if (scheduledTicks != null) {
+            var original = initial.world().ticks();
+            if (!scheduledTicks.bounds().equals(original.bounds()) || scheduledTicks.maximumBlockTicks() != original.maximumBlockTicks()
+                    || scheduledTicks.maximumFluidTicks() != original.maximumFluidTicks())
+                throw new IllegalArgumentException("Confirmed terrain queue region or policy changed");
+        }
         var policy = new RollbackRound(initial.session(), initial.sides());
         policy.validateData(round);
     }
@@ -47,16 +60,17 @@ public record RollbackConfirmedData(RollbackRound.Data round, RollbackRosterData
         var players = roster.encode();
         var changes = RollbackTerrainDelta.encode(terrain, initial.world().terrain().bounds(), states, terrainLimits);
         var spawned = actors.encode();
+        byte[] ticks = scheduledTicks == null ? null : scheduledTicks.encode();
         var order = List.copyOf(roster.players().keySet());
         // Format, simulation tick, two fixed streams, one stream and two scalars per player,
         // defeat count and entries, and four length-prefixed sections.
         long size = 4L + 8 + 34 + (17L + 8 + 4) * order.size() + 4 + 16L * round.defeats().size()
-                + 16 + players.length + changes.length + spawned.length + bending.length;
+                + 16 + players.length + changes.length + spawned.length + bending.length + (ticks == null ? 0 : 4L + ticks.length);
         if (size > maximumBytes) throw new IllegalArgumentException("Confirmed checkpoint byte budget");
         try {
             var bytes = new ByteArrayOutputStream((int) size);
             var out = new DataOutputStream(bytes);
-            out.writeInt(VERSION); out.writeLong(round.tick()); random.write(out);
+            out.writeInt(ticks == null ? 1 : VERSION); out.writeLong(round.tick()); random.write(out);
             for (var id : order) {
                 out.writeLong(actionSequences.get(id));
                 var attacker = round.attackers().get(id);
@@ -69,6 +83,7 @@ public record RollbackConfirmedData(RollbackRound.Data round, RollbackRosterData
                 out.writeInt(defeat.lastAttacker() == null ? -1 : order.indexOf(defeat.lastAttacker()));
             }
             blob(out, players); blob(out, changes); blob(out, spawned); blob(out, bending);
+            if (ticks != null) blob(out, ticks);
             return bytes.toByteArray();
         } catch (IOException impossible) { throw new UncheckedIOException(impossible); }
     }
@@ -79,7 +94,8 @@ public record RollbackConfirmedData(RollbackRound.Data round, RollbackRosterData
         if (bytes.length > maximumBytes) throw new IllegalArgumentException("Confirmed checkpoint byte budget");
         try {
             var in = new DataInputStream(new ByteArrayInputStream(bytes));
-            if (in.readInt() != VERSION || in.readLong() != expectedTick || expectedTick < 0)
+            int version = in.readInt();
+            if (version < 1 || version > VERSION || in.readLong() != expectedTick || expectedTick < 0)
                 throw new IllegalArgumentException("Confirmed checkpoint version or frontier");
             var order = List.copyOf(initial.roster().players().keySet());
             var random = RollbackRandomStreams.read(in, initial.sides().keySet());
@@ -99,10 +115,11 @@ public record RollbackConfirmedData(RollbackRound.Data round, RollbackRosterData
             var changes = blob(in, terrainLimits.maximumWireBytes());
             var actors = blob(in, RollbackActorData.MAXIMUM_BYTES);
             var bending = blob(in, RollbackBootstrapData.MAXIMUM_GRAPH_BYTES);
+            var ticks = version >= 2 ? RollbackScheduledTicks.decode(blob(in, RollbackScheduledTicks.MAXIMUM_BYTES)) : null;
             if (in.available() != 0) throw new IllegalArgumentException("Trailing confirmed state");
             var value = new RollbackConfirmedData(new RollbackRound.Data(expectedTick, attackers, defeats), RollbackRosterData.decode(players),
                     random, sequences, RollbackTerrainDelta.decode(changes, initial.world().terrain().bounds(), states, terrainLimits),
-                    RollbackActorData.decode(actors), bending);
+                    RollbackActorData.decode(actors), bending, ticks);
             value.requireMatch(initial);
             return value;
         } catch (IOException malformed) { throw new IllegalArgumentException("Truncated confirmed checkpoint", malformed); }

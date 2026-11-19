@@ -34,6 +34,12 @@ public final class PaperRollbackWorldServices implements PaperRollbackWorldAcces
         private Snapshot(PaperRollbackWorldServices owner) { this.owner = owner; time = owner.time; lastTick = owner.lastTick; }
     }
     private final net.minecraft.world.flag.FeatureFlagSet features;
+    private PaperRollbackScheduledTicks scheduledTicks;
+    void bindTicks(PaperRollbackScheduledTicks ticks) {
+        checkThread();
+        if (scheduledTicks != null) throw new IllegalStateException("Native tick scheduler already bound");
+        scheduledTicks = Objects.requireNonNull(ticks);
+    }
     private final Thread thread = Thread.currentThread();
     private final RollbackWorldSettings settings;
     private final RollbackWorld logical;
@@ -92,6 +98,7 @@ public final class PaperRollbackWorldServices implements PaperRollbackWorldAcces
         spatial.advanceTick(next);
         logical.conditions(conditions);
         time = next; lastTick = tick;
+        if (scheduledTicks != null) scheduledTicks.advance(next);
     }
     @Override public RegistryAccess.Frozen registries() { checkThread(); return registries; }
     @Override public RegistryAccess.Frozen registryAccess() { return registries(); }

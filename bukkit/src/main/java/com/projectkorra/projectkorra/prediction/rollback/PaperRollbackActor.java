@@ -94,6 +94,8 @@ final class PaperRollbackActor implements RollbackActorRegistry.Actor<RollbackSt
     @Override public RollbackStateGraph.Snapshot captureRollbackState() { return state.capture(List.of(nativeActor), List.of()); }
     @Override public void restoreRollbackState(RollbackStateGraph.Snapshot saved) { saved.restore(); }
 
+    @Override public Collection<?> rollbackReferences() { return List.of(RollbackEntityBody.logicalBody(view)); }
+
     private boolean external(Object value) {
         if (value instanceof net.minecraft.world.level.Level level) {
             if (level != scene.world().world()) throw new IllegalStateException("Actor references a foreign level");

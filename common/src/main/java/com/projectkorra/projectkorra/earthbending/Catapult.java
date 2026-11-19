@@ -71,13 +71,23 @@ public class Catapult extends EarthAbility {
         this.start();
     }
 
+    private static Set<UUID> landings() {
+        return com.projectkorra.projectkorra.prediction.rollback.RollbackAbilityGlobals.landings(AWAITING_LANDING);
+    }
+
+    public static void restoreRollbackLanding(UUID player, boolean pending) {
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) throw new IllegalStateException("Restore on live server");
+        if (pending) AWAITING_LANDING.add(player);
+        else AWAITING_LANDING.remove(player);
+    }
+
     public static boolean isAwaitingLanding(final Player player) {
-        return AWAITING_LANDING.contains(player.getUniqueId());
+        return landings().contains(player.getUniqueId());
     }
 
     /** Drops delayed landing ownership from an outgoing logical world. */
     public static void discardAllTracking() {
-        AWAITING_LANDING.clear();
+        landings().clear();
     }
 
     private void setFields() {
@@ -182,7 +192,7 @@ public class Catapult extends EarthAbility {
 
     private void awaitLanding(final Player player) {
         final UUID uuid = player.getUniqueId();
-        AWAITING_LANDING.add(uuid);
+        landings().add(uuid);
 
         new BukkitRunnable() {
             private boolean airborne;
@@ -193,7 +203,7 @@ public class Catapult extends EarthAbility {
                 this.ticks++;
 
                 if (!player.isOnline() || player.isDead()) {
-                    AWAITING_LANDING.remove(uuid);
+                    landings().remove(uuid);
                     this.cancel();
                     return;
                 }
@@ -204,7 +214,7 @@ public class Catapult extends EarthAbility {
                 }
 
                 if (this.airborne || this.ticks > 20) {
-                    AWAITING_LANDING.remove(uuid);
+                    landings().remove(uuid);
                     this.cancel();
                 }
             }

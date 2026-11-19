@@ -219,14 +219,19 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
         public final class LiveCommit {
             private final OfflineBendingPlayer.RollbackPlayerRestoration playerCommit;
             private final CoreAbility.RollbackAbilityRestoration abilityCommit;
+            private final RollbackAbilityGlobals globals;
+            private final Map<UUID, Player> roster;
             private LiveCommit(OfflineBendingPlayer.RollbackPlayerRestoration players,
                     CoreAbility.RollbackAbilityRestoration abilities) {
                 playerCommit = players; abilityCommit = abilities;
+                globals = state.abilityGlobals();
+                roster = state.playerViews();
                 validate();
             }
             public void validate() {
                 playerCommit.requireCurrent();
                 abilityCommit.requireCurrent();
+                if (globals != null) globals.validate(roster);
                 validateAttributes();
                 managerCommit.validate();
                 comboCommit.validate();
@@ -241,6 +246,7 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
                 activationCommit.commit();
                 playerCommit.commit();
                 abilityCommit.commit();
+                if (globals != null) globals.merge(roster);
             }
         }
 
@@ -381,6 +387,18 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
         return List.copyOf(fields);
     }
 
+    private RollbackAbilityGlobals abilityGlobals() {
+        var found = services.stream().filter(RollbackAbilityGlobals.class::isInstance).map(RollbackAbilityGlobals.class::cast).toList();
+        if (found.size() > 1) throw new IllegalArgumentException("Duplicate participant ability state");
+        return found.isEmpty() ? null : found.getFirst();
+    }
+
+    private Map<UUID, Player> playerViews() {
+        var views = new TreeMap<UUID, Player>();
+        players.forEach((id, bender) -> views.put(id, bender.getPlayer()));
+        return views;
+    }
+
     /** Called once from domain bootstrap; subsequent swaps use ordinary checkpoints. */
     public void install() { install(false); }
 
@@ -405,6 +423,11 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
                 throw new IllegalStateException("Imported callbacks require a private scheduler");
             if (repair) tasks.getFirst().replace(scheduler);
             else tasks.getFirst().install(scheduler);
+        }
+        var globals = abilityGlobals();
+        if (globals != null) {
+            globals.validate(playerViews());
+            RollbackDomain.installAbilityGlobals(globals);
         }
         materials.install();
         combos.install();
