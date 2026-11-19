@@ -33,6 +33,8 @@ public final class PaperRollbackLighting implements RollbackStateCell<PaperRollb
     private final StarLightInterface reader;
     private final int minSection, sectionCount;
     private boolean updating, failed;
+    /** Immutable until a private terrain change starts or a different checkpoint is installed. */
+    private Snapshot currentSnapshot;
 
     /** Full sections and one captured chunk of horizontal light halo are required around mutations. */
     public PaperRollbackLighting(RollbackTerrainSeed terrain, RollbackLightSeed light, RegistryAccess registries, boolean hasSky) {
@@ -153,6 +155,8 @@ public final class PaperRollbackLighting implements RollbackStateCell<PaperRollb
                 throw new IllegalArgumentException("Lighting mutation requires a captured chunk halo");
             decoded.put(p, states.decode(Objects.requireNonNull(entry.getValue())));
         });
+        if (decoded.isEmpty()) return;
+        currentSnapshot = null;
         updating = true;
         var blockEngine = new BlockStarLightEngine(); var skyEngine = hasSky ? new SkyStarLightEngine() : null;
         try {
@@ -173,18 +177,22 @@ public final class PaperRollbackLighting implements RollbackStateCell<PaperRollb
         finally { blockEngine.setWorld(null); if (skyEngine != null) skyEngine.setWorld(null); updating = false; }
     }
     @Override public Snapshot captureRollbackState() {
-        check(); var saved = new TreeMap<Long, ChunkState>();
+        check();
+        if (currentSnapshot != null) return currentSnapshot;
+        var saved = new TreeMap<Long, ChunkState>();
         chunks.forEach((key, chunk) -> {
             var access = (StarlightChunk) chunk;
             saved.put(key, new ChunkState(Arrays.stream(chunk.getSections()).map(LevelChunkSection::copy).toArray(LevelChunkSection[]::new),
                     save(access.starlight$getSkyNibbles()), save(access.starlight$getBlockNibbles()),
                     access.starlight$getSkyEmptinessMap().clone(), access.starlight$getBlockEmptinessMap().clone()));
         });
-        return new Snapshot(this, saved);
+        currentSnapshot = new Snapshot(this, saved);
+        return currentSnapshot;
     }
     @Override public void restoreRollbackState(Snapshot snapshot) {
         thread();
         if (updating || snapshot.owner != this) throw new IllegalArgumentException("Lighting checkpoint owner/boundary");
+        if (!failed && currentSnapshot == snapshot) return;
         // Allocate every replacement before changing any published chunk state.
         record Restored(LevelChunkSection[] sections, SWMRNibbleArray[] sky,
                 SWMRNibbleArray[] block, boolean[] skyEmpty, boolean[] blockEmpty) { }
@@ -201,8 +209,9 @@ public final class PaperRollbackLighting implements RollbackStateCell<PaperRollb
                 access.starlight$setSkyNibbles(saved.sky); access.starlight$setBlockNibbles(saved.block);
                 access.starlight$setSkyEmptinessMap(saved.skyEmpty); access.starlight$setBlockEmptinessMap(saved.blockEmpty);
             });
-            failed = false;
-        } finally { updating = false; }
+            failed = false; currentSnapshot = snapshot;
+        } catch (RuntimeException | Error failure) { failed = true; throw failure; }
+        finally { updating = false; }
     }
     private static SWMRNibbleArray.SaveState[] save(SWMRNibbleArray[] layers) {
         return Arrays.stream(layers).map(SWMRNibbleArray::getSaveState).toArray(SWMRNibbleArray.SaveState[]::new);

@@ -96,6 +96,58 @@ class OfflineBendingPlayerLifecycleTest {
     }
 
     @Test
+    void importedRosterRewindsWithoutReplacingMapsSeenByOrdinaryServerThreads() {
+        var live = registerPlayer();
+        var privatePlayer = new BendingPlayer(new PlayerWrapper(session));
+        var outsiderId = UUID.randomUUID();
+        var newcomer = new Player() { @Override public UUID getUniqueId() { return outsiderId; } };
+        var outside = new BendingPlayer(newcomer);
+        var online = BendingPlayer.getPlayers();
+        var cached = BendingPlayer.getOfflinePlayers();
+        var queue = OfflineBendingPlayer.temporaryElements();
+        var expiry = org.apache.commons.lang3.tuple.Pair.of(live.getPlayer(), 250L);
+        queue.add(expiry);
+        try {
+            var registries = new com.projectkorra.projectkorra.prediction.rollback.RollbackPrivateRegistries();
+            var graph = new com.projectkorra.projectkorra.prediction.rollback.RollbackStateGraph(
+                    value -> value instanceof OfflineBendingPlayer || value instanceof Player, field -> true, 1024);
+            var domain = com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.create(
+                    graph, List.of(), List.of(registries), Platform.current(),
+                    () -> OfflineBendingPlayer.installRollbackPlayers(Map.of(uuid, privatePlayer), List.of()));
+            domain.call(() -> {
+                assertSame(privatePlayer, BendingPlayer.getBendingPlayer(privatePlayer.getPlayer()));
+                assertSame(privatePlayer, BendingPlayer.getOrLoadOfflineAsync(privatePlayer.getPlayer()).join());
+                assertNull(BendingPlayer.getOrLoadOfflineAsync(newcomer).join());
+                assertTrue(OfflineBendingPlayer.temporaryElements().isEmpty());
+                assertNotSame(online, BendingPlayer.getPlayers());
+                assertNotSame(cached, BendingPlayer.getOfflinePlayers());
+                CompletableFuture.runAsync(() -> {
+                    assertSame(online, BendingPlayer.getPlayers());
+                    assertSame(cached, BendingPlayer.getOfflinePlayers());
+                    assertSame(live, BendingPlayer.getBendingPlayer(live.getPlayer()));
+                    assertSame(queue, OfflineBendingPlayer.temporaryElements());
+                    assertTrue(queue.contains(expiry));
+                    online.put(outsiderId, outside);
+                    cached.put(outsiderId, outside);
+                }).join();
+                assertNull(BendingPlayer.getBendingPlayer(newcomer));
+                var saved = domain.capture();
+                BendingPlayer.getPlayers().clear();
+                OfflineBendingPlayer.temporaryElements().add(org.apache.commons.lang3.tuple.Pair.of(privatePlayer.getPlayer(), 99L));
+                domain.restore(saved);
+                assertSame(privatePlayer, BendingPlayer.getBendingPlayer(privatePlayer.getPlayer()));
+                assertTrue(OfflineBendingPlayer.temporaryElements().isEmpty());
+                return null;
+            });
+            assertSame(outside, BendingPlayer.getBendingPlayer(newcomer));
+            assertSame(outside, BendingPlayer.getCachedOffline(newcomer));
+            assertSame(live, BendingPlayer.getBendingPlayer(live.getPlayer()));
+        } finally {
+            online.remove(outsiderId); cached.remove(outsiderId); queue.remove(expiry);
+        }
+    }
+
+    @Test
     void freshWrappersDoNotReloadOrRetireTheCurrentLogin() throws Exception {
         BendingPlayer original = registerPlayer();
         Player current = Platform.players().getPlayer(uuid);

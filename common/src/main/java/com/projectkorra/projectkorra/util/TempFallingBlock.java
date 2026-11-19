@@ -49,7 +49,7 @@ public class TempFallingBlock {
         this.fallingblock.setDropItem(false);
         this.fallingblock.setHurtEntities(false);
         this.metadataKey = ability.getName().toLowerCase(java.util.Locale.ROOT);
-        this.fallingblock.setMetadata(this.metadataKey, new FixedMetadataValue(ProjectKorra.plugin, this));
+        restoreMetadata();
         this.ability = ability;
         this.creation = RollbackClock.millis();
         this.expire = expire;
@@ -127,6 +127,10 @@ public class TempFallingBlock {
             this.onPlace = null;
             fallingblock.remove();
         }
+    }
+
+    public void restoreMetadata() {
+        this.fallingblock.setMetadata(this.metadataKey, new FixedMetadataValue(ProjectKorra.plugin, this));
     }
 
     public FallingBlock getFallingBlock() {

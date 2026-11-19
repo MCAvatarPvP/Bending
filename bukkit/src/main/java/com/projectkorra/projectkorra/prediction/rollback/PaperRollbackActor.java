@@ -127,6 +127,6 @@ final class PaperRollbackActor implements RollbackActorRegistry.Actor<RollbackSt
             if (!scene.world().ownsEntity(entity)) throw new IllegalStateException("Actor references a foreign entity");
             return true;
         }
-        return value == nativeActor.getBukkitEntityRaw() || value == EntityInLevelCallback.NULL || PaperRollbackMetadata.frozen(value);
+        return value == scene || value == nativeActor.getBukkitEntityRaw() || value == EntityInLevelCallback.NULL || PaperRollbackMetadata.frozen(value);
     }
 }

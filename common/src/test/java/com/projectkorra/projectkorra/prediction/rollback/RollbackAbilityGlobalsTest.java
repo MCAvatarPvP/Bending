@@ -108,6 +108,79 @@ class RollbackAbilityGlobalsTest {
             }
         }
     }
+    @Test void hyperionActorTimersRetainPhaseAndIdentityOnRepairAndRewind() throws Exception {
+        try (var fixture = new com.projectkorra.projectkorra.support.AbilityWorld()) {
+            var session = new UUID(19, 722);
+            var fallingId = RollbackActorData.uuid(session, 1);
+            var standId = RollbackActorData.uuid(session, 2);
+            var fall = new com.projectkorra.projectkorra.platform.mc.entity.FallingBlock() {
+                @Override public UUID getUniqueId() { return fallingId; }
+            };
+            var stand = new com.projectkorra.projectkorra.platform.mc.entity.ArmorStand() {
+                @Override public UUID getUniqueId() { return standId; }
+            };
+            var alloc = new org.objenesis.ObjenesisStd();
+            var fallingType = me.moros.hyperion.util.BendingFallingBlock.class;
+            var standType = me.moros.hyperion.util.TempArmorStand.class;
+            var ice = alloc.newInstance(fallingType);
+            var display = alloc.newInstance(standType);
+            set(fallingType, ice, "fallingBlock", fall); set(fallingType, ice, "expirationTime", 50L);
+            set(standType, display, "armorStand", stand); set(standType, display, "expirationTime", 50L);
+            var seed = new RollbackAbilityGlobals();
+            var actors = seed.addonActors();
+            actors.falling.put(fall, ice); actors.fallingExpiry.add(ice);
+            actors.stands.put(stand, display); actors.standExpiry.add(display);
+            actors.timerDelays(1, 4);
+            var outside = new com.projectkorra.projectkorra.platform.mc.entity.FallingBlock();
+            var outsideIce = alloc.newInstance(fallingType);
+            set(fallingType, outsideIce, "fallingBlock", outside);
+            set(fallingType, outsideIce, "expirationTime", -1L);
+            me.moros.hyperion.util.BendingFallingBlock.resume(outsideIce);
+            try {
+                var codec = new RollbackGraphCodec(new RollbackGraphCodec.Catalog(List.of(RollbackAbilityGlobals.class,
+                        RollbackParticipantStatuses.class, RollbackAddonActors.class, standType, fallingType,
+                        me.moros.hyperion.util.BendingFallingBlock.ExpiryOrder.class, me.moros.hyperion.util.TempArmorStand.ExpiryOrder.class),
+                        List.of(), List.of(new RollbackGraphCodec.Binding("stand", com.projectkorra.projectkorra.platform.mc.entity.ArmorStand.class, stand),
+                        new RollbackGraphCodec.Binding("fall", com.projectkorra.projectkorra.platform.mc.entity.FallingBlock.class, fall))),
+                        new RollbackGraphCodec.Limits(256, 2048, 65536, 1024));
+                var transferred = (RollbackAbilityGlobals)codec.decode(codec.encode(List.of(seed))).getFirst();
+                var graph = new RollbackStateGraph(value -> value instanceof com.projectkorra.projectkorra.platform.mc.entity.Entity, field -> true, 256);
+                var domain = RollbackDomain.create(graph, List.of(), List.of(), com.projectkorra.projectkorra.platform.Platform.current(), transferred::install);
+                var fallingBody = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackEntityBody.Identity(fallingId, -1, "fall", com.projectkorra.projectkorra.platform.mc.entity.EntityType.FALLING_BLOCK);
+                var standBody = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackEntityBody.Identity(standId, -2, "stand", com.projectkorra.projectkorra.platform.mc.entity.EntityType.ARMOR_STAND);
+                var data = new RollbackActorData(session, 2, List.of(new RollbackActorData.Row(fallingBody, new byte[]{1}), new RollbackActorData.Row(standBody, new byte[]{1})));
+                var checkpoint = domain.call(() -> {
+                    RollbackAbilityGlobals.validateInstalledActors(data);
+                    assertThrows(IllegalStateException.class, () -> RollbackAbilityGlobals.validateInstalledActors(new RollbackActorData(session, 0, List.of())));
+                    assertNull(me.moros.hyperion.util.BendingFallingBlock.get(outside));
+                    return domain.capture();
+                });
+                domain.call(() -> {
+                    for (int tick = 1; tick <= 4; tick++) {
+                        try (var clock = RollbackClock.at(0, tick, 50_000_000L)) {
+                            transferred.addonActors().tick(tick);
+                            assertEquals(tick < 4, me.moros.hyperion.util.BendingFallingBlock.isBendingFallingBlock(fall));
+                            assertEquals(tick < 2, me.moros.hyperion.util.TempArmorStand.isTempArmorStand(stand));
+                        }
+                    }
+                    domain.restore(checkpoint);
+                    var restored = me.moros.hyperion.util.BendingFallingBlock.get(fall);
+                    assertNotSame(ice, restored);
+                    assertSame(restored, transferred.addonActors().fallingExpiry.element());
+                    return null;
+                });
+                assertSame(outsideIce, me.moros.hyperion.util.BendingFallingBlock.get(outside));
+                assertNull(me.moros.hyperion.util.TempArmorStand.get(stand));
+            } finally {
+                me.moros.hyperion.util.BendingFallingBlock.manage();
+            }
+        }
+    }
+    private static void set(Class<?> type, Object owner, String field, Object value) throws ReflectiveOperationException {
+        var member = type.getDeclaredField(field);
+        member.setAccessible(true);
+        member.set(owner, value);
+    }
     private static void assertPrivateRestriction(Set<com.projectkorra.projectkorra.util.MovementHandler> selected, Player owner,
             com.projectkorra.projectkorra.util.MovementHandler original) {
         assertEquals(1, selected.size());

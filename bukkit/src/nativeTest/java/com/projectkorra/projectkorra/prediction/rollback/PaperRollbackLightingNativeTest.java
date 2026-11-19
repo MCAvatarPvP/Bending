@@ -87,6 +87,9 @@ class PaperRollbackLightingNativeTest {
             var registry = (RegistryAccess) new PaperRollbackDamageNativeTest.Combat().registryAccess();
             var lighting = new PaperRollbackLighting(terrain, light, registry, true);
             var initial = lighting.captureRollbackState();
+            assertSame(initial, lighting.captureRollbackState());
+            lighting.apply(Map.of());
+            assertSame(initial, lighting.captureRollbackState());
             var source = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Position(15, 8, 8);
             var neighbour = source.offset(1, 0, 0); var roof = source.offset(0, 1, 0);
             var glow = new com.projectkorra.projectkorra.platform.mc.block.data.BlockData(com.projectkorra.projectkorra.platform.mc.Material.GLOWSTONE);
@@ -97,8 +100,12 @@ class PaperRollbackLightingNativeTest {
             assertEquals(14, lighting.block(neighbour));
             assertEquals(0, lighting.sky(source));
             var changed = lighting.captureRollbackState();
+            assertNotSame(initial, changed);
+            assertSame(changed, lighting.captureRollbackState());
             lighting.apply(Map.of(source, air, roof, air));
             assertEquals(0, lighting.block(neighbour)); assertEquals(15, lighting.sky(source));
+            lighting.restoreRollbackState(changed);
+            assertSame(changed, lighting.captureRollbackState());
             lighting.restoreRollbackState(changed);
             assertEquals(14, lighting.block(neighbour)); assertEquals(0, lighting.sky(source));
             lighting.restoreRollbackState(initial);

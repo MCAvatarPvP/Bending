@@ -119,9 +119,12 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
                 throw new IllegalArgumentException("Imported player differs from private platform body");
         }
         var shared = new LinkedHashSet<>(base.shared());
-        shared.addAll(RollbackBendingState.sharedFields());
+        // These registries are resolved through the imported domain by the normal gameplay entry points.
+        // An addon may explicitly declare one of the same fields as a root.
+        shared.removeAll(RollbackBendingState.sharedFields());
         var local = new ArrayList<Object>(base.local());
         local.addAll(imported.roots());
+        local.add(new RollbackPrivateRegistries());
         var environment = new Environment(base.graph(), shared, local, platform, base.items(), base.prediction(), imported.configuration());
         return create(environment, execution, () -> { imported.bending().install(); afterInstall.run(); },
                 initialInputs, limits, epochMillis, epochNanos, replica, round);
@@ -182,8 +185,7 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
                         var globals = RollbackDomain.abilityGlobals();
                         if (globals != null) globals.progressMaintenance(tick);
                         var earth = RollbackEarthTerrain.current();
-                        if (earth != null) earth.scanDue(tick, com.projectkorra.projectkorra.BendingPlayer.getPlayers().values().stream()
-                                .map(com.projectkorra.projectkorra.BendingPlayer::getPlayer).toList());
+                        if (earth != null) earth.scanDue(tick);
                     } catch (RuntimeException | Error exception) {
                         failure = exception;
                         throw exception;

@@ -19,6 +19,51 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class PaperRollbackNativeSceneNativeTest {
     @BeforeAll static void bootstrap() { PaperRollbackDamageNativeTest.bootstrap(); }
+    @Test void privateSnowballImpactDeliversExactLogicalActorsWithoutALiveBukkitServer() throws Exception {
+        onTickThread(() -> {
+            var roster = PaperRollbackRosterSeed.capture(source(), 0);
+            var scene = scene(seed(), roster, roster.participants());
+            var items = new RollbackNativeItems<>(new PaperRollbackItems(PaperRollbackEnvironmentNativeTest.registries()));
+            var actors = new PaperRollbackActors(new UUID(72, 34), 16, items);
+            actors.bind(scene);
+            var pose = new RollbackEntityBody.Pose(0, 4, 0, 0, 0);
+            var ball = actors.spawn(scene.logical(), pose, com.projectkorra.projectkorra.platform.mc.entity.Snowball.class);
+            var target = actors.spawn(scene.logical(), pose, com.projectkorra.projectkorra.platform.mc.entity.BlockDisplay.class);
+            scene.logical().entities().add(ball);
+            scene.logical().entities().add(target);
+            var events = new ArrayList<com.projectkorra.projectkorra.platform.mc.event.entity.ProjectileHitEvent>();
+            var bus = (com.projectkorra.projectkorra.platform.PKEventBus) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{com.projectkorra.projectkorra.platform.PKEventBus.class}, (proxy, method, args) -> {
+                        if (!method.getName().equals("call")) throw new AssertionError(method);
+                        var hit = (com.projectkorra.projectkorra.platform.mc.event.entity.ProjectileHitEvent) args[0];
+                        events.add(hit);
+                        hit.setCancelled(true);
+                        return null;
+                    });
+            var platform = (com.projectkorra.projectkorra.platform.ProjectKorraPlatform) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{com.projectkorra.projectkorra.platform.ProjectKorraPlatform.class}, (proxy, method, args) -> {
+                        if (method.getName().equals("events")) return bus;
+                        throw new AssertionError(method);
+                    });
+            var domain = RollbackDomain.create(new RollbackStateGraph(value -> false, field -> true, 2048),
+                    List.of(), List.of(), platform, () -> { });
+            domain.call(() -> {
+                try (var clock = RollbackClock.at(1000, 1, 50_000_000)) {
+                    var nativeBall = (PaperRollbackSnowball) actors.actor(ball.getUniqueId());
+                    var result = nativeBall.preHitTargetOrDeflectSelf(new net.minecraft.world.phys.EntityHitResult(actors.actor(target.getUniqueId())));
+                    assertSame(net.minecraft.world.entity.projectile.ProjectileDeflection.NONE, result);
+                    assertFalse(nativeBall.isRemoved());
+                }
+                return null;
+            });
+            assertEquals(1, events.size());
+            assertSame(ball, events.getFirst().getEntity());
+            assertSame(target, events.getFirst().getHitEntity());
+            assertNull(Bukkit.getServer());
+            return null;
+        });
+    }
+
     @Test void confirmedDisplayRetainsIdentityBlockStateAndGraphBindingAcrossRepair() throws Exception {
         onTickThread(() -> {
             var roster = PaperRollbackRosterSeed.capture(source(), 0);

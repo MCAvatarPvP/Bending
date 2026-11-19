@@ -62,6 +62,26 @@ public class OfflineBendingPlayer {
      */
     protected static final PriorityQueue<Pair<Player, Long>> TEMP_ELEMENTS = new PriorityQueue<>(new TemporaryElementExpiryOrder());
 
+    /** Membership and element expiry timers belonging to one imported roster. */
+    public static final class PrivateRegistries {
+        private final Map<UUID, OfflineBendingPlayer> cached = new ConcurrentHashMap<>();
+        private final Map<UUID, BendingPlayer> online = new ConcurrentHashMap<>();
+        private final PriorityQueue<Pair<Player, Long>> expirations = new PriorityQueue<>(new TemporaryElementExpiryOrder());
+    }
+
+    static Map<UUID, OfflineBendingPlayer> cachedPlayers() {
+        var scope = com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.importingRegistries();
+        return scope == null ? PLAYERS : scope.players().cached;
+    }
+    static Map<UUID, BendingPlayer> onlinePlayers() {
+        var scope = com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.importingRegistries();
+        return scope == null ? ONLINE_PLAYERS : scope.players().online;
+    }
+    static PriorityQueue<Pair<Player, Long>> temporaryElements() {
+        var scope = com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.importingRegistries();
+        return scope == null ? TEMP_ELEMENTS : scope.players().expirations;
+    }
+
     private static final class TemporaryElementExpiryOrder implements Comparator<Pair<Player, Long>> {
         @Override public int compare(Pair<Player, Long> first, Pair<Player, Long> second) {
             return Long.compare(first.getRight(), second.getRight());
@@ -125,7 +145,7 @@ public class OfflineBendingPlayer {
 
     private static List<RollbackTemporaryElement> snapshotRollbackTemporaryElements(Set<UUID> participants) {
         var entries = new ArrayList<RollbackTemporaryElement>();
-        for (Pair<Player, Long> entry : TEMP_ELEMENTS) {
+        for (Pair<Player, Long> entry : temporaryElements()) {
             if (participants.contains(entry.getLeft().getUniqueId())) {
                 entries.add(new RollbackTemporaryElement(entry.getLeft(), entry.getRight()));
             }
@@ -144,12 +164,12 @@ public class OfflineBendingPlayer {
                 throw new IllegalStateException("Temporary element refers to another participant graph");
             }
         }
-        ONLINE_PLAYERS.clear();
-        ONLINE_PLAYERS.putAll(players);
-        PLAYERS.clear();
-        PLAYERS.putAll(players);
-        TEMP_ELEMENTS.clear();
-        for (RollbackTemporaryElement entry : temporaryElements) TEMP_ELEMENTS.add(Pair.of(entry.player, entry.expiry));
+        onlinePlayers().clear();
+        onlinePlayers().putAll(players);
+        cachedPlayers().clear();
+        cachedPlayers().putAll(players);
+        temporaryElements().clear();
+        for (RollbackTemporaryElement entry : temporaryElements) temporaryElements().add(Pair.of(entry.player, entry.expiry));
     }
 
     /** Prepare a roster-only registry commit after copying the outgoing graph onto live player handles.
@@ -201,7 +221,7 @@ public class OfflineBendingPlayer {
             boundary();
             var selected = committed ? restored : expected;
             for (var entry : selected.entrySet()) {
-                if (ONLINE_PLAYERS.get(entry.getKey()) != entry.getValue() || PLAYERS.get(entry.getKey()) != entry.getValue())
+                if (onlinePlayers().get(entry.getKey()) != entry.getValue() || cachedPlayers().get(entry.getKey()) != entry.getValue())
                     throw new IllegalStateException("Live player ownership changed before restoration");
             }
         }
@@ -209,11 +229,11 @@ public class OfflineBendingPlayer {
         public void commit() {
             requireCurrent(); if (committed) return;
             // Build the complete replacement queue before modifying any live registry.
-            var queue = new PriorityQueue<>(TEMP_ELEMENTS);
+            var queue = new PriorityQueue<>(temporaryElements());
             queue.removeIf(entry -> restored.containsKey(entry.getLeft().getUniqueId()));
             for (var entry : temporaryElements) queue.add(Pair.of(entry.player, entry.expiry));
-            ONLINE_PLAYERS.putAll(restored); PLAYERS.putAll(restored);
-            TEMP_ELEMENTS.clear(); TEMP_ELEMENTS.addAll(queue);
+            onlinePlayers().putAll(restored); cachedPlayers().putAll(restored);
+            temporaryElements().clear(); temporaryElements().addAll(queue);
             committed = true;
         }
     }
@@ -234,6 +254,11 @@ public class OfflineBendingPlayer {
     }
 
     protected static CompletableFuture<OfflineBendingPlayer> loadAsync(@NotNull final UUID uuid, boolean onStartup) {
+        var privateScope = com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.importingRegistries();
+        if (privateScope != null) {
+            // Enrollment imports the full private roster. A database-backed live future must never escape into replay.
+            return CompletableFuture.completedFuture(privateScope.players().cached.get(uuid));
+        }
         CompletableFuture<OfflineBendingPlayer> future = new CompletableFuture<>();
         OfflinePlayer offlinePlayer = Platform.players().getOfflinePlayer(uuid);
 
@@ -247,12 +272,12 @@ public class OfflineBendingPlayer {
         }
 
         //If we already have the players data cached from an OfflineBendingPlayer instance
-        OfflineBendingPlayer oBendingPlayer = PLAYERS.get(uuid);
+        OfflineBendingPlayer oBendingPlayer = cachedPlayers().get(uuid);
         if (oBendingPlayer != null && offlinePlayer.isOnline() && !(oBendingPlayer instanceof BendingPlayer)) {
             if (oBendingPlayer.uncache != null) {
                 oBendingPlayer.uncache.cancel();
             }
-            PLAYERS.remove(uuid);
+            cachedPlayers().remove(uuid);
             oBendingPlayer = null; // force reloading from the database for fresh data on new logins
         }
         if (oBendingPlayer instanceof BendingPlayer bendingPlayer && offlinePlayer.isOnline()
@@ -279,10 +304,10 @@ public class OfflineBendingPlayer {
                 OfflineBendingPlayer bPlayer = new OfflineBendingPlayer(offlinePlayer);
                 if (offlinePlayer.isOnline()) {
                     bPlayer = new BendingPlayer(((Player) offlinePlayer));
-                    ONLINE_PLAYERS.put(uuid, (BendingPlayer) bPlayer);
+                    onlinePlayers().put(uuid, (BendingPlayer) bPlayer);
                 }
 
-                PLAYERS.put(uuid, bPlayer);
+                cachedPlayers().put(uuid, bPlayer);
 
                 final PlayerRepository playerRepository = DBConnection.getAdapter().players();
                 final Optional<PlayerRecord> playerData = playerRepository.load(uuid);
@@ -296,11 +321,11 @@ public class OfflineBendingPlayer {
                             ((BendingPlayer) newPlayer).postLoad();
                             return true;
                         }).get();
-                        ONLINE_PLAYERS.put(uuid, (BendingPlayer) newPlayer);
+                        onlinePlayers().put(uuid, (BendingPlayer) newPlayer);
                     } else {
                         newPlayer = new OfflineBendingPlayer(offlinePlayer);
                     }
-                    PLAYERS.put(uuid, newPlayer);
+                    cachedPlayers().put(uuid, newPlayer);
                     Platform.scheduler().callSync(() -> {
                         Platform.events().call(new BendingPlayerLoadEvent(newPlayer));
                         return true;
@@ -679,8 +704,8 @@ public class OfflineBendingPlayer {
             offlineBendingPlayer.uncache.cancel();
         }
 
-        PLAYERS.put(player.getUniqueId(), bendingPlayer);
-        ONLINE_PLAYERS.put(player.getUniqueId(), bendingPlayer);
+        cachedPlayers().put(player.getUniqueId(), bendingPlayer);
+        onlinePlayers().put(player.getUniqueId(), bendingPlayer);
 
         Platform.scheduler().callSync(() -> {
             Platform.events().call(new BendingPlayerLoadEvent(bendingPlayer));
@@ -725,10 +750,10 @@ public class OfflineBendingPlayer {
         offlineBendingPlayer.lastAccessed = RollbackClock.millis();
 
         if (bendingPlayer.getPlayer() == null || !bendingPlayer.getPlayer().isOnline())
-            ONLINE_PLAYERS.remove(bendingPlayer.getUUID());
-        PLAYERS.put(bendingPlayer.getUUID(), offlineBendingPlayer);
+            onlinePlayers().remove(bendingPlayer.getUUID());
+        cachedPlayers().put(bendingPlayer.getUUID(), offlineBendingPlayer);
 
-        TEMP_ELEMENTS.removeIf(pair -> pair.getLeft().getUniqueId().equals(bendingPlayer.getUUID()));
+        temporaryElements().removeIf(pair -> pair.getLeft().getUniqueId().equals(bendingPlayer.getUUID()));
 
         return offlineBendingPlayer;
     }
@@ -1710,8 +1735,8 @@ public class OfflineBendingPlayer {
             return;
         }
 
-        PLAYERS.remove(this.player.getUniqueId());
-        ONLINE_PLAYERS.remove(this.player.getUniqueId());
+        cachedPlayers().remove(this.player.getUniqueId());
+        onlinePlayers().remove(this.player.getUniqueId());
         LOADING.remove(this.player.getUniqueId());
     }
 

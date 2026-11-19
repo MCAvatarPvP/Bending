@@ -30,6 +30,8 @@ public final class FabricRollbackLighting implements RollbackStateCell<FabricRol
     private Map<Long, ProtoChunk> chunks;
     private LightingProvider lighting;
     private boolean updating, failed;
+    /** Immutable until a private terrain change starts or a different checkpoint is installed. */
+    private Snapshot currentSnapshot;
 
     public FabricRollbackLighting(RollbackTerrainSeed terrain, RollbackLightSeed light,
             DynamicRegistryManager.Immutable registries, boolean hasSky) {
@@ -149,6 +151,8 @@ public final class FabricRollbackLighting implements RollbackStateCell<FabricRol
                 throw new IllegalArgumentException("Lighting mutation requires a captured chunk halo");
             decoded.put(p, FabricRollbackGeometry.decode(Objects.requireNonNull(entry.getValue())));
         });
+        if (decoded.isEmpty()) return;
+        currentSnapshot = null;
         updating = true;
         try {
             var touched = new TreeSet<Long>();
@@ -166,7 +170,9 @@ public final class FabricRollbackLighting implements RollbackStateCell<FabricRol
         finally { updating = false; }
     }
     @Override public Snapshot captureRollbackState() {
-        check(); var saved = new TreeMap<Long, ChunkState>();
+        check();
+        if (currentSnapshot != null) return currentSnapshot;
+        var saved = new TreeMap<Long, ChunkState>();
         chunks.forEach((key, chunk) -> {
             var sky = new ChunkNibbleArray[height.countVerticalSections() + 2];
             var block = new ChunkNibbleArray[sky.length];
@@ -178,13 +184,18 @@ public final class FabricRollbackLighting implements RollbackStateCell<FabricRol
             }
             saved.put(key, new ChunkState(Arrays.stream(chunk.getSectionArray()).map(ChunkSection::copy).toArray(ChunkSection[]::new), sky, block));
         });
-        return new Snapshot(this, saved);
+        currentSnapshot = new Snapshot(this, saved);
+        return currentSnapshot;
     }
     @Override public void restoreRollbackState(Snapshot state) {
         thread();
         if (updating || state.owner != this) throw new IllegalArgumentException("Lighting checkpoint owner/boundary");
+        if (!failed && currentSnapshot == state) return;
+        currentSnapshot = null;
         updating = true;
-        try { install(state.chunks); } finally { updating = false; }
+        try { install(state.chunks); currentSnapshot = state; }
+        catch (RuntimeException | Error failure) { failed = true; throw failure; }
+        finally { updating = false; }
     }
     private static void settle(LightingProvider provider) {
         for (int pass = 0; provider.hasUpdates(); pass++) {

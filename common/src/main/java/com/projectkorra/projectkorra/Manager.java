@@ -23,15 +23,20 @@ public abstract class Manager implements Listener {
      */
     private static final Map<Class<? extends Manager>, Manager> MANAGERS = new HashMap<>();
 
+    private static Map<Class<? extends Manager>, Manager> currentManagers() {
+        var registries = RollbackDomain.importingRegistries();
+        return registries == null ? MANAGERS : registries.managers();
+    }
+
     /** Source references only; transfer this registry before installing it in a domain. */
     public static RollbackRegistry captureRollbackRegistry() {
         if (RollbackDomain.active() || RollbackClock.active()) throw new IllegalStateException("Manager import during replay");
-        return new RollbackRegistry(MANAGERS);
+        return new RollbackRegistry(currentManagers());
     }
 
     public static RollbackRegistry exportRollbackRegistry() {
         if (!RollbackDomain.active()) throw new IllegalStateException("Export managers inside their replay domain");
-        return new RollbackRegistry(MANAGERS);
+        return new RollbackRegistry(currentManagers());
     }
 
     /**
@@ -67,7 +72,7 @@ public abstract class Manager implements Listener {
         private void requireCurrent() {
             if (Thread.currentThread() != owner || RollbackDomain.active() || RollbackClock.active()
                     || !Platform.scheduler().isPrimaryThread()) throw new IllegalStateException("Restore managers on the live main thread");
-            for (var target : targets) if (MANAGERS.get(target.getClass()) != target)
+            for (var target : targets) if (currentManagers().get(target.getClass()) != target)
                 throw new IllegalStateException("Live manager ownership changed before restoration");
         }
         public RestorationStep prepare(List<?> copiedRoots) {
@@ -125,7 +130,7 @@ public abstract class Manager implements Listener {
             if (roster.isEmpty() || roster.size() > 128) throw new IllegalArgumentException("Manager restoration roster");
             var targets = new ArrayList<Manager>(); var roots = new ArrayList<List<?>>();
             for (var entry : managers.entrySet()) {
-                var live = MANAGERS.get(entry.getKey());
+                var live = currentManagers().get(entry.getKey());
                 if (live == null || live.getClass() != entry.getValue().getClass()) throw new IllegalStateException("Live manager definition differs");
                 bind.accept(entry.getValue(), live); bind.accept(live, live);
                 targets.add(live); roots.add(entry.getValue().projectRollbackRestoration(roster, live, bind));
@@ -137,8 +142,8 @@ public abstract class Manager implements Listener {
 
         public void install(boolean initializeServices) {
             if (!RollbackDomain.active()) throw new IllegalStateException("Manager install requires a rollback domain");
-            MANAGERS.clear();
-            MANAGERS.putAll(managers);
+            currentManagers().clear();
+            currentManagers().putAll(managers);
             if (initializeServices) managers.values().forEach(Manager::onRollbackInstall);
         }
     }
@@ -153,7 +158,7 @@ public abstract class Manager implements Listener {
      */
     public static void registerManager(final Class<? extends Manager> managerClass) {
         Validate.notNull(managerClass, "Manager class cannot be null");
-        Validate.isTrue(!MANAGERS.containsKey(managerClass), "Manager has already been registered");
+        Validate.isTrue(!currentManagers().containsKey(managerClass), "Manager has already been registered");
         try {
             final Constructor<? extends Manager> constructor = managerClass.getDeclaredConstructor();
             final boolean accessible = constructor.isAccessible();
@@ -161,7 +166,7 @@ public abstract class Manager implements Listener {
             final Manager manager = constructor.newInstance();
             constructor.setAccessible(accessible);
             manager.activate();
-            MANAGERS.put(managerClass, manager);
+            currentManagers().put(managerClass, manager);
         } catch (InstantiationException | IllegalAccessException | NoSuchMethodException | SecurityException |
                  IllegalArgumentException | InvocationTargetException e) {
             e.printStackTrace();
@@ -179,8 +184,8 @@ public abstract class Manager implements Listener {
      */
     public static <T extends Manager> T getManager(final Class<T> managerClass) {
         Validate.notNull(managerClass, "Manager class cannot be null");
-        Validate.isTrue(MANAGERS.containsKey(managerClass), "Manager has not yet been registered");
-        final Manager registered = MANAGERS.get(managerClass);
+        Validate.isTrue(currentManagers().containsKey(managerClass), "Manager has not yet been registered");
+        final Manager registered = currentManagers().get(managerClass);
         return managerClass.cast(registered);
     }
 
@@ -196,8 +201,8 @@ public abstract class Manager implements Listener {
      * Deactivates and clears all {@link Manager} instances
      */
     public static void shutdown() {
-        MANAGERS.values().forEach(Manager::deactivate);
-        MANAGERS.clear();
+        currentManagers().values().forEach(Manager::deactivate);
+        currentManagers().clear();
     }
 
     /**

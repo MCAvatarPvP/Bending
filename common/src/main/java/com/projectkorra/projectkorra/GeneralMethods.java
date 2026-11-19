@@ -1444,7 +1444,7 @@ public class GeneralMethods {
         Platform.events().registerListener(new com.projectkorra.projectkorra.listener.CommonAbilityCombatListener(), ProjectKorra.plugin);
         BendingPlayer.getOfflinePlayers().clear();
         BendingPlayer.getPlayers().clear();
-        OfflineBendingPlayer.TEMP_ELEMENTS.clear();
+        OfflineBendingPlayer.temporaryElements().clear();
         BendingPlayer.DISABLED_WORLDS = new HashSet<>(ConfigManager.defaultConfig.get().getStringList("Properties.DisabledWorlds"));
         BendingBoardManager.reload();
         for (final Player player : Platform.players().<Player>onlinePlayers()) {

@@ -111,7 +111,22 @@ public final class RollbackStateGraph {
     }
 
     public Snapshot capture(final Collection<?> roots, final Collection<Field> staticRoots) {
+        return capture(roots, staticRoots, List.of());
+    }
+
+    /** Preserve live singleton references across a private install without reading their server or player graphs. */
+    Snapshot captureOutside(Collection<Field> deep, Collection<Field> bindings) {
+        return capture(List.of(), deep, bindings);
+    }
+
+    private Snapshot capture(Collection<?> roots, Collection<Field> staticRoots, Collection<Field> bindings) {
         final Capture capture = new Capture();
+        for (Field field : bindings) {
+            if (!Modifier.isStatic(field.getModifiers()) || Modifier.isFinal(field.getModifiers()))
+                throw new IllegalArgumentException("Expected a replaceable static binding: " + field);
+            var access = LAYOUTS.get(field.getDeclaringClass()).accessors.computeIfAbsent(field, FieldAccess::new);
+            capture.fields.add(new FieldValue(null, access, access.read(null)));
+        }
         for (Object root : roots) capture.visit(root);
         for (Field field : staticRoots) {
             if (!Modifier.isStatic(field.getModifiers())) throw new IllegalArgumentException("Expected static root: " + field);

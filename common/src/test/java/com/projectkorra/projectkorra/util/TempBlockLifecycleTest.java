@@ -130,21 +130,27 @@ class TempBlockLifecycleTest {
                         field -> true, 2048);
                 var domain = com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.create(graph, List.of(), List.of(),
                         com.projectkorra.projectkorra.platform.Platform.current(), globals::install);
+                var hooks = com.projectkorra.projectkorra.prediction.authority.PredictionServices.builder()
+                        .disable(TempBlockSync.Listener.class).build();
                 var checkpoint = domain.call(() -> {
-                    var previous = TempBlock.get(local);
-                    assertEquals(original.getLayerId(), previous.getLayerId());
-                    var next = new TempBlock(local, Material.WATER.createBlockData(), 1000);
-                    imported.land().put(local, next);
-                    imported.earth().moved.get(local).setInteger(73);
-                    imported.earth().earthQueue.put(local, local);
-                    return domain.capture();
+                    try (var scope = com.projectkorra.projectkorra.prediction.authority.PredictionServices.using(hooks)) {
+                        var previous = TempBlock.get(local);
+                        assertEquals(original.getLayerId(), previous.getLayerId());
+                        var next = new TempBlock(local, Material.WATER.createBlockData(), 1000);
+                        imported.land().put(local, next);
+                        imported.earth().moved.get(local).setInteger(73);
+                        imported.earth().earthQueue.put(local, local);
+                        return domain.capture();
+                    }
                 });
                 var privateState = domain.call(() -> {
-                    TempBlock.get(local).discard();
-                    imported.earth().moved.get(local).setInteger(92);
-                    domain.restore(checkpoint);
-                    assertSame(imported.land().get(local), TempBlock.get(local));
-                    return imported.portable();
+                    try (var scope = com.projectkorra.projectkorra.prediction.authority.PredictionServices.using(hooks)) {
+                        TempBlock.get(local).discard();
+                        imported.earth().moved.get(local).setInteger(92);
+                        domain.restore(checkpoint);
+                        assertSame(imported.land().get(local), TempBlock.get(local));
+                        return imported.portable();
+                    }
                 });
                 var confirmed = transfer(privateState, arena);
                 lease.merge(confirmed);

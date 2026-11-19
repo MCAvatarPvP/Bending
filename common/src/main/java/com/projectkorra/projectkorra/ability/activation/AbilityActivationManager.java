@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.ability.activation;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackDomain;
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.ProjectKorra;
@@ -26,12 +27,42 @@ public final class AbilityActivationManager {
 
     private static ArrayDeque<TrackingFrame> PRIVATE_TRACKING;
 
+    /** Match-local registry references retained across prediction and replay. */
+    public static final class PrivateRegistries {
+        private Map<String, EnumMap<ClickType, List<ActivationHandler>>> handlers = new ConcurrentHashMap<>();
+        private Map<String, EnumMap<ClickType, List<ActivationHandler>>> multi = new ConcurrentHashMap<>();
+        private EnumMap<ClickType, List<ActivationHandler>> global = new EnumMap<>(ClickType.class);
+        private Map<Class<?>, Boolean> discovered = new ConcurrentHashMap<>();
+        private ArrayDeque<TrackingFrame> tracking = new ArrayDeque<>();
+    }
+
+    private static Map<String, EnumMap<ClickType, List<ActivationHandler>>> currentHandlers() {
+        var state = RollbackDomain.importingRegistries();
+        return state == null ? HANDLERS : state.activations().handlers;
+    }
+    private static Map<String, EnumMap<ClickType, List<ActivationHandler>>> currentMulti() {
+        var state = RollbackDomain.importingRegistries();
+        return state == null ? MULTI_HANDLERS : state.activations().multi;
+    }
+    private static EnumMap<ClickType, List<ActivationHandler>> currentGlobal() {
+        var state = RollbackDomain.importingRegistries();
+        return state == null ? GLOBAL_HANDLERS : state.activations().global;
+    }
+    private static Map<Class<?>, Boolean> currentDiscovered() {
+        var state = RollbackDomain.importingRegistries();
+        return state == null ? DISCOVERED : state.activations().discovered;
+    }
+    private static ArrayDeque<TrackingFrame> currentTracking() {
+        var state = RollbackDomain.importingRegistries();
+        return state == null ? PRIVATE_TRACKING : state.activations().tracking;
+    }
+
     /** Captured with the common graph, including handler receivers and their shared aliases. */
     public static final class RollbackRegistry {
-        private final Map<String, EnumMap<ClickType, List<ActivationHandler>>> handlers = HANDLERS;
-        private final Map<String, EnumMap<ClickType, List<ActivationHandler>>> multi = MULTI_HANDLERS;
-        private final EnumMap<ClickType, List<ActivationHandler>> global = GLOBAL_HANDLERS;
-        private final Map<Class<?>, Boolean> discovered = DISCOVERED;
+        private final Map<String, EnumMap<ClickType, List<ActivationHandler>>> handlers = currentHandlers();
+        private final Map<String, EnumMap<ClickType, List<ActivationHandler>>> multi = currentMulti();
+        private final EnumMap<ClickType, List<ActivationHandler>> global = currentGlobal();
+        private final Map<Class<?>, Boolean> discovered = currentDiscovered();
         private final ArrayDeque<TrackingFrame> tracking = new ArrayDeque<>();
         private RollbackRegistry() {
             if (!trackingStack().isEmpty()) throw new IllegalStateException("Activation capture requires an input boundary");
@@ -60,6 +91,13 @@ public final class AbilityActivationManager {
             if (!com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active())
                 throw new IllegalStateException("Activation import requires a private domain");
             validate();
+            var imported = RollbackDomain.importingRegistries();
+            if (imported != null) {
+                var privateState = imported.activations();
+                privateState.handlers = handlers; privateState.multi = multi; privateState.global = global; privateState.discovered = discovered;
+                privateState.tracking = tracking;
+                return;
+            }
             HANDLERS = handlers; MULTI_HANDLERS = multi; GLOBAL_HANDLERS = global; DISCOVERED = discovered;
             PRIVATE_TRACKING = tracking;
         }
@@ -70,9 +108,9 @@ public final class AbilityActivationManager {
         private record Slot(int kind, String name, ClickType click) { }
         private final Thread owner = Thread.currentThread();
         private final com.projectkorra.projectkorra.prediction.rollback.RollbackTaskOwnership ownership;
-        private final Map<String, EnumMap<ClickType, List<ActivationHandler>>> liveHandlers = HANDLERS, liveMulti = MULTI_HANDLERS;
-        private final EnumMap<ClickType, List<ActivationHandler>> liveGlobal = GLOBAL_HANDLERS;
-        private final Map<String, EnumMap<ClickType, List<ActivationHandler>>> originalHandlers = new HashMap<>(HANDLERS), originalMulti = new HashMap<>(MULTI_HANDLERS);
+        private final Map<String, EnumMap<ClickType, List<ActivationHandler>>> liveHandlers = currentHandlers(), liveMulti = currentMulti();
+        private final EnumMap<ClickType, List<ActivationHandler>> liveGlobal = currentGlobal();
+        private final Map<String, EnumMap<ClickType, List<ActivationHandler>>> originalHandlers = new HashMap<>(currentHandlers()), originalMulti = new HashMap<>(currentMulti());
         private final Map<Slot, List<ActivationHandler>> original = new LinkedHashMap<>();
         private final Map<Slot, List<ActivationHandler>> before = new LinkedHashMap<>();
         private final Map<Slot, List<ActivationHandler>> destinations = new LinkedHashMap<>();
@@ -84,7 +122,7 @@ public final class AbilityActivationManager {
             boundary();
             ownership = new com.projectkorra.projectkorra.prediction.rollback.RollbackTaskOwnership(participants, List.of(), value -> false, 100_000);
             bind.accept(source.handlers, liveHandlers); bind.accept(source.multi, liveMulti);
-            bind.accept(source.global, liveGlobal); bind.accept(source.discovered, DISCOVERED);
+            bind.accept(source.global, liveGlobal); bind.accept(source.discovered, currentDiscovered());
             captureLive(0, liveHandlers); captureLive(1, liveMulti);
             liveGlobal.forEach((click, list) -> capture(new Slot(2, "", click), list));
             sourceGroups(0, source.handlers, liveHandlers, plannedHandlers, bind);
@@ -143,7 +181,7 @@ public final class AbilityActivationManager {
                 @Override public void validate() {
                     boundary();
                     if (committed) return;
-                    if (HANDLERS != liveHandlers || MULTI_HANDLERS != liveMulti || GLOBAL_HANDLERS != liveGlobal)
+                    if (currentHandlers() != liveHandlers || currentMulti() != liveMulti || currentGlobal() != liveGlobal)
                         throw new IllegalStateException("Live activation registries changed before restoration");
                     for (var slot : slots) {
                         var current = current(slot);
@@ -201,8 +239,8 @@ public final class AbilityActivationManager {
                 field -> Set.of("HANDLERS", "MULTI_HANDLERS", "GLOBAL_HANDLERS", "DISCOVERED", "PRIVATE_TRACKING").contains(field.getName()));
     }
     private static ArrayDeque<TrackingFrame> trackingStack() {
-        return com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active() && PRIVATE_TRACKING != null
-                ? PRIVATE_TRACKING : HANDLED_TRACKING.get();
+        var current = currentTracking();
+        return RollbackDomain.active() && current != null ? current : HANDLED_TRACKING.get();
     }
 
     private AbilityActivationManager() {
@@ -219,7 +257,7 @@ public final class AbilityActivationManager {
     public static TrackingResult finishTrackingResult() {
         final ArrayDeque<TrackingFrame> stack = trackingStack();
         final TrackingFrame frame = stack.isEmpty() ? null : stack.pop();
-        if (stack.isEmpty() && stack != PRIVATE_TRACKING) HANDLED_TRACKING.remove();
+        if (stack.isEmpty() && stack != currentTracking()) HANDLED_TRACKING.remove();
         return frame == null
                 ? new TrackingResult(false, List.of())
                 : new TrackingResult(frame.handled, List.copyOf(frame.affectedAbilities));
@@ -248,10 +286,10 @@ public final class AbilityActivationManager {
     }
 
     public static void reload() {
-        HANDLERS.clear();
-        MULTI_HANDLERS.clear();
-        GLOBAL_HANDLERS.clear();
-        DISCOVERED.clear();
+        currentHandlers().clear();
+        currentMulti().clear();
+        currentGlobal().clear();
+        currentDiscovered().clear();
         CoreAbilityActivationBootstrap.registerDefaults();
         AddonAbilityActivationBootstrap.registerDefaults();
         discoverRegisteredAbilities();
@@ -264,7 +302,7 @@ public final class AbilityActivationManager {
     }
 
     public static void discover(final CoreAbility ability) {
-        if (ability == null || DISCOVERED.putIfAbsent(ability.getClass(), Boolean.TRUE) != null) {
+        if (ability == null || currentDiscovered().putIfAbsent(ability.getClass(), Boolean.TRUE) != null) {
             return;
         }
 
@@ -304,7 +342,7 @@ public final class AbilityActivationManager {
         if (abilityName == null || clickType == null || handler == null) {
             return;
         }
-        HANDLERS.computeIfAbsent(normalize(abilityName), ignored -> new EnumMap<>(ClickType.class))
+        currentHandlers().computeIfAbsent(normalize(abilityName), ignored -> new EnumMap<>(ClickType.class))
                 .computeIfAbsent(clickType, ignored -> new ArrayList<>())
                 .add(handler);
     }
@@ -313,14 +351,14 @@ public final class AbilityActivationManager {
         if (clickType == null || handler == null) {
             return;
         }
-        GLOBAL_HANDLERS.computeIfAbsent(clickType, ignored -> new ArrayList<>()).add(handler);
+        currentGlobal().computeIfAbsent(clickType, ignored -> new ArrayList<>()).add(handler);
     }
 
     public static void registerMulti(final String abilityName, final ClickType clickType, final ActivationHandler handler) {
         if (abilityName == null || clickType == null || handler == null) {
             return;
         }
-        MULTI_HANDLERS.computeIfAbsent(normalize(abilityName), ignored -> new EnumMap<>(ClickType.class))
+        currentMulti().computeIfAbsent(normalize(abilityName), ignored -> new EnumMap<>(ClickType.class))
                 .computeIfAbsent(clickType, ignored -> new ArrayList<>())
                 .add(handler);
     }
@@ -365,11 +403,11 @@ public final class AbilityActivationManager {
         if (abilityName == null) {
             return false;
         }
-        return runHandlers(MULTI_HANDLERS, context.withAbilityName(abilityName));
+        return runHandlers(currentMulti(), context.withAbilityName(abilityName));
     }
 
     private static boolean runGlobalHandlers(final ActivationContext context) {
-        final List<ActivationHandler> handlers = GLOBAL_HANDLERS.get(context.getClickType());
+        final List<ActivationHandler> handlers = currentGlobal().get(context.getClickType());
         if (handlers == null || handlers.isEmpty()) {
             return false;
         }
@@ -381,7 +419,7 @@ public final class AbilityActivationManager {
         if (abilityName == null) {
             return false;
         }
-        return runHandlers(HANDLERS, context);
+        return runHandlers(currentHandlers(), context);
     }
 
     private static boolean runHandlers(final Map<String, EnumMap<ClickType, List<ActivationHandler>>> handlerMap, final ActivationContext context) {

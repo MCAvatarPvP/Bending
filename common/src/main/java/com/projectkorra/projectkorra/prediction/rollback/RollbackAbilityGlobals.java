@@ -169,16 +169,18 @@ public final class RollbackAbilityGlobals {
 
     public void validateTemporaryActors(RollbackActorData data) {
         if (stands.isEmpty() && falling.isEmpty() && addonActors == null) return;
-        var registered = new HashSet<UUID>();
-        for (var row : data.actors()) registered.add(row.identity().uuid());
+        var registered = new HashMap<UUID, com.projectkorra.projectkorra.platform.mc.entity.EntityType>();
+        for (var row : data.actors()) registered.put(row.identity().uuid(), row.identity().type());
         var referenced = new HashSet<UUID>();
         for (var stand : stands) requireTemporaryActor(stand.getArmorStand(), registered, referenced);
         for (var block : falling.keySet()) requireTemporaryActor(block, registered, referenced);
         if (addonActors != null) addonActors.validateActors(registered, referenced);
     }
 
-    static void requireTemporaryActor(Entity entity, Set<UUID> registered, Set<UUID> referenced) {
-        if (entity == null || !registered.contains(entity.getUniqueId()) || !referenced.add(entity.getUniqueId()))
+    static void requireTemporaryActor(Entity entity, Map<UUID, com.projectkorra.projectkorra.platform.mc.entity.EntityType> registered, Set<UUID> referenced) {
+        var expected = entity instanceof FallingBlock ? com.projectkorra.projectkorra.platform.mc.entity.EntityType.FALLING_BLOCK
+                : com.projectkorra.projectkorra.platform.mc.entity.EntityType.ARMOR_STAND;
+        if (entity == null || registered.get(entity.getUniqueId()) != expected || !referenced.add(entity.getUniqueId()))
             throw new IllegalStateException("Temporary bending actor is missing or duplicated in the confirmed scene");
     }
 
@@ -194,12 +196,18 @@ public final class RollbackAbilityGlobals {
             var previous = TempFallingBlock.instances.get(entry.getKey());
             if (previous != null && previous != entry.getValue()) throw new IllegalStateException("Temporary falling block already has a live owner");
         }
-        for (var live : TempArmorStand.getTempStands()) for (var stand : stands) {
-            if (live != stand && live.getArmorStand().getUniqueId().equals(stand.getArmorStand().getUniqueId()))
-                throw new IllegalStateException("Temporary armor stand already has a live owner");
+        if (!stands.isEmpty()) {
+            var claims = new HashMap<UUID, TempArmorStand>();
+            for (var stand : stands) claims.put(stand.getArmorStand().getUniqueId(), stand);
+            for (var live : TempArmorStand.getTempStands()) {
+                var claimant = claims.get(live.getArmorStand().getUniqueId());
+                if (claimant != null && claimant != live) throw new IllegalStateException("Temporary armor stand already has a live owner");
+            }
         }
         if (addonActors != null) addonActors.merge();
         statuses.merge(roster);
+        falling.values().forEach(TempFallingBlock::restoreMetadata);
+        stands.forEach(TempArmorStand::restoreMetadata);
         TempFallingBlock.instances.putAll(falling);
         TempArmorStand.getTempStands().addAll(stands);
         for (var entry : roster.entrySet()) {

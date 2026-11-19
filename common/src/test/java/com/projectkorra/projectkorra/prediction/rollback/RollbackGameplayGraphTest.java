@@ -45,6 +45,7 @@ class RollbackGameplayGraphTest {
         var graph = new RollbackStateGraph(value -> java.lang.reflect.Proxy.isProxyClass(value.getClass())
                 || value instanceof CommonAbilityLifecycleListener.Effects, field -> true, 100000);
         var previousConfig = com.projectkorra.projectkorra.configuration.ConfigManager.defaultConfig;
+        var previousCollisions = com.projectkorra.projectkorra.ProjectKorra.collisionManager;
         // Preserve registration identities left by other fixtures, without copying their live file-backed configs.
         var registryGraph = new RollbackStateGraph(value -> value instanceof com.projectkorra.projectkorra.configuration.Config,
                 field -> true, 100000);
@@ -85,7 +86,12 @@ class RollbackGameplayGraphTest {
             var initial = Map.of(a.getUniqueId(), false, b.getUniqueId(), false);
             var round = new RollbackRound(new UUID(0, 99), sides);
             var engineLimits = new RollbackEngine.Limits(3, 1, 50, 50000000);
-            var outside = com.projectkorra.projectkorra.ProjectKorra.collisionManager;
+            // A live collision service can retain loader and server resources through its caches.
+            // The imported domain must preserve the binding even when its construction fails.
+            var outside = new com.projectkorra.projectkorra.ability.util.CollisionManager() {
+                final Thread liveServer = Thread.currentThread();
+            };
+            com.projectkorra.projectkorra.ProjectKorra.collisionManager = outside;
             assertThrows(IllegalArgumentException.class, () -> RollbackCombatRuntime.createImportedMatch(environment,
                     imported, execution, () -> fail("Invalid roster installed"), Map.of(a.getUniqueId(), false),
                     engineLimits, 1000, 1000000000, round, replica));
@@ -120,6 +126,7 @@ class RollbackGameplayGraphTest {
             assertEquals("outside", config.get().getString("marker"));
             assertFalse(RollbackDomain.active());
         } finally {
+            com.projectkorra.projectkorra.ProjectKorra.collisionManager = previousCollisions;
             com.projectkorra.projectkorra.configuration.ConfigManager.defaultConfig = previousConfig;
             configRegistry.restore();
         }

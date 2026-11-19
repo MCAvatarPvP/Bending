@@ -35,6 +35,14 @@ public class BendingManager implements Runnable {
         handleDayNight();
     }
 
+    /** Start with fresh domain bindings before the imported manager is constructed. */
+    public static void beginImportedMatch() {
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.importingRegistries() == null)
+            throw new IllegalStateException("An imported duel must own the manager");
+        events = new HashMap<>();
+        instance = null;
+    }
+
     public static BendingManager getInstance() {
         return instance;
     }
@@ -149,10 +157,10 @@ public class BendingManager implements Runnable {
         public void run() {
             var suspended = new java.util.ArrayList<Pair<Player, Long>>();
             try {
-                while (!BendingPlayer.TEMP_ELEMENTS.isEmpty()) {
-                    Pair<Player, Long> pair = BendingPlayer.TEMP_ELEMENTS.peek();
+                while (!BendingPlayer.temporaryElements().isEmpty()) {
+                    Pair<Player, Long> pair = BendingPlayer.temporaryElements().peek();
                     if (RollbackClock.millis() <= pair.getRight()) break;
-                    BendingPlayer.TEMP_ELEMENTS.poll();
+                    BendingPlayer.temporaryElements().poll();
                     if (com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership.blocks(pair.getLeft().getUniqueId())) {
                         suspended.add(pair);
                         continue;
@@ -160,7 +168,7 @@ public class BendingManager implements Runnable {
                     BendingPlayer.getBendingPlayer(pair.getLeft()).recalculateTempElements(false);
                 }
             } finally {
-                BendingPlayer.TEMP_ELEMENTS.addAll(suspended);
+                BendingPlayer.temporaryElements().addAll(suspended);
             }
         }
     }

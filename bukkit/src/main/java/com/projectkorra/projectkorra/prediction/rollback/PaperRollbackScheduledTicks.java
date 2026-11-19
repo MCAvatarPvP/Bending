@@ -86,6 +86,11 @@ final class PaperRollbackScheduledTicks implements RollbackStateCell<RollbackSch
             throw new IllegalStateException("Scheduled terrain tick budget exceeded");
     }
 
+    void projectile(net.minecraft.world.entity.projectile.Projectile projectile, net.minecraft.world.phys.BlockHitResult hit) {
+        check();
+        callbacks.projectile(projectile, hit);
+    }
+
     void advance(long time) {
         check();
         blocks.nativeTicks.tick(time, seed.maximumBlockTicks(), (pos, block) -> {

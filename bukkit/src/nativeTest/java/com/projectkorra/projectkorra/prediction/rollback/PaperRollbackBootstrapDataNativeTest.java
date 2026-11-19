@@ -39,6 +39,7 @@ class PaperRollbackBootstrapDataNativeTest {
                     1_700_000_000_000L, 5_000_000_000L, DEFINITIONS, sides, world, roster,
                     RollbackConfiguration.captureData(Map.of()), PaperRollbackPlayerAccessNativeTest.fixture(roster), RollbackMaterials.capture(material -> com.projectkorra.projectkorra.platform.bukkit.BukkitMC.material(material).isSolid()), new RollbackTags(Map.of()), new RollbackServer.Metadata("Paper fixture", "1.21.11", "captured", true, 12), new RollbackPlugins.Seed(List.of(new RollbackPlugins.Entry("ProjectKorra", true)), Map.of("projectkorra", "ProjectKorra", "bending", "ProjectKorra")), codec.encode(List.of("graph transport reference", List.copyOf(sides.keySet()))));
             byte[] bytes = data.encode(new PaperRollbackTerrainTransfer(), LIMITS);
+            assertArrayEquals(bytes, PaperRollbackBootstraps.encodeCaptured(data, LIMITS).join());
             var copy = RollbackBootstrapData.decode(bytes, DEFINITIONS, new PaperRollbackTerrainTransfer(), LIMITS);
             assertArrayEquals(bytes, copy.encode(new PaperRollbackTerrainTransfer(), LIMITS));
             assertArrayEquals(roster.encode(), copy.roster().encode());

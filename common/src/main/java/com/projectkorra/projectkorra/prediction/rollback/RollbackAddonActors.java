@@ -70,7 +70,7 @@ public final class RollbackAddonActors {
             throw new IllegalStateException("Unowned Hyperion temporary actor");
     }
 
-    void validateActors(Set<UUID> registered, Set<UUID> referenced) {
+    void validateActors(Map<UUID, com.projectkorra.projectkorra.platform.mc.entity.EntityType> registered, Set<UUID> referenced) {
         for (var entity : stands.keySet()) RollbackAbilityGlobals.requireTemporaryActor(entity, registered, referenced);
         for (var entity : falling.keySet()) RollbackAbilityGlobals.requireTemporaryActor(entity, registered, referenced);
     }

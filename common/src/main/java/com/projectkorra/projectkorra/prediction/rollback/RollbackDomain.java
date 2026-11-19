@@ -29,6 +29,9 @@ public final class RollbackDomain {
     private final Thread owner = Thread.currentThread();
     private final RollbackStateGraph graph;
     private final List<Field> shared;
+    private final List<Field> outsideDeep, outsideBindings;
+    private final RollbackPrivateRegistries registries;
+
     private final List<?> local;
     private final ProjectKorraPlatform platform;
     private final RollbackNativeItems<?> items;
@@ -43,6 +46,24 @@ public final class RollbackDomain {
                            RollbackConfiguration configuration) {
         this.graph = Objects.requireNonNull(graph, "graph");
         this.shared = List.copyOf(shared);
+        registries = local.stream().filter(RollbackPrivateRegistries.class::isInstance)
+                .map(RollbackPrivateRegistries.class::cast).findFirst().orElse(null);
+        if (registries == null) {
+            outsideDeep = this.shared;
+            outsideBindings = List.of();
+        } else {
+            var bindings = new ArrayList<Field>();
+            var deep = new ArrayList<Field>();
+            for (var field : this.shared) {
+                if (field.getDeclaringClass() == com.projectkorra.projectkorra.BendingManager.class
+                        || field.getDeclaringClass() == com.projectkorra.projectkorra.ProjectKorra.class
+                        && (field.getName().equals("collisionManager") || field.getName().equals("time_step"))) {
+                    bindings.add(field);
+                } else deep.add(field);
+            }
+            outsideBindings = List.copyOf(bindings);
+            outsideDeep = List.copyOf(deep);
+        }
         this.prediction = Objects.requireNonNull(prediction, "prediction services");
         this.configuration = Objects.requireNonNull(configuration, "configuration");
         var roots = new ArrayList<Object>(local);
@@ -105,6 +126,11 @@ public final class RollbackDomain {
         return domain;
     }
 
+    public static RollbackPrivateRegistries importingRegistries() {
+        var domain = ACTIVE.get();
+        return domain == null ? null : domain.registries;
+    }
+
     /** Executes one bounded engine operation and retains its resulting private state. */
     public <T> T call(Supplier<T> operation) {
         checkThread();
@@ -149,7 +175,7 @@ public final class RollbackDomain {
     private <T> T installed(Checkpoint initial, Supplier<T> operation, java.util.function.Function<T, Checkpoint> retain) {
         if (ACTIVE.get() != null) throw new IllegalStateException("Nested rollback domains are not supported");
         final RollbackStateGraph.Snapshot outside;
-        try { outside = graph.capture(List.of(), shared); }
+        try { outside = graph.captureOutside(outsideDeep, outsideBindings); }
         catch (RuntimeException | Error exception) { failed = true; throw exception; }
         Throwable failure = null;
         ACTIVE.set(this);
@@ -158,6 +184,11 @@ public final class RollbackDomain {
              var itemScope = items == null ? null : RollbackItemScope.using(items);
              var predictionScope = PredictionServices.using(prediction)) {
             if (initial != null) restore(initial);
+            else if (registries != null) {
+                com.projectkorra.projectkorra.BendingManager.beginImportedMatch();
+                com.projectkorra.projectkorra.ProjectKorra.collisionManager = null;
+                com.projectkorra.projectkorra.ProjectKorra.time_step = 1;
+            }
             T result = operation.get();
             if (retain != null) state = retain.apply(result);
             return result;

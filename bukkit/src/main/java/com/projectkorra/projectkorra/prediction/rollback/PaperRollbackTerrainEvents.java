@@ -85,7 +85,7 @@ final class PaperRollbackTerrainEvents {
             return found[0] && safe[0];
         } catch (IOException failure) { throw new IllegalStateException("Read private native tick " + callback, failure); }
     }
-    private final MethodHandle blockTick, fluidTick;
+    private final MethodHandle blockTick, fluidTick, projectileHit;
     private final ServerLevel world;
 
     PaperRollbackTerrainEvents(PaperRollbackWorldAccess access) {
@@ -105,7 +105,22 @@ final class PaperRollbackTerrainEvents {
             // Flow into a destructible block and lava replacements require additional private world effects.
             // Overridden callbacks reach the checked virtual dispatch in FlowingFluid.spreadTo.
             copy(methods, CraftEventFactory.class, Set.of("callRedstoneChange", "callFluidLevelChangeEvent"));
+            var impact = BlockBehaviour.BlockStateBase.class.getMethod("onProjectileHit", net.minecraft.world.level.Level.class,
+                    BlockState.class, net.minecraft.world.phys.BlockHitResult.class, net.minecraft.world.entity.projectile.Projectile.class);
+            methods.copy(impact);
+            copy(methods, BlockBehaviour.class, Set.of("onProjectileHit"));
+            copy(methods, net.minecraft.world.level.block.AmethystBlock.class, Set.of("onProjectileHit"));
+            copy(methods, net.minecraft.world.level.block.AbstractCandleBlock.class, Set.of("onProjectileHit", "setLit"));
+            copy(methods, net.minecraft.world.level.block.CampfireBlock.class, Set.of("onProjectileHit"));
+            copy(methods, net.minecraft.world.level.block.BigDripleafBlock.class, Set.of("onProjectileHit", "setTiltAndScheduleTick", "setTilt"));
+            copy(methods, net.minecraft.world.level.block.BellBlock.class, Set.of("onProjectileHit", "onHit", "attemptToRing"));
+            copy(methods, net.minecraft.world.level.block.TargetBlock.class, Set.of("onProjectileHit", "updateRedstoneOutput", "setOutputPower", "awardTargetHitCriteria"));
+            copy(methods, net.minecraft.world.level.block.ChorusFlowerBlock.class, Set.of("onProjectileHit"));
+            copy(methods, net.minecraft.world.level.block.PointedDripstoneBlock.class, Set.of("onProjectileHit"));
+            copy(methods, net.minecraft.world.level.block.DecoratedPotBlock.class, Set.of("onProjectileHit"));
+            copy(methods, CraftEventFactory.class, Set.of("callBlockIgniteEvent", "callEntityChangeBlockEvent", "handleBellRingEvent"));
             var compiled = methods.build();
+            projectileHit = compiled.get(impact);
             blockTick = compiled.get(block);
             fluidTick = compiled.get(fluid);
         } catch (ReflectiveOperationException failure) {
@@ -118,6 +133,14 @@ final class PaperRollbackTerrainEvents {
             else methods.copy(method);
         }
     }
+    void projectile(net.minecraft.world.entity.projectile.Projectile projectile, net.minecraft.world.phys.BlockHitResult hit) {
+        var state = world.getBlockState(hit.getBlockPos());
+        if (state.getBlock() instanceof net.minecraft.world.level.block.TntBlock && !projectile.isOnFire()) return;
+        try { projectileHit.invoke(state, world, state, hit, projectile); }
+        catch (RuntimeException | Error failure) { throw failure; }
+        catch (Throwable failure) { throw new IllegalStateException("Private block projectile impact failed", failure); }
+    }
+
     void block(BlockState state, BlockPos position) {
         try { blockTick.invoke(state, world, position, world.getRandom()); }
         catch (RuntimeException | Error failure) { throw failure; }

@@ -72,7 +72,8 @@ public final class PaperRollbackActors implements RollbackArenaActions.Native, R
     private <T extends Entity> PaperRollbackActor make(Identity id, Class<T> type) {
         var key = Identifier.withDefaultNamespace(id.type().name().toLowerCase(Locale.ROOT));
         var nativeType = BuiltInRegistries.ENTITY_TYPE.getOptional(key).orElseThrow();
-        var entity = Objects.requireNonNull(nativeType.create(server(), EntitySpawnReason.TRIGGERED), "Cannot create private actor " + key);
+        var entity = nativeType == net.minecraft.world.entity.EntityType.SNOWBALL ? new PaperRollbackSnowball(scene)
+                : Objects.requireNonNull(nativeType.create(server(), EntitySpawnReason.TRIGGERED), "Cannot create private actor " + key);
         entity.setId(id.networkId()); entity.setUUID(id.uuid());
         entity.spawnReason = org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.CUSTOM;
         var craft = PaperRollbackPrivateAccess.actorWrapper(entity, server().getCraftServer(), org.bukkit.entity.EntityType.valueOf(id.type().name()));

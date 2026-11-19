@@ -97,7 +97,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
      * @return The BendingPlayer instance
      */
     public static BendingPlayer getBendingPlayer(@NotNull final OfflinePlayer oPlayer) {
-        return OfflineBendingPlayer.ONLINE_PLAYERS.get(oPlayer.getUniqueId());
+        return OfflineBendingPlayer.onlinePlayers().get(oPlayer.getUniqueId());
     }
 
     /**
@@ -107,7 +107,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
      * @return The OfflineBendingPlayer instance
      */
     public static OfflineBendingPlayer getCachedOffline(@NotNull final OfflinePlayer oPlayer) {
-        return OfflineBendingPlayer.PLAYERS.get(oPlayer.getUniqueId());
+        return OfflineBendingPlayer.cachedPlayers().get(oPlayer.getUniqueId());
     }
 
     /**
@@ -154,7 +154,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
      * calls {@link #getBendingPlayer(OfflinePlayer)}
      *
      * @param playerName The name of the Player
-     * @return The BendingPlayer object if {@link BendingPlayer#PLAYERS}
+     * @return The BendingPlayer object if {@link BendingPlayer#cachedPlayers()}
      * contains the player name
      * @see #getBendingPlayer(OfflinePlayer)
      */
@@ -175,7 +175,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
      * calls {@link #getBendingPlayer(OfflinePlayer)}
      *
      * @param playerName The name of the Player
-     * @return The OfflineBendingPlayer object if {@link BendingPlayer#PLAYERS}
+     * @return The OfflineBendingPlayer object if {@link BendingPlayer#cachedPlayers()}
      * contains the player name
      * @see #getBendingPlayer(OfflinePlayer)
      */
@@ -192,19 +192,19 @@ public class BendingPlayer extends OfflineBendingPlayer {
     /**
      * Gets the map of {@link BendingPlayer}s.
      *
-     * @return {@link #ONLINE_PLAYERS}
+     * @return {@link #onlinePlayers()}
      */
     public static Map<UUID, BendingPlayer> getPlayers() {
-        return OfflineBendingPlayer.ONLINE_PLAYERS;
+        return OfflineBendingPlayer.onlinePlayers();
     }
 
     /**
      * Gets the map of {@link OfflineBendingPlayer}s.
      *
-     * @return {@link #PLAYERS}
+     * @return {@link #cachedPlayers()}
      */
     public static Map<UUID, OfflineBendingPlayer> getOfflinePlayers() {
-        return OfflineBendingPlayer.PLAYERS;
+        return OfflineBendingPlayer.cachedPlayers();
     }
 
     /**
@@ -919,8 +919,8 @@ public class BendingPlayer extends OfflineBendingPlayer {
 
             long shortestTimeLong = shortestTime.get();
 
-            TEMP_ELEMENTS.removeIf(pair -> pair.getLeft().getUniqueId().equals(this.getUUID()));
-            TEMP_ELEMENTS.add(new ImmutablePair<>(player, shortestTimeLong));
+            temporaryElements().removeIf(pair -> pair.getLeft().getUniqueId().equals(this.getUUID()));
+            temporaryElements().add(new ImmutablePair<>(player, shortestTimeLong));
         }
 
         this.removeUnusableAbilities();

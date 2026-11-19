@@ -138,6 +138,20 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
         this.actors = Objects.requireNonNull(actors);
     }
     List<Entity> activeActors() { return actors == null ? List.of() : actors.active(); }
+    boolean projectileImpact(net.minecraft.entity.projectile.ProjectileEntity projectile, net.minecraft.util.hit.HitResult hit) {
+        if (!ownsEntity(projectile) || actors == null) throw new IllegalStateException("Projectile impact crosses the scene");
+        var shot = (com.projectkorra.projectkorra.platform.mc.entity.Projectile) actors.logical(projectile);
+        var event = new com.projectkorra.projectkorra.platform.mc.event.entity.ProjectileHitEvent();
+        event.setEntity(shot);
+        if (hit instanceof net.minecraft.util.hit.EntityHitResult target) event.setHitEntity(actors.logical(target.getEntity()));
+        if (hit instanceof net.minecraft.util.hit.BlockHitResult target) {
+            var pos = target.getBlockPos();
+            event.setHitBlock(shot.getWorld().getBlockAt(pos.getX(), pos.getY(), pos.getZ()));
+        }
+        com.projectkorra.projectkorra.platform.Platform.events().call(event);
+        return event.isCancelled();
+    }
+
     boolean ownsEntity(Entity entity) { return ownsPlayer(entity) || actors != null && entity != null && actors.actor(entity.getUuid()) == entity; }
     private Entity importedEntity(UUID id) {
         var player = importedPlayer(id);

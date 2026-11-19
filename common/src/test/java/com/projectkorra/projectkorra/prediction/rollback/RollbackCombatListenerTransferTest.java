@@ -26,7 +26,8 @@ class RollbackCombatListenerTransferTest {
             var listener = new CommonAbilityCombatListener();
             var source = new RollbackEventBus(32, 8);
             source.registerListener(listener);
-            assertEquals(4, source.commonRegistrations().size());
+            assertEquals(5, source.commonRegistrations().size());
+            assertTrue(source.commonRegistrations().stream().anyMatch(handler -> handler.method().contains("#onProjectileHit(")));
             var catalog = RollbackGameplayCatalog.create(RollbackGameplayCatalog.installed(getClass().getClassLoader()), List.of());
             var codec = new RollbackGraphCodec(catalog, new RollbackGraphCodec.Limits(1000, 10000, 1000000, 10000));
             var copied = (RollbackEventBindings) codec.decode(codec.encode(List.of(RollbackEventBindings.capture(source)))).getFirst();

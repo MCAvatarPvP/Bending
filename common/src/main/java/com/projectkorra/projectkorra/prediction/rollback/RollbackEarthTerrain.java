@@ -29,15 +29,15 @@ public final class RollbackEarthTerrain {
     }
 
     /** Reproduce the server's periodic due-time and occupied-chunk selection only in this private arena. */
-    public void scanDue(long tick, Collection<? extends com.projectkorra.projectkorra.platform.mc.entity.Player> players) {
+    public void scanDue(long tick) {
         if (tick != nextRevertCheck) return;
         nextRevertCheck = Math.addExact(nextRevertCheck, 200);
         var config = com.projectkorra.projectkorra.configuration.ConfigManager.defaultConfig.get();
         if (!config.getBoolean("Properties.Earth.RevertEarthbending")) return;
         long delay = config.getLong("Properties.Earth.RevertCheckTime");
         var occupied = new HashSet<Long>();
-        if (config.getBoolean("Properties.Earth.SafeRevert")) players.forEach(player -> {
-            var pos = player.getLocation();
+        if (config.getBoolean("Properties.Earth.SafeRevert")) com.projectkorra.projectkorra.BendingPlayer.getPlayers().values().forEach(profile -> {
+            var pos = profile.getPlayer().getLocation();
             occupied.add(chunk(pos.getBlockX(), pos.getBlockZ()));
         });
         long now = RollbackClock.millis();

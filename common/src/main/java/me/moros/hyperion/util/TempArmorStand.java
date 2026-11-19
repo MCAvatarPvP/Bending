@@ -63,6 +63,7 @@ public class TempArmorStand {
         var existing = instances.putIfAbsent(actor.armorStand, actor);
         if (existing != null && existing != actor) throw new IllegalStateException("Temporary actor ownership changed");
         if (existing == null) tasQueue.add(actor);
+        actor.armorStand.setMetadata(CoreMethods.NO_INTERACTION_KEY, new FixedMetadataValue(Hyperion.getPlugin(), ""));
     }
     private final ArmorStand armorStand;
     private final CoreAbility ability;
