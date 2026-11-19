@@ -154,7 +154,10 @@ class PaperRollbackNativeSceneNativeTest {
                         return bus;
                     });
             var registries = new RollbackPrivateRegistries();
-            var domain = RollbackDomain.create(new RollbackStateGraph(value -> value == caster || value == arrow || value == target, field -> true, 2048),
+            // The scene owns these exact native-backed views; the separate ability graph retains their identities.
+            var ownedViews = Collections.newSetFromMap(new IdentityHashMap<Object, Boolean>());
+            ownedViews.addAll(List.of(caster, arrow, target));
+            var domain = RollbackDomain.create(new RollbackStateGraph(ownedViews::contains, field -> true, 2048),
                     List.of(), List.of(registries), platform, abilities::install);
             float initialHealth = shooter.getHealth();
             domain.call(() -> {

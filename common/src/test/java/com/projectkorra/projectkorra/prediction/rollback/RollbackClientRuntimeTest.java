@@ -79,7 +79,7 @@ class RollbackClientRuntimeTest {
             f.runtime.authority(f.server.publish());
         }
         f.runtime.action(RollbackInputActions.Kind.SWING, -1, 43, 12);
-        f.controls = new RollbackClientRuntime.Held(new RollbackMovementInput(1, 0, false, 43, 12), false);
+        f.controls = new RollbackClientRuntime.Held(new RollbackMovementInput(0, 1, false, 43, 12), false);
         f.runtime.tick(ANCHOR + 2);
         var tap = f.sent.getLast();
         assertEquals(ANCHOR + 411, tap.clientTick());
