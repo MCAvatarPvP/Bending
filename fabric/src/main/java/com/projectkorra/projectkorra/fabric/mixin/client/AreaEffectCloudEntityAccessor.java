@@ -22,6 +22,9 @@ public interface AreaEffectCloudEntityAccessor {
     @Accessor("potionContentsComponent")
     net.minecraft.component.type.PotionContentsComponent projectkorra$potionContents();
 
+    @Accessor("affectedEntities")
+    java.util.Map<net.minecraft.entity.Entity, Integer> projectkorra$affectedEntities();
+
     @Accessor("reapplicationDelay")
     void projectkorra$setReapplicationDelay(int ticks);
 }

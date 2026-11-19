@@ -84,9 +84,9 @@ final class PaperRollbackActor implements RollbackActorRegistry.Actor<RollbackSt
         RollbackEntityBody.logicalBody(view).liveness(!nativeActor.isRemoved(), !nativeActor.isAlive());
     }
 
-    @Override public byte[] exportState() { return exportState(nativeActor, identity); }
+    @Override public byte[] exportState() { return exportState(nativeActor, identity, scene.world()); }
 
-    static byte[] exportState(net.minecraft.world.entity.Entity nativeActor, Identity identity) {
+    static byte[] exportState(net.minecraft.world.entity.Entity nativeActor, Identity identity, PaperRollbackWorldAccess world) {
         var output = TagValueOutput.createWithContext(ProblemReporter.DISCARDING, nativeActor.level().registryAccess());
         nativeActor.saveWithoutId(output, false, false, false);
         output.store("UUID", UUIDUtil.CODEC, identity.uuid());
@@ -95,14 +95,17 @@ final class PaperRollbackActor implements RollbackActorRegistry.Actor<RollbackSt
         var old = nativeActor.oldPosition();
         return new RollbackActorFrame(nativeActor.tickCount, new Pose(old.x, old.y, old.z, nativeActor.yRotO, nativeActor.xRotO),
                 nativeActor.horizontalCollision, nativeActor.verticalCollision, nativeActor.verticalCollisionBelow, nativeActor.needsSync,
-                nativeActor.hurtMarked, PaperRollbackRandomStreams.capture(nativeActor.getRandom()), PaperRollbackBlockSnapshots.encode(output.buildResult())).encode();
+                nativeActor.hurtMarked, PaperRollbackRandomStreams.capture(nativeActor.getRandom()), PaperRollbackBlockSnapshots.encode(output.buildResult()),
+                PaperRollbackAreaEffectCloud.captureVictims(nativeActor, world)).encode();
     }
-    void importState(byte[] bytes) {
-        restore(nativeActor, identity, bytes, identity.networkId());
+    void importState(byte[] bytes, java.util.function.Consumer<PaperRollbackAreaEffectCloud.Applications> applications) {
+        restore(nativeActor, identity, bytes, identity.networkId(), applications);
     }
     /** Live trackers allocate a fresh positive network ID; stable UUID references remain valid. */
-    static void restore(net.minecraft.world.entity.Entity nativeActor, Identity identity, byte[] bytes, int networkId) {
+    static void restore(net.minecraft.world.entity.Entity nativeActor, Identity identity, byte[] bytes, int networkId,
+                        java.util.function.Consumer<PaperRollbackAreaEffectCloud.Applications> applications) {
         var frame = RollbackActorFrame.decode(bytes);
+        PaperRollbackAreaEffectCloud.Applications.stage(nativeActor, frame.cloudVictims(), applications);
         var tag = PaperRollbackBlockSnapshots.decode(frame.nbt());
         var input = TagValueInput.create(ProblemReporter.DISCARDING, nativeActor.level().registryAccess(), tag);
         if (!identity.uuid().equals(input.read("UUID", UUIDUtil.CODEC).orElseThrow())

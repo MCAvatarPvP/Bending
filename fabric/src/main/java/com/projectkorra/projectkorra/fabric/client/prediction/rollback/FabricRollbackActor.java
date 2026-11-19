@@ -25,10 +25,12 @@ final class FabricRollbackActor implements RollbackActorRegistry.Actor<RollbackS
     private final RollbackEntityBody body;
     private final com.projectkorra.projectkorra.platform.mc.entity.Entity view;
     private final int lifespan;
+    private final FabricRollbackActors actors;
 
     <T extends com.projectkorra.projectkorra.platform.mc.entity.Entity> FabricRollbackActor(
             Entity entity, Identity identity, RollbackWorld world, FabricRollbackActors policy, FabricRollbackWorldAccess owner, int lifespan, Class<T> type, RollbackTypedEntity.Specialized specialized) {
         this.lifespan = lifespan;
+        actors = policy;
         this.nativeEntity = Objects.requireNonNull(entity); this.identity = Objects.requireNonNull(identity);
         if (entity instanceof PlayerEntity) throw new IllegalArgumentException("Actor cannot own a participant");
         entity.setUuid(identity.uuid()); entity.setId(identity.networkId());
@@ -88,9 +90,9 @@ final class FabricRollbackActor implements RollbackActorRegistry.Actor<RollbackS
     @Override public Collection<?> rollbackReferences() { return List.of(body); }
 
     @Override public byte[] exportState() {
-        return exportState(nativeEntity, identity);
+        return exportState(nativeEntity, identity, actors);
     }
-    static byte[] exportState(Entity e, Identity identity) {
+    static byte[] exportState(Entity e, Identity identity, FabricRollbackActors actors) {
         var errors = new ErrorReporter.Impl();
         var write = NbtWriteView.create(errors, e.getEntityWorld().getRegistryManager());
         e.writeData(write);
@@ -101,12 +103,14 @@ final class FabricRollbackActor implements RollbackActorRegistry.Actor<RollbackS
         catch (IOException failure) { throw new UncheckedIOException(failure); }
         return new RollbackActorFrame(e.age, new Pose(e.lastX, e.lastY, e.lastZ, e.lastYaw, e.lastPitch),
                 e.horizontalCollision, e.verticalCollision, e.groundCollision, e.velocityDirty, e.knockedBack,
-                ((FabricRollbackPaperRandom)e.getRandom()).exportStream(), buffer.toByteArray()).encode();
+                ((FabricRollbackPaperRandom)e.getRandom()).exportStream(), buffer.toByteArray(), actors.cloudVictims(e)).encode();
     }
 
-    void importState(byte[] bytes) {
+    Map<UUID, Integer> importState(byte[] bytes) {
         var frame = RollbackActorFrame.decode(bytes);
         var e = nativeEntity;
+        if (!frame.cloudVictims().isEmpty() && !(e instanceof net.minecraft.entity.AreaEffectCloudEntity))
+            throw new IllegalArgumentException("Cloud victims on another actor type");
         try (var in = new DataInputStream(new ByteArrayInputStream(frame.nbt()))) {
             var tag = NbtIo.readCompound(in, new NbtSizeTracker(4L << 20, 64));
             if (in.available() != 0 || !tag.getString("id").orElseThrow().equals(Registries.ENTITY_TYPE.getId(e.getType()).toString()))
@@ -120,5 +124,6 @@ final class FabricRollbackActor implements RollbackActorRegistry.Actor<RollbackS
         e.age = frame.age(); e.horizontalCollision = frame.horizontalCollision(); e.verticalCollision = frame.verticalCollision();
         e.groundCollision = frame.groundCollision(); e.velocityDirty = frame.impulse(); e.knockedBack = frame.sendVelocity();
         random.restoreStream(frame.random());
+        return frame.cloudVictims();
     }
 }

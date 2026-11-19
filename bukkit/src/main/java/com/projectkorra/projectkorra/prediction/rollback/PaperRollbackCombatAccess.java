@@ -64,7 +64,7 @@ public final class PaperRollbackCombatAccess {
     private Entity meleeTarget;
     private Vec3 meleeVelocity;
     private final MethodHandle awardStatistic, resetStatistic, mineBlock, miningExhaustion;
-    private final MethodHandle arrowImpact, bulletImpact;
+    private final MethodHandle arrowImpact, bulletImpact, cloudTick;
     private final MethodHandle addEffect, removeEffect, setAir, setSwimming, movementStep, playerBodyTick;
     private final MethodHandle serverTick, serverBodyTick, serverJump;
     private final MethodHandle tryGlide, stopGlide;
@@ -240,7 +240,15 @@ public final class PaperRollbackCombatAccess {
                 if (method.getName().equals("doPostHurtEffects")) builder.copy(method);
                 else if (method.getName().startsWith("lambda$doPostHurtEffects$")) builder.copyLambda(method);
             }
+            var cloud = net.minecraft.world.entity.AreaEffectCloud.class;
+            var tickCloud = cloud.getDeclaredMethod("tick");
+            builder.copy(tickCloud).copy(cloud.getDeclaredMethod("serverTick", ServerLevel.class));
+            for (Method method : cloud.getDeclaredMethods()) {
+                if (method.getName().startsWith("lambda$serverTick$")) builder.copyLambda(method);
+            }
+            builder.copy(org.bukkit.craftbukkit.event.CraftEventFactory.class.getMethod("callAreaEffectCloudApplyEvent", cloud, java.util.List.class));
             var copied = world.prepareMethods(builder);
+            cloudTick = copied.get(tickCloud);
             var impactType = MethodType.methodType(void.class, net.minecraft.world.entity.projectile.Projectile.class, hit);
             arrowImpact = copied.get(arrowHit).asType(impactType);
             bulletImpact = copied.get(bulletHit).asType(impactType);
@@ -626,6 +634,13 @@ public final class PaperRollbackCombatAccess {
         if (from instanceof ServerPlayer) {
             state.output(new TargetSoundOutput(source, checkedPosition(x, y, z), sound.location().toString(), category.getName(), volume, pitch, from.random.nextLong()));
         }
+    }
+
+    void tickCloud(net.minecraft.world.entity.AreaEffectCloud cloud) {
+        ownedId(cloud);
+        try { cloudTick.invokeExact(cloud); }
+        catch (RuntimeException | Error failure) { throw failure; }
+        catch (Throwable failure) { throw new IllegalStateException("Private area effect cloud tick failed", failure); }
     }
 
     void projectileImpact(net.minecraft.world.entity.projectile.Projectile projectile, net.minecraft.world.phys.EntityHitResult hit) {

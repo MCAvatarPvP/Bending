@@ -73,6 +73,7 @@ public final class PaperRollbackActors implements RollbackArenaActions.Native, R
         var key = Identifier.withDefaultNamespace(id.type().name().toLowerCase(Locale.ROOT));
         var nativeType = BuiltInRegistries.ENTITY_TYPE.getOptional(key).orElseThrow();
         var entity = nativeType == net.minecraft.world.entity.EntityType.ITEM ? new PaperRollbackItemEntity(scene)
+                : nativeType == net.minecraft.world.entity.EntityType.AREA_EFFECT_CLOUD ? new PaperRollbackAreaEffectCloud(scene)
                 : nativeType == net.minecraft.world.entity.EntityType.SNOWBALL ? new PaperRollbackSnowball(scene)
                 : nativeType == net.minecraft.world.entity.EntityType.ARROW ? new PaperRollbackArrow(scene)
                 : nativeType == net.minecraft.world.entity.EntityType.SHULKER_BULLET ? new PaperRollbackShulkerBullet(scene)
@@ -233,10 +234,15 @@ public final class PaperRollbackActors implements RollbackArenaActions.Native, R
         scene.world().unmount(rider);
     }
     public void importState(RollbackActorData data) {
+        var bodies = new HashMap<UUID, net.minecraft.world.entity.Entity>();
+        scene.roster().forEach((id, state) -> bodies.put(id, state.ownedPlayer()));
+        var applications = new ArrayList<PaperRollbackAreaEffectCloud.Applications>();
         registry.importState(scene.logical(), data, row -> {
             var actor = make(row.identity(), FACADES.getOrDefault(row.identity().type(), LivingEntity.class));
-            actor.importState(row.state()); return actor;
-        });
+            actor.importState(row.state(), applications::add);
+            if (bodies.putIfAbsent(actor.identity().uuid(), actor.entity()) != null) throw new IllegalArgumentException("Duplicate actor UUID");
+            return actor;
+        }, () -> applications.forEach(pulse -> pulse.bind(bodies)));
         for (var actor : registry.active()) scene.world().issued((PaperRollbackActor) actor);
     }
     @Override public Void captureRollbackState() { return null; }

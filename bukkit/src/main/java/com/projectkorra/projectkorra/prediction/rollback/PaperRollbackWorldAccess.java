@@ -262,6 +262,7 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
                 .query(value -> value.getPlayerInAnyDimension(null), null, args -> importedPlayer((java.util.UUID) args[0]))
                 .query(value -> value.getEntityInAnyDimension(null), null, args -> importedEntity((java.util.UUID) args[0]))
                 .query(value -> value.getPlayerByUUID(null), null, args -> importedPlayer((java.util.UUID) args[0]))
+                .nativeQuery(value -> value.getEntitiesOfClass(Entity.class, Native.BOX), List.of(), args -> checkThread())
                 .query(value -> value.getEntities((Entity) null, Native.BOX, entity -> true), List.of(), args -> entities(args[0], args[1], false, args[2]))
                 .query(value -> value.getEntities(net.minecraft.world.level.entity.EntityTypeTest.forClass(Entity.class),
                         Native.BOX, entity -> true), List.of(), args -> typedEntities(args[0], args[1], args[2]))
@@ -435,6 +436,10 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
         combat.attack(player, target);
     }
 
+    void tickCloud(net.minecraft.world.entity.AreaEffectCloud cloud) {
+        checkThread();
+        combat.tickCloud(cloud);
+    }
     void projectileImpact(net.minecraft.world.entity.projectile.Projectile projectile, net.minecraft.world.phys.EntityHitResult hit) {
         checkThread();
         combat.projectileImpact(projectile, hit);

@@ -374,8 +374,132 @@ class FabricRollbackNativeSceneTest {
         assertEquals(80, nativeCloud.getDuration());
         assertEquals(4F, nativeCloud.getRadius());
         assertSame(duel.actors().nativeEntity(caster), nativeCloud.getOwner());
+        var nativeEffects = contents.customEffects();
+        assertNotSame(nativeEffects.getFirst(), nativeEffects.getFirst());
+        var actor = (FabricRollbackActor)duel.actors().registry().get(cloud.getUniqueId());
+        var configured = actor.captureRollbackState();
+        var visible = FabricRollbackCloudParticles.Frame.capture(nativeCloud);
         cloud.addCustomEffect(new com.projectkorra.projectkorra.platform.mc.potion.PotionEffect(effect, 5, 1), true);
+        cloud.setColor(com.projectkorra.projectkorra.platform.mc.Color.WHITE);
+        cloud.setRadius(2F);
         assertEquals(1, access.projectkorra$potionContents().customEffects().getFirst().getAmplifier());
+        assertNotEquals(visible, FabricRollbackCloudParticles.Frame.capture(nativeCloud));
+        actor.restoreRollbackState(configured);
+        assertSame(contents, access.projectkorra$potionContents());
+        assertEquals(2, contents.customEffects().getFirst().getAmplifier());
+        assertEquals(40, contents.customEffects().getFirst().getDuration());
+        assertEquals(visible, FabricRollbackCloudParticles.Frame.capture(nativeCloud));
+
+        var recipient = duel.scene().logical().spawn(caster.getLocation(), com.projectkorra.projectkorra.platform.mc.entity.ArmorStand.class);
+        var previousRecipient = duel.actors().nativeEntity(recipient);
+        access.projectkorra$affectedEntities().put(previousRecipient, 20);
+        var arrowActor = (FabricRollbackActor)duel.actors().registry().get(arrow.getUniqueId());
+        var invalid = withCloudVictims(RollbackActorFrame.decode(arrowActor.exportState()), Map.of(recipient.getUniqueId(), 20));
+        int laterAge = ++nativeArrow.age;
+        assertThrows(IllegalArgumentException.class, () -> arrowActor.importState(invalid.encode()));
+        assertEquals(laterAge, nativeArrow.age);
+        duel.actors().importState(RollbackActorData.decode(duel.actors().registry().exportState().encode()));
+        var repairedCloud = (com.projectkorra.projectkorra.fabric.mixin.client.AreaEffectCloudEntityAccessor)duel.actors().actor(cloud.getUniqueId());
+        var deadline = repairedCloud.projectkorra$affectedEntities().entrySet().iterator().next();
+        assertEquals(20, deadline.getValue());
+        assertNotSame(previousRecipient, deadline.getKey());
+        assertSame(duel.actors().actor(recipient.getUniqueId()), deadline.getKey());
+    }
+
+    private static RollbackActorFrame withCloudVictims(RollbackActorFrame frame, Map<UUID, Integer> deadlines) {
+        return new RollbackActorFrame(frame.age(), frame.last(), frame.horizontalCollision(), frame.verticalCollision(),
+                frame.groundCollision(), frame.impulse(), frame.sendVelocity(), frame.random(), frame.nbt(), deadlines);
+    }
+
+    @Test void nativeCloudAppliesAndRefreshesBlindnessThenExpiresAcrossLateReplay() throws Exception {
+        var data = bootstrapData();
+        var duel = FabricRollbackNativeScene.importDuel(data, FabricRollbackTestRegistry.simulationRegistries(),
+                FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);
+        var members = duel.views().players().values().stream().toList();
+        var caster = members.getFirst(); var victim = members.getLast();
+        var target = duel.scene().roster().players().get(victim.getUniqueId());
+        var observer = duel.scene().roster().players().get(caster.getUniqueId());
+        var targetBody = target.ownedPlayer();
+        var observerBody = observer.ownedPlayer();
+        targetBody.setPosition(.5, 4, .5); targetBody.setVelocity(net.minecraft.util.math.Vec3d.ZERO); targetBody.setNoGravity(true);
+        observerBody.setPosition(9.5, 4, .5);
+        var area = duel.scene().logical().spawn(victim.getLocation(), com.projectkorra.projectkorra.platform.mc.entity.AreaEffectCloud.class);
+        area.setSource(caster);
+        area.addCustomEffect(new com.projectkorra.projectkorra.platform.mc.potion.PotionEffect(
+                com.projectkorra.projectkorra.platform.mc.potion.PotionEffectType.BLINDNESS, 40, 2), false);
+        area.setColor(com.projectkorra.projectkorra.platform.mc.Color.BLACK);
+        area.setWaitTime(0); area.setRadius(4); area.setDuration(80); area.setReapplicationDelay(10);
+        var cloudId = area.getUniqueId();
+        var phases = new FabricRollbackPhases(duel);
+        var execution = new FabricRollbackExecution<>(members, phases, duel.output());
+        var platformType = com.projectkorra.projectkorra.platform.ProjectKorraPlatform.class;
+        var bus = new RollbackEventBus(256, 16);
+        var platform = (com.projectkorra.projectkorra.platform.ProjectKorraPlatform)Proxy.newProxyInstance(platformType.getClassLoader(),
+                new Class<?>[]{platformType}, (proxy, method, args) -> {
+                    if (method.getName().equals("events")) return bus;
+                    throw new AssertionError(method);
+                });
+        var domain = RollbackDomain.create(new RollbackStateGraph(value -> false, field -> true, 2048),
+                List.of(), List.of(), platform, () -> { });
+        record Observation(int duration, int amplifier, boolean cloudAlive) { }
+        var timeline = new TreeMap<Long, List<Observation>>();
+        domain.call(() -> {
+            var graph = new RollbackStateGraph(value -> Proxy.isProxyClass(value.getClass()), field -> true, 500_000);
+            var sim = new RollbackSimulation<Runnable,Integer,Object>() {
+                public Runnable snapshot() { return graph.capture(List.of(duel.scene(), duel.actors()), List.of())::restore; }
+                public void restore(Runnable saved) { saved.run(); }
+                public Integer predict(UUID id, Integer previous) { return previous; }
+                public void step(long tick, Map<UUID,Integer> inputs, RollbackStep<Object> effects) {
+                    execution.begin(effects);
+                    try { target.tick(); phases.tickWorld(tick); }
+                    finally { execution.end(); }
+                    var blindness = net.minecraft.entity.effect.StatusEffects.BLINDNESS;
+                    assertFalse(observerBody.hasStatusEffect(blindness));
+                    var status = targetBody.getStatusEffect(blindness);
+                    var cloud = duel.actors().actor(cloudId);
+                    boolean present = cloud != null;
+                    if (present) assertFalse(cloud.isRemoved());
+                    timeline.computeIfAbsent(tick, unused -> new ArrayList<>()).add(new Observation(
+                            status == null ? 0 : status.getDuration(), status == null ? -1 : status.getAmplifier(), present));
+                }
+            };
+            var engine = RollbackEngine.replica(sim, Map.of(victim.getUniqueId(), 0), new RollbackEngine.Limits(32, 4, 2048, 50_000_000L), 0, 0);
+            for (int tick = 1; tick <= 90; tick++) {
+                engine.advance();
+                if (tick == 7) {
+                    var current = duel.actors().actor(cloudId);
+                    var packet = RollbackActorData.decode(duel.actors().registry().exportState().encode());
+                    var row = packet.actors().getFirst();
+                    var frame = RollbackActorFrame.decode(row.state());
+                    assertEquals(Map.of(victim.getUniqueId(), 15), frame.cloudVictims());
+                    var foreign = withCloudVictims(frame, Map.of(UUID.randomUUID(), 15));
+                    var invalid = new RollbackActorData(packet.session(), packet.cursor(), List.of(new RollbackActorData.Row(row.identity(), foreign.encode())));
+                    assertThrows(IllegalArgumentException.class, () -> duel.actors().importState(invalid));
+                    assertSame(current, duel.actors().actor(cloudId));
+                    duel.actors().importState(packet);
+                    var replaced = duel.actors().actor(cloudId);
+                    assertNotSame(current, replaced);
+                    assertEquals(Map.of(targetBody, 15),
+                            ((com.projectkorra.projectkorra.fabric.mixin.client.AreaEffectCloudEntityAccessor)replaced).projectkorra$affectedEntities());
+                }
+                if (tick > 24) engine.confirm(tick - 24);
+            }
+            engine.submit(victim.getUniqueId(), 70, 1);
+            assertEquals(70, engine.reconcile().replayedFrom());
+            for (long tick = 70; tick <= 90; tick++) {
+                var results = timeline.get(tick); assertEquals(2, results.size()); assertEquals(results.getFirst(), results.getLast());
+            }
+            for (int tick = 91; tick <= 116; tick++) { engine.advance(); engine.confirm(tick - 24); }
+            return null;
+        });
+        assertEquals(new Observation(0, -1, true), timeline.get(4L).getFirst());
+        for (long refresh = 5; refresh <= 75; refresh += 10) assertEquals(new Observation(40, 2, true), timeline.get(refresh).getFirst());
+        assertEquals(new Observation(35, 2, true), timeline.get(10L).getFirst());
+        assertEquals(new Observation(31, 2, true), timeline.get(14L).getFirst());
+        assertEquals(new Observation(36, 2, true), timeline.get(79L).getFirst());
+        assertEquals(new Observation(35, 2, false), timeline.get(80L).getFirst());
+        assertEquals(new Observation(1, 2, false), timeline.get(114L).getFirst());
+        assertEquals(new Observation(0, -1, false), timeline.get(115L).getFirst());
     }
 
     @Test void nativeAdvancementChecksTheCapturedStructurePieceInsteadOfTheWholeVillage() throws Exception {

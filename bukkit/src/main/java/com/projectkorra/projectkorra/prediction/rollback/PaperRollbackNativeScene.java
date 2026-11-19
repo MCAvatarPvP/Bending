@@ -137,7 +137,7 @@ public final class PaperRollbackNativeScene implements RollbackStateCell<Void>, 
             var previous = sources.putIfAbsent(identity.uuid(), entity);
             if (previous != null && previous != entity) throw new IllegalArgumentException("Combat actor identity alias conflict");
             rows.computeIfAbsent(identity.uuid(), id ->
-                    new RollbackActorData.Row(identity, PaperRollbackActor.exportState(entity, identity)));
+                    new RollbackActorData.Row(identity, PaperRollbackActor.exportState(entity, identity, world)));
         };
         for (var entry : roster.entrySet()) {
             var body = (net.minecraft.server.level.ServerPlayer) entry.getValue().ownedPlayer();

@@ -213,6 +213,29 @@ public final class FabricRollbackActors implements RollbackArenaActions.Native, 
         var rider = nativeEntity(passenger.view());
         if (rider.getVehicle() == nativeEntity(vehicle.view())) rider.stopRiding();
     }
+    Map<UUID, Integer> cloudVictims(net.minecraft.entity.Entity entity) {
+        if (!(entity instanceof net.minecraft.entity.AreaEffectCloudEntity)) return Map.of();
+        var affected = ((com.projectkorra.projectkorra.fabric.mixin.client.AreaEffectCloudEntityAccessor)entity).projectkorra$affectedEntities();
+        var deadlines = new HashMap<UUID, Integer>();
+        affected.forEach((victim, nextAge) -> {
+            if (retired(victim)) return;
+            if (!(victim instanceof net.minecraft.entity.LivingEntity) || !scene.roster().world().ownsEntity(victim)
+                    || deadlines.put(victim.getUuid(), nextAge) != null) throw new IllegalArgumentException("Unowned or aliased native cloud victim");
+        });
+        return deadlines;
+    }
+    private void bindCloudVictims(net.minecraft.entity.Entity cloud, Map<UUID, Integer> deadlines,
+                                  java.util.function.Function<UUID, net.minecraft.entity.Entity> actorById) {
+        if (deadlines.isEmpty()) return;
+        var affected = ((com.projectkorra.projectkorra.fabric.mixin.client.AreaEffectCloudEntityAccessor)cloud).projectkorra$affectedEntities();
+        deadlines.forEach((id, nextAge) -> {
+            var participant = scene.roster().players().get(id);
+            var victim = participant != null ? participant.ownedPlayer() : actorById.apply(id);
+            if (!(victim instanceof net.minecraft.entity.LivingEntity)) throw new IllegalArgumentException("Missing native cloud victim " + id);
+            affected.put(victim, nextAge);
+        });
+    }
+
     RollbackActorData history(Collection<net.minecraft.entity.Entity> references) {
         var rows = new ArrayList<RollbackActorData.Row>();
         for (var entity : references) {
@@ -220,7 +243,7 @@ public final class FabricRollbackActors implements RollbackArenaActions.Native, 
             if (id == null || !id.uuid().equals(entity.getUuid()) || id.networkId() != entity.getId()
                     || !scene.roster().world().ownsEntity(entity) && !retired(entity))
                 throw new IllegalArgumentException("Foreign damage history actor");
-            rows.add(new RollbackActorData.Row(id, FabricRollbackActor.exportState(entity, id)));
+            rows.add(new RollbackActorData.Row(id, FabricRollbackActor.exportState(entity, id, this)));
         }
         return registry.history(rows);
     }
@@ -234,7 +257,8 @@ public final class FabricRollbackActors implements RollbackArenaActions.Native, 
                 if (!id.equals(issued.get(present)) || present.isRemoved()) throw new IllegalArgumentException("Conflicting native history actor");
             } else {
                 var detached = make(id, FACADES.getOrDefault(id.type(), LivingEntity.class));
-                detached.importState(row.state());
+                var deadlines = detached.importState(row.state());
+                bindCloudVictims(detached.owned(), deadlines, this::actor);
                 present = detached.owned();
                 present.discard();
                 issued.put(present, id);
@@ -245,14 +269,19 @@ public final class FabricRollbackActors implements RollbackArenaActions.Native, 
     }
 
     public void importState(RollbackActorData data) {
-        var replacements = new java.util.ArrayList<FabricRollbackActor>();
+        var replacements = new HashMap<UUID, FabricRollbackActor>();
+        var clouds = new IdentityHashMap<net.minecraft.entity.Entity, Map<UUID, Integer>>();
         registry.importState(scene.logical(), data, row -> {
             var actor = make(row.identity(), FACADES.getOrDefault(row.identity().type(), LivingEntity.class));
-            actor.importState(row.state());
-            replacements.add(actor);
+            var deadlines = actor.importState(row.state());
+            if (!deadlines.isEmpty()) clouds.put(actor.owned(), deadlines);
+            replacements.put(row.identity().uuid(), actor);
             return actor;
-        });
-        for (var actor : replacements) issued.put(actor.owned(), actor.identity());
+        }, () -> clouds.forEach((cloud, deadlines) -> bindCloudVictims(cloud, deadlines, id -> {
+            var actor = replacements.get(id);
+            return actor == null ? null : actor.owned();
+        })));
+        replacements.values().forEach(actor -> issued.put(actor.owned(), actor.identity()));
     }
     @Override public Void captureRollbackState() { return null; }
     @Override public void restoreRollbackState(Void state) { }

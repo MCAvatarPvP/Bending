@@ -191,7 +191,9 @@ final class PaperRollbackNativeEvents {
                 glide.setCancelled(RollbackControlEvents.cancelGlide(player.getUniqueId()));
             }
         }
+        if (event instanceof org.bukkit.event.entity.AreaEffectCloudApplyEvent cloud) cloud.getAffectedEntities().forEach(this::requireOwned);
         dispatcher.accept(event);
+        if (event instanceof org.bukkit.event.entity.AreaEffectCloudApplyEvent cloud) cloud.getAffectedEntities().forEach(this::requireOwned);
         return !(event instanceof Cancellable cancellable) || !cancellable.isCancelled();
     }
 

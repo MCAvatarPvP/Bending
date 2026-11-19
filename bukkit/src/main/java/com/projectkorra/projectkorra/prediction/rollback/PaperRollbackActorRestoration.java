@@ -59,9 +59,10 @@ final class PaperRollbackActorRestoration {
             vehicle.setAccessible(true);
             setVehicle = java.lang.invoke.MethodHandles.lookup().unreflectSetter(vehicle);
         } catch (ReflectiveOperationException failure) { throw new IllegalStateException("Native mount link changed", failure); }
+        var applications = new ArrayList<PaperRollbackAreaEffectCloud.Applications>();
         for (var row : captured.data().actors()) {
             var id = row.identity();
-            var actor = stage(row);
+            var actor = stage(world, wrappers, row, applications::add);
             var craft = actor.getBukkitEntity();
             actors.add(actor);
             if (bodies.putIfAbsent(actor.getUUID(), actor) != null) throw new IllegalArgumentException("Duplicate actor UUID");
@@ -70,11 +71,13 @@ final class PaperRollbackActorRestoration {
             var view = PaperRollbackActorView.wrap(contract, craft);
             bindings.add(new RollbackGraphCodec.Binding(binding, contract, view));
         }
+        applications.forEach(pulse -> pulse.bind(bodies));
         if (bindings.size() != captured.contracts().size()) throw new IllegalStateException("Incomplete handoff graph bindings");
         validate();
     }
 
-    private Entity stage(RollbackActorData.Row row) {
+    static Entity stage(ServerLevel world, java.util.function.Function<Entity, org.bukkit.craftbukkit.entity.CraftEntity> wrappers,
+                        RollbackActorData.Row row, java.util.function.Consumer<PaperRollbackAreaEffectCloud.Applications> applications) {
         var id = row.identity();
         var type = BuiltInRegistries.ENTITY_TYPE.getOptional(Identifier.withDefaultNamespace(
                 id.type().name().toLowerCase(Locale.ROOT))).orElseThrow();
@@ -82,7 +85,7 @@ final class PaperRollbackActorRestoration {
         if (actor instanceof ServerPlayer || actor.isRemoved() || actor.valid || actor.inWorld)
             throw new IllegalStateException("Invalid staged actor");
         PaperRollbackPrivateAccess.initializePlayer(actor, wrappers.apply(actor), new LegacyRandomSource(0));
-        PaperRollbackActor.restore(actor, id, row.state(), actor.getId());
+        PaperRollbackActor.restore(actor, id, row.state(), actor.getId(), applications);
         return actor;
     }
 
@@ -95,7 +98,7 @@ final class PaperRollbackActorRestoration {
             var id = row.identity();
             var entity = bodies.get(id.uuid());
             if (entity == null) {
-                entity = stage(row);
+                entity = stage(world, wrappers, row, pulse -> pulse.bind(bodies));
                 PaperRollbackPrivateAccess.retirePrivateActor(entity);
             } else if (entity instanceof ServerPlayer || !BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).getPath()
                     .equals(id.type().name().toLowerCase(Locale.ROOT))) {

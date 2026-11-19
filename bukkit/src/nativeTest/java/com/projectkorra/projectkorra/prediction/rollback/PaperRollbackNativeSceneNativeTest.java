@@ -475,6 +475,124 @@ class PaperRollbackNativeSceneNativeTest {
         });
     }
 
+    @Test void enrolledSmokescreenAppliesBlindnessAgainAndExpiresAcrossRewind() throws Exception {
+        onTickThread(() -> {
+            var original = source();
+            var captured = PaperRollbackRosterSeed.capture(original, 0);
+            var pulses = new ArrayList<List<UUID>>();
+            var removals = new ArrayList<org.bukkit.event.entity.EntityRemoveEvent>();
+            var scene = scene(seed(), captured, captured.participants(), new Events() {
+                @Override public void event(org.bukkit.event.Event event) {
+                    if (event instanceof org.bukkit.event.entity.AreaEffectCloudApplyEvent pulse) {
+                        pulses.add(pulse.getAffectedEntities().stream().map(org.bukkit.entity.Entity::getUniqueId).toList());
+                        if (pulses.size() == 1) pulse.setCancelled(true);
+                    } else if (event instanceof org.bukkit.event.entity.EntityRemoveEvent removal) removals.add(removal);
+                }
+                @Override public void output(PaperRollbackCombatAccess.Output output) { }
+                @Override public void gameEvent(Object event, Object pos, Object source) { }
+            });
+            var items = new RollbackNativeItems<>(new PaperRollbackItems(PaperRollbackEnvironmentNativeTest.registries()));
+            var session = new UUID(723, 886);
+            var actors = new PaperRollbackActors(session, 16, items);
+            actors.bind(scene);
+            var roster = bindAbilityViews(scene, actors, items).players();
+            var participants = roster.values().stream().toList();
+            var shooter = participants.getFirst();
+            var defender = participants.getLast();
+            var defenderState = scene.roster().get(defender.getUniqueId());
+            var target = defenderState.ownedPlayer();
+            var caster = scene.roster().get(shooter.getUniqueId()).ownedPlayer();
+            var round = new RollbackRound(session, Map.of(shooter.getUniqueId(), shooter.getUniqueId(), defender.getUniqueId(), defender.getUniqueId()));
+            scene.world().bindRound(round);
+            caster.setPos(8, 4, 0);
+            target.setPos(1, 4, 0);
+            target.setNoGravity(true);
+            var cloud = actors.spawn(scene.logical(), new RollbackEntityBody.Pose(0, 4, 0, 0, 0),
+                    com.projectkorra.projectkorra.platform.mc.entity.AreaEffectCloud.class);
+            scene.logical().entities().add(cloud);
+            var body = (net.minecraft.world.entity.AreaEffectCloud) actors.nativeEntity(cloud);
+            var blindness = net.minecraft.world.effect.MobEffects.BLINDNESS;
+            body.addEffect(new net.minecraft.world.effect.MobEffectInstance(blindness, 40, 2));
+            cloud.setSource(shooter); cloud.setDuration(22); cloud.setRadius(3);
+            cloud.setColor(com.projectkorra.projectkorra.platform.mc.Color.BLACK);
+            cloud.setWaitTime(0); cloud.setReapplicationDelay(10);
+            var actor = (PaperRollbackActor) actors.registry().get(cloud.getUniqueId());
+            var logical = RollbackEntityBody.logicalBody(cloud);
+            var beforeActors = actors.registry().captureRollbackState();
+            var beforeEntities = scene.logical().entities().captureRollbackState();
+            var beforeCloud = actor.captureRollbackState();
+            var beforeLogical = logical.captureRollbackState();
+            var beforeTarget = defenderState.captureRollbackState();
+            var beforeRound = round.captureRollbackState();
+            var bus = new RollbackEventBus(32, 8);
+            var platform = (com.projectkorra.projectkorra.platform.ProjectKorraPlatform) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{com.projectkorra.projectkorra.platform.ProjectKorraPlatform.class}, (proxy, method, args) -> {
+                        if (method.getName().equals("events")) return bus;
+                        throw new AssertionError(method);
+                    });
+            var domain = RollbackDomain.create(new RollbackStateGraph(value -> false, field -> true, 2048),
+                    List.of(), List.of(), platform, () -> { });
+            for (int pass = 0; pass < 3; pass++) {
+                if (pass > 0) {
+                    actor.restoreRollbackState(beforeCloud); logical.restoreRollbackState(beforeLogical);
+                    scene.logical().entities().restoreRollbackState(beforeEntities);
+                    actors.registry().restoreRollbackState(beforeActors);
+                    defenderState.restoreRollbackState(beforeTarget); round.restoreRollbackState(beforeRound);
+                    pulses.clear(); removals.clear();
+                }
+                var current = actor;
+                for (int step = 1; step <= 23; step++) {
+                    int tick = step;
+                    var owned = current;
+                    domain.call(() -> {
+                        round.beginTick(tick);
+                        try (var clock = RollbackClock.at(1000, tick, 50_000_000); var scope = new RollbackControlEvents(roster)) {
+                            defenderState.tick();
+                            owned.tick();
+                        }
+                        return null;
+                    });
+                    if (tick < 10) assertFalse(target.hasEffect(blindness));
+                    if (tick == 10 || tick == 20) {
+                        assertEquals(40, target.getEffect(blindness).getDuration());
+                        assertEquals(2, target.getEffect(blindness).getAmplifier());
+                    }
+                    if (tick == 15) assertEquals(35, target.getEffect(blindness).getDuration());
+                    assertFalse(caster.hasEffect(blindness));
+                    assertEquals(tick >= 22, current.entity().isRemoved());
+                    if (pass == 2 && tick == 12) {
+                        var repair = RollbackActorData.decode(actors.registry().exportState().encode());
+                        var row = repair.actors().getFirst();
+                        var frame = RollbackActorFrame.decode(row.state());
+                        assertEquals(Map.of(target.getUUID(), 20), frame.cloudVictims());
+                        var pending = new ArrayList<PaperRollbackAreaEffectCloud.Applications>();
+                        var live = original.getFirst().level();
+                        var staged = PaperRollbackActorRestoration.stage(live, entity -> PaperRollbackPrivateAccess.actorWrapper(entity,
+                                live.getCraftServer(), org.bukkit.entity.EntityType.AREA_EFFECT_CLOUD), row, pending::add);
+                        var liveBodies = new HashMap<UUID, net.minecraft.world.entity.Entity>();
+                        original.forEach(player -> liveBodies.put(player.getUUID(), player));
+                        assertThrows(IllegalArgumentException.class, () -> pending.getFirst().bind(Map.of()));
+                        pending.getFirst().bind(liveBodies);
+                        var field = net.minecraft.world.entity.AreaEffectCloud.class.getDeclaredField("victims");
+                        field.setAccessible(true);
+                        var stagedVictims = (Map<?, ?>) field.get(staged);
+                        assertSame(liveBodies.get(target.getUUID()), stagedVictims.keySet().iterator().next());
+                        assertEquals(20, stagedVictims.values().iterator().next());
+                        actors.importState(repair);
+                        current = (PaperRollbackActor) actors.registry().get(row.identity().uuid());
+                        assertNotSame(owned.entity(), current.entity());
+                    }
+                }
+                var hit = List.of(defender.getUniqueId());
+                assertEquals(List.of(hit, hit, List.of(), hit), pulses);
+                assertEquals(1, removals.size());
+                assertSame(current.entity().getBukkitEntity(), removals.getFirst().getEntity());
+                assertEquals(org.bukkit.event.entity.EntityRemoveEvent.Cause.DESPAWN, removals.getFirst().getCause());
+            }
+            return null;
+        });
+    }
+
     @Test void enrolledSnowballHitReachesTheBendingDamageListenerWithItsActorAndDefender() throws Exception {
         onTickThread(() -> {
             var captured = PaperRollbackRosterSeed.capture(source(), 0);

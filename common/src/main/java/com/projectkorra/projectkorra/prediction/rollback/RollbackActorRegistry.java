@@ -112,6 +112,11 @@ public final class RollbackActorRegistry implements RollbackStateCell<RollbackAc
     }
     /** Decode fresh native actors without publishing them, then atomically exchange private membership. */
     public void importState(RollbackWorld target, RollbackActorData data, Function<RollbackActorData.Row, Actor<?>> decode) {
+        importState(target, data, decode, () -> { });
+    }
+    /** Bind cross-actor references on the validated replacement bodies before changing current membership. */
+    public void importState(RollbackWorld target, RollbackActorData data, Function<RollbackActorData.Row, Actor<?>> decode,
+                            Runnable bindReferences) {
         bind(target);
         if (!session.equals(data.session()) || data.actors().size() > maximumActors) throw new IllegalArgumentException("Foreign actor repair");
         var replacement = new TreeMap<Integer, Actor<?>>();
@@ -122,6 +127,7 @@ public final class RollbackActorRegistry implements RollbackStateCell<RollbackAc
                 throw new IllegalArgumentException("Decoded private actor identity differs");
             replacement.put(-row.identity().networkId(), actor);
         }
+        bindReferences.run();
         target.entities().replaceSpawned(actors.values().stream().map(Actor::view).toList(),
                 replacement.values().stream().map(Actor::view).toList());
         actors.clear(); actors.putAll(replacement); cursor = data.cursor();
