@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.prediction.rollback;
 
+import com.google.common.collect.Lists;
 import java.lang.ref.WeakReference;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -16,6 +17,7 @@ import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.OptionalDouble;
 import java.util.IdentityHashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -42,6 +44,9 @@ import java.util.function.Predicate;
  * adapter separately. Unsupported JDK state fails capture instead of silently omitting it.</p>
  */
 public final class RollbackStateGraph {
+    private static final Class<?> TRANSFORMED_RANDOM_ACCESS_LIST = Lists.transform(List.of(), value -> value).getClass();
+    private static final Class<?> TRANSFORMED_SEQUENTIAL_LIST = Lists.transform(new LinkedList<>(), value -> value).getClass();
+
     // ClassValue lets addon classes unload. Bind only included fields: an excluded
     // platform field must never require reflective access to its declaring module.
     private static final ClassValue<Layout> LAYOUTS = new ClassValue<>() {
@@ -305,6 +310,8 @@ public final class RollbackStateGraph {
                 for (Class<?> current = type; current.getClassLoader() != null; current = current.getSuperclass()) {
                     for (Slot slot : LAYOUTS.get(current).declared) field(value, slot);
                 }
+                // Guava transforms expose computed elements. Their captured source and function fully define the view.
+                if (type == TRANSFORMED_RANDOM_ACCESS_LIST || type == TRANSFORMED_SEQUENTIAL_LIST) return;
             }
             if (type.isArray()) {
                 final int length = Array.getLength(value);

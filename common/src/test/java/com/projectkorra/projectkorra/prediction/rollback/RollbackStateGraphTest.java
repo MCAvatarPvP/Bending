@@ -238,6 +238,26 @@ class RollbackStateGraphTest {
         assertSame(first, sequential.getFirst());
     }
 
+    @Test void nativeTransformedListsRestoreTheirSourceWithoutMaterializingCopies() {
+        for (List<Node> source : List.<List<Node>>of(new java.util.ArrayList<>(), new java.util.LinkedList<>())) {
+            var child = new Node();
+            source.add(child);
+            var view = com.google.common.collect.Lists.transform(source, node -> {
+                var copy = new Node();
+                copy.position = node.position;
+                return copy;
+            });
+            var snapshot = graph.capture(List.of(view), List.of());
+            child.position = 19;
+            source.clear();
+            source.add(new Node());
+            snapshot.restore();
+            assertSame(child, source.getFirst());
+            assertEquals(0, view.getFirst().position);
+            assertNotSame(view.getFirst(), view.getFirst());
+        }
+    }
+
     private static final class Entry extends java.util.AbstractMap.SimpleImmutableEntry<Node, Node> {
         int extra;
         Entry(Node key, Node value) { super(key, value); }

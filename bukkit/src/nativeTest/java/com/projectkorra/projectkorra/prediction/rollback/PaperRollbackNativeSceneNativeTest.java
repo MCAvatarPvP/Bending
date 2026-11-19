@@ -429,6 +429,52 @@ class PaperRollbackNativeSceneNativeTest {
         });
     }
 
+    @Test void smokescreenCloudRestoresTheBlindnessBehindPapersColorView() throws Exception {
+        onTickThread(() -> {
+            var captured = PaperRollbackRosterSeed.capture(source(), 0);
+            var scene = scene(seed(), captured, captured.participants());
+            var items = new RollbackNativeItems<>(new PaperRollbackItems(PaperRollbackEnvironmentNativeTest.registries()));
+            var actors = new PaperRollbackActors(new UUID(222, 333), 16, items);
+            actors.bind(scene);
+            var shooter = bindAbilityViews(scene, actors, items).players().values().iterator().next();
+            var cloud = actors.spawn(scene.logical(), new RollbackEntityBody.Pose(0, 3, 0, 0, 0),
+                    com.projectkorra.projectkorra.platform.mc.entity.AreaEffectCloud.class);
+            scene.logical().entities().add(cloud);
+            var body = (net.minecraft.world.entity.AreaEffectCloud) actors.nativeEntity(cloud);
+            var blindness = new net.minecraft.world.effect.MobEffectInstance(net.minecraft.world.effect.MobEffects.BLINDNESS, 40, 2);
+            // CraftAreaEffectCloud.addCustomEffect delegates here after resolving its Bukkit potion registry key.
+            body.addEffect(blindness);
+            cloud.setSource(shooter);
+            cloud.setDuration(80);
+            cloud.setRadius(3);
+            cloud.setColor(com.projectkorra.projectkorra.platform.mc.Color.BLACK);
+            cloud.setWaitTime(0);
+            cloud.setReapplicationDelay(10);
+            var contents = body.potionContents;
+            var field = contents.getClass().getDeclaredField("customEffects");
+            field.setAccessible(true);
+            var view = (List<?>) field.get(contents);
+            assertEquals("com.google.common.collect.Lists$TransformingRandomAccessList", view.getClass().getName());
+            assertNotSame(view.getFirst(), view.getFirst());
+            var actor = (PaperRollbackActor) actors.registry().get(cloud.getUniqueId());
+            var checkpoint = actor.captureRollbackState();
+            for (int pass = 0; pass < 2; pass++) {
+                assertTrue(blindness.update(new net.minecraft.world.effect.MobEffectInstance(net.minecraft.world.effect.MobEffects.BLINDNESS, 100, 2)));
+                body.setPotionContents(net.minecraft.world.item.alchemy.PotionContents.EMPTY);
+                body.setRadius(1);
+                actor.restoreRollbackState(checkpoint);
+                assertSame(contents, body.potionContents);
+                assertSame(view, field.get(body.potionContents));
+                assertEquals(40, blindness.getDuration());
+                assertEquals(40, body.potionContents.customEffects().getFirst().getDuration());
+                assertEquals(2, body.potionContents.customEffects().getFirst().getAmplifier());
+                assertEquals(3, body.getRadius());
+                assertSame(actors.nativeEntity(shooter), body.getOwner());
+            }
+            return null;
+        });
+    }
+
     @Test void enrolledSnowballHitReachesTheBendingDamageListenerWithItsActorAndDefender() throws Exception {
         onTickThread(() -> {
             var captured = PaperRollbackRosterSeed.capture(source(), 0);
