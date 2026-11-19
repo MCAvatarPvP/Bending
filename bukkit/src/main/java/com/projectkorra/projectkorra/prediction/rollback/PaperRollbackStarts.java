@@ -58,6 +58,7 @@ public final class PaperRollbackStarts {
 
     public void receive(Player player, byte[] message, long tick) { endpoint.receive(PaperRollbackIngress.connection(player), message, tick); }
     public void tick(long tick) { endpoint.tick(tick); }
+    public boolean stopSession(UUID session, RollbackStartPacket.AbortReason reason) { return endpoint.stopSession(session, reason); }
     public void stopPlayer(UUID player, RollbackStartPacket.AbortReason reason) { endpoint.stopPlayer(player, reason); }
     public void shutdown() { try { endpoint.shutdown(); } finally { worlds.clear(); } }
 }

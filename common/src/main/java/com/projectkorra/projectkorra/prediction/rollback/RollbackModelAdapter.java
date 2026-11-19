@@ -16,10 +16,15 @@ final class RollbackModelAdapter implements PKAdapter, RollbackStateCell<Void> {
     RollbackModelAdapter(RollbackWorld arena) { this.arena = Objects.requireNonNull(arena); }
     @Override public PKEntity entity(Object value) {
         if (!(value instanceof Entity body) || !(value instanceof RollbackEntityBody.View)
-                || body.getWorld() != arena || arena.entities().get(body.getUniqueId()) != body) return null;
+                || !owns(arena, body)) return null;
         if (body instanceof Player player) return new PlayerModel(player);
         if (body instanceof LivingEntity living) return new LivingModel(living);
         return new EntityModel(body);
+    }
+    private static boolean owns(RollbackWorld world, Entity entity) {
+        if (entity.getWorld().handle() != world.handle()) return false;
+        var registered = world.entities().get(entity.getUniqueId());
+        return registered != null && registered.handle() == entity.handle();
     }
     @Override public PKPlayer player(Object value) { return entity(value) instanceof PKPlayer player ? player : null; }
     @Override public PKLivingEntity livingEntity(Object value) { return entity(value) instanceof PKLivingEntity living ? living : null; }
@@ -53,13 +58,14 @@ final class RollbackModelAdapter implements PKAdapter, RollbackStateCell<Void> {
             if (source == null) { delegate().damage(amount); return; }
             var world = (RollbackWorld) delegate().getWorld();
             if (!(source instanceof EntityView view) || view.delegate().getWorld() != world
-                    || world.entities().get(view.uuid()) != view.delegate()) throw new IllegalArgumentException("Foreign model damage source");
+                    || !owns(world, view.delegate())) throw new IllegalArgumentException("Foreign model damage source");
             delegate().damage(amount, view.delegate());
         }
     }
     private record EntityModel(Entity delegate) implements EntityView { }
     private record LivingModel(LivingEntity delegate) implements LivingView { }
     private record PlayerModel(Player delegate) implements LivingView, PKPlayer {
+        @Override public UUID uuid() { return delegate.getUniqueId(); }
         @Override public String name() { return delegate.getName(); }
         @Override public void sendMessage(String text) { delegate.sendMessage(text); }
         @Override public boolean hasPermission(String permission) { return delegate.hasPermission(permission); }
