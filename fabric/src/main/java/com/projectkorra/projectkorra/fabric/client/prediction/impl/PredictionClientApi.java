@@ -5,6 +5,7 @@ import com.projectkorra.projectkorra.fabric.client.prediction.block.ClientTempBl
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.RollbackStartPayloads;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.RollbackAuthorityPayload;
+import com.projectkorra.projectkorra.fabric.prediction.protocol.RollbackStateCorrectionPayload;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.RollbackBootstrapPayloads;
 import com.projectkorra.projectkorra.fabric.client.prediction.rollback.FabricRollbackBootstraps;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackStartClientEndpoint;
@@ -61,6 +62,11 @@ public abstract class PredictionClientApi extends PredictionClientLifecycle {
                 (payload, context) -> {
                     PredictionClient owner = PredictionClient.instance();
                     owner.rollbackStarts.receiveAuthority(context.client(), context.player().networkHandler, payload.chunk(), owner.clientTick);
+                });
+        ClientPlayNetworking.registerGlobalReceiver(RollbackStateCorrectionPayload.ID,
+                (payload, context) -> {
+                    PredictionClient owner = PredictionClient.instance();
+                    owner.rollbackStarts.receiveCorrection(context.client(), context.player().networkHandler, payload.chunk(), owner.clientTick);
                 });
         ClientPlayNetworking.registerGlobalReceiver(RollbackStartPayloads.ToClient.ID,
                 (payload, context) -> {
@@ -135,10 +141,17 @@ public abstract class PredictionClientApi extends PredictionClientLifecycle {
             java.util.function.BooleanSupplier ready, RollbackReplicaTimeline<S, RollbackPlayerInput, E> timeline,
             com.projectkorra.projectkorra.fabric.client.prediction.rollback.FabricRollbackRoster roster,
             RollbackClientRuntime.Output<S, E> effects) {
+        prepareRollbackClient(session, seed, timeoutTicks, ready, timeline, roster, effects, null);
+    }
+
+    public <S, E> void prepareRollbackClient(UUID session, long seed, int timeoutTicks,
+            java.util.function.BooleanSupplier ready, RollbackReplicaTimeline<S, RollbackPlayerInput, E> timeline,
+            com.projectkorra.projectkorra.fabric.client.prediction.rollback.FabricRollbackRoster roster,
+            RollbackClientRuntime.Output<S, E> effects, RollbackClientRuntime.Repair<S, E> repair) {
         var client = MinecraftClient.getInstance();
         var output = com.projectkorra.projectkorra.fabric.client.prediction.rollback.FabricRollbackPresentation.prepare(client, session, roster, timeline, effects);
         var runtime = new FabricRollbackClientRuntime<>(session, seed, client.player, timeline, rollbackStarts::sendInput, output,
-                roster.players().get(client.player.getUuid()), () -> client.options.getSprintWindow().getValue(), () -> client.options.getAutoJump().getValue());
+                roster.players().get(client.player.getUuid()), () -> client.options.getSprintWindow().getValue(), () -> client.options.getAutoJump().getValue(), repair);
         prepareRollbackStart(session, timeoutTicks, ready, runtime);
     }
 

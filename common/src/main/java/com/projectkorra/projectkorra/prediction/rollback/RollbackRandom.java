@@ -13,7 +13,12 @@ public final class RollbackRandom extends Random implements RollbackStateCell<Ro
     private boolean hasGaussian;
     private double gaussian;
 
-    public record State(long bits, boolean hasGaussian, double gaussian) {}
+    public record State(long bits, boolean hasGaussian, double gaussian) {
+        public State {
+            if ((bits & ~MASK) != 0 || !Double.isFinite(gaussian))
+                throw new IllegalArgumentException("Invalid random stream state");
+        }
+    }
 
     public RollbackRandom() {
         this(RollbackClock.active() ? RollbackClock.nextRandomSeed() : ThreadLocalRandom.current().nextLong());

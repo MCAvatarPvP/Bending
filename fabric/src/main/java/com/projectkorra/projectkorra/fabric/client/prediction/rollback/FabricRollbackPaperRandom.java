@@ -8,6 +8,13 @@ import net.minecraft.util.math.random.RandomSplitter;
 /** Matches the installed Paper 1.21.11 LegacyRandomSource, including its float-rounded double draws. */
 final class FabricRollbackPaperRandom extends CheckedRandom {
     FabricRollbackPaperRandom(long seed) { super(seed); }
+    void restoreStream(com.projectkorra.projectkorra.prediction.rollback.RollbackRandom.State state) {
+        var access = (com.projectkorra.projectkorra.fabric.mixin.client.CheckedRandomRollbackAccess) (CheckedRandom) this;
+        var cache = (com.projectkorra.projectkorra.fabric.mixin.client.GaussianRollbackAccess) access.rollback$gaussian();
+        access.rollback$bits().set(state.bits());
+        cache.rollback$gaussianValue(state.gaussian());
+        cache.rollback$hasGaussian(state.hasGaussian());
+    }
     @Override public double nextDouble() {
         long bits = ((long) next(26) << 27) + next(27);
         // Paper's compiled BitRandomSource multiplies as float, then widens to double.

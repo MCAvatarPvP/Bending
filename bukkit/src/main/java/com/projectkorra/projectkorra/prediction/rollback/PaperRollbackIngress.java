@@ -6,7 +6,9 @@ import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -39,21 +41,34 @@ public final class PaperRollbackIngress {
 
     /** Detached whole-roster authority update; direct control transport bypasses the legacy prediction gate. */
     public void publish(RollbackSession<?, ?> session, JavaPlugin plugin) {
-        if (!Bukkit.isPrimaryThread() || RollbackDomain.active() || !ingress.owns(session)) {
+        publish(session, plugin, null);
+    }
+
+    public void publish(RollbackSession<?, ?> session, JavaPlugin plugin, PaperRollbackCorrections corrections) {
+        if (!Bukkit.isPrimaryThread() || RollbackDomain.active() || RollbackClock.active() || !ingress.owns(session)) {
             throw new IllegalStateException("Authority publication requires this active live-thread session");
         }
         try {
-            var recipients = new java.util.ArrayList<Player>();
+            var recipients = new ArrayList<Player>();
             for (var peer : session.peers()) {
                 var player = Bukkit.getPlayer(peer.player());
                 if (player == null || !player.isOnline() || connection(player) != peer.connection()
                         || !player.getWorld().getUID().equals(worlds.get(peer.player()))) {
                     throw new IllegalStateException("Authority recipient connection/world changed");
                 }
+                if (!player.getListeningPluginChannels().contains(RollbackAuthorityChunk.CHANNEL)
+                        || corrections != null && !player.getListeningPluginChannels().contains(RollbackStateCorrectionChunk.CHANNEL)) {
+                    throw new IllegalStateException("Authority recipient no longer accepts rollback publications");
+                }
                 recipients.add(player);
             }
-            var chunks = RollbackAuthorityChunk.split(session.publish()).stream().map(RollbackAuthorityChunk::encode).toList();
-            for (var player : recipients) for (byte[] chunk : chunks) player.sendPluginMessage(plugin, RollbackAuthorityChunk.CHANNEL, chunk);
+            var authority = session.publish();
+            var chunks = RollbackAuthorityChunk.split(authority).stream().map(RollbackAuthorityChunk::encode).toList();
+            List<byte[]> repair = corrections == null ? List.of() : corrections.encode(authority);
+            for (var player : recipients) {
+                for (byte[] chunk : chunks) player.sendPluginMessage(plugin, RollbackAuthorityChunk.CHANNEL, chunk);
+                for (byte[] chunk : repair) player.sendPluginMessage(plugin, RollbackStateCorrectionChunk.CHANNEL, chunk);
+            }
         } catch (RuntimeException | Error failure) {
             try { ingress.stopPlayer(session.peers().getFirst().player(), RollbackIngress.StopReason.FAILURE); }
             catch (RuntimeException | Error cleanup) { if (cleanup != failure) failure.addSuppressed(cleanup); }

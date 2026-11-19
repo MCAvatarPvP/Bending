@@ -51,6 +51,16 @@ implemented by the plugin and verified against the packaged Paper version.
   delayed/out-of-order input, dynamic projectiles, defences, world changes and rollback
   consequences. Pure engine tests alone do not prove the feature complete.
 
+## Multiplayer verification
+
+On November 19, 2026, two Minecraft 1.21.11 Fabric clients running ProjectKorra
+1.10.35 joined a stock Paper 1.21.11 server with Neptune. Both negotiated exact
+prediction, opted into rollback, and entered the same Neptune duel. During the
+round, the server reported that the rollback bootstrap was absent. This run verified
+client compatibility, preferences and ordinary duel startup. Rollback activation,
+a delayed-input replay seen by both players, and live restoration still need a
+successful run with the production bootstrap installed.
+
 ## Current foundation
 
 ### Installed gameplay catalog

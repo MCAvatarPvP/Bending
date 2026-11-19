@@ -12,6 +12,7 @@ public final class RollbackStartClientEndpoint {
         void start(long clientTick);
         void tick(long clientTick);
         void authority(RollbackAuthorityUpdate update);
+        default void correction(RollbackStateCorrection correction) { throw new IllegalStateException("State repair is not bound"); }
         void stop(RollbackStartServerEndpoint.Failure failure);
     }
     private final Thread owner = Thread.currentThread();
@@ -67,7 +68,9 @@ public final class RollbackStartClientEndpoint {
             } else if (current.barrier.start(tick)) {
                 current.started = true; current.runtimeTick = tick;
                 current.runtime.start(tick);
-                while (!current.ended && !current.authority.isEmpty()) current.runtime.authority(current.authority.remove());
+                while (!current.ended && !current.authority.isEmpty()) {
+                    var pending = current.authority.remove(); current.queuedBytes -= pending.bytes(); pending.deliver(current.runtime);
+                }
             }
         } catch (RuntimeException | Error failure) {
             if (current.ended) throw failure;
@@ -78,14 +81,24 @@ public final class RollbackStartClientEndpoint {
     public boolean ownsSession() { checkThread(); return entry != null; }
     public boolean acceptsAuthority() { checkThread(); return entry != null && !entry.ended; }
     public void authority(RollbackAuthorityUpdate update) {
-        checkThread();
-        Entry current = entry;
-        if (current == null || current.ended || !current.session.equals(update.session())) return;
+        Objects.requireNonNull(update); deliver(update.session(), new Pending(update, null));
+    }
+    public void correction(RollbackStateCorrection correction) {
+        Objects.requireNonNull(correction); deliver(correction.session(), new Pending(null, correction));
+    }
+    private record Pending(RollbackAuthorityUpdate authority, RollbackStateCorrection correction) {
+        long bytes() { return correction == null ? RollbackAuthorityCodec.MAXIMUM_BYTES : (long) correction.payloadBytes() + RollbackStateCorrection.HEADER_BYTES; }
+        void deliver(Runtime runtime) { if (correction == null) runtime.authority(authority); else runtime.correction(correction); }
+    }
+    private void deliver(UUID session, Pending pending) {
+        checkThread(); Entry current = entry;
+        if (current == null || current.ended || !current.session.equals(session)) return;
         try {
-            if (current.started) current.runtime.authority(update);
+            if (current.started) pending.deliver(current.runtime);
             else {
-                if (current.authority.size() >= 8) throw new IllegalStateException("Authority arrived too far ahead of negotiated start");
-                current.authority.add(update);
+                if (current.authority.size() >= 8 || current.queuedBytes + pending.bytes() > RollbackStateCorrection.MAXIMUM_BYTES)
+                    throw new IllegalStateException("Authority arrived too far ahead of negotiated start");
+                current.authority.add(pending); current.queuedBytes += pending.bytes();
             }
         } catch (RuntimeException | Error failure) {
             if (current.ended) throw failure;
@@ -113,7 +126,8 @@ public final class RollbackStartClientEndpoint {
         final RollbackClientStart barrier;
         final BooleanSupplier ready;
         final Runtime runtime;
-        final ArrayDeque<RollbackAuthorityUpdate> authority = new ArrayDeque<>();
+        final ArrayDeque<Pending> authority = new ArrayDeque<>();
+        long queuedBytes;
         UUID challenge;
         boolean started, ended;
         long runtimeTick;
@@ -123,7 +137,7 @@ public final class RollbackStartClientEndpoint {
         void fail(RollbackStartServerEndpoint.Failure failure, boolean notify) {
             if (ended) return;
             ended = true;
-            authority.clear();
+            authority.clear(); queuedBytes = 0;
             if (!started) barrier.abort();
             Throwable problem = failure.cause();
             if (notify && challenge != null) {

@@ -1,6 +1,12 @@
 package com.projectkorra.projectkorra.listener;
 
 import com.projectkorra.projectkorra.*;
+import com.jedk1.jedcore.ability.earthbending.LavaFlux;
+import com.projectkorra.projectkorra.platform.PKEventBus;
+import com.projectkorra.projectkorra.platform.mc.block.Block;
+import com.projectkorra.projectkorra.platform.mc.damage.DamageSource;
+import com.projectkorra.projectkorra.platform.mc.damage.DamageType;
+import com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageByEntityEvent;
 import com.projectkorra.projectkorra.ability.*;
 import com.projectkorra.projectkorra.ability.util.PassiveManager;
 import com.projectkorra.projectkorra.airbending.AirBurst;
@@ -33,6 +39,41 @@ import com.projectkorra.projectkorra.waterbending.passive.HydroSink;
  */
 public final class CommonDamageHandler {
     private CommonDamageHandler() { }
+
+    public static void byBlock(EntityDamageEvent event, Block damagingBlock) {
+        if (damagingBlock != null && TempBlock.isTempBlock(damagingBlock)
+                && EarthAbility.isEarthbendable(damagingBlock.getType(), true, true, true) && GeneralMethods.isSolid(damagingBlock)) {
+            event.setCancelled(true);
+        }
+    }
+
+    /** Deliver the detached common event before applying its result to native damage modifiers. */
+    public static void forwardEnvironment(EntityDamageEvent nativeView, Block block, PKEventBus bus) {
+        var common = new EntityDamageEvent(nativeView.getEntity(), nativeView.getCause(), nativeView.getDamage());
+        LavaFlux.handleLavaDamage(common, block);
+        bus.call(common);
+        nativeView.setCancelled(common.isCancelled());
+        nativeView.setDamage(common.getDamage());
+    }
+
+    /** Prepared melee abilities consume the hit before other bending listeners handle it. */
+    public static void forwardByEntity(EntityDamageEvent nativeView, Entity source, PKEventBus bus) {
+        var target = nativeView.getEntity();
+        if (nativeView.getCause() == DamageCause.ENTITY_ATTACK && source instanceof Player player
+                && target instanceof LivingEntity living && player.getWorld().equals(living.getWorld())
+                && player.getLocation().distanceSquared(living.getLocation()) <= 25.0
+                && !DamageHandler.isReceivingDamage(living) && CommonInputHandler.handleEntityLeftClick(player, living)) {
+            nativeView.setCancelled(true);
+            return;
+        }
+        var cause = nativeView.getCause();
+        if (cause != DamageCause.ENTITY_ATTACK && cause != DamageCause.ENTITY_SWEEP_ATTACK) cause = DamageCause.CUSTOM;
+        var common = new EntityDamageByEntityEvent(source, target, cause, DamageSource.builder(DamageType.GENERIC).build(),
+                nativeView.getDamage());
+        bus.call(common);
+        nativeView.setCancelled(common.isCancelled());
+        nativeView.setDamage(common.getDamage());
+    }
 
     public static void environment(EntityDamageEvent event) {
         final var entity = event.getEntity();

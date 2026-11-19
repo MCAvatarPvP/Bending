@@ -1,6 +1,10 @@
 package com.projectkorra.projectkorra.fabric.client.prediction.rollback;
 
+import com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.damage.DamageSource;
+import net.minecraft.entity.damage.DamageTypes;
+import net.minecraft.registry.tag.DamageTypeTags;
 import net.minecraft.entity.player.PlayerEntity;
 
 import java.util.EnumMap;
@@ -29,6 +33,36 @@ public final class FabricRollbackDamageEvent {
     }
     public PlayerEntity player() { return player; }
     public DamageSource source() { return source; }
+    /** Common causes exposed by CraftEventFactory for private player and environmental sources. */
+    static DamageCause cause(DamageSource source, Entity damager) {
+        if (source.isIn(DamageTypeTags.IS_EXPLOSION)) return DamageCause.CUSTOM;
+        if (damager == null && source.isOf(DamageTypes.LAVA)) return DamageCause.LAVA;
+        if (damager == null && source.isOf(DamageTypes.OUT_OF_WORLD)) return DamageCause.CUSTOM;
+        String known = FabricRollbackPlayerCombatData.knownCause(source);
+        if (known != null) return switch (known) {
+            case "ENTITY_ATTACK" -> DamageCause.ENTITY_ATTACK;
+            case "ENTITY_SWEEP_ATTACK" -> DamageCause.ENTITY_SWEEP_ATTACK;
+            case "FIRE" -> DamageCause.FIRE;
+            case "FIRE_TICK" -> DamageCause.FIRE_TICK;
+            case "LAVA" -> DamageCause.LAVA;
+            case "FALL" -> DamageCause.FALL;
+            case "SUFFOCATION" -> DamageCause.SUFFOCATION;
+            case "FLY_INTO_WALL" -> DamageCause.FLY_INTO_WALL;
+            default -> DamageCause.CUSTOM;
+        };
+        if (source.isOf(DamageTypes.FALL)) return DamageCause.FALL;
+        if (damager != null) {
+            if (source.isOf(DamageTypes.THORNS) || source.isOf(DamageTypes.SONIC_BOOM) || source.isOf(DamageTypes.FALLING_STALACTITE)
+                    || source.isOf(DamageTypes.FALLING_BLOCK) || source.isOf(DamageTypes.FALLING_ANVIL) || source.isOf(DamageTypes.LIGHTNING_BOLT)
+                    || source.isOf(DamageTypes.DRAGON_BREATH) || source.isOf(DamageTypes.MAGIC)) return DamageCause.CUSTOM;
+            return DamageCause.ENTITY_ATTACK;
+        }
+        if (source.isOf(DamageTypes.IN_FIRE)) return DamageCause.FIRE;
+        if (source.isOf(DamageTypes.ON_FIRE)) return DamageCause.FIRE_TICK;
+        if (source.isOf(DamageTypes.IN_WALL)) return DamageCause.SUFFOCATION;
+        if (source.isOf(DamageTypes.FLY_INTO_WALL)) return DamageCause.FLY_INTO_WALL;
+        return DamageCause.CUSTOM;
+    }
     public boolean cancelled() { return cancelled; }
     public void cancelled(boolean value) { cancelled = value; }
     public double damage() { return damage(Modifier.BASE); }

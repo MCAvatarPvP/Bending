@@ -12,6 +12,19 @@ class RollbackClientRuntimeTest {
     private static final Map<UUID, RollbackPlayerInput> INITIAL = Map.of(A, IDLE, B, IDLE);
     private static final long ANCHOR = 1000, SEED = 77;
 
+    @Test void checkpointRepairUpdatesPresentationWithoutResendingInputsOrRepeatingOutput() {
+        var f = new Fixture(8, true); f.runtime.start(ANCHOR); f.runtime.tick(ANCHOR + 1);
+        f.server.advance(); var authority = f.server.publish(); f.runtime.authority(authority);
+        var correction = new RollbackStateCorrection(ID, authority.publication(), authority.revision(), authority.finalizedTick(), "a".repeat(64), new byte[]{42});
+        int sent = f.sent.size(), output = f.outputs.size();
+        f.runtime.correction(correction); assertEquals(42, f.engine.head().state().distance());
+        assertEquals(sent, f.sent.size()); assertEquals(output + 1, f.outputs.size());
+        assertTrue(f.outputs.getLast().finalizedEffects().isEmpty());
+        f.runtime.correction(correction); assertEquals(output + 1, f.outputs.size());
+        var unbound = new Fixture(8); unbound.runtime.start(ANCHOR);
+        assertThrows(IllegalStateException.class, () -> unbound.runtime.correction(correction)); assertTrue(unbound.runtime.failed());
+    }
+
     @Test void predictsBeforeSendingAndNeverRepeatsOneShotActionsDuringCorrection() {
         var f = new Fixture(8);
         assertFalse(f.runtime.action(RollbackInputActions.Kind.RIGHT_CLICK, -1, 0, 0));
@@ -152,14 +165,15 @@ class RollbackClientRuntimeTest {
         RollbackClientRuntime.Held controls = new RollbackClientRuntime.Held(IDLE.movement(), false);
         boolean failOutput, failSend, failStop, stopDuringOutput;
         int stops;
-        Fixture(int history) {
+        Fixture(int history) { this(history, false); }
+        Fixture(int history, boolean repair) {
             engine = RollbackEngine.replica(new Simulation(), INITIAL, new RollbackEngine.Limits(history, 1, 20, 50_000_000), 0, 0);
             runtime = new RollbackClientRuntime<>(ID, A, SEED, engine, () -> controls, packet -> {
                 assertFalse(outputs.isEmpty());
                 assertTrue(engine.head().tick() > 0, "Local simulation must not wait for network send");
                 if (failSend) throw new IllegalStateException("send failed");
                 sent.add(RollbackInputPacket.decode(packet.encode()));
-            }, this);
+            }, this, repair ? new RollbackClientRuntime.Repair<>("a".repeat(64), 100, (tick, bytes) -> engine.correctState(tick, new State(bytes[0], 0))) : null);
         }
         @Override public void update(RollbackEngine.Update<State, RollbackPlayerInput, State> update) {
             if (failOutput) throw new IllegalStateException("presentation failed");

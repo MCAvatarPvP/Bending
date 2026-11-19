@@ -36,6 +36,10 @@ public final class FabricRollbackItems implements RollbackNativeItems.Access<Ite
     private final RegistryOps<NbtElement> ops;
     private final Map<String, Kind> kinds;
 
+    public FabricRollbackItems(RegistryWrapper.WrapperLookup registries) {
+        this(registries, com.projectkorra.projectkorra.prediction.rollback.PaperItemMetadata.VALUES);
+    }
+
     public FabricRollbackItems(RegistryWrapper.WrapperLookup registries, Map<String, Kind> serverMetadataCatalog) {
         this.registries = Objects.requireNonNull(registries, "registries");
         codec = new FabricRollbackItemCodec(registries);

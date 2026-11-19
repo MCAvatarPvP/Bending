@@ -96,7 +96,7 @@ class FabricRollbackRosterTest {
                 old.velocity(), old.bounds(), old.height(), old.onGround(), old.fallDistance(), old.velocityChanged()));
     }
 
-    private static RollbackRosterViews.Services viewServices(RollbackPlayerAccess.Entry access) {
+    static RollbackRosterViews.Services viewServices(RollbackPlayerAccess.Entry access) {
         var body = (RollbackEntityBody.Rules) Proxy.newProxyInstance(RollbackEntityBody.Rules.class.getClassLoader(), new Class<?>[]{RollbackEntityBody.Rules.class},
                 (proxy, method, args) -> { throw new AssertionError(method); });
         var player = (RollbackPlayerState.Rules) Proxy.newProxyInstance(RollbackPlayerState.Rules.class.getClassLoader(), new Class<?>[]{RollbackPlayerState.Rules.class},

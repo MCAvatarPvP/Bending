@@ -10,6 +10,9 @@ import com.projectkorra.projectkorra.prediction.rollback.RollbackStartPacket;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackStartServerEndpoint;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackAuthorityChunk;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackAuthorityUpdate;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackStateCorrection;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackStateCorrectionChunk;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClientRuntime;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayNetworkHandler;
@@ -26,6 +29,7 @@ import java.util.function.BooleanSupplier;
 public final class FabricRollbackStarts {
     public interface NativeRuntime extends RollbackStartClientEndpoint.Runtime {
         void packet(Packet<?> packet, long tick);
+        default RollbackClientRuntime.Repair<?, ?> stateRepair() { return null; }
         default boolean ownsNativeTick() { return false; }
         default void nativeTick(long tick) { throw new IllegalStateException("Private native controls are not bound"); }
     }
@@ -37,6 +41,9 @@ public final class FabricRollbackStarts {
     private long clientTick;
     private RollbackAuthorityChunk.Assembler authority;
     private int authorityPackets;
+    private RollbackStateCorrectionChunk.Assembler corrections;
+    private int correctionPackets;
+    private int correctionPacketLimit;
     private final RollbackStartClientEndpoint endpoint = new RollbackStartClientEndpoint(this::send);
 
     /** The bootstrap owner must suspend legacy prediction before transferring ownership. */
@@ -60,6 +67,13 @@ public final class FabricRollbackStarts {
                 nativeTicks = new FabricRollbackNativeTick(captured.player(), captured.world(), () -> current(client, captured),
                         () -> { if (endpoint.acceptsAuthority()) nativeRuntime.nativeTick(Math.incrementExact(clientTick)); }, this::nativeFailure);
             }
+            var repair = runtime instanceof NativeRuntime nativeRuntime ? nativeRuntime.stateRepair() : null;
+            if (repair != null) {
+                corrections = new RollbackStateCorrectionChunk.Assembler(session, repair.definitions(), repair.maximumBytes(), tick, timeoutTicks);
+                int maximumChunks = Math.ceilDiv(repair.maximumBytes(), RollbackStateCorrectionChunk.DATA_BYTES);
+                correctionPacketLimit = Math.max(256, maximumChunks);
+            }
+            correctionPackets = 0;
             authorityPackets = 0;
             authority = new RollbackAuthorityChunk.Assembler(session, tick, 40);
             endpoint.prepare(session, tick, timeoutTicks, () -> current(client, captured)
@@ -67,6 +81,7 @@ public final class FabricRollbackStarts {
                     new RollbackStartClientEndpoint.Runtime() {
                         @Override public void start(long clientTick) { runtime.start(clientTick); }
                         @Override public void tick(long clientTick) { runtime.tick(clientTick); }
+                        @Override public void correction(RollbackStateCorrection correction) { runtime.correction(correction); }
                         @Override public void authority(RollbackAuthorityUpdate update) { runtime.authority(update); }
                         @Override public void stop(RollbackStartServerEndpoint.Failure failure) {
                             runtime.stop(failure);
@@ -96,6 +111,22 @@ public final class FabricRollbackStarts {
         } catch (RuntimeException | Error failure) { stopAfterFailure(failure); }
     }
 
+    public void receiveCorrection(MinecraftClient client, ClientPlayNetworkHandler source, RollbackStateCorrectionChunk chunk, long tick) {
+        Binding captured = binding;
+        if (captured == null || source != captured.connection() || source != client.getNetworkHandler()
+                || !captured.session().equals(chunk.session()) || !endpoint.acceptsAuthority()) return;
+        if (!current(client, captured)) {
+            endpoint.stop(RollbackStartPacket.AbortReason.DISCONNECTED);
+            return;
+        }
+        try {
+            if (corrections == null) throw new IllegalStateException("State correction received without a prepared importer");
+            if (++correctionPackets > correctionPacketLimit) throw new IllegalStateException("State correction chunk work budget exceeded");
+            var correction = corrections.receive(chunk, tick);
+            if (correction != null) endpoint.correction(correction);
+        } catch (RuntimeException | Error failure) { stopAfterFailure(failure); }
+    }
+
     /** Called at the native render-thread send boundary, before legacy prediction or vanilla writes. */
     public boolean consumePacket(MinecraftClient client, ClientPlayNetworkHandler source, Packet<?> packet, long tick) {
         Binding captured = binding;
@@ -121,8 +152,16 @@ public final class FabricRollbackStarts {
     }
 
     public void tick(long tick) {
-        clientTick = tick; authorityPackets = 0;
-        try { if (endpoint.acceptsAuthority()) authority.poll(tick); endpoint.tick(tick); }
+        clientTick = tick;
+        authorityPackets = 0;
+        correctionPackets = 0;
+        try {
+            if (endpoint.acceptsAuthority()) {
+                authority.poll(tick);
+                if (corrections != null) corrections.poll(tick);
+            }
+            endpoint.tick(tick);
+        }
         catch (RuntimeException | Error failure) { stopAfterFailure(failure); }
     }
     private void stopAfterFailure(Throwable failure) {
@@ -153,7 +192,7 @@ public final class FabricRollbackStarts {
         if (binding != captured) return;
         if (nativeActions != null) nativeActions.close();
         if (nativeTicks != null) nativeTicks.close();
-        nativeActions = null; nativeTicks = null; binding = null; authority = null;
+        nativeActions = null; nativeTicks = null; binding = null; authority = null; corrections = null;
     }
 
     private void send(RollbackStartPacket.Message message) {

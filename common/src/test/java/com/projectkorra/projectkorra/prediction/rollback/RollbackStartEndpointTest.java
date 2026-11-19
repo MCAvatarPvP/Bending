@@ -185,6 +185,29 @@ class RollbackStartEndpointTest {
         f.a.endpoint.finishStop(ID);
     }
 
+    @Test void repairAndAuthorityStayInWireOrderAcrossStartAndStop() {
+        var fixture = new Fixture();
+        fixture.begin();
+        fixture.until(121);
+        var endpoint = fixture.a.endpoint;
+        var first = authority(ID, 1);
+        var repair = new RollbackStateCorrection(ID, 1, 0, 0, HASH, new byte[] {42});
+        var second = authority(ID, 2);
+        endpoint.authority(first);
+        endpoint.correction(new RollbackStateCorrection(B, 1, 0, 0, HASH, new byte[] {7}));
+        endpoint.correction(repair);
+        endpoint.authority(second);
+        assertTrue(fixture.a.runtime.deliveries.isEmpty());
+
+        fixture.until(122);
+        assertEquals(List.of(first, repair, second), fixture.a.runtime.deliveries);
+        var liveRepair = new RollbackStateCorrection(ID, 2, 0, 0, HASH, new byte[] {8});
+        endpoint.correction(liveRepair);
+        endpoint.stop(OPT_OUT);
+        endpoint.correction(repair);
+        assertEquals(List.of(first, repair, second, liveRepair), fixture.a.runtime.deliveries);
+    }
+
     @Test void rejectedAuthorityCancelsTheWholeSessionBeforeOrAfterClientStart() {
         for (boolean beforeStart : List.of(false, true)) {
             var f = new Fixture(); f.begin(); f.until(beforeStart ? 121 : 123);
@@ -307,12 +330,18 @@ class RollbackStartEndpointTest {
         final List<RollbackStartServerEndpoint.Failure> stops = new ArrayList<>();
         boolean failTick, failStop, failAuthority;
         final List<RollbackAuthorityUpdate> authority = new ArrayList<>();
+        final List<Object> deliveries = new ArrayList<>();
         @Override public void start(long tick) { starts.add(tick); }
         @Override public void tick(long tick) { ticks.add(tick); if (failTick) throw new IllegalStateException("client tick failed"); }
         @Override public void authority(RollbackAuthorityUpdate update) {
             assertFalse(starts.isEmpty(), "Authority cannot mutate a runtime before its negotiated start");
             if (failAuthority) throw new IllegalStateException("authority correction failed");
             authority.add(update);
+            deliveries.add(update);
+        }
+        @Override public void correction(RollbackStateCorrection correction) {
+            assertFalse(starts.isEmpty());
+            deliveries.add(correction);
         }
         @Override public void stop(RollbackStartServerEndpoint.Failure failure) {
             stops.add(failure); if (failStop) throw new IllegalStateException("client cleanup failed");

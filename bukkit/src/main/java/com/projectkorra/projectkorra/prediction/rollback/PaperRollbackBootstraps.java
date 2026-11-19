@@ -12,6 +12,8 @@ import java.util.function.LongSupplier;
 
 /** Real Paper plugin-channel transfer, pinned to each participant's original connection and world. */
 public final class PaperRollbackBootstraps {
+    private static final Set<String> CHANNELS = Set.of(RollbackBootstrapPacket.SERVER_CHANNEL,
+            RollbackStartPacket.SERVER_CHANNEL, RollbackAuthorityChunk.CHANNEL, RollbackStateCorrectionChunk.CHANNEL);
     private final Map<Object, UUID> worlds = new IdentityHashMap<>();
     private final RollbackBootstrapServerEndpoint endpoint;
     private final LongSupplier clock;
@@ -37,7 +39,7 @@ public final class PaperRollbackBootstraps {
         for (UUID id : players) {
             Player player = Bukkit.getPlayer(id);
             if (player == null || !player.isOnline() || !PaperPredictionServer.isExactClient(id)
-                    || !player.getListeningPluginChannels().contains(RollbackBootstrapPacket.SERVER_CHANNEL)) return false;
+                    || !player.getListeningPluginChannels().containsAll(CHANNELS)) return false;
         }
         return true;
     }

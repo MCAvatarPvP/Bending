@@ -117,6 +117,11 @@ public final class FabricRollbackWorldServices implements FabricRollbackWorldQue
     }
     @Override public boolean skyVisible(RollbackBlockStore terrain, BlockPos position) { checkThread(); return spatial.skyVisible(terrain, position); }
     @Override public Random random() { checkThread(); return random; }
+    void restoreStreams(RollbackRandom.State world, RollbackRandom.State sound) {
+        checkThread();
+        ((FabricRollbackPaperRandom) random).restoreStream(world);
+        soundRandom.restoreRollbackState(sound);
+    }
     @Override public long nextSoundSeed() { checkThread(); return soundRandom.nextLong(); }
     @Override public void output(FabricRollbackWorldAccess.Output output) { checkThread(); events.output(output); }
     @Override public void gameEvent(RegistryEntry<GameEvent> event, Vec3d position, GameEvent.Emitter emitter) { checkThread(); events.gameEvent(event, position, emitter); }

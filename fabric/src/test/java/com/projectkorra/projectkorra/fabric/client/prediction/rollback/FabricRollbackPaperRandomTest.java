@@ -6,6 +6,16 @@ import java.util.Objects;
 import static org.junit.jupiter.api.Assertions.*;
 
 class FabricRollbackPaperRandomTest {
+    @Test void repairOverwritesTheCursorAndPreservesThePendingGaussianDraw() {
+        var repaired = new FabricRollbackPaperRandom(29);
+        repaired.nextGaussian();
+        var state = new com.projectkorra.projectkorra.prediction.rollback.RollbackRandom.State(0x123456789abL, true, -0.91);
+        repaired.restoreStream(state);
+        assertEquals(state.gaussian(), repaired.nextGaussian());
+        var expected = new FabricRollbackPaperRandom(state.bits() ^ 0x5deece66dL);
+        assertEquals(expected.nextLong(), repaired.nextLong());
+        assertEquals(expected.nextGaussian(), repaired.nextGaussian());
+    }
     @Test void privateRandomMethodsAndForksMatchTheActualPaperReference() throws Exception {
         var actual = new StringBuilder();
         for (long seed : new long[]{0, 57, 7001, Long.MIN_VALUE, Long.MAX_VALUE}) {

@@ -1,6 +1,5 @@
 package com.projectkorra.projectkorra;
 
-import com.jedk1.jedcore.ability.earthbending.LavaFlux;
 import com.projectkorra.projectkorra.Element.SubElement;
 import com.projectkorra.projectkorra.ability.*;
 import com.projectkorra.projectkorra.ability.util.ComboManager;
@@ -40,8 +39,6 @@ import com.projectkorra.projectkorra.platform.bukkit.BukkitMC;
 import com.projectkorra.projectkorra.platform.bukkit.BukkitEntityMetadata;
 import com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent;
 import com.projectkorra.projectkorra.platform.mc.GameMode;
-import com.projectkorra.projectkorra.platform.mc.damage.DamageSource;
-import com.projectkorra.projectkorra.platform.mc.damage.DamageType;
 import com.projectkorra.projectkorra.platform.mc.entity.FallingBlock;
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.entity.Projectile;
@@ -171,34 +168,6 @@ public class PKListener implements Listener {
 
     public static Map<Player, Integer> getJumpStatistics() {
         return JUMPS;
-    }
-
-    private static com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause commonDamageCause(final DamageCause cause) {
-        if (cause == DamageCause.ENTITY_ATTACK) {
-            return com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause.ENTITY_ATTACK;
-        }
-        if (cause == DamageCause.ENTITY_SWEEP_ATTACK) {
-            return com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause.ENTITY_SWEEP_ATTACK;
-        }
-        if (cause == DamageCause.FIRE) {
-            return com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause.FIRE;
-        }
-        if (cause == DamageCause.FIRE_TICK) {
-            return com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause.FIRE_TICK;
-        }
-        if (cause == DamageCause.LAVA) {
-            return com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause.LAVA;
-        }
-        if (cause == DamageCause.FALL) {
-            return com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause.FALL;
-        }
-        if (cause == DamageCause.SUFFOCATION) {
-            return com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause.SUFFOCATION;
-        }
-        if (cause == DamageCause.FLY_INTO_WALL) {
-            return com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause.FLY_INTO_WALL;
-        }
-        return com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause.CUSTOM;
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
@@ -542,35 +511,18 @@ public class PKListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onEntityDamageByBlock(final EntityDamageByBlockEvent event) {
-        final var block = BukkitMC.block(event.getDamager());
-        if (block == null) {
-            return;
-        }
-
-        if (TempBlock.isTempBlock(block)) {
-            if (EarthAbility.isEarthbendable(block.getType(), true, true, true) && GeneralMethods.isSolid(block)) {
-                event.setCancelled(true);
-            }
-        }
+        CommonDamageHandler.byBlock(BukkitMC.damageEvent(event), BukkitMC.block(event.getDamager()));
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onEntityDamageEvent(final EntityDamageEvent event) {
-        final var entity = BukkitMC.entity(event.getEntity());
+        var view = BukkitMC.damageEvent(event);
         if (!(event instanceof EntityDamageByEntityEvent)) {
-            final com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent commonEvent =
-                    new com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent(entity, commonDamageCause(event.getCause()), event.getDamage());
-            LavaFlux.handleLavaDamage(commonEvent,
-                    event instanceof EntityDamageByBlockEvent byBlock ? BukkitMC.block(byBlock.getDamager()) : null);
-            Platform.events().call(commonEvent);
-            event.setCancelled(commonEvent.isCancelled());
-            event.setDamage(commonEvent.getDamage());
-            if (commonEvent.isCancelled()) {
-                return;
-            }
+            CommonDamageHandler.forwardEnvironment(view,
+                    event instanceof EntityDamageByBlockEvent byBlock ? BukkitMC.block(byBlock.getDamager()) : null, Platform.events());
+            if (view.isCancelled()) return;
         }
-
-        CommonDamageHandler.environment(BukkitMC.damageEvent(event));
+        CommonDamageHandler.environment(view);
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
@@ -887,42 +839,7 @@ public class PKListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onCommonEntityDamageByEntity(final EntityDamageByEntityEvent event) {
-        final var source = BukkitMC.entity(event.getDamager());
-        final var entity = BukkitMC.entity(event.getEntity());
-
-        // JedCore consumes a prepared FirePunch before the rest of the damage
-        // pipeline. Running it later lets other bridges cancel the melee event
-        // first, leaving the prepared punch alive but unusable.
-        if (event.getCause() == DamageCause.ENTITY_ATTACK
-                && event.getDamager() instanceof Player nativePlayer
-                && event.getEntity() instanceof org.bukkit.entity.LivingEntity nativeTarget
-                && nativePlayer.getWorld().equals(nativeTarget.getWorld())
-                && nativePlayer.getLocation().distanceSquared(nativeTarget.getLocation()) <= 25.0
-                && entity instanceof LivingEntity targetLiving
-                && !DamageHandler.isReceivingDamage(targetLiving)
-                && CommonInputHandler.handleEntityLeftClick(BukkitMC.player(nativePlayer), targetLiving)) {
-            event.setCancelled(true);
-            return;
-        }
-
-        com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause cause =
-                com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause.CUSTOM;
-        if (event.getCause() == DamageCause.ENTITY_ATTACK) {
-            cause = com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause.ENTITY_ATTACK;
-        } else if (event.getCause() == DamageCause.ENTITY_SWEEP_ATTACK) {
-            cause = com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause.ENTITY_SWEEP_ATTACK;
-        }
-
-        com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageByEntityEvent commonEvent =
-                new com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageByEntityEvent(
-                        source,
-                        entity,
-                        cause,
-                        DamageSource.builder(DamageType.GENERIC).build(),
-                        event.getDamage());
-        Platform.events().call(commonEvent);
-        event.setCancelled(commonEvent.isCancelled());
-        event.setDamage(commonEvent.getDamage());
+        CommonDamageHandler.forwardByEntity(BukkitMC.damageEvent(event), BukkitMC.entity(event.getDamager()), Platform.events());
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)

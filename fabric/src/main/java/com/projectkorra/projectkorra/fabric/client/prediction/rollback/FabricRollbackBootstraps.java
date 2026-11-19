@@ -127,6 +127,10 @@ public final class FabricRollbackBootstraps {
                     || !data.sides().containsKey(captured.player.getUuid())) throw new IllegalArgumentException("Bootstrap envelope/local roster mismatch");
             captured.prepared = Objects.requireNonNull(captured.preparation.importState(data));
             if (binding != captured || !current(client, captured) || ExactPredictionRuntime.isReady() || !captured.prepared.ready().getAsBoolean()) throw new IllegalStateException("Private import is not ready");
+            var repair = captured.prepared.runtime().stateRepair();
+            if (repair == null || !captured.offer.definitions().equals(repair.definitions())) {
+                throw new IllegalStateException("Imported runtime needs a repair binding for the negotiated definitions");
+            }
             releaseFreeze(captured); // Same-thread handoff; ordinary client code cannot run between these operations.
             starts.prepare(client, data.session(), tick, captured.prepared.timeoutTicks(), () -> current(client, captured) && captured.prepared.ready().getAsBoolean(), wrap(captured));
             captured.installed = true;
@@ -136,6 +140,8 @@ public final class FabricRollbackBootstraps {
     private FabricRollbackStarts.NativeRuntime wrap(Binding captured) {
         return new FabricRollbackStarts.NativeRuntime() {
             @Override public boolean ownsNativeTick() { return true; }
+            @Override public RollbackClientRuntime.Repair<?, ?> stateRepair() { return captured.prepared.runtime().stateRepair(); }
+            @Override public void correction(RollbackStateCorrection correction) { captured.prepared.runtime().correction(correction); }
             @Override public void nativeTick(long tick) { captured.prepared.runtime().nativeTick(tick); }
             @Override public void packet(Packet<?> packet, long tick) { captured.prepared.runtime().packet(packet, tick); }
             @Override public void start(long tick) { captured.prepared.runtime().start(tick); }

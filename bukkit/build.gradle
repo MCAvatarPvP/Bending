@@ -87,8 +87,9 @@ import java.util.Map;
 import java.util.TreeMap;
 
 // Generated from this build's Paper ItemType declarations. Do not edit.
-final class PaperItemMetadata {
-    static final Map<String, Kind> VALUES;
+public final class PaperItemMetadata {
+    private PaperItemMetadata() { }
+    public static final Map<String, Kind> VALUES;
     static {
         var values = new TreeMap<String, Kind>();
 ''')

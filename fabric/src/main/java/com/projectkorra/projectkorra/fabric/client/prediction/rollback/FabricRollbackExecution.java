@@ -2,6 +2,7 @@ package com.projectkorra.projectkorra.fabric.client.prediction.rollback;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackMovementInput;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackPlayerExecution;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackStepOutput;
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackPlayer;
 
 import java.util.Collection;
@@ -26,7 +27,10 @@ public final class FabricRollbackExecution<E> extends RollbackPlayerExecution<E>
             throw new IllegalArgumentException("Execution clock belongs to another private world");
     }
     public FabricRollbackExecution(Collection<RollbackPlayer> participants, Services<E, ?> services) {
-        super(participants, services);
+        this(participants, services, new RollbackStepOutput<>());
+    }
+    public FabricRollbackExecution(Collection<RollbackPlayer> participants, Services<E, ?> services, RollbackStepOutput<E> output) {
+        super(participants, services, output);
         Object nativeWorld = null;
         for (var player : participants) {
             if (!(player.body().kinematicsSource() instanceof FabricRollbackNativePlayerState state)

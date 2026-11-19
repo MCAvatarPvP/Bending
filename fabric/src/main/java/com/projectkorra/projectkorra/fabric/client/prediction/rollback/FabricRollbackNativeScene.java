@@ -16,11 +16,42 @@ public final class FabricRollbackNativeScene implements RollbackStateCell<Void>,
     public record Bindings(RollbackBlockStore.Rules blocks, RollbackItems items, RollbackWorld.Actions actions,
             FabricRollbackWorldQueries.BlockEntities<?> blockEntities, FabricRollbackWorldServices.Events<?> events,
             Scoreboard scoreboard) {
+        public Bindings(RollbackBlockStore.Rules blocks, RollbackItems items, RollbackWorld.Actions actions,
+                DynamicRegistryManager.Immutable registries, FabricRollbackWorldServices.Events<?> events, Scoreboard scoreboard) {
+            this(blocks, items, actions, new FabricRollbackBlockEntities(registries), events, scoreboard);
+        }
         public Bindings {
             Objects.requireNonNull(blocks); Objects.requireNonNull(items); Objects.requireNonNull(actions);
             Objects.requireNonNull(blockEntities); Objects.requireNonNull(events); Objects.requireNonNull(scoreboard);
         }
     }
+    /** Session import retains one native item owner for logical drops, bending inventories and item scopes. */
+    public static final class Imported {
+        private final FabricRollbackNativeScene scene;
+        private final RollbackNativeItems<net.minecraft.item.ItemStack> items;
+
+        private Imported(FabricRollbackNativeScene scene, RollbackNativeItems<net.minecraft.item.ItemStack> items) {
+            this.scene = scene;
+            this.items = items;
+        }
+        public FabricRollbackNativeScene scene() { return scene; }
+        public RollbackNativeItems<net.minecraft.item.ItemStack> items() { return items; }
+
+        public RollbackRosterViews bindPlayerViews(Map<UUID, RollbackRosterViews.Services> players) {
+            return FabricRollbackRosterViews.bind(scene.logical(), scene.roster(), scene.roster().players().keySet(), items, players);
+        }
+    }
+    public static Imported importState(RollbackBootstrapData data, DynamicRegistryManager.Immutable registries,
+            FeatureSet features, RollbackBlockStore.Rules blocks, RollbackWorld.Actions actions,
+            FabricRollbackWorldServices.Events<?> events, Scoreboard scoreboard,
+            int maximumMutations, int maximumEntities, int maximumPlayerObjects) {
+        var items = new RollbackNativeItems<>(new FabricRollbackItems(registries));
+        var bindings = new Bindings(blocks, items, actions, registries, events, scoreboard);
+        var scene = new FabricRollbackNativeScene(data.world(), data.roster(), data.sides().keySet(), registries,
+                features, bindings, data.epochNanos(), maximumMutations, maximumEntities, maximumPlayerObjects);
+        return new Imported(scene, items);
+    }
+
     private final Thread thread = Thread.currentThread();
     private final RollbackWorld logical;
     private final FabricRollbackLighting lighting;
@@ -44,15 +75,26 @@ public final class FabricRollbackNativeScene implements RollbackStateCell<Void>,
         var geometry = new FabricRollbackGeometry(seed.minimumY(), seed.maximumY(), bindings.blockEntities());
         logical = new RollbackWorld(seed.identity(), seed.conditions(), seed.terrain(), lighting.rules(bindings.blocks(), this),
                 maximumMutations, maximumEntities, bindings.items(), new RollbackWorldQueries(geometry), bindings.actions());
+        if (bindings.blockEntities() instanceof FabricRollbackBlockEntities tiles) tiles.bind(logical.terrain());
         spatial = new FabricRollbackSpatial(logical, registries, seed.environment(), seed.border(), lighting, bindings.scoreboard());
         services = new FabricRollbackWorldServices(seed.settings(), logical, registries, features, spatial, bindings.events());
         queries = new FabricRollbackWorldQueries(logical, services, bindings.blockEntities());
         roster = FabricRollbackRoster.instantiate(players, participants, queries, epochNanos, maximumPlayerObjects);
         queries.bindRoster(roster);
+        if (bindings.events() instanceof FabricRollbackArenaEvents events) events.bind(this);
     }
     public RollbackWorld logical() { check(); return logical; }
     public FabricRollbackRoster roster() { check(); return roster; }
     public FabricRollbackWorldServices services() { check(); return services; }
+    public void restoreStreams(com.projectkorra.projectkorra.prediction.rollback.RollbackRandomStreams streams) {
+        check();
+        if (!roster.players().keySet().equals(streams.players().keySet()))
+            throw new IllegalArgumentException("Repair random streams differ from private roster");
+        var bodies = new TreeMap<UUID, FabricRollbackPaperRandom>();
+        roster.players().forEach((id, state) -> bodies.put(id, (FabricRollbackPaperRandom) state.ownedPlayer().getRandom()));
+        services.restoreStreams(streams.world(), streams.sound());
+        bodies.forEach((id, random) -> random.restoreStream(streams.players().get(id)));
+    }
     public FabricRollbackLighting lighting() { check(); return lighting; }
     /** Darkness is resolved after construction from the same rewindable world clock and weather. */
     @Override public int getAsInt() { check(); return spatial.environmentAttributes().skyDarkness(); }

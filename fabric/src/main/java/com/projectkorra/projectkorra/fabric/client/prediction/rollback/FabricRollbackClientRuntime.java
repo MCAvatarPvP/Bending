@@ -15,6 +15,7 @@ public final class FabricRollbackClientRuntime<S, E> implements FabricRollbackSt
     private final ClientPlayerEntity player;
     private final RollbackClientRuntime<S, E> runtime;
     private final FabricRollbackInput input;
+    private final RollbackClientRuntime.Repair<S, E> repair;
     private final FabricRollbackClientControls controls;
     private final IntSupplier sprintWindow;
     private final BooleanSupplier autoJump;
@@ -29,13 +30,20 @@ public final class FabricRollbackClientRuntime<S, E> implements FabricRollbackSt
             RollbackReplicaTimeline<S, RollbackPlayerInput, E> timeline, Consumer<RollbackInputPacket> send,
             RollbackClientRuntime.Output<S, E> output, FabricRollbackNativePlayerState predicted,
             IntSupplier sprintWindow, BooleanSupplier autoJump) {
+        this(session, seed, player, timeline, send, output, predicted, sprintWindow, autoJump, null);
+    }
+    public FabricRollbackClientRuntime(UUID session, long seed, ClientPlayerEntity player,
+            RollbackReplicaTimeline<S, RollbackPlayerInput, E> timeline, Consumer<RollbackInputPacket> send,
+            RollbackClientRuntime.Output<S, E> output, FabricRollbackNativePlayerState predicted,
+            IntSupplier sprintWindow, BooleanSupplier autoJump, RollbackClientRuntime.Repair<S, E> repair) {
+        this.repair = repair;
         this.player = Objects.requireNonNull(player);
         if (predicted != null && (!predicted.identity().uuid().equals(player.getUuid())
                 || predicted.ownedPlayer().getEntityWorld() == player.getEntityWorld())) throw new IllegalArgumentException("Foreign or live private input player");
         controls = predicted == null ? null : new FabricRollbackClientControls(predicted);
         this.sprintWindow = controls == null ? null : Objects.requireNonNull(sprintWindow);
         this.autoJump = controls == null ? null : Objects.requireNonNull(autoJump);
-        runtime = new RollbackClientRuntime<>(session, player.getUuid(), seed, timeline, this::sample, send, output);
+        runtime = new RollbackClientRuntime<>(session, player.getUuid(), seed, timeline, this::sample, send, output, repair);
         var initial = predicted == null ? player : predicted.ownedPlayer();
         input = new FabricRollbackInput(runtime, initial.isSneaking(), initial.getInventory().getSelectedSlot());
     }
@@ -48,6 +56,8 @@ public final class FabricRollbackClientRuntime<S, E> implements FabricRollbackSt
         }
         return held;
     }
+    @Override public RollbackClientRuntime.Repair<S, E> stateRepair() { return repair; }
+    @Override public void correction(RollbackStateCorrection correction) { simulate(() -> runtime.correction(correction)); }
     @Override public boolean ownsNativeTick() { return controls != null; }
     @Override public void nativeTick(long tick) {
         if (controls == null) throw new IllegalStateException("Native ticking has no private control source");

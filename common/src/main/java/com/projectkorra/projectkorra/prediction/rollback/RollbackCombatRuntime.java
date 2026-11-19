@@ -54,7 +54,7 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
     }
 
     private final RollbackRound round;
-    private boolean delivering, deliveryFailed;
+    private boolean delivering, deliveryFailed, handingOff;
     private final RollbackDomain domain;
     private final RollbackEngine<RollbackDomain.Checkpoint, I, E> engine;
 
@@ -279,7 +279,16 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
      * head state and outside registries are restored even if encoding fails.
      */
     public Export exportConfirmedState(java.util.function.Supplier<byte[]> encoder) {
-        requireUsable(); Objects.requireNonNull(encoder, "encoder");
+        Objects.requireNonNull(encoder, "encoder");
+        return readConfirmedState(() -> {
+            var frontier = engine.diagnostics();
+            return new Export(frontier.confirmedTick(), frontier.confirmedTick(), frontier.revision(), encoder.get());
+        });
+    }
+
+    /** Read detached restoration data at the confirmed frontier while the private domain is installed. */
+    public <T> T readConfirmedState(java.util.function.Supplier<T> reader) {
+        requireUsable(); Objects.requireNonNull(reader, "reader");
         if (engine.replica()) throw new IllegalStateException("Only authority exports confirmed repair state");
         if (RollbackDomain.active() || RollbackClock.active()) throw new IllegalStateException("Export requires a live tick boundary");
         var frontier = engine.diagnostics();
@@ -290,7 +299,7 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
             Throwable failure = null;
             try {
                 domain.restore(confirmed.state());
-                return new Export(confirmed.tick(), confirmed.tick(), frontier.revision(), encoder.get());
+                return Objects.requireNonNull(reader.get(), "Confirmed state");
             } catch (RuntimeException | Error problem) { failure = problem; throw problem; }
             finally {
                 try { domain.restore(current); }
@@ -299,6 +308,20 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
                 }
             }
         });
+    }
+
+    /**
+     * End simulation and read the last confirmed frame for whole-duel live restoration.
+     * A failed provisional step or pending input can never invalidate this frame. A retry
+     * re-enters the same checkpoint, with outside registries restored after every attempt.
+     */
+    public <T> T readForHandoff(java.util.function.Supplier<T> reader) {
+        Objects.requireNonNull(reader);
+        var confirmed = engine.confirmed();
+        if (engine.replica() || delivering || RollbackDomain.active() || RollbackClock.active())
+            throw new IllegalStateException("Handoff requires the stopped authority on its live tick thread");
+        handingOff = true;
+        return domain.readForHandoff(confirmed.state(), reader);
     }
 
     public RollbackEngine.Diagnostics diagnostics() { return engine.diagnostics(); }
@@ -319,7 +342,7 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
     }
 
     private void requireUsable() {
-        if (delivering || failed()) throw new IllegalStateException("Combat runtime is delivering results or has failed");
+        if (delivering || handingOff || failed()) throw new IllegalStateException("Combat runtime is stopping, delivering results or failed");
     }
 
     private static final class RuntimeState<I, E> implements RollbackStateCell<Void> {

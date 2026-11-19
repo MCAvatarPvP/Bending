@@ -49,6 +49,54 @@ class PaperRollbackExecutionNativeTest {
         return new RollbackPlayerInput.Edge(new RollbackInputActions.Action(sequence, 23, RollbackInputActions.Kind.RIGHT_CLICK, -1), yaw, 0);
     }
 
+    private static final class CancelNativeDamage {
+        int calls;
+        @com.projectkorra.projectkorra.platform.mc.event.EventHandler
+        public void hit(com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent event) {
+            calls++;
+            event.setCancelled(true);
+        }
+    }
+
+    @Test void realPaperHitRunsPrivateBendingListenersBeforeTheNeptuneDefeat() throws Exception {
+        onTickThread(() -> {
+            withConfig(() -> {
+                var scene = new Fixture();
+                var round = new RollbackRound(new UUID(91, 92), Map.of(A, A, B, B));
+                scene.world.bindRound(round);
+                var bus = new RollbackEventBus(32, 8);
+                var shield = new CancelNativeDamage();
+                var runtimePlatform = platform(new RollbackScheduler(10, 10), bus);
+                var domain = RollbackDomain.create(graph(), List.of(), List.of(scene.world, bus), runtimePlatform,
+                        () -> bus.registerListener(shield));
+                var target = (PaperRollbackNativePlayerState) scene.defender.body().kinematicsSource();
+                domain.call(() -> {
+                    var baseline = domain.capture();
+                    round.beginTick(1);
+                    try (var clock = RollbackClock.at(0, 1, 50_000_000);
+                            var scope = new RollbackControlEvents(Map.of(A, scene.attacker, B, scene.defender))) {
+                        assertFalse(target.damage(scene.world.world().damageSources().generic(), 40));
+                        assertEquals(1, shield.calls);
+                        assertEquals(20, scene.defender.getHealth());
+                        assertTrue(round.provisionalDefeats().isEmpty());
+                    }
+                    domain.restore(baseline);
+                    assertEquals(0, shield.calls);
+                    bus.unregisterAll(shield);
+                    round.beginTick(1);
+                    try (var clock = RollbackClock.at(0, 1, 50_000_000);
+                            var scope = new RollbackControlEvents(Map.of(A, scene.attacker, B, scene.defender))) {
+                        target.damage(scene.world.world().damageSources().generic(), 40);
+                        assertEquals(B, round.provisionalDefeats().getFirst().player());
+                        assertNull(Bukkit.getServer());
+                    }
+                    return null;
+                });
+            });
+            return null;
+        });
+    }
+
     @Test void lateItemReleaseRunsThroughExecutionAndMatchesOnTimeReplay() throws Exception {
         onTickThread(() -> {
         withConfig(() -> {
@@ -456,6 +504,10 @@ class PaperRollbackExecutionNativeTest {
     private static RollbackStateGraph graph() { return new RollbackStateGraph(value -> value instanceof World || value instanceof Config, field -> true, 300_000); }
     private ProjectKorraPlatform platform(RollbackScheduler scheduler) {
         PKEventBus events = (PKEventBus) Proxy.newProxyInstance(PKEventBus.class.getClassLoader(), new Class<?>[]{PKEventBus.class}, (proxy, method, args) -> null);
+        return platform(scheduler, events);
+    }
+
+    private ProjectKorraPlatform platform(RollbackScheduler scheduler, PKEventBus events) {
         PKServer server = (PKServer) Proxy.newProxyInstance(PKServer.class.getClassLoader(), new Class<?>[]{PKServer.class}, (proxy, method, args) -> {
             if (method.getName().equals("minecraftVersion")) return "1.21.11"; throw new AssertionError(method);
         });

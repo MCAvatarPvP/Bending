@@ -243,8 +243,35 @@ public final class PaperRollbackWorldAccess implements RollbackStateCell<Void> {
     void event(org.bukkit.event.Event event) {
         checkThread();
         if (combatState == null) throw new IllegalStateException("Native event services were not supplied");
+        if (roundEvents == null || !(event instanceof org.bukkit.event.entity.EntityDamageEvent damage)) {
+            combatState.event(event);
+            return;
+        }
+        var victim = logicalPlayer(damage.getEntity());
+        var source = damage instanceof org.bukkit.event.entity.EntityDamageByEntityEvent hit ? hit.getDamager() : null;
+        var direct = source == null || victim == null ? null : logicalPlayer(source);
+        var block = damage instanceof org.bukkit.event.entity.EntityDamageByBlockEvent hit ? hit.getDamager() : null;
+        if (victim != null && block != null
+                && (!(block instanceof org.bukkit.craftbukkit.block.CraftBlock craft) || craft.getHandle() != world)) {
+            throw new IllegalArgumentException("Damage block is outside the private world");
+        }
         combatState.event(event);
-        if (roundEvents != null && event instanceof org.bukkit.event.entity.EntityDamageEvent damage) roundEvents.accept(damage);
+        if (victim != null) {
+            var logicalBlock = block == null ? null : victim.getWorld().getBlockAt(block.getX(), block.getY(), block.getZ());
+            var view = com.projectkorra.projectkorra.platform.bukkit.BukkitMC.damageEvent(damage, victim);
+            RollbackDamageEvents.dispatch(view, direct, logicalBlock);
+        }
+        roundEvents.accept(damage);
+    }
+
+    @SuppressWarnings("WrapperReferenceEquality")
+    private com.projectkorra.projectkorra.prediction.rollback.world.RollbackPlayer logicalPlayer(org.bukkit.entity.Entity nativeEntity) {
+        var player = RollbackControlEvents.player(nativeEntity.getUniqueId());
+        if (player != null && (!(player.body().kinematicsSource() instanceof PaperRollbackNativePlayerState state)
+                || state.ownedPlayer().getBukkitEntityRaw() != nativeEntity || !ownsWrapper(nativeEntity))) {
+            throw new IllegalArgumentException("Damage entity differs from the active private combatant");
+        }
+        return player;
     }
     /** Install after complete native roster import and before the first checkpoint. */
     public void bindRound(RollbackRound round) {

@@ -21,7 +21,12 @@ public final class PaperRollbackExecution<E> extends RollbackPlayerExecution<E> 
             throw new IllegalArgumentException("Execution clock belongs to another private world");
     }
     public PaperRollbackExecution(Collection<RollbackPlayer> participants, Services<E, ?> services) {
-        super(participants, services);
+        this(participants, services, new RollbackStepOutput<>());
+    }
+
+    public PaperRollbackExecution(Collection<RollbackPlayer> participants, Services<E, ?> services,
+            RollbackStepOutput<E> output) {
+        super(participants, services, output);
         Object nativeWorld = null;
         for (var player : participants) {
             if (!(player.body().kinematicsSource() instanceof PaperRollbackNativePlayerState state)

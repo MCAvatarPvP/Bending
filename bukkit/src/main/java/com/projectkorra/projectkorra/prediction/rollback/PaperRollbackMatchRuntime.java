@@ -12,14 +12,21 @@ public final class PaperRollbackMatchRuntime<E> implements RollbackStartServerEn
     public PaperRollbackMatchRuntime(PaperRollbackMatchBootstrap.Request request, long seed,
             RollbackCombatRuntime<RollbackPlayerInput, E> combat, PaperPredictionServer server,
             RollbackServerRuntime.Output<RollbackDomain.Checkpoint, E> output) {
+        this(request, seed, combat, server, output, null);
+    }
+
+    public PaperRollbackMatchRuntime(PaperRollbackMatchBootstrap.Request request, long seed,
+            RollbackCombatRuntime<RollbackPlayerInput, E> combat, PaperPredictionServer server,
+            RollbackServerRuntime.Output<RollbackDomain.Checkpoint, E> output, PaperRollbackCorrections.Settings repair) {
         Objects.requireNonNull(request); Objects.requireNonNull(combat); Objects.requireNonNull(server);
         if (!request.sides().keySet().equals(new java.util.HashSet<>(combat.participants())))
             throw new IllegalArgumentException("Native match roster differs from Neptune request");
+        var corrections = repair == null ? null : new PaperRollbackCorrections(request.session(), repair, combat::exportConfirmedState);
         runtime = new RollbackServerRuntime<>(request.session(), seed, combat, new RollbackServerRuntime.Transport() {
             @Override public RollbackIngress.Registration enroll(RollbackSession<?, ?> session, Consumer<RollbackIngress.Registration> stopped) {
                 return server.enrollRollback(session, stopped);
             }
-            @Override public void publish(RollbackSession<?, ?> session) { server.publishRollback(session); }
+            @Override public void publish(RollbackSession<?, ?> session) { server.publishRollback(session, corrections); }
         }, output, () -> combat.deliverConfirmedDefeats(request.confirmedDefeats()));
     }
     @Override public void start(RollbackStartNegotiation negotiation, long tick) { runtime.start(negotiation, tick); }

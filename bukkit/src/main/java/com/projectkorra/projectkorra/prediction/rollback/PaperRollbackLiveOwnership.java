@@ -109,6 +109,21 @@ public final class PaperRollbackLiveOwnership {
         if (!running) throw new IllegalStateException("Private simulation has not started");
         restore(outgoing, restoreState);
     }
+
+    /** Commit staged terrain, player components and remaining gameplay state before resuming live ticks. */
+    public void restoreAndRelease(RollbackTaskBindings outgoing, PaperRollbackTerrainWriteback terrain,
+            PaperRollbackRosterComponents.Prepared players, Runnable restoreGameplay) {
+        Objects.requireNonNull(terrain);
+        Objects.requireNonNull(players);
+        Objects.requireNonNull(restoreGameplay);
+        restoreAndRelease(outgoing, () -> {
+            terrain.validate();
+            players.validate();
+            terrain.run();
+            players.commitLive();
+            restoreGameplay.run();
+        });
+    }
     private void restore(RollbackTaskBindings outgoing, Runnable restoreState) {
         if (restoring || acquiring || capturing) throw new IllegalStateException("Recursive live roster cleanup");
         if (released) return;

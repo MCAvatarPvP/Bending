@@ -704,6 +704,7 @@ public final class PredictionPayloads {
         RollbackStartPayloads.registerTypes();
         RollbackBootstrapPayloads.registerTypes();
         PayloadTypeRegistry.playS2C().register(RollbackAuthorityPayload.ID, RollbackAuthorityPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(RollbackStateCorrectionPayload.ID, RollbackStateCorrectionPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(ClientDisabled.ID, ClientDisabled.CODEC);
         PayloadTypeRegistry.playC2S().register(ClientReady.ID, ClientReady.CODEC);
         PayloadTypeRegistry.playC2S().register(InputVeto.ID, InputVeto.CODEC);

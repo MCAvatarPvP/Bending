@@ -36,8 +36,23 @@ class PaperRollbackNativeSceneNativeTest {
             var glow = new BlockData(Material.GLOWSTONE); glow.setExactState("minecraft:glowstone");
             var block = scene.logical().getBlockAt(0, 4, 0); block.setBlockData(glow, false);
             assertEquals(15, scene.lighting().block(new RollbackBlockStore.Position(0, 4, 0)));
+            var chestPos = new net.minecraft.core.BlockPos(1, 4, 0);
+            var chestData = new BlockData(Material.CHEST);
+            chestData.setExactState("minecraft:chest");
+            scene.logical().getBlockAt(1, 4, 0).setBlockData(chestData, false);
+            var tile = scene.world().world().getBlockEntity(chestPos);
+            assertInstanceOf(net.minecraft.world.level.block.entity.ChestBlockEntity.class, tile);
             assertEquals(21, scene.world().world().getGameTime());
+            var original = new TreeMap<UUID, RollbackRosterData.Player>();
+            for (var body : source) original.put(body.getUUID(), PaperRollbackPlayerSeed.capture(body, 0).portable(71));
+            var initial = new RollbackRosterData(captured.worldTime(), original);
+            var outgoing = scene.captureRoster(initial, 50_000_000L);
+            assertEquals(21, outgoing.worldTime());
+            var privatePose = outgoing.players().get(player.getUUID()).values().fields().get("entity.position");
+            assertNotEquals(initial.players().get(player.getUUID()).values().fields().get("entity.position"), privatePose);
+            assertEquals(new net.minecraft.world.phys.Vec3(2, 10, 2), PaperRollbackNativeValues.decode(net.minecraft.world.phys.Vec3.class, privatePose));
             checkpoint.restore();
+            assertNull(scene.world().world().getBlockEntity(chestPos));
             assertEquals(before, player.position()); assertEquals(20, scene.world().world().getGameTime());
             assertEquals(6000, scene.logical().getFullTime()); assertEquals(Material.AIR, block.getType());
             assertEquals(0, scene.lighting().block(new RollbackBlockStore.Position(0, 4, 0)));
@@ -78,7 +93,7 @@ class PaperRollbackNativeSceneNativeTest {
                 PaperRollbackEnvironmentNativeTest.seed(), terrain.finish(), RollbackLightSeed.capture(bounds, count, p -> 15, p -> 0));
     }
     private static PaperRollbackNativeScene scene(RollbackWorldSeed seed, PaperRollbackRosterSeed players, Set<UUID> participants) {
-        var tiles = new Tiles(); var geometry = new PaperRollbackGeometry(seed.minimumY(), seed.maximumY(), tiles);
+        var tiles = new PaperRollbackBlockEntities(PaperRollbackEnvironmentNativeTest.registries()); var geometry = new PaperRollbackGeometry(seed.minimumY(), seed.maximumY(), tiles);
         var blocks = (RollbackBlockStore.Rules) Proxy.newProxyInstance(PaperRollbackNativeSceneNativeTest.class.getClassLoader(), new Class<?>[]{RollbackBlockStore.Rules.class}, (proxy, method, args) -> {
             if (method.getName().equals("geometry")) return geometry.geometry((RollbackBlockStore) args[0], (RollbackBlockStore.Position) args[1], (BlockData) args[2]);
             if (method.isDefault()) return java.lang.reflect.InvocationHandler.invokeDefault(proxy, method, args);
@@ -93,13 +108,6 @@ class PaperRollbackNativeSceneNativeTest {
     }
     private static <T> T unused(Class<T> type) {
         return type.cast(Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type}, (proxy, method, args) -> { throw new AssertionError("Unexpected " + method); }));
-    }
-    private static final class Tiles implements PaperRollbackWorldQueries.BlockEntities<Void> {
-        @Override public Object get(RollbackBlockStore terrain, RollbackBlockStore.Position pos, Object state) {
-            if (((net.minecraft.world.level.block.state.BlockState) state).hasBlockEntity()) throw new AssertionError("Fixture has no block entities"); return null;
-        }
-        @Override public Void captureRollbackState() { return null; }
-        @Override public void restoreRollbackState(Void ignored) { }
     }
     private static final class Events implements PaperRollbackWorldServices.Events<Void> {
         @Override public void event(org.bukkit.event.Event event) { throw new AssertionError("No gameplay event expected"); }

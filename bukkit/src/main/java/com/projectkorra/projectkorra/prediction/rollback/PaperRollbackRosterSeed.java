@@ -15,6 +15,19 @@ public final class PaperRollbackRosterSeed {
         }
     }
 
+    /** Capture real statistic counters and advancement progress before detaching the players. */
+    public static Map<UUID, Services> captureServices(Collection<ServerPlayer> roster, long seed, int maximumObjects) {
+        requireSetup();
+        var services = new TreeMap<UUID, Services>();
+        for (var player : roster) {
+            UUID id = player.getUUID();
+            var service = new Services(seed ^ id.getMostSignificantBits() ^ Long.rotateLeft(id.getLeastSignificantBits(), 17),
+                    maximumObjects, PaperRollbackStatistics.Seed.capture(player), PaperRollbackAdvancements.Seed.capture(player));
+            if (services.putIfAbsent(id, service) != null) throw new IllegalArgumentException("Duplicate player in captured services");
+        }
+        return Collections.unmodifiableMap(services);
+    }
+
     private final Map<UUID, PaperRollbackPlayerSeed> players;
     private final long worldTime;
 

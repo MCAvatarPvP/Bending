@@ -130,6 +130,10 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
         public double temperature() { return temperature; }
         public double humidity() { return humidity; }
 
+        private Cell withBlockEntity(byte[] bytes) {
+            return new Cell(data, bytes, biome, biomeKey, noiseBiomeKey, light, temperature, humidity);
+        }
+
         private Cell withData(BlockData replacement, boolean hasBlockEntity) {
             byte[] tile = hasBlockEntity ? (data.getMaterial() == replacement.getMaterial()
                     && blockEntity != null ? blockEntity : new byte[0]) : null;
@@ -144,7 +148,9 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
         private final RollbackBlockStore owner;
         private final Map<Position, Cell> overlay;
         private final List<Position> dirty;
-        private State(RollbackBlockStore owner, Map<Position, Cell> overlay, Collection<Position> dirty) {
+        private final Runnable restoreBlockEntities;
+        private State(RollbackBlockStore owner, Map<Position, Cell> overlay, Collection<Position> dirty, Runnable restoreBlockEntities) {
+            this.restoreBlockEntities = restoreBlockEntities;
             this.owner = owner;
             this.overlay = Map.copyOf(overlay);
             this.dirty = List.copyOf(dirty);
@@ -167,7 +173,9 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
     }
     public static Seed sparseSeed(Bounds bounds, Map<Position, Cell> cells, Cell empty) { return new SparseSeed(bounds, cells, empty); }
     private final Seed seed;
+    private List<Position> seedBlockEntities;
     private final Rules rules;
+    private RollbackBlockEntities<?, ?> blockEntities;
     private final int maximumMutations;
     // Views contain only a fixed coordinate and this store. They are stable across restores;
     // their cache is bounded by the captured volume and has no gameplay state to rewind.
@@ -192,13 +200,71 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
         this.maximumMutations = maximumMutations;
     }
 
+    /** Current private tile positions, including additions and removals since the seed and their rewinds. */
+    public List<Position> blockEntityPositions() {
+        checkThread();
+        if (seedBlockEntities == null) {
+            var positions = new ArrayList<Position>();
+            if (seed instanceof SparseSeed sparse && !sparse.empty().hasBlockEntity()) {
+                sparse.cells().forEach((pos, cell) -> { if (cell.hasBlockEntity()) positions.add(pos); });
+            } else if (seed instanceof RollbackTerrainSeed region) {
+                var tiles = new boolean[region.paletteSize()];
+                for (int i = 0; i < tiles.length; i++) tiles[i] = region.palette().get(i).hasBlockEntity();
+                int width = bounds.maxX() - bounds.minX(), depth = bounds.maxZ() - bounds.minZ();
+                for (int i = 0; i < region.cellCount(); i++) if (tiles[region.paletteIndex(i)]) {
+                    positions.add(new Position(bounds.minX() + i % width, bounds.minY() + i / width / depth,
+                            bounds.minZ() + i / width % depth));
+                }
+            } else {
+                for (int y = bounds.minY(); y < bounds.maxY(); y++)
+                    for (int z = bounds.minZ(); z < bounds.maxZ(); z++)
+                        for (int x = bounds.minX(); x < bounds.maxX(); x++) {
+                            var pos = new Position(x, y, z);
+                            if (seed.cell(pos).hasBlockEntity()) positions.add(pos);
+                        }
+            }
+            positions.sort(TILE_ORDER);
+            seedBlockEntities = List.copyOf(positions);
+        }
+        if (overlay.isEmpty()) return seedBlockEntities;
+        var current = new java.util.TreeSet<>(TILE_ORDER);
+        current.addAll(seedBlockEntities);
+        overlay.forEach((pos, cell) -> { if (cell.hasBlockEntity()) current.add(pos); else current.remove(pos); });
+        return List.copyOf(current);
+    }
+
+    // Native dispatch visits chunk X, chunk Z, then section Y. Fix the order within a section on both loaders.
+    private static final java.util.Comparator<Position> TILE_ORDER = java.util.Comparator
+            .comparingInt((Position p) -> p.x() >> 4).thenComparingInt(p -> p.z() >> 4)
+            .thenComparingInt(p -> p.y() >> 4).thenComparingInt(Position::y)
+            .thenComparingInt(Position::z).thenComparingInt(Position::x);
     public Bounds bounds() { return bounds; }
     public World world() { checkThread(); return world; }
     public Cell cell(Position position) {
         checkThread();
         requireInside(position);
+        if (blockEntities != null) blockEntities.flush(position);
+        return storedCell(position);
+    }
+    Cell storedCell(Position position) {
+        checkThread();
+        requireInside(position);
         Cell changed = overlay.get(position);
         return changed == null ? seed.cell(position) : changed;
+    }
+    void bindBlockEntities(RollbackBlockEntities<?, ?> owner) {
+        checkThread();
+        if (blockEntities != null && blockEntities != owner) throw new IllegalStateException("Terrain already owns native block entities");
+        blockEntities = owner;
+    }
+    void recordBlockEntity(Position position, byte[] bytes) {
+        Cell previous = storedCell(position);
+        if (!previous.hasBlockEntity()) throw new IllegalStateException("Native block entity has lost its terrain cell");
+        overlay.put(position, previous.withBlockEntity(bytes));
+        dirty.add(position);
+    }
+    private void flushBlockEntities() {
+        if (blockEntities != null) blockEntities.flushAll();
     }
     public Block block(int x, int y, int z) {
         checkThread();
@@ -212,6 +278,9 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
 
     /** Used for both simulation mutation and authenticated recorded external-world changes. */
     public void replace(Position position, Cell value, boolean physics) {
+        replace(position, value, physics, false);
+    }
+    private void replace(Position position, Cell value, boolean physics, boolean preserveTile) {
         checkThread();
         requireInside(position);
         Objects.requireNonNull(value, "value");
@@ -219,6 +288,7 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
         if (++mutations > maximumMutations) throw new IllegalStateException("Block physics mutation budget exceeded");
         mutationDepth++;
         try {
+            if (blockEntities != null) blockEntities.replacing(position, value, preserveTile);
             overlay.put(position, value);
             dirty.add(position);
             rules.changed(this, position);
@@ -229,21 +299,36 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
     public List<Change> drainChanges() {
         checkThread();
         if (mutationDepth != 0) throw new IllegalStateException("Block update is still running");
+        flushBlockEntities();
         List<Change> result = new ArrayList<>(dirty.size());
         for (Position position : dirty) result.add(new Change(position, cell(position)));
         dirty.clear();
         return List.copyOf(result);
     }
 
+    /** All final writes relative to the original capture, including writes already drained for presentation. */
+    public List<Change> changesSince(Seed original) {
+        checkThread();
+        if (seed != original) throw new IllegalArgumentException("Terrain belongs to another capture");
+        if (mutationDepth != 0) throw new IllegalStateException("Block update is still running");
+        flushBlockEntities();
+        var order = java.util.Comparator.comparingInt(Position::y).thenComparingInt(Position::z).thenComparingInt(Position::x);
+        return overlay.entrySet().stream().sorted(Map.Entry.comparingByKey(order))
+                .map(entry -> new Change(entry.getKey(), entry.getValue())).toList();
+    }
+
     @Override public State captureRollbackState() {
         checkThread();
         if (mutationDepth != 0) throw new IllegalStateException("Cannot checkpoint block physics mid-update");
-        return new State(this, overlay, dirty);
+        flushBlockEntities();
+        return new State(this, overlay, dirty, blockEntities == null ? null : blockEntities.checkpoint());
     }
     @Override public void restoreRollbackState(State state) {
         checkThread();
         if (mutationDepth != 0) throw new IllegalStateException("Cannot restore block physics mid-update");
         if (state.owner != this) throw new IllegalArgumentException("Terrain snapshot belongs to another world");
+        if (blockEntities != null) blockEntities.clear();
+        if (state.restoreBlockEntities != null) state.restoreBlockEntities.run();
         overlay.clear();
         overlay.putAll(state.overlay);
         dirty.clear();
@@ -299,7 +384,9 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
             checkThread();
             BlockData copy = copyData(data);
             boolean tile = rules.geometry(RollbackBlockStore.this, position, copy).blockEntity;
-            replace(position, cell(position).withData(copy, tile), physics);
+            var current = cell(position);
+            replace(position, current.withData(copy, tile), physics,
+                    tile && current.hasBlockEntity() && current.data.getMaterial() == copy.getMaterial());
         }
         @Override public boolean restoreBlockSnapshot(BlockData data, byte[] blockEntity, boolean force, boolean physics) {
             checkThread();

@@ -50,6 +50,8 @@ final class PaperRollbackPrivateAccess {
     private static final MethodHandle SOURCE = setter(CraftDamageSource.class, "damageSource");
     private static final MethodHandle TYPE = setter(CraftDamageSource.class, "damageType");
     private static final MethodHandle ENCHANTMENT_ORDER = getter(ItemEnchantments.class, "ENCHANTMENT_ORDER");
+    private static final MethodHandle READ_STATS = getter(StatsCounter.class, "stats");
+    private static final MethodHandle READ_ADVANCEMENT_PROGRESS = getter(PlayerAdvancements.class, "progress");
     private static final MethodHandle STATS = setter(StatsCounter.class, "stats");
     private static final MethodHandle DIRTY_STATS = setter(ServerStatsCounter.class, "dirty");
     private static final MethodHandle ADVANCEMENT_PLAYER_LIST = setter(PlayerAdvancements.class, "playerList");
@@ -110,6 +112,16 @@ final class PaperRollbackPrivateAccess {
     }
     static Object enchantmentOrder() {
         try { return (java.util.Comparator<?>) ENCHANTMENT_ORDER.invokeExact(); }
+        catch (Throwable failure) { throw failed(failure); }
+    }
+    @SuppressWarnings("unchecked")
+    static Map<Stat<?>, Integer> statistics(StatsCounter counter) {
+        try { return Map.copyOf((Object2IntMap<Stat<?>>) READ_STATS.invokeExact(counter)); }
+        catch (Throwable failure) { throw failed(failure); }
+    }
+    @SuppressWarnings("unchecked")
+    static Map<AdvancementHolder, AdvancementProgress> advancementProgress(PlayerAdvancements tracker) {
+        try { return (Map<AdvancementHolder, AdvancementProgress>) READ_ADVANCEMENT_PROGRESS.invokeExact(tracker); }
         catch (Throwable failure) { throw failed(failure); }
     }
     static void initializeStatistics(ServerStatsCounter counter, Object2IntMap<Stat<?>> values, Set<Stat<?>> dirty) {

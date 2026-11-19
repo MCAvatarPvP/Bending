@@ -42,10 +42,16 @@ public abstract class RollbackPlayerExecution<E> implements RollbackCombatRuntim
     private long tick = -1;
     private boolean worldTicked;
     private RollbackControlEvents controlEvents;
-    private final RollbackStepOutput<E> output = new RollbackStepOutput<>();
+    private final RollbackStepOutput<E> output;
     private RollbackStepOutput<E>.Binding outputBinding;
 
     protected RollbackPlayerExecution(Collection<RollbackPlayer> participants, Services<E, ?> services) {
+        this(participants, services, new RollbackStepOutput<>());
+    }
+
+    protected RollbackPlayerExecution(Collection<RollbackPlayer> participants, Services<E, ?> services,
+            RollbackStepOutput<E> output) {
+        this.output = Objects.requireNonNull(output, "match output");
         if (RollbackClock.active()) throw new IllegalStateException("Construct player execution before replay");
         this.services = Objects.requireNonNull(services, "session services");
         if (participants.isEmpty() || participants.size() > 128) throw new IllegalArgumentException("Participant count");

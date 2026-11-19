@@ -88,7 +88,7 @@ public final class FabricRollbackPlayerCombatData {
                     capture.entity(living.rollback$lastHurtMob()), explosion, kinetic != null, hits, t, capture.sources, lastDamage, entries);
         });
     }
-    /** Retained Paper event metadata; the future event-policy adapter must consume these values. */
+    /** Retained Paper event metadata for native damage dispatch. */
     public static String knownCause(DamageSource source) { return source instanceof ImportedSource imported ? imported.knownCause : null; }
     public static boolean critical(DamageSource source) { return source instanceof ImportedSource imported && imported.critical; }
     public static Entity eventDamager(DamageSource source) { return source instanceof ImportedSource imported ? imported.eventDamager : null; }

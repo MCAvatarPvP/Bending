@@ -21,6 +21,19 @@ class FabricRollbackRoundDamageTest {
     private static final UUID A = new UUID(0, 1), B = new UUID(0, 2), ID = new UUID(0, 9);
     @BeforeAll static void bootstrap() { FabricRollbackTestRegistry.bootstrap(); }
 
+    @Test void nativeDamageCausesMatchTheCommonPaperViews() {
+        var fixture = new Fixture();
+        var sources = fixture.world.world().getDamageSources();
+        assertSame(com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause.ENTITY_ATTACK,
+                FabricRollbackDamageEvent.cause(sources.playerAttack(fixture.attacker), fixture.attacker));
+        assertSame(com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause.FIRE_TICK,
+                FabricRollbackDamageEvent.cause(sources.onFire(), null));
+        assertSame(com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause.LAVA,
+                FabricRollbackDamageEvent.cause(sources.lava(), null));
+        assertSame(com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause.CUSTOM,
+                FabricRollbackDamageEvent.cause(sources.thorns(fixture.attacker), fixture.attacker));
+    }
+
     @Test void lethalRoundCancellationPrecedesDurabilityAbsorptionImmunityAndKnockback() {
         var f = new Fixture();
         var chest = new ItemStack(Items.DIAMOND_CHESTPLATE); f.target.equipStack(EquipmentSlot.CHEST, chest);

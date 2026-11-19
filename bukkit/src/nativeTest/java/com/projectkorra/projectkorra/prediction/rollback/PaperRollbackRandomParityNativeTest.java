@@ -6,6 +6,18 @@ import java.nio.charset.StandardCharsets;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PaperRollbackRandomParityNativeTest {
+    @Test void repairReadsTheNativeStreamWithoutConsumingItsCachedGaussian() {
+        var random = RandomSource.create(731);
+        random.nextInt();
+        random.nextGaussian();
+        var checkpoint = PaperRollbackRandomStreams.capture(random);
+        assertTrue(checkpoint.hasGaussian());
+        assertEquals(checkpoint.gaussian(), random.nextGaussian());
+        assertFalse(PaperRollbackRandomStreams.capture(random).hasGaussian());
+        var expected = RandomSource.create(checkpoint.bits() ^ 0x5deece66dL);
+        assertEquals(expected.nextLong(), random.nextLong());
+    }
+
     @Test void nativeRandomMethodsAndForksSupplyTheClientReference() throws Exception {
         var actual = new StringBuilder();
         for (long seed : new long[]{0, 57, 7001, Long.MIN_VALUE, Long.MAX_VALUE}) {

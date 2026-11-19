@@ -43,7 +43,7 @@ public final class PaperRollbackBlockSnapshots {
         // Use the existing common update boundary for temporary terrain and output synchronization.
         return BukkitMC.blockState(snapshot).update(force, physics);
     }
-    private static byte[] encode(CompoundTag tag) {
+    static byte[] encode(CompoundTag tag) {
         var bytes = new ByteArrayOutputStream();
         var bounded = new OutputStream() {
             @Override public void write(int value) {
@@ -61,7 +61,7 @@ public final class PaperRollbackBlockSnapshots {
         catch (IOException failure) { throw new UncheckedIOException(failure); }
         return bytes.toByteArray();
     }
-    private static CompoundTag decode(byte[] bytes) {
+    static CompoundTag decode(byte[] bytes) {
         if (bytes.length > RollbackBlockSnapshot.MAXIMUM_BLOCK_ENTITY_BYTES)
             throw new IllegalArgumentException("Block snapshot exceeds budget");
         try {

@@ -35,15 +35,21 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class FabricRollbackNativeItemsTest {
     private static RegistryWrapper.WrapperLookup registries;
-    // The live client receives this metadata schema from Paper; this is a test schema.
-    private static final Map<String, Kind> KINDS = Map.of("minecraft:stone", Kind.GENERIC, "minecraft:diamond_boots", Kind.GENERIC,
-            "minecraft:leather_helmet", Kind.LEATHER, "minecraft:potion", Kind.POTION, "minecraft:player_head", Kind.SKULL, "minecraft:air", Kind.GENERIC);
     @BeforeAll static void bootstrapRegistry() {
         SharedConstants.createGameVersion(); Bootstrap.initialize();
         registries = BuiltinRegistries.createWrapperLookup();
     }
-    private static RollbackNativeItems<ItemStack> items() { return new RollbackNativeItems<>(new FabricRollbackItems(registries, KINDS)); }
+    private static RollbackNativeItems<ItemStack> items() { return new RollbackNativeItems<>(new FabricRollbackItems(registries)); }
 
+
+    @Test void generatedPaperSchemaCoversTheClientRegistry() {
+        var items = new FabricRollbackItems(registries);
+        for (var item : Registries.ITEM) assertNotNull(items.kind(new ItemStack(item)), () -> "Missing " + Registries.ITEM.getId(item));
+        assertEquals(Kind.POTION, items.kind(new ItemStack(Items.SPLASH_POTION)));
+        assertEquals(Kind.LEATHER, items.kind(new ItemStack(Items.LEATHER_HORSE_ARMOR)));
+        assertEquals(Kind.SKULL, items.kind(new ItemStack(Items.PLAYER_HEAD)));
+        assertEquals(Kind.GENERIC, items.kind(new ItemStack(Items.SHIELD)));
+    }
 
     @Test void nativeInventoryCaptureDetachesAllSlotsAndRestoresRetainedItemReferences() {
         var items = items();

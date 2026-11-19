@@ -35,7 +35,7 @@ public final class RollbackDomain {
     private final PredictionServices.Bindings prediction;
     private final RollbackConfiguration configuration;
     private Checkpoint state;
-    private boolean failed;
+    private boolean failed, outsideRestoreFailed;
 
     private RollbackDomain(RollbackStateGraph graph, Collection<Field> shared, Collection<?> local,
                            ProjectKorraPlatform platform, RollbackNativeItems<?> items, PredictionServices.Bindings prediction,
@@ -109,6 +109,18 @@ public final class RollbackDomain {
         checkThread();
         Objects.requireNonNull(operation, "operation");
         if (failed) throw new IllegalStateException("Rollback domain failed; discard the session");
+        return installed(state, operation, true);
+    }
+
+    /** A stopped authority may still extract its last successful checkpoint after a failed step. */
+    <T> T readForHandoff(Checkpoint confirmed, Supplier<T> reader) {
+        checkThread();
+        if (Objects.requireNonNull(confirmed).owner != this || outsideRestoreFailed)
+            throw new IllegalStateException("Cannot enter the confirmed domain for live restoration");
+        return installed(confirmed, reader, false);
+    }
+
+    private <T> T installed(Checkpoint initial, Supplier<T> operation, boolean keepChanges) {
         if (ACTIVE.get() != null) throw new IllegalStateException("Nested rollback domains are not supported");
         final RollbackStateGraph.Snapshot outside;
         try { outside = graph.capture(List.of(), shared); }
@@ -119,9 +131,9 @@ public final class RollbackDomain {
              var configurationScope = configuration.using();
              var itemScope = items == null ? null : RollbackItemScope.using(items);
              var predictionScope = PredictionServices.using(prediction)) {
-            if (state != null) state.snapshot.restore();
+            if (initial != null) initial.snapshot.restore();
             T result = operation.get();
-            state = capture();
+            if (keepChanges) state = capture();
             return result;
         } catch (RuntimeException | Error exception) {
             failed = true;
@@ -131,6 +143,7 @@ public final class RollbackDomain {
             try {
                 outside.restore();
             } catch (RuntimeException | Error restoreFailure) {
+                outsideRestoreFailed = true;
                 failed = true;
                 if (failure != null) failure.addSuppressed(restoreFailure);
                 else throw restoreFailure;

@@ -41,6 +41,24 @@ class FabricRollbackBootstrapsTest {
         }
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void otherwiseReadyImportNeedsARepairBindingForTheOfferedDefinitions(boolean mismatchedDefinitions) throws Exception {
+        try (var f = new Fixture(true)) {
+            f.prepareRuntime = true;
+            f.runtimeReady = true;
+            f.mismatchedDefinitions = mismatchedDefinitions;
+            f.endpoint.receive(f.client, f.connection, f.offer, 10);
+            for (int i = 0; i < f.offer.parts(); i++) f.endpoint.receive(f.client, f.connection, f.part(i), 11);
+            assertFalse(f.endpoint.ownsSession());
+            assertEquals(1, f.runtimeStops);
+            assertEquals(1, f.stops);
+            assertFalse(FabricRollbackNativeTick.tick(f.player));
+            assertTrue(f.sent.stream().anyMatch(RollbackBootstrapPacket.Cancel.class::isInstance));
+            assertTrue(f.sent.stream().noneMatch(RollbackBootstrapPacket.Ready.class::isInstance));
+        }
+    }
+
     @Test void failedPartialCleanupRetainsFreezeUntilRepairAndAllowsReentrantStop() throws Exception {
         try (var f = new Fixture(true)) {
             f.failBegin = true; f.failStop = true;
@@ -69,7 +87,7 @@ class FabricRollbackBootstrapsTest {
 
     @Test void failedRuntimeCleanupBeforeInstallationStillConsumesGameplayAndCannotResumeImport() throws Exception {
         try (var f = new Fixture(true)) {
-            f.prepareUnready = true; f.failRuntimeStop = true;
+            f.prepareRuntime = true; f.failRuntimeStop = true;
             f.endpoint.receive(f.client, f.connection, f.offer, 10);
             assertThrows(IllegalStateException.class, () -> f.endpoint.finishStop(f.client, f.offer.session()));
             for (int i = 0; i < f.offer.parts() - 1; i++) f.endpoint.receive(f.client, f.connection, f.part(i), 11);
@@ -94,7 +112,7 @@ class FabricRollbackBootstrapsTest {
         final RollbackBootstrapPacket.Offer offer;
         final List<RollbackBootstrapPacket.Message> sent = new ArrayList<>();
         int suspensions, begins, imports, stops, runtimeStops;
-        boolean failBegin, failStop, reentrantStop, prepareUnready, failRuntimeStop;
+        boolean failBegin, failStop, reentrantStop, prepareRuntime, runtimeReady, mismatchedDefinitions, failRuntimeStop;
         RollbackBootstrapPacket.Part part(int index) {
             int offset = index * RollbackBootstrapPacket.DATA_BYTES;
             return new RollbackBootstrapPacket.Part(offer.session(), offer.challenge(), index,
@@ -128,7 +146,11 @@ class FabricRollbackBootstrapsTest {
                         @Override public void begin() { begins++; if (failBegin) throw new IllegalStateException("Partial initialization"); }
                         @Override public FabricRollbackBootstraps.Prepared importState(RollbackBootstrapData data) {
                             imports++; assertEquals(new UUID(0, 901), data.world().world());
-                            if (prepareUnready) return new FabricRollbackBootstraps.Prepared(new FabricRollbackStarts.NativeRuntime() {
+                            if (prepareRuntime) return new FabricRollbackBootstraps.Prepared(new FabricRollbackStarts.NativeRuntime() {
+                                @Override public RollbackClientRuntime.Repair<?, ?> stateRepair() {
+                                    return mismatchedDefinitions ? new RollbackClientRuntime.Repair<>("ab".repeat(32), 65_536,
+                                            (tick, state) -> { throw new AssertionError("Uninstalled repair importer called"); }) : null;
+                                }
                                 @Override public boolean ownsNativeTick() { return true; }
                                 @Override public void nativeTick(long tick) { throw new AssertionError("Unready runtime ticked"); }
                                 @Override public void packet(net.minecraft.network.packet.Packet<?> packet, long tick) { throw new AssertionError("Unready runtime received input"); }
@@ -138,7 +160,7 @@ class FabricRollbackBootstrapsTest {
                                 @Override public void stop(RollbackStartServerEndpoint.Failure failure) {
                                     runtimeStops++; if (failRuntimeStop) throw new IllegalStateException("Runtime cleanup needs repair");
                                 }
-                            }, () -> false, 20);
+                            }, () -> runtimeReady, 20);
                             throw new IllegalStateException("Native service import unavailable");
                         }
                         @Override public void stop(RollbackStartServerEndpoint.Failure failure) {

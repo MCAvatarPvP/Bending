@@ -7,6 +7,9 @@ repositories {
     maven { url = 'https://maven.terraformersmc.com/releases/' }
 }
 
+// Compile the same pure-Java Paper item metadata table into both loader artifacts.
+sourceSets.main.java.srcDir(project(':bukkit').tasks.named('generatePaperItemCatalog'))
+
 loom {
     accessWidenerPath = file('src/main/resources/projectkorra.accesswidener')
 }

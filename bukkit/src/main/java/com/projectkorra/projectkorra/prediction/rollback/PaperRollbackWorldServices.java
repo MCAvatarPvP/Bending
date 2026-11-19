@@ -99,6 +99,7 @@ public final class PaperRollbackWorldServices implements PaperRollbackWorldAcces
         checkThread(); var value = rules.get(rule); if (value == null) throw new IllegalArgumentException("Rule absent from captured feature set"); return value;
     }
     @Override public long time() { checkThread(); return time; }
+    RollbackRandom.State soundRandomState() { checkThread(); return soundRandom.captureRollbackState(); }
     @Override public long nextSoundSeed() { checkThread(); return soundRandom.nextLong(); }
     @Override public int seaLevel() { checkThread(); return settings.seaLevel(); }
     @Override public WorldBorder border() { checkThread(); return spatial.border(); }

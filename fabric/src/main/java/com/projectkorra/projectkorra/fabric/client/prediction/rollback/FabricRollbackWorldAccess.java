@@ -2,9 +2,12 @@ package com.projectkorra.projectkorra.fabric.client.prediction.rollback;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackStateCell;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackControlEvents;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackDamageEvents;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackRound;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackDomain;
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackMovementSolver;
+import com.projectkorra.projectkorra.prediction.rollback.world.RollbackPlayer;
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackNativeQueryShell;
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore;
 import net.minecraft.block.Blocks;
@@ -142,9 +145,16 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
     void damageEvent(FabricRollbackDamageEvent event) {
         checkThread();
         var victim = event.player();
-        if (!ownsPlayer(victim)) throw new IllegalArgumentException("Foreign damage target");
+        var logicalVictim = damagePlayer(victim);
         requireDamageSource(event.source());
+        var damager = FabricRollbackPlayerCombatData.eventDamager(event.source());
+        if (damager == null) damager = event.source().getSource();
+        var logicalDamager = damager == null ? null : damagePlayer(damager);
         damagePolicy().event(event);
+        if (logicalVictim != null) {
+            // A DamageSource position can be an explosion origin. Only an actual captured block may be a damager.
+            RollbackDamageEvents.dispatch(event.commonEvent(logicalVictim, FabricRollbackDamageEvent.cause(event.source(), damager)), logicalDamager, null);
+        }
         double finalDamage = event.finalDamage();
         if (!Double.isFinite(finalDamage) || !Float.isFinite((float) finalDamage)) throw new IllegalArgumentException("Damage event overflow");
         UUID attacker = event.source().getAttacker() instanceof PlayerEntity player ? player.getUuid()
@@ -407,6 +417,13 @@ public final class FabricRollbackWorldAccess implements RollbackStateCell<Void> 
     }
     private UUID nullableOwnedId(Entity entity) { return entity == null ? null : ownedId(entity); }
     @SuppressWarnings("WrapperReferenceEquality")
+    private RollbackPlayer damagePlayer(Entity entity) {
+        var logical = RollbackControlEvents.player(ownedId(entity));
+        if (logical != null && logical.body().kinematicsSource() != players.get(entity))
+            throw new IllegalArgumentException("Damage event belongs to a different private native body");
+        return logical;
+    }
+
     private UUID ownedId(Entity entity) {
         if (entity.getEntityWorld() != world || !ownsPlayer(entity)) throw new IllegalArgumentException("Event belongs to an unowned native entity");
         return entity.getUuid();

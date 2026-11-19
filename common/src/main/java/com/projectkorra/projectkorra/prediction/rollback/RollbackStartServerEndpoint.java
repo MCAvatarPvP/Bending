@@ -89,6 +89,16 @@ public final class RollbackStartServerEndpoint {
         }
     }
 
+    /** Stop only the negotiated match owning this exact session, even if the roster has since entered a new duel. */
+    public boolean stopSession(UUID session, RollbackStartPacket.AbortReason reason) {
+        checkThread();
+        var registration = sessions.get(Objects.requireNonNull(session));
+        if (registration == null) return false;
+        if (registration.ended()) throw new IllegalStateException("Session is still restoring live ownership");
+        registration.close(reason);
+        return true;
+    }
+
     public void stopPlayer(UUID player, RollbackStartPacket.AbortReason reason) {
         checkThread();
         Registration registration = players.get(player);

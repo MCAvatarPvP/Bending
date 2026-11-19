@@ -36,6 +36,13 @@ public final class PaperRollbackStatistics implements RollbackStateCell<PaperRol
             values.keySet().forEach(PaperRollbackStatistics::requireStat);
         }
 
+        public static Seed capture(ServerPlayer player) {
+            if (!ca.spottedleaf.moonrise.common.util.TickThread.isTickThread() || RollbackDomain.active() || RollbackClock.active())
+                throw new IllegalStateException("Capture statistics on the live server thread");
+            return new Seed(SpigotConfig.disableStatSaving, SpigotConfig.forcedStats,
+                    PaperRollbackPrivateAccess.statistics(player.getStats()));
+        }
+
         /** New-player state; capture global settings only during session setup. */
         public static Seed fresh() {
             if (RollbackClock.active()) throw new IllegalStateException("Capture statistic settings before replay");

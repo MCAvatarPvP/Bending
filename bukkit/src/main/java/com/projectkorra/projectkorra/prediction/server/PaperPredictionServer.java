@@ -25,6 +25,7 @@ import com.projectkorra.projectkorra.prediction.rollback.RollbackIngress;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackSession;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackStartNegotiation;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackStartServerEndpoint;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackStartPacket;
 import com.projectkorra.projectkorra.prediction.movement.VelocitySync;
 import com.projectkorra.projectkorra.prediction.state.AbilityCheckpointSync;
 import com.projectkorra.projectkorra.prediction.state.AbilityStateSync;
@@ -48,6 +49,7 @@ import com.projectkorra.projectkorra.listener.CommonInputHandler;
 import com.projectkorra.projectkorra.platform.bukkit.BukkitMC;
 import com.projectkorra.projectkorra.prediction.rollback.PaperRollbackMatchBootstrap;
 import com.projectkorra.projectkorra.prediction.rollback.PaperRollbackBootstraps;
+import com.projectkorra.projectkorra.prediction.rollback.PaperRollbackCorrections;
 import com.projectkorra.projectkorra.prediction.rollback.PaperRollbackLifecycle;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackBootstrapData;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackBootstrapServerEndpoint;
@@ -112,6 +114,11 @@ public final class PaperPredictionServer extends PaperPredictionSnapshots {
         return com.projectkorra.projectkorra.prediction.rollback.PaperRollbackLiveOwnership.prepare(
                 players, scheduler, selectTasks, taskCapacity, rollbackLifecycle, stop);
     }
+    /** Called before an external native mutation. Closing the start registration also stops Neptune's match owner. */
+    public boolean stopNegotiatedRollback(UUID session) {
+        return rollbackStarts.stopSession(session, RollbackStartPacket.AbortReason.STATE_CHANGED);
+    }
+
     public boolean supportsRollbackBootstrap(Set<UUID> players) { return active == this && rollbackBootstraps.supports(players); }
 
     /** Native preparation owns this handle before poll sends any snapshot or mutates client ownership. */
@@ -162,8 +169,12 @@ public final class PaperPredictionServer extends PaperPredictionSnapshots {
 
     /** Runtime owner calls after advancing/reconciling; this does not start a live duel. */
     public void publishRollback(RollbackSession<?, ?> session) {
+        publishRollback(session, null);
+    }
+
+    public void publishRollback(RollbackSession<?, ?> session, PaperRollbackCorrections corrections) {
         if (active != this) throw new IllegalStateException("Prediction server is not active");
-        rollbackInputs.publish(session, plugin);
+        rollbackInputs.publish(session, plugin, corrections);
     }
 
     /** Clears the singleton only when the same implementation is stopping. */

@@ -401,6 +401,40 @@ class PaperRollbackPlayerSeedNativeTest {
         });
     }
 
+    @Test void liveRestorationMovesTheTrackedBodyAndSendsOneAbsolutePositionWithMomentum() throws Exception {
+        onTickThread(() -> {
+            var player = (ServerPlayer) new Scene().create().ownedPlayer();
+            configure(player);
+            var confirmed = PaperRollbackPlayerSeed.capture(player, EPOCH).portable(45);
+            var position = player.position();
+            var velocity = player.getDeltaMovement();
+            var outgoing = new RollbackRosterData(player.level().getGameTime(), java.util.Map.of(player.getUUID(), confirmed));
+            player.setPos(4, 2, 3);
+            player.setDeltaMovement(Vec3.ZERO);
+            var connection = new org.objenesis.ObjenesisStd().newInstance(MaintenanceProbe.class);
+            connection.player = player;
+            connection.sent = new java.util.ArrayList<>();
+            player.connection = connection;
+            var moves = new java.util.ArrayList<Vec3>();
+            player.setLevelCallback(new net.minecraft.world.level.entity.EntityInLevelCallback() {
+                @Override public void onMove() { moves.add(player.position()); }
+                @Override public void onRemove(Entity.RemovalReason reason) { }
+            });
+            var prepared = PaperRollbackRosterComponents.prepare(java.util.Map.of(player.getUUID(), player), outgoing, EPOCH);
+            prepared.commitLive();
+            prepared.commitLive();
+            assertEquals(List.of(position), moves);
+            assertEquals(1, connection.sent.size());
+            var correction = assertInstanceOf(net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket.class,
+                    connection.sent.getFirst());
+            assertTrue(correction.relatives().isEmpty());
+            assertEquals(position, correction.change().position());
+            assertEquals(velocity, correction.change().deltaMovement());
+            assertEquals(velocity, player.getDeltaMovement());
+            return null;
+        });
+    }
+
     @Test void worldTickGatePreservesOutsidersAndRetainsOwnershipUntilCleanupSucceeds() throws Exception {
         onTickThread(() -> {
             var scene = new Scene();

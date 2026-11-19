@@ -14,6 +14,11 @@ public final class PaperRollbackNativeScene implements RollbackStateCell<Void>, 
     /** Gameplay callbacks remain mandatory; none may retain a live world or publish replay outputs. */
     public record Bindings(RollbackBlockStore.Rules blocks, RollbackItems items, RollbackWorld.Actions actions,
             PaperRollbackWorldQueries.BlockEntities<?> blockEntities, PaperRollbackWorldServices.Events<?> events) {
+        public Bindings(RollbackBlockStore.Rules blocks, RollbackItems items, RollbackWorld.Actions actions,
+                RegistryAccess registries, PaperRollbackWorldServices.Events<?> events) {
+            this(blocks, items, actions, new PaperRollbackBlockEntities(registries), events);
+        }
+
         public Bindings {
             Objects.requireNonNull(blocks); Objects.requireNonNull(items); Objects.requireNonNull(actions);
             Objects.requireNonNull(blockEntities); Objects.requireNonNull(events);
@@ -27,6 +32,16 @@ public final class PaperRollbackNativeScene implements RollbackStateCell<Void>, 
     private final PaperRollbackWorldQueries queries;
     private final PaperRollbackWorldAccess world;
     private final Map<UUID, PaperRollbackNativePlayerState> roster;
+
+    /** Builds a match scene with Neptune's last-stage lethal-hit policy installed before its first checkpoint. */
+    public PaperRollbackNativeScene(RollbackWorldSeed seed, PaperRollbackRosterSeed players, RollbackRound round,
+            RegistryAccess.Frozen registries, FeatureFlagSet features, Bindings bindings,
+            Map<UUID, PaperRollbackRosterSeed.Services> playerServices,
+            long epochNanos, int maximumMutations, int maximumEntities, int maximumChunks) {
+        this(seed, players, round.participants(), registries, features, bindings, playerServices,
+                epochNanos, maximumMutations, maximumEntities, maximumChunks);
+        world.bindRound(round);
+    }
 
     public PaperRollbackNativeScene(RollbackWorldSeed seed, PaperRollbackRosterSeed players, Set<UUID> participants,
             RegistryAccess.Frozen registries, FeatureFlagSet features, Bindings bindings,
@@ -46,6 +61,7 @@ public final class PaperRollbackNativeScene implements RollbackStateCell<Void>, 
         var geometry = new PaperRollbackGeometry(seed.minimumY(), seed.maximumY(), bindings.blockEntities());
         logical = new RollbackWorld(seed.identity(), seed.conditions(), seed.terrain(), lighting.rules(bindings.blocks(), this),
                 maximumMutations, maximumEntities, bindings.items(), new RollbackWorldQueries(geometry), bindings.actions());
+        if (bindings.blockEntities() instanceof PaperRollbackBlockEntities tiles) tiles.bind(logical.terrain());
         spatial = new PaperRollbackSpatial(logical, registries, seed.environment(), seed.border(), lighting);
         services = new PaperRollbackWorldServices(seed.settings(), logical, registries, features, spatial, bindings.events());
         queries = new PaperRollbackWorldQueries(logical, services, bindings.blockEntities());
@@ -55,6 +71,24 @@ public final class PaperRollbackNativeScene implements RollbackStateCell<Void>, 
     }
     public RollbackWorld logical() { check(); return logical; }
     public Map<UUID, PaperRollbackNativePlayerState> roster() { check(); return roster; }
+    /** Detach this exact scene's native bodies at a settled tick, before returning to the live domain. */
+    RollbackRosterData captureRoster(RollbackRosterData initial, long nanos) {
+        check();
+        if (!initial.players().keySet().equals(roster.keySet())) throw new IllegalArgumentException("Outgoing roster changed");
+        var current = new TreeMap<UUID, RollbackRosterData.Player>();
+        for (var entry : roster.entrySet()) {
+            var body = (net.minecraft.server.level.ServerPlayer) entry.getValue().ownedPlayer();
+            var original = initial.players().get(entry.getKey());
+            if (body.level() != world.world() || !world.ownsPlayer(body)
+                    || !body.getUUID().equals(entry.getKey()) || body.getId() != original.identity().entityId())
+                throw new IllegalStateException("Private roster identity changed before handoff");
+            // randomSeed is construction metadata. The live handoff writes intrinsic components only.
+            var player = PaperRollbackPlayerSeed.capture(body, nanos).portable(original.randomSeed());
+            current.put(entry.getKey(), player);
+        }
+        return new RollbackRosterData(world.world().getGameTime(), current);
+    }
+
     public PaperRollbackWorldAccess world() { check(); return world; }
     public PaperRollbackWorldServices services() { check(); return services; }
     public PaperRollbackLighting lighting() { check(); return lighting; }

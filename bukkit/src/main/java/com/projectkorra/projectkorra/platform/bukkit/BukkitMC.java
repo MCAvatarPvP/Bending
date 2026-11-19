@@ -679,7 +679,12 @@ public final class BukkitMC {
     }
 
     public static EntityDamageEvent damageEvent(final org.bukkit.event.entity.EntityDamageEvent value) {
-        return new DamageEventView(value);
+        return damageEvent(value, entity(value.getEntity()));
+    }
+
+    /** Uses the supplied private entity identity while exposing the actual native damage modifiers. */
+    public static EntityDamageEvent damageEvent(final org.bukkit.event.entity.EntityDamageEvent value, final Entity target) {
+        return new DamageEventView(value, target);
     }
 
     public static org.bukkit.entity.Player playerHandle(final Player value) {
@@ -4212,9 +4217,9 @@ public final class BukkitMC {
     private static final class DamageEventView extends EntityDamageEvent {
         private final org.bukkit.event.entity.EntityDamageEvent value;
 
-        private DamageEventView(org.bukkit.event.entity.EntityDamageEvent value) {
+        private DamageEventView(org.bukkit.event.entity.EntityDamageEvent value, Entity target) {
             this.value = value;
-            setEntity(entity(value.getEntity()));
+            setEntity(target);
             setCause(switch (value.getCause()) {
                 case ENTITY_ATTACK -> DamageCause.ENTITY_ATTACK;
                 case ENTITY_SWEEP_ATTACK -> DamageCause.ENTITY_SWEEP_ATTACK;

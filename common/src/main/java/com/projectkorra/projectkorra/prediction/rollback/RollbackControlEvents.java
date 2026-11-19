@@ -26,7 +26,8 @@ public final class RollbackControlEvents implements AutoCloseable {
         var logical = player(player);
         return logical != null && CommonInputHandler.handleToggleGlide(logical).cancelEvent();
     }
-    private static RollbackPlayer player(UUID id) {
+    /** Resolves the owning logical facade while a native event is being dispatched during a combat tick. */
+    public static RollbackPlayer player(UUID id) {
         var scope = ACTIVE.get();
         if (scope == null) {
             if (RollbackDomain.active()) throw new IllegalStateException("Native control event outside combat execution");

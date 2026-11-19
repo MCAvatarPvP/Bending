@@ -94,6 +94,14 @@ class RollbackCombatRuntimeTest {
             assertFalse(RollbackDomain.active());
             assertFalse(PredictionServices.active());
             assertFalse(RollbackClock.active());
+            var outside = ProjectKorra.collisionManager;
+            var restored = scenario.runtime.readForHandoff(() -> {
+                assertTrue(RollbackDomain.active());
+                return List.copyOf(scenario.fixture.history);
+            });
+            assertTrue(restored.isEmpty(), "Partial failed tick reached live handoff");
+            assertSame(outside, ProjectKorra.collisionManager);
+            assertEquals(restored, scenario.runtime.readForHandoff(() -> List.copyOf(scenario.fixture.history)));
             assertThrows(IllegalStateException.class, scenario.runtime::advance);
         });
     }

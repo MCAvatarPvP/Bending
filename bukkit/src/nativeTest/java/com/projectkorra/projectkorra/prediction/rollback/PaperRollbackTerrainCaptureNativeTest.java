@@ -36,7 +36,7 @@ import java.util.*;
 import static com.projectkorra.projectkorra.prediction.rollback.PaperRollbackWorldAccessNativeTest.onTickThread;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Uses native states/entities and the production capture entry point with a strictly read-only world fixture. */
+/** Uses native states/entities and fixtures which reject unregistered operations. */
 class PaperRollbackTerrainCaptureNativeTest {
     @BeforeAll static void bootstrap() { PaperRollbackDamageNativeTest.bootstrap(); }
     private static final Bounds BOUNDS = new Bounds(-1, 0, -1, 3, 1, 1);
@@ -159,6 +159,57 @@ class PaperRollbackTerrainCaptureNativeTest {
             return null;
         });
     }
+    @Test void confirmedTerrainWritebackPreflightsEveryCellAndResumesPartialTileWrites() throws Exception {
+        onTickThread(() -> {
+            var fixture = new Fixture(true);
+            var seed = PaperRollbackTerrainCapture.capture(fixture.world, BOUNDS, LIMITS);
+            var terrain = new RollbackBlockStore(new World(), seed, unusedRules(), 20);
+            var stone = new BlockData(Material.STONE);
+            var first = BlockPos.ZERO;
+            var second = first.east();
+            var baseline = terrain.captureRollbackState();
+            var biome = seed.cell(position(first)).biome();
+            terrain.replace(position(first.west()), new Cell(stone, null, biome, (byte) 0, 0, 0), false);
+            terrain.restoreRollbackState(baseline);
+            terrain.replace(position(first), new Cell(stone, null, biome, (byte) 0, 0, 0), false);
+            var chest = new ChestBlockEntity(second, Blocks.CHEST.defaultBlockState());
+            chest.setItem(0, new ItemStack(Items.DIAMOND, 4));
+            var contents = PaperRollbackBlockSnapshots.encode(chest.saveWithFullMetadata(fixture.registries));
+            terrain.replace(position(second), new Cell(new BlockData(Material.CHEST), contents, biome, (byte) 0, 0, 0), false);
+            terrain.drainChanges();
+            var changes = terrain.changesSince(seed);
+            assertEquals(List.of(position(first), position(second)), changes.stream().map(Change::position).toList());
+            var writeback = PaperRollbackTerrainWriteback.prepare(fixture.world, seed, changes);
+            fixture.missing = true;
+            assertThrows(IllegalStateException.class, writeback::run);
+            fixture.missing = false;
+            fixture.blocks.put(second, Blocks.DIRT.defaultBlockState());
+            assertThrows(IllegalStateException.class, writeback::run);
+            assertFalse(fixture.blocks.containsKey(first));
+            fixture.blocks.remove(second);
+            fixture.rejectNextTile = true;
+            assertThrows(IllegalStateException.class, writeback::run);
+            assertEquals(Blocks.STONE.defaultBlockState(), fixture.blocks.get(first));
+            assertEquals(List.of(first), fixture.published);
+            var partialChest = (ChestBlockEntity) fixture.entities.get(second);
+            assertTrue(partialChest.getItem(0).isEmpty());
+            partialChest.setItem(0, new ItemStack(Items.EMERALD));
+            assertThrows(IllegalStateException.class, writeback::run);
+            assertEquals(Items.EMERALD, partialChest.getItem(0).getItem());
+            partialChest.setItem(0, ItemStack.EMPTY);
+            fixture.rejectNextPublication = true;
+            assertThrows(IllegalStateException.class, writeback::run);
+            ((ChestBlockEntity) fixture.entities.get(second)).setItem(0, ItemStack.EMPTY);
+            writeback.run();
+            writeback.run();
+            assertEquals(List.of(first, second), fixture.published);
+            var restored = (ChestBlockEntity) fixture.entities.get(second);
+            assertEquals(Items.DIAMOND, restored.getItem(0).getItem());
+            assertEquals(4, restored.getItem(0).getCount());
+            assertEquals(2, fixture.blockWrites);
+            return null;
+        });
+    }
     private static Position position(BlockPos position) { return new Position(position.getX(), position.getY(), position.getZ()); }
     private static CompoundTag tag(byte[] bytes) throws Exception {
         return NbtIo.read(new DataInputStream(new ByteArrayInputStream(bytes)), NbtAccounter.create(1_048_576));
@@ -178,7 +229,11 @@ class PaperRollbackTerrainCaptureNativeTest {
         final ServerLevel world;
         int chunkReads, blockReads;
         boolean missing;
-        Fixture() {
+        final List<BlockPos> published = new ArrayList<>();
+        int blockWrites;
+        boolean rejectNextTile, rejectNextPublication;
+        Fixture() { this(false); }
+        Fixture(boolean writable) {
             var chunk = RollbackNativeQueryShell.create(LevelChunk.class)
                     .query(value -> value.getBlockState(BlockPos.ZERO), null, args -> { blockReads++; return blocks.getOrDefault(args[0], Blocks.AIR.defaultBlockState()); })
                     .query(LevelChunk::getBlockEntities, null, args -> entities)
@@ -187,14 +242,40 @@ class PaperRollbackTerrainCaptureNativeTest {
                     .query(value -> value.getChunkAtIfLoadedImmediately(0, 0), null, args -> { chunkReads++; return missing ? null : chunk; }).instance();
             var biome = registries.lookupOrThrow(Registries.BIOME).getOrThrow(Biomes.PLAINS);
             var smoothed = registries.lookupOrThrow(Registries.BIOME).getOrThrow(Biomes.DESERT);
-            world = RollbackNativeQueryShell.create(ServerLevel.class)
+            var level = RollbackNativeQueryShell.create(ServerLevel.class)
                     .constant(ServerLevel::getChunkSource, cache).constant(ServerLevel::registryAccess, registries)
                     .constant(ServerLevel::getGameTime, 100L).constant(ServerLevel::getSeaLevel, 63)
                     .query(value -> value.getNoiseBiome(0, 0, 0), null, args -> biome)
                     .query(value -> value.getBiome(BlockPos.ZERO), null, args -> smoothed)
                     .query(value -> value.getBrightness(net.minecraft.world.level.LightLayer.SKY, BlockPos.ZERO), 0,
                             args -> args[0] == net.minecraft.world.level.LightLayer.BLOCK ? 10 : ((BlockPos) args[1]).getX() == 0 ? 15 : 3)
-                    .query(value -> value.getMaxLocalRawBrightness(BlockPos.ZERO), 0, args -> 7).instance();
+                    .query(value -> value.getMaxLocalRawBrightness(BlockPos.ZERO), 0, args -> 7);
+            if (writable) {
+                var server = RollbackNativeQueryShell.create(net.minecraft.server.MinecraftServer.class)
+                        .query(value -> value.getLevel(net.minecraft.world.level.Level.OVERWORLD), null, args -> loadedWorld()).instance();
+                level.constant(ServerLevel::getServer, server).constant(ServerLevel::dimension, net.minecraft.world.level.Level.OVERWORLD);
+                level.query(value -> value.setBlock(BlockPos.ZERO, Blocks.AIR.defaultBlockState(), 0), false, args -> {
+                    assertEquals(net.minecraft.world.level.block.Block.UPDATE_SKIP_ALL_SIDEEFFECTS, args[2]);
+                    var pos = (BlockPos) args[0];
+                    var state = (BlockState) args[1];
+                    blockWrites++;
+                    blocks.put(pos, state);
+                    if (state.hasBlockEntity())
+                        entities.put(pos, ((net.minecraft.world.level.block.EntityBlock) state.getBlock()).newBlockEntity(pos, state));
+                    else entities.remove(pos);
+                    return true;
+                }).outputQuery(value -> value.setBlockEntity(null), args -> {
+                    if (rejectNextTile) { rejectNextTile = false; throw new IllegalStateException("Interrupted native write"); }
+                    var entity = (BlockEntity) args[0];
+                    entities.put(entity.getBlockPos(), entity);
+                }).outputQuery(value -> value.blockEntityChanged(BlockPos.ZERO), args -> assertTrue(entities.containsKey(args[0])))
+                        .outputQuery(value -> value.sendBlockUpdated(BlockPos.ZERO, null, null, 0), args -> {
+                            if (rejectNextPublication) { rejectNextPublication = false; throw new IllegalStateException("Interrupted update"); }
+                            published.add((BlockPos) args[0]);
+                        });
+            }
+            world = level.instance();
         }
+        private ServerLevel loadedWorld() { return world; }
     }
 }

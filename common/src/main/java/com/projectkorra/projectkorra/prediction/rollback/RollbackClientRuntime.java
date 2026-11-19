@@ -16,6 +16,14 @@ public final class RollbackClientRuntime<S, E> implements RollbackStartClientEnd
         void update(RollbackEngine.Update<S, RollbackPlayerInput, E> update);
         void stop(RollbackStartServerEndpoint.Failure failure);
     }
+    public record Repair<S, E>(String definitions, int maximumBytes, RollbackClientReplica.StateImporter<S, E> importer) {
+        public Repair {
+            Objects.requireNonNull(definitions); Objects.requireNonNull(importer);
+            if (!definitions.matches("[0-9a-f]{64}") || maximumBytes <= RollbackStateCorrection.HEADER_BYTES
+                    || maximumBytes > RollbackStateCorrection.MAXIMUM_BYTES) throw new IllegalArgumentException("Repair settings");
+        }
+    }
+    private final Repair<S, E> repair;
     private enum Phase { PREPARED, RUNNING, FAILED, STOPPED }
     private final Thread owner = Thread.currentThread();
     private final UUID session, player;
@@ -34,6 +42,12 @@ public final class RollbackClientRuntime<S, E> implements RollbackStartClientEnd
     public RollbackClientRuntime(UUID session, UUID player, long seed,
             RollbackReplicaTimeline<S, RollbackPlayerInput, E> timeline, Supplier<Held> held,
             Consumer<RollbackInputPacket> send, Output<S, E> output) {
+        this(session, player, seed, timeline, held, send, output, null);
+    }
+    public RollbackClientRuntime(UUID session, UUID player, long seed,
+            RollbackReplicaTimeline<S, RollbackPlayerInput, E> timeline, Supplier<Held> held,
+            Consumer<RollbackInputPacket> send, Output<S, E> output, Repair<S, E> repair) {
+        this.repair = repair;
         this.session = Objects.requireNonNull(session); this.player = Objects.requireNonNull(player); this.seed = seed;
         this.timeline = Objects.requireNonNull(timeline); this.held = Objects.requireNonNull(held);
         this.send = Objects.requireNonNull(send); this.output = Objects.requireNonNull(output);
@@ -94,6 +108,16 @@ public final class RollbackClientRuntime<S, E> implements RollbackStartClientEnd
         try {
             var corrected = replica.receive(update);
             if (corrected != null) output.update(corrected);
+        } catch (RuntimeException | Error failure) { fail(); throw failure; }
+        finally { busy = false; }
+    }
+
+    @Override public void correction(RollbackStateCorrection correction) {
+        enter(Phase.RUNNING);
+        try {
+            if (repair == null) throw new IllegalStateException("State repair importer is not installed");
+            var result = replica.repair(correction, repair.definitions(), repair.maximumBytes(), repair.importer());
+            if (result != null) output.update(result);
         } catch (RuntimeException | Error failure) { fail(); throw failure; }
         finally { busy = false; }
     }

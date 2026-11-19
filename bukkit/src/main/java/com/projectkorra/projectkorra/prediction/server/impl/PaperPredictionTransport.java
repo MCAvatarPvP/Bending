@@ -21,6 +21,7 @@ import com.projectkorra.projectkorra.prediction.hit.HitRegistrationPolicy;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackInputPacket;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackStartPacket;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackAuthorityChunk;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackStateCorrectionChunk;
 import com.projectkorra.projectkorra.prediction.rollback.RollbackBootstrapPacket;
 import com.projectkorra.projectkorra.prediction.movement.VelocitySync;
 import com.projectkorra.projectkorra.prediction.state.AbilityCheckpointSync;
@@ -134,6 +135,7 @@ public abstract class PaperPredictionTransport extends PaperPredictionUtilities 
         messenger.registerOutgoingPluginChannel(plugin, RollbackBootstrapPacket.SERVER_CHANNEL);
         messenger.registerOutgoingPluginChannel(plugin, RollbackStartPacket.SERVER_CHANNEL);
         messenger.registerOutgoingPluginChannel(plugin, RollbackAuthorityChunk.CHANNEL);
+        messenger.registerOutgoingPluginChannel(plugin, RollbackStateCorrectionChunk.CHANNEL);
         messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.HELLO, this);
         messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.CLIENT_DISABLED, this);
         messenger.registerIncomingPluginChannel(plugin, PaperPredictionProtocol.READY, this);

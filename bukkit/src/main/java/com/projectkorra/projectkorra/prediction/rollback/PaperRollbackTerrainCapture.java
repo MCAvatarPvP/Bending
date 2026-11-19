@@ -70,11 +70,7 @@ public final class PaperRollbackTerrainCapture {
             if (nativeState.hasBlockEntity()) {
                 // getBlockEntity/getBlockEntityNbtForSaving may instantiate packed
                 // entities. Read the existing maps without changing the live chunk.
-                var entity = chunk.getBlockEntities().get(position);
-                if (entity != null && entity.isRemoved()) throw new IllegalStateException("Removed block entity during terrain capture at " + position);
-                CompoundTag tag = entity == null ? chunk.getBlockEntityNbt(position) : entity.saveWithFullMetadata(source.registryAccess());
-                if (tag == null) throw new IllegalStateException("Missing block entity during terrain capture at " + position);
-                tile = encode(tag, limits.maximumBlockEntityBytes());
+                tile = encode(blockEntity(source, chunk, position), limits.maximumBlockEntityBytes());
             }
             var biome = source.getNoiseBiome(x >> 2, y >> 2, z >> 2);
             var key = biome.unwrapKey().orElseThrow(() -> new IllegalStateException("Unregistered biome in terrain capture")).identifier();
@@ -92,6 +88,14 @@ public final class PaperRollbackTerrainCapture {
         }
         if (source.getGameTime() != tick) throw new IllegalStateException("World advanced during synchronous terrain capture");
         return builder.finish();
+    }
+
+    static CompoundTag blockEntity(ServerLevel source, LevelChunk chunk, BlockPos position) {
+        var entity = chunk.getBlockEntities().get(position);
+        if (entity != null && entity.isRemoved()) throw new IllegalStateException("Removed block entity at " + position);
+        var tag = entity == null ? chunk.getBlockEntityNbt(position) : entity.saveWithFullMetadata(source.registryAccess());
+        if (tag == null) throw new IllegalStateException("Missing block entity at " + position);
+        return tag;
     }
 
     private static byte[] encode(CompoundTag tag, int maximumBytes) {

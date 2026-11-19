@@ -36,27 +36,15 @@ public final class RollbackTerrainCodec {
         if (seed.cellCount() > limits.maximumCells() || seed.paletteSize() > limits.maximumPalette()
                 || (long) seed.cellCount() * Integer.BYTES > limits.maximumStorageBytes()) throw new IllegalArgumentException("Terrain exceeds wire/storage budget");
         var bytes = new ByteArrayOutputStream(Math.min(limits.maximumWireBytes(), 8192));
-        var bounded = new OutputStream() {
-            private void room(int count) { if (count > limits.maximumWireBytes() - bytes.size()) throw new IllegalArgumentException("Terrain exceeds wire byte budget"); }
-            @Override public void write(int value) { room(1); bytes.write(value); }
-            @Override public void write(byte[] value, int offset, int length) { room(length); bytes.write(value, offset, length); }
-        };
         try {
-            var out = new DataOutputStream(bounded); out.writeInt(VERSION);
+            var out = bounded(bytes, limits); out.writeInt(VERSION);
             var bounds = seed.bounds(); out.writeInt(bounds.minX()); out.writeInt(bounds.minY()); out.writeInt(bounds.minZ());
             out.writeInt(bounds.maxX()); out.writeInt(bounds.maxY()); out.writeInt(bounds.maxZ());
             out.writeInt(seed.cellCount()); out.writeInt(seed.paletteSize());
             long storage = (long) seed.cellCount() * Integer.BYTES;
             for (Cell cell : seed.palette()) {
-                var data = cell.data(); String exact = Objects.requireNonNull(states.encode(data), "native state");
-                byte[] tile = cell.blockEntity();
-                if (tile != null && tile.length > limits.maximumBlockEntityBytes()) throw new IllegalArgumentException("Terrain block entity byte budget");
-                storage = Math.addExact(storage, cost(exact, cell.biomeKey(), cell.noiseBiomeKey(), tile));
+                storage = Math.addExact(storage, writeCell(out, cell, states, limits));
                 if (storage > limits.maximumStorageBytes()) throw new IllegalArgumentException("Terrain palette storage budget");
-                string(out, data.getMaterial().name(), 128); string(out, exact, 4096); string(out, cell.biome().name(), 128);
-                string(out, cell.biomeKey(), 512); string(out, cell.noiseBiomeKey(), 512);
-                out.writeByte(cell.light()); out.writeDouble(cell.temperature()); out.writeDouble(cell.humidity());
-                out.writeInt(tile == null ? -1 : tile.length); if (tile != null) out.write(tile);
             }
             int runs = 0;
             for (int i = 0; i < seed.cellCount(); i++) if (i == 0 || seed.paletteIndex(i) != seed.paletteIndex(i - 1)) runs++;
@@ -86,17 +74,10 @@ public final class RollbackTerrainCodec {
             // Parse the complete detached payload before calling any native decoder or allocating the region index.
             var palette = new ArrayList<WireCell>(entries); long storage = (long) cells * Integer.BYTES;
             for (int i = 0; i < entries; i++) {
-                var material = Material.valueOf(string(in, 128)); String exact = string(in, 4096);
-                var biome = Biome.valueOf(string(in, 128)); String smooth = string(in, 512), noise = string(in, 512);
-                byte light = in.readByte(); double temperature = in.readDouble(), humidity = in.readDouble(); int length = in.readInt();
-                if (length < -1 || length > limits.maximumBlockEntityBytes() || length > in.available()) throw new IllegalArgumentException("Terrain tile bounds");
-                byte[] tile = length < 0 ? null : in.readNBytes(length);
-                storage = Math.addExact(storage, cost(exact, smooth, noise, tile));
+                var cell = readCell(in, limits);
+                storage = Math.addExact(storage, cell.storage());
                 if (storage > limits.maximumStorageBytes()) throw new IllegalArgumentException("Terrain palette storage budget");
-                var validation = new BlockData(material); validation.setExactState(exact);
-                if (!exact.equals(validation.getExactState())) throw new IllegalArgumentException("Terrain state is blank or padded");
-                new Cell(validation, tile, biome, smooth, noise, light, temperature, humidity);
-                palette.add(new WireCell(material, exact, biome, smooth, noise, light, temperature, humidity, tile));
+                palette.add(cell);
             }
             int runs = in.readInt();
             if (runs < 1 || runs > cells || (long) runs * 8 != in.available()) throw new IllegalArgumentException("Terrain run/trailing-data bounds");
@@ -112,11 +93,7 @@ public final class RollbackTerrainCodec {
             }
             if (total != cells || nextPalette != entries) throw new IllegalArgumentException("Incomplete terrain region or unused palette");
             var decoded = new ArrayList<Cell>(entries);
-            for (var cell : palette) {
-                var data = Objects.requireNonNull(states.decode(cell.material, cell.exact), "native block data");
-                if (data.getMaterial() != cell.material || !cell.exact.equals(data.getExactState())) throw new IllegalArgumentException("Native terrain decoder changed state identity");
-                decoded.add(new Cell(data, cell.tile, cell.biome, cell.smooth, cell.noise, cell.light, cell.temperature, cell.humidity));
-            }
+            for (var cell : palette) decoded.add(cell.decode(states));
             var builder = new RollbackTerrainSeed.Builder(bounds, limits.maximumStorageBytes());
             in.reset();
             for (int i = 0; i < runs; i++) { int count = in.readInt(), index = in.readInt(); builder.append(decoded.get(index), count); }
@@ -125,8 +102,46 @@ public final class RollbackTerrainCodec {
         catch (ArithmeticException overflow) { throw new IllegalArgumentException("Terrain dimensions/storage overflow", overflow); }
     }
 
-    private record WireCell(Material material, String exact, Biome biome, String smooth, String noise,
-                            byte light, double temperature, double humidity, byte[] tile) { }
+    static DataOutputStream bounded(ByteArrayOutputStream bytes, Limits limits) {
+        return new DataOutputStream(new OutputStream() {
+            private void room(int count) { if (count > limits.maximumWireBytes() - bytes.size()) throw new IllegalArgumentException("Terrain exceeds wire byte budget"); }
+            @Override public void write(int value) { room(1); bytes.write(value); }
+            @Override public void write(byte[] value, int offset, int length) { room(length); bytes.write(value, offset, length); }
+        });
+    }
+
+    static long writeCell(DataOutputStream out, Cell cell, BlockStates states, Limits limits) throws IOException {
+        var data = cell.data(); String exact = Objects.requireNonNull(states.encode(data), "native state");
+        byte[] tile = cell.blockEntity();
+        if (tile != null && tile.length > limits.maximumBlockEntityBytes()) throw new IllegalArgumentException("Terrain block entity byte budget");
+        string(out, data.getMaterial().name(), 128); string(out, exact, 4096); string(out, cell.biome().name(), 128);
+        string(out, cell.biomeKey(), 512); string(out, cell.noiseBiomeKey(), 512);
+        out.writeByte(cell.light()); out.writeDouble(cell.temperature()); out.writeDouble(cell.humidity());
+        out.writeInt(tile == null ? -1 : tile.length); if (tile != null) out.write(tile);
+        return cost(exact, cell.biomeKey(), cell.noiseBiomeKey(), tile);
+    }
+
+    static WireCell readCell(DataInputStream in, Limits limits) throws IOException {
+        var material = Material.valueOf(string(in, 128)); String exact = string(in, 4096);
+        var biome = Biome.valueOf(string(in, 128)); String smooth = string(in, 512), noise = string(in, 512);
+        byte light = in.readByte(); double temperature = in.readDouble(), humidity = in.readDouble(); int length = in.readInt();
+        if (length < -1 || length > limits.maximumBlockEntityBytes() || length > in.available()) throw new IllegalArgumentException("Terrain tile bounds");
+        byte[] tile = length < 0 ? null : in.readNBytes(length);
+        var validation = new BlockData(material); validation.setExactState(exact);
+        if (!exact.equals(validation.getExactState())) throw new IllegalArgumentException("Terrain state is blank or padded");
+        new Cell(validation, tile, biome, smooth, noise, light, temperature, humidity);
+        return new WireCell(material, exact, biome, smooth, noise, light, temperature, humidity, tile);
+    }
+
+    record WireCell(Material material, String exact, Biome biome, String smooth, String noise,
+                            byte light, double temperature, double humidity, byte[] tile) {
+        long storage() { return cost(exact, smooth, noise, tile); }
+        Cell decode(BlockStates states) {
+            var data = Objects.requireNonNull(states.decode(material, exact), "native block data");
+            if (data.getMaterial() != material || !exact.equals(data.getExactState())) throw new IllegalArgumentException("Native terrain decoder changed state identity");
+            return new Cell(data, tile, biome, smooth, noise, light, temperature, humidity);
+        }
+    }
     private static long cost(String exact, String smooth, String noise, byte[] tile) {
         return 128L + exact.getBytes(StandardCharsets.UTF_8).length + smooth.getBytes(StandardCharsets.UTF_8).length
                 + noise.getBytes(StandardCharsets.UTF_8).length + (tile == null ? 0 : tile.length);

@@ -74,25 +74,25 @@ public final class FabricRollbackNativePlayerState implements RollbackPlayerStat
         if (RollbackClock.active()) throw new IllegalStateException("Construct native player state before replay");
         if (player instanceof ServerPlayerEntity) throw new IllegalArgumentException("Server player requires a private connection/event adapter");
         if (player.getEntityWorld() != world.world()) throw new IllegalArgumentException("Native player belongs to another world");
-        graph = new RollbackStateGraph(value -> otherEntity(value) || value == world.world()
-                || value == RegistryMetadata.DEFAULT_ATTRIBUTES || RegistryMetadata.ITEM_PROTOTYPES.containsKey(value)
-                || value instanceof EntityType<?> || value instanceof RegistryEntry.Reference<?>
-                || value instanceof TrackedData<?> || value instanceof ComponentType<?>
-                || value instanceof Item || value instanceof BlockState
-                || value instanceof Codec<?> || value instanceof MapCodec<?>
-                || value == ItemStack.EMPTY, field -> {
-                    // Fastutil lazily retains entry/key/value views as caches. They
-                    // read through the map, whose contents, backing arrays and default
-                    // return value are captured. Traversing the caches would try to
-                    // restore their membership independently from the owning map.
-                    return !(field.getDeclaringClass().getName().startsWith("it.unimi.dsi.fastutil.")
-                            && Map.class.isAssignableFrom(field.getDeclaringClass())
-                            && Collection.class.isAssignableFrom(field.getType())
-                            && Set.of("entries", "keys", "values").contains(field.getName()));
-                }, maximumObjects);
+        graph = new RollbackStateGraph(value -> otherEntity(value) || value == world.world() || registryMetadata(value),
+                FabricRollbackNativePlayerState::simulationField, maximumObjects);
         world.registerPlayer(player, this);
     }
 
+    static boolean registryMetadata(Object value) {
+        return value == RegistryMetadata.DEFAULT_ATTRIBUTES || RegistryMetadata.ITEM_PROTOTYPES.containsKey(value)
+                || value instanceof EntityType<?> || value instanceof RegistryEntry.Reference<?>
+                || value instanceof TrackedData<?> || value instanceof ComponentType<?>
+                || value instanceof Item || value instanceof BlockState || value instanceof Codec<?>
+                || value instanceof MapCodec<?> || value == ItemStack.EMPTY;
+    }
+    static boolean simulationField(java.lang.reflect.Field field) {
+        // Fastutil's cached views read through the map and cannot be restored independently.
+        return !(field.getDeclaringClass().getName().startsWith("it.unimi.dsi.fastutil.")
+                && Map.class.isAssignableFrom(field.getDeclaringClass())
+                && Collection.class.isAssignableFrom(field.getType())
+                && Set.of("entries", "keys", "values").contains(field.getName()));
+    }
     /** Native values must stay inside the adapter; outputs are detached logical values. */
     public <R> R use(Function<PlayerEntity, R> operation) {
         requireIdle();

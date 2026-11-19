@@ -34,6 +34,22 @@ public final class PaperRollbackAdvancements implements RollbackStateCell<PaperR
             obtained = Map.copyOf(values);
             if (definitions.size() > 10_000) throw new IllegalArgumentException("Advancement definition budget exceeded");
         }
+        public static Seed capture(ServerPlayer player) {
+            if (!ca.spottedleaf.moonrise.common.util.TickThread.isTickThread() || RollbackDomain.active() || RollbackClock.active())
+                throw new IllegalStateException("Capture advancements on the live server thread");
+            var manager = player.level().getServer().getAdvancements();
+            var definitions = manager.getAllAdvancements().stream().sorted(Comparator.comparing(AdvancementHolder::id)).toList();
+            var obtained = new LinkedHashMap<Identifier, Map<String, Instant>>();
+            PaperRollbackPrivateAccess.advancementProgress(player.getAdvancements()).forEach((holder, progress) -> {
+                if (manager.get(holder.id()) != holder) throw new IllegalStateException("Advancement definition changed during capture");
+                if (!progress.hasProgress()) return;
+                var criteria = new TreeMap<String, Instant>();
+                for (var name : progress.getCompletedCriteria()) criteria.put(name, progress.getCriterion(name).getObtained());
+                obtained.put(holder.id(), criteria);
+            });
+            return new Seed(definitions, obtained);
+        }
+
         public static Seed empty() { return new Seed(List.of(), Map.of()); }
     }
     public record Announcement(UUID player, String component) implements PaperRollbackCombatAccess.Output { }

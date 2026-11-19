@@ -45,6 +45,54 @@ class FabricRollbackNativeSceneTest {
         scene.services().advanceTick(1);
         assertEquals(players.worldTime() + 1, scene.roster().world().world().getTime());
     }
+    @Test void privateDamageUsesTheCapturedRulesAndMutatesOnlyTheRewindableRoster() throws Exception {
+        var seed = seed();
+        var roster = players();
+        var output = new RollbackStepOutput<Object>();
+        var events = new FabricRollbackArenaEvents(output, seed.settings().policy());
+        var scene = scene(seed, roster, roster.players().keySet(), events);
+        var players = new ArrayList<>(scene.roster().players().values());
+        var first = players.get(0);
+        var second = players.get(1);
+        var id = first.identity().uuid();
+        var opponent = second.identity().uuid();
+        var round = new RollbackRound(new UUID(52, 83), Map.of(id, id, opponent, opponent));
+        scene.roster().world().bindRound(round, events);
+        var snapshot = new RollbackStateGraph(value -> Proxy.isProxyClass(value.getClass()), field -> true, 500_000)
+                .capture(List.of(scene, round), List.of());
+        float hunger = second.readControls().exhaustion();
+        var damage = scene.roster().world().world().getDamageSources().playerAttack(first.ownedPlayer());
+        events.exhaustion(second.ownedPlayer(), damage, 1);
+        assertEquals(hunger + 1, second.readControls().exhaustion());
+        assertFalse(events.slotAllowed(id, 0, 1, true));
+        assertTrue(events.flightAllowed(id, true, false));
+        assertEquals(seed.settings().policy().skipBlockedDamageTick(), events.skipDamageTickWhenShieldBlocked());
+        snapshot.restore();
+        assertEquals(hunger, second.readControls().exhaustion());
+    }
+    @Test void bootstrapSceneSharesItsPaperDefinedItemsWithTheImportedRoster() throws Exception {
+        RollbackBootstrapData reference;
+        try (var in = Objects.requireNonNull(getClass().getResourceAsStream("/rollback/duel-bootstrap.base64"))) {
+            reference = RollbackBootstrapData.decode(Base64.getMimeDecoder().decode(in.readAllBytes()), "12".repeat(32),
+                    new FabricRollbackTerrainTransfer(), new RollbackTerrainCodec.Limits(4_096, 32, 1_048_576, 1_048_576, 65_536));
+        }
+        // The historical bootstrap fixture predates the captured lighting seed.
+        var data = new RollbackBootstrapData(reference.session(), reference.challenge(), reference.match(), reference.round(),
+                reference.epochMillis(), reference.epochNanos(), reference.definitions(), reference.sides(), seed(), reference.roster(),
+                reference.configuration(), reference.access(), reference.materials(), reference.tags(), reference.server(), reference.plugins(), reference.bending());
+        var imported = FabricRollbackNativeScene.importState(data, FabricRollbackTestRegistry.simulationRegistries(), FeatureFlags.DEFAULT_ENABLED_FEATURES,
+                unused(RollbackBlockStore.Rules.class), unused(RollbackWorld.Actions.class), new Events(), new Scoreboard(), 100, 128, 300_000);
+        var services = new TreeMap<UUID, RollbackRosterViews.Services>();
+        data.access().players().forEach((id, access) -> services.put(id, FabricRollbackRosterTest.viewServices(access)));
+        var views = imported.bindPlayerViews(services);
+        var player = views.players().get(new UUID(0, 7001));
+        var sword = player.getInventory().getItem(0);
+        assertTrue(imported.items().nativeCopy(sword).isOf(net.minecraft.item.Items.DIAMOND_SWORD));
+        assertInstanceOf(com.projectkorra.projectkorra.platform.mc.inventory.meta.PotionMeta.class,
+                imported.items().create(Material.SPLASH_POTION, 1).getItemMeta());
+        assertSame(imported.scene().logical(), views.world());
+    }
+
     @Test void rejectsMissingLightAndMismatchedRosterBeforeReturningAScene() throws Exception {
         var seed = seed(); var players = players();
         assertThrows(IllegalArgumentException.class, () -> scene(seed, players, Set.of()));
@@ -69,13 +117,16 @@ class FabricRollbackNativeSceneTest {
                 FabricRollbackEnvironmentTest.seed(), terrain.finish(), RollbackLightSeed.capture(bounds, count, p -> 15, p -> 0));
     }
     private static FabricRollbackNativeScene scene(RollbackWorldSeed seed, RollbackRosterData players, Set<UUID> participants) {
+        return scene(seed, players, participants, new Events());
+    }
+    private static FabricRollbackNativeScene scene(RollbackWorldSeed seed, RollbackRosterData players, Set<UUID> participants, FabricRollbackWorldServices.Events<?> events) {
         var tiles = new Tiles(); var geometry = new FabricRollbackGeometry(seed.minimumY(), seed.maximumY(), tiles);
         var blocks = (RollbackBlockStore.Rules) Proxy.newProxyInstance(FabricRollbackNativeSceneTest.class.getClassLoader(), new Class<?>[]{RollbackBlockStore.Rules.class}, (proxy, method, args) -> {
             if (method.getName().equals("geometry")) return geometry.geometry((RollbackBlockStore) args[0], (RollbackBlockStore.Position) args[1], (BlockData) args[2]);
             if (method.isDefault()) return java.lang.reflect.InvocationHandler.invokeDefault(proxy, method, args);
             throw new AssertionError("Unexpected block action " + method);
         });
-        var bindings = new FabricRollbackNativeScene.Bindings(blocks, unused(RollbackItems.class), unused(RollbackWorld.Actions.class), tiles, new Events(), new Scoreboard());
+        var bindings = new FabricRollbackNativeScene.Bindings(blocks, unused(RollbackItems.class), unused(RollbackWorld.Actions.class), tiles, events, new Scoreboard());
         return new FabricRollbackNativeScene(seed, players, participants, FabricRollbackTestRegistry.simulationRegistries(),
                 FeatureFlags.DEFAULT_ENABLED_FEATURES, bindings, 0, 100, 128, 300_000);
     }
