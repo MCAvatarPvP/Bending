@@ -159,6 +159,10 @@ class PaperRollbackNativeSceneNativeTest {
             ownedViews.addAll(List.of(caster, arrow, target));
             var domain = RollbackDomain.create(new RollbackStateGraph(ownedViews::contains, field -> true, 2048),
                     List.of(), List.of(registries), platform, abilities::install);
+            var fluidField = net.minecraft.world.entity.Entity.class.getDeclaredField("fluidHeight");
+            fluidField.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            var fluids = (it.unimi.dsi.fastutil.objects.Object2DoubleMap<net.minecraft.tags.TagKey<net.minecraft.world.level.material.Fluid>>) fluidField.get(nativeArrow);
             float initialHealth = shooter.getHealth();
             domain.call(() -> {
                 try (var clock = RollbackClock.at(1000, 1, 50_000_000)) {
@@ -167,7 +171,21 @@ class PaperRollbackNativeSceneNativeTest {
                     actor.tick();
                     assertTrue(impacts.isEmpty());
                     assertSame(defender.getBukkitEntity(), nativeArrow.projectileSource);
+                    actor.captureRollbackState();
+                    var water = net.minecraft.tags.FluidTags.WATER;
+                    var lava = net.minecraft.tags.FluidTags.LAVA;
+                    fluids.clear();
+                    fluids.defaultReturnValue(-1);
+                    fluids.put(water, .25);
+                    var entries = fluids.object2DoubleEntrySet();
+                    var keys = fluids.keySet();
+                    var values = fluids.values();
+                    assertEquals(1, entries.size());
                     var airborne = actor.captureRollbackState();
+                    fluids.clear();
+                    fluids.put(lava, .75);
+                    fluids.defaultReturnValue(-2);
+                    var altered = actor.captureRollbackState();
                     var position = nativeArrow.position();
                     var velocity = nativeArrow.getDeltaMovement();
                     int age = nativeArrow.tickCount;
@@ -175,7 +193,17 @@ class PaperRollbackNativeSceneNativeTest {
                     assertSame(shooter.getBukkitEntity(), nativeArrow.projectileSource);
                     nativeArrow.setDeltaMovement(1, 0, 0);
                     actor.tick();
+                    actor.restoreRollbackState(altered);
+                    assertEquals(.75, fluids.getDouble(lava));
+                    assertEquals(-2, fluids.getDouble(water));
                     actor.restoreRollbackState(airborne);
+                    assertSame(keys, fluids.keySet());
+                    assertSame(values, fluids.values());
+                    assertSame(entries, fluids.object2DoubleEntrySet());
+                    assertTrue(keys.contains(water));
+                    assertTrue(values.contains(.25));
+                    assertEquals(.25, entries.iterator().next().getDoubleValue());
+                    assertEquals(-1, fluids.getDouble(lava));
                     assertSame(defender, nativeArrow.getOwner());
                     assertSame(defender.getBukkitEntity(), nativeArrow.projectileSource);
                     assertEquals(position, nativeArrow.position());

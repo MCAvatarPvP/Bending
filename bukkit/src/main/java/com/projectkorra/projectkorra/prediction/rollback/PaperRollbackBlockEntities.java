@@ -14,11 +14,8 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.storage.TagValueInput;
 import net.minecraft.world.level.storage.TagValueOutput;
-import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 /** Native block entity contents owned by a single private Paper arena. */
 public final class PaperRollbackBlockEntities extends RollbackBlockEntities<BlockEntity, BlockState>
@@ -27,10 +24,7 @@ public final class PaperRollbackBlockEntities extends RollbackBlockEntities<Bloc
     private final PaperRollbackBlockStates states = new PaperRollbackBlockStates();
 
     private final RollbackStateGraph graph = new RollbackStateGraph(PaperRollbackBlockEntities::external,
-            field -> !(field.getDeclaringClass().getName().startsWith("it.unimi.dsi.fastutil.")
-                    && Map.class.isAssignableFrom(field.getDeclaringClass())
-                    && Collection.class.isAssignableFrom(field.getType())
-                    && Set.of("entries", "keys", "values").contains(field.getName())), 100_000);
+            field -> true, 100_000);
 
     public PaperRollbackBlockEntities(RegistryAccess registries) {
         this.registries = Objects.requireNonNull(registries);

@@ -83,6 +83,59 @@ class RollbackPlayerTest {
         assertSame(player, player.getPlayer());
     }
 
+    @Test void correctingChiStunAndFallProtectionRestoresAdditionsAndRemovesStaleParticipantMarkers() throws Exception {
+        try (var fixtures = new com.projectkorra.projectkorra.support.AbilityWorld()) {
+            var world = new World();
+            var source = player(world, 1, new Rules());
+            var replica = player(world, 1, new Rules());
+            var outsider = player(world, 2, new Rules());
+            var counter = new org.objenesis.ObjenesisStd().newInstance(me.literka.abilities.Counter.class);
+            var stun = new com.projectkorra.projectkorra.util.MovementHandler(source, counter);
+            var otherPlugin = new Object();
+            var outsideMarker = new com.projectkorra.projectkorra.platform.mc.metadata.FixedMetadataValue(otherPlugin, "outside");
+            var stop = com.projectkorra.projectkorra.util.MovementHandler.STOP_METADATA;
+            var fall = com.projectkorra.projectkorra.util.FallHandler.STEP_METADATA;
+            outsider.setMetadata(stop, outsideMarker);
+            replica.setMetadata("other:marker", outsideMarker);
+            var roster = Map.<UUID,Player>of(replica.getUniqueId(), replica);
+            var codec = new RollbackGraphCodec(new RollbackGraphCodec.Catalog(List.of(RollbackAbilityGlobals.class,
+                    RollbackParticipantStatuses.class, RollbackDigging.class, RollbackDigging.Mining.class, me.literka.abilities.Counter.class),
+                    List.of(), List.of()), new RollbackGraphCodec.Limits(1024, 8192, 65536, 2048));
+            try {
+                stun.stopWithDuration(1000, "stunned");
+                com.projectkorra.projectkorra.util.FallHandler.stopFall(source, false);
+                var marked = codec.encode(List.of(new RollbackAbilityGlobals().portable(List.of(), List.of(source)), counter));
+                stun.reset();
+                com.projectkorra.projectkorra.util.FallHandler.removePlayer(source);
+                var cleared = codec.encode(List.of(new RollbackAbilityGlobals().portable(List.of(), List.of(source))));
+                var decoded = codec.decode(marked);
+                ((RollbackAbilityGlobals) decoded.getFirst()).restoreParticipantMetadata(roster);
+                assertTrue(com.projectkorra.projectkorra.util.MovementHandler.isStopped(replica));
+                assertSame(decoded.get(1), replica.getMetadata(stop).getFirst().value());
+                assertEquals(com.projectkorra.projectkorra.util.FallHandler.Step.MOVED, com.projectkorra.projectkorra.util.FallHandler.getStep(replica));
+                var hit = new com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent(replica,
+                        com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause.FALL, 3);
+                com.projectkorra.projectkorra.listener.CommonDamageHandler.fall(hit);
+                assertTrue(hit.isCancelled());
+                assertFalse(com.projectkorra.projectkorra.util.FallHandler.contains(replica));
+                // A newer provisional hit reinstalled protection. The confirmed marker-free graph must remove it.
+                com.projectkorra.projectkorra.util.FallHandler.stopFall(replica);
+                ((RollbackAbilityGlobals) codec.decode(cleared).getFirst()).restoreParticipantMetadata(roster);
+                assertFalse(com.projectkorra.projectkorra.util.MovementHandler.isStopped(replica));
+                hit.setCancelled(false);
+                com.projectkorra.projectkorra.listener.CommonDamageHandler.fall(hit);
+                assertFalse(hit.isCancelled());
+                assertTrue(replica.body().hasMetadata("other:marker", otherPlugin, "outside"));
+                assertTrue(outsider.body().hasMetadata(stop, otherPlugin, "outside"));
+                // An outside plugin may install a value on the same key before live handoff.
+                replica.setMetadata(fall, outsideMarker);
+                ((RollbackAbilityGlobals) codec.decode(cleared).getFirst()).merge(roster);
+                assertTrue(replica.body().hasMetadata(fall, otherPlugin, "outside"));
+                assertThrows(IllegalStateException.class, () -> new RollbackAbilityGlobals().portable(List.of(), List.of(replica)));
+            } finally { com.projectkorra.projectkorra.util.MovementHandler.handlers.remove(stun); }
+        }
+    }
+
     @Test void controlsAndQueriesGoThroughCapturedPolicyAndRejectLiveObjects() {
         Rules rules = new Rules();
         var world = RollbackWorldTest.world(Map.of("rayTraceBlocks", ignored -> null));

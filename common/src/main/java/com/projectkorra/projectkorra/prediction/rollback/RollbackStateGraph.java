@@ -51,7 +51,14 @@ public final class RollbackStateGraph {
         final Map<Field, FieldAccess> accessors = new ConcurrentHashMap<>();
 
         Layout(Class<?> type) {
-            declared = List.of(type.getDeclaredFields());
+            var fields = List.of(type.getDeclaredFields());
+            if (Map.class.isAssignableFrom(type) && type.getName().startsWith("it.unimi.dsi.fastutil.")) {
+                // These cached views read through this same map. Its fields and entries own the mutable state.
+                fields = fields.stream().filter(field -> !(Modifier.isTransient(field.getModifiers())
+                        && Collection.class.isAssignableFrom(field.getType())
+                        && Set.of("entries", "keys", "values").contains(field.getName()))).toList();
+            }
+            declared = fields;
             sorted = declared.stream().sorted(Comparator.comparing(Field::getName)).toList();
         }
     }

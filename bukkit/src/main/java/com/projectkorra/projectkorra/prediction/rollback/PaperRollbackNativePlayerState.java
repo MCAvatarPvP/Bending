@@ -162,11 +162,7 @@ public final class PaperRollbackNativePlayerState implements RollbackPlayerState
         // would alter live entities and other duels, so this replica must own one.
         random = RandomSource.create(randomSeed);
         graph = new RollbackStateGraph(value -> value == this || value == world || otherEntity(value) || value == world.world() || world.ownsWrapper(value)
-                || (serverServices != null && serverServices.external(value)) || PaperRollbackMetadata.frozen(value), field ->
-                !(field.getDeclaringClass().getName().startsWith("it.unimi.dsi.fastutil.")
-                        && Map.class.isAssignableFrom(field.getDeclaringClass())
-                        && Collection.class.isAssignableFrom(field.getType())
-                        && Set.of("entries", "keys", "values").contains(field.getName())), maximumObjects);
+                || (serverServices != null && serverServices.external(value)) || PaperRollbackMetadata.frozen(value), field -> true, maximumObjects);
         PaperRollbackPrivateAccess.initializePlayer(player, bukkit, random);
         PaperRollbackPrivateAccess.initializeHealth(bukkit, initialHealth);
         world.registerPlayer(player, bukkit, this);

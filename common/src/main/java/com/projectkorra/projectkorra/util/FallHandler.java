@@ -15,6 +15,7 @@ import java.util.Locale;
 import java.util.Map;
 
 public class FallHandler {
+    public static final String STEP_METADATA = "fallhandler:step";
 
     private static final Map<String, VelocityMode> abilityFallDamageBlockers = new HashMap<>();
 
@@ -24,23 +25,23 @@ public class FallHandler {
 
     public static void stopFall(Player player, boolean waitForMovement) {
         player.setMetadata(
-                "fallhandler:step",
+                STEP_METADATA,
                 new FixedMetadataValue(ProjectKorra.plugin, waitForMovement ? Step.WAITING_FOR_MOVEMENT : Step.MOVED)
         );
     }
 
     public static int getStep(Player player) {
-        List<MetadataValue> values = player.getMetadata("fallhandler:step");
+        List<MetadataValue> values = player.getMetadata(STEP_METADATA);
         if (values.isEmpty()) return -1;
         return values.getFirst().value() instanceof Integer i ? i : -1;
     }
 
     public static void removePlayer(Player player) {
-        player.removeMetadata("fallhandler:step", ProjectKorra.plugin);
+        player.removeMetadata(STEP_METADATA, ProjectKorra.plugin);
     }
 
     public static boolean contains(Player player) {
-        return player.hasMetadata("fallhandler:step");
+        return player.hasMetadata(STEP_METADATA);
     }
 
     public static void move(Player player) {
@@ -49,9 +50,9 @@ public class FallHandler {
         boolean isOnGround = GeneralMethods.isOnGround(player);
 
         if (step == Step.WAITING_FOR_MOVEMENT && !isOnGround) {
-            player.setMetadata("fallhandler:step", new FixedMetadataValue(ProjectKorra.plugin, Step.MOVED));
+            player.setMetadata(STEP_METADATA, new FixedMetadataValue(ProjectKorra.plugin, Step.MOVED));
         } else if (step == Step.MOVED && isOnGround) {
-            player.setMetadata("fallhandler:step", new FixedMetadataValue(ProjectKorra.plugin, Step.REMOVE));
+            player.setMetadata(STEP_METADATA, new FixedMetadataValue(ProjectKorra.plugin, Step.REMOVE));
         } else if (step >= Step.REMOVE) {
             removePlayer(player);
         }

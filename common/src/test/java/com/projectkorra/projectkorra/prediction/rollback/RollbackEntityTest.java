@@ -150,7 +150,7 @@ class RollbackEntityTest {
             var payload = new ArrayList<>(List.of("ability state"));
             source.setMetadata("marker", new FixedMetadataValue(sourceOwner, payload));
             outside.setMetadata("marker", new FixedMetadataValue(sourceOwner, "unchanged"));
-            var globals = new RollbackAbilityGlobals().portable(List.of(source));
+            var globals = new RollbackAbilityGlobals().portable(List.of(source), List.of());
             var sourceCodec = metadataCodec(source, sourceOwner);
             var bytes = sourceCodec.encode(List.of(globals, payload));
             source.removeMetadata("marker", sourceOwner);

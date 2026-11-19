@@ -93,10 +93,7 @@ public final class PaperRollbackScoreboards implements RollbackStateCell<PaperRo
         this.world = Objects.requireNonNull(world, "world");
         this.output = Objects.requireNonNull(output, "output");
         ops = registries.createSerializationContext(JsonOps.INSTANCE);
-        graph = new RollbackStateGraph(value -> value == this || value == world || value == server || metadata(value), field ->
-                !(field.getDeclaringClass().getName().startsWith("it.unimi.dsi.fastutil.")
-                        && Map.class.isAssignableFrom(field.getDeclaringClass()) && Collection.class.isAssignableFrom(field.getType())
-                        && Set.of("entries", "keys", "values").contains(field.getName())), 100_000);
+        graph = new RollbackStateGraph(value -> value == this || value == world || value == server || metadata(value), field -> true, 100_000);
         main = create(true);
     }
 

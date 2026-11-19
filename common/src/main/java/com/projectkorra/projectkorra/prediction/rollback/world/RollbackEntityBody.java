@@ -409,6 +409,7 @@ public final class RollbackEntityBody implements RollbackStateCell<RollbackEntit
         private final Object owner, value;
         private StoredMetadata(Object owner, Object value) { this.owner = owner; this.value = value; }
         @Override public Object value() { return value; }
+        @Override public Object owner() { return owner; }
         @Override public Void captureRollbackState() { return null; }
         @Override public void restoreRollbackState(Void ignored) { }
         @Override public Collection<?> rollbackReferences() { return value == null ? List.of() : List.of(value); }

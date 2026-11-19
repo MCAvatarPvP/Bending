@@ -2847,6 +2847,12 @@ public final class BukkitMC {
     private record NativeMetadata(
             org.bukkit.metadata.MetadataValue nativeValue) implements MetadataValue {
         @Override
+        public Object owner() {
+            var plugin = nativeValue.getOwningPlugin();
+            return plugin != null && plugin == Platform.pluginHandle() ? com.projectkorra.projectkorra.ProjectKorra.plugin : plugin;
+        }
+
+        @Override
         public Object value() {
             return nativeValue.value();
         }

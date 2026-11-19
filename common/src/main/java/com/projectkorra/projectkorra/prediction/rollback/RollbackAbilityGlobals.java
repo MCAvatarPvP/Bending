@@ -21,6 +21,7 @@ import java.util.*;
 public final class RollbackAbilityGlobals {
     private boolean enrolled;
     private Map<Entity, Map<String, List<FixedMetadataValue>>> actorMetadata = new LinkedHashMap<>();
+    private Map<UUID, Map<String, Object>> participantMetadata = new TreeMap<>();
     private RollbackDigging mining = new RollbackDigging();
     public static RollbackDigging activeDigging() {
         var globals = RollbackDomain.abilityGlobals();
@@ -122,13 +123,14 @@ public final class RollbackAbilityGlobals {
         var scope = RollbackDomain.abilityGlobals();
         return scope == null ? null : scope.layers;
     }
-    RollbackAbilityGlobals portable(Collection<? extends Entity> actors) {
+    RollbackAbilityGlobals portable(Collection<? extends Entity> actors, Collection<? extends Player> participants) {
         var copy = new RollbackAbilityGlobals();
         copy.runMaintenance = runMaintenance;
         copy.previousWorldPhase = previousWorldPhase;
         copy.regenerationDelay = regenerationDelay;
         copy.elementExpiryDelay = elementExpiryDelay;
         copy.chiMaintenanceDelay = chiMaintenanceDelay;
+        copy.participantMetadata = RollbackParticipantMetadata.capture(participants);
         for (var actor : actors) {
             var metadata = RollbackEntityBody.logicalBody(actor).exportMetadata();
             if (!metadata.isEmpty()) copy.actorMetadata.put(actor, metadata);
@@ -141,6 +143,11 @@ public final class RollbackAbilityGlobals {
         copy.layers = layers == null ? null : layers.portable();
         return copy;
     }
+    void restoreParticipantMetadata(Map<UUID, Player> roster) {
+        RollbackParticipantMetadata.apply(participantMetadata, roster);
+        participantMetadata.clear();
+    }
+
     public void install() {
         RollbackDomain.installAbilityGlobals(this);
         if (layers != null) layers.install();
@@ -167,6 +174,7 @@ public final class RollbackAbilityGlobals {
     /** Resolve each key against the canonical roster before touching any live membership. */
     void validate(Map<UUID, Player> roster) {
         statuses.validate(roster);
+        RollbackParticipantMetadata.validate(participantMetadata, roster);
         if (addonActors != null) addonActors.validateOwners(roster);
         if (!falling.isEmpty() || !stands.isEmpty()) {
             var world = roster.values().iterator().next().getWorld();
@@ -262,6 +270,7 @@ public final class RollbackAbilityGlobals {
             }
         }
         restoreActorMetadata();
+        restoreParticipantMetadata(roster);
         if (addonActors != null) addonActors.merge();
         statuses.merge(roster);
         falling.values().forEach(TempFallingBlock::restoreMetadata);

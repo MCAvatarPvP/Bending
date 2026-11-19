@@ -16,6 +16,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 public class MovementHandler {
+    public static final String STOP_METADATA = "movement:stop";
 
     public static Set<MovementHandler> handlers = new HashSet<>();
 
@@ -46,7 +47,7 @@ public class MovementHandler {
     }
 
     public static boolean isStopped(Entity entity) {
-        return entity.hasMetadata("movement:stop");
+        return entity.hasMetadata(STOP_METADATA);
     }
 
     public static void resetAll() {
@@ -69,14 +70,14 @@ public class MovementHandler {
         this.duration = duration;
         this.message = message;
         restrictions().add(this);
-        this.entity.setMetadata("movement:stop", new FixedMetadataValue(ProjectKorra.plugin, ability));
+        this.entity.setMetadata(STOP_METADATA, new FixedMetadataValue(ProjectKorra.plugin, ability));
     }
 
     public void stop(String message) {
         this.duration = -1;
         this.message = message;
         restrictions().add(this);
-        this.entity.setMetadata("movement:stop", new FixedMetadataValue(ProjectKorra.plugin, ability));
+        this.entity.setMetadata(STOP_METADATA, new FixedMetadataValue(ProjectKorra.plugin, ability));
     }
 
     private void tick() {
@@ -114,8 +115,8 @@ public class MovementHandler {
         if (this.reset != null) {
             this.reset.run();
         }
-        if (this.entity.hasMetadata("movement:stop")) {
-            this.entity.removeMetadata("movement:stop", ProjectKorra.plugin);
+        if (this.entity.hasMetadata(STOP_METADATA)) {
+            this.entity.removeMetadata(STOP_METADATA, ProjectKorra.plugin);
         }
     }
 

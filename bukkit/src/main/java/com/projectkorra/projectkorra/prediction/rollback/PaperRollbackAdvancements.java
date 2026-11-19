@@ -216,10 +216,7 @@ public final class PaperRollbackAdvancements implements RollbackStateCell<PaperR
         PaperRollbackPrivateAccess.initializeAdvancements(tracker, playerList, state.tree, state.progress, state.visible, state.changed, state.roots, state.listeners);
         boundaries.add(tracker);
         graph = new RollbackStateGraph(value -> boundaries.contains(value) || PaperRollbackMetadata.frozen(value)
-                || value instanceof Instant || triggerMetadata(value), field ->
-                !(field.getDeclaringClass().getName().startsWith("it.unimi.dsi.fastutil.")
-                        && Map.class.isAssignableFrom(field.getDeclaringClass()) && Collection.class.isAssignableFrom(field.getType())
-                        && Set.of("entries", "keys", "values").contains(field.getName())), 200_000);
+                || value instanceof Instant || triggerMetadata(value), field -> true, 200_000);
     }
 
     PlayerAdvancements tracker() { check(); return tracker; }
