@@ -289,6 +289,8 @@ public final class PaperRollbackCombatAccess {
                 .nativeAction(value -> value.playSound(null, net.minecraft.core.BlockPos.ZERO, SoundEvents.PLAYER_HURT, SoundSource.PLAYERS, 1F, 1F), args -> nullableOwnedId((Entity) args[0]))
                 .outputQuery(value -> value.playSeededSound(null, 0, 0, 0, Holder.direct(SoundEvents.PLAYER_HURT), SoundSource.PLAYERS, 1F, 1F, 0L), args -> sound(args, true))
                 .nativeAction(value -> value.gameEvent((Entity) null, GameEvent.ENTITY_DAMAGE, Vec3.ZERO), args -> nullableOwnedId((Entity) args[0]))
+                .nativeAction(value -> value.gameEvent(GameEvent.PROJECTILE_LAND, net.minecraft.core.BlockPos.ZERO, new GameEvent.Context(null, null)),
+                        args -> nullableOwnedId(((GameEvent.Context)args[2]).sourceEntity()))
                 .outputQuery(value -> value.gameEvent(GameEvent.ENTITY_DAMAGE, Vec3.ZERO, new GameEvent.Context(null, null)), args -> {
                     nullableOwnedId(((GameEvent.Context) args[2]).sourceEntity());
                     position((Vec3) args[1]);

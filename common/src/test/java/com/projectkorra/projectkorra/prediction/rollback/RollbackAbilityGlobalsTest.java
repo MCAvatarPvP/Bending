@@ -108,6 +108,52 @@ class RollbackAbilityGlobalsTest {
             }
         }
     }
+    @Test void unrelatedPendingAirRestorationRemainsLiveWhilePrivateEarthTicks() throws Exception {
+        try (var fixture = new com.projectkorra.projectkorra.support.AbilityWorld()) {
+            var owner = player(71);
+            var outside = player(92);
+            var world = new com.projectkorra.projectkorra.platform.mc.World();
+            var block = new Block() {
+                @Override public com.projectkorra.projectkorra.platform.mc.World getWorld() { return world; }
+                @Override public int getX() { return 100; }
+                @Override public int getY() { return 64; }
+                @Override public int getZ() { return 100; }
+            };
+            var info = new com.projectkorra.projectkorra.util.Information();
+            info.setBlock(block);
+            info.setPredictionOwner(outside.getUniqueId());
+            var sources = com.projectkorra.projectkorra.ability.EarthAbility.getTempAirLocations();
+            sources.put(info.getID(), info);
+            var queue = com.projectkorra.projectkorra.util.RevertChecker.airQueue();
+            queue.put(info.getID(), info.getID());
+            var players = Set.of(owner.getUniqueId());
+            var bounds = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Bounds(-1, 60, -1, 3, 68, 3);
+            var otherBounds = new com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Bounds(98, 60, 98, 102, 68, 102);
+            try {
+                assertTrue(RollbackLiveRegistryEligibility.activeRegistry(players, candidate -> false).isEmpty());
+                assertTrue(RollbackLiveRegistryEligibility.activeRegistry(Set.of(outside.getUniqueId()), candidate -> false).isPresent());
+                assertThrows(IllegalStateException.class, () -> com.projectkorra.projectkorra.util.TempBlock.RollbackLayers.capture(
+                        world, otherBounds, players, () -> {}));
+                var lease = com.projectkorra.projectkorra.util.TempBlock.RollbackLayers.capture(world, bounds, players, () -> {});
+                lease.detach();
+                try {
+                    var state = RollbackAbilityGlobals.capture(List.of(owner));
+                    state.bindLayers(lease.seed().portable());
+                    var graph = new RollbackStateGraph(value -> value instanceof Block || value instanceof Player, field -> true, 512);
+                    var domain = RollbackDomain.create(graph, List.of(), List.of(), com.projectkorra.projectkorra.platform.Platform.current(), state::install);
+                    domain.call(() -> {
+                        RollbackAbilityGlobals.requireIsolatedManagers();
+                        assertTrue(com.projectkorra.projectkorra.util.RevertChecker.airQueue().isEmpty());
+                        com.projectkorra.projectkorra.util.RevertChecker.revertAirBlocks();
+                        return null;
+                    });
+                    assertTrue(queue.containsKey(info.getID()));
+                    assertSame(info, sources.get(info.getID()));
+                } finally { lease.abort(); }
+            } finally { sources.remove(info.getID()); queue.remove(info.getID()); }
+        }
+    }
+
     @Test void hyperionActorTimersRetainPhaseAndIdentityOnRepairAndRewind() throws Exception {
         try (var fixture = new com.projectkorra.projectkorra.support.AbilityWorld()) {
             var session = new UUID(19, 722);

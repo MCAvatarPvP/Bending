@@ -33,6 +33,22 @@ public final class RollbackLiveRegistryEligibility {
         return Optional.empty();
     }
 
+    /** Preliminary live admission for a roster. The terrain lease rechecks actual positions at capture and settlement. */
+    public static Optional<String> activeRegistry(Set<UUID> players, java.util.function.Predicate<com.projectkorra.projectkorra.platform.mc.block.Block> inside) {
+        if (RollbackDomain.active()) throw new IllegalStateException("Check live queue ownership outside a private tick");
+        for (int id : RevertChecker.airQueue().keySet()) {
+            var info = com.projectkorra.projectkorra.ability.EarthAbility.getTempAirLocations().get(id);
+            if (info == null || info.getBlock() == null || inside.test(info.getBlock())) return Optional.of("RevertChecker.airRevertQueue");
+            var owner = info.getPredictionOwner() != null ? info.getPredictionOwner()
+                    : info.getPlayer() == null ? null : info.getPlayer().getUniqueId();
+            if (owner != null && players.contains(owner)) return Optional.of("RevertChecker.airRevertQueue");
+        }
+        return Optional.empty();
+    }
+
+    public static void requireAvailable(Set<UUID> players, java.util.function.Predicate<com.projectkorra.projectkorra.platform.mc.block.Block> inside) {
+        activeRegistry(players, inside).ifPresent(name -> { throw new IllegalStateException("Live bending state overlaps the duel: " + name); });
+    }
     public static void requireAvailable() {
         activeRegistry().ifPresent(name -> { throw new IllegalStateException("Live bending state requires normal server simulation: " + name); });
     }

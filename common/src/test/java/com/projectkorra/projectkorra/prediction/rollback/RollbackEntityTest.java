@@ -115,6 +115,10 @@ class RollbackEntityTest {
         int[] payload = {7};
         entity.setMetadata("state", new FixedMetadataValue(firstOwner, payload));
         entity.setMetadata("state", new FixedMetadataValue(secondOwner, "other"));
+        RollbackAbilityGlobals.ensureActorMetadata(entity, "state", firstOwner, payload);
+        assertSame(payload, entity.getMetadata("state").getFirst().value());
+        assertFalse(entity.body().hasMetadata("state", secondOwner, payload));
+        assertTrue(entity.body().hasMetadata("state", firstOwner, payload));
         var event = new EntityDamageEvent(entity, EntityDamageEvent.DamageCause.CUSTOM, 3);
         entity.setLastDamageCause(event);
         var checkpoint = capture(entity);

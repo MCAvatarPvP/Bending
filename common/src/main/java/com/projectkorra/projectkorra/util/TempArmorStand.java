@@ -3,7 +3,6 @@ package com.projectkorra.projectkorra.util;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.entity.ArmorStand;
-import com.projectkorra.projectkorra.platform.mc.metadata.FixedMetadataValue;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -62,7 +61,7 @@ public class TempArmorStand {
     }
 
     public void restoreMetadata() {
-        this.stand.setMetadata("temparmorstand", new FixedMetadataValue(ProjectKorra.plugin, 0));
+        com.projectkorra.projectkorra.prediction.rollback.RollbackAbilityGlobals.ensureActorMetadata(this.stand, "temparmorstand", ProjectKorra.plugin, 0);
     }
 
     public ArmorStand getArmorStand() {

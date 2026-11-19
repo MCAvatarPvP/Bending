@@ -64,7 +64,7 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
 
     @Override public boolean supports(Set<UUID> players) { return server.supportsRollbackBootstrap(players)
             && com.projectkorra.projectkorra.region.BukkitRegionProtectionBootstrap.supportsRollback()
-            && RollbackLiveRegistryEligibility.activeRegistry().isEmpty(); }
+            && RollbackLiveRegistryEligibility.activeRegistry(players, block -> false).isEmpty(); }
 
     @Override public Preparation prepare(Request request) {
         if (!supports(request.sides().keySet())) throw new IllegalStateException("Rollback participants changed before capture");
@@ -185,11 +185,11 @@ public final class PaperRollbackDuels implements PaperRollbackMatchBootstrap, or
             captured = PaperRollbackDuelSeed.captureOwned(ownership, request, challenge, definitions.definitions(),
                     players.values(), services, bending.values(), ProjectKorra.collisionManager, List.of(reservation, regions, globals),
                     graph, List.of(), seed, Long.rotateLeft(seed, 29), CAPTURE_LIMITS, terrain);
+            encodedBootstrap = PaperRollbackBootstraps.encodeCaptured(captured.portable(), RollbackDuelRuntime.TERRAIN);
             // The live scheduler uses this monitor to enter async callbacks. Check again at ownership transfer.
             synchronized (platform.rollbackScheduler()) {
                 platform.rollbackScheduler().earthRevertDelay(ProjectKorra.plugin.revertChecker);
-                encodedBootstrap = PaperRollbackBootstraps.encodeCaptured(captured.portable(), RollbackDuelRuntime.TERRAIN);
-            layerLease.detach();
+                layerLease.detach();
             }
             var config = RollbackConfiguration.prepare(captured.portable().configuration(), PredictionConfigSync.sources());
             var codec = RollbackGameplayGraph.create(graph.installed(), graph.limits(), RollbackGameplayGraph.Side.LIVE,

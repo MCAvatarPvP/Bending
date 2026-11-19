@@ -425,7 +425,9 @@ class RollbackBendingStateTest {
                     });
             try (var restorationScope = Platform.using(restorePlatform)) {
                 assertThrows(IllegalStateException.class, () -> restored.prepareAbilities(abilityReservation, expectedLiveAbilities));
-                field(CoreAbility.class, "currentTick").setLong(null, restored.abilities().tick()); // Owner aligns to the live tick before handoff.
+                long confirmedStart = restoredPulse.getStartTick();
+                long unrelatedStart = unrelatedPulse.getStartTick();
+                field(CoreAbility.class, "currentTick").setLong(null, restored.abilities().tick() + 8);
                 var commit = restored.prepareCommit(Map.of(A, bendingA, B, bendingB), abilityReservation, expectedLiveAbilities);
                 var activationList = liveActivations.get(ClickType.LEFT_CLICK);
                 liveActivations.put(ClickType.LEFT_CLICK, new ArrayList<>(activationList));
@@ -463,18 +465,25 @@ class RollbackBendingStateTest {
                 assertSame(bendingA, BendingPlayer.getBendingPlayer(liveA), "Failed validation must precede all registry writes");
                 assertSame(livePulse, CoreAbility.getAbility(liveA, Pulse.class));
                 assertEquals(Set.of(livePulse, unrelatedPulse), sourceAttribute.getInitialValues().keySet());
+                assertEquals(confirmedStart, restoredPulse.getStartTick(), "Failed handoff must leave the private age untouched");
+                assertEquals(unrelatedStart, unrelatedPulse.getStartTick());
                 liveAttributeDefinitions.put("Speed", sourceAttribute);
                 CoreAbility.progressAll();
                 collisions.detectCollisions();
                 assertTrue(livePulse.history.isEmpty(), "Live enrolled abilities must remain frozen");
                 assertEquals(0, livePulse.contacts, "Live collisions must exclude the owned roster");
                 assertEquals(1, unrelatedPulse.history.size(), "Unrelated abilities continue normally");
-                field(CoreAbility.class, "currentTick").setLong(null, restored.abilities().tick());
+                long handoffTick = CoreAbility.getCurrentTick();
                 int eventsAtCommit = events.size(), constructorsAtCommit = Dynamic.constructions;
                 liveOwnership.restoreAndRelease(commit::commit);
                 assertFalse(RollbackLiveOwnership.blocks(A)); assertFalse(RollbackLiveOwnership.blocks(B));
+                long confirmedAge = restored.abilities().tick() - confirmedStart;
+                assertEquals(confirmedAge, CoreAbility.getCurrentTick() - restoredPulse.getStartTick());
+                assertEquals(unrelatedStart, unrelatedPulse.getStartTick());
+                assertEquals(handoffTick, CoreAbility.getCurrentTick());
                 commit.commit();
-                field(CoreAbility.class, "currentTick").setLong(null, restored.abilities().tick() + 1);
+                assertEquals(confirmedAge, CoreAbility.getCurrentTick() - restoredPulse.getStartTick());
+                field(CoreAbility.class, "currentTick").setLong(null, handoffTick + 1);
                 assertSame(restoredPulse.activationAlias, namedActivations.get("fixture").get(ClickType.LEFT_CLICK).getFirst());
                 assertSame(restoredPulse.activationAlias, multiActivations.get("fixture").get(ClickType.LEFT_CLICK).getFirst());
                 assertSame(restoredPulse.activationAlias, liveActivations.get(ClickType.LEFT_CLICK).getFirst());

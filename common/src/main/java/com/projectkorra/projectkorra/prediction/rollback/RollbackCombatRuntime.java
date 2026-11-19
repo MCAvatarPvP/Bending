@@ -126,8 +126,13 @@ public final class RollbackCombatRuntime<I, E> implements RollbackReplicaTimelin
         local.addAll(imported.roots());
         local.add(new RollbackPrivateRegistries());
         var environment = new Environment(base.graph(), shared, local, platform, base.items(), base.prediction(), imported.configuration());
-        return create(environment, execution, () -> { imported.bending().install(); afterInstall.run(); },
-                initialInputs, limits, epochMillis, epochNanos, replica, round);
+        return create(environment, execution, () -> {
+            BendingManager.beginImportedMatch();
+            ProjectKorra.collisionManager = null;
+            ProjectKorra.time_step = 1;
+            imported.bending().install();
+            afterInstall.run();
+        }, initialInputs, limits, epochMillis, epochNanos, replica, round);
     }
 
     private static <I, E> RollbackCombatRuntime<I, E> create(Environment environment, Execution<I, E> execution,

@@ -184,11 +184,6 @@ public final class RollbackDomain {
              var itemScope = items == null ? null : RollbackItemScope.using(items);
              var predictionScope = PredictionServices.using(prediction)) {
             if (initial != null) restore(initial);
-            else if (registries != null) {
-                com.projectkorra.projectkorra.BendingManager.beginImportedMatch();
-                com.projectkorra.projectkorra.ProjectKorra.collisionManager = null;
-                com.projectkorra.projectkorra.ProjectKorra.time_step = 1;
-            }
             T result = operation.get();
             if (retain != null) state = retain.apply(result);
             return result;

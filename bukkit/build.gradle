@@ -117,6 +117,7 @@ def generatePaperLegacyBlockData = tasks.register('generatePaperLegacyBlockData'
     dependsOn tasks.named('paperLegacyDataClasses')
     classpath = sourceSets.paperLegacyData.runtimeClasspath
     mainClass = 'com.projectkorra.projectkorra.tools.PaperLegacyBlockDataGenerator'
+    workingDir = layout.buildDirectory.get().asFile
     inputs.property('minecraftVersion', project.minecraft_version)
     outputs.file(paperLegacyTable)
     maxHeapSize = '1G'

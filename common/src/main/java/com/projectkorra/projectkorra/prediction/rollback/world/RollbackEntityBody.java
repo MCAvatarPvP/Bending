@@ -332,6 +332,14 @@ public final class RollbackEntityBody implements RollbackStateCell<RollbackEntit
         List<StoredMetadata> values = data.metadata.get(key);
         return values == null ? List.of() : List.copyOf(values);
     }
+    public boolean hasMetadata(String key, Object owner, Object value) {
+        checkThread();
+        var entries = data.metadata.get(key);
+        if (entries == null) return false;
+        for (var entry : entries) if (entry.owner == owner && Objects.equals(entry.value, value)) return true;
+        return false;
+    }
+
     public boolean hasMetadata(String key) { checkThread(); return data.metadata.containsKey(key); }
     public void removeMetadata(String key, Object owner) {
         checkThread();

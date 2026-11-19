@@ -391,8 +391,12 @@ public abstract class CoreAbility implements Ability {
             if (Thread.currentThread() != reservation.owner || RollbackClock.active()
                     || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active() || !Platform.scheduler().isPrimaryThread())
                 throw new IllegalStateException("Restore ability indices on the live main thread");
-            if ((!committed && currentTick != restored.tick) || idCounter < reservation.limit)
+            if ((!committed && currentTick < restored.tick) || idCounter < reservation.limit)
                 throw new IllegalStateException("Restored ability timeline or ID ownership differs from live state");
+            if (!committed) {
+                long elapsed = Math.subtractExact(currentTick, restored.tick);
+                for (var ability : restored.instances) Math.addExact(ability.startTick, elapsed);
+            }
             var owned = committed ? restored.instances : expected.instances;
             var actual = new ArrayList<CoreAbility>();
             for (var ability : INSTANCES) if (ability.player != null && reservation.roster.contains(ability.player.getUniqueId())) actual.add(ability);
@@ -408,6 +412,10 @@ public abstract class CoreAbility implements Ability {
         }
         public void commit() {
             requireCurrent(); if (committed) return;
+            // The live clock continued during negotiation and the unconfirmed prediction window.
+            // Move the imported start tick into that clock so expiry observes the confirmed ability age.
+            long elapsed = currentTick - restored.tick;
+            for (var ability : restored.instances) ability.startTick += elapsed;
             // Keep all shared index containers and unrelated per-player maps in place.
             INSTANCES.removeAll(expected.instances); INSTANCES.addAll(restored.instances);
             INSTANCES_BY_PLAYER.values().forEach(byPlayer -> reservation.roster.forEach(byPlayer::remove));

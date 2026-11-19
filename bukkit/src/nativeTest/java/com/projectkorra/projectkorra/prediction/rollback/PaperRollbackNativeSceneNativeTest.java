@@ -22,7 +22,14 @@ class PaperRollbackNativeSceneNativeTest {
     @Test void privateSnowballImpactDeliversExactLogicalActorsWithoutALiveBukkitServer() throws Exception {
         onTickThread(() -> {
             var roster = PaperRollbackRosterSeed.capture(source(), 0);
-            var scene = scene(seed(), roster, roster.participants());
+            var outputs = new ArrayList<PaperRollbackCombatAccess.Output>();
+            var removed = new ArrayList<org.bukkit.event.Event>();
+            var blockHits = new ArrayList<Object>();
+            var scene = scene(seed(), roster, roster.participants(), new Events() {
+                @Override public void event(org.bukkit.event.Event event) { removed.add(event); }
+                @Override public void output(PaperRollbackCombatAccess.Output output) { outputs.add(output); }
+                @Override public void gameEvent(Object event, Object position, Object context) { blockHits.add(event); }
+            });
             var items = new RollbackNativeItems<>(new PaperRollbackItems(PaperRollbackEnvironmentNativeTest.registries()));
             var actors = new PaperRollbackActors(new UUID(72, 34), 16, items);
             actors.bind(scene);
@@ -37,7 +44,7 @@ class PaperRollbackNativeSceneNativeTest {
                         if (!method.getName().equals("call")) throw new AssertionError(method);
                         var hit = (com.projectkorra.projectkorra.platform.mc.event.entity.ProjectileHitEvent) args[0];
                         events.add(hit);
-                        hit.setCancelled(true);
+                        hit.setCancelled(hit.getHitEntity() != null);
                         return null;
                     });
             var platform = (com.projectkorra.projectkorra.platform.ProjectKorraPlatform) Proxy.newProxyInstance(getClass().getClassLoader(),
@@ -53,10 +60,20 @@ class PaperRollbackNativeSceneNativeTest {
                     var result = nativeBall.preHitTargetOrDeflectSelf(new net.minecraft.world.phys.EntityHitResult(actors.actor(target.getUniqueId())));
                     assertSame(net.minecraft.world.entity.projectile.ProjectileDeflection.NONE, result);
                     assertFalse(nativeBall.isRemoved());
+                    var pos = new net.minecraft.core.BlockPos(0, 4, 0);
+                    nativeBall.preHitTargetOrDeflectSelf(new net.minecraft.world.phys.BlockHitResult(pos.getCenter(),
+                            net.minecraft.core.Direction.UP, pos, false));
+                    assertTrue(nativeBall.isRemoved());
                 }
                 return null;
             });
-            assertEquals(1, events.size());
+            assertEquals(2, events.size());
+            assertEquals(4, events.getLast().getHitBlock().getY());
+            assertEquals(List.of(net.minecraft.world.level.gameevent.GameEvent.PROJECTILE_LAND), blockHits);
+            assertEquals(1, removed.size());
+            assertEquals(org.bukkit.event.entity.EntityRemoveEvent.Cause.HIT,
+                    ((org.bukkit.event.entity.EntityRemoveEvent)removed.getFirst()).getCause());
+            assertEquals(List.of(new PaperRollbackCombatAccess.StatusOutput(ball.getUniqueId(), (byte)3)), outputs);
             assertSame(ball, events.getFirst().getEntity());
             assertSame(target, events.getFirst().getHitEntity());
             assertNull(Bukkit.getServer());
@@ -247,10 +264,13 @@ class PaperRollbackNativeSceneNativeTest {
                 PaperRollbackEnvironmentNativeTest.seed(), terrain.finish(), RollbackLightSeed.capture(bounds, count, p -> 15, p -> 0));
     }
     private static PaperRollbackNativeScene scene(RollbackWorldSeed seed, PaperRollbackRosterSeed players, Set<UUID> participants) {
+        return scene(seed, players, participants, new Events());
+    }
+    private static PaperRollbackNativeScene scene(RollbackWorldSeed seed, PaperRollbackRosterSeed players, Set<UUID> participants, Events events) {
         var tiles = new PaperRollbackBlockEntities(PaperRollbackEnvironmentNativeTest.registries());
         var items = new RollbackNativeItems<>(new PaperRollbackItems(PaperRollbackEnvironmentNativeTest.registries()));
         var blocks = new PaperRollbackBlockRules(items);
-        var bindings = new PaperRollbackNativeScene.Bindings(blocks, items, unused(RollbackWorld.Actions.class), tiles, new Events());
+        var bindings = new PaperRollbackNativeScene.Bindings(blocks, items, unused(RollbackWorld.Actions.class), tiles, events);
         var services = new TreeMap<UUID, PaperRollbackRosterSeed.Services>();
         players.participants().forEach(id -> services.put(id, new PaperRollbackRosterSeed.Services(id.getLeastSignificantBits(), 300_000,
                 PaperRollbackStatistics.Seed.fresh(), PaperRollbackAdvancements.Seed.empty())));
@@ -260,7 +280,7 @@ class PaperRollbackNativeSceneNativeTest {
     private static <T> T unused(Class<T> type) {
         return type.cast(Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type}, (proxy, method, args) -> { throw new AssertionError("Unexpected " + method); }));
     }
-    private static final class Events implements PaperRollbackWorldServices.Events<Void> {
+    private static class Events implements PaperRollbackWorldServices.Events<Void> {
         @Override public void event(org.bukkit.event.Event event) {
             if (event instanceof org.bukkit.event.block.BlockFromToEvent) return;
             if (event instanceof org.bukkit.event.block.FluidLevelChangeEvent level) {

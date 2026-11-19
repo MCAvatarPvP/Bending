@@ -30,9 +30,17 @@ public class BendingManager implements Runnable {
         instance = this;
         this.time = RollbackClock.millis();
 
-        times.clear();
-
-        handleDayNight();
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.importingRegistries() == null) {
+            handleDayNight();
+        } else {
+            // The server already announced the current phase. Start the duel at its last observed
+            // phase; actual transitions dispatch normally on the next private simulation tick.
+            var previous = com.projectkorra.projectkorra.prediction.rollback.RollbackAbilityGlobals.previousWorldPhase();
+            for (World world : Platform.worlds().<World>worlds()) {
+                if (!ConfigManager.defaultConfig.get().getStringList("Properties.DisabledWorlds").contains(world.getName()))
+                    times.put(world, previous == null ? phase(world) : previous);
+            }
+        }
     }
 
     /** Start with fresh domain bindings before the imported manager is constructed. */
@@ -72,6 +80,14 @@ public class BendingManager implements Runnable {
         }
     }
 
+    public WorldTimeEvent.Time lastPhase(World world) { return times.get(world); }
+
+    private static WorldTimeEvent.Time phase(World world) {
+        return ElementalAbility.isDay(world) ? WorldTimeEvent.Time.DAY :
+                (ElementalAbility.isNight(world) ? WorldTimeEvent.Time.NIGHT :
+                        (ElementalAbility.isDusk(world) ? WorldTimeEvent.Time.DUSK : WorldTimeEvent.Time.DAWN));
+    }
+
     public void handleDayNight() {
         for (final World world : Platform.worlds().<World>worlds()) {
             if (ConfigManager.defaultConfig.get().getStringList("Properties.DisabledWorlds").contains(world.getName())) {
@@ -80,9 +96,7 @@ public class BendingManager implements Runnable {
 
             WorldTimeEvent.Time from = this.times.get(world);
 
-            WorldTimeEvent.Time to = ElementalAbility.isDay(world) ? WorldTimeEvent.Time.DAY :
-                    (ElementalAbility.isNight(world) ? WorldTimeEvent.Time.NIGHT :
-                            (ElementalAbility.isDusk(world) ? WorldTimeEvent.Time.DUSK : WorldTimeEvent.Time.DAWN));
+            WorldTimeEvent.Time to = phase(world);
 
             if (from == null) { //If the time is null, the server/plugin probably just started, so set the previous time to the previous one
                 int ord = to.ordinal() - 1;

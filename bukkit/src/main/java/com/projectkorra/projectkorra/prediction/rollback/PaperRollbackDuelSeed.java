@@ -132,7 +132,10 @@ public record PaperRollbackDuelSeed(PaperRollbackRosterSeed nativeRoster, Rollba
         if (services.stream().anyMatch(RollbackEventBindings.class::isInstance))
             throw new IllegalArgumentException("Duel capture owns event registration capture");
         services.add(RollbackEventBindings.capture(com.projectkorra.projectkorra.platform.Platform.events()));
-        RollbackLiveRegistryEligibility.requireAvailable();
+        if (services.stream().filter(RollbackAbilityGlobals.class::isInstance).map(RollbackAbilityGlobals.class::cast)
+                .anyMatch(globals -> globals.capturedLayers() != null))
+            RollbackLiveRegistryEligibility.requireAvailable(bending.keySet(), block -> false);
+        else RollbackLiveRegistryEligibility.requireAvailable();
         if (services.stream().noneMatch(RollbackAbilityGlobals.class::isInstance))
             services.add(RollbackAbilityGlobals.capture(bending.values().stream().map(BendingPlayer::getPlayer).toList()));
         var graph = RollbackBendingState.encode(bending.values(), collisions, services, sourceCodec);

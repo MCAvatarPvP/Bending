@@ -23,7 +23,7 @@ public final class FabricRollbackConfirmed {
                 duel.round().importData(data.round());
                 execution.restoreRollbackState(data.actionSequences());
                 installBending.run();
-                RollbackAbilityGlobals.validateInstalledActors(data.actors());
+                RollbackAbilityGlobals.repairActorMetadata(data.actors());
             });
         });
     }

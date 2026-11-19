@@ -24,6 +24,11 @@ public final class RollbackAbilityGlobals {
         return addonActors;
     }
     private boolean runMaintenance;
+    private com.projectkorra.projectkorra.event.WorldTimeEvent.Time previousWorldPhase;
+    public static com.projectkorra.projectkorra.event.WorldTimeEvent.Time previousWorldPhase() {
+        var globals = RollbackDomain.abilityGlobals();
+        return globals == null ? null : globals.previousWorldPhase;
+    }
     private long regenerationDelay, elementExpiryDelay;
 
     private RollbackParticipantStatuses statuses = new RollbackParticipantStatuses();
@@ -44,6 +49,8 @@ public final class RollbackAbilityGlobals {
         if (RollbackDomain.active()) throw new IllegalStateException("Capture participant registries on the live server");
         var data = new RollbackAbilityGlobals();
         data.enrolled = true;
+        var manager = com.projectkorra.projectkorra.BendingManager.getInstance();
+        if (manager != null && !participants.isEmpty()) data.previousWorldPhase = manager.lastPhase(participants.iterator().next().getWorld());
         for (Player player : participants) {
             if (Catapult.isAwaitingLanding(player)) data.landings.add(player.getUniqueId());
             var owned = BlockSource.captureRollbackSources(player);
@@ -105,6 +112,7 @@ public final class RollbackAbilityGlobals {
     RollbackAbilityGlobals portable() {
         var copy = new RollbackAbilityGlobals();
         copy.runMaintenance = runMaintenance;
+        copy.previousWorldPhase = previousWorldPhase;
         copy.regenerationDelay = regenerationDelay;
         copy.elementExpiryDelay = elementExpiryDelay;
         copy.enrolled = enrolled; copy.landings = landings; copy.sources = sources; copy.statuses = statuses;
@@ -122,7 +130,8 @@ public final class RollbackAbilityGlobals {
     /** A private tick may not advance a shared live timer that still lacks participant ownership. */
     static void requireIsolatedManagers() {
         var state = RollbackDomain.abilityGlobals();
-        if (state != null && state.enrolled) RollbackLiveRegistryEligibility.requireAvailable();
+        if (state != null && state.enrolled && (state.layers == null || state.layers.earth() == null))
+            RollbackLiveRegistryEligibility.requireAvailable();
     }
 
     public static Set<UUID> landings(Set<UUID> live) {
@@ -187,6 +196,23 @@ public final class RollbackAbilityGlobals {
     public static void validateInstalledActors(RollbackActorData data) {
         var globals = RollbackDomain.abilityGlobals();
         if (globals != null) globals.validateTemporaryActors(data);
+    }
+
+    /** Restores gameplay-owned actor markers after native correction creates fresh logical bodies. */
+    public static void repairActorMetadata(RollbackActorData data) {
+        var globals = RollbackDomain.abilityGlobals();
+        if (globals == null) return;
+        globals.validateTemporaryActors(data);
+        globals.falling.values().forEach(TempFallingBlock::restoreMetadata);
+        globals.stands.forEach(TempArmorStand::restoreMetadata);
+        if (globals.addonActors != null)
+            globals.addonActors.stands.values().forEach(me.moros.hyperion.util.TempArmorStand::restoreMetadata);
+    }
+
+    public static void ensureActorMetadata(Entity entity, String key, Object owner, Object value) {
+        if (entity instanceof com.projectkorra.projectkorra.prediction.rollback.world.RollbackEntityBody.View
+                && com.projectkorra.projectkorra.prediction.rollback.world.RollbackEntityBody.logicalBody(entity).hasMetadata(key, owner, value)) return;
+        entity.setMetadata(key, new com.projectkorra.projectkorra.platform.mc.metadata.FixedMetadataValue(owner, value));
     }
 
     void merge(Map<UUID, Player> roster) {

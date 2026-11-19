@@ -42,6 +42,19 @@ final class PaperRollbackTerrainImage {
     private final UUID world;
     private final Chunk[] chunks;
     private final Map<BlockState, BlockData> states = new IdentityHashMap<>();
+    private record Climate(net.minecraft.world.level.biome.Biome definition, String key, Biome common) {
+        static Climate capture(Holder<net.minecraft.world.level.biome.Biome> holder) {
+            var key = holder.unwrapKey().orElseThrow().identifier();
+            Biome common = Biome.DESERT;
+            if (key.getNamespace().equals("minecraft")) {
+                try { common = Biome.valueOf(key.getPath().toUpperCase(Locale.ROOT)); }
+                catch (IllegalArgumentException ignored) { }
+            }
+            return new Climate(holder.value(), key.toString(), common);
+        }
+    }
+    private final Map<Holder<net.minecraft.world.level.biome.Biome>, Climate> climates = new IdentityHashMap<>();
+    private final java.lang.ref.WeakReference<BiomeManager> liveBiomeManager;
     private final BiomeManager biomeManager;
     private static final byte[] DARK = {0}, FULL = {(byte) 255};
 
@@ -76,7 +89,9 @@ final class PaperRollbackTerrainImage {
                 chunks[z * width + x] = snapshotChunk(source, chunk, cx, cz, interior, retain, buffer, budget);
             }
         } finally { buffer.release(); }
-        biomeManager = retain ? source.getBiomeManager().withDifferentSource(this::noise) : null;
+        var manager = source.getBiomeManager();
+        liveBiomeManager = new java.lang.ref.WeakReference<>(manager);
+        biomeManager = retain ? manager.withDifferentSource(this::noise) : null;
     }
     private Chunk snapshotChunk(ServerLevel source, LevelChunk chunk, int cx, int cz, boolean interior, boolean retain,
                                 FriendlyByteBuf buffer, long[] budget) {
@@ -90,6 +105,7 @@ final class PaperRollbackTerrainImage {
             var section = sections[i];
             var biomes = section.getBiomes();
             biomes.write(buffer);
+            biomes.getAll(holder -> climates.computeIfAbsent(holder, Climate::capture));
             boolean own = interior && ((minSection + i) << 4) < bounds.maxY()
                     && ((minSection + i + 1) << 4) > bounds.minY();
             byte[] sky = DARK, block = DARK;
@@ -150,7 +166,12 @@ final class PaperRollbackTerrainImage {
     boolean matches(ServerLevel source) {
         if (!world.equals(source.getWorld().getUID()) || source.getSeaLevel() != seaLevel || source.getSkyDarken() != skyDarken) return false;
         var current = capture(source, bounds, limits, false);
-        if (current.minSection != minSection) return false;
+        if (current.minSection != minSection || liveBiomeManager.get() != current.liveBiomeManager.get()
+                || climates.size() != current.climates.size()) return false;
+        for (var entry : climates.entrySet()) {
+            var value = current.climates.get(entry.getKey());
+            if (value == null || value.definition != entry.getValue().definition || !value.key.equals(entry.getValue().key)) return false;
+        }
         for (int i = 0; i < chunks.length; i++) if (!chunks[i].same(current.chunks[i])) return false;
         return true;
     }
@@ -178,21 +199,16 @@ final class PaperRollbackTerrainImage {
                 var noise = noise(x >> 2, y >> 2, z >> 2); var smooth = biomeManager.getBiome(pos);
                 int brightness = Math.max(light(section.sky, x, y, z) - skyDarken, light(section.block, x, y, z));
                 if (x < -30_000_000 || x >= 30_000_000 || z < -30_000_000 || z >= 30_000_000) brightness = 15;
-                double temperature = smooth.value().getTemperature(pos, seaLevel);
+                var climate = climates.get(smooth);
+                double temperature = climate.definition.getTemperature(pos, seaLevel);
                 if (state == previous && noise == previousNoise && smooth == previousSmooth && brightness == previousLight && !state.hasBlockEntity()) {
                     builder.repeatAtTemperature(temperature);
                     continue;
                 }
-                var noiseKey = noise.unwrapKey().orElseThrow().identifier();
-                var smoothKey = smooth.unwrapKey().orElseThrow().identifier();
-                Biome common = Biome.DESERT;
-                if (noiseKey.getNamespace().equals("minecraft")) {
-                    try { common = Biome.valueOf(noiseKey.getPath().toUpperCase(Locale.ROOT)); }
-                    catch (IllegalArgumentException ignored) { }
-                }
+                var quart = climates.get(noise);
                 byte[] tile = state.hasBlockEntity() ? Objects.requireNonNull(chunk.tiles.get(pos.asLong()), "Missing captured native block entity at " + pos) : null;
-                builder.append(new Cell(states.get(state), tile, common, smoothKey.toString(), noiseKey.toString(), (byte)brightness, temperature,
-                        noise.value().climateSettings.downfall()));
+                builder.append(new Cell(states.get(state), tile, quart.common, climate.key, quart.key, (byte)brightness, temperature,
+                        quart.definition.climateSettings.downfall()));
                 previous = state; previousNoise = noise; previousSmooth = smooth; previousLight = brightness;
             }
         return new Result(builder.finish(), RollbackLightSeed.capture(bounds, limits.maximumCells(),

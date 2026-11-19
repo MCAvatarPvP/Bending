@@ -10,7 +10,6 @@ import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.entity.FallingBlock;
-import com.projectkorra.projectkorra.platform.mc.metadata.FixedMetadataValue;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.block.TempFallingBlockSync;
 
@@ -130,7 +129,7 @@ public class TempFallingBlock {
     }
 
     public void restoreMetadata() {
-        this.fallingblock.setMetadata(this.metadataKey, new FixedMetadataValue(ProjectKorra.plugin, this));
+        com.projectkorra.projectkorra.prediction.rollback.RollbackAbilityGlobals.ensureActorMetadata(this.fallingblock, this.metadataKey, ProjectKorra.plugin, this);
     }
 
     public FallingBlock getFallingBlock() {

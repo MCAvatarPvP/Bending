@@ -175,9 +175,10 @@ public class TempBlock {
                           Set<UUID> players, Runnable stop) {
                 this.world = Objects.requireNonNull(world); this.bounds = Objects.requireNonNull(bounds);
                 this.players = Set.copyOf(players); this.stop = Objects.requireNonNull(stop);
-                seed.abilityIndices = RollbackArenaBlockIndices.capture(this::contains, this.players);
+                com.projectkorra.projectkorra.prediction.rollback.RollbackLiveRegistryEligibility.requireAvailable(this.players, this::contains);
                 for (var other : LEASES) if (other.world.handle() == world.handle() && overlaps(bounds, other.bounds))
                     throw new IllegalStateException("Temporary terrain is already owned by another duel");
+                seed.abilityIndices = RollbackArenaBlockIndices.capture(this::contains, this.players);
                 LAYERS.forEach((block, stack) -> {
                     if (contains(block)) {
                         if (stack.stream().anyMatch(layer -> layer.ownerId == null || !players.contains(layer.ownerId)))
@@ -192,10 +193,10 @@ public class TempBlock {
                 });
                 var maps = com.projectkorra.projectkorra.earthbending.lava.LavaFlow.rollbackMaps();
                 copyLava(maps.get(0), seed.lava); copyLava(maps.get(1), seed.land); copyLava(maps.get(2), seed.air);
-                seed.nextId = NEXT_LAYER_ID.getAndUpdate(n -> Math.addExact(n, CAPACITY)); seed.idLimit = seed.nextId + CAPACITY;
-                seed.nextRevision = NEXT_REVISION.getAndUpdate(n -> Math.addExact(n, CAPACITY)); seed.revisionLimit = seed.nextRevision + CAPACITY;
                 validateRows(seed);
                 seed.earth = com.projectkorra.projectkorra.prediction.rollback.RollbackEarthTerrain.capture(this::contains, world.getName(), bounds, this.players);
+                seed.nextId = NEXT_LAYER_ID.getAndUpdate(n -> Math.addExact(n, CAPACITY)); seed.idLimit = seed.nextId + CAPACITY;
+                seed.nextRevision = NEXT_REVISION.getAndUpdate(n -> Math.addExact(n, CAPACITY)); seed.revisionLimit = seed.nextRevision + CAPACITY;
             }
             private void copyLava(Map<Block, TempBlock> live, Map<Block, TempBlock> destination) {
                 live.forEach((block, layer) -> { if (contains(block)) destination.put(block, layer); });
@@ -238,6 +239,7 @@ public class TempBlock {
                         throw new IllegalStateException("Overlapping temporary layer lease during enrollment");
                     for (var entry : seed.stacks.entrySet()) if (!entry.getValue().equals(LAYERS.get(entry.getKey())))
                         throw new IllegalStateException("Live layers changed before capture");
+                    com.projectkorra.projectkorra.prediction.rollback.RollbackLiveRegistryEligibility.requireAvailable(players, this::contains);
                     seed.earth.requireCurrent(this::contains, world.getName(), bounds, players);
                     seed.abilityIndices.detach(this::contains, players);
                     seed.stacks.forEach((block, stack) -> {
@@ -258,7 +260,18 @@ public class TempBlock {
                         || state.nextId < seed.nextId || state.nextId > state.idLimit
                         || state.nextRevision < seed.nextRevision || state.nextRevision > state.revisionLimit)
                     throw new IllegalStateException("Invalid confirmed temporary-layer reservation");
+                com.projectkorra.projectkorra.prediction.rollback.RollbackLiveRegistryEligibility.requireAvailable(players, this::contains);
                 validateRows(state);
+                var original = new HashMap<Long, TempBlock>();
+                for (var stack : seed.stacks.values()) for (var layer : stack) original.put(layer.layerId, layer);
+                for (var stack : state.stacks.values()) for (var layer : stack) {
+                    var previous = original.get(layer.layerId);
+                    if (previous == null && (layer.layerId <= seed.nextId || layer.layerId > state.nextId)
+                            || previous != null && !previous.block.equals(layer.block)
+                            || (previous == null || layer.revision != previous.revision)
+                                    && (layer.revision <= seed.nextRevision || layer.revision > state.nextRevision))
+                        throw new IllegalStateException("Confirmed temporary layer is outside its reserved identities");
+                }
                 state.abilityIndices.validate(this::contains, players);
                 state.earth.validateSettlement(seed.earth, this::contains, world.getName(), bounds, players);
                 state.stacks.forEach((block, stack) -> {
@@ -280,6 +293,12 @@ public class TempBlock {
                     instances.putAll(built.tops);
                     VISIBILITY.putAll(built.visibility);
                     EXPIRATIONS.addAll(built.expirations);
+                    for (var stack : seed.stacks.values()) for (var previous : stack) {
+                        if (built.ids.get(previous.layerId) != previous) {
+                            previous.reverted = true;
+                            previous.scheduled = false;
+                        }
+                    }
                     LEASES.remove(this); complete = true;
                 }
             }

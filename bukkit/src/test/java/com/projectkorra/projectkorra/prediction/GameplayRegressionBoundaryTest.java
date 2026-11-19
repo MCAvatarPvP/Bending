@@ -175,9 +175,9 @@ class GameplayRegressionBoundaryTest {
         String sources = common("com/projectkorra/projectkorra/util/BlockSource.java");
 
         assertTrue(core.contains("public static void discardAllInstances()")
-                        && core.contains("INSTANCES.clear()")
-                        && core.contains("INSTANCES_BY_PLAYER.clear()")
-                        && core.contains("INSTANCES_BY_CLASS.clear()"),
+                        && core.contains("activeInstances().clear()")
+                        && core.contains("instancesByPlayer().clear()")
+                        && core.contains("instancesByClass().clear()"),
                 "a failed addon remove may not leave an old WaterSpout visible to the next runtime");
         assertTrue(water.contains("public static void discardAllWaterbendingState()")
                         && water.contains("WaterSpout.discardAllTracking()")

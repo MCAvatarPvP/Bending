@@ -33,7 +33,7 @@ class RollbackPrivateGameplayRegistriesTest {
                     // Marking the private empty stack must not mark the live caller's pending frame.
                     AbilityActivationManager.markHandled();
                 });
-                var initial = domain.capture();
+                var initial = domain.call(domain::capture);
                 domain.call(() -> {
                     assertEquals("inside", ComboManager.getAuthors().put(key, "predicted"));
                     assertEquals("outside", CompletableFuture.supplyAsync(() -> ComboManager.getAuthors().get(key)).join());
@@ -43,7 +43,7 @@ class RollbackPrivateGameplayRegistriesTest {
                     assertTrue(AbilityActivationManager.finishTracking());
                     return null;
                 });
-                domain.restore(initial);
+                domain.call(() -> { domain.restore(initial); return null; });
                 assertEquals("inside", domain.call(() -> ComboManager.getAuthors().get(key)));
                 assertEquals("outside", liveAuthors.get(key));
                 assertTrue(earth.contains(key));
