@@ -138,6 +138,7 @@ public record PaperRollbackDuelSeed(PaperRollbackRosterSeed nativeRoster, Rollba
         var services = new ArrayList<Object>(gameplayServices);
         if (services.stream().anyMatch(RollbackEventBindings.class::isInstance))
             throw new IllegalArgumentException("Duel capture owns event registration capture");
+        services.add(PaperRollbackMatchRules.bendingHooks(nativePlayers.values().stream().map(ServerPlayer::getBukkitEntity).toList()));
         services.add(RollbackEventBindings.capture(com.projectkorra.projectkorra.platform.Platform.events()));
         if (services.stream().filter(RollbackAbilityGlobals.class::isInstance).map(RollbackAbilityGlobals.class::cast)
                 .anyMatch(globals -> globals.capturedLayers() != null))
@@ -149,7 +150,8 @@ public record PaperRollbackDuelSeed(PaperRollbackRosterSeed nativeRoster, Rollba
         var graph = RollbackBendingState.encode(bending.values(), collisions, services, sourceCodec);
         time = RollbackTiming.finish(time, "seed.bendingGraph");
         var worldSeed = PaperRollbackWorldSeed.capture(world, request.terrain(), randomSeed, soundSeed, terrainLimits, prepared,
-                request.interactions() == null ? RollbackDuelInteractions.STANDARD : request.interactions());
+                (request.interactions() == null ? RollbackDuelInteractions.STANDARD : request.interactions())
+                        .withTeams(PaperRollbackScoreboards.captureCombatTeams(nativePlayers.values())));
         time = RollbackTiming.finish(time, "seed.world");
         var portable = new RollbackBootstrapData(request.session(), challenge, request.match(), request.round(), millis, nanos, definitions,
                 request.sides(), worldSeed, nativeRoster.portable(playerServices), configuration, access, RollbackMaterials.capture(com.projectkorra.projectkorra.platform.Platform.materials()), PaperRollbackTags.capture(), RollbackServer.Metadata.capture(com.projectkorra.projectkorra.platform.Platform.server()), PaperRollbackPlugins.capture(), graph);

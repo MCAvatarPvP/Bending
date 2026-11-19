@@ -85,6 +85,36 @@ class SharedAbilityNameTest {
         }
     }
 
+    @Test void stickyBombImpactsIgnoreForeignMetadataAndForgetRetiredActors() throws Exception {
+        try (var world = new AbilityWorld()) {
+            var source = world.player(0, 64, 0);
+            var target = world.player(0, 64, 1);
+            var bomb = PROTOTYPES.newInstance(me.literka.abilities.StickyBomb.class);
+            var location = target.getLocation();
+            var removals = new java.util.concurrent.atomic.AtomicInteger();
+            var bullet = new com.projectkorra.projectkorra.platform.mc.entity.ShulkerBullet() {
+                final java.util.UUID id = java.util.UUID.randomUUID();
+                @Override public java.util.UUID getUniqueId() { return id; }
+                @Override public com.projectkorra.projectkorra.platform.mc.Location getLocation() { return location; }
+                @Override public List<MetadataValue> getMetadata(String key) { return List.of(() -> "unrelated", () -> bomb); }
+                @Override public void remove() { removals.incrementAndGet(); }
+            };
+            var holder = me.literka.abilities.StickyBomb.class.getDeclaredField("shulkerBullet");
+            holder.setAccessible(true);
+            var shot = me.literka.abilities.StickyBomb.class.getDeclaredField("location"); shot.setAccessible(true); shot.set(bomb, source.getLocation());
+            var before = me.literka.abilities.StickyBomb.class.getDeclaredField("prevLocation"); before.setAccessible(true); before.set(bomb, location);
+            var caster = CoreAbility.class.getDeclaredField("player"); caster.setAccessible(true); caster.set(bomb, source);
+            assertNull(me.literka.abilities.StickyBomb.forProjectile(bullet));
+            holder.set(bomb, bullet);
+            assertSame(bomb, me.literka.abilities.StickyBomb.forProjectile(bullet));
+            assertTrue(bomb.stickEntity(target, location));
+            assertFalse(bomb.stickEntity(target, location));
+            assertNull(holder.get(bomb));
+            assertNull(me.literka.abilities.StickyBomb.forProjectile(bullet));
+            assertEquals(1, removals.get());
+        }
+    }
+
     @Test void eachDaggerDamagesOnceThroughItsOriginalAbilityDespiteForeignMetadata() throws Exception {
         try (var world = new AbilityWorld()) {
             var caster = world.player(0, 64, 0);

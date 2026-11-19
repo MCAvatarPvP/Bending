@@ -88,7 +88,7 @@ public final class PaperRollbackMatchRestoration {
             var registry = scene.world().actors();
             var codec = registry == null ? graph.codec() : graph.codec().withBindings(registry.bindings());
             return new Frame(roster, scene.logical().terrain().changesSince(initial.world().terrain()),
-                    graph.bending().exportState(codec), actors, scene.ticks().captureRollbackState());
+                    graph.bending().exportState(codec, registry), actors, scene.ticks().captureRollbackState());
         });
         var terrain = PaperRollbackTerrainWriteback.prepare(world, initial.world().terrain(), frame.changes());
         var players = PaperRollbackRosterComponents.prepare(live.nativePlayers(), frame.players(), liveNanos);

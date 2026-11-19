@@ -11,6 +11,16 @@ import java.util.UUID;
 
 /** Publishes effects only after their originating frame has been confirmed. */
 final class PaperRollbackPresentation {
+    private static final java.util.Map<String, SoundCategory> NATIVE_SOUND_CATEGORIES =
+            java.util.Arrays.stream(net.minecraft.sounds.SoundSource.values()).collect(java.util.stream.Collectors.toUnmodifiableMap(
+                    net.minecraft.sounds.SoundSource::getName, source -> SoundCategory.valueOf(source.name())));
+
+    static SoundCategory nativeSoundCategory(String name) {
+        var category = NATIVE_SOUND_CATEGORIES.get(name);
+        if (category == null) throw new IllegalArgumentException("Unknown native sound category: " + name);
+        return category;
+    }
+
     private final World world;
     private final JavaPlugin plugin;
     private final PKListener listener;
@@ -85,15 +95,14 @@ final class PaperRollbackPresentation {
         if (event instanceof PaperRollbackCombatAccess.SoundOutput sound) {
             var at = at(sound.position());
             double maximum = Math.max(16, 16 * sound.volume());
-            var category = SoundCategory.valueOf(sound.category().toUpperCase(java.util.Locale.ROOT));
+            var category = nativeSoundCategory(sound.category());
             for (var player : world.getPlayers()) {
                 if (player.getUniqueId().equals(sound.excludedSource()) || player.getLocation().distanceSquared(at) > maximum * maximum) continue;
                 player.playSound(at, sound.sound(), category, sound.volume(), sound.pitch(), sound.seed());
             }
         } else if (event instanceof PaperRollbackCombatAccess.TargetSoundOutput sound) {
             var player = viewer(sound.target());
-            if (player != null) player.playSound(at(sound.position()), sound.sound(), SoundCategory.valueOf(
-                    sound.category().toUpperCase(java.util.Locale.ROOT)), sound.volume(), sound.pitch(), sound.seed());
+            if (player != null) player.playSound(at(sound.position()), sound.sound(), nativeSoundCategory(sound.category()), sound.volume(), sound.pitch(), sound.seed());
         } else if (event instanceof PaperRollbackCombatAccess.ParticleOutput visual) {
             var nativeType = org.bukkit.Registry.PARTICLE_TYPE.get(NamespacedKey.fromString(visual.type()));
             if (nativeType != null) world.spawnParticle(nativeType, at(visual.position()), visual.count(), visual.x(), visual.y(), visual.z(), visual.speed());

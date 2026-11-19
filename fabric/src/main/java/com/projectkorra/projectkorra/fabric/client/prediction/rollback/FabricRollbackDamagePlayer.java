@@ -34,12 +34,26 @@ abstract class FabricRollbackDamagePlayer extends PlayerEntity {
     int rollbackInvulnerableDuration = 20;
     protected FabricRollbackDamagePlayer(World world, GameProfile profile) { super(world, profile); }
 
+    @Override public boolean shouldDamagePlayer(PlayerEntity target) {
+        var owner = FabricRollbackGliding.owner(this);
+        if (!owner.hasRound() || !(owner.damagePolicy() instanceof FabricRollbackArenaEvents arena)) return super.shouldDamagePlayer(target);
+        if (!owner.ownsPlayer(target)) throw new IllegalArgumentException("Combat team check crosses the private roster");
+        return arena.canHarmPlayer(this, target);
+    }
+
     @Override public boolean damage(ServerWorld world, DamageSource source, float amount) {
         var owner = FabricRollbackGliding.owner(this);
         if (!owner.hasRound()) return super.damage(world, source, amount);
         owner.requireDamageSource(source);
         if (world != getEntityWorld()) throw new IllegalArgumentException("Foreign damage world");
         if (!Float.isFinite(amount)) throw new IllegalArgumentException("Non-finite native damage");
+        if (owner.damagePolicy() instanceof FabricRollbackArenaEvents) {
+            // ServerPlayer checks the victim as receiver; the arrow flight predicate uses the shooter as receiver.
+            var attacker = source.getAttacker();
+            if (attacker instanceof PlayerEntity player && !shouldDamagePlayer(player)) return false;
+            if (attacker instanceof PersistentProjectileEntity arrow && arrow.getOwner() instanceof PlayerEntity shooter
+                    && !shouldDamagePlayer(shooter)) return false;
+        }
         if (isInvulnerableTo(world, source) || (getAbilities().invulnerable && !source.isIn(DamageTypeTags.BYPASSES_INVULNERABILITY))) return false;
         despawnCounter = 0;
         if (isRemoved() || isDead()) return false;

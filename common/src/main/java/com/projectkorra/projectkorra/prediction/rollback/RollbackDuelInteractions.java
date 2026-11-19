@@ -5,15 +5,18 @@ import java.io.*;
 import java.util.*;
 
 /** Match rules for physical block breaks and drops. Bending uses its own region and ability rules. */
-public record RollbackDuelInteractions(boolean build, boolean bedWars, Set<String> allowedArenaMaterials, Set<Position> placed, RollbackItemRules items, Set<String> liveBreakMaterials) {
+public record RollbackDuelInteractions(boolean build, boolean bedWars, Set<String> allowedArenaMaterials, Set<Position> placed, RollbackItemRules items, Set<String> liveBreakMaterials, RollbackCombatTeams teams) {
+    public RollbackDuelInteractions withTeams(RollbackCombatTeams next) {
+        return new RollbackDuelInteractions(build, bedWars, allowedArenaMaterials, placed, items, liveBreakMaterials, next);
+    }
     public RollbackDuelInteractions withLiveBreakMaterials(Set<String> materials) {
-        return new RollbackDuelInteractions(build, bedWars, allowedArenaMaterials, placed, items, materials);
+        return new RollbackDuelInteractions(build, bedWars, allowedArenaMaterials, placed, items, materials, teams);
     }
     public RollbackDuelInteractions(boolean build, boolean bedWars, Set<String> allowedArenaMaterials, Set<Position> placed) {
-        this(build, bedWars, allowedArenaMaterials, placed, RollbackItemRules.DEFAULT, Set.of());
+        this(build, bedWars, allowedArenaMaterials, placed, RollbackItemRules.DEFAULT, Set.of(), RollbackCombatTeams.EMPTY);
     }
     public RollbackDuelInteractions withItems(RollbackItemRules settings) {
-        return new RollbackDuelInteractions(build, bedWars, allowedArenaMaterials, placed, settings, liveBreakMaterials);
+        return new RollbackDuelInteractions(build, bedWars, allowedArenaMaterials, placed, settings, liveBreakMaterials, teams);
     }
     public enum Decision { DENY, ALLOW, LIVE_MATCH }
     public record LiveBreak(UUID player, int x, int y, int z, String material) {
@@ -25,6 +28,7 @@ public record RollbackDuelInteractions(boolean build, boolean bedWars, Set<Strin
 
     public RollbackDuelInteractions {
         Objects.requireNonNull(items);
+        Objects.requireNonNull(teams);
         liveBreakMaterials = Set.copyOf(liveBreakMaterials);
         if (liveBreakMaterials.size() > 8192) throw new IllegalArgumentException("Native break material count");
         if (allowedArenaMaterials.size() > 8192 || placed.size() > 32768 || !build && !placed.isEmpty())
@@ -54,6 +58,7 @@ public record RollbackDuelInteractions(boolean build, boolean bedWars, Set<Strin
         items.write(out);
         out.writeShort(liveBreakMaterials.size());
         for (String name : new TreeSet<>(liveBreakMaterials)) out.writeUTF(name);
+        teams.write(out);
     }
     static RollbackDuelInteractions read(DataInput in) throws IOException {
         boolean build = in.readBoolean(), beds = in.readBoolean();
@@ -74,6 +79,6 @@ public record RollbackDuelInteractions(boolean build, boolean bedWars, Set<Strin
         if (special > 8192) throw new IllegalArgumentException("Native break material count");
         var live = new HashSet<String>();
         for (int i = 0; i < special; i++) if (!live.add(in.readUTF())) throw new IllegalArgumentException("Duplicate native break material");
-        return new RollbackDuelInteractions(build, beds, materials, placed, items, live);
+        return new RollbackDuelInteractions(build, beds, materials, placed, items, live, RollbackCombatTeams.read(in));
     }
 }

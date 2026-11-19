@@ -10,6 +10,7 @@ import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.ability.util.CollisionManager;
 import com.projectkorra.projectkorra.ability.util.ComboManager;
 import com.projectkorra.projectkorra.attribute.AttributeCache;
+import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackPlayer;
 
@@ -81,11 +82,21 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
     }
 
     /** Export settled current domain state, replacing startup task/event roots with current registrations. */
-    public byte[] exportState(RollbackGraphCodec codec) { return exportState(codec, false); }
+    public byte[] exportState(RollbackGraphCodec codec) { return exportState(codec, false, List.of()); }
+    public byte[] exportState(RollbackGraphCodec codec, RollbackActorRegistry actors) {
+        return exportState(codec, false, actorViews(actors));
+    }
 
-    public byte[] exportRepair(RollbackGraphCodec codec) { return exportState(codec, true); }
+    public byte[] exportRepair(RollbackGraphCodec codec) { return exportState(codec, true, List.of()); }
+    public byte[] exportRepair(RollbackGraphCodec codec, RollbackActorRegistry actors) {
+        return exportState(codec, true, actorViews(actors));
+    }
 
-    private byte[] exportState(RollbackGraphCodec codec, boolean includeServiceTimers) {
+    private static List<Entity> actorViews(RollbackActorRegistry actors) {
+        return actors == null ? List.of() : actors.active().stream().map(RollbackActorRegistry.Actor::view).toList();
+    }
+
+    private byte[] exportState(RollbackGraphCodec codec, boolean includeServiceTimers, List<Entity> actors) {
         if (Thread.currentThread() != owner || !installed || !RollbackDomain.active()
                 || ProjectKorra.collisionManager != collisions || !BendingPlayer.getPlayers().keySet().equals(players.keySet())
                 || players.entrySet().stream().anyMatch(entry -> BendingPlayer.getPlayers().get(entry.getKey()) != entry.getValue()))
@@ -103,7 +114,7 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
         }
         if (!foundTasks) current.add(tasks);
         if (!foundEvents) current.add(events);
-        Source source = source(players.values(), collisions, current, true);
+        Source source = source(players.values(), collisions, current, true, actors);
         return codec.encodeExport(source.roots, source.projections);
     }
 
@@ -266,10 +277,10 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
                           Function<Object, RollbackStateTransfer.Replacement> projections) { }
 
     private static Source source(Collection<BendingPlayer> participants, CollisionManager collisions, Collection<?> services) {
-        return source(participants, collisions, services, false);
+        return source(participants, collisions, services, false, List.of());
     }
 
-    private static Source source(Collection<BendingPlayer> participants, CollisionManager collisions, Collection<?> services, boolean exporting) {
+    private static Source source(Collection<BendingPlayer> participants, CollisionManager collisions, Collection<?> services, boolean exporting, List<Entity> actors) {
         Objects.requireNonNull(collisions, "collisions");
         var roster = new TreeMap<UUID, BendingPlayer>();
         for (BendingPlayer player : participants) {
@@ -296,7 +307,7 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
         roots.add(AbilityActivationManager.captureRollbackRegistry());
         for (Object service : services) if (!(service instanceof CoreAbility.RollbackIdReservation))
             roots.add(service instanceof RollbackTaskBindings.Capture tasks ? tasks.bindings()
-                    : service instanceof RollbackAbilityGlobals globals ? globals.portable() : service);
+                    : service instanceof RollbackAbilityGlobals globals ? globals.portable(actors) : service);
         // Attribute definitions exist for future activations too. Keep their metadata,
         // but import only this roster's per-instance cache entries. Project the maps,
         // not the cache objects, to preserve references held by arbitrary ability fields.
@@ -407,6 +418,10 @@ public final class RollbackBendingState implements RollbackStateCell<Void> {
         if (Thread.currentThread() != owner || !RollbackDomain.active() || installed) {
             throw new IllegalStateException("Bending import requires one bootstrap on its owning thread");
         }
+        var hooks = services.stream().filter(RollbackBendingHooks.class::isInstance).map(RollbackBendingHooks.class::cast).toList();
+        if (hooks.size() > 1) throw new IllegalArgumentException("Duplicate bending hook roots");
+        var registries = RollbackDomain.importingRegistries();
+        if (!hooks.isEmpty()) Objects.requireNonNull(registries, "Private hook registries").bendingHooks = hooks.getFirst();
         var events = services.stream().filter(RollbackEventBindings.class::isInstance)
                 .map(RollbackEventBindings.class::cast).toList();
         if (events.size() > 1 || repair && events.isEmpty()) throw new IllegalArgumentException("Duplicate event registration roots");

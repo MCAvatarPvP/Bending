@@ -539,6 +539,20 @@ class RollbackBendingStateTest {
         }
     }
 
+    @Test void transferredSpectatorHookDeniesBothActionsAndDefersForDuelists() {
+        var rule = new RollbackBendingHooks.Spectators(Set.of(A));
+        var hooks = new RollbackBendingHooks(List.of(rule), List.of(rule));
+        var classes = List.<Class<?>>of(RollbackBendingHooks.class, RollbackBendingHooks.Spectators.class);
+        var codec = new RollbackGraphCodec(RollbackGameplayCatalog.create(classes, List.of()), RollbackDuelRuntime.GRAPH);
+        var received = (RollbackBendingHooks)codec.decode(codec.encode(List.of(hooks))).getFirst();
+        var spectator = new BendingPlayer(player(A));
+        var duelist = new BendingPlayer(player(B));
+        assertEquals(Optional.of(false), received.canBind(spectator, null));
+        assertEquals(Optional.of(false), received.canBend(spectator, null, true, false));
+        assertEquals(Optional.empty(), received.canBind(duelist, null));
+        assertEquals(Optional.empty(), received.canBend(duelist, null, false, true));
+    }
+
     @Test void missingPlatformReplacementCannotInstallLiveBendingState() {
         var source = new BendingPlayer(player(A));
         var transfer = new RollbackStateTransfer(type -> type.getName().startsWith("com.projectkorra."),

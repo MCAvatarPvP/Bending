@@ -13,11 +13,14 @@ import com.projectkorra.projectkorra.platform.mc.entity.FallingBlock;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
 import com.projectkorra.projectkorra.platform.mc.World;
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore;
+import com.projectkorra.projectkorra.platform.mc.metadata.FixedMetadataValue;
+import com.projectkorra.projectkorra.prediction.rollback.world.RollbackEntityBody;
 import java.util.*;
 
 /** Per-participant delayed Catapult landings and block-source selections. */
 public final class RollbackAbilityGlobals {
     private boolean enrolled;
+    private Map<Entity, Map<String, List<FixedMetadataValue>>> actorMetadata = new LinkedHashMap<>();
     private RollbackDigging mining = new RollbackDigging();
     public static RollbackDigging activeDigging() {
         var globals = RollbackDomain.abilityGlobals();
@@ -119,12 +122,17 @@ public final class RollbackAbilityGlobals {
         var scope = RollbackDomain.abilityGlobals();
         return scope == null ? null : scope.layers;
     }
-    RollbackAbilityGlobals portable() {
+    RollbackAbilityGlobals portable(Collection<? extends Entity> actors) {
         var copy = new RollbackAbilityGlobals();
         copy.runMaintenance = runMaintenance;
         copy.previousWorldPhase = previousWorldPhase;
         copy.regenerationDelay = regenerationDelay;
         copy.elementExpiryDelay = elementExpiryDelay;
+        copy.chiMaintenanceDelay = chiMaintenanceDelay;
+        for (var actor : actors) {
+            var metadata = RollbackEntityBody.logicalBody(actor).exportMetadata();
+            if (!metadata.isEmpty()) copy.actorMetadata.put(actor, metadata);
+        }
         copy.enrolled = enrolled; copy.landings = landings; copy.sources = sources; copy.statuses = statuses;
         copy.addonActors = addonActors;
         copy.mining = mining;
@@ -188,9 +196,13 @@ public final class RollbackAbilityGlobals {
     }
 
     public void validateTemporaryActors(RollbackActorData data) {
-        if (stands.isEmpty() && falling.isEmpty() && addonActors == null) return;
+        if (stands.isEmpty() && falling.isEmpty() && addonActors == null && actorMetadata.isEmpty()) return;
         var registered = new HashMap<UUID, com.projectkorra.projectkorra.platform.mc.entity.EntityType>();
         for (var row : data.actors()) registered.put(row.identity().uuid(), row.identity().type());
+        for (var actor : actorMetadata.keySet()) {
+            if (registered.get(actor.getUniqueId()) != actor.getType())
+                throw new IllegalStateException("Metadata belongs to an actor outside the confirmed scene");
+        }
         var referenced = new HashSet<UUID>();
         for (var stand : stands) requireTemporaryActor(stand.getArmorStand(), registered, referenced);
         for (var block : falling.keySet()) requireTemporaryActor(block, registered, referenced);
@@ -214,10 +226,18 @@ public final class RollbackAbilityGlobals {
         var globals = RollbackDomain.abilityGlobals();
         if (globals == null) return;
         globals.validateTemporaryActors(data);
+        globals.restoreActorMetadata();
         globals.falling.values().forEach(TempFallingBlock::restoreMetadata);
         globals.stands.forEach(TempArmorStand::restoreMetadata);
         if (globals.addonActors != null)
             globals.addonActors.stands.values().forEach(me.moros.hyperion.util.TempArmorStand::restoreMetadata);
+    }
+
+    private void restoreActorMetadata() {
+        actorMetadata.forEach((actor, keys) -> keys.forEach((key, values) -> {
+            for (var value : values) ensureActorMetadata(actor, key, value.owner(), value.value());
+        }));
+        actorMetadata.clear();
     }
 
     public static void ensureActorMetadata(Entity entity, String key, Object owner, Object value) {
@@ -241,6 +261,7 @@ public final class RollbackAbilityGlobals {
                 if (claimant != null && claimant != live) throw new IllegalStateException("Temporary armor stand already has a live owner");
             }
         }
+        restoreActorMetadata();
         if (addonActors != null) addonActors.merge();
         statuses.merge(roster);
         falling.values().forEach(TempFallingBlock::restoreMetadata);

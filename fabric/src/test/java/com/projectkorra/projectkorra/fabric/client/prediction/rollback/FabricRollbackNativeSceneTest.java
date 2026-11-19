@@ -134,6 +134,34 @@ class FabricRollbackNativeSceneTest {
         assertEquals(original, player.ownedPlayer().getEntityPos());
     }
 
+    @Test void nativeDartTargetFilterAndPlayerDamageUseTheCorrectParticipantsScoreboard() throws Exception {
+        var ids = new ArrayList<>(bootstrapData().sides().keySet());
+        var shooterId = ids.get(0);
+        var targetId = ids.get(1);
+        var teams = new RollbackCombatTeams(Map.of(targetId, Set.of(shooterId, targetId)));
+        var settings = FabricRollbackWorldServicesTest.settings().withInteractions(RollbackDuelInteractions.STANDARD.withTeams(teams));
+        var duel = FabricRollbackNativeScene.importDuel(bootstrapData(seed(settings)), FabricRollbackTestRegistry.simulationRegistries(),
+                FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);
+        var roster = duel.scene().roster();
+        var shooter = roster.players().get(shooterId).ownedPlayer();
+        var target = roster.players().get(targetId).ownedPlayer();
+        var first = duel.views().players().get(shooterId).launchProjectile(com.projectkorra.projectkorra.platform.mc.entity.Arrow.class);
+        var second = duel.views().players().get(targetId).launchProjectile(com.projectkorra.projectkorra.platform.mc.entity.Arrow.class);
+        var canHit = net.minecraft.entity.projectile.PersistentProjectileEntity.class.getDeclaredMethod("canHit", net.minecraft.entity.Entity.class);
+        canHit.setAccessible(true);
+        FabricRollbackGliding.use(roster.world(), () -> {
+            assertFalse(shooter.shouldDamagePlayer(target));
+            assertTrue(target.shouldDamagePlayer(shooter));
+            try {
+                assertEquals(false, canHit.invoke(duel.actors().nativeEntity(first), target));
+                assertEquals(true, canHit.invoke(duel.actors().nativeEntity(second), shooter));
+            } catch (ReflectiveOperationException failure) { throw new AssertionError(failure); }
+            var world = (net.minecraft.server.world.ServerWorld) roster.world().world();
+            assertFalse(shooter.damage(world, world.getDamageSources().playerAttack(target), 4));
+            return null;
+        });
+    }
+
     @Test void nativeDartAndSmokescreenUseTheirOwnedArrowAndPotionCloud() throws Exception {
         var duel = FabricRollbackNativeScene.importDuel(bootstrapData(), FabricRollbackTestRegistry.simulationRegistries(),
                 FeatureFlags.DEFAULT_ENABLED_FEATURES, 8192, 128, 300_000);

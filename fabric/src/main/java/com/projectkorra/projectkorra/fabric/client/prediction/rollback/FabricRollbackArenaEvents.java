@@ -79,6 +79,9 @@ public final class FabricRollbackArenaEvents implements FabricRollbackWorldServi
         if (!policy.pvp() && event.source().getAttacker() instanceof PlayerEntity attacker && attacker != event.player())
             event.cancelled(true);
     }
+    boolean canHarmPlayer(PlayerEntity first, PlayerEntity second) {
+        return policy.pvp() && scene.services().settings().interactions().teams().canHarm(first.getUuid(), second.getUuid());
+    }
     @Override public void resetAttackCooldown(PlayerEntity attacker, PlayerEntity target) { attacker.resetTicksSinceLastAttack(); }
     @Override public void exhaustion(PlayerEntity player, DamageSource source, float amount) { player.addExhaustion(amount); }
     @Override public void knockback(PlayerEntity player, DamageSource source, double strength, double x, double z) {

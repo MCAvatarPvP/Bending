@@ -1,12 +1,15 @@
 package com.projectkorra.projectkorra.prediction.rollback;
 
 import com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Position;
+import com.projectkorra.projectkorra.BendingPlayer;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 
+import java.util.Collection;
 import java.util.HashSet;
+import java.util.UUID;
 import java.util.Map;
 
 /** Reads the currently enrolled Neptune round once, on the live server thread. */
@@ -46,6 +49,47 @@ final class PaperRollbackMatchRules {
             return new RollbackDuelInteractions(build, enabled.contains("bedwars"), allowed, placed);
         } catch (ReflectiveOperationException failure) {
             throw new IllegalStateException("Cannot capture the current Neptune kit", failure);
+        }
+    }
+
+    static RollbackBendingHooks bendingHooks(Collection<? extends Player> players) {
+        var projection = new NeptuneSpectators(players);
+        return BendingPlayer.captureRollbackHooks(
+                hook -> projection.fromNeptune(hook) ? projection.policy() : hook,
+                hook -> projection.fromNeptune(hook) ? projection.policy() : hook);
+    }
+
+    // Neptune 2.3 registers both methods under ProjectKorra's plugin identity. Resolve their declaring
+    // plugin class instead. Other shared addon callbacks are copied by the normal gameplay graph codec.
+    private static final class NeptuneSpectators {
+        private final Collection<? extends Player> players;
+        private RollbackBendingHooks.Spectators captured;
+        NeptuneSpectators(Collection<? extends Player> players) { this.players = players; }
+
+        boolean fromNeptune(Object hook) {
+            var host = hook.getClass().getNestHost();
+            if (!host.getName().equals("dev.lrxh.neptune.hooks.ProjectKorraHook")) return false;
+            var plugin = Bukkit.getPluginManager().getPlugin("Neptune");
+            return plugin != null && host.getClassLoader() == plugin.getClass().getClassLoader();
+        }
+
+        RollbackBendingHooks.Spectators policy() {
+            if (captured != null) return captured;
+            var plugin = Bukkit.getPluginManager().getPlugin("Neptune");
+            try {
+                var api = Class.forName("dev.lrxh.neptune.API", false, plugin.getClass().getClassLoader());
+                var getProfile = api.getMethod("getProfile", Player.class);
+                var spectators = new HashSet<UUID>();
+                for (var player : players) {
+                    var profile = getProfile.invoke(null, player);
+                    if (profile != null && ((Enum<?>)call(profile, "getState")).name().equals("IN_SPECTATOR"))
+                        spectators.add(player.getUniqueId());
+                }
+                captured = new RollbackBendingHooks.Spectators(spectators);
+                return captured;
+            } catch (ReflectiveOperationException failure) {
+                throw new IllegalStateException("Cannot capture Neptune spectator bending rules", failure);
+            }
         }
     }
 

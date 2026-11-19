@@ -111,6 +111,7 @@ public final class PaperRollbackNativeScene implements RollbackStateCell<Void>, 
         if (roster != null) throw new IllegalStateException("Native scene already assembled");
         roster = bodies;
         queries.bindRoster(world, roster);
+        world.scoreboards().importCombatTeams(seed.settings().interactions().teams(), roster);
         ticks = new PaperRollbackScheduledTicks(world, seed.ticks());
         services.bindTicks(ticks);
         world.bindTicks(ticks);

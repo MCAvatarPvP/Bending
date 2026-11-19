@@ -1,6 +1,8 @@
 package com.projectkorra.projectkorra;
 
 import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackBendingHooks;
+import com.projectkorra.projectkorra.prediction.authority.PredictionServices;
 
 import com.projectkorra.projectkorra.Element.MultiSubElement;
 import com.projectkorra.projectkorra.Element.SubElement;
@@ -214,6 +216,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
      * @param hook   The hook to register
      */
     public static void registerCanBendHook(@NotNull JavaPlugin plugin, @NotNull CanBendHook hook) {
+        PredictionServices.requireGlobalMutation();
         BEND_HOOKS.put(plugin, hook);
     }
 
@@ -224,7 +227,47 @@ public class BendingPlayer extends OfflineBendingPlayer {
      * @param hook   The hook to register
      */
     public static void registerCanBindHook(@NotNull JavaPlugin plugin, @NotNull CanBindHook hook) {
+        PredictionServices.requireGlobalMutation();
         BIND_HOOKS.put(plugin, hook);
+    }
+
+    private Optional<Boolean> canBendHook(CoreAbility ability, boolean ignoreBinds, boolean ignoreCooldowns) {
+        var privateHooks = RollbackBendingHooks.current();
+        if (privateHooks != null) return privateHooks.canBend(this, ability, ignoreBinds, ignoreCooldowns);
+        for (JavaPlugin plugin : BEND_HOOKS.keySet()) {
+            CanBendHook hook = BEND_HOOKS.get(plugin);
+            try {
+                Optional<Boolean> bool = hook.canBend(this, ability, ignoreBinds, ignoreCooldowns);
+                if (bool.isPresent()) return bool;
+            } catch (Exception e) {
+                ProjectKorra.log.severe("An error occurred while running CanBendHook registered by " + plugin.getName() + ".");
+                e.printStackTrace();
+            }
+        }
+        return Optional.empty();
+    }
+
+    private Optional<Boolean> canBindHook(CoreAbility ability) {
+        var privateHooks = RollbackBendingHooks.current();
+        if (privateHooks != null) return privateHooks.canBind(this, ability);
+        for (JavaPlugin plugin : BIND_HOOKS.keySet()) {
+            CanBindHook hook = BIND_HOOKS.get(plugin);
+            try {
+                Optional<Boolean> bool = hook.canBind(this, ability);
+                if (bool.isPresent()) return bool;
+            } catch (Exception e) {
+                ProjectKorra.log.severe("An error occurred while running CanBindHook registered by " + plugin.getName() + ".");
+                e.printStackTrace();
+            }
+        }
+        return Optional.empty();
+    }
+
+    public static RollbackBendingHooks captureRollbackHooks(java.util.function.UnaryOperator<CanBendHook> bend,
+                                                            java.util.function.UnaryOperator<CanBindHook> bind) {
+        PredictionServices.requireGlobalMutation();
+        return new RollbackBendingHooks(BEND_HOOKS.values().stream().map(bend).toList(),
+                BIND_HOOKS.values().stream().map(bind).toList());
     }
 
     /**
@@ -313,17 +356,8 @@ public class BendingPlayer extends OfflineBendingPlayer {
             return false;
         }
 
-        //Loop through all hooks and test them
-        for (JavaPlugin plugin : BEND_HOOKS.keySet()) {
-            CanBendHook hook = BEND_HOOKS.get(plugin);
-            try {
-                Optional<Boolean> bool = hook.canBend(this, ability, ignoreBinds, ignoreCooldowns);
-                if (bool.isPresent()) return bool.get(); //If the hook didn't return
-            } catch (Exception e) {
-                ProjectKorra.log.severe("An error occurred while running CanBendHook registered by " + plugin.getName() + ".");
-                e.printStackTrace();
-            }
-        }
+        var hookDecision = canBendHook(ability, ignoreBinds, ignoreCooldowns);
+        if (hookDecision.isPresent()) return hookDecision.get();
 
         if (!this.canBind(ability)) {
             return false;
@@ -442,17 +476,8 @@ public class BendingPlayer extends OfflineBendingPlayer {
      */
     public boolean canBind(final CoreAbility ability) {
 
-        //Loop through all hooks and test them
-        for (JavaPlugin plugin : BIND_HOOKS.keySet()) {
-            CanBindHook hook = BIND_HOOKS.get(plugin);
-            try {
-                Optional<Boolean> bool = hook.canBind(this, ability);
-                if (bool.isPresent()) return bool.get();
-            } catch (Exception e) {
-                ProjectKorra.log.severe("An error occurred while running CanBindHook registered by " + plugin.getName() + ".");
-                e.printStackTrace();
-            }
-        }
+        var hookDecision = canBindHook(ability);
+        if (hookDecision.isPresent()) return hookDecision.get();
 
         if (ability == null || !this.player.isOnline() || !ability.isEnabled()) {
             return false;

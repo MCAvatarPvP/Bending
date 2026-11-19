@@ -57,6 +57,16 @@ class PaperRollbackDamageNativeTest {
         return new RegistryDataLoader.RegistryData<>(type.registryKey(), type.codec(), false);
     }
 
+    @Test void publishedVanillaSoundsRetainTheirCategoryForEveryNativeSource() {
+        assertSame(org.bukkit.SoundCategory.PLAYERS, PaperRollbackPresentation.nativeSoundCategory("player"));
+        assertSame(org.bukkit.SoundCategory.BLOCKS, PaperRollbackPresentation.nativeSoundCategory("block"));
+        assertSame(org.bukkit.SoundCategory.RECORDS, PaperRollbackPresentation.nativeSoundCategory("record"));
+        for (var source : net.minecraft.sounds.SoundSource.values()) {
+            var category = PaperRollbackPresentation.nativeSoundCategory(source.getName());
+            assertSame(source, io.papermc.paper.adventure.PaperAdventure.asVanilla(category.soundSource()));
+        }
+    }
+
     @Test void confirmedMeleeHitsAnOwnedPlayerWithoutAGlobalBukkitManager() throws Exception {
         onTickThread(() -> {
             var combat = new Combat();

@@ -109,8 +109,8 @@ public class ChiListener implements Listener {
             }
         }
 
-        if (event.getEntity() instanceof ShulkerBullet bullet) {
-            event.setCancelled(bullet.hasMetadata("stickybomb"));
+        if (event.getEntity() instanceof ShulkerBullet bullet && StickyBomb.forProjectile(bullet) != null) {
+            event.setCancelled(true);
         }
     }
 
@@ -149,19 +149,13 @@ public class ChiListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST)
     public void onProjectileHit(ProjectileHitEvent event) {
-        if (event.getEntity() instanceof ShulkerBullet bullet && bullet.hasMetadata("stickybomb")) {
-            StickyBomb bomb = (StickyBomb) bullet.getMetadata("stickybomb").get(0).value();
-            boolean stuck = false;
-            if (event.getHitEntity() instanceof LivingEntity e)
-                stuck = bomb.stickEntity(e, bullet.getLocation());
-
-            if (event.getHitBlock() != null)
-                stuck |= bomb.stickBlock(event.getHitBlock(), bullet.getLocation());
-
-            if (stuck) {
-                bullet.remove();
-            }
+        if (event.getEntity() instanceof ShulkerBullet bullet) {
+            var bomb = StickyBomb.forProjectile(bullet);
+            if (bomb == null) return;
+            if (event.getHitEntity() instanceof LivingEntity entity) bomb.stickEntity(entity, bullet.getLocation());
+            else if (event.getHitBlock() != null) bomb.stickBlock(event.getHitBlock(), bullet.getLocation());
             event.setCancelled(true);
+            return;
         }
 
         if (!(event.getEntity() instanceof Arrow arrow)) return;
@@ -233,7 +227,7 @@ public class ChiListener implements Listener {
         } else if (ability.getPlayer() != null && ability.getPlayer().getUniqueId().equals(affected.getUniqueId())) {
             RopeDart dart = CoreAbility.getAbility(ability.getPlayer(), RopeDart.class);
             if (dart != null && dart.cancelsVelocity(abilityName, false)) dart.removeWithCooldown();
-        } else if (affected.hasMetadata("stickybomb")) {
+        } else if (affected instanceof ShulkerBullet bullet && StickyBomb.forProjectile(bullet) != null) {
             cancel = ChiRework.config().getStringList("Abilities.StickyBomb.CancelVelocityAbilities");
 
             for (String name : cancel) {

@@ -137,6 +137,51 @@ class RollbackEntityTest {
         assertFalse(entity.hasMetadata("copied"));
     }
 
+    @Test void confirmedActorMetadataRebindsThePayloadAndItsPluginOnlyOnTheNewActor() throws Exception {
+        try (var platform = new com.projectkorra.projectkorra.support.AbilityWorld()) {
+            var session = new UUID(7, 15);
+            var id = new RollbackEntityBody.Identity(RollbackActorData.uuid(session, 1), -1, "owned", EntityType.ARROW);
+            var data = new RollbackActorData(session, 1, List.of(new RollbackActorData.Row(id, new byte[]{1})));
+            var world = new World();
+            var source = new RollbackEntity(new RollbackEntityBody(id, world, body(world, 1).kinematics(), BODY_RULES));
+            var recipient = new RollbackEntity(new RollbackEntityBody(id, world, body(world, 2).kinematics(), BODY_RULES));
+            var outside = new RollbackEntity(body(world, 3));
+            Object sourceOwner = new Object(), targetOwner = new Object();
+            var payload = new ArrayList<>(List.of("ability state"));
+            source.setMetadata("marker", new FixedMetadataValue(sourceOwner, payload));
+            outside.setMetadata("marker", new FixedMetadataValue(sourceOwner, "unchanged"));
+            var globals = new RollbackAbilityGlobals().portable(List.of(source));
+            var sourceCodec = metadataCodec(source, sourceOwner);
+            var bytes = sourceCodec.encode(List.of(globals, payload));
+            source.removeMetadata("marker", sourceOwner);
+            var received = metadataCodec(recipient, targetOwner).decode(bytes);
+            var installed = (RollbackAbilityGlobals) received.getFirst();
+            var domain = RollbackDomain.create(new RollbackStateGraph(value -> value == recipient, field -> true, 256),
+                    List.of(), List.of(), com.projectkorra.projectkorra.platform.Platform.current(), installed::install);
+            domain.call(() -> {
+                assertThrows(IllegalStateException.class, () -> RollbackAbilityGlobals.repairActorMetadata(
+                        new RollbackActorData(session, 0, List.of())));
+                RollbackAbilityGlobals.repairActorMetadata(data);
+                RollbackAbilityGlobals.repairActorMetadata(data);
+                return null;
+            });
+            assertEquals(1, recipient.getMetadata("marker").size());
+            assertSame(received.get(1), recipient.getMetadata("marker").getFirst().value());
+            assertNotSame(payload, received.get(1));
+            assertTrue(recipient.body().hasMetadata("marker", targetOwner, received.get(1)));
+            assertFalse(source.hasMetadata("marker"));
+            assertEquals("unchanged", outside.getMetadata("marker").getFirst().value());
+        }
+    }
+
+    private static RollbackGraphCodec metadataCodec(Entity actor, Object plugin) {
+        var catalog = new RollbackGraphCodec.Catalog(List.of(RollbackAbilityGlobals.class, RollbackDigging.class,
+                RollbackDigging.Mining.class, RollbackParticipantStatuses.class, FixedMetadataValue.class), List.of(),
+                List.of(new RollbackGraphCodec.Binding("actor", Entity.class, actor),
+                        new RollbackGraphCodec.Binding("plugin", Object.class, plugin)));
+        return new RollbackGraphCodec(catalog, new RollbackGraphCodec.Limits(256, 2048, 32768, 1024));
+    }
+
     @Test void registryRewindsSpawnRemovalAndMovedQueryGeometryWithStableViews() {
         World world = new World();
         var registry = new RollbackEntityRegistry(world, 3);

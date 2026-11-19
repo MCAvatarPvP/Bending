@@ -52,6 +52,35 @@ public final class PaperRollbackScoreboards implements RollbackStateCell<PaperRo
     private final CraftScoreboardManager manager = new ObjenesisStd(false).newInstance(CraftScoreboardManager.class);
     private final MinecraftServer server = RollbackNativeQueryShell.create(MinecraftServer.class).instance();
     private final Board main;
+    private boolean importingTeams;
+
+    static RollbackCombatTeams captureCombatTeams(Collection<ServerPlayer> players) {
+        var rows = new java.util.TreeMap<java.util.UUID, Set<java.util.UUID>>();
+        for (var victim : players) {
+            var wrapper = victim.getBukkitEntity();
+            var team = wrapper.getScoreboard().getEntryTeam(victim.getScoreboardName());
+            if (team == null || team.allowFriendlyFire()) continue;
+            var members = new java.util.TreeSet<java.util.UUID>();
+            for (var player : players) if (team.hasEntry(player.getScoreboardName())) members.add(player.getUUID());
+            rows.put(victim.getUUID(), members);
+        }
+        return new RollbackCombatTeams(rows);
+    }
+    /** Seed private boards without publishing native scoreboard changes before the match starts. */
+    void importCombatTeams(RollbackCombatTeams teams, Map<java.util.UUID, PaperRollbackNativePlayerState> roster) {
+        importingTeams = true;
+        try {
+            for (var row : teams.protectedTeams().entrySet()) {
+                if (!roster.containsKey(row.getKey()) || !roster.keySet().containsAll(row.getValue()))
+                    throw new IllegalArgumentException("Combat team contains a foreign player");
+                var board = create(false).nativeBoard;
+                var team = board.addPlayerTeam("rollback_combat");
+                team.setAllowFriendlyFire(false);
+                for (var member : row.getValue()) board.addPlayerToTeam(roster.get(member).ownedPlayer().getScoreboardName(), team);
+                state.assigned.put(row.getKey(), board);
+            }
+        } finally { importingTeams = false; }
+    }
 
     private static final class State {
         long nextId;
@@ -74,7 +103,7 @@ public final class PaperRollbackScoreboards implements RollbackStateCell<PaperRo
     public Board main() { check(); return main; }
     public Board create(boolean tracked) {
         check();
-        if (state.boards.size() >= 128) throw new IllegalStateException("Private scoreboard budget exceeded");
+        if (state.boards.size() >= 129) throw new IllegalStateException("Private scoreboard budget exceeded");
         var board = new NativeBoard(state.nextId++);
         state.boards.put(board.id, board);
         if (tracked) state.tracked.add(board);
@@ -220,14 +249,27 @@ public final class PaperRollbackScoreboards implements RollbackStateCell<PaperRo
         }
     }
 
+    private static final MethodHandle WRAP;
+    static {
+        try {
+            WRAP = MethodHandles.privateLookupIn(CraftScoreboard.class, MethodHandles.lookup())
+                    .findConstructor(CraftScoreboard.class, MethodType.methodType(void.class, Scoreboard.class));
+        } catch (ReflectiveOperationException failure) { throw new ExceptionInInitializerError(failure); }
+    }
+    private static CraftScoreboard wrap(Scoreboard owned) {
+        try { return (CraftScoreboard) WRAP.invokeExact(owned); }
+        catch (Throwable failure) { throw new IllegalStateException("Create private native scoreboard view", failure); }
+    }
+
     private final class NativeBoard extends ServerScoreboard {
         final long id;
-        // Final native class: an identity token for audited read replacements,
-        // never an actual Bukkit board with access to global services.
-        final CraftScoreboard bukkit = new ObjenesisStd(false).newInstance(CraftScoreboard.class);
+        // Uncopied native projectile code uses CraftScoreboard.getPlayerTeam directly.
+        // Its stock wrapper must refer to this owned scoreboard for that read too.
+        final CraftScoreboard bukkit = wrap(this);
         NativeBoard(long id) { super(server); this.id = id; }
         private void emit(Kind kind, String name, String holder, String data) {
-            require(this); super.setDirty(); output.accept(new Change(id, kind, name, holder, data));
+            require(this); super.setDirty();
+            if (!importingTeams) output.accept(new Change(id, kind, name, holder, data));
         }
         private void own(Objective objective) {
             require(this);

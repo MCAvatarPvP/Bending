@@ -48,6 +48,11 @@ public final class EmbeddedAddonBootstrap {
         tryEnable("Molten abilities", () -> CoreAbility.registerPluginAbilities(molten, "me.macieq.abilities"));
     }
 
+    /** Stable local identities for gameplay references owned by the bundled addons. */
+    public static synchronized java.util.List<com.projectkorra.projectkorra.platform.mc.plugin.java.JavaPlugin> plugins() {
+        return enabled ? java.util.List.of(jedCore, projectAddons, chiRework, molten, Hyperion.getPlugin()) : java.util.List.of();
+    }
+
     public static synchronized void disable() {
         if (!enabled) return;
         tryEnable("JedCore shutdown", jedCore::onDisable);

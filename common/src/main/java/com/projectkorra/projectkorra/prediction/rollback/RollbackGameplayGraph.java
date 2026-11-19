@@ -73,6 +73,8 @@ public final class RollbackGameplayGraph {
     static List<RollbackGraphCodec.Binding> definitionBindings() {
         var bindings = new ArrayList<>(CoreAbility.rollbackAttributeBindings());
         bindings.add(new RollbackGraphCodec.Binding("common/ProjectKorra", ProjectKorra.class, ProjectKorra.plugin));
+        for (var plugin : com.projectkorra.projectkorra.ability.util.EmbeddedAddonBootstrap.plugins())
+            bindings.add(new RollbackGraphCodec.Binding("embedded/" + plugin.getClass().getName(), plugin.getClass(), plugin));
         var elements = new LinkedHashSet<Element>(Arrays.asList(Element.getAllElements()));
         elements.addAll(Arrays.asList(Element.getAllSubElements()));
         for (var element : elements) {

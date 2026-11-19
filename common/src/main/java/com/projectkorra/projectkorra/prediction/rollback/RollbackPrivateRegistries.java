@@ -18,6 +18,8 @@ public final class RollbackPrivateRegistries {
     private final ElementalAbility.PrivateRegistries materials = new ElementalAbility.PrivateRegistries();
     private final Map<Class<? extends Manager>, Manager> managers = new HashMap<>();
 
+    RollbackBendingHooks bendingHooks = RollbackBendingHooks.EMPTY;
+
     public OfflineBendingPlayer.PrivateRegistries players() { return players; }
     public CoreAbility.PrivateRegistries abilities() { return abilities; }
     public ComboManager.PrivateRegistries combos() { return combos; }

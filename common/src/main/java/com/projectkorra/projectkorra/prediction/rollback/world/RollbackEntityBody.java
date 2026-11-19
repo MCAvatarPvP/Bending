@@ -332,6 +332,18 @@ public final class RollbackEntityBody implements RollbackStateCell<RollbackEntit
         List<StoredMetadata> values = data.metadata.get(key);
         return values == null ? List.of() : List.copyOf(values);
     }
+    /** Export fixed values in the bending graph so payload references can rebind to the restored abilities. */
+    public Map<String, List<FixedMetadataValue>> exportMetadata() {
+        checkThread();
+        var result = new LinkedHashMap<String, List<FixedMetadataValue>>();
+        data.metadata.forEach((key, entries) -> {
+            var values = new ArrayList<FixedMetadataValue>(entries.size());
+            for (var entry : entries) values.add(new FixedMetadataValue(entry.owner, entry.value));
+            result.put(key, values);
+        });
+        return result;
+    }
+
     public boolean hasMetadata(String key, Object owner, Object value) {
         checkThread();
         var entries = data.metadata.get(key);

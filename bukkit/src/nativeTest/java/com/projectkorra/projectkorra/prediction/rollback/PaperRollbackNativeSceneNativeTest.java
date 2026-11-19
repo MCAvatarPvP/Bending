@@ -53,6 +53,49 @@ class PaperRollbackNativeSceneNativeTest {
         });
     }
 
+    @Test void nativeRopeDartArrowUsesTheTargetScoreboardForFriendlyFire() throws Exception {
+        onTickThread(() -> {
+            var source = source();
+            var attackerId = source.getFirst().getUUID();
+            var defenderId = source.getLast().getUUID();
+            var captured = PaperRollbackRosterSeed.capture(source, 0);
+            var seed = seed();
+            var teams = new RollbackCombatTeams(Map.of(defenderId, Set.of(attackerId, defenderId)));
+            var settings = RollbackWorldSettings.decode(seed.settings()
+                    .withInteractions(RollbackDuelInteractions.STANDARD.withTeams(teams)).encode());
+            var arena = new RollbackWorldSeed(seed.world(), seed.name(), seed.minimumY(), seed.maximumY(),
+                    seed.dayTime(), seed.storm(), settings, seed.border(), seed.environment(), seed.terrain(), seed.light(), seed.scheduledTicks());
+            var scene = scene(arena, captured, captured.participants());
+            var shooter = (ServerPlayer) scene.roster().get(attackerId).ownedPlayer();
+            var defender = (ServerPlayer) scene.roster().get(defenderId).ownedPlayer();
+            var itemOwner = new RollbackNativeItems<>(new PaperRollbackItems(PaperRollbackEnvironmentNativeTest.registries()));
+            var actors = new PaperRollbackActors(new UUID(82, 32), 16, itemOwner);
+            actors.bind(scene);
+            var arrow = actors.spawn(scene.logical(), new RollbackEntityBody.Pose(0, 2, 0, 0, 0),
+                    com.projectkorra.projectkorra.platform.mc.entity.Arrow.class);
+            scene.logical().entities().add(arrow);
+            var nativeArrow = (PaperRollbackArrow) actors.nativeEntity(arrow);
+            shooter.setPos(.5, 1, -2); defender.setPos(.5, 1, 2);
+            nativeArrow.setOwner(shooter);
+            nativeArrow.setPos(.5, 2, -.5);
+            nativeArrow.setDeltaMovement(0, 0, 4);
+            assertFalse(shooter.canHarmPlayer(defender));
+            assertTrue(defender.canHarmPlayer(shooter));
+            assertEquals(teams, PaperRollbackScoreboards.captureCombatTeams(List.of(shooter, defender)));
+            var scan = net.minecraft.world.entity.projectile.arrow.AbstractArrow.class
+                    .getDeclaredMethod("findHitEntities", net.minecraft.world.phys.Vec3.class, net.minecraft.world.phys.Vec3.class);
+            scan.setAccessible(true);
+            assertTrue(((Collection<?>) scan.invoke(nativeArrow, nativeArrow.position(), nativeArrow.position().add(nativeArrow.getDeltaMovement()))).isEmpty());
+            nativeArrow.setOwner(defender);
+            nativeArrow.setPos(.5, 2, .5);
+            nativeArrow.setDeltaMovement(0, 0, -4);
+            var hits = (Collection<?>) scan.invoke(nativeArrow, nativeArrow.position(), nativeArrow.position().add(nativeArrow.getDeltaMovement()));
+            assertEquals(List.of(shooter), hits.stream().map(hit -> ((net.minecraft.world.phys.EntityHitResult)hit).getEntity()).toList());
+            assertNull(Bukkit.getServer());
+            return null;
+        });
+    }
+
     @Test void privateSnowballImpactDeliversExactLogicalActorsWithoutALiveBukkitServer() throws Exception {
         onTickThread(() -> {
             var roster = PaperRollbackRosterSeed.capture(source(), 0);

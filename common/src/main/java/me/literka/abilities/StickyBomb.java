@@ -89,6 +89,7 @@ public class StickyBomb extends ModernChiAbility implements AddonAbility {
         fallDmg = ChiRework.config().getBoolean("Abilities.StickyBomb.FallDamage");
 
         location = player.getEyeLocation();
+        prevLocation = location.clone();
         Vector direction = location.getDirection().multiply(speed);
         if (!CooldownSync.isAuthoritative()) {
             // ShulkerBulletEntity applies gravity only in the server branch of
@@ -97,6 +98,7 @@ public class StickyBomb extends ModernChiAbility implements AddonAbility {
         }
 
         shulkerBullet = location.getWorld().spawn(location, ShulkerBullet.class, sb -> {
+            shulkerBullet = sb;
             sb.setGravity(true);
             sb.setSilent(true);
             sb.setInvulnerable(true);
@@ -179,9 +181,27 @@ public class StickyBomb extends ModernChiAbility implements AddonAbility {
         return stickBlock(hitLocation.getBlock(), hitLocation);
     }
 
+    /** A marker is valid only for the exact projectile retained by that ability. */
+    public static StickyBomb forProjectile(ShulkerBullet bullet) {
+        for (var entry : bullet.getMetadata("stickybomb")) {
+            if (entry.value() instanceof StickyBomb bomb && bomb.shulkerBullet != null
+                    && bomb.shulkerBullet.getUniqueId().equals(bullet.getUniqueId())) return bomb;
+        }
+        return null;
+    }
+    private void releaseProjectile() {
+        var previous = shulkerBullet;
+        shulkerBullet = null;
+        if (previous != null) previous.remove();
+    }
+    @Override public void remove() {
+        releaseProjectile();
+        super.remove();
+    }
+
     public boolean stickEntity(LivingEntity e, Location hitLocation) {
-        if (!stuck && player.getEntityId() != e.getEntityId() && !e.hasMetadata("stickybomb")) {
-            shulkerBullet.remove();
+        if (!stuck && !player.getUniqueId().equals(e.getUniqueId())) {
+            releaseProjectile();
             targetEntity = e;
             targetLoc = hitLocation.clone().subtract(e.getLocation());
             stuck = true;
@@ -216,7 +236,7 @@ public class StickyBomb extends ModernChiAbility implements AddonAbility {
         shulkerBullet.teleport(targetLoc);
         location = targetLoc.clone();
         location.getWorld().playSound(location, Sound.BLOCK_HONEY_BLOCK_STEP, SoundCategory.MASTER, 0.5f, 1.7f);
-        shulkerBullet.remove();
+        releaseProjectile();
         time = RollbackClock.millis();
         return true;
     }
@@ -226,9 +246,9 @@ public class StickyBomb extends ModernChiAbility implements AddonAbility {
             if (e instanceof LivingEntity le) {
                 double dmg;
                 if (targetEntity == null) {
-                    dmg = player.getUniqueId() == le.getUniqueId() ? damageSelf : damageOthers;
+                    dmg = player.getUniqueId().equals(le.getUniqueId()) ? damageSelf : damageOthers;
                 } else {
-                    dmg = player.getUniqueId() == le.getUniqueId() ? damageSelfSticked : damageOthersSticked;
+                    dmg = player.getUniqueId().equals(le.getUniqueId()) ? damageSelfSticked : damageOthersSticked;
                 }
 
                 Utils.damage(le, dmg, this);
@@ -238,7 +258,6 @@ public class StickyBomb extends ModernChiAbility implements AddonAbility {
             }
         }
 
-        shulkerBullet.remove();
         location.getWorld().playSound(this.location, Sound.ENTITY_GENERIC_EXPLODE, 1, 1.5f);
         new ParticleEffect().type(Particle.EXPLOSION_EMITTER).location(location).count(1).speed(0).spawn();
         List<Long> list = cooldowns().get(player);
