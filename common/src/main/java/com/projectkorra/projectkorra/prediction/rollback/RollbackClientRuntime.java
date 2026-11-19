@@ -7,7 +7,7 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/** Owns a prepared replica's local input, fixed clock mapping and correction delivery. */
+/** Samples native input and maps each new sample into the running authority timeline. */
 public final class RollbackClientRuntime<S, E> implements RollbackStartClientEndpoint.Runtime {
     public record Held(RollbackMovementInput movement, boolean sprinting) {
         public Held { Objects.requireNonNull(movement, "movement"); }
@@ -40,7 +40,7 @@ public final class RollbackClientRuntime<S, E> implements RollbackStartClientEnd
     // Paper publishes its next frame, so retain the original packets separately from rewindable state.
     static final int MAX_WAITING_TICKS = 200;
     private final ArrayDeque<RollbackInputPacket> waitingPrediction = new ArrayDeque<>(), waitingSend = new ArrayDeque<>();
-    private long sequence, anchor, clientTick, proposedThrough, authorityHead;
+    private long sequence, anchor, clientTick, sampledThrough, proposedThrough, authorityHead;
     private Phase phase = Phase.PREPARED;
     private boolean busy;
 
@@ -92,11 +92,13 @@ public final class RollbackClientRuntime<S, E> implements RollbackStartClientEnd
         enter(Phase.RUNNING);
         try {
             if (tick != Math.incrementExact(clientTick)) throw new IllegalStateException("Client input clock skipped or reversed");
-            long target = Math.subtractExact(tick, anchor);
+            // A stalled render thread can resume after Paper has already finalized its old local clock.
+            // Advance the mapping only for new samples. Packets already queued retain their original frames.
+            long target = Math.incrementExact(Math.max(sampledThrough, authorityHead));
             var controls = Objects.requireNonNull(held.get(), "held controls");
-            var packet = new RollbackInputPacket(session, tick, controls.movement(), controls.sprinting(), actions);
+            var packet = new RollbackInputPacket(session, Math.addExact(anchor, target), controls.movement(), controls.sprinting(), actions);
             if (waitingSend.size() >= MAX_WAITING_TICKS) throw new IllegalStateException("Rollback authority did not advance within the input queue budget");
-            actions.clear(); clientTick = tick;
+            actions.clear(); clientTick = tick; sampledThrough = target;
             waitingPrediction.addLast(packet);
             waitingSend.addLast(packet);
             admitSamples();

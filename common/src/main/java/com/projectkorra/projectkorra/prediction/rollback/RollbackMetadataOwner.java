@@ -1,32 +1,45 @@
 package com.projectkorra.projectkorra.prediction.rollback;
 
-import com.jedk1.jedcore.JedCore;
-import me.literka.ChiRework;
-import me.macieq.FloorIsLava;
-import me.moros.hyperion.Hyperion;
-import me.simplicitee.project.addons.ProjectAddons;
+import com.projectkorra.projectkorra.ProjectKorra;
+import com.projectkorra.projectkorra.platform.mc.plugin.java.JavaPlugin;
+import java.lang.ref.WeakReference;
+import java.util.*;
 
-/** Embedded addon handles are local singletons. Only their metadata identity crosses the wire. */
-public enum RollbackMetadataOwner {
-    CHI_REWORK, JED_CORE, HYPERION, PROJECT_ADDONS, MOLTEN;
+/** A gameplay plugin's registered name/package pairs identify its metadata owner across loaders. */
+public final class RollbackMetadataOwner {
+    private static final Map<String, WeakReference<JavaPlugin>> REGISTERED = new TreeMap<>();
+    private final List<String> registrations;
 
-    public static Object portable(Object owner) {
-        if (owner instanceof ChiRework && owner == ChiRework.plugin) return CHI_REWORK;
-        if (owner instanceof JedCore && owner == JedCore.plugin) return JED_CORE;
-        if (owner instanceof Hyperion && owner == Hyperion.getPlugin()) return HYPERION;
-        if (owner instanceof ProjectAddons && owner == ProjectAddons.instance) return PROJECT_ADDONS;
-        if (owner instanceof FloorIsLava && owner == FloorIsLava.plugin) return MOLTEN;
-        return owner;
+    RollbackMetadataOwner(List<String> registrations) { this.registrations = List.copyOf(registrations); }
+
+    public static synchronized void register(String registration, JavaPlugin plugin) {
+        REGISTERED.put(registration, new WeakReference<>(plugin));
     }
 
-    static Object local(Object owner) {
-        if (!(owner instanceof RollbackMetadataOwner embedded)) return owner;
-        return switch (embedded) {
-            case CHI_REWORK -> ChiRework.plugin;
-            case JED_CORE -> JedCore.plugin;
-            case HYPERION -> Hyperion.getPlugin();
-            case PROJECT_ADDONS -> ProjectAddons.instance;
-            case MOLTEN -> FloorIsLava.plugin;
-        };
+    public static synchronized void clearRegistrations() { REGISTERED.clear(); }
+
+    public static synchronized Object portable(Object owner) {
+        if (!(owner instanceof JavaPlugin plugin) || owner == ProjectKorra.plugin) return owner;
+        var names = new ArrayList<String>();
+        REGISTERED.forEach((key, reference) -> {
+            if (reference.get() == plugin) names.add(key);
+        });
+        if (names.isEmpty()) throw new IllegalStateException("Unregistered bending metadata owner: " + plugin.getName());
+        return new RollbackMetadataOwner(names);
+    }
+
+    static synchronized Object local(Object owner) {
+        if (!(owner instanceof RollbackMetadataOwner token)) return owner;
+        JavaPlugin resolved = null;
+        for (String key : token.registrations) {
+            var reference = REGISTERED.get(key);
+            var candidate = reference == null ? null : reference.get();
+            if (candidate == null) continue;
+            if (resolved != null && resolved != candidate)
+                throw new IllegalStateException("Ambiguous local bending metadata owner: " + token.registrations);
+            resolved = candidate;
+        }
+        if (resolved == null) throw new IllegalStateException("Missing local bending metadata owner: " + token.registrations);
+        return resolved;
     }
 }

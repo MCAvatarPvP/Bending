@@ -792,6 +792,7 @@ public abstract class CoreAbility implements Ability {
      * located in a Jar file inside of the /ProjectKorra/Abilities/ folder.
      */
     public static void registerAbilities() {
+        com.projectkorra.projectkorra.prediction.rollback.RollbackMetadataOwner.clearRegistrations();
         ABILITIES_BY_NAME.clear();
         ABILITIES_BY_CLASS_NAME.clear();
         ABILITIES_BY_CLASS.clear();
@@ -812,6 +813,7 @@ public abstract class CoreAbility implements Ability {
         final AbilityLoader<CoreAbility> abilityLoader = new AbilityLoader<CoreAbility>(plugin, packageBase);
         final List<CoreAbility> loadedAbilities = abilityLoader.load(CoreAbility.class, CoreAbility.class);
         final String entry = plugin.getName() + "::" + packageBase;
+        com.projectkorra.projectkorra.prediction.rollback.RollbackMetadataOwner.register(entry, plugin);
         if (!ADDON_PLUGINS.contains(entry)) {
             ADDON_PLUGINS.add(entry);
         }

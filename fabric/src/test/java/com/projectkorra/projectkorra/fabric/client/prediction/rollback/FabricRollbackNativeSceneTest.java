@@ -374,7 +374,14 @@ class FabricRollbackNativeSceneTest {
         var phases = new FabricRollbackPhases(duel);
         phases.tickWorld(1);
         assertFalse(nativeArrow.isRemoved());
+        var actor = duel.actors().registry().get(arrow.getUniqueId());
+        var checkpoint = new RollbackStateGraph(value -> false, field -> true, 65_536).capture(List.of(actor), List.of());
         phases.tickWorld(2);
+        var afterSecondTick = nativeArrow.getEntityPos();
+        checkpoint.restore();
+        phases.tickWorld(2);
+        assertEquals(afterSecondTick, nativeArrow.getEntityPos());
+        assertSame(duel.actors().nativeEntity(caster), nativeArrow.getOwner());
         assertFalse(nativeArrow.isRemoved());
         phases.tickWorld(3);
         assertTrue(nativeArrow.isRemoved());

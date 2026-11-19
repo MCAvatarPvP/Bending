@@ -50,12 +50,14 @@ class RopeDartContactTest {
                     return new RayTraceResult(new Vector(wall[0], 1, 0));
                 }
             };
+            var hiddenId = new UUID(0, 4);
             var owner = new Player() {
+                @Override public boolean canSee(Player other) { return !hiddenId.equals(other.getUniqueId()); }
                 @Override public World getWorld() { return world; }
                 @Override public UUID getUniqueId() { return new UUID(0, 9); }
                 @Override public Location getLocation() { return new Location(world, 0, 0, 0); }
             };
-            class Target extends LivingEntity {
+            class Target extends Player {
                 double x;
                 final UUID id;
                 Target(double x, int id) { this.x = x; this.id = new UUID(0, id); }
@@ -68,6 +70,7 @@ class RopeDartContactTest {
                 }
             }
             var far = new Target(8, 3); var tied = new Target(5, 2); var near = new Target(5, 1);
+            candidates.add(new Target(1, 4));
             candidates.add(far); candidates.add(tied); candidates.add(near);
             boolean[] removed = {false};
             var projectile = new Arrow() {
@@ -85,7 +88,7 @@ class RopeDartContactTest {
             sweep.setAccessible(true);
             var from = new Location(world, 0, 1, 0); var to = new Location(world, 10, 1, 0);
             sweep.invoke(dart, from, to);
-            assertFalse(removed[0], "solid wall blocks the dart");
+            assertFalse(removed[0], "the caster cannot see the first player and a solid wall protects the others");
             wall[0] = 9;
             set(dart, "origin", from);
             set(dart, "originVec", new Vector(1, 0, 0));

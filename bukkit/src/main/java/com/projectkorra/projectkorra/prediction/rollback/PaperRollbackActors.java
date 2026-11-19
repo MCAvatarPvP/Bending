@@ -99,7 +99,12 @@ public final class PaperRollbackActors implements RollbackArenaActions.Native, R
                 return null;
             case "isInBlock": return ((net.minecraft.world.entity.projectile.arrow.AbstractArrow) e).isInGround();
             case "isInWaterOrBubbleColumn": return e.isInWater() || e.level().getBlockState(e.blockPosition()).is(net.minecraft.world.level.block.Blocks.BUBBLE_COLUMN);
-            case "setShooter": ((Projectile) e).setOwner(nativeEntity((Entity) args[0])); return null;
+            case "setShooter": {
+                var owner = nativeEntity((Entity) args[0]);
+                ((Projectile) e).setOwner(owner);
+                e.projectileSource = owner != null && owner.getBukkitEntity() instanceof org.bukkit.projectiles.ProjectileSource source ? source : null;
+                return null;
+            }
             case "getShooter": return logical(((Projectile) e).getOwner());
             case "setSize": ((org.bukkit.entity.Slime) craft).setSize((int) args[0]); return null;
             case "setItemStack": {

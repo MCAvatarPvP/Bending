@@ -225,7 +225,7 @@ public class RopeDart extends ChiAbility implements AddonAbility {
     private boolean canAttach(LivingEntity candidate) {
         return candidate != null && !candidate.isDead() && candidate.getWorld() == player.getWorld()
                 && !candidate.getUniqueId().equals(player.getUniqueId())
-                && (!(candidate instanceof Player other) || (other.isOnline() && other.getGameMode() != GameMode.SPECTATOR));
+                && (!(candidate instanceof Player other) || (other.isOnline() && other.getGameMode() != GameMode.SPECTATOR && player.canSee(other)));
     }
 
     public static RopeDart forProjectile(Arrow projectile) {

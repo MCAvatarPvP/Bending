@@ -65,7 +65,14 @@ class PaperRollbackNativeSceneNativeTest {
                     .withInteractions(RollbackDuelInteractions.STANDARD.withTeams(teams)).encode());
             var arena = new RollbackWorldSeed(seed.world(), seed.name(), seed.minimumY(), seed.maximumY(),
                     seed.dayTime(), seed.storm(), settings, seed.border(), seed.environment(), seed.terrain(), seed.light(), seed.scheduledTicks());
-            var scene = scene(arena, captured, captured.participants());
+            var retired = new ArrayList<org.bukkit.event.entity.EntityRemoveEvent>();
+            var scene = scene(arena, captured, captured.participants(), new Events() {
+                @Override public void gameEvent(Object event, Object pos, Object context) { }
+                @Override public void event(org.bukkit.event.Event event) {
+                    if (event instanceof org.bukkit.event.entity.EntityRemoveEvent removal) retired.add(removal);
+                    else throw new AssertionError(event);
+                }
+            });
             var shooter = (ServerPlayer) scene.roster().get(attackerId).ownedPlayer();
             var defender = (ServerPlayer) scene.roster().get(defenderId).ownedPlayer();
             var itemOwner = new RollbackNativeItems<>(new PaperRollbackItems(PaperRollbackEnvironmentNativeTest.registries()));
@@ -102,6 +109,88 @@ class PaperRollbackNativeSceneNativeTest {
             views.players().get(defenderId).state().hidden(Set.of(attackerId));
             assertFalse(defender.getBukkitEntity().canSee(shooter.getBukkitEntity()));
             assertTrue(((Collection<?>) scan.invoke(nativeArrow, nativeArrow.position(), nativeArrow.position().add(nativeArrow.getDeltaMovement()))).isEmpty());
+            views.players().get(defenderId).state().hidden(Set.of());
+            var caster = views.players().get(defenderId);
+            var target = views.players().get(attackerId);
+            arrow.setShooter(caster);
+            arrow.setDamage(0);
+            me.literka.abilities.RopeDart dart;
+            var previousConfig = com.projectkorra.projectkorra.configuration.ConfigManager.defaultConfig;
+            try {
+                var settingsForAbility = new RollbackConfiguration.Settings("fixture", Map.of(), Map.of(), true);
+                com.projectkorra.projectkorra.configuration.ConfigManager.defaultConfig =
+                        new com.projectkorra.projectkorra.configuration.Config(settingsForAbility) { };
+                dart = new org.objenesis.ObjenesisStd().newInstance(me.literka.abilities.RopeDart.class);
+            } finally {
+                com.projectkorra.projectkorra.configuration.ConfigManager.defaultConfig = previousConfig;
+            }
+            var abilityType = com.projectkorra.projectkorra.ability.CoreAbility.class;
+            var casterField = abilityType.getDeclaredField("player");
+            casterField.setAccessible(true);
+            casterField.set(dart, caster);
+            var shot = dart.getClass().getDeclaredField("arrow");
+            shot.setAccessible(true);
+            shot.set(dart, arrow);
+            var started = abilityType.getDeclaredField("started");
+            started.setAccessible(true);
+            started.set(dart, true);
+            var constructor = com.projectkorra.projectkorra.ability.CoreAbility.RollbackRegistry.class
+                    .getDeclaredConstructor(List.class, Map.class, int.class, int.class, long.class);
+            constructor.setAccessible(true);
+            var abilities = constructor.newInstance(List.of(dart), Map.of(dart.getClass(), Map.of()), 1, 64, 0);
+            var listener = new me.literka.ChiListener();
+            var impacts = new ArrayList<com.projectkorra.projectkorra.platform.mc.event.entity.ProjectileHitEvent>();
+            var bus = (com.projectkorra.projectkorra.platform.PKEventBus) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{com.projectkorra.projectkorra.platform.PKEventBus.class}, (proxy, method, args) -> {
+                        assertEquals("call", method.getName());
+                        var hit = (com.projectkorra.projectkorra.platform.mc.event.entity.ProjectileHitEvent) args[0];
+                        listener.onProjectileHit(hit);
+                        impacts.add(hit);
+                        return null;
+                    });
+            var platform = (com.projectkorra.projectkorra.platform.ProjectKorraPlatform) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{com.projectkorra.projectkorra.platform.ProjectKorraPlatform.class}, (proxy, method, args) -> {
+                        assertEquals("events", method.getName());
+                        return bus;
+                    });
+            var registries = new RollbackPrivateRegistries();
+            var domain = RollbackDomain.create(new RollbackStateGraph(value -> value == caster || value == arrow || value == target, field -> true, 2048),
+                    List.of(), List.of(registries), platform, abilities::install);
+            float initialHealth = shooter.getHealth();
+            domain.call(() -> {
+                try (var clock = RollbackClock.at(1000, 1, 50_000_000)) {
+                    var actor = (PaperRollbackActor) actors.registry().get(arrow.getUniqueId());
+                    nativeArrow.setPos(.5, 2, 4.5);
+                    actor.tick();
+                    assertTrue(impacts.isEmpty());
+                    assertSame(defender.getBukkitEntity(), nativeArrow.projectileSource);
+                    var airborne = actor.captureRollbackState();
+                    var position = nativeArrow.position();
+                    var velocity = nativeArrow.getDeltaMovement();
+                    int age = nativeArrow.tickCount;
+                    arrow.setShooter(target);
+                    assertSame(shooter.getBukkitEntity(), nativeArrow.projectileSource);
+                    nativeArrow.setDeltaMovement(1, 0, 0);
+                    actor.tick();
+                    actor.restoreRollbackState(airborne);
+                    assertSame(defender, nativeArrow.getOwner());
+                    assertSame(defender.getBukkitEntity(), nativeArrow.projectileSource);
+                    assertEquals(position, nativeArrow.position());
+                    assertEquals(velocity, nativeArrow.getDeltaMovement());
+                    assertEquals(age, nativeArrow.tickCount);
+                    actor.tick();
+                }
+                return null;
+            });
+            assertEquals(1, impacts.size());
+            assertSame(arrow, impacts.getFirst().getEntity());
+            assertSame(target, impacts.getFirst().getHitEntity());
+            assertTrue(impacts.getFirst().isCancelled());
+            assertEquals(initialHealth, shooter.getHealth());
+            assertTrue(nativeArrow.isRemoved());
+            assertNull(shot.get(dart));
+            assertEquals(target.getLocation().getZ(), dart.getLocation().getZ());
+            assertEquals(1, retired.size());
             assertNull(Bukkit.getServer());
             return null;
         });

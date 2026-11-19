@@ -69,6 +69,41 @@ class RollbackClientRuntimeTest {
         assertEquals(1, f.sent.size()); assertEquals(2, f.engine.confirmed().tick());
     }
 
+    @Test void newMovementAndSwingRemainResponsiveAfterTheAuthorityOutrunsThePhysicalClientClock() {
+        var f = new Fixture(8);
+        f.runtime.start(ANCHOR);
+        f.runtime.tick(ANCHOR + 1);
+        assertEquals(RollbackSession.Status.ACCEPTED, f.server.receive(f.connection, f.sent.getFirst()).status());
+        for (int tick = 1; tick <= 410; tick++) {
+            f.server.advance();
+            f.runtime.authority(f.server.publish());
+        }
+        f.runtime.action(RollbackInputActions.Kind.SWING, -1, 43, 12);
+        f.controls = new RollbackClientRuntime.Held(new RollbackMovementInput(1, 0, false, 43, 12), false);
+        f.runtime.tick(ANCHOR + 2);
+        var tap = f.sent.getLast();
+        assertEquals(ANCHOR + 411, tap.clientTick());
+        assertEquals(1, tap.actions().size());
+        assertEquals(RollbackSession.Status.ACCEPTED, f.server.receive(f.connection, tap).status());
+        f.server.advance();
+        f.runtime.authority(f.server.publish());
+        f.controls = new RollbackClientRuntime.Held(IDLE.movement(), false);
+        f.runtime.tick(ANCHOR + 3);
+        var release = f.sent.getLast();
+        assertEquals(ANCHOR + 412, release.clientTick());
+        assertTrue(release.actions().isEmpty());
+        assertEquals(RollbackSession.Status.ACCEPTED, f.server.receive(f.connection, release).status());
+        for (int tick = 412; tick <= 415; tick++) {
+            var update = f.server.advance();
+            f.runtime.authority(f.server.publish());
+            if (tick == 415) {
+                assertEquals(1, update.confirmed().state().distance());
+                assertEquals(1, update.confirmed().state().actions());
+            }
+        }
+        assertFalse(f.runtime.failed());
+    }
+
     @Test void fullHistoryWaitsWithoutRetimingInputThenContinuesAfterAuthorityArrives() {
         var f = new Fixture(3); f.runtime.start(ANCHOR);
         for (int tick = 1; tick <= 4; tick++) f.runtime.tick(ANCHOR + tick);

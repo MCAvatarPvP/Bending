@@ -12,7 +12,11 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.inventory.ItemStack;
 import com.projectkorra.projectkorra.platform.mc.inventory.PlayerInventory;
 import com.projectkorra.projectkorra.support.AbilityWorld;
+import com.projectkorra.projectkorra.platform.mc.entity.ShulkerBullet;
+import com.projectkorra.projectkorra.platform.mc.metadata.FixedMetadataValue;
+import com.projectkorra.projectkorra.platform.mc.metadata.MetadataValue;
 import me.literka.abilities.DaggerThrow;
+import me.literka.abilities.StickyBomb;
 import org.junit.jupiter.api.Test;
 import org.objenesis.ObjenesisStd;
 
@@ -105,9 +109,17 @@ class ChiEffectsTest {
                     new com.projectkorra.projectkorra.platform.mc.entity.Entity(), caster, dart, 1, false);
             damage.setCancelled(true);
             listener.onAbilityHit(damage);
-            var bomb = new com.projectkorra.projectkorra.platform.mc.entity.ShulkerBullet() {
-                @Override public boolean hasMetadata(String key) { return key.equals("stickybomb"); }
+            var owner = new ObjenesisStd().newInstance(StickyBomb.class);
+            var id = java.util.UUID.randomUUID();
+            var bomb = new ShulkerBullet() {
+                @Override public java.util.UUID getUniqueId() { return id; }
+                @Override public List<MetadataValue> getMetadata(String key) {
+                    return key.equals("stickybomb") ? List.of(new FixedMetadataValue(this, owner)) : List.of();
+                }
             };
+            var projectile = StickyBomb.class.getDeclaredField("shulkerBullet");
+            projectile.setAccessible(true);
+            projectile.set(owner, bomb);
             var hit = new com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageByEntityEvent(caster, bomb,
                     com.projectkorra.projectkorra.platform.mc.event.entity.EntityDamageEvent.DamageCause.ENTITY_ATTACK, null, 1);
             listener.onEntityHit(hit);

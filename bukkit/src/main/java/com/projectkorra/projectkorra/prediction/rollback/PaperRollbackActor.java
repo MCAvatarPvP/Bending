@@ -127,6 +127,12 @@ final class PaperRollbackActor implements RollbackActorRegistry.Actor<RollbackSt
             if (!scene.world().ownsEntity(entity)) throw new IllegalStateException("Actor references a foreign entity");
             return true;
         }
-        return value == scene || value == nativeActor.getBukkitEntityRaw() || value == EntityInLevelCallback.NULL || PaperRollbackMetadata.frozen(value);
+        if (value instanceof org.bukkit.craftbukkit.entity.CraftEntity wrapper) {
+            // Paper caches the shooter's Bukkit wrapper in Entity.projectileSource separately from the native owner.
+            if (wrapper != nativeActor.getBukkitEntityRaw() && !scene.world().ownsWrapper(wrapper))
+                throw new IllegalStateException("Actor references a foreign Bukkit entity");
+            return true;
+        }
+        return value == scene || value == EntityInLevelCallback.NULL || PaperRollbackMetadata.frozen(value);
     }
 }

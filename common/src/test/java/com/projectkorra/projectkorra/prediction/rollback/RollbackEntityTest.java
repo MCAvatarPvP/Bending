@@ -174,20 +174,31 @@ class RollbackEntityTest {
         }
     }
 
-    @Test void embeddedAddonOwnerRebindsWithoutChangingTheBootstrapCatalog() {
-        var prior = me.literka.ChiRework.plugin;
+    @Test void registeredAddonOwnerRebindsWithoutChangingTheBootstrapCatalog() {
+        class ExternalAddon implements com.projectkorra.projectkorra.platform.mc.plugin.java.JavaPlugin { }
+        var source = new ExternalAddon();
+        var local = new ExternalAddon();
+        var abilityPackage = "external.metadata.fixture";
+        var secondPackage = "external.metadata.fixture.effects";
+        var registrations = com.projectkorra.projectkorra.ability.CoreAbility.getAddonPlugins();
         try {
-            var source = new me.literka.ChiRework();
-            var local = new me.literka.ChiRework();
-            me.literka.ChiRework.plugin = source;
-            var catalog = new RollbackGraphCodec.Catalog(List.of(FixedMetadataValue.class), List.of(RollbackMetadataOwner.class), List.of());
+            com.projectkorra.projectkorra.ability.CoreAbility.registerPluginAbilities(source, abilityPackage);
+            com.projectkorra.projectkorra.ability.CoreAbility.registerPluginAbilities(source, secondPackage);
+            var catalog = new RollbackGraphCodec.Catalog(List.of(FixedMetadataValue.class, RollbackMetadataOwner.class), List.of(), List.of());
             var codec = new RollbackGraphCodec(catalog, new RollbackGraphCodec.Limits(32, 128, 4096, 1024));
             var bytes = codec.encode(List.of(new FixedMetadataValue(RollbackMetadataOwner.portable(source), "marker")));
-            me.literka.ChiRework.plugin = local;
+            com.projectkorra.projectkorra.ability.CoreAbility.registerPluginAbilities(local, abilityPackage);
             var value = (FixedMetadataValue) codec.decode(bytes).getFirst();
-            assertEquals("marker", value.value());
+            assertThrows(IllegalStateException.class, () -> RollbackMetadataOwner.local(value.owner()));
+            com.projectkorra.projectkorra.ability.CoreAbility.registerPluginAbilities(local, secondPackage);
             assertSame(local, RollbackMetadataOwner.local(value.owner()));
-        } finally { me.literka.ChiRework.plugin = prior; }
+            assertEquals("marker", value.value());
+            assertThrows(IllegalStateException.class, () -> RollbackMetadataOwner.portable(source));
+            assertThrows(IllegalStateException.class, () -> RollbackMetadataOwner.local(new RollbackMetadataOwner(List.of("absent"))));
+        } finally {
+            registrations.remove(source.getName() + "::" + abilityPackage);
+            registrations.remove(source.getName() + "::" + secondPackage);
+        }
     }
 
     private static RollbackGraphCodec metadataCodec(Entity actor, Object plugin) {
