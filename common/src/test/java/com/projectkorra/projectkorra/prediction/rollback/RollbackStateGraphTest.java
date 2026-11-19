@@ -218,6 +218,26 @@ class RollbackStateGraphTest {
         assertSame(child, holder.reference().get());
     }
 
+    @Test void restoreLeavesFixedListSlotsAloneAndReinstatesEqualButDistinctReferences() {
+        var child = new Node();
+        var fixed = java.util.Collections.nCopies(2, child);
+        String first = new String("same");
+        String second = new String("same");
+        var indexed = new java.util.concurrent.CopyOnWriteArrayList<>(List.of(first));
+        var sequential = new java.util.LinkedList<>(List.of(first));
+        var snapshot = graph.capture(List.of(fixed, indexed, sequential), List.of());
+
+        child.position = 7;
+        indexed.set(0, second);
+        sequential.set(0, second);
+        snapshot.restore();
+
+        assertSame(child, fixed.get(1));
+        assertEquals(0, child.position);
+        assertSame(first, indexed.getFirst());
+        assertSame(first, sequential.getFirst());
+    }
+
     private static final class Entry extends java.util.AbstractMap.SimpleImmutableEntry<Node, Node> {
         int extra;
         Entry(Node key, Node value) { super(key, value); }

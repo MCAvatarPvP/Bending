@@ -338,7 +338,16 @@ public final class RollbackStateGraph {
                 requireMutableCollection(type);
                 Restore restore = () -> {
                     if (collection instanceof List list && list.size() == items.length) {
-                        for (int i = 0; i < items.length; i++) list.set(i, items[i]);
+                        if (list instanceof java.util.RandomAccess) {
+                            for (int i = 0; i < items.length; i++) {
+                                if (list.get(i) != items[i]) list.set(i, items[i]);
+                            }
+                        } else {
+                            var cursor = list.listIterator();
+                            for (Object saved : items) {
+                                if (cursor.next() != saved) cursor.set(saved);
+                            }
+                        }
                     } else {
                         collection.clear();
                         for (Object item : items) collection.add(item);
