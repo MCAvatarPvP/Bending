@@ -139,7 +139,14 @@ public final class RollbackConfiguration implements RollbackStateCell<RollbackCo
     }
     public static RollbackConfiguration prepare(Data data, Map<String, Config> sources) {
         if (RollbackDomain.active() || ACTIVE.get() != null) throw new IllegalStateException("Prepare configuration before private simulation");
-        if (!data.aliases.equals(aliases(sources))) throw invalid("registered config identities differ from the server");
+        var localAliases = aliases(sources);
+        if (!data.aliases.equals(localAliases)) {
+            var names = new TreeSet<>(localAliases.keySet());
+            names.addAll(data.aliases.keySet());
+            var mismatches = names.stream().filter(name -> !Objects.equals(localAliases.get(name), data.aliases.get(name)))
+                    .limit(8).toList();
+            throw invalid("registered config identities differ from the server: " + mismatches);
+        }
         data.configurations.forEach((name, settings) -> {
             if (!sources.get(name).getClass().getName().equals(settings.implementation)) throw invalid("configuration implementation differs: " + name);
         });

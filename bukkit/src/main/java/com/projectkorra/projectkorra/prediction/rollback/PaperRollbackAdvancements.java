@@ -60,6 +60,7 @@ public final class PaperRollbackAdvancements implements RollbackStateCell<PaperR
     private final State state = new State();
     private final Map<Identifier, AdvancementHolder> definitions = new LinkedHashMap<>();
     private final Set<Object> boundaries = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final List<Object> checkpointRoots;
     private final RollbackStateGraph graph;
     private final WrapperAwareSerializer components;
     private final MethodHandle award, revoke, register;
@@ -80,6 +81,8 @@ public final class PaperRollbackAdvancements implements RollbackStateCell<PaperR
         components = new WrapperAwareSerializer(() -> world.world().registryAccess().createSerializationContext(JavaOps.INSTANCE));
         Objects.requireNonNull(seed, "seed");
         var ops = world.world().registryAccess().createSerializationContext(JsonOps.INSTANCE);
+        var roots = new ArrayList<Object>();
+        roots.add(state);
         for (var holder : seed.definitions()) {
             if (definitions.containsKey(holder.id())) throw new IllegalArgumentException("Duplicate advancement: " + holder.id());
             // The data-pack codec detaches predicates, items, requirements and
@@ -93,9 +96,24 @@ public final class PaperRollbackAdvancements implements RollbackStateCell<PaperR
             var name = original.name().map(value -> ComponentSerialization.CODEC.parse(ops,
                     ComponentSerialization.CODEC.encodeStart(ops, value).getOrThrow()).getOrThrow());
             copy = new Advancement(copy.parent(), copy.display(), copy.rewards(), copy.criteria(), copy.requirements(), copy.sendsTelemetryEvent(), name);
-            for (var criterion : copy.criteria().values()) requireTrigger(criterion.trigger());
-            definitions.put(holder.id(), new AdvancementHolder(holder.id(), copy));
+            // Each listener refers directly to its catalogue predicate as well as to the holder.
+            // Conditions are evaluated against private player state. They may retain tag lookups
+            // into the live registry and must never become checkpoint roots.
+            for (var criterion : copy.criteria().values()) {
+                requireTrigger(criterion.trigger());
+                boundaries.add(criterion.triggerInstance());
+            }
+            var detached = new AdvancementHolder(holder.id(), copy);
+            definitions.put(holder.id(), detached);
+            boundaries.add(detached);
+            boundaries.add(copy.requirements());
+            // These detached values have mutable public interfaces (display coordinates/icons,
+            // message components and cached reward functions). Preserve their private state.
+            copy.display().ifPresent(roots::add);
+            copy.name().ifPresent(roots::add);
+            copy.rewards().function().ifPresent(roots::add);
         }
+        checkpointRoots = List.copyOf(roots);
         validateParents();
         state.tree.addAll(definitions.values());
         for (var entry : seed.obtained().entrySet()) {
@@ -272,7 +290,7 @@ public final class PaperRollbackAdvancements implements RollbackStateCell<PaperR
     @Override public Checkpoint captureRollbackState() {
         requirePlayer();
         if (!initialized) throw new IllegalStateException("Advancement listeners are not initialized");
-        return new Checkpoint(this, graph.capture(List.of(state), List.of()), PaperRollbackPrivateAccess.advancementFirstPacket(tracker));
+        return new Checkpoint(this, graph.capture(checkpointRoots, List.of()), PaperRollbackPrivateAccess.advancementFirstPacket(tracker));
     }
     @Override public void restoreRollbackState(Checkpoint saved) {
         requirePlayer();

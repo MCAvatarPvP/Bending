@@ -72,6 +72,34 @@ class PaperRollbackAdvancementsNativeTest {
         });
     }
 
+    @Test void vanillaDatapackCatalogueCanCheckpointAndRewindRealPredicates() throws Exception {
+        onTickThread(() -> {
+            var registries = (net.minecraft.core.RegistryAccess) new PaperRollbackDamageNativeTest.Combat().registryAccess();
+            var loaded = new java.util.TreeMap<Identifier, Advancement>();
+            try (var resources = new net.minecraft.server.packs.resources.MultiPackResourceManager(
+                    net.minecraft.server.packs.PackType.SERVER_DATA,
+                    List.of(net.minecraft.server.packs.repository.ServerPacksSource.createVanillaPackSource()))) {
+                net.minecraft.server.packs.resources.SimpleJsonResourceReloadListener.scanDirectory(resources,
+                        net.minecraft.resources.FileToIdConverter.json("advancement"),
+                        registries.createSerializationContext(com.mojang.serialization.JsonOps.INSTANCE), Advancement.CODEC, loaded);
+            }
+            assertTrue(loaded.size() > 1_000);
+            var holders = loaded.entrySet().stream().map(entry -> new AdvancementHolder(entry.getKey(), entry.getValue())).toList();
+            var scene = new Scene(new PaperRollbackAdvancements.Seed(holders, Map.of()));
+            var root = Identifier.parse("minecraft:story/root");
+            var criterion = loaded.get(root).criteria().keySet().iterator().next();
+            var saved = scene.snapshot();
+            try (var clock = RollbackClock.at(1_000, 1, 50_000_000)) {
+                assertTrue(scene.state.awardAdvancement(root.toString(), criterion));
+            }
+            assertTrue(scene.state.advancementProgress(root.toString()).containsKey(criterion));
+            saved.restore();
+            assertTrue(scene.state.advancementProgress(root.toString()).isEmpty());
+            assertFalse(scene.player.getAdvancements().criterionData.isEmpty());
+            return null;
+        });
+    }
+
     @Test void cancelledCriterionRetainsItsListenerAndNeverGrantsRewardsOrCompletion() throws Exception {
         onTickThread(() -> {
             var scene = new Scene(new PaperRollbackAdvancements.Seed(List.of(definition(false,

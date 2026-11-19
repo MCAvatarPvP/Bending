@@ -47,13 +47,20 @@ public class Config implements PKConfiguration {
     Config(final File file, final boolean registerForPrediction) {
         if (RollbackDomain.active()) throw new IllegalStateException("Cannot load configuration during rollback");
         this.frozen = false;
-        if (file.isAbsolute()) {
-            this.file = file;
-        } else {
-            this.file = Platform.dataFolder().resolve(file.getPath()).toFile();
-        }
-        if (registerForPrediction) PredictionConfigSync.registerFile(this.file.toPath(), this);
+        Path requested = file.toPath();
+        Path logical = file.isAbsolute() ? requested : logicalPath(Platform.dataFolder(), requested);
+        // Older Paper installations resolved a relative plugin directory a second time.
+        // Keep reading and writing an existing file there, with the same logical identity as Fabric.
+        Path legacy = file.isAbsolute() ? requested : Platform.dataFolder().resolve(requested);
+        this.file = (legacy.equals(logical) || !Files.isRegularFile(legacy) ? logical : legacy).toFile();
+        if (registerForPrediction) PredictionConfigSync.registerFile(logical, this);
         reload();
+    }
+
+    static Path logicalPath(Path root, Path requested) {
+        Path absolute = requested.toAbsolutePath().normalize();
+        if (requested.isAbsolute() || absolute.startsWith(root.toAbsolutePath().normalize())) return absolute;
+        return root.resolve(requested).toAbsolutePath().normalize();
     }
 
     protected Config(RollbackConfiguration.Settings settings) {
