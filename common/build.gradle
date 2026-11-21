@@ -20,7 +20,7 @@ tasks.withType(Test).configureEach {
 
 // Both loaders package this same locally generated gameplay type inventory.
 def rollbackCatalogDirectory = layout.buildDirectory.dir('generated/rollbackCatalog')
-tasks.register('generateRollbackGameplayCatalog') {
+def generateRollbackGameplayCatalog = tasks.register('generateRollbackGameplayCatalog') {
     dependsOn tasks.named('compileJava')
     inputs.files(sourceSets.main.output.classesDirs)
     inputs.files(sourceSets.main.allJava)
@@ -54,5 +54,4 @@ tasks.register('generateRollbackGameplayCatalog') {
                 digests.collect { name, hash -> hash + ' ' + name }.join('\n') + '\n', 'UTF-8')
     }
 }
-sourceSets.main.resources.srcDir(rollbackCatalogDirectory)
-tasks.named('processResources') { dependsOn tasks.named('generateRollbackGameplayCatalog') }
+sourceSets.main.resources.srcDir(generateRollbackGameplayCatalog)

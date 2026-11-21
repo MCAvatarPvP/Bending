@@ -123,8 +123,7 @@ def generatePaperLegacyBlockData = tasks.register('generatePaperLegacyBlockData'
     maxHeapSize = '1G'
     args paperLegacyTable.get().asFile.absolutePath, project.minecraft_version
 }
-sourceSets.main.resources.srcDir(paperLegacyResources)
-tasks.named('processResources') { dependsOn generatePaperLegacyBlockData }
+sourceSets.main.resources.srcDir(files(paperLegacyResources).builtBy(generatePaperLegacyBlockData))
 
 
 tasks.withType(Test).configureEach {
