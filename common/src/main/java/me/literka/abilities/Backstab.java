@@ -49,7 +49,7 @@ public class Backstab extends ChiAbility implements AddonAbility {
             Utils.punchSound(target.getLocation(), true);
             bPlayer.addCooldown(this);
 
-            if (target instanceof Player p && Utils.willChiBlock(p, chance)) {
+            if (target instanceof Player p && Utils.willChiBlock(this, p, chance)) {
                 Utils.blockChi(p, blockDuration);
             }
 

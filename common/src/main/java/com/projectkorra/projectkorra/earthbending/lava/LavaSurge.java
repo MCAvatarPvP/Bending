@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.earthbending.lava;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.ability.LavaAbility;
@@ -74,7 +77,7 @@ public class LavaSurge extends LavaAbility {
             return;
         }
 
-        this.lastTime = System.currentTimeMillis();
+        this.lastTime = RollbackClock.millis();
 
         if (this.prepare()) {
             this.start();
@@ -123,7 +126,7 @@ public class LavaSurge extends LavaAbility {
             return;
         }
 
-        this.time = System.currentTimeMillis();
+        this.time = RollbackClock.millis();
         this.direction = GeneralMethods.getDirection(this.startLocation, targetLocation).multiply(0.07);
 
         if (this.direction.getY() < 0) {
@@ -184,8 +187,14 @@ public class LavaSurge extends LavaAbility {
     }
 
     @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
+        this.lastTime = shift.time(this.lastTime);
+    }
+
+    @Override
     public void progress() {
-        final long curTime = System.currentTimeMillis();
+        final long curTime = RollbackClock.millis();
         if (!this.player.isOnline() || this.player.isDead()) {
             this.remove();
             return;

@@ -1,5 +1,7 @@
 package com.jedk1.jedcore.ability.firebending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.jedk1.jedcore.JCMethods;
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
@@ -113,7 +115,7 @@ public class LightningBurst extends LightningAbility implements AddonAbility {
                 bPlayer.addCooldown(this);
             }
             remove();
-        } else if (System.currentTimeMillis() > getStartTime() + chargeUp) {
+        } else if (RollbackClock.millis() > getStartTime() + chargeUp) {
             setCharging(false);
             displayCharging();
         }

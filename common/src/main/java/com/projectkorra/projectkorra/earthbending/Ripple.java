@@ -17,13 +17,14 @@ import com.projectkorra.projectkorra.util.DamageHandler;
 
 import java.util.ArrayList;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackArenaBlockIndices;
 
 public class Ripple extends EarthAbility {
 
-    private static final Map<Integer[], Block> BLOCKS = new ConcurrentHashMap<Integer[], Block>();
-    private static final ShockwaveExecutionPolicy.MovedColumns MOVED_COLUMNS =
-            new ShockwaveExecutionPolicy.MovedColumns();
+    private static RollbackArenaBlockIndices indices() {
+        var scoped = RollbackArenaBlockIndices.current();
+        return scoped == null ? RollbackArenaBlockIndices.live() : scoped;
+    }
 
     private int step;
     private int maxStep;
@@ -62,20 +63,21 @@ public class Ripple extends EarthAbility {
     }
 
     static boolean markMovedForTick(final Block block) {
-        if (!MOVED_COLUMNS.mark(block.getWorld().getName(), block.getX(), block.getZ())) {
+        if (!indices().rippleColumns.mark(block.getWorld().getName(), block.getX(), block.getZ())) {
             return false;
         }
-        BLOCKS.put(new Integer[]{block.getX(), block.getZ()}, block);
+        indices().rippleBlocks.put(new Integer[]{block.getX(), block.getZ()}, block);
         return true;
     }
 
     public static void progressAllCleanup() {
-        BLOCKS.clear();
-        MOVED_COLUMNS.clear();
+        var indices = indices();
+        indices.rippleBlocks.clear();
+        indices.rippleColumns.clear();
     }
 
     public static Map<Integer[], Block> getBlocks() {
-        return BLOCKS;
+        return indices().rippleBlocks;
     }
 
     private void initialize(final Player player, final Location origin, final Vector direction, final double range) {

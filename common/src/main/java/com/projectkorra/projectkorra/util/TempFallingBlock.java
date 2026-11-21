@@ -1,5 +1,9 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -8,7 +12,6 @@ import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
 import com.projectkorra.projectkorra.platform.mc.entity.FallingBlock;
-import com.projectkorra.projectkorra.platform.mc.metadata.FixedMetadataValue;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.prediction.block.TempFallingBlockSync;
 
@@ -27,6 +30,10 @@ public class TempFallingBlock {
     private Consumer<TempFallingBlock> onPlace;
     private final String metadataKey;
 
+    private static java.util.Map<FallingBlock, TempFallingBlock> activeBlocks() {
+        return com.projectkorra.projectkorra.prediction.rollback.RollbackAbilityGlobals.falling(instances);
+    }
+
     public TempFallingBlock(Location location, BlockData data, Vector velocity, CoreAbility ability) {
         this(location, data, velocity, ability, false);
     }
@@ -43,18 +50,18 @@ public class TempFallingBlock {
         this.fallingblock.setDropItem(false);
         this.fallingblock.setHurtEntities(false);
         this.metadataKey = ability.getName().toLowerCase(java.util.Locale.ROOT);
-        this.fallingblock.setMetadata(this.metadataKey, new FixedMetadataValue(ProjectKorra.plugin, this));
+        restoreMetadata();
         this.ability = ability;
-        this.creation = System.currentTimeMillis();
+        this.creation = RollbackClock.millis();
         this.expire = expire;
-        instances.put(fallingblock, this);
+        activeBlocks().put(fallingblock, this);
         TempFallingBlockSync.publish(ability, fallingblock, predictionOrdinal);
     }
 
     public static void manage() {
-        long time = System.currentTimeMillis();
+        long time = RollbackClock.millis();
 
-        for (TempFallingBlock tfb : instances.values()) {
+        for (TempFallingBlock tfb : List.copyOf(activeBlocks().values())) {
             FallingBlock fb = tfb.getFallingBlock();
             if (fb == null) {
                 tfb.remove();
@@ -80,32 +87,32 @@ public class TempFallingBlock {
 
     public static TempFallingBlock get(FallingBlock fallingblock) {
         if (isTempFallingBlock(fallingblock)) {
-            return instances.get(fallingblock);
+            return activeBlocks().get(fallingblock);
         }
         return null;
     }
 
     public static boolean isTempFallingBlock(FallingBlock fallingblock) {
-        return instances.containsKey(fallingblock);
+        return activeBlocks().containsKey(fallingblock);
     }
 
     public static void removeFallingBlock(FallingBlock fallingblock) {
-        final TempFallingBlock instance = instances.get(fallingblock);
+        final TempFallingBlock instance = activeBlocks().get(fallingblock);
         if (instance != null) instance.remove();
     }
 
     public static void removeAllFallingBlocks() {
-        for (TempFallingBlock instance : List.copyOf(instances.values())) instance.remove();
+        for (TempFallingBlock instance : List.copyOf(activeBlocks().values())) instance.remove();
     }
 
     /** Drops old-world wrappers after normal entity cleanup has been attempted. */
     public static void discardAll() {
-        instances.clear();
+        activeBlocks().clear();
     }
 
     public static List<TempFallingBlock> getFromAbility(CoreAbility ability) {
         List<TempFallingBlock> tfbs = new ArrayList<TempFallingBlock>();
-        for (TempFallingBlock tfb : instances.values()) {
+        for (TempFallingBlock tfb : activeBlocks().values()) {
             if (tfb.getAbility().equals(ability)) {
                 tfbs.add(tfb);
             }
@@ -114,13 +121,17 @@ public class TempFallingBlock {
     }
 
     public void remove() {
-        instances.remove(fallingblock, this);
+        activeBlocks().remove(fallingblock, this);
         try {
             fallingblock.removeMetadata(this.metadataKey, ProjectKorra.plugin);
         } finally {
             this.onPlace = null;
             fallingblock.remove();
         }
+    }
+
+    public void restoreMetadata() {
+        com.projectkorra.projectkorra.prediction.rollback.RollbackAbilityGlobals.ensureActorMetadata(this.fallingblock, this.metadataKey, ProjectKorra.plugin, this);
     }
 
     public FallingBlock getFallingBlock() {
@@ -145,6 +156,10 @@ public class TempFallingBlock {
 
     public Location getLocation() {
         return fallingblock.getLocation();
+    }
+
+    public void rebase(RollbackTimeShift time) {
+        time.once(this, () -> creation = time.time(creation));
     }
 
     public long getCreationTime() {

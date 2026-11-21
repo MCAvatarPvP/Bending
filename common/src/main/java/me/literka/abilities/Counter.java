@@ -1,5 +1,7 @@
 package me.literka.abilities;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.platform.mc.Location;
@@ -50,7 +52,7 @@ public class Counter extends ModernChiAbility implements AddonAbility {
             return;
         }
 
-        if (System.currentTimeMillis() > getStartTime() + duration) {
+        if (RollbackClock.millis() > getStartTime() + duration) {
             Utils.sendActionBar("", player);
             bPlayer.addCooldown("Counter", cooldown);
             remove();

@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.prediction.state;
 
+import com.projectkorra.projectkorra.prediction.authority.PredictionServices;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 
@@ -15,17 +16,19 @@ public final class GlidingStateSync {
     }
 
     public static void install(final Listener value) {
+        PredictionServices.requireGlobalMutation();
         listener = value;
     }
 
     public static void clear(final Listener value) {
+        PredictionServices.requireGlobalMutation();
         if (listener == value) listener = null;
     }
 
     public static void apply(final CoreAbility ability, final Player target,
                              final boolean gliding, final Runnable write) {
         if (write == null) return;
-        final Listener current = listener;
+        final Listener current = PredictionServices.current(Listener.class, listener);
         if (current != null && target != null) current.beforeWrite(ability, target, gliding);
         write.run();
     }

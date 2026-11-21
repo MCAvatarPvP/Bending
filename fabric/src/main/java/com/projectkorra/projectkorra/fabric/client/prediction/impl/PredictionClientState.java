@@ -3,6 +3,8 @@ package com.projectkorra.projectkorra.fabric.client.prediction.impl;
 import com.projectkorra.projectkorra.fabric.client.config.ClientBendingConfig;
 import com.projectkorra.projectkorra.fabric.client.prediction.block.ClientTempBlockAuthority;
 import com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads;
+import com.projectkorra.projectkorra.fabric.client.prediction.rollback.FabricRollbackStarts;
+import com.projectkorra.projectkorra.fabric.client.prediction.rollback.FabricRollbackBootstraps;
 import com.projectkorra.projectkorra.prediction.authority.RegionProtectionAuthority;
 import java.util.ArrayList;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -39,6 +41,9 @@ import com.projectkorra.projectkorra.fabric.client.PredictionClient;
 import com.projectkorra.projectkorra.fabric.client.ExactPredictionRuntime;
 
 public abstract class PredictionClientState {
+    protected final FabricRollbackStarts rollbackStarts = new FabricRollbackStarts();
+    protected final FabricRollbackBootstraps rollbackBootstraps = new FabricRollbackBootstraps(rollbackStarts, this::resetLegacy);
+    protected abstract void resetLegacy(MinecraftClient client);
     protected static final ThreadLocal<Boolean> INPUT_SNEAK_OVERRIDE = new ThreadLocal<>();
     protected static final ThreadLocal<Integer> INPUT_SLOT_OVERRIDE = new ThreadLocal<>();
     protected static final int CAPABILITIES = 1 | 2 | 4 | 8;
@@ -60,6 +65,7 @@ public abstract class PredictionClientState {
     protected boolean disableHandshakePending;
     protected long clientTick;
     protected long nextSequence;
+    protected long nativeActionOffset;
     protected boolean previousSneaking;
     protected long rightClickBlockUntilTick = -1;
     protected boolean droppedItem;
@@ -107,6 +113,9 @@ public abstract class PredictionClientState {
     /** Local start times used only to estimate receipt latency. */
     protected final Map<Long, Long> actionStartedAtMillis = new LinkedHashMap<>();
     protected final List<PendingHitClaim> pendingHitClaims = new ArrayList<>();
+    protected final Map<Long, MeleeContact> meleeContacts = new LinkedHashMap<>();
+    protected MeleeContact acceptedAttack;
+    protected record MeleeContact(int entityId, UUID entityUuid, long tick, float damage) { }
     protected Packet<?> currentNativeInputPacket;
     protected Packet<?> pendingTaggedPacket;
     protected PendingActionTag pendingActionTag;

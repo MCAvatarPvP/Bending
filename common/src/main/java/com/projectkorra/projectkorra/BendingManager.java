@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
@@ -26,11 +28,27 @@ public class BendingManager implements Runnable {
 
     public BendingManager() {
         instance = this;
-        this.time = System.currentTimeMillis();
+        this.time = RollbackClock.millis();
 
-        times.clear();
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.importingRegistries() == null) {
+            handleDayNight();
+        } else {
+            // The server already announced the current phase. Start the duel at its last observed
+            // phase; actual transitions dispatch normally on the next private simulation tick.
+            var previous = com.projectkorra.projectkorra.prediction.rollback.RollbackAbilityGlobals.previousWorldPhase();
+            for (World world : Platform.worlds().<World>worlds()) {
+                if (!ConfigManager.defaultConfig.get().getStringList("Properties.DisabledWorlds").contains(world.getName()))
+                    times.put(world, previous == null ? phase(world) : previous);
+            }
+        }
+    }
 
-        handleDayNight();
+    /** Start with fresh domain bindings before the imported manager is constructed. */
+    public static void beginImportedMatch() {
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.importingRegistries() == null)
+            throw new IllegalStateException("An imported duel must own the manager");
+        events = new HashMap<>();
+        instance = null;
     }
 
     public static BendingManager getInstance() {
@@ -55,10 +73,19 @@ public class BendingManager implements Runnable {
 
     public void handleCooldowns() {
         for (Map.Entry<UUID, BendingPlayer> entry : BendingPlayer.getPlayers().entrySet()) {
+            if (com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership.blocks(entry.getKey())) continue;
             BendingPlayer bPlayer = entry.getValue();
             bPlayer.tickCps();
             bPlayer.removeOldCooldowns();
         }
+    }
+
+    public WorldTimeEvent.Time lastPhase(World world) { return times.get(world); }
+
+    private static WorldTimeEvent.Time phase(World world) {
+        return ElementalAbility.isDay(world) ? WorldTimeEvent.Time.DAY :
+                (ElementalAbility.isNight(world) ? WorldTimeEvent.Time.NIGHT :
+                        (ElementalAbility.isDusk(world) ? WorldTimeEvent.Time.DUSK : WorldTimeEvent.Time.DAWN));
     }
 
     public void handleDayNight() {
@@ -69,9 +96,7 @@ public class BendingManager implements Runnable {
 
             WorldTimeEvent.Time from = this.times.get(world);
 
-            WorldTimeEvent.Time to = ElementalAbility.isDay(world) ? WorldTimeEvent.Time.DAY :
-                    (ElementalAbility.isNight(world) ? WorldTimeEvent.Time.NIGHT :
-                            (ElementalAbility.isDusk(world) ? WorldTimeEvent.Time.DUSK : WorldTimeEvent.Time.DAWN));
+            WorldTimeEvent.Time to = phase(world);
 
             if (from == null) { //If the time is null, the server/plugin probably just started, so set the previous time to the previous one
                 int ord = to.ordinal() - 1;
@@ -115,8 +140,8 @@ public class BendingManager implements Runnable {
     @Override
     public void run() {
         MovementHandler.tickAll();
-        this.interval = System.currentTimeMillis() - this.time;
-        this.time = System.currentTimeMillis();
+        this.interval = RollbackClock.millis() - this.time;
+        this.time = RollbackClock.millis();
         ProjectKorra.time_step = this.interval;
 
         CoreAbility.progressAll();
@@ -144,16 +169,20 @@ public class BendingManager implements Runnable {
     public static class TempElementsRunnable implements Runnable {
         @Override
         public void run() {
-            //Manage Temp elements
-            while (!BendingPlayer.TEMP_ELEMENTS.isEmpty()) { //We use a while loop so if multiple expire in the same tick, all are done together
-                Pair<Player, Long> pair = BendingPlayer.TEMP_ELEMENTS.peek();
-
-                if (System.currentTimeMillis() > pair.getRight()) { //Check if the top temp element has expired
-                    BendingPlayer.TEMP_ELEMENTS.poll(); //And if it has, remove from the queue, and recalculate temp elements for that player
+            var suspended = new java.util.ArrayList<Pair<Player, Long>>();
+            try {
+                while (!BendingPlayer.temporaryElements().isEmpty()) {
+                    Pair<Player, Long> pair = BendingPlayer.temporaryElements().peek();
+                    if (RollbackClock.millis() <= pair.getRight()) break;
+                    BendingPlayer.temporaryElements().poll();
+                    if (com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership.blocks(pair.getLeft().getUniqueId())) {
+                        suspended.add(pair);
+                        continue;
+                    }
                     BendingPlayer.getBendingPlayer(pair.getLeft()).recalculateTempElements(false);
-                } else {
-                    break; //Break the loop if the top element hasn't expired, as all elements below it won't have either
                 }
+            } finally {
+                BendingPlayer.temporaryElements().addAll(suspended);
             }
         }
     }

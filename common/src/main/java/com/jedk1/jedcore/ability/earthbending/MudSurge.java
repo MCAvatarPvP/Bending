@@ -1,5 +1,7 @@
 package com.jedk1.jedcore.ability.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.collision.CollisionUtil;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
@@ -183,7 +185,7 @@ public class MudSurge extends EarthAbility implements AddonAbility {
         }
 
         long lastSurgeTime = 0;
-        if (mudFormed && started && System.currentTimeMillis() > lastSurgeTime + surgeInterval) {
+        if (mudFormed && started && RollbackClock.millis() > lastSurgeTime + surgeInterval) {
             surge();
             affect();
             if (TempFallingBlock.getFromAbility(this).isEmpty()) {

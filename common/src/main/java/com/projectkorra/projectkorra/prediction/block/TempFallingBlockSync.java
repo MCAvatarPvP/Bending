@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.prediction.block;
 
+import com.projectkorra.projectkorra.prediction.authority.PredictionServices;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.platform.mc.Location;
@@ -20,20 +21,23 @@ public final class TempFallingBlockSync {
     }
 
     public static void install(final Listener newListener) {
+        PredictionServices.requireGlobalMutation();
         listener = newListener;
     }
 
     public static void clear(final Listener expected) {
+        PredictionServices.requireGlobalMutation();
         if (listener == expected) listener = null;
     }
 
     public static int prepare(final CoreAbility ability, final Location location,
                               final BlockData blockData) {
-        final Listener current = listener;
+        final Listener current = PredictionServices.current(Listener.class, listener);
         if (current == null || ability == null || location == null || blockData == null) return 0;
         try {
             return current.beforeSpawn(ability, location, blockData);
         } catch (final RuntimeException failure) {
+            if (PredictionServices.active()) throw failure;
             ProjectKorra.log.warning("TempFallingBlock prepare publication failed: " + failure.getMessage());
             return 0;
         }
@@ -41,11 +45,12 @@ public final class TempFallingBlockSync {
 
     public static void publish(final CoreAbility ability, final FallingBlock fallingBlock,
                                final int spawnOrdinal) {
-        final Listener current = listener;
+        final Listener current = PredictionServices.current(Listener.class, listener);
         if (current == null || ability == null || fallingBlock == null || spawnOrdinal <= 0) return;
         try {
             current.onSpawn(ability, fallingBlock, spawnOrdinal);
         } catch (final RuntimeException failure) {
+            if (PredictionServices.active()) throw failure;
             ProjectKorra.log.warning("TempFallingBlock ownership publication failed: " + failure.getMessage());
         }
     }

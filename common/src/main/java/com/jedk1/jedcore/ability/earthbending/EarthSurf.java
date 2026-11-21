@@ -1,5 +1,7 @@
 package com.jedk1.jedcore.ability.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
 import com.jedk1.jedcore.util.MaterialUtil;
@@ -59,7 +61,7 @@ public class EarthSurf extends EarthAbility implements AddonAbility {
         if (hasAbility(player, EarthSurf.class)) {
             EarthSurf surf = getAbility(player, EarthSurf.class);
             // Left click is triggering twice, TOOD: Fix the actual event instead
-            if (System.currentTimeMillis() - surf.start > toggleOffCd) {
+            if (RollbackClock.millis() - surf.start > toggleOffCd) {
                 surf.remove();
             }
 
@@ -75,7 +77,7 @@ public class EarthSurf extends EarthAbility implements AddonAbility {
             player.setAllowFlight(true);
             player.setFlying(false);
             start();
-            start = System.currentTimeMillis();
+            start = RollbackClock.millis();
         }
     }
 
@@ -137,7 +139,7 @@ public class EarthSurf extends EarthAbility implements AddonAbility {
         if (player == null || player.isDead() || !player.isOnline()) return true;
         if (!bPlayer.canBendIgnoreCooldowns(this)) return true;
         if (!isEarthbendable(player, getBlockBeneath(player.getLocation().clone()))) return true;
-        if (durationEnabled && System.currentTimeMillis() > getStartTime() + duration) return true;
+        if (durationEnabled && RollbackClock.millis() > getStartTime() + duration) return true;
 
         return player.isSneaking();
     }
@@ -280,7 +282,7 @@ public class EarthSurf extends EarthAbility implements AddonAbility {
             long scaledCooldown = cooldown;
 
             if (durationEnabled && duration > 0) {
-                double t = Math.min((System.currentTimeMillis() - this.getStartTime()) / (double) duration, 1.0);
+                double t = Math.min((RollbackClock.millis() - this.getStartTime()) / (double) duration, 1.0);
                 scaledCooldown = Math.max((long) (cooldown * t), minimumCooldown);
             }
 

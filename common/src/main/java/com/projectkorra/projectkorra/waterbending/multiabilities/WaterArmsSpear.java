@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.waterbending.multiabilities;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackArenaBlockIndices;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.WaterAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
@@ -29,8 +32,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class WaterArmsSpear extends WaterAbility {
 
-    private static final Map<Block, Long> ICE_BLOCKS = new ConcurrentHashMap<Block, Long>();
-    private static final Map<Block, TempBlock> TRACKED_BLOCKS = new ConcurrentHashMap<>();
+    private static final Map<Block, Long> ICE_BLOCKS = RollbackArenaBlockIndices.live().spearExpiry;
+    private static final Map<Block, TempBlock> TRACKED_BLOCKS = RollbackArenaBlockIndices.live().spearLayers;
+
+    public static Map<Block, TempBlock> trackedLayers() {
+        var indices = RollbackArenaBlockIndices.current();
+        return indices == null ? TRACKED_BLOCKS : indices.spearLayers;
+    }
     private final List<Location> spearLocations;
     private final Random random;
     private boolean hitEntity;
@@ -96,28 +104,29 @@ public class WaterArmsSpear extends WaterAbility {
     }
 
     public static boolean canThaw(final Block block) {
-        final TempBlock layer = TRACKED_BLOCKS.get(block);
+        final TempBlock layer = trackedLayers().get(block);
         return layer != null && !layer.isReverted() && isIce(layer.getBlockData().getMaterial())
                 || TempBlockSync.hasAuthoritativeEffect(block, "WaterArmsSpear");
     }
 
     public static void thaw(final Block block) {
         if (!canThaw(block)) return;
-        final TempBlock layer = TRACKED_BLOCKS.remove(block);
-        ICE_BLOCKS.remove(block);
+        final TempBlock layer = trackedLayers().remove(block);
+        getIceBlocks().remove(block);
         if (layer != null) layer.revertBlock();
     }
 
     public static Map<Block, Long> getIceBlocks() {
-        return ICE_BLOCKS;
+        var indices = RollbackArenaBlockIndices.current();
+        return indices == null ? ICE_BLOCKS : indices.spearExpiry;
     }
 
     public static Map<Block, TempBlock> getTrackedBlocks() {
-        return Map.copyOf(TRACKED_BLOCKS);
+        return Map.copyOf(trackedLayers());
     }
 
     public static void protectFallFromIce(final Player player, final Location from, final Location to) {
-        if (TRACKED_BLOCKS.isEmpty()) return;
+        if (trackedLayers().isEmpty()) return;
         if (isSupportedByIce(player, from) || isSupportedByIce(player, to)) {
             FallHandler.stopFall(player, false);
         }
@@ -132,7 +141,7 @@ public class WaterArmsSpear extends WaterAbility {
         for (int x = (int) Math.floor(feet.getMinX()); x <= (int) Math.floor(feet.getMaxX() - 1.0E-6); x++) {
             for (int z = (int) Math.floor(feet.getMinZ()); z <= (int) Math.floor(feet.getMaxZ() - 1.0E-6); z++) {
                 final Block block = location.getWorld().getBlockAt(x, y, z);
-                final TempBlock layer = TRACKED_BLOCKS.get(block);
+                final TempBlock layer = trackedLayers().get(block);
                 if (layer != null && !layer.isReverted() && TempBlock.get(block) == layer
                         && isIce(block) && isIce(layer.getBlockData().getMaterial())) return true;
             }
@@ -153,31 +162,31 @@ public class WaterArmsSpear extends WaterAbility {
     }
 
     public static void expireBlocks(final boolean ignoreTime) {
-        final long now = System.currentTimeMillis();
-        for (Map.Entry<Block, Long> entry : List.copyOf(ICE_BLOCKS.entrySet())) {
+        final long now = RollbackClock.millis();
+        for (Map.Entry<Block, Long> entry : List.copyOf(getIceBlocks().entrySet())) {
             if (!ignoreTime && now <= entry.getValue()) continue;
             final Block block = entry.getKey();
-            final TempBlock layer = TRACKED_BLOCKS.remove(block);
-            ICE_BLOCKS.remove(block, entry.getValue());
+            final TempBlock layer = trackedLayers().remove(block);
+            getIceBlocks().remove(block, entry.getValue());
             if (layer != null) layer.revertBlock();
         }
     }
 
     /** Drops every old-world spear layer index without restoring a block. */
     public static void discardAllTracking() {
-        ICE_BLOCKS.clear();
-        TRACKED_BLOCKS.clear();
+        getIceBlocks().clear();
+        trackedLayers().clear();
     }
 
     private static void track(final TempBlock layer, final long duration) {
         if (layer == null || layer.isReverted()) return;
         final Block block = layer.getBlock();
-        final TempBlock previous = TRACKED_BLOCKS.put(block, layer);
-        final long expiresAt = System.currentTimeMillis() + Math.max(1L, duration);
-        ICE_BLOCKS.put(block, expiresAt);
+        final TempBlock previous = trackedLayers().put(block, layer);
+        final long expiresAt = RollbackClock.millis() + Math.max(1L, duration);
+        getIceBlocks().put(block, expiresAt);
         layer.setRevertTask(() -> {
             if (isIce(layer.getBlockData().getMaterial())) protectPlayersAbove(block);
-            if (TRACKED_BLOCKS.remove(block, layer)) ICE_BLOCKS.remove(block);
+            if (trackedLayers().remove(block, layer)) getIceBlocks().remove(block);
         });
         layer.setRevertTime(Math.max(1L, duration));
         if (previous != null && previous != layer && !previous.isReverted()) previous.revertBlock();

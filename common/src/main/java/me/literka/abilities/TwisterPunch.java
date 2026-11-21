@@ -156,7 +156,7 @@ public class TwisterPunch extends ModernChiAbility implements AddonAbility {
                     Utils.punchSound(e.getLocation(), true);
                     if (e instanceof Player p) {
                         if (!fallDmg) FallHandler.stopFall(p);
-                        if (Utils.willChiBlock(p, blockChance)) Utils.blockChi(p, blockDuration);
+                        if (Utils.willChiBlock(this, p, blockChance)) Utils.blockChi(p, blockDuration);
                     }
                 }
 

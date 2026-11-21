@@ -19,6 +19,8 @@
 
 package me.moros.hyperion.abilities.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.EarthAbility;
@@ -70,7 +72,7 @@ public class EarthGuardWall extends EarthAbility implements AddonAbility {
             return;
         }
 
-        if (System.currentTimeMillis() > getStartTime() + wallDuration) {
+        if (RollbackClock.millis() > getStartTime() + wallDuration) {
             remove();
         }
     }

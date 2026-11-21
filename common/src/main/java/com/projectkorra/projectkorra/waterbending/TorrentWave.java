@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.waterbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.WaterAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
@@ -62,7 +65,7 @@ public class TorrentWave extends WaterAbility {
         this.cooldown = getConfig().getLong("Abilities.Water.Torrent.Wave.Cooldown");
         this.growSpeed = getConfig().getDouble("Abilities.Water.Torrent.Wave.GrowSpeed");
         this.origin = location.clone();
-        this.time = System.currentTimeMillis();
+        this.time = RollbackClock.millis();
         this.heights = new ConcurrentHashMap<>();
         this.blocks = new ArrayList<>();
         this.affectedEntities = new ArrayList<>();
@@ -90,13 +93,18 @@ public class TorrentWave extends WaterAbility {
     }
 
     @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
+    }
+
+    @Override
     public void progress() {
         if (!this.bPlayer.canBendIgnoreBindsCooldowns(this)) {
             this.remove();
             return;
         }
 
-        if (System.currentTimeMillis() > this.time + this.interval) {
+        if (RollbackClock.millis() > this.time + this.interval) {
             if (this.radius < this.maxRadius) {
                 this.radius += this.growSpeed;
             } else {
@@ -105,7 +113,7 @@ public class TorrentWave extends WaterAbility {
                 return;
             }
             this.formBurst();
-            this.time = System.currentTimeMillis();
+            this.time = RollbackClock.millis();
         }
     }
 

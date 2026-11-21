@@ -165,6 +165,7 @@ public class StatisticsMethods {
             return 0;
         }
         if (!Manager.getManager(StatisticsManager.class).getKeysByName().containsKey(statName)) {
+            StatisticsManager.requireLiveStorage();
             final int id = DBConnection.getAdapter().statistics().getOrCreateKey(statName);
             Manager.getManager(StatisticsManager.class).getKeysByName().put(statName, id);
             Manager.getManager(StatisticsManager.class).getKeysById().put(id, statName);

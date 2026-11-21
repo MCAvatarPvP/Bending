@@ -1,5 +1,9 @@
 package com.projectkorra.projectkorra.waterbending.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.WaterAbility;
 import com.projectkorra.projectkorra.platform.mc.Location;
@@ -119,6 +123,11 @@ public class WaterReturn extends WaterAbility {
     }
 
     @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
+    }
+
+    @Override
     public void progress() {
         if (!this.bPlayer.canBendIgnoreBindsCooldowns(this)) {
             this.remove();
@@ -126,12 +135,12 @@ public class WaterReturn extends WaterAbility {
         } else if (!this.hasEmptyWaterBottle()) {
             this.remove();
             return;
-        } else if (System.currentTimeMillis() < this.time + this.interval) {
+        } else if (RollbackClock.millis() < this.time + this.interval) {
             return;
         }
 
         final Vector direction = GeneralMethods.getDirection(this.location, this.player.getEyeLocation()).normalize();
-        this.time = System.currentTimeMillis();
+        this.time = RollbackClock.millis();
         this.location = this.location.clone().add(direction);
 
         if (this.location == null || this.block == null) {
@@ -155,7 +164,7 @@ public class WaterReturn extends WaterAbility {
             this.block = new TempBlock(newblock, Material.WATER);
         } else if (isTransparent(this.player, newblock)) {
             if (isWater(newblock)) {
-                ParticleEffect.WATER_BUBBLE.display(newblock.getLocation().clone().add(.5, .5, .5), 5, Math.random(), Math.random(), Math.random(), 0);
+                ParticleEffect.WATER_BUBBLE.display(newblock.getLocation().clone().add(.5, .5, .5), 5, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0);
             }
         } else {
             this.remove();

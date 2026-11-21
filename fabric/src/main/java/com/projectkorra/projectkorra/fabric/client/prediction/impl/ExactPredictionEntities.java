@@ -177,18 +177,20 @@ public abstract class ExactPredictionEntities extends ExactPredictionPlayerState
         }
         // Sneaking after firing can transition MetalCable to a newer action.
         // Match Paper's current ability owner rather than its original shot.
-        long impactAction = action;
+        long sourceAction = action;
         for (var metadata : commonProjectile.getMetadata(CoreMethods.CABLE_KEY)) {
             if (metadata.value() instanceof MetalCable cable) {
-                impactAction = this.abilityActions.getOrDefault(cable, action);
+                sourceAction = this.abilityActions.getOrDefault(cable, action);
                 break;
             }
         }
         // Native entity ticks run after the input that created the projectile.
         // Re-enter that action so impact-spawned effects reconcile to Paper.
-        ExactPredictionRuntime.runWithAction(
-                impactAction, () -> this.platform.events().call(event));
-        return event.isCancelled();
+        final long impactAction = sourceAction;
+        return entityReconciliation.deliverImpact(projectile, hit.getType(), () -> {
+            ExactPredictionRuntime.runWithAction(impactAction, () -> this.platform.events().call(event));
+            return event.isCancelled();
+        });
     }
 
     protected void trackSpawn0(Entity entity) {
@@ -200,6 +202,17 @@ public abstract class ExactPredictionEntities extends ExactPredictionPlayerState
                     AbilityExecutionContext.current() instanceof MetalCable
                             || owner.inputAbility.equalsIgnoreCase("MetalCable"));
         }
+    }
+
+    protected void trackLaunchedProjectile0(Entity projectile, Entity shooter) {
+        if (projectile == null || shooter == null || MinecraftClient.getInstance().player != shooter) return;
+        long sequence = currentAction();
+        Action owner = actions.get(sequence);
+        if (owner == null || !entityReconciliation.needsLaunchIdentity(projectile)) return;
+        CoreAbility source = AbilityExecutionContext.current();
+        String name = source != null && source.getPlayer() != null && shooter.getUuid().equals(source.getPlayer().getUniqueId())
+                ? source.getName() : owner.inputAbility;
+        entityReconciliation.trackLaunch(sequence, ++owner.projectileOrdinal, shooter, projectile, name);
     }
 
     public int beforeSpawn(CoreAbility ability, Location location, BlockData blockData) {
@@ -247,7 +260,9 @@ public abstract class ExactPredictionEntities extends ExactPredictionPlayerState
     }
 
     protected boolean reconcileSpawn0(EntitySpawnS2CPacket packet) {
-        return this.ready && this.entityReconciliation.reconcileSpawn(packet, MinecraftClient.getInstance().world, this.tick);
+        return this.ready && this.entityReconciliation.reconcileSpawn(packet, MinecraftClient.getInstance().world, this.tick,
+                net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.canSend(
+                        com.projectkorra.projectkorra.fabric.prediction.protocol.PredictionPayloads.ProjectileOwner.ID));
     }
 
     protected long currentAction() {

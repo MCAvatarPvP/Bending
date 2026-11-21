@@ -1,5 +1,11 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantStatuses;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership;
+
 import com.projectkorra.projectkorra.platform.mc.entity.LivingEntity;
 import com.projectkorra.projectkorra.platform.mc.potion.PotionEffect;
 
@@ -14,25 +20,35 @@ public class TempPotionEffect {
     private final LivingEntity entity;
     private int ID = Integer.MIN_VALUE;
 
+    public static Map<LivingEntity, TempPotionEffect> activeEffects() {
+        var state = RollbackParticipantStatuses.current();
+        return state == null ? instances : state.potions();
+    }
+    public void rebase(RollbackTimeShift time) {
+        for (var info : infos.values()) time.once(info, () -> info.starttime = time.time(info.starttime));
+    }
+
+    public LivingEntity rollbackTarget() { return entity; }
+
     public TempPotionEffect(final LivingEntity entity, final PotionEffect effect) {
-        this(entity, effect, System.currentTimeMillis());
+        this(entity, effect, RollbackClock.millis());
     }
 
     public TempPotionEffect(final LivingEntity entity, final PotionEffect effect, final long starttime) {
         this.entity = entity;
-        if (instances.containsKey(entity)) {
-            final TempPotionEffect instance = instances.get(entity);
+        if (activeEffects().containsKey(entity)) {
+            final TempPotionEffect instance = activeEffects().get(entity);
             instance.infos.put(instance.ID++, new PotionInfo(starttime, effect));
-            instances.put(entity, instance);
+            activeEffects().put(entity, instance);
         } else {
             this.infos.put(this.ID++, new PotionInfo(starttime, effect));
-            instances.put(entity, this);
+            activeEffects().put(entity, this);
         }
     }
 
     public static void progressAll() {
-        for (final LivingEntity entity : instances.keySet()) {
-            instances.get(entity).progress();
+        for (final LivingEntity entity : activeEffects().keySet()) {
+            activeEffects().get(entity).progress();
         }
     }
 
@@ -45,7 +61,7 @@ public class TempPotionEffect {
                     } else {
                         final int dt = effect.getDuration() - peffect.getDuration();
                         final PotionEffect neweffect = new PotionEffect(effect.getType(), dt, effect.getAmplifier());
-                        new TempPotionEffect(this.entity, neweffect, System.currentTimeMillis() + peffect.getDuration() * tick);
+                        new TempPotionEffect(this.entity, neweffect, RollbackClock.millis() + peffect.getDuration() * tick);
                         return;
                     }
                 } else {
@@ -54,7 +70,7 @@ public class TempPotionEffect {
                         this.entity.addPotionEffect(effect);
                         final int dt = peffect.getDuration() - effect.getDuration();
                         final PotionEffect neweffect = new PotionEffect(peffect.getType(), dt, peffect.getAmplifier());
-                        new TempPotionEffect(this.entity, neweffect, System.currentTimeMillis() + effect.getDuration() * tick);
+                        new TempPotionEffect(this.entity, neweffect, RollbackClock.millis() + effect.getDuration() * tick);
                         return;
                     } else {
                         this.entity.removePotionEffect(peffect.getType());
@@ -68,21 +84,22 @@ public class TempPotionEffect {
     }
 
     private void progress() {
+        if (RollbackLiveOwnership.blocks(this.entity.getUniqueId())) return;
         for (final int id : this.infos.keySet()) {
             final PotionInfo info = this.infos.get(id);
-            if (info.getTime() < System.currentTimeMillis()) {
+            if (info.getTime() < RollbackClock.millis()) {
                 this.addEffect(info.getEffect());
                 this.infos.remove(id);
             }
         }
-        if (this.infos.isEmpty() && instances.containsKey(this.entity)) {
-            instances.remove(this.entity);
+        if (this.infos.isEmpty() && activeEffects().containsKey(this.entity)) {
+            activeEffects().remove(this.entity);
         }
     }
 
     private class PotionInfo {
 
-        private final long starttime;
+        private long starttime;
         private final PotionEffect effect;
 
         public PotionInfo(final long starttime, final PotionEffect effect) {

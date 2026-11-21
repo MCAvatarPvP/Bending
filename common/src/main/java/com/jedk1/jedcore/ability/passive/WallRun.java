@@ -1,5 +1,8 @@
 package com.jedk1.jedcore.ability.passive;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JCMethods;
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
@@ -122,7 +125,7 @@ public class WallRun extends ChiAbility implements AddonAbility, PassiveAbility 
             remove();
             return;
         }
-        if (System.currentTimeMillis() > getStartTime() + duration) {
+        if (RollbackClock.millis() > getStartTime() + duration) {
             remove();
             return;
         }
@@ -131,14 +134,14 @@ public class WallRun extends ChiAbility implements AddonAbility, PassiveAbility 
             return;
         }
 
-        if (System.currentTimeMillis() - getStartTime() > 50L) {
+        if (RollbackClock.millis() - getStartTime() > 50L) {
             bPlayer.addCooldown("WallRun", getCooldown());
         }
 
         if (particles) {
-            ParticleEffect.CRIT.display(player.getLocation(), 4, Math.random(), Math.random(), Math.random(), 0);
-            ParticleEffect.BLOCK_CRACK.display(player.getLocation(), 3, Math.random(), Math.random(), Math.random(), 0.1, Material.STONE.createBlockData());
-            ParticleEffect.SPELL.display(player.getLocation(), 5, Math.random(), Math.random(), Math.random());
+            ParticleEffect.CRIT.display(player.getLocation(), 4, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0);
+            ParticleEffect.BLOCK_CRACK.display(player.getLocation(), 3, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.1, Material.STONE.createBlockData());
+            ParticleEffect.SPELL.display(player.getLocation(), 5, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction());
         }
 
         Vector dir = player.getLocation().getDirection();

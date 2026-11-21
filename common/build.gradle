@@ -8,6 +8,8 @@ dependencies {
     implementation 'org.joml:joml:1.10.8'
     implementation 'com.google.guava:guava:33.3.1-jre'
     implementation 'org.yaml:snakeyaml:2.5'
+    implementation 'net.bytebuddy:byte-buddy:1.15.11'
+    implementation 'org.objenesis:objenesis:3.3'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
 }
@@ -15,3 +17,42 @@ dependencies {
 tasks.withType(Test).configureEach {
     useJUnitPlatform()
 }
+
+// Both loaders package this same locally generated gameplay type inventory.
+def rollbackCatalogDirectory = layout.buildDirectory.dir('generated/rollbackCatalog')
+tasks.register('generateRollbackGameplayCatalog') {
+    dependsOn tasks.named('compileJava')
+    inputs.files(sourceSets.main.output.classesDirs)
+    inputs.files(sourceSets.main.allJava)
+    outputs.dir(rollbackCatalogDirectory)
+    doLast {
+        def digests = new TreeMap<String, String>()
+        def sha = java.security.MessageDigest.getInstance('SHA-256')
+        sourceSets.main.output.classesDirs.files.each { root ->
+            if (root.exists()) fileTree(root).matching { include '**/*.class' }.files.each { compiled ->
+                def name = root.toPath().relativize(compiled.toPath()).toString().replace('\\', '.').replace('/', '.')
+                name = name.substring(0, name.length() - 6)
+                if (!name.endsWith('package-info') && name != 'module-info') {
+                    digests[name] = java.util.HexFormat.of().formatHex(sha.digest(compiled.bytes))
+                }
+            }
+        }
+        def target = rollbackCatalogDirectory.get().file('META-INF/projectkorra/rollback-gameplay.types').asFile
+        target.parentFile.mkdirs()
+        target.setText(digests.keySet().join('\n') + '\n', 'UTF-8')
+        // List complete permission literals used by shared code, including unregistered listener checks.
+        // Runtime names constructed from ability, element and mode registries are added on Paper.
+        def permissionNodes = new TreeSet<String>()
+        def permissionLiteral = ~/"(bending(?:\.[A-Za-z0-9_*-]+)+)"/
+        sourceSets.main.allJava.each { source ->
+            (source.getText('UTF-8') =~ permissionLiteral).each { match, node ->
+                permissionNodes.add(node.toLowerCase(Locale.ROOT))
+            }
+        }
+        new File(target.parentFile, 'rollback-gameplay.permissions').setText(permissionNodes.join('\n') + '\n', 'UTF-8')
+        new File(target.parentFile, 'rollback-gameplay.sha256').setText(
+                digests.collect { name, hash -> hash + ' ' + name }.join('\n') + '\n', 'UTF-8')
+    }
+}
+sourceSets.main.resources.srcDir(rollbackCatalogDirectory)
+tasks.named('processResources') { dependsOn tasks.named('generateRollbackGameplayCatalog') }

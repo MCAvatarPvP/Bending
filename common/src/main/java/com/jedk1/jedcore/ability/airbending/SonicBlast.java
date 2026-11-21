@@ -1,5 +1,8 @@
 package com.jedk1.jedcore.ability.airbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.collision.CollisionDetector;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
@@ -83,8 +86,8 @@ public class SonicBlast extends AirAbility implements AddonAbility, EntityHitbox
             direction = player.getEyeLocation().getDirection().normalize();
 
             if (isCharged) {
-                playAirbendingParticles(player.getLocation().add(0, 1, 0), 5, (float) Math.random(), (float) Math.random(), (float) Math.random());
-            } else if (System.currentTimeMillis() > getStartTime() + warmup) {
+                playAirbendingParticles(player.getLocation().add(0, 1, 0), 5, (float) RollbackRandom.fraction(), (float) RollbackRandom.fraction(), (float) RollbackRandom.fraction());
+            } else if (RollbackClock.millis() > getStartTime() + warmup) {
                 isCharged = true;
             }
         } else {

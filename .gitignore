@@ -265,3 +265,6 @@ projectkorra.iml
 /platform_boundary_check.txt
 /legacy-bukkit-source-before-module-split/
 /legacy-single-module-pom.xml
+
+# Fabric loader native-test logs.
+/fabric/logs/

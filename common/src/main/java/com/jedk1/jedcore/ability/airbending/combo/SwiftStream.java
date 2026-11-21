@@ -1,5 +1,7 @@
 package com.jedk1.jedcore.ability.airbending.combo;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -87,7 +89,7 @@ public class SwiftStream extends FlightAbility implements AddonAbility, ComboAbi
             return;
         }
 
-        if (System.currentTimeMillis() > getStartTime() + duration) {
+        if (RollbackClock.millis() > getStartTime() + duration) {
             remove();
             return;
         }

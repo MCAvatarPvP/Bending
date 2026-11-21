@@ -1,5 +1,7 @@
 package me.simplicitee.project.addons.ability.air;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.ComboAbility;
@@ -51,7 +53,7 @@ public class Tailwind extends AirAbility implements ComboAbility, AddonAbility {
             return;
         }
 
-        if (getStartTime() + duration < System.currentTimeMillis()) {
+        if (getStartTime() + duration < RollbackClock.millis()) {
             remove();
             return;
         }

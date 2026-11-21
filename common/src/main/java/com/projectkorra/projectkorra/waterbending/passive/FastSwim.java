@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.waterbending.passive;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -105,7 +107,7 @@ public class FastSwim extends WaterAbility implements PassiveAbility {
             return;
         }
 
-        if (this.duration > 0 && System.currentTimeMillis() > this.getStartTime() + this.duration) {
+        if (this.duration > 0 && RollbackClock.millis() > this.getStartTime() + this.duration) {
             this.bPlayer.addCooldown(this);
             this.remove();
             return;

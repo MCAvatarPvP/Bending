@@ -33,7 +33,7 @@ public class ChiRework implements JavaPlugin {
 
         CoreAbility.registerPluginAbilities(this, "me.literka.abilities");
         getServer().getPluginManager().registerEvents(new ChiListener(), this);
-        getServer().getScheduler().scheduleSyncRepeatingTask(this, Utils::tick, 0, 1);
+        getServer().getScheduler().scheduleSyncRepeatingTask(this, new Utils.Maintenance(), 0, 1);
     }
 
     @Override

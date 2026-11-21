@@ -1,5 +1,11 @@
 package com.projectkorra.projectkorra;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackBendingHooks;
+import com.projectkorra.projectkorra.prediction.authority.PredictionServices;
+
 import com.projectkorra.projectkorra.Element.MultiSubElement;
 import com.projectkorra.projectkorra.Element.SubElement;
 import com.projectkorra.projectkorra.ability.*;
@@ -76,6 +82,17 @@ public class BendingPlayer extends OfflineBendingPlayer {
     private int cps;
     private long lastWaterManipRedirect, lastScooterUse;
 
+    @Override void rebaseRollbackTime(RollbackTimeShift shift) {
+        super.rebaseRollbackTime(shift);
+        slowTime = shift.time(slowTime);
+        lastAirBlastTime = shift.time(lastAirBlastTime);
+        airStaminaDisplayUntil = shift.time(airStaminaDisplayUntil);
+        lastSurgeWaveTime = shift.time(lastSurgeWaveTime);
+        lastHealthRegen = shift.time(lastHealthRegen);
+        lastWaterManipRedirect = shift.time(lastWaterManipRedirect);
+        lastScooterUse = shift.time(lastScooterUse);
+    }
+
     public BendingPlayer(Player player) {
         super(player);
 
@@ -95,7 +112,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
      * @return The BendingPlayer instance
      */
     public static BendingPlayer getBendingPlayer(@NotNull final OfflinePlayer oPlayer) {
-        return OfflineBendingPlayer.ONLINE_PLAYERS.get(oPlayer.getUniqueId());
+        return OfflineBendingPlayer.onlinePlayers().get(oPlayer.getUniqueId());
     }
 
     /**
@@ -105,7 +122,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
      * @return The OfflineBendingPlayer instance
      */
     public static OfflineBendingPlayer getCachedOffline(@NotNull final OfflinePlayer oPlayer) {
-        return OfflineBendingPlayer.PLAYERS.get(oPlayer.getUniqueId());
+        return OfflineBendingPlayer.cachedPlayers().get(oPlayer.getUniqueId());
     }
 
     /**
@@ -152,7 +169,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
      * calls {@link #getBendingPlayer(OfflinePlayer)}
      *
      * @param playerName The name of the Player
-     * @return The BendingPlayer object if {@link BendingPlayer#PLAYERS}
+     * @return The BendingPlayer object if {@link BendingPlayer#cachedPlayers()}
      * contains the player name
      * @see #getBendingPlayer(OfflinePlayer)
      */
@@ -173,7 +190,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
      * calls {@link #getBendingPlayer(OfflinePlayer)}
      *
      * @param playerName The name of the Player
-     * @return The OfflineBendingPlayer object if {@link BendingPlayer#PLAYERS}
+     * @return The OfflineBendingPlayer object if {@link BendingPlayer#cachedPlayers()}
      * contains the player name
      * @see #getBendingPlayer(OfflinePlayer)
      */
@@ -190,19 +207,19 @@ public class BendingPlayer extends OfflineBendingPlayer {
     /**
      * Gets the map of {@link BendingPlayer}s.
      *
-     * @return {@link #ONLINE_PLAYERS}
+     * @return {@link #onlinePlayers()}
      */
     public static Map<UUID, BendingPlayer> getPlayers() {
-        return OfflineBendingPlayer.ONLINE_PLAYERS;
+        return OfflineBendingPlayer.onlinePlayers();
     }
 
     /**
      * Gets the map of {@link OfflineBendingPlayer}s.
      *
-     * @return {@link #PLAYERS}
+     * @return {@link #cachedPlayers()}
      */
     public static Map<UUID, OfflineBendingPlayer> getOfflinePlayers() {
-        return OfflineBendingPlayer.PLAYERS;
+        return OfflineBendingPlayer.cachedPlayers();
     }
 
     /**
@@ -212,6 +229,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
      * @param hook   The hook to register
      */
     public static void registerCanBendHook(@NotNull JavaPlugin plugin, @NotNull CanBendHook hook) {
+        PredictionServices.requireGlobalMutation();
         BEND_HOOKS.put(plugin, hook);
     }
 
@@ -222,7 +240,47 @@ public class BendingPlayer extends OfflineBendingPlayer {
      * @param hook   The hook to register
      */
     public static void registerCanBindHook(@NotNull JavaPlugin plugin, @NotNull CanBindHook hook) {
+        PredictionServices.requireGlobalMutation();
         BIND_HOOKS.put(plugin, hook);
+    }
+
+    private Optional<Boolean> canBendHook(CoreAbility ability, boolean ignoreBinds, boolean ignoreCooldowns) {
+        var privateHooks = RollbackBendingHooks.current();
+        if (privateHooks != null) return privateHooks.canBend(this, ability, ignoreBinds, ignoreCooldowns);
+        for (JavaPlugin plugin : BEND_HOOKS.keySet()) {
+            CanBendHook hook = BEND_HOOKS.get(plugin);
+            try {
+                Optional<Boolean> bool = hook.canBend(this, ability, ignoreBinds, ignoreCooldowns);
+                if (bool.isPresent()) return bool;
+            } catch (Exception e) {
+                ProjectKorra.log.severe("An error occurred while running CanBendHook registered by " + plugin.getName() + ".");
+                e.printStackTrace();
+            }
+        }
+        return Optional.empty();
+    }
+
+    private Optional<Boolean> canBindHook(CoreAbility ability) {
+        var privateHooks = RollbackBendingHooks.current();
+        if (privateHooks != null) return privateHooks.canBind(this, ability);
+        for (JavaPlugin plugin : BIND_HOOKS.keySet()) {
+            CanBindHook hook = BIND_HOOKS.get(plugin);
+            try {
+                Optional<Boolean> bool = hook.canBind(this, ability);
+                if (bool.isPresent()) return bool;
+            } catch (Exception e) {
+                ProjectKorra.log.severe("An error occurred while running CanBindHook registered by " + plugin.getName() + ".");
+                e.printStackTrace();
+            }
+        }
+        return Optional.empty();
+    }
+
+    public static RollbackBendingHooks captureRollbackHooks(java.util.function.UnaryOperator<CanBendHook> bend,
+                                                            java.util.function.UnaryOperator<CanBindHook> bind) {
+        PredictionServices.requireGlobalMutation();
+        return new RollbackBendingHooks(BEND_HOOKS.values().stream().map(bend).toList(),
+                BIND_HOOKS.values().stream().map(bind).toList());
     }
 
     /**
@@ -257,7 +315,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
         Platform.events().call(event);
 
         if (!event.isCancelled()) {
-            Cooldown refCooldown = new Cooldown(event.getCooldown() + System.currentTimeMillis(), database);
+            Cooldown refCooldown = new Cooldown(event.getCooldown() + RollbackClock.millis(), database);
 
             this.cooldowns.put(ability, refCooldown);
             CooldownSync.added(this, ability, refCooldown.getCooldown());
@@ -302,6 +360,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
     }
 
     private boolean canBend(@NotNull final CoreAbility ability, final boolean ignoreBinds, final boolean ignoreCooldowns) {
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership.blocks(this.getUUID())) return false;
 
         final List<String> disabledWorlds = getConfig().getStringList("Properties.DisabledWorlds");
         final Location playerLoc = this.player.getLocation();
@@ -310,17 +369,8 @@ public class BendingPlayer extends OfflineBendingPlayer {
             return false;
         }
 
-        //Loop through all hooks and test them
-        for (JavaPlugin plugin : BEND_HOOKS.keySet()) {
-            CanBendHook hook = BEND_HOOKS.get(plugin);
-            try {
-                Optional<Boolean> bool = hook.canBend(this, ability, ignoreBinds, ignoreCooldowns);
-                if (bool.isPresent()) return bool.get(); //If the hook didn't return
-            } catch (Exception e) {
-                ProjectKorra.log.severe("An error occurred while running CanBendHook registered by " + plugin.getName() + ".");
-                e.printStackTrace();
-            }
-        }
+        var hookDecision = canBendHook(ability, ignoreBinds, ignoreCooldowns);
+        if (hookDecision.isPresent()) return hookDecision.get();
 
         if (!this.canBind(ability)) {
             return false;
@@ -362,6 +412,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
     }
 
     public boolean canBendPassive(final CoreAbility ability) {
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership.blocks(this.getUUID())) return false;
         if (ability == null || !this.isPassiveToggled(ability.getElement()) || !this.isToggledPassives()) {
             return false; // If the passive is disabled.
         }
@@ -390,6 +441,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
     }
 
     public boolean canUsePassive(final CoreAbility ability, boolean ignoreChiBlock) {
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership.blocks(this.getUUID())) return false;
         final Element element = ability.getElement();
         if ((!this.isToggled() && ConfigManager.defaultConfig.get().getBoolean("Properties.TogglePassivesWithAllBending")) || !this.isElementToggled(element) || !this.isPassiveToggled(element) || !this.isToggledPassives()) {
             return false;
@@ -419,7 +471,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
      * @return true If player can be slowed
      */
     public boolean canBeSlowed() {
-        return (System.currentTimeMillis() > this.slowTime);
+        return (RollbackClock.millis() > this.slowTime);
     }
 
     /**
@@ -437,17 +489,8 @@ public class BendingPlayer extends OfflineBendingPlayer {
      */
     public boolean canBind(final CoreAbility ability) {
 
-        //Loop through all hooks and test them
-        for (JavaPlugin plugin : BIND_HOOKS.keySet()) {
-            CanBindHook hook = BIND_HOOKS.get(plugin);
-            try {
-                Optional<Boolean> bool = hook.canBind(this, ability);
-                if (bool.isPresent()) return bool.get();
-            } catch (Exception e) {
-                ProjectKorra.log.severe("An error occurred while running CanBindHook registered by " + plugin.getName() + ".");
-                e.printStackTrace();
-            }
-        }
+        var hookDecision = canBindHook(ability);
+        if (hookDecision.isPresent()) return hookDecision.get();
 
         if (ability == null || !this.player.isOnline() || !ability.isEnabled()) {
             return false;
@@ -602,7 +645,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
         }
         if (this.cooldowns.containsKey(ability)) {
             return CooldownSync.effectiveInputTime(this.player.getUniqueId(), ability,
-                    System.currentTimeMillis()) < this.cooldowns.get(ability).getCooldown();
+                    RollbackClock.millis()) < this.cooldowns.get(ability).getCooldown();
         }
 
         return false;
@@ -624,7 +667,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
                 ? Long.MAX_VALUE
                 : cooldown.getCooldown() + globalCooldown;
         return CooldownSync.effectiveInputTime(this.player.getUniqueId(), ability,
-                System.currentTimeMillis()) < expiresAt;
+                RollbackClock.millis()) < expiresAt;
     }
 
     public boolean isParalyzed() {
@@ -742,7 +785,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
         Iterator<Entry<String, Cooldown>> iterator = this.cooldowns.entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<String, Cooldown> entry = iterator.next();
-            if (System.currentTimeMillis() >= entry.getValue().getCooldown()) {
+            if (RollbackClock.millis() >= entry.getValue().getCooldown()) {
                 final PlayerCooldownChangeEvent event = new PlayerCooldownChangeEvent(this.player, entry.getKey(), 0, Result.REMOVED);
                 Platform.events().call(event);
                 if (!event.isCancelled()) {
@@ -772,7 +815,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
      * @param cooldown The amount of time to slow.
      */
     public void slow(final long cooldown) {
-        this.slowTime = System.currentTimeMillis() + cooldown;
+        this.slowTime = RollbackClock.millis() + cooldown;
     }
 
     /**
@@ -822,7 +865,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
 
             String message = expired;
 
-            if (System.currentTimeMillis() >= time) {
+            if (RollbackClock.millis() >= time) {
                 PlayerChangeSubElementEvent subEvent = new PlayerChangeSubElementEvent(null, this.player, subElement, PlayerChangeSubElementEvent.Result.TEMP_EXPIRE);
                 Platform.events().call(subEvent);
                 if (subEvent.isCancelled()) {
@@ -846,7 +889,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
             String message = expired;
             if (element == Element.AVATAR) message = expiredAvatar;
 
-            if (System.currentTimeMillis() >= time) {
+            if (RollbackClock.millis() >= time) {
                 PlayerChangeElementEvent event = new PlayerChangeElementEvent(null, this.player, element, PlayerChangeElementEvent.Result.TEMP_EXPIRE);
                 Platform.events().call(event);
                 if (event.isCancelled()) {
@@ -902,7 +945,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
         if (this.tempElements.size() > 0 || this.tempSubElements.size() > 0) {
             Map<Element, Long> tempMap = new HashMap<>(this.tempElements);
             tempMap.putAll(this.tempSubElements);
-            Optional<Long> shortestTime = tempMap.values().stream().filter(l -> l >= System.currentTimeMillis()).min(Comparator.comparingLong(Long::longValue));
+            Optional<Long> shortestTime = tempMap.values().stream().filter(l -> l >= RollbackClock.millis()).min(Comparator.comparingLong(Long::longValue));
 
             if (!shortestTime.isPresent()) {
                 ProjectKorra.log.severe("Failed to find the shortest time for " + this.player.getName() + "'s temp elements!");
@@ -914,8 +957,8 @@ public class BendingPlayer extends OfflineBendingPlayer {
 
             long shortestTimeLong = shortestTime.get();
 
-            TEMP_ELEMENTS.removeIf(pair -> pair.getLeft().getUniqueId().equals(this.getUUID()));
-            TEMP_ELEMENTS.add(new ImmutablePair<>(player, shortestTimeLong));
+            temporaryElements().removeIf(pair -> pair.getLeft().getUniqueId().equals(this.getUUID()));
+            temporaryElements().add(new ImmutablePair<>(player, shortestTimeLong));
         }
 
         this.removeUnusableAbilities();
@@ -1060,7 +1103,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
                 continue; //Ignore subelements, we are only fixing the parent elements' subs
             long expireTime = this.tempElements.get(tempElement);
 
-            if (expireTime < System.currentTimeMillis()) { //If it still hasn't expired
+            if (expireTime < RollbackClock.millis()) { //If it still hasn't expired
                 long currentSubs = this.tempElements.keySet().stream()
                         .filter(element -> element instanceof SubElement)
                         .map(element -> (SubElement) element)
@@ -1125,7 +1168,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
      * @param displayDuration how long the status remains visible after a change
      */
     public boolean shouldDisplayChangingAirStamina(final long displayDuration) {
-        final long now = System.currentTimeMillis();
+        final long now = RollbackClock.millis();
         if (Double.isNaN(this.lastDisplayedAirStamina)) {
             this.lastDisplayedAirStamina = this.airBlastDecay;
             return false;
@@ -1138,7 +1181,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
     }
 
     public void resetAirBlast() {
-        lastAirBlastTime = System.currentTimeMillis();
+        lastAirBlastTime = RollbackClock.millis();
         CooldownSync.airBlastReset(this);
     }
 
@@ -1159,7 +1202,7 @@ public class BendingPlayer extends OfflineBendingPlayer {
     }
 
     public void resetSurgeWave() {
-        lastSurgeWaveTime = System.currentTimeMillis();
+        lastSurgeWaveTime = RollbackClock.millis();
     }
 
     public long getLastSurgeWaveTime() {

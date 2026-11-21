@@ -1,5 +1,7 @@
 package com.jedk1.jedcore.ability.airbending.combo;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
 import com.jedk1.jedcore.util.ThrownEntityTracker;
@@ -91,7 +93,7 @@ public class AirSlam extends AirAbility implements AddonAbility, ComboAbility {
             return;
         }
 
-        long now = System.currentTimeMillis();
+        long now = RollbackClock.millis();
         if (!launched && (!GeneralMethods.isOnGround(target) || now >= getStartTime() + MAX_LIFT_WAIT)) {
             launched = true;
             launchTime = now;

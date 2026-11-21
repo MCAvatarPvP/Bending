@@ -19,6 +19,8 @@
 
 package me.moros.hyperion.abilities.earthbending.passive;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.ability.AddonAbility;
@@ -45,7 +47,7 @@ import me.moros.hyperion.util.MaterialCheck;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Random;
 
 public class Locksmithing extends MetalAbility implements AddonAbility, PassiveAbility {
     private static final String OVERRIDE = "bending.admin.overridelock";
@@ -63,8 +65,8 @@ public class Locksmithing extends MetalAbility implements AddonAbility, PassiveA
         String keyName = meta.getDisplayName();
         if (!Hyperion.getLayer().hasLocksmithingKey(meta)) {
             Hyperion.getLayer().addLockSmithingKey(meta);
-            ChatColor randomColor = COLORS[ThreadLocalRandom.current().nextInt(COLORS.length)];
-            keyName = randomColor + UUID.randomUUID().toString();
+            ChatColor randomColor = COLORS[RollbackRandom.shared().nextInt(COLORS.length)];
+            keyName = randomColor + RollbackRandom.uuid().toString();
             meta.setDisplayName(keyName);
             item.setItemMeta(meta);
         }

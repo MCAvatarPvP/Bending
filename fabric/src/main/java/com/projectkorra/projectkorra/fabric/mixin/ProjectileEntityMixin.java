@@ -18,6 +18,7 @@ public abstract class ProjectileEntityMixin {
 
     @Inject(method = "onEntityHit", at = @At("HEAD"), cancellable = true)
     private void projectkorra$onEntityHit(EntityHitResult hitResult, CallbackInfo ci) {
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) return;
         ProjectileEntity projectile = (ProjectileEntity) (Object) this;
         if (!(projectile.getEntityWorld() instanceof ServerWorld)) {
             return;
@@ -36,6 +37,7 @@ public abstract class ProjectileEntityMixin {
 
     @Inject(method = "onBlockHit", at = @At("HEAD"), cancellable = true)
     private void projectkorra$onBlockHit(BlockHitResult hitResult, CallbackInfo ci) {
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) return;
         ProjectileEntity projectile = (ProjectileEntity) (Object) this;
         if (!(projectile.getEntityWorld() instanceof ServerWorld world)) {
             return;

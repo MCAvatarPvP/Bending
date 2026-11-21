@@ -1,5 +1,7 @@
 package me.simplicitee.project.addons.ability.earth;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.EarthAbility;
@@ -143,7 +145,7 @@ public class Accretion extends EarthAbility implements AddonAbility {
             return;
         }
 
-        if (System.currentTimeMillis() - getStartTime() >= 6000) {
+        if (RollbackClock.millis() - getStartTime() >= 6000) {
             for (TempFallingBlock fb : tracker.values()) {
                 fb.remove();
             }

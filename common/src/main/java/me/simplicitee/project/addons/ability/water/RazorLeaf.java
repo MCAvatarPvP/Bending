@@ -1,5 +1,7 @@
 package me.simplicitee.project.addons.ability.water;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.PlantAbility;
@@ -112,7 +114,7 @@ public class RazorLeaf extends PlantAbility implements AddonAbility {
             return;
         }
 
-        if (Math.random() < 0.13) {
+        if (RollbackRandom.fraction() < 0.13) {
             playPlantbendingSound(center);
         }
 

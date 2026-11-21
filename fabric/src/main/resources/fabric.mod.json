@@ -10,6 +10,7 @@
     "modmenu": ["com.projectkorra.projectkorra.fabric.client.config.ProjectKorraModMenu"]
   },
   "mixins": ["projectkorra.mixins.json"],
+  "accessWidener": "projectkorra.accesswidener",
   "depends": {
     "fabricloader": ">=0.16.0",
     "fabric-api": "*",

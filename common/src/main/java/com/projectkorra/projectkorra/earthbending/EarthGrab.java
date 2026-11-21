@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -80,6 +83,11 @@ public class EarthGrab extends EarthAbility {
         this.origin = this.player.getLocation().clone();
         this.direction = this.player.getLocation().getDirection().setY(0).normalize();
         this.lastHit = 0;
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.lastHit = shift.time(this.lastHit);
     }
 
     @Override
@@ -310,9 +318,9 @@ public class EarthGrab extends EarthAbility {
     }
 
     public void damageTrap() {
-        if (System.currentTimeMillis() >= this.lastHit + this.interval) {
+        if (RollbackClock.millis() >= this.lastHit + this.interval) {
             this.trapHP -= 1;
-            this.lastHit = System.currentTimeMillis();
+            this.lastHit = RollbackClock.millis();
             ParticleEffect.BLOCK_CRACK.display(this.target.getLocation().clone().add(0, 1, 0), 7, 0.06, 0.3, 0.06, this.target.getLocation().getBlock().getRelative(BlockFace.DOWN).getBlockData());
             playEarthbendingSound(this.target.getLocation());
         }

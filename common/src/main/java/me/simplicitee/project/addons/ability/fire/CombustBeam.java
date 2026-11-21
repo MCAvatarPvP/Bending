@@ -1,5 +1,7 @@
 package me.simplicitee.project.addons.ability.fire;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.CombustionAbility;
@@ -114,7 +116,7 @@ public class CombustBeam extends CombustionAbility implements AddonAbility {
 
             sound.play(player.getEyeLocation());
 
-            if (getStartTime() + maxChargeTime <= System.currentTimeMillis()) {
+            if (getStartTime() + maxChargeTime <= RollbackClock.millis()) {
                 this.chargeTime = maxChargeTime;
                 this.angleCheck = minAngle;
                 this.power = maxPower;
@@ -124,8 +126,8 @@ public class CombustBeam extends CombustionAbility implements AddonAbility {
                 player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 10, 5));
 
                 ActionBar.sendActionBar(ChatColor.RED + "100%", player);
-            } else if (getStartTime() + minChargeTime <= System.currentTimeMillis()) {
-                this.chargeTime = System.currentTimeMillis() - getStartTime() - minChargeTime;
+            } else if (getStartTime() + minChargeTime <= RollbackClock.millis()) {
+                this.chargeTime = RollbackClock.millis() - getStartTime() - minChargeTime;
 
                 double percent = ((double) chargeTime / ((double) (maxChargeTime - minChargeTime)));
 

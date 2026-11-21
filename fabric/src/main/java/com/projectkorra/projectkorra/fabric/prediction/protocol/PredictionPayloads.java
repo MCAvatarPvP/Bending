@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.fabric.prediction.protocol;
 
 import com.projectkorra.projectkorra.prediction.authority.RegionProtectionAuthority;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackInputPacket;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.minecraft.network.RegistryByteBuf;
 import net.minecraft.network.codec.PacketCodec;
@@ -23,6 +24,22 @@ public final class PredictionPayloads {
     private static boolean registered;
 
     private PredictionPayloads() { }
+
+    /** Uses the exact bounded common codec consumed by Paper; no additional length prefix. */
+    public record RollbackInput(RollbackInputPacket input) implements CustomPayload {
+        public static final Id<RollbackInput> ID = new Id<>(Identifier.of(RollbackInputPacket.CHANNEL));
+        public static final PacketCodec<RegistryByteBuf, RollbackInput> CODEC = PacketCodec.of(RollbackInput::write, RollbackInput::read);
+        public RollbackInput { java.util.Objects.requireNonNull(input, "input"); }
+        private void write(RegistryByteBuf buf) { buf.writeBytes(input.encode()); }
+        private static RollbackInput read(RegistryByteBuf buf) {
+            int length = buf.readableBytes();
+            if (length > RollbackInputPacket.MAXIMUM_BYTES) throw new IllegalArgumentException("Rollback input byte budget");
+            byte[] bytes = new byte[length];
+            buf.readBytes(bytes);
+            return new RollbackInput(RollbackInputPacket.decode(bytes));
+        }
+        @Override public Id<RollbackInput> getId() { return ID; }
+    }
 
     public enum InputKind { LEFT_CLICK, RIGHT_CLICK, RIGHT_CLICK_BLOCK, RIGHT_CLICK_ENTITY, SNEAK_START, SNEAK_STOP, SWAP_HANDS }
     public enum VisualKind { CAST, PROJECTILE, AREA, TEMP_BLOCK, SELF }
@@ -527,6 +544,52 @@ public final class PredictionPayloads {
         @Override public Id<TempFallingBlockPrepare> getId() { return ID; }
     }
 
+    public record MeleeAction(UUID sessionId, long localSequence, int slot, String ability, int targetId,
+                              UUID targetUuid) implements CustomPayload {
+        public static final Id<MeleeAction> ID = id("melee_action");
+        public static final PacketCodec<RegistryByteBuf, MeleeAction> CODEC = PacketCodec.of(MeleeAction::write, MeleeAction::new);
+        private MeleeAction(RegistryByteBuf buf) {
+            this(buf.readUuid(), buf.readVarLong(), buf.readVarInt(), buf.readString(128), buf.readVarInt(), buf.readUuid());
+        }
+        private void write(RegistryByteBuf buf) {
+            buf.writeUuid(sessionId); buf.writeVarLong(localSequence); buf.writeVarInt(slot); buf.writeString(ability, 128);
+            buf.writeVarInt(targetId); buf.writeUuid(targetUuid);
+        }
+        @Override public Id<MeleeAction> getId() { return ID; }
+    }
+
+    public record ProjectileImpact(UUID sessionId, long actionSequence, int ordinal, UUID owner, int entityId,
+                                   UUID entityUuid, boolean createdCloud) implements CustomPayload {
+        public static final Id<ProjectileImpact> ID = id("projectile_impact");
+        public static final PacketCodec<RegistryByteBuf, ProjectileImpact> CODEC =
+                PacketCodec.of(ProjectileImpact::write, ProjectileImpact::new);
+        private ProjectileImpact(RegistryByteBuf buf) {
+            this(buf.readUuid(), buf.readVarLong(), buf.readVarInt(), buf.readUuid(), buf.readVarInt(), buf.readUuid(), buf.readBoolean());
+        }
+        private void write(RegistryByteBuf buf) {
+            buf.writeUuid(sessionId); buf.writeVarLong(actionSequence); buf.writeVarInt(ordinal); buf.writeUuid(owner);
+            buf.writeVarInt(entityId); buf.writeUuid(entityUuid); buf.writeBoolean(createdCloud);
+        }
+        @Override public Id<ProjectileImpact> getId() { return ID; }
+    }
+
+    public record ProjectileOwner(UUID sessionId, long actionSequence, int ordinal, UUID owner, int entityId,
+                                  UUID entityUuid, String ability, String type) implements CustomPayload {
+        public static final Id<ProjectileOwner> ID = id("projectile_owner");
+        public static final PacketCodec<RegistryByteBuf, ProjectileOwner> CODEC =
+                PacketCodec.of(ProjectileOwner::write, ProjectileOwner::new);
+        private ProjectileOwner(RegistryByteBuf buf) {
+            this(buf.readUuid(), buf.readVarLong(), buf.readVarInt(), buf.readUuid(), buf.readVarInt(),
+                    buf.readUuid(), buf.readString(128), buf.readString(64));
+        }
+        private void write(RegistryByteBuf buf) {
+            buf.writeUuid(sessionId); buf.writeVarLong(actionSequence); buf.writeVarInt(ordinal);
+            buf.writeUuid(owner); buf.writeVarInt(entityId); buf.writeUuid(entityUuid);
+            buf.writeString(ability, 128); buf.writeString(type, 64);
+        }
+        @Override public Id<ProjectileOwner> getId() { return ID; }
+    }
+
     public record TempFallingBlockReceipt(long serverTick, long actionSequence, int spawnOrdinal,
                                           UUID abilityOwner, int serverEntityId,
                                           String ability) implements CustomPayload {
@@ -683,6 +746,11 @@ public final class PredictionPayloads {
         if (registered) return;
         registered = true;
         PayloadTypeRegistry.playC2S().register(ClientHello.ID, ClientHello.CODEC);
+        PayloadTypeRegistry.playC2S().register(RollbackInput.ID, RollbackInput.CODEC);
+        RollbackStartPayloads.registerTypes();
+        RollbackBootstrapPayloads.registerTypes();
+        PayloadTypeRegistry.playS2C().register(RollbackAuthorityPayload.ID, RollbackAuthorityPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(RollbackStateCorrectionPayload.ID, RollbackStateCorrectionPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(ClientDisabled.ID, ClientDisabled.CODEC);
         PayloadTypeRegistry.playC2S().register(ClientReady.ID, ClientReady.CODEC);
         PayloadTypeRegistry.playC2S().register(InputVeto.ID, InputVeto.CODEC);
@@ -702,6 +770,9 @@ public final class PredictionPayloads {
         PayloadTypeRegistry.playS2C().register(AbilityStateOwner.ID, AbilityStateOwner.CODEC);
         PayloadTypeRegistry.playS2C().register(GlidingStateOwner.ID, GlidingStateOwner.CODEC);
         PayloadTypeRegistry.playS2C().register(TempFallingBlockPrepare.ID, TempFallingBlockPrepare.CODEC);
+        PayloadTypeRegistry.playC2S().register(MeleeAction.ID, MeleeAction.CODEC);
+        PayloadTypeRegistry.playS2C().register(ProjectileImpact.ID, ProjectileImpact.CODEC);
+        PayloadTypeRegistry.playS2C().register(ProjectileOwner.ID, ProjectileOwner.CODEC);
         PayloadTypeRegistry.playS2C().register(TempFallingBlockReceipt.ID, TempFallingBlockReceipt.CODEC);
         PayloadTypeRegistry.playS2C().register(DirectBlockReceipt.ID, DirectBlockReceipt.CODEC);
         PayloadTypeRegistry.playS2C().register(AbilityRemoved.ID, AbilityRemoved.CODEC);

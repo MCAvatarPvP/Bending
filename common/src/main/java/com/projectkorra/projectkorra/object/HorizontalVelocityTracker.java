@@ -1,5 +1,11 @@
 package com.projectkorra.projectkorra.object;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantStatuses;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.Ability;
@@ -40,6 +46,17 @@ public class HorizontalVelocityTracker {
     private Location impactLocation;
     private Ability abil;
 
+    private static Map<Entity, HorizontalVelocityTracker> trackers() {
+        var state = RollbackParticipantStatuses.current();
+        return state == null ? instances : state.velocity();
+    }
+    public void rebase(RollbackTimeShift time) {
+        time.once(this, () -> fireTime = time.time(fireTime));
+    }
+
+    public Entity rollbackTarget() { return entity; }
+    public Player rollbackInstigator() { return instigator; }
+
     public HorizontalVelocityTracker(final Entity e, final Player instigator, final long delay, final Ability ability) {
         if (!ProjectKorra.plugin.getConfig().getBoolean("Properties.HorizontalCollisionPhysics.Enabled")) {
             return;
@@ -52,44 +69,52 @@ public class HorizontalVelocityTracker {
         remove(e);
         this.entity = e;
         this.instigator = instigator;
-        this.fireTime = System.currentTimeMillis();
+        this.fireTime = RollbackClock.millis();
         this.delay = delay;
         this.thisVelocity = e.getVelocity().clone();
         this.launchLocation = e.getLocation().clone();
         this.impactLocation = this.launchLocation.clone();
         this.abil = ability;
         this.update();
-        instances.put(this.entity, this);
+        trackers().put(this.entity, this);
     }
 
     public static void updateAll() {
-        for (final Entity e : instances.keySet()) {
-            if (e != null && !e.isDead() && instances.get(e) != null) {
-                instances.get(e).update();
+        for (final Entity e : trackers().keySet()) {
+            var tracker = trackers().get(e);
+            if (tracker != null && tracker.liveOwned()) continue;
+            if (e != null && !e.isDead() && trackers().get(e) != null) {
+                trackers().get(e).update();
             } else {
-                instances.remove(e);
+                trackers().remove(e);
             }
         }
     }
 
     public static void remove(final Entity e) {
-        instances.remove(e);
+        trackers().remove(e);
     }
 
     /** Drops trackers that still reference ability instances from before a reload. */
     public static void clearAll() {
-        instances.clear();
+        trackers().clear();
     }
 
     public static boolean hasBeenDamagedByHorizontalVelocity(final Entity e) {
-        if (instances.containsKey(e)) {
-            return instances.get(e).hasBeenDamaged;
+        if (trackers().containsKey(e)) {
+            return trackers().get(e).hasBeenDamaged;
         }
         return false;
     }
 
+    private boolean liveOwned() {
+        return (this.entity != null && RollbackLiveOwnership.blocks(this.entity.getUniqueId()))
+                || (this.instigator != null && RollbackLiveOwnership.blocks(this.instigator.getUniqueId()));
+    }
+
     public void update() {
-        if (System.currentTimeMillis() < this.fireTime + this.delay) {
+        if (liveOwned()) return;
+        if (RollbackClock.millis() < this.fireTime + this.delay) {
             return;
         }
 
@@ -98,7 +123,7 @@ public class HorizontalVelocityTracker {
             return;
         }
 
-        if (System.currentTimeMillis() > (this.fireTime + 30000)) {
+        if (RollbackClock.millis() > (this.fireTime + 30000)) {
             ProjectKorra.log.info("removed HorizontalVelocityTracker lasting over 30 seconds: " + this.instigator.getName() + " using " + this.abil.getName() + " on " + this.entity);
             this.remove();
             return;
@@ -139,7 +164,7 @@ public class HorizontalVelocityTracker {
     }
 
     public void remove() {
-        instances.remove(this.entity);
+        trackers().remove(this.entity);
     }
 
     @Override

@@ -1,0 +1,150 @@
+package com.projectkorra.projectkorra.prediction.rollback;
+
+import ca.spottedleaf.moonrise.common.util.TickThread;
+import com.projectkorra.projectkorra.platform.bukkit.BukkitMC;
+import com.projectkorra.projectkorra.platform.mc.block.Biome;
+import com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.*;
+import com.projectkorra.projectkorra.prediction.rollback.world.RollbackTerrainSeed;
+import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtIo;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.chunk.LevelChunk;
+import org.bukkit.craftbukkit.block.data.CraftBlockData;
+
+import java.io.*;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+
+/** Read-only, synchronous capture of loaded terrain before private simulation starts. */
+public final class PaperRollbackTerrainCapture {
+    private PaperRollbackTerrainCapture() { }
+
+    public record Limits(int maximumCells, int maximumLoadedChunks, long maximumStorageBytes, int maximumBlockEntityBytes) {
+        public Limits {
+            if (maximumCells < 1 || maximumCells > 16_777_216 || maximumLoadedChunks < 1 || maximumLoadedChunks > 65_536
+                    || maximumStorageBytes < 1 || maximumStorageBytes > 1_073_741_824L
+                    || maximumBlockEntityBytes < 1 || maximumBlockEntityBytes > maximumStorageBytes) {
+                throw new IllegalArgumentException("Terrain capture limits");
+            }
+        }
+    }
+
+    /** Detach native section palettes in one boundary, then evaluate every coordinate away from the tick thread. */
+    public static Prepared prepare(ServerLevel source, Bounds bounds, Limits limits) {
+        var snapshot = PaperRollbackTerrainImage.capture(source, bounds, limits, true);
+        return new Prepared(snapshot);
+    }
+
+    public static final class Prepared {
+        private final PaperRollbackTerrainImage image;
+        private final java.util.concurrent.CompletableFuture<PaperRollbackTerrainImage.Result> result;
+        private final java.util.concurrent.CompletableFuture<RollbackTerrainSeed> terrain;
+        private Prepared(PaperRollbackTerrainImage image) {
+            this.image = image;
+            result = java.util.concurrent.CompletableFuture.supplyAsync(image::expand);
+            terrain = result.thenApply(PaperRollbackTerrainImage.Result::terrain);
+        }
+        public java.util.concurrent.CompletableFuture<RollbackTerrainSeed> terrain() { return terrain; }
+        public com.projectkorra.projectkorra.prediction.rollback.world.RollbackLightSeed light() {
+            if (!result.isDone()) throw new IllegalStateException("Prepared terrain is still expanding");
+            return result.join().light();
+        }
+        public boolean matches(ServerLevel source) { return image.matches(source); }
+    }
+
+    public static RollbackTerrainSeed capture(ServerLevel source, Bounds bounds, Limits limits) {
+        Objects.requireNonNull(source, "source world"); Objects.requireNonNull(bounds, "bounds"); Objects.requireNonNull(limits, "limits");
+        if (!TickThread.isTickThread() || RollbackClock.active()) throw new IllegalStateException("Capture terrain on the server tick thread before replay");
+        long count = ((long) bounds.maxX() - bounds.minX()) * (bounds.maxY() - bounds.minY()) * (bounds.maxZ() - bounds.minZ());
+        if (count > limits.maximumCells()) throw new IllegalArgumentException("Terrain cell budget exceeded");
+        // Smoothed biome temperature can consult an adjacent chunk. Preflight that
+        // halo too, so native biome reads never generate/load neighboring terrain.
+        int minX = Math.floorDiv(bounds.minX(), 16) - 1, maxX = Math.floorDiv(bounds.maxX() - 1, 16) + 1;
+        int minZ = Math.floorDiv(bounds.minZ(), 16) - 1, maxZ = Math.floorDiv(bounds.maxZ() - 1, 16) + 1;
+        long chunks = ((long) maxX - minX + 1) * ((long) maxZ - minZ + 1);
+        if (chunks > limits.maximumLoadedChunks()) throw new IllegalArgumentException("Terrain chunk budget exceeded");
+        var builder = new RollbackTerrainSeed.Builder(bounds, limits.maximumStorageBytes());
+        long tick = source.getGameTime();
+        Map<Long, LevelChunk> loaded = new HashMap<>();
+        Map<net.minecraft.world.level.block.state.BlockState, com.projectkorra.projectkorra.platform.mc.block.data.BlockData> states = new IdentityHashMap<>();
+        var chunkSource = source.getChunkSource();
+        for (int x = minX; x <= maxX; x++) for (int z = minZ; z <= maxZ; z++) {
+            var chunk = chunkSource.getChunkAtIfLoadedImmediately(x, z);
+            if (chunk == null) throw new IllegalStateException("Terrain capture requires loaded chunk " + x + "," + z);
+            loaded.put(ChunkPos.asLong(x, z), chunk);
+        }
+        var position = new BlockPos.MutableBlockPos();
+        net.minecraft.world.level.block.state.BlockState lastState = null;
+        net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome> lastNoise = null, lastSmoothed = null;
+        Cell lastCell = null;
+
+        LevelChunk chunk = null;
+        for (int y = bounds.minY(); y < bounds.maxY(); y++) for (int z = bounds.minZ(); z < bounds.maxZ(); z++) for (int x = bounds.minX(); x < bounds.maxX(); x++) {
+            position.set(x, y, z);
+            if (x == bounds.minX() || (x & 15) == 0) chunk = loaded.get(ChunkPos.asLong(x >> 4, z >> 4));
+            var nativeState = chunk.getBlockState(position);
+            var noise = source.getNoiseBiome(x >> 2, y >> 2, z >> 2);
+            var smoothed = source.getBiome(position);
+            byte light = (byte)source.getMaxLocalRawBrightness(position);
+            double temperature = smoothed.value().getTemperature(position, source.getSeaLevel());
+            // Repeated cells use the same palette entry. Tile data is position-specific.
+            if (!nativeState.hasBlockEntity() && nativeState == lastState && noise == lastNoise && smoothed == lastSmoothed
+                    && lastCell.light() == light) {
+                builder.repeatAtTemperature(temperature);
+                continue;
+            }
+
+            var data = states.computeIfAbsent(nativeState, state -> {
+                var nativeData = CraftBlockData.fromData(state);
+                var detached = BukkitMC.blockData(nativeData);
+                detached.setExactState(nativeData.getAsString());
+                return detached;
+            });
+            byte[] tile = nativeState.hasBlockEntity()
+                    ? encode(blockEntity(source, chunk, position), limits.maximumBlockEntityBytes()) : null;
+            var key = noise.unwrapKey().orElseThrow(() -> new IllegalStateException("Unregistered biome in terrain capture")).identifier();
+            var smoothedKey = smoothed.unwrapKey().orElseThrow(() -> new IllegalStateException("Unregistered smoothed biome in terrain capture")).identifier();
+            Biome common = Biome.DESERT;
+            if (key.getNamespace().equals("minecraft")) {
+                try { common = Biome.valueOf(key.getPath().toUpperCase(Locale.ROOT)); }
+                catch (IllegalArgumentException ignored) { }
+            }
+            lastCell = new Cell(data, tile, common, smoothedKey.toString(), key.toString(), light,
+                    temperature, noise.value().climateSettings.downfall());
+            lastState = nativeState;
+            lastNoise = noise;
+            lastSmoothed = smoothed;
+            builder.append(lastCell);
+        }
+
+        if (source.getGameTime() != tick) throw new IllegalStateException("World advanced during synchronous terrain capture");
+        return builder.finish();
+    }
+
+    static CompoundTag blockEntity(ServerLevel source, LevelChunk chunk, BlockPos position) {
+        var entity = chunk.getBlockEntities().get(position);
+        if (entity != null && entity.isRemoved()) throw new IllegalStateException("Removed block entity at " + position);
+        var tag = entity == null ? chunk.getBlockEntityNbt(position) : entity.saveWithFullMetadata(source.registryAccess());
+        if (tag == null) throw new IllegalStateException("Missing block entity at " + position);
+        return tag;
+    }
+
+    static byte[] encode(CompoundTag tag, int maximumBytes) {
+        var bytes = new ByteArrayOutputStream(Math.min(maximumBytes, 1024));
+        var bounded = new OutputStream() {
+            private void room(int count) {
+                if (count > maximumBytes - bytes.size()) throw new IllegalStateException("Block entity exceeds terrain capture budget");
+            }
+            @Override public void write(int value) { room(1); bytes.write(value); }
+            @Override public void write(byte[] data, int offset, int length) { room(length); bytes.write(data, offset, length); }
+        };
+        try { NbtIo.write(tag, new DataOutputStream(bounded)); }
+        catch (IOException failure) { throw new UncheckedIOException("Could not detach block entity", failure); }
+        return bytes.toByteArray();
+    }
+}

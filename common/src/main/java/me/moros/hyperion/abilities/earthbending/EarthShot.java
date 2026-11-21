@@ -19,6 +19,8 @@
 
 package me.moros.hyperion.abilities.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.EarthAbility;
@@ -154,11 +156,11 @@ public class EarthShot extends EarthAbility implements AddonAbility {
                 }
                 if (readySource.getBlock().equals(player.getTargetBlock(getTransparentMaterialSet(), selectRange * 2)) && player.isSneaking()) {
                     if (magmaStartTime == 0) {
-                        magmaStartTime = System.currentTimeMillis();
+                        magmaStartTime = RollbackClock.millis();
                         if (chargeTime > 0) playLavabendingSound(readySource.getLocation());
                     }
                     playParticles(readySource.getLocation().add(0.5, 0.5, 0.5));
-                    if (chargeTime <= 0 || System.currentTimeMillis() > magmaStartTime + chargeTime) {
+                    if (chargeTime <= 0 || RollbackClock.millis() > magmaStartTime + chargeTime) {
                         convertedMagma = true;
                         readySource.setType(Material.MAGMA_BLOCK);
                     }

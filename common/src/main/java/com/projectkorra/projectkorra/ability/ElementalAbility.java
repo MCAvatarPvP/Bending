@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.ability;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackDomain;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.earthbending.RaiseEarth;
@@ -34,23 +35,103 @@ public abstract class ElementalAbility extends CoreAbility {
     private static final PotionEffectType[] POSITIVE_EFFECTS = {PotionEffectType.ABSORPTION, PotionEffectType.RESISTANCE, PotionEffectType.HASTE, PotionEffectType.FIRE_RESISTANCE, PotionEffectType.INSTANT_HEALTH, PotionEffectType.HEALTH_BOOST, PotionEffectType.INSTANT_DAMAGE, PotionEffectType.JUMP_BOOST, PotionEffectType.NIGHT_VISION, PotionEffectType.REGENERATION, PotionEffectType.SATURATION, PotionEffectType.SPEED, PotionEffectType.WATER_BREATHING};
     private static final PotionEffectType[] NEUTRAL_EFFECTS = {PotionEffectType.INVISIBILITY};
     private static final PotionEffectType[] NEGATIVE_EFFECTS = {PotionEffectType.POISON, PotionEffectType.BLINDNESS, PotionEffectType.NAUSEA, PotionEffectType.INSTANT_DAMAGE, PotionEffectType.HUNGER, PotionEffectType.SLOWNESS, PotionEffectType.MINING_FATIGUE, PotionEffectType.WEAKNESS, PotionEffectType.WITHER};
-    private static final Set<Material> TRANSPARENT = new HashSet<>();
-    private static final Set<String> EARTH_BLOCKS = new HashSet<String>();
-    private static final Set<String> ICE_BLOCKS = new HashSet<String>();
-    private static final Set<String> METAL_BLOCKS = new HashSet<String>();
-    private static final Set<String> PLANT_BLOCKS = new HashSet<String>();
-    private static final Set<String> SAND_BLOCKS = new HashSet<String>();
-    private static final Set<String> SNOW_BLOCKS = new HashSet<String>();
+    private static Set<Material> TRANSPARENT = new HashSet<>();
+    private static Set<String> EARTH_BLOCKS = new HashSet<String>();
+    private static Set<String> ICE_BLOCKS = new HashSet<String>();
+    private static Set<String> METAL_BLOCKS = new HashSet<String>();
+    private static Set<String> PLANT_BLOCKS = new HashSet<String>();
+    private static Set<String> SAND_BLOCKS = new HashSet<String>();
+    private static Set<String> SNOW_BLOCKS = new HashSet<String>();
+
+    /** Match-local registry references retained across prediction and replay. */
+    public static final class PrivateRegistries {
+        private Set<Material> transparent = new HashSet<>();
+        private Set<String> earth = new HashSet<>();
+        private Set<String> ice = new HashSet<>();
+        private Set<String> metal = new HashSet<>();
+        private Set<String> plant = new HashSet<>();
+        private Set<String> sand = new HashSet<>();
+        private Set<String> snow = new HashSet<>();
+    }
+
+    private static Set<Material> currentTransparent() {
+        var state = RollbackDomain.importingRegistries();
+        return state == null ? TRANSPARENT : state.materials().transparent;
+    }
+    private static Set<String> currentEarth() {
+        var state = RollbackDomain.importingRegistries();
+        return state == null ? EARTH_BLOCKS : state.materials().earth;
+    }
+    private static Set<String> currentIce() {
+        var state = RollbackDomain.importingRegistries();
+        return state == null ? ICE_BLOCKS : state.materials().ice;
+    }
+    private static Set<String> currentMetal() {
+        var state = RollbackDomain.importingRegistries();
+        return state == null ? METAL_BLOCKS : state.materials().metal;
+    }
+    private static Set<String> currentPlant() {
+        var state = RollbackDomain.importingRegistries();
+        return state == null ? PLANT_BLOCKS : state.materials().plant;
+    }
+    private static Set<String> currentSand() {
+        var state = RollbackDomain.importingRegistries();
+        return state == null ? SAND_BLOCKS : state.materials().sand;
+    }
+    private static Set<String> currentSnow() {
+        var state = RollbackDomain.importingRegistries();
+        return state == null ? SNOW_BLOCKS : state.materials().snow;
+    }
 
     static {
-        TRANSPARENT.clear();
+        currentTransparent().clear();
         for (final Material mat : Material.values()) {
             if (GeneralMethods.isTransparent(mat)) {
-                TRANSPARENT.add(mat);
+                currentTransparent().add(mat);
             }
         }
         clearBendableMaterials();
         setupBendableMaterials();
+    }
+
+    /** Portable cache roots. References remain shared with ability fields during graph transfer. */
+    public static final class RollbackMaterialRegistry {
+        private final Set<Material> transparent;
+        private final Set<String> earth, ice, metal, plant, sand, snow;
+        private RollbackMaterialRegistry() {
+            transparent = currentTransparent(); earth = currentEarth(); ice = currentIce();
+            metal = currentMetal(); plant = currentPlant(); sand = currentSand(); snow = currentSnow();
+        }
+        /** Outside the duel, material policy belongs to the live server, not one session. */
+        public void bindLive(java.util.function.BiConsumer<Object, Object> bind) {
+            if (com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active())
+                throw new IllegalStateException("Restore material references outside replay");
+            bind.accept(transparent, currentTransparent()); bind.accept(earth, currentEarth());
+            bind.accept(ice, currentIce()); bind.accept(metal, currentMetal());
+            bind.accept(plant, currentPlant()); bind.accept(sand, currentSand()); bind.accept(snow, currentSnow());
+        }
+        public void install() {
+            if (!com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active())
+                throw new IllegalStateException("Material caches require a private domain");
+            var imported = RollbackDomain.importingRegistries();
+            if (imported != null) {
+                var privateState = imported.materials();
+                privateState.transparent = Objects.requireNonNull(transparent); privateState.earth = Objects.requireNonNull(earth);
+                privateState.ice = Objects.requireNonNull(ice); privateState.metal = Objects.requireNonNull(metal);
+                privateState.plant = Objects.requireNonNull(plant); privateState.sand = Objects.requireNonNull(sand);
+                privateState.snow = Objects.requireNonNull(snow);
+                return;
+            }
+            TRANSPARENT = Objects.requireNonNull(transparent); EARTH_BLOCKS = Objects.requireNonNull(earth);
+            ICE_BLOCKS = Objects.requireNonNull(ice); METAL_BLOCKS = Objects.requireNonNull(metal);
+            PLANT_BLOCKS = Objects.requireNonNull(plant); SAND_BLOCKS = Objects.requireNonNull(sand);
+            SNOW_BLOCKS = Objects.requireNonNull(snow);
+        }
+    }
+    public static RollbackMaterialRegistry captureRollbackMaterials() { return new RollbackMaterialRegistry(); }
+    public static List<java.lang.reflect.Field> rollbackMaterialFields() {
+        return com.projectkorra.projectkorra.prediction.rollback.RollbackStateGraph.staticFields(ElementalAbility.class,
+                field -> Set.of("TRANSPARENT", "EARTH_BLOCKS", "ICE_BLOCKS", "METAL_BLOCKS", "PLANT_BLOCKS", "SAND_BLOCKS", "SNOW_BLOCKS").contains(field.getName()));
     }
 
     public ElementalAbility(final Player player) {
@@ -66,16 +147,16 @@ public abstract class ElementalAbility extends CoreAbility {
     }
 
     public static void clearBendableMaterials() {
-        EARTH_BLOCKS.clear();
-        ICE_BLOCKS.clear();
-        METAL_BLOCKS.clear();
-        PLANT_BLOCKS.clear();
-        SAND_BLOCKS.clear();
-        SNOW_BLOCKS.clear();
+        currentEarth().clear();
+        currentIce().clear();
+        currentMetal().clear();
+        currentPlant().clear();
+        currentSand().clear();
+        currentSnow().clear();
     }
 
     public static List<String> getEarthbendableBlocks() {
-        return new ArrayList<String>(EARTH_BLOCKS);
+        return new ArrayList<String>(currentEarth());
     }
 
     public static void addTags(Set<String> outputSet, List<String> configList) {
@@ -95,11 +176,11 @@ public abstract class ElementalAbility extends CoreAbility {
     }
 
     public static Material[] getTransparentMaterials() {
-        return TRANSPARENT.toArray(new Material[TRANSPARENT.size()]);
+        return currentTransparent().toArray(new Material[currentTransparent().size()]);
     }
 
     public static HashSet<Material> getTransparentMaterialSet() {
-        return new HashSet<>(TRANSPARENT);
+        return new HashSet<>(currentTransparent());
     }
 
     public static boolean isAir(final Material material) {
@@ -148,7 +229,7 @@ public abstract class ElementalAbility extends CoreAbility {
     }
 
     public static boolean isEarth(final Material material) {
-        return EarthCosmetic.getCosmeticMats().contains(material) || EARTH_BLOCKS.contains(material.toString());
+        return EarthCosmetic.getCosmeticMats().contains(material) || currentEarth().contains(material.toString());
     }
 
     public static boolean isFire(final Block block) {
@@ -174,7 +255,7 @@ public abstract class ElementalAbility extends CoreAbility {
 
         final String configuredIce = ConfigManager.getConfig().getString("Properties.Water.IceMaterial", Material.ICE.name());
         final Material configuredMaterial = Material.matchMaterial(configuredIce);
-        return ICE_BLOCKS.contains(material.toString()) || material == configuredMaterial || WaterCosmetic.getCosmeticMats().contains(material);
+        return currentIce().contains(material.toString()) || material == configuredMaterial || WaterCosmetic.getCosmeticMats().contains(material);
     }
 
     public static boolean isLava(final Block block) {
@@ -190,7 +271,7 @@ public abstract class ElementalAbility extends CoreAbility {
     }
 
     public static boolean isSnow(final Material material) {
-        return SNOW_BLOCKS.contains(material.toString());
+        return currentSnow().contains(material.toString());
     }
 
     public static boolean isMeltable(final Block block) {
@@ -206,7 +287,7 @@ public abstract class ElementalAbility extends CoreAbility {
     }
 
     public static boolean isMetal(final Material material) {
-        return METAL_BLOCKS.contains(material.toString());
+        return currentMetal().contains(material.toString());
     }
 
     public static boolean isMetalBlock(final Block block) {
@@ -246,7 +327,7 @@ public abstract class ElementalAbility extends CoreAbility {
     }
 
     public static boolean isPlant(final Material material) {
-        return PLANT_BLOCKS.contains(material.toString());
+        return currentPlant().contains(material.toString());
     }
 
     public static boolean isPositiveEffect(final PotionEffectType effect) {
@@ -264,7 +345,7 @@ public abstract class ElementalAbility extends CoreAbility {
     }
 
     public static boolean isSand(final Material material) {
-        return SAND_BLOCKS.contains(material.toString());
+        return currentSand().contains(material.toString());
     }
 
     public static boolean isTransparent(final Player player, final Block block) {
@@ -295,12 +376,12 @@ public abstract class ElementalAbility extends CoreAbility {
     }
 
     public static void setupBendableMaterials() {
-        addTags(EARTH_BLOCKS, ConfigManager.getConfig().getStringList("Properties.Earth.EarthBlocks"));
-        addTags(ICE_BLOCKS, ConfigManager.getConfig().getStringList("Properties.Water.IceBlocks"));
-        addTags(METAL_BLOCKS, ConfigManager.getConfig().getStringList("Properties.Earth.MetalBlocks"));
-        addTags(PLANT_BLOCKS, ConfigManager.getConfig().getStringList("Properties.Water.PlantBlocks"));
-        addTags(SAND_BLOCKS, ConfigManager.getConfig().getStringList("Properties.Earth.SandBlocks"));
-        addTags(SNOW_BLOCKS, ConfigManager.getConfig().getStringList("Properties.Water.SnowBlocks"));
+        addTags(currentEarth(), ConfigManager.getConfig().getStringList("Properties.Earth.EarthBlocks"));
+        addTags(currentIce(), ConfigManager.getConfig().getStringList("Properties.Water.IceBlocks"));
+        addTags(currentMetal(), ConfigManager.getConfig().getStringList("Properties.Earth.MetalBlocks"));
+        addTags(currentPlant(), ConfigManager.getConfig().getStringList("Properties.Water.PlantBlocks"));
+        addTags(currentSand(), ConfigManager.getConfig().getStringList("Properties.Earth.SandBlocks"));
+        addTags(currentSnow(), ConfigManager.getConfig().getStringList("Properties.Water.SnowBlocks"));
     }
 
     public boolean isTransparent(final Block block) {

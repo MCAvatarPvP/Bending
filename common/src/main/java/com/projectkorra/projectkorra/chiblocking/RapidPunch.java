@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.chiblocking;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.ability.ChiAbility;
 import com.projectkorra.projectkorra.airbending.Suffocate;
 import com.projectkorra.projectkorra.attribute.Attribute;
@@ -47,7 +49,7 @@ public class RapidPunch extends ChiAbility {
             return;
         }
 
-        if (System.currentTimeMillis() >= this.last + this.interval) {
+        if (RollbackClock.millis() >= this.last + this.interval) {
             final LivingEntity lt = (LivingEntity) this.target;
             DamageHandler.damageEntity(this.target, this.damage, this);
 

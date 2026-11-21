@@ -1,5 +1,9 @@
 package com.projectkorra.projectkorra.waterbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.AirAbility;
@@ -119,7 +123,7 @@ public class OctopusForm extends WaterAbility {
             this.pc = new PhaseChange(player, PhaseChangeType.CUSTOM);
         }
 
-        this.time = System.currentTimeMillis();
+        this.time = RollbackClock.millis();
 
         if (!player.isSneaking()) {
             recalculateAttributes(); //Apply night and avatarstate factors before checking the select range
@@ -235,6 +239,11 @@ public class OctopusForm extends WaterAbility {
     }
 
     @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
+    }
+
+    @Override
     public void progress() {
         if (!this.bPlayer.canBendIgnoreCooldowns(this)) {
             this.remove();
@@ -245,7 +254,7 @@ public class OctopusForm extends WaterAbility {
         } else if (this.sourceBlock.getLocation().distanceSquared(this.player.getLocation()) > this.selectRange * this.selectRange && this.sourceSelected) {
             this.remove();
             return;
-        } else if (this.duration != 0 && System.currentTimeMillis() > this.getStartTime() + this.duration) {
+        } else if (this.duration != 0 && RollbackClock.millis() > this.getStartTime() + this.duration) {
             this.bPlayer.addCooldown(this);
             this.remove();
             return;
@@ -254,10 +263,10 @@ public class OctopusForm extends WaterAbility {
             return;
         }
 
-        final Random random = new Random();
+        final Random random = new RollbackRandom();
 
-        if (System.currentTimeMillis() > this.time + this.interval) {
-            this.time = System.currentTimeMillis();
+        if (RollbackClock.millis() > this.time + this.interval) {
+            this.time = RollbackClock.millis();
             final Location location = this.player.getLocation();
 
             if (this.sourceSelected) {
@@ -456,7 +465,7 @@ public class OctopusForm extends WaterAbility {
             }
         } else if (this.isWaterbendable(this.player, block) || FireAbility.isFire(block.getType()) || isAir(block.getType())) {
             if (isWater(block) && !TempBlock.isTempBlock(block)) {
-                ParticleEffect.WATER_BUBBLE.display(block.getLocation().clone().add(0.5, 0.5, 0.5), 5, Math.random(), Math.random(), Math.random(), 0);
+                ParticleEffect.WATER_BUBBLE.display(block.getLocation().clone().add(0.5, 0.5, 0.5), 5, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0);
             }
             this.newBlocks.add(new TempBlock(block, GeneralMethods.getWaterData(0), this));
         }

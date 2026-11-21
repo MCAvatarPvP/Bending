@@ -1,14 +1,7 @@
 package com.projectkorra.projectkorra.fabric;
 
-import com.projectkorra.projectkorra.ability.ElementalAbility;
-import com.projectkorra.projectkorra.earthbending.passive.EarthPassive;
-import com.projectkorra.projectkorra.firebending.Illumination;
 import com.projectkorra.projectkorra.platform.fabric.FabricMC;
-import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
-import com.projectkorra.projectkorra.util.TempBlock;
-import com.projectkorra.projectkorra.waterbending.WaterBubble;
-import com.projectkorra.projectkorra.waterbending.WaterManipulation;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
@@ -24,29 +17,12 @@ public final class FabricPhysicsBridge {
             return false;
         }
 
+        if (world instanceof PrivateFluidFlow privateWorld && privateWorld.projectKorra$fluidFlow() != null) {
+            return privateWorld.projectKorra$fluidFlow().cancelFlow(targetPos.offset(flowDirection.getOpposite()), targetPos);
+        }
         Block toBlock = FabricMC.block(serverWorld, targetPos);
         Block fromBlock = FabricMC.block(serverWorld, targetPos.offset(flowDirection.getOpposite()));
 
-        if (TempBlock.isTempBlock(fromBlock) || TempBlock.isTempBlock(toBlock)) {
-            return true;
-        }
-
-        if (ElementalAbility.isLava(fromBlock)) {
-            return !EarthPassive.canFlowFromTo(fromBlock, toBlock);
-        }
-
-        if (ElementalAbility.isWater(fromBlock)) {
-            if (WaterBubble.isAir(toBlock)) {
-                return true;
-            }
-            if (!WaterManipulation.canFlowFromTo(fromBlock, toBlock)) {
-                return true;
-            }
-            if (Illumination.isIlluminationTorch(toBlock)) {
-                toBlock.setType(Material.AIR);
-            }
-        }
-
-        return false;
+        return com.projectkorra.projectkorra.util.BendingFluidPhysics.cancelFlow(fromBlock, toBlock);
     }
 }

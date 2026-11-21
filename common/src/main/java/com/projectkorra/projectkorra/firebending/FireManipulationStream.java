@@ -1,5 +1,9 @@
 package com.projectkorra.projectkorra.firebending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.FireAbility;
 import com.projectkorra.projectkorra.platform.mc.Location;
@@ -76,6 +80,13 @@ public class FireManipulationStream extends FireAbility {
     }
 
     @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.streamRemoveTime = shift.time(this.streamRemoveTime);
+        this.time = shift.time(this.time);
+        shift.timestamps(this.points);
+    }
+
+    @Override
     public void progress() {
         if (!this.bPlayer.canBend(this)) {
             this.remove();
@@ -97,7 +108,7 @@ public class FireManipulationStream extends FireAbility {
             if (readyToFire) {
                 this.shotPoint = this.focalPoint.clone();
                 this.firing = true;
-                time = System.currentTimeMillis();
+                time = RollbackClock.millis();
                 return;
             }
             for (final Location point : this.points.keySet()) {
@@ -110,12 +121,12 @@ public class FireManipulationStream extends FireAbility {
             Vector direction = GeneralMethods.getDirection(shotPoint, dest).normalize();
             if (this.streamSneaking && !this.player.isSneaking()) {
                 this.streamSneaking = false;
-                this.streamRemoveTime = System.currentTimeMillis();
+                this.streamRemoveTime = RollbackClock.millis();
                 this.streamSneakDirection = direction;
             }
             if (!this.streamSneaking) {
                 direction = this.streamSneakDirection;
-                if (System.currentTimeMillis() - this.streamRemoveTime > 1000) {
+                if (RollbackClock.millis() - this.streamRemoveTime > 1000) {
                     this.bPlayer.addCooldown(this, this.streamCooldown);
                     this.remove();
                     return;
@@ -135,7 +146,7 @@ public class FireManipulationStream extends FireAbility {
                 this.remove();
                 return;
             }
-            if (this.streamMaxDuration != 0 && System.currentTimeMillis() > time + this.streamMaxDuration) {
+            if (this.streamMaxDuration != 0 && RollbackClock.millis() > time + this.streamMaxDuration) {
                 this.bPlayer.addCooldown(this, this.streamCooldown);
                 this.remove();
                 return;
@@ -147,7 +158,7 @@ public class FireManipulationStream extends FireAbility {
             }
 
             playFirebendingParticles(this.shotPoint, this.streamParticles, 0.5, 0.5, 0.5);
-            if (System.currentTimeMillis() - this.getStartTime() > this.damageTick * this.damageInterval) {
+            if (RollbackClock.millis() - this.getStartTime() > this.damageTick * this.damageInterval) {
                 this.damageTick++;
                 for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(this.shotPoint, streamRadius)) {
                     if (entity instanceof LivingEntity && entity.getUniqueId() != this.player.getUniqueId()) {
@@ -155,7 +166,7 @@ public class FireManipulationStream extends FireAbility {
                     }
                 }
             }
-            if (new Random().nextInt(5) == 0) {
+            if (new RollbackRandom().nextInt(5) == 0) {
                 playFirebendingSound(this.shotPoint);
             }
         }

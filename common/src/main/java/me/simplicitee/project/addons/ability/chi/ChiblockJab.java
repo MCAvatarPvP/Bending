@@ -1,5 +1,7 @@
 package me.simplicitee.project.addons.ability.chi;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
@@ -78,7 +80,7 @@ public class ChiblockJab extends ChiAbility implements ComboAbility, AddonAbilit
     @Override
     public void progress() {
         ParticleEffect.CRIT.display(attacked.getLocation().add(0, 1, 0), 3, 0.2, 1.0, 0.2, 0.04);
-        if (System.currentTimeMillis() >= getStartTime() + duration) {
+        if (RollbackClock.millis() >= getStartTime() + duration) {
             remove();
         }
     }

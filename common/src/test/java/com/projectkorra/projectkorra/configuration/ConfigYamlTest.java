@@ -19,6 +19,16 @@ class ConfigYamlTest {
     Path directory;
 
     @Test
+    void relativePluginDirectoryIsAppliedOnlyOnceToPredictionFileNames() {
+        Path root = Path.of("plugins", "ProjectKorra");
+        Path child = Path.of("hyperion", "config.yml");
+        Path expected = root.resolve(child).toAbsolutePath().normalize();
+        assertEquals(expected, Config.logicalPath(root, child));
+        assertEquals(expected, Config.logicalPath(root, root.resolve(child)));
+        assertEquals(expected, Config.logicalPath(root, expected));
+    }
+
+    @Test
     void wrappedAirStreamHelpRetainsTheContinuationLines() throws Exception {
         final Config config = load("""
                 Abilities:

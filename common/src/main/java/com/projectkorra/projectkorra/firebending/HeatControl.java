@@ -1,5 +1,10 @@
 package com.projectkorra.projectkorra.firebending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackArenaBlockIndices;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element.SubElement;
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -35,7 +40,12 @@ import java.util.*;
 public class HeatControl extends FireAbility {
 
     private static final Material[] COOKABLE_MATERIALS = {Material.BEEF, Material.CHICKEN, Material.COD, Material.PORKCHOP, Material.POTATO, Material.RABBIT, Material.MUTTON, Material.SALMON, Material.KELP, Material.WET_SPONGE, Material.CHORUS_FRUIT, Material.STICK};
-    private static final Map<Block, TempBlock> MELTED_BLOCKS = new HashMap<>();
+    private static final Map<Block, TempBlock> MELTED_BLOCKS = RollbackArenaBlockIndices.live().melted;
+
+    public static Map<Block, TempBlock> meltedLayers() {
+        var indices = RollbackArenaBlockIndices.current();
+        return indices == null ? MELTED_BLOCKS : indices.melted;
+    }
     private HeatControlType heatControlType;
 
     // HeatControl Cook variables.
@@ -118,7 +128,7 @@ public class HeatControl extends FireAbility {
                 return;
             }
 
-            this.solidifyLastBlockTime = System.currentTimeMillis();
+            this.solidifyLastBlockTime = RollbackClock.millis();
             this.start();
         }
     }
@@ -168,16 +178,16 @@ public class HeatControl extends FireAbility {
 
         if (isMeltableIce(block) && !TempBlock.isTempBlock(block) && WaterManipulation.canPhysicsChange(block)) {
             final TempBlock tb = new TempBlock(block, Material.WATER);
-            MELTED_BLOCKS.put(block, tb);
+            meltedLayers().put(block, tb);
 
             new BukkitRunnable() {
                 @Override
                 public void run() {
-                    final TempBlock melted = MELTED_BLOCKS.get(block);
+                    final TempBlock melted = meltedLayers().get(block);
                     if (melted != null) {
                         melted.revertBlock();
                     }
-                    MELTED_BLOCKS.remove(block);
+                    meltedLayers().remove(block);
                 }
             }.runTaskLater(ProjectKorra.plugin, 5 * 20 * 60);
         }
@@ -205,17 +215,17 @@ public class HeatControl extends FireAbility {
     }
 
     public static Collection<TempBlock> getMeltedBlocks() {
-        return MELTED_BLOCKS.values();
+        return meltedLayers().values();
     }
 
     /** Drops old-world melted-ice ownership without restoring blocks. */
     public static void discardAllTracking() {
-        MELTED_BLOCKS.clear();
+        meltedLayers().clear();
     }
 
     public void setFields() {
         if (this.heatControlType == HeatControlType.COOK) {
-            this.cookTime = System.currentTimeMillis();
+            this.cookTime = RollbackClock.millis();
             this.cookInterval = getConfig().getLong("Abilities.Fire.HeatControl.Cook.Interval");
         } else if (this.heatControlType == HeatControlType.EXTINGUISH) {
             this.extinguishCooldown = getConfig().getLong("Abilities.Fire.HeatControl.Extinguish.Cooldown");
@@ -232,10 +242,16 @@ public class HeatControl extends FireAbility {
             this.solidifyRange = getConfig().getDouble("Abilities.Fire.HeatControl.Solidify.Range");
             this.solidifyRevert = getConfig().getBoolean("Abilities.Fire.HeatControl.Solidify.Revert");
             this.solidifyRevertTime = getConfig().getLong("Abilities.Fire.HeatControl.Solidify.RevertTime");
-            this.randy = new Random();
+            this.randy = new RollbackRandom();
             this.gameplayRandom = PredictionDeterminism.random(
                     this.player == null ? null : this.player.getUniqueId(), getClass().getName() + ":solidify");
         }
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.cookTime = shift.time(this.cookTime);
+        this.solidifyLastBlockTime = shift.time(this.solidifyLastBlockTime);
     }
 
     @Override
@@ -258,9 +274,9 @@ public class HeatControl extends FireAbility {
                 return;
             }
 
-            if (System.currentTimeMillis() - this.cookTime > this.cookInterval) {
+            if (RollbackClock.millis() - this.cookTime > this.cookInterval) {
                 this.cook();
-                this.cookTime = System.currentTimeMillis();
+                this.cookTime = RollbackClock.millis();
                 return;
             }
 
@@ -390,7 +406,7 @@ public class HeatControl extends FireAbility {
     }
 
     public void solidify(final List<Location> area) {
-        if (System.currentTimeMillis() < this.solidifyLastBlockTime + this.solidifyDelay) {
+        if (RollbackClock.millis() < this.solidifyLastBlockTime + this.solidifyDelay) {
             return;
         }
 
@@ -401,7 +417,7 @@ public class HeatControl extends FireAbility {
             }
         }
 
-        this.solidifyLastBlockTime = System.currentTimeMillis();
+        this.solidifyLastBlockTime = RollbackClock.millis();
         if (lava.size() == 0) {
             this.solidifyRadius++;
             return;

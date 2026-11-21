@@ -19,6 +19,20 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HitRegistrationPolicyTest {
+    private java.util.Map<Class<?>, Object> attributes;
+    private Object previous;
+    @org.junit.jupiter.api.BeforeEach
+    @SuppressWarnings("unchecked")
+    void preserveAbilityDefinition() throws Exception {
+        var field = CoreAbility.class.getDeclaredField("ATTRIBUTE_FIELDS"); field.setAccessible(true);
+        attributes = (java.util.Map<Class<?>, Object>) field.get(null);
+        previous = attributes.get(TestAbility.class);
+    }
+    @org.junit.jupiter.api.AfterEach
+    void restoreAbilityDefinition() {
+        if (previous == null) attributes.remove(TestAbility.class);
+        else attributes.put(TestAbility.class, previous);
+    }
     @Test
     void airAndFireUseServerHitsForBothModdedAndUnmoddedTargets() {
         for (Element element : List.of(Element.AIR, Element.FIRE, Element.LIGHTNING, Element.FLIGHT)) {

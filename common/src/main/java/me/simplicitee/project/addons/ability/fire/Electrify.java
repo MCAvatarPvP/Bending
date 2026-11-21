@@ -1,5 +1,7 @@
 package me.simplicitee.project.addons.ability.fire;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
@@ -87,7 +89,7 @@ public class Electrify extends LightningAbility implements AddonAbility {
 
     @Override
     public void progress() {
-        if (getStartTime() + duration <= System.currentTimeMillis()) {
+        if (getStartTime() + duration <= RollbackClock.millis()) {
             remove();
             return;
         }

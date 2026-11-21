@@ -1,5 +1,7 @@
 package me.simplicitee.project.addons.ability.earth;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.LavaAbility;
@@ -87,7 +89,7 @@ public class LavaSurge extends LavaAbility implements AddonAbility {
         this.launchedAll = false;
         this.blocks = new HashSet<>();
         this.timeLived = new HashMap<>();
-        time = System.currentTimeMillis() + duration;
+        time = RollbackClock.millis() + duration;
 
         if (prepare()) {
             start();
@@ -164,7 +166,7 @@ public class LavaSurge extends LavaAbility implements AddonAbility {
             return;
         }
 
-        if (System.currentTimeMillis() >= time && duration != 0) {
+        if (RollbackClock.millis() >= time && duration != 0) {
             remove();
             return;
         }
@@ -177,7 +179,7 @@ public class LavaSurge extends LavaAbility implements AddonAbility {
                 tfb.setOnPlace(ignored -> removeBlock(fb));
 
                 blocks.add(fb);
-                timeLived.put(fb, System.currentTimeMillis());
+                timeLived.put(fb, RollbackClock.millis());
                 shotBlocks++;
             }
 
@@ -195,7 +197,7 @@ public class LavaSurge extends LavaAbility implements AddonAbility {
                 }
 
                 if (timeLived.containsKey(fb)) {
-                    if (timeLived.get(fb) + 4000 <= System.currentTimeMillis()) {
+                    if (timeLived.get(fb) + 4000 <= RollbackClock.millis()) {
                         iter.remove();
                         fb.remove();
                         continue;

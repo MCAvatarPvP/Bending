@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.platform.mc;
 
 import com.projectkorra.projectkorra.platform.Platform;
+import com.projectkorra.projectkorra.platform.PKRunnable;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.plugin.Plugin;
 import com.projectkorra.projectkorra.platform.mc.scheduler.BukkitTask;
@@ -74,6 +75,27 @@ public class Server {
 
         public int scheduleSyncRepeatingTask(Object plugin, Runnable task, long delay, long period) {
             return Platform.scheduler().scheduleRepeating(task, delay, period);
+        }
+
+        // Preserve compiler callback descriptors through the legacy scheduler facade too.
+        public BukkitTask runTaskLater(Object plugin, PKRunnable task, long delay) {
+            return runTaskLater(plugin, (Runnable) task, delay);
+        }
+
+        public BukkitTask runTaskTimer(Object plugin, PKRunnable task, long delay, long period) {
+            return runTaskTimer(plugin, (Runnable) task, delay, period);
+        }
+
+        public BukkitTask runTaskTimerAsynchronously(Object plugin, PKRunnable task, long delay, long period) {
+            return runTaskTimerAsynchronously(plugin, (Runnable) task, delay, period);
+        }
+
+        public BukkitTask runTaskAsynchronously(Object plugin, PKRunnable task) {
+            return runTaskAsynchronously(plugin, (Runnable) task);
+        }
+
+        public int scheduleSyncRepeatingTask(Object plugin, PKRunnable task, long delay, long period) {
+            return scheduleSyncRepeatingTask(plugin, (Runnable) task, delay, period);
         }
 
         public <T> Future<T> callSyncMethod(Object plugin, Callable<T> task) {

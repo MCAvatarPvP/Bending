@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.waterbending.plant;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.ability.PlantAbility;
@@ -46,7 +49,7 @@ public class PlantRegrowth extends PlantAbility {
             final String scope = getClass().getName() + ':' + block.getX() + ':' + block.getY() + ':' + block.getZ();
             final Random random = PredictionDeterminism.random(
                     player == null ? null : player.getUniqueId(), scope, getPredictionDeterministicSeed());
-            this.time = System.currentTimeMillis() + this.regrowTime / 2
+            this.time = RollbackClock.millis() + this.regrowTime / 2
                     + (long) (random.nextDouble() * this.regrowTime) / 2;
             this.start();
         }
@@ -67,8 +70,13 @@ public class PlantRegrowth extends PlantAbility {
     }
 
     @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
+    }
+
+    @Override
     public void progress() {
-        if (this.time < System.currentTimeMillis()) {
+        if (this.time < RollbackClock.millis()) {
             this.remove();
         }
     }

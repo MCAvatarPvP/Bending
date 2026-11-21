@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.prediction.block;
 
+import com.projectkorra.projectkorra.prediction.authority.PredictionServices;
 import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.EarthAbility;
@@ -34,16 +35,18 @@ public final class DirectBlockSync {
     }
 
     public static void install(final Listener next) {
+        PredictionServices.requireGlobalMutation();
         listener = next;
     }
 
     public static void clear(final Listener expected) {
+        PredictionServices.requireGlobalMutation();
         if (listener == expected) listener = null;
     }
 
     public static void beforeWorldChange(final Block block, final BlockData replacement) {
         if (block == null || replacement == null || TempBlockSync.currentWorldMutation() != null) return;
-        final Listener current = listener;
+        final Listener current = PredictionServices.current(Listener.class, listener);
         if (current == null) return;
         // The semantic ordinal must advance for every common-code call on both
         // loaders, even if only one side currently sees the call as a no-op.

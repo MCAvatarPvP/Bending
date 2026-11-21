@@ -1,5 +1,8 @@
 package me.simplicitee.project.addons.ability.earth;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.ComboAbility;
@@ -24,7 +27,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Random;
 import java.util.Set;
-import java.util.concurrent.ThreadLocalRandom;
 
 public class RockSlide extends EarthAbility implements AddonAbility, ComboAbility {
 
@@ -92,7 +94,7 @@ public class RockSlide extends EarthAbility implements AddonAbility, ComboAbilit
             return;
         }
 
-        if (duration > 0 && System.currentTimeMillis() > getStartTime() + duration) {
+        if (duration > 0 && RollbackClock.millis() > getStartTime() + duration) {
             remove();
             return;
         }
@@ -122,7 +124,7 @@ public class RockSlide extends EarthAbility implements AddonAbility, ComboAbilit
         direction.setY(dHeight * 0.2);
 
         player.setVelocity(direction);
-        if (ThreadLocalRandom.current().nextInt(20) == 0) {
+        if (RollbackRandom.shared().nextInt(20) == 0) {
             playEarthbendingSound(player.getLocation());
         }
 
@@ -175,7 +177,7 @@ public class RockSlide extends EarthAbility implements AddonAbility, ComboAbilit
                     TempFallingBlock fb = new TempFallingBlock(offset, b.getBlockData(), velocity, this);
                     blocks.add(fb);
 
-                    if (Math.random() < 0.23) {
+                    if (RollbackRandom.fraction() < 0.23) {
                         ParticleEffect.BLOCK_CRACK.display(fb.getLocation(), 2, 0.4, 0.4, 0.4, b.getBlockData());
                     }
                 }

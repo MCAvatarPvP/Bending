@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.firebending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.Element.SubElement;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
@@ -313,7 +315,7 @@ public class FireBlast extends FireAbility {
                 // cancelled PlayerVelocityEvent clear that same dirty packet,
                 // especially when CancelOnHit also dismounts AirScooter.
                 entity.setMetadata(NO_KNOCKBACK_METADATA,
-                        new FixedMetadataValue(ProjectKorra.plugin, System.currentTimeMillis()));
+                        new FixedMetadataValue(ProjectKorra.plugin, RollbackClock.millis()));
                 try {
                     entity.setFireTicks((int) (this.fireTicks * 20));
                     DamageHandler.damageEntity(entity, this.damage, this);

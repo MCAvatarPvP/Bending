@@ -14,6 +14,8 @@ import com.projectkorra.projectkorra.platform.mc.command.Command;
 import com.projectkorra.projectkorra.platform.mc.command.CommandSender;
 import com.projectkorra.projectkorra.prediction.server.PacketEventsEntityInterpolationHook;
 import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
+import com.projectkorra.projectkorra.prediction.rollback.PaperRollbackDuels;
+import com.projectkorra.projectkorra.prediction.rollback.PaperRollbackDuelFactory;
 import com.projectkorra.projectkorra.prediction.server.ServerEntityInterpolation;
 import com.projectkorra.projectkorra.region.BukkitRegionProtectionBootstrap;
 import org.bukkit.Bukkit;
@@ -54,7 +56,8 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
     public void onEnable() {
         this.shuttingDown = false;
         this.commonInitialized = false;
-        Platform.install(new BukkitProjectKorraPlatform(this));
+        var platform = new BukkitProjectKorraPlatform(this);
+        Platform.install(platform);
         ProjectKorra.initCommon();
         this.commonInitialized = true;
         BukkitRegionProtectionBootstrap.registerBuiltIns();
@@ -63,11 +66,17 @@ public final class BukkitProjectKorraPlugin extends JavaPlugin {
         synchronizeServerEntityInterpolation();
         registerCommands();
         registerPlaceHolderHook();
-        Platform.events().registerListener(new PKListener(this));
+        var listener = new PKListener(this);
+        Platform.events().registerListener(listener);
+        Platform.events().registerListener(listener.lifecycleEvents());
         registerBetonQuestHook();
         registerExternalActionBarHook();
         try {
             this.prediction = PaperPredictionServer.start(this);
+            var duels = new PaperRollbackDuels(this, this.prediction, platform,
+                    listener.lifecycleEvents(), new PaperRollbackDuelFactory(this, listener));
+            getServer().getPluginManager().registerEvents(duels, this);
+            this.prediction.installRollbackMatchBootstrap(duels);
             // Lifecycle metadata precedes every physical TempBlock write. A
             // compatible caster renders its client-owned lifecycle and hides
             // every Paper layer owned by that accepted action; remote and

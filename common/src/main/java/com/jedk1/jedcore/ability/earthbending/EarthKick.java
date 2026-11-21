@@ -1,5 +1,7 @@
 package com.jedk1.jedcore.ability.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.collision.CollisionDetector;
 import com.jedk1.jedcore.collision.CollisionUtil;
@@ -133,7 +135,7 @@ public class EarthKick extends EarthAbility implements AddonAbility, EntityHitbo
             location.setY(location.getY() + 1.0);
         }
 
-        ParticleEffect.CRIT.display(location, 10, Math.random(), Math.random(), Math.random(), 0.1);
+        ParticleEffect.CRIT.display(location, 10, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.1);
 
         int yaw = Math.round(location.getYaw());
 

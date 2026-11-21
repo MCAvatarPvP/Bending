@@ -1,5 +1,7 @@
 package com.jedk1.jedcore.ability.waterbending.combo;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.jedk1.jedcore.JCMethods;
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
@@ -103,7 +105,7 @@ public class WaterFlow extends WaterAbility implements AddonAbility, ComboAbilit
             trail = trail * size;
             range = maxRange;
             prevHealth = player.getHealth();
-            time = System.currentTimeMillis();
+            time = RollbackClock.millis();
 
             int augment = (int) Math.round(getNightFactor(player.getWorld()));
             if (isFullMoon(player.getWorld()) && fullMoonEnabled && sourceBlock != null) {
@@ -242,7 +244,7 @@ public class WaterFlow extends WaterAbility implements AddonAbility, ComboAbilit
             remove();
             return;
         }
-        if (duration > 0 && System.currentTimeMillis() > time + duration) {
+        if (duration > 0 && RollbackClock.millis() > time + duration) {
             remove();
             return;
         }

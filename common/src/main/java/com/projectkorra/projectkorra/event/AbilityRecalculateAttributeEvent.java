@@ -20,7 +20,13 @@ public class AbilityRecalculateAttributeEvent extends Event {
     String attribute;
     Object originalValue;
 
-    Set<AttributeModification> modifications = new TreeSet<>(Comparator.comparingInt(AttributeModification::getPriority));
+    Set<AttributeModification> modifications = new TreeSet<>(new ModificationPriority());
+
+    private static final class ModificationPriority implements Comparator<AttributeModification> {
+        @Override public int compare(AttributeModification first, AttributeModification second) {
+            return Integer.compare(first.getPriority(), second.getPriority());
+        }
+    }
 
     public AbilityRecalculateAttributeEvent(final CoreAbility ability, final String attribute, final Object originalValue) {
         this.ability = ability;

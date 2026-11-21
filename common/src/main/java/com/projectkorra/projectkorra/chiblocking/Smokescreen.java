@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.chiblocking;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.ChiAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
@@ -16,13 +18,13 @@ import com.projectkorra.projectkorra.platform.mc.util.Vector;
 import com.projectkorra.projectkorra.util.ParticleUtil;
 
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantAbilityIndices;
 
 public class Smokescreen extends ChiAbility {
 
-    private static final Map<Integer, Smokescreen> SNOWBALLS = new ConcurrentHashMap<>();
-    private static final Map<String, Long> BLINDED_TIMES = new ConcurrentHashMap<>();
-    private static final Map<String, Smokescreen> BLINDED_TO_ABILITY = new ConcurrentHashMap<>();
+    private Snowball projectile;
+
+    public Snowball getProjectile() { return projectile; }
 
     @Attribute(Attribute.DURATION)
     private int duration;
@@ -52,9 +54,8 @@ public class Smokescreen extends ChiAbility {
 
         for (int i = 0; i < 125; i++) {
             final Location newLoc = new Location(loc.getWorld(), loc.getX() + x, loc.getY() + y, loc.getZ() + z);
-            for (int direction = 0; direction < 8; direction++) {
-                ParticleUtil.spawn(Particle.SMALL_GUST, newLoc, 4, 0.5, 0.5, 0.5);
-            }
+            // All gusts at this point have the same spread and speed in one packet.
+            ParticleUtil.spawn(Particle.SMALL_GUST, newLoc, 32, 0.5, 0.5, 0.5);
             if (z == 2) {
                 z = -2;
             }
@@ -67,33 +68,34 @@ public class Smokescreen extends ChiAbility {
     }
 
     public static void removeFromHashMap(final Entity entity) {
-        if (entity instanceof Player) {
-            final Player p = (Player) entity;
-            if (BLINDED_TIMES.containsKey(p.getName())) {
-                final Smokescreen smokescreen = BLINDED_TO_ABILITY.get(p.getName());
-                if (BLINDED_TIMES.get(p.getName()) + smokescreen.duration >= System.currentTimeMillis()) {
-                    BLINDED_TIMES.remove(p.getName());
-                    BLINDED_TO_ABILITY.remove(p.getName());
-                }
-            }
+        if (!(entity instanceof Player player)) return;
+        var indices = RollbackParticipantAbilityIndices.current();
+        String name = player.getName();
+        Long started = indices.smokeTimes.get(name);
+        var smoke = indices.smokeEffects.get(name);
+        if (started != null && (smoke == null || RollbackClock.millis() - started >= smoke.duration * 1_000L)) {
+            indices.smokeTimes.remove(name);
+            indices.smokeEffects.remove(name);
+            indices.smokeNames.remove(name);
         }
     }
 
     public static Map<Integer, Smokescreen> getSnowballs() {
-        return SNOWBALLS;
+        return RollbackParticipantAbilityIndices.current().smokeShots;
     }
 
     public static Map<String, Long> getBlindedTimes() {
-        return BLINDED_TIMES;
+        return RollbackParticipantAbilityIndices.current().smokeTimes;
     }
 
     public static Map<String, Smokescreen> getBlindedToAbility() {
-        return BLINDED_TO_ABILITY;
+        return RollbackParticipantAbilityIndices.current().smokeEffects;
     }
 
     @Override
     public void progress() {
-        SNOWBALLS.put(fireCleanSnowball(player, speed).getEntityId(), this);
+        projectile = fireCleanSnowball(player, speed);
+        getSnowballs().put(projectile.getEntityId(), this);
         this.bPlayer.addCooldown(this);
         this.remove();
     }
@@ -107,8 +109,10 @@ public class Smokescreen extends ChiAbility {
             }
             final Player p = (Player) entity;
             p.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, this.duration * 20, 2));
-            BLINDED_TIMES.put(p.getName(), System.currentTimeMillis());
-            BLINDED_TO_ABILITY.put(p.getName(), this);
+            var indices = RollbackParticipantAbilityIndices.current();
+            indices.smokeTimes.put(p.getName(), RollbackClock.millis());
+            indices.smokeEffects.put(p.getName(), this);
+            indices.smokeNames.put(p.getName(), p.getUniqueId());
         }
     }
 

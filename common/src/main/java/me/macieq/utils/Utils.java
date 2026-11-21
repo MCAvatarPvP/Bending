@@ -1,11 +1,13 @@
 package me.macieq.utils;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Random;
 import java.util.function.Predicate;
 import com.projectkorra.projectkorra.platform.mc.Color;
 import com.projectkorra.projectkorra.platform.mc.Location;
@@ -21,7 +23,7 @@ import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.platform.mc.util.Vector;
 
 public class Utils {
-   private static final ThreadLocalRandom random = ThreadLocalRandom.current();
+
    private static final BlockData lavaData;
    private static final Particle.DustOptions dustTransition;
 
@@ -33,7 +35,7 @@ public class Utils {
       location.getWorld().spawnParticle(Particle.SMOKE, location, 3, 0.2, 0.2, 0.2, 0.02);
       location.getWorld().spawnParticle(Particle.BLOCK, location, 2, 0.2, 0.2, 0.2, (double)1.0F, lavaData);
       location.getWorld().spawnParticle(Particle.DUST, dustLocation, 1, 0.2, 0.1, 0.2, (double)1.0F, dustTransition);
-      if (random.nextInt() % 10 == 0) {
+      if (RollbackRandom.shared().nextInt() % 10 == 0) {
          location.getWorld().spawnParticle(Particle.LAVA, location, 2, 0.2, 0.2, 0.2, (double)1.0F);
          location.getWorld().playSound(location, Sound.valueOf("BLOCK_LAVA_POP"), SoundCategory.MASTER, 0.5F, 1.0F);
       }

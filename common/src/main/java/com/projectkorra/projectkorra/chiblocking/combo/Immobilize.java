@@ -8,7 +8,6 @@ import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation;
 import com.projectkorra.projectkorra.ability.util.ComboUtil;
 import com.projectkorra.projectkorra.attribute.Attribute;
-import com.projectkorra.projectkorra.command.Commands;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.platform.mc.Location;
 import com.projectkorra.projectkorra.platform.mc.entity.Entity;
@@ -36,18 +35,10 @@ public class Immobilize extends ChiAbility implements ComboAbility {
         if (!this.bPlayer.canBendIgnoreBinds(this)) {
             return;
         }
-        if (this.target == null) {
-            this.remove();
-            return;
-        } else {
-            if (RegionProtection.isRegionProtected(this, this.target.getLocation()) ||
-                    ((this.target instanceof Player) && Commands.invincible.contains(((Player) this.target).getName())) ||
-                    !this.bPlayer.canBeChiblocked()) {
-                return;
-            }
-            paralyze(this.target, this.duration);
-            this.bPlayer.addCooldown(this);
-        }
+        if (this.target == null || RegionProtection.isRegionProtected(this, this.target.getLocation())
+                || !canParalyze(this.target)) return;
+        paralyze(this.target, this.duration);
+        this.bPlayer.addCooldown(this);
     }
 
     /**

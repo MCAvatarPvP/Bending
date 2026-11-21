@@ -19,6 +19,8 @@
 
 package me.moros.hyperion.methods;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -57,7 +59,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Random;
 
 public class CoreMethods {
     public static final String NO_INTERACTION_KEY = "BENDING_HYPERION_NO_INTERACTION";
@@ -177,7 +179,7 @@ public class CoreMethods {
     }
 
     public static Vector gaussianVector(double offsetX, double offsetY, double offsetZ) {
-        ThreadLocalRandom r = ThreadLocalRandom.current();
+        Random r = RollbackRandom.shared();
         return new Vector(r.nextGaussian() * offsetX, r.nextGaussian() * offsetY, r.nextGaussian() * offsetZ);
     }
 

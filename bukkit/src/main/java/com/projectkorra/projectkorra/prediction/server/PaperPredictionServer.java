@@ -20,6 +20,12 @@ import com.projectkorra.projectkorra.prediction.block.TempFallingBlockSync;
 import com.projectkorra.projectkorra.prediction.hit.ConfirmedHitEffects;
 import com.projectkorra.projectkorra.prediction.hit.HitRewind;
 import com.projectkorra.projectkorra.prediction.hit.HitRegistrationPolicy;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackDomain;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackIngress;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackSession;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackStartNegotiation;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackStartServerEndpoint;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackStartPacket;
 import com.projectkorra.projectkorra.prediction.movement.VelocitySync;
 import com.projectkorra.projectkorra.prediction.state.AbilityCheckpointSync;
 import com.projectkorra.projectkorra.prediction.state.AbilityStateSync;
@@ -41,6 +47,13 @@ import com.projectkorra.projectkorra.airbending.AirGlider;
 import com.projectkorra.projectkorra.earthbending.EarthSmash;
 import com.projectkorra.projectkorra.listener.CommonInputHandler;
 import com.projectkorra.projectkorra.platform.bukkit.BukkitMC;
+import com.projectkorra.projectkorra.prediction.rollback.PaperRollbackMatchBootstrap;
+import com.projectkorra.projectkorra.prediction.rollback.PaperRollbackBootstraps;
+import com.projectkorra.projectkorra.prediction.rollback.PaperRollbackCorrections;
+import com.projectkorra.projectkorra.prediction.rollback.PaperRollbackLifecycle;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackBootstrapData;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackBootstrapServerEndpoint;
+import com.projectkorra.projectkorra.prediction.rollback.world.RollbackTerrainCodec;
 import com.projectkorra.projectkorra.platform.mc.Material;
 import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.block.data.BlockData;
@@ -71,6 +84,9 @@ import java.util.function.Supplier;
 public final class PaperPredictionServer extends PaperPredictionSnapshots {
     public static final int MAX_REWIND_TICKS = 12;
     private static volatile PaperPredictionServer active;
+    private PaperRollbackMatchBootstrap rollbackMatchBootstrap;
+    private final com.projectkorra.projectkorra.prediction.server.impl.PaperPredictedProjectiles projectiles =
+            new com.projectkorra.projectkorra.prediction.server.impl.PaperPredictedProjectiles(this);
 
     private PaperPredictionServer(JavaPlugin plugin) {
         super(plugin);
@@ -79,6 +95,94 @@ public final class PaperPredictionServer extends PaperPredictionSnapshots {
     /** Internal lifecycle access for the extracted server implementation. */
     public static PaperPredictionServer activeInstance() {
         return active;
+    }
+
+    public PaperRollbackMatchBootstrap rollbackMatchBootstrap() {
+        return active == this ? rollbackMatchBootstrap : null;
+    }
+
+    public PaperRollbackLifecycle.Lease reserveRollbackLifecycle(Set<UUID> players, Runnable stop) {
+        if (active != this) throw new IllegalStateException("Prediction server is not active");
+        return rollbackLifecycle.reserve(players, stop);
+    }
+
+    /** Prepare against the installed lifecycle listener; caller retains this handle before acquisition. */
+    public com.projectkorra.projectkorra.prediction.rollback.PaperRollbackLiveOwnership prepareRollbackOwnership(
+            java.util.Collection<net.minecraft.server.level.ServerPlayer> players,
+            com.projectkorra.projectkorra.prediction.rollback.RollbackLiveScheduler scheduler,
+            java.util.function.Predicate<com.projectkorra.projectkorra.prediction.rollback.RollbackLiveScheduler.Work> selectTasks,
+            int taskCapacity, Runnable stop) {
+        if (active != this) throw new IllegalStateException("Prediction server is not active");
+        return com.projectkorra.projectkorra.prediction.rollback.PaperRollbackLiveOwnership.prepare(
+                players, scheduler, selectTasks, taskCapacity, rollbackLifecycle, stop);
+    }
+    /** Called before an external native mutation. Closing the start registration also stops Neptune's match owner. */
+    public boolean stopNegotiatedRollback(UUID session) {
+        return rollbackStarts.stopSession(session, RollbackStartPacket.AbortReason.STATE_CHANGED);
+    }
+
+    public boolean supportsRollbackBootstrap(Set<UUID> players) { return active == this && rollbackBootstraps.supports(players); }
+
+    /** Native preparation owns this handle before poll sends any snapshot or mutates client ownership. */
+    public PaperRollbackBootstraps.Transfer beginRollbackBootstrap(RollbackBootstrapData data, RollbackTerrainCodec.Limits terrainLimits,
+            RollbackBootstrapServerEndpoint.Limits limits, java.util.function.BooleanSupplier ready) {
+        if (active != this) throw new IllegalStateException("Prediction server is not active");
+        return rollbackBootstraps.begin(data, terrainLimits, limits, ready);
+    }
+
+    public PaperRollbackBootstraps.Transfer beginEncodedRollbackBootstrap(RollbackBootstrapData data, byte[] encoded,
+            RollbackBootstrapServerEndpoint.Limits limits, java.util.function.BooleanSupplier ready) {
+        if (active != this) throw new IllegalStateException("Prediction server is not active");
+        return rollbackBootstraps.beginEncoded(data, encoded, limits, ready);
+    }
+
+    /** Install only the complete capture/transfer/native-ownership implementation. */
+    public void installRollbackMatchBootstrap(PaperRollbackMatchBootstrap bootstrap) {
+        if (active != this || !Bukkit.isPrimaryThread() || rollbackMatchBootstrap != null) {
+            throw new IllegalStateException("Rollback match bootstrap is unavailable or already installed");
+        }
+        rollbackMatchBootstrap = Objects.requireNonNull(bootstrap);
+    }
+
+    /** The Neptune round owner supplies fully prepared peers and a runtime. */
+    public RollbackStartServerEndpoint.Registration beginRollbackStart(UUID session, UUID challenge, String contentHash,
+            Collection<RollbackStartNegotiation.PreparedPeer> peers, RollbackStartNegotiation.Limits limits,
+            java.util.function.BooleanSupplier ready, RollbackStartServerEndpoint.Runtime runtime) {
+        if (active != this || peers.stream().anyMatch(peer -> {
+            Session legacy = sessions.get(peer.player());
+            return legacy == null || !legacy.ready;
+        })) throw new IllegalStateException("Rollback preparation requires ready prediction sessions");
+        return rollbackStarts.begin(session, challenge, contentHash, peers, tick, limits, ready, runtime);
+    }
+
+    /**
+     * Loader handoff after whole-duel negotiation, private bootstrap and suspension of
+     * live simulation. This API alone does not freeze native movement or start a duel.
+     */
+    public RollbackIngress.Registration enrollRollback(RollbackSession<?, ?> session,
+                                                       java.util.function.Consumer<RollbackIngress.Registration> stopped) {
+        if (active != this || session.peers().stream().anyMatch(peer -> {
+            Session legacy = sessions.get(peer.player());
+            return legacy == null || !legacy.ready;
+        })) throw new IllegalStateException("Rollback requires current ready prediction sessions");
+        var registration = rollbackInputs.enroll(session, stopped);
+        Set<UUID> roster = session.peers().stream().map(RollbackSession.Peer::player).collect(java.util.stream.Collectors.toSet());
+        roster.forEach(player -> { sessions.remove(player); playerHistory.remove(player); });
+        synchronized (abilityActions) { abilityActions.entrySet().removeIf(entry -> roster.contains(entry.getValue().owner)); }
+        synchronized (abilityCreationActions) { abilityCreationActions.entrySet().removeIf(entry -> roster.contains(entry.getValue().owner)); }
+        // Retire evidence against the enrolled defenders, including claims made by an outsider.
+        for (Session legacy : sessions.values()) for (Action action : legacy.actions.values()) action.claims.keySet().removeAll(roster);
+        return registration;
+    }
+
+    /** Runtime owner calls after advancing/reconciling; this does not start a live duel. */
+    public void publishRollback(RollbackSession<?, ?> session) {
+        publishRollback(session, null);
+    }
+
+    public void publishRollback(RollbackSession<?, ?> session, PaperRollbackCorrections corrections) {
+        if (active != this) throw new IllegalStateException("Prediction server is not active");
+        rollbackInputs.publish(session, plugin, corrections);
     }
 
     /** Clears the singleton only when the same implementation is stopping. */
@@ -90,6 +194,7 @@ public final class PaperPredictionServer extends PaperPredictionSnapshots {
         PaperPredictionServer server = new PaperPredictionServer(plugin);
         server.registerChannels();
         active = server;
+        server.rollbackLifecycle.install(plugin);
         TempBlockSync.install(server);
         DirectBlockSync.install(server);
         TempFallingBlockSync.install(server);
@@ -190,19 +295,30 @@ public final class PaperPredictionServer extends PaperPredictionSnapshots {
         return session != null && (session.capabilities & CAPABILITY_SERVER_VISUALS) != 0 ? null : owner;
     }
 
+    /** Rollback participants render either the replica particle or the confirmed Paper broadcast. */
+    public static boolean rendersReplicaParticles(final UUID playerId) {
+        final PaperPredictionServer server = active;
+        final Session session = server == null ? null : server.sessions.get(playerId);
+        return session != null && (session.capabilities & CAPABILITY_EXACT) != 0
+                && (session.capabilities & CAPABILITY_SERVER_VISUALS) == 0;
+    }
+
     /** Adds only server-validated historical player boxes to a real ability query. */
     public static void augmentNearbyPlayers(
             final World world, final org.bukkit.util.BoundingBox query,
             final CoreAbility ability,
             final Predicate<com.projectkorra.projectkorra.platform.mc.entity.Entity> filter,
             final Map<UUID, com.projectkorra.projectkorra.platform.mc.entity.Entity> result) {
+        if (RollbackDomain.active()) throw new IllegalStateException("Historical hit claims cannot augment a rollback query");
         final PaperPredictionServer server = active;
         if (server == null || world == null || query == null || result == null) return;
         final Action action = ability == null ? null : server.actionForEffect(ability);
         if (action == null) return;
+        if (server.rollbackInputs.blocksLegacy(action.owner)) return;
         final Iterator<Claim> claims = action.claims.values().iterator();
         while (claims.hasNext()) {
             final Claim claim = claims.next();
+            if (server.rollbackInputs.blocksLegacy(claim.target)) { claims.remove(); continue; }
             if (claim.expiresTick < server.tick) {
                 claims.remove();
                 continue;
@@ -223,6 +339,27 @@ public final class PaperPredictionServer extends PaperPredictionSnapshots {
             // applying the same damage/velocity impulse repeatedly.
             claims.remove();
         }
+    }
+
+    public static void projectileSpawned(Player owner, org.bukkit.entity.Entity projectile) {
+        var server = active;
+        if (server != null) server.projectiles.spawned(owner, projectile);
+    }
+
+    public static void projectileImpact(org.bukkit.entity.Projectile projectile, Runnable callback) {
+        var server = active;
+        if (server == null) callback.run();
+        else server.projectiles.impact(projectile, callback);
+    }
+
+    public static void finishSnowballImpact(org.bukkit.entity.Snowball ball) {
+        var server = active;
+        if (server != null) server.projectiles.finish(ball);
+    }
+
+    public static void removedSnowball(org.bukkit.entity.Snowball ball) {
+        var server = active;
+        if (server != null) server.projectiles.removed(ball);
     }
 
     public static Runnable contextual(Runnable task) {

@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.waterbending.ice;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackArenaBlockIndices;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.ability.IceAbility;
@@ -31,8 +32,8 @@ public class PhaseChange extends IceAbility {
 
     private static final long MELT_REVERT_MILLIS = 120_000L;
 
-    private static Map<TempBlock, Player> PLAYER_BY_BLOCK = new HashMap<>();
-    private static List<Block> BLOCKS = new ArrayList<>();
+    private static Map<TempBlock, Player> PLAYER_BY_BLOCK = RollbackArenaBlockIndices.live().freezeOwner;
+    private static List<Block> BLOCKS = RollbackArenaBlockIndices.live().frozen;
     private final List<PhaseChangeType> active_types = new ArrayList<>();
     private final CopyOnWriteArrayList<TempBlock> blocks = new CopyOnWriteArrayList<>();
     private final Random r;
@@ -84,10 +85,10 @@ public class PhaseChange extends IceAbility {
      * @return true when it is thawed successfully
      */
     public static boolean thaw(final TempBlock tb) {
-        if (tb == null || !PLAYER_BY_BLOCK.containsKey(tb)) {
+        if (tb == null || !getFrozenBlocksMap().containsKey(tb)) {
             return false;
         } else {
-            final Player p = PLAYER_BY_BLOCK.get(tb);
+            final Player p = getFrozenBlocksMap().get(tb);
             final PhaseChange pc = getAbility(p, PhaseChange.class);
             if (pc == null) {
                 untrackFrozenIndexes(tb);
@@ -116,23 +117,25 @@ public class PhaseChange extends IceAbility {
         if (layers == null) return false;
         for (int index = layers.size() - 1; index >= 0; index--) {
             final TempBlock layer = layers.get(index);
-            if (PLAYER_BY_BLOCK.containsKey(layer)) return thaw(layer);
+            if (getFrozenBlocksMap().containsKey(layer)) return thaw(layer);
         }
         return false;
     }
 
     public static Map<TempBlock, Player> getFrozenBlocksMap() {
-        return PLAYER_BY_BLOCK;
+        var indices = RollbackArenaBlockIndices.current();
+        return indices == null ? PLAYER_BY_BLOCK : indices.freezeOwner;
     }
 
     public static List<Block> getFrozenBlocksAsBlock() {
-        return BLOCKS;
+        var indices = RollbackArenaBlockIndices.current();
+        return indices == null ? BLOCKS : indices.frozen;
     }
 
     /** Drops every old-world frozen-layer index without restoring a block. */
     public static void discardAllTracking() {
-        PLAYER_BY_BLOCK.clear();
-        BLOCKS.clear();
+        getFrozenBlocksMap().clear();
+        getFrozenBlocksAsBlock().clear();
     }
 
     @Override
@@ -379,8 +382,8 @@ public class PhaseChange extends IceAbility {
 
     private void trackFrozen(final TempBlock block) {
         if (!this.blocks.contains(block)) this.blocks.add(block);
-        PLAYER_BY_BLOCK.put(block, this.player);
-        if (!BLOCKS.contains(block.getBlock())) BLOCKS.add(block.getBlock());
+        getFrozenBlocksMap().put(block, this.player);
+        if (!getFrozenBlocksAsBlock().contains(block.getBlock())) getFrozenBlocksAsBlock().add(block.getBlock());
         block.setRevertTask(() -> untrackFrozen(block));
     }
 
@@ -390,15 +393,15 @@ public class PhaseChange extends IceAbility {
     }
 
     private static void untrackFrozenIndexes(final TempBlock block) {
-        PLAYER_BY_BLOCK.remove(block);
+        getFrozenBlocksMap().remove(block);
         boolean coordinateStillFrozen = false;
-        for (TempBlock remaining : PLAYER_BY_BLOCK.keySet()) {
+        for (TempBlock remaining : getFrozenBlocksMap().keySet()) {
             if (remaining.getBlock().equals(block.getBlock())) {
                 coordinateStillFrozen = true;
                 break;
             }
         }
-        if (!coordinateStillFrozen) BLOCKS.remove(block.getBlock());
+        if (!coordinateStillFrozen) getFrozenBlocksAsBlock().remove(block.getBlock());
     }
 
     public void meltArea(final Location center, final int radius) {

@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -75,12 +78,12 @@ public class EarthBlast extends EarthAbility {
         this.speed = getConfig().getDouble("Abilities.Earth.EarthBlast.Speed");
         this.pushFactor = getConfig().getDouble("Abilities.Earth.EarthBlast.Push");
         this.selectRange = getConfig().getDouble("Abilities.Earth.EarthBlast.SelectRange");
-        this.time = System.currentTimeMillis();
+        this.time = RollbackClock.millis();
         this.interval = (long) (1000.0 / this.speed);
 
         if (this.prepare()) {
             this.start();
-            this.time = System.currentTimeMillis();
+            this.time = RollbackClock.millis();
         }
     }
 
@@ -323,14 +326,19 @@ public class EarthBlast extends EarthAbility {
     }
 
     @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
+    }
+
+    @Override
     public void progress() {
         if (!this.bPlayer.canBendIgnoreBindsCooldowns(this)) {
             this.remove();
             return;
         }
 
-        if (System.currentTimeMillis() - this.time >= this.interval) {
-            this.time = System.currentTimeMillis();
+        if (RollbackClock.millis() - this.time >= this.interval) {
+            this.time = RollbackClock.millis();
 
             if (this.isAtDestination) {
                 this.remove();

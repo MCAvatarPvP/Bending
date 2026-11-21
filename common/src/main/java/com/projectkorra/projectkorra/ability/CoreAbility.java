@@ -1,5 +1,11 @@
 package com.projectkorra.projectkorra.ability;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
+import com.projectkorra.projectkorra.prediction.rollback.RollbackGraphCodec;
+
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.Element.SubElement;
@@ -69,7 +75,55 @@ public abstract class CoreAbility implements Ability {
     private static final Map<Class<? extends CoreAbility>, Map<String, AttributeCache>> ATTRIBUTE_FIELDS = new HashMap<>();
 
     private static int idCounter;
+    private static int idLimit = Integer.MAX_VALUE;
     private static long currentTick;
+
+    /** Mutable indices owned by a single imported rollback domain and captured with its graph. */
+    public static final class PrivateRegistries {
+        private final Set<CoreAbility> instances = new LinkedHashSet<>();
+        private final Map<Class<? extends CoreAbility>, Map<UUID, Map<Integer, CoreAbility>>> byPlayer = new HashMap<>();
+        private final Map<Class<? extends CoreAbility>, Set<CoreAbility>> byClass = new HashMap<>();
+        private final Map<Class<? extends CoreAbility>, Map<String, AttributeCache>> attributes = new HashMap<>();
+        private int nextId;
+        private int limit = Integer.MAX_VALUE;
+        private long tick;
+    }
+
+    private static PrivateRegistries imported() {
+        var registries = com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.importingRegistries();
+        return registries == null ? null : registries.abilities();
+    }
+
+    private static Set<CoreAbility> activeInstances() {
+        var owner = imported();
+        return owner == null ? INSTANCES : owner.instances;
+    }
+
+    private static Map<Class<? extends CoreAbility>, Map<UUID, Map<Integer, CoreAbility>>> instancesByPlayer() {
+        var owner = imported();
+        return owner == null ? INSTANCES_BY_PLAYER : owner.byPlayer;
+    }
+
+    private static Map<Class<? extends CoreAbility>, Set<CoreAbility>> instancesByClass() {
+        var owner = imported();
+        return owner == null ? INSTANCES_BY_CLASS : owner.byClass;
+    }
+
+    private static Map<Class<? extends CoreAbility>, Map<String, AttributeCache>> attributeFields() {
+        var owner = imported();
+        return owner == null ? ATTRIBUTE_FIELDS : owner.attributes;
+    }
+
+    private static int allocateId() {
+        var owner = imported();
+        int next = owner == null ? idCounter : owner.nextId;
+        int limit = owner == null ? idLimit : owner.limit;
+        if (next >= limit) throw new IllegalStateException("Ability ID reservation exhausted");
+        if (owner == null) idCounter = Math.incrementExact(next);
+        else owner.nextId = Math.incrementExact(next);
+        return next;
+    }
+
 
     protected Player player;
     protected BendingPlayer bPlayer;
@@ -104,8 +158,8 @@ public abstract class CoreAbility implements Ability {
      * @see #getAbility(String)
      */
     public CoreAbility() {
-        if (!ATTRIBUTE_FIELDS.containsKey(this.getClass())) {
-            ATTRIBUTE_FIELDS.put(this.getClass(), new HashMap<>());
+        if (!attributeFields().containsKey(this.getClass())) {
+            attributeFields().put(this.getClass(), new HashMap<>());
         }
         for (final Field field : this.getClass().getDeclaredFields()) { //Iterate over all fields in the class
             if (field.isAnnotationPresent(Attribute.class)) { //Check if they are marked with an attribute annotation
@@ -120,7 +174,7 @@ public abstract class CoreAbility implements Ability {
                 }
 
                 cache.calculateAvatarStateModifier(this); //Pull values from the AvatarState config
-                ATTRIBUTE_FIELDS.get(this.getClass()).put(attribute.value(), cache); //Store a cache value for the field and the attribute
+                attributeFields().get(this.getClass()).put(attribute.value(), cache); //Store a cache value for the field and the attribute
             }
         }
     }
@@ -148,9 +202,9 @@ public abstract class CoreAbility implements Ability {
         }
 
         this.flightHandler = Manager.getManager(FlightHandler.class);
-        this.startTime = System.currentTimeMillis();
+        this.startTime = RollbackClock.millis();
         this.started = false;
-        this.id = idCounter++;
+        this.id = allocateId();
     }
 
     /**
@@ -158,13 +212,17 @@ public abstract class CoreAbility implements Ability {
      * that has been started and has not been removed.
      */
     public static void progressAll() {
-        for (final CoreAbility abil : orderedInstances(INSTANCES)) {
+        for (final CoreAbility abil : orderedInstances(activeInstances())) {
                 // orderedInstances is a snapshot. Another ability may remove
                 // this instance earlier in the same pass (for example,
                 // FireSpin cancelling AirScooter or FireJet before applying
                 // knockback). Never let that retired locomotion instance run
                 // once more and overwrite the accepted hit velocity.
                 if (abil.isRemoved()) {
+                    continue;
+                }
+                if (abil.getPlayer() != null
+                        && com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership.blocks(abil.getPlayer().getUniqueId())) {
                     continue;
                 }
                 if (abil instanceof PassiveAbility) {
@@ -201,6 +259,9 @@ public abstract class CoreAbility implements Ability {
                         Platform.events().call(new AbilityProgressEvent(abil));
                     }
                 } catch (final Exception e) {
+                    if (RollbackClock.active() || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) {
+                        throw new IllegalStateException("Rollback ability progress failed: " + abil.getClass().getName(), e);
+                    }
                     e.printStackTrace();
                     Platform.logger().severe(abil.toString());
                     try {
@@ -217,7 +278,9 @@ public abstract class CoreAbility implements Ability {
                     }
                 }
         }
-        currentTick++;
+        var owner = imported();
+        if (owner == null) currentTick++;
+        else owner.tick++;
     }
 
     /**
@@ -225,7 +288,7 @@ public abstract class CoreAbility implements Ability {
      * removed.
      */
     public static void removeAll() {
-        for (final CoreAbility abil : orderedInstances(INSTANCES)) {
+        for (final CoreAbility abil : orderedInstances(activeInstances())) {
                 try {
                     abil.remove();
                 } catch (Exception e) {
@@ -256,9 +319,9 @@ public abstract class CoreAbility implements Ability {
      * WaterSpout) and prevents the new client ability from starting.</p>
      */
     public static void discardAllInstances() {
-        for (final CoreAbility ability : List.copyOf(INSTANCES)) {
+        for (final CoreAbility ability : List.copyOf(activeInstances())) {
             ability.removed = true;
-            final Map<String, AttributeCache> attributes = ATTRIBUTE_FIELDS.get(ability.getClass());
+            final Map<String, AttributeCache> attributes = attributeFields().get(ability.getClass());
             if (attributes != null) {
                 for (final AttributeCache cache : attributes.values()) {
                     cache.getInitialValues().remove(ability);
@@ -267,9 +330,243 @@ public abstract class CoreAbility implements Ability {
             }
             AbilityTimingDebugger.clear(ability);
         }
-        INSTANCES.clear();
-        INSTANCES_BY_PLAYER.clear();
-        INSTANCES_BY_CLASS.clear();
+        activeInstances().clear();
+        instancesByPlayer().clear();
+        instancesByClass().clear();
+    }
+
+    /**
+     * Selects the active participant instances and their existing ID/tick epoch.
+     * These are source references: transfer this object with the bending players
+     * and service roots before installing it in a private rollback domain.
+     */
+    public static RollbackRegistry captureRollbackRegistry(final Collection<UUID> participants) {
+        if (RollbackClock.active() || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) {
+            throw new IllegalStateException("Capture live ability registry before replay");
+        }
+        return snapshotRollbackRegistry(participants);
+    }
+
+    /** Source-only reservation; include it in the bending capture service roots. */
+    public static final class RollbackIdReservation {
+        private final Thread owner = Thread.currentThread();
+        private final Set<UUID> roster;
+        private final int first, limit;
+        private RollbackIdReservation(Set<UUID> roster, int first, int limit) {
+            this.roster = roster; this.first = first; this.limit = limit;
+        }
+    }
+
+    /** Prepared participant index replacement. The owner retains gameplay gates through all commits. */
+    public static final class RollbackAbilityRestoration {
+        private final RollbackIdReservation reservation;
+        private final RollbackRegistry expected, restored;
+        private final Map<UUID, BendingPlayer> players;
+        private boolean committed;
+        private RollbackAbilityRestoration(RollbackIdReservation reservation, RollbackRegistry expected,
+                RollbackRegistry restored, Map<UUID, BendingPlayer> players) {
+            this.reservation = Objects.requireNonNull(reservation); this.expected = Objects.requireNonNull(expected);
+            this.restored = Objects.requireNonNull(restored); this.players = Map.copyOf(players);
+            if (!reservation.roster.equals(players.keySet()) || restored.maximumId != reservation.limit
+                    || restored.nextId < reservation.first || restored.nextId > reservation.limit)
+                throw new IllegalArgumentException("Restored ability reservation differs");
+            var original = new HashMap<Integer, CoreAbility>();
+            for (var ability : expected.instances) {
+                if (ability.player == null || !reservation.roster.contains(ability.player.getUniqueId())
+                        || ability.id >= reservation.first || original.putIfAbsent(ability.id, ability) != null)
+                    throw new IllegalArgumentException("Expected ability registry differs from the reserved roster");
+            }
+            var ids = new HashSet<Integer>();
+            for (var ability : restored.instances) {
+                var player = ability.player == null ? null : this.players.get(ability.player.getUniqueId());
+                var previous = original.get(ability.id);
+                boolean retained = previous != null && ability.player != null && previous.getClass() == ability.getClass()
+                        && previous.player.getUniqueId().equals(ability.player.getUniqueId());
+                boolean created = ability.id >= reservation.first && ability.id < restored.nextId;
+                if (!ability.started || ability.removed || player == null || player != ability.bPlayer
+                        || player.getPlayer().handle() != ability.player.handle() || !ids.add(ability.id)
+                        || !(retained || created)) throw new IllegalArgumentException("Restored active ability identity differs");
+            }
+            requireCurrent();
+        }
+        public void requireCurrent() {
+            if (Thread.currentThread() != reservation.owner || RollbackClock.active()
+                    || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active() || !Platform.scheduler().isPrimaryThread())
+                throw new IllegalStateException("Restore ability indices on the live main thread");
+            if ((!committed && currentTick < restored.tick) || idCounter < reservation.limit)
+                throw new IllegalStateException("Restored ability timeline or ID ownership differs from live state");
+            if (!committed) {
+                long elapsed = Math.subtractExact(currentTick, restored.tick);
+                for (var ability : restored.instances) Math.addExact(ability.startTick, elapsed);
+            }
+            var owned = committed ? restored.instances : expected.instances;
+            var actual = new ArrayList<CoreAbility>();
+            for (var ability : INSTANCES) if (ability.player != null && reservation.roster.contains(ability.player.getUniqueId())) actual.add(ability);
+            var identities = Collections.newSetFromMap(new IdentityHashMap<CoreAbility, Boolean>()); identities.addAll(owned);
+            if (actual.size() != identities.size() || actual.stream().anyMatch(ability -> !identities.contains(ability)))
+                throw new IllegalStateException("Participant ability ownership changed before restoration");
+            var incomingIds = new HashSet<Integer>(); restored.instances.forEach(ability -> incomingIds.add(ability.id));
+            for (var ability : INSTANCES) if ((ability.player == null || !reservation.roster.contains(ability.player.getUniqueId()))
+                    && incomingIds.contains(ability.id)) throw new IllegalStateException("Restored ability ID overlaps unrelated gameplay");
+            restored.liveAttributeBindings().forEach((source, target) -> {
+                if (source != target) throw new IllegalStateException("Restored abilities must use canonical live attributes");
+            });
+        }
+        public void rebase(RollbackTimeShift shift) {
+            if (!committed) for (var ability : restored.instances) {
+                shift.once(ability, () -> {
+                    ability.rebaseRollbackTimers(shift);
+                    ability.startTime = shift.time(ability.startTime);
+                });
+            }
+        }
+
+        public void commit() {
+            requireCurrent(); if (committed) return;
+            // The live clock continued during negotiation and the unconfirmed prediction window.
+            // Move the imported start tick into that clock so expiry observes the confirmed ability age.
+            long elapsed = currentTick - restored.tick;
+            for (var ability : restored.instances) ability.startTick += elapsed;
+            // Keep all shared index containers and unrelated per-player maps in place.
+            INSTANCES.removeAll(expected.instances); INSTANCES.addAll(restored.instances);
+            INSTANCES_BY_PLAYER.values().forEach(byPlayer -> reservation.roster.forEach(byPlayer::remove));
+            INSTANCES_BY_CLASS.values().forEach(byClass -> byClass.removeIf(ability -> ability.player != null
+                    && reservation.roster.contains(ability.player.getUniqueId())));
+            for (var ability : restored.instances) {
+                INSTANCES_BY_PLAYER.computeIfAbsent(ability.getClass(), ignored -> new ConcurrentHashMap<>())
+                        .computeIfAbsent(ability.player.getUniqueId(), ignored -> new ConcurrentHashMap<>()).put(ability.id, ability);
+                INSTANCES_BY_CLASS.computeIfAbsent(ability.getClass(), ignored -> Collections.newSetFromMap(new ConcurrentHashMap<>())).add(ability);
+            }
+            committed = true;
+        }
+    }
+
+    public static RollbackAbilityRestoration prepareRollbackAbilityRestoration(RollbackIdReservation reservation,
+            RollbackRegistry expected, RollbackRegistry restored, Map<UUID, BendingPlayer> players) {
+        return new RollbackAbilityRestoration(reservation, expected, restored, players);
+    }
+
+    /** IDs are never recycled on abort because outside gameplay may already have advanced. */
+    public static RollbackIdReservation reserveRollbackIds(Collection<UUID> participants, int capacity) {
+        if (RollbackClock.active() || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()
+                || !Platform.scheduler().isPrimaryThread()) throw new IllegalStateException("Reserve ability IDs on the live main thread");
+        var roster = Set.copyOf(participants);
+        if (roster.isEmpty() || roster.size() > 128 || capacity < 1) throw new IllegalArgumentException("Ability ID reservation");
+        int limit = Math.addExact(idCounter, capacity);
+        if (limit > idLimit) throw new IllegalStateException("Ability ID space exhausted");
+        var reservation = new RollbackIdReservation(roster, idCounter, limit);
+        idCounter = limit;
+        return reservation;
+    }
+
+    public static RollbackRegistry captureRollbackRegistry(Collection<UUID> participants, RollbackIdReservation reservation) {
+        Objects.requireNonNull(reservation);
+        if (Thread.currentThread() != reservation.owner || !Set.copyOf(participants).equals(reservation.roster))
+            throw new IllegalArgumentException("Ability reservation roster/thread differs");
+        var current = captureRollbackRegistry(participants);
+        if (current.instances.stream().anyMatch(ability -> ability.id >= reservation.first))
+            throw new IllegalStateException("Participant abilities changed after ID reservation");
+        return new RollbackRegistry(current.instances, current.attributes, reservation.first, reservation.limit, current.tick);
+    }
+
+    /** Snapshot the current domain membership for outgoing state transfer. */
+    public static RollbackRegistry exportRollbackRegistry(final Collection<UUID> participants) {
+        if (!com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active())
+            throw new IllegalStateException("Export ability registry inside its replay domain");
+        return snapshotRollbackRegistry(participants);
+    }
+
+    private static RollbackRegistry snapshotRollbackRegistry(final Collection<UUID> participants) {
+        Set<UUID> roster = Set.copyOf(participants);
+        if (roster.isEmpty() || roster.size() > 128) throw new IllegalArgumentException("Ability import roster");
+        List<CoreAbility> selected = new ArrayList<>();
+        for (CoreAbility ability : orderedInstances(activeInstances())) {
+            if (ability.player != null && roster.contains(ability.player.getUniqueId())) selected.add(ability);
+        }
+        var owner = imported();
+        return new RollbackRegistry(selected, new HashMap<>(attributeFields()),
+                owner == null ? idCounter : owner.nextId, owner == null ? idLimit : owner.limit, getCurrentTick());
+    }
+
+    /** Registry data is copied as part of the same graph as its instance objects. */
+    public static final class RollbackRegistry {
+        private final List<CoreAbility> instances;
+        private final Map<Class<? extends CoreAbility>, Map<String, AttributeCache>> attributes;
+        private final int nextId, maximumId;
+        private final long tick;
+
+        private RollbackRegistry(List<CoreAbility> instances, Map<Class<? extends CoreAbility>, Map<String, AttributeCache>> attributes,
+                                 int nextId, int maximumId, long tick) {
+            this.instances = List.copyOf(instances);
+            this.attributes = attributes;
+            this.nextId = nextId;
+            this.maximumId = maximumId;
+            this.tick = tick;
+        }
+
+        public List<CoreAbility> instances() { return instances; }
+        public int nextId() { return nextId; }
+        public int idLimit() { return maximumId; }
+        public long tick() { return tick; }
+        public List<AttributeCache> attributes() { return attributes.values().stream().flatMap(map -> map.values().stream()).toList(); }
+
+        /** Resolve canonical live caches without replacing shared objects or mutating their entries. */
+        public Map<AttributeCache, AttributeCache> liveAttributeBindings() {
+            if (RollbackClock.active() || com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active())
+                throw new IllegalStateException("Resolve live attributes outside replay");
+            var result = new IdentityHashMap<AttributeCache, AttributeCache>();
+            for (var entry : attributes.entrySet()) {
+                var live = ATTRIBUTE_FIELDS.get(entry.getKey());
+                if (live == null || !live.keySet().equals(entry.getValue().keySet()))
+                    throw new IllegalStateException("Live ability attribute definitions changed");
+                for (var attribute : entry.getValue().entrySet()) {
+                    var target = live.get(attribute.getKey());
+                    if (!attribute.getValue().sameRollbackDefinition(target))
+                        throw new IllegalStateException("Live ability attribute definition differs: " + entry.getKey().getName() + "#" + attribute.getKey());
+                    result.put(attribute.getValue(), target);
+                }
+            }
+            return result;
+        }
+
+        /** Installs transferred instances without activation, attribute or removal callbacks. */
+        public void install() {
+            if (!com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) {
+                throw new IllegalStateException("Ability registry import requires a private domain");
+            }
+            if (nextId < 0 || maximumId < nextId) throw new IllegalArgumentException("Ability ID reservation");
+            Set<Integer> ids = new HashSet<>();
+            Map<Class<? extends CoreAbility>, Map<UUID, Map<Integer, CoreAbility>>> byPlayer = new ConcurrentHashMap<>();
+            Map<Class<? extends CoreAbility>, Set<CoreAbility>> byClass = new ConcurrentHashMap<>();
+            for (CoreAbility ability : instances) {
+                if (!ability.started || ability.removed || ability.player == null || !ids.add(ability.id)
+                        || !attributes.containsKey(ability.getClass())) {
+                    throw new IllegalStateException("Invalid imported active ability registry");
+                }
+                Class<? extends CoreAbility> type = ability.getClass();
+                byPlayer.computeIfAbsent(type, ignored -> new ConcurrentHashMap<>())
+                        .computeIfAbsent(ability.player.getUniqueId(), ignored -> new ConcurrentHashMap<>()).put(ability.id, ability);
+                byClass.computeIfAbsent(type, ignored -> Collections.newSetFromMap(new ConcurrentHashMap<>())).add(ability);
+            }
+            activeInstances().clear();
+            activeInstances().addAll(instances);
+            instancesByPlayer().clear();
+            instancesByPlayer().putAll(byPlayer);
+            instancesByClass().clear();
+            instancesByClass().putAll(byClass);
+            attributeFields().clear();
+            attributeFields().putAll(attributes);
+            var owner = imported();
+            if (owner == null) {
+                idCounter = nextId;
+                idLimit = maximumId;
+                currentTick = tick;
+            } else {
+                owner.nextId = nextId;
+                owner.limit = maximumId;
+                owner.tick = tick;
+            }
+        }
     }
 
     /**
@@ -360,10 +657,10 @@ public abstract class CoreAbility implements Ability {
      * @return a Collection of real instances
      */
     public static <T extends CoreAbility> Collection<T> getAbilities(final Class<T> clazz) {
-        if (clazz == null || INSTANCES_BY_CLASS.get(clazz) == null || INSTANCES_BY_CLASS.get(clazz).size() == 0) {
+        if (clazz == null || instancesByClass().get(clazz) == null || instancesByClass().get(clazz).size() == 0) {
             return Collections.emptySet();
         }
-        return (Collection<T>) orderedInstances(CoreAbility.INSTANCES_BY_CLASS.get(clazz));
+        return (Collection<T>) orderedInstances(instancesByClass().get(clazz));
     }
 
     /**
@@ -376,10 +673,10 @@ public abstract class CoreAbility implements Ability {
      * @return a Collection of real instances
      */
     public static <T extends CoreAbility> Collection<T> getAbilities(final Player player, final Class<T> clazz) {
-        if (player == null || clazz == null || INSTANCES_BY_PLAYER.get(clazz) == null || INSTANCES_BY_PLAYER.get(clazz).get(player.getUniqueId()) == null) {
+        if (player == null || clazz == null || instancesByPlayer().get(clazz) == null || instancesByPlayer().get(clazz).get(player.getUniqueId()) == null) {
             return Collections.emptySet();
         }
-        return (Collection<T>) orderedInstances(INSTANCES_BY_PLAYER.get(clazz).get(player.getUniqueId()).values());
+        return (Collection<T>) orderedInstances(instancesByPlayer().get(clazz).get(player.getUniqueId()).values());
     }
 
     /**
@@ -389,7 +686,7 @@ public abstract class CoreAbility implements Ability {
      * alive. Do not modify this Collection.
      */
     public static Collection<CoreAbility> getAbilitiesByInstances() {
-        return orderedInstances(INSTANCES);
+        return orderedInstances(activeInstances());
     }
 
     /**
@@ -467,7 +764,7 @@ public abstract class CoreAbility implements Ability {
             return;
         }
         final String name = ABILITIES_BY_CLASS.get(clazz).getName();
-        for (final CoreAbility abil : INSTANCES) {
+        for (final CoreAbility abil : activeInstances()) {
             if (abil.getName() == name) {
                 abil.remove();
             }
@@ -488,7 +785,7 @@ public abstract class CoreAbility implements Ability {
     public static Set<Player> getPlayers(final Class<? extends CoreAbility> clazz) {
         final HashSet<Player> players = new HashSet<>();
         if (clazz != null) {
-            final Map<UUID, Map<Integer, CoreAbility>> uuidMap = INSTANCES_BY_PLAYER.get(clazz);
+            final Map<UUID, Map<Integer, CoreAbility>> uuidMap = instancesByPlayer().get(clazz);
             if (uuidMap != null) {
                 for (final UUID uuid : uuidMap.keySet()) {
                     final Player uuidPlayer = Platform.players().getPlayer(uuid);
@@ -506,6 +803,7 @@ public abstract class CoreAbility implements Ability {
      * located in a Jar file inside of the /ProjectKorra/Abilities/ folder.
      */
     public static void registerAbilities() {
+        com.projectkorra.projectkorra.prediction.rollback.RollbackMetadataOwner.clearRegistrations();
         ABILITIES_BY_NAME.clear();
         ABILITIES_BY_CLASS_NAME.clear();
         ABILITIES_BY_CLASS.clear();
@@ -526,6 +824,7 @@ public abstract class CoreAbility implements Ability {
         final AbilityLoader<CoreAbility> abilityLoader = new AbilityLoader<CoreAbility>(plugin, packageBase);
         final List<CoreAbility> loadedAbilities = abilityLoader.load(CoreAbility.class, CoreAbility.class);
         final String entry = plugin.getName() + "::" + packageBase;
+        com.projectkorra.projectkorra.prediction.rollback.RollbackMetadataOwner.register(entry, plugin);
         if (!ADDON_PLUGINS.contains(entry)) {
             ADDON_PLUGINS.add(entry);
         }
@@ -711,7 +1010,8 @@ public abstract class CoreAbility implements Ability {
     }
 
     public static long getCurrentTick() {
-        return currentTick;
+        var owner = imported();
+        return owner == null ? currentTick : owner.tick;
     }
 
     /**
@@ -746,7 +1046,7 @@ public abstract class CoreAbility implements Ability {
         int playerCounter = 0;
         final HashMap<String, Integer> classCounter = new HashMap<>();
 
-        for (final Map<UUID, Map<Integer, CoreAbility>> map1 : INSTANCES_BY_PLAYER.values()) {
+        for (final Map<UUID, Map<Integer, CoreAbility>> map1 : instancesByPlayer().values()) {
             playerCounter++;
             for (final Map<Integer, CoreAbility> map2 : map1.values()) {
                 for (final CoreAbility coreAbil : map2.values()) {
@@ -761,7 +1061,7 @@ public abstract class CoreAbility implements Ability {
             }
         }
 
-        for (final Set<CoreAbility> set : INSTANCES_BY_CLASS.values()) {
+        for (final Set<CoreAbility> set : instancesByClass().values()) {
             for (final CoreAbility coreAbil : set) {
                 final String simpleName = coreAbil.getClass().getSimpleName();
                 if (classCounter.containsKey(simpleName)) {
@@ -784,8 +1084,18 @@ public abstract class CoreAbility implements Ability {
         return DEFAULT_COLLISION_RADIUS;
     }
 
+    /** Complete registered attribute metadata for a portable gameplay catalog, including future activations. */
+    public static java.util.List<RollbackGraphCodec.Binding> rollbackAttributeBindings() {
+        var bindings = new java.util.ArrayList<RollbackGraphCodec.Binding>();
+        attributeFields().entrySet().stream().sorted(java.util.Comparator.comparing(entry -> entry.getKey().getName()))
+                .forEach(entry -> entry.getValue().entrySet().stream().sorted(Map.Entry.comparingByKey())
+                        .forEach(attribute -> bindings.add(attribute.getValue().rollbackMetadataBinding(
+                                entry.getKey().getName() + "#" + attribute.getKey()))));
+        return java.util.List.copyOf(bindings);
+    }
+
     public static Map<String, AttributeCache> getAttributeCache(CoreAbility ability) {
-        return ATTRIBUTE_FIELDS.get(ability.getClass());
+        return attributeFields().get(ability.getClass());
     }
 
     /**
@@ -812,30 +1122,30 @@ public abstract class CoreAbility implements Ability {
         }
 
         this.started = true;
-        this.startTime = System.currentTimeMillis();
+        this.startTime = RollbackClock.millis();
         this.startTick = getCurrentTick();
         final Class<? extends CoreAbility> clazz = this.getClass();
         final UUID uuid = this.player != null ? this.player.getUniqueId() : null;
 
         if (uuid != null) {
-            if (!INSTANCES_BY_PLAYER.containsKey(clazz)) {
-                INSTANCES_BY_PLAYER.put(clazz, new ConcurrentHashMap<UUID, Map<Integer, CoreAbility>>());
+            if (!instancesByPlayer().containsKey(clazz)) {
+                instancesByPlayer().put(clazz, new ConcurrentHashMap<UUID, Map<Integer, CoreAbility>>());
             }
-            if (!INSTANCES_BY_PLAYER.get(clazz).containsKey(uuid)) {
-                INSTANCES_BY_PLAYER.get(clazz).put(uuid, new ConcurrentHashMap<Integer, CoreAbility>());
+            if (!instancesByPlayer().get(clazz).containsKey(uuid)) {
+                instancesByPlayer().get(clazz).put(uuid, new ConcurrentHashMap<Integer, CoreAbility>());
             }
         }
-        if (!INSTANCES_BY_CLASS.containsKey(clazz)) {
-            INSTANCES_BY_CLASS.put(clazz, Collections.newSetFromMap(new ConcurrentHashMap<CoreAbility, Boolean>()));
+        if (!instancesByClass().containsKey(clazz)) {
+            instancesByClass().put(clazz, Collections.newSetFromMap(new ConcurrentHashMap<CoreAbility, Boolean>()));
         }
 
         this.recalculateAttributes();
 
         if (uuid != null) {
-            INSTANCES_BY_PLAYER.get(clazz).get(uuid).put(this.id, this);
+            instancesByPlayer().get(clazz).get(uuid).put(this.id, this);
         }
-        INSTANCES_BY_CLASS.get(clazz).add(this);
-        INSTANCES.add(this);
+        instancesByClass().get(clazz).add(this);
+        activeInstances().add(this);
         AbilityTimingDebugger.recordStart(this);
     }
 
@@ -860,7 +1170,7 @@ public abstract class CoreAbility implements Ability {
         this.removed = true;
         AbilityRemovalSync.publish(this);
 
-        final Map<UUID, Map<Integer, CoreAbility>> classMap = INSTANCES_BY_PLAYER.get(this.getClass());
+        final Map<UUID, Map<Integer, CoreAbility>> classMap = instancesByPlayer().get(this.getClass());
         if (classMap != null && this.player != null) {
             final Map<Integer, CoreAbility> playerMap = classMap.get(this.player.getUniqueId());
             if (playerMap != null) {
@@ -871,26 +1181,29 @@ public abstract class CoreAbility implements Ability {
             }
 
             if (classMap.size() == 0) {
-                INSTANCES_BY_PLAYER.remove(this.getClass());
+                instancesByPlayer().remove(this.getClass());
             }
         }
 
-        for (AttributeCache cache : ATTRIBUTE_FIELDS.get(this.getClass()).values()) {
+        for (AttributeCache cache : attributeFields().get(this.getClass()).values()) {
             cache.getInitialValues().remove(this);
             cache.getCurrentModifications().remove(this);
         }
 
-        if (INSTANCES_BY_CLASS.containsKey(this.getClass())) {
-            INSTANCES_BY_CLASS.get(this.getClass()).remove(this);
+        if (instancesByClass().containsKey(this.getClass())) {
+            instancesByClass().get(this.getClass()).remove(this);
         }
 
-        INSTANCES.remove(this);
+        activeInstances().remove(this);
         AbilityTimingDebugger.clear(this);
     }
 
     protected boolean requiresPlayer() {
         return true;
     }
+
+    /** Translate any additional absolute timers on the detached instance before live gameplay resumes. */
+    protected void rebaseRollbackTimers(RollbackTimeShift time) { }
 
     public long getStartTime() {
         return this.startTime;
@@ -913,7 +1226,7 @@ public abstract class CoreAbility implements Ability {
     }
 
     public long getRunningTicks() {
-        return currentTick - this.startTick;
+        return getCurrentTick() - this.startTick;
     }
 
     public boolean isStarted() {
@@ -1029,7 +1342,7 @@ public abstract class CoreAbility implements Ability {
         final BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
         String displayedMessage = getMovePreviewWithoutCooldownTimer(player, false);
         if (bPlayer.isOnCooldown(this)) {
-            final long cooldown = bPlayer.getCooldown(this.getName()) - System.currentTimeMillis();
+            final long cooldown = bPlayer.getCooldown(this.getName()) - RollbackClock.millis();
             displayedMessage += this.getElement().getColor() + " - " + TimeUtil.formatTime(cooldown);
         }
 
@@ -1083,7 +1396,7 @@ public abstract class CoreAbility implements Ability {
         final Class<? extends CoreAbility> clazz = this.getClass();
 
         // The mapping from player UUID to a map of the player's instances.
-        Map<UUID, Map<Integer, CoreAbility>> classMap = INSTANCES_BY_PLAYER.get(clazz);
+        Map<UUID, Map<Integer, CoreAbility>> classMap = instancesByPlayer().get(clazz);
 
         if (classMap != null) {
             // The map of AbilityId to Ability for the current player.
@@ -1100,16 +1413,16 @@ public abstract class CoreAbility implements Ability {
             }
 
             if (classMap.isEmpty()) {
-                INSTANCES_BY_PLAYER.remove(this.getClass());
+                instancesByPlayer().remove(this.getClass());
             }
         }
 
         // Add a new map for the current ability if it doesn't exist in the global map.
-        if (!INSTANCES_BY_PLAYER.containsKey(clazz)) {
-            INSTANCES_BY_PLAYER.put(clazz, new ConcurrentHashMap<>());
+        if (!instancesByPlayer().containsKey(clazz)) {
+            instancesByPlayer().put(clazz, new ConcurrentHashMap<>());
         }
 
-        classMap = INSTANCES_BY_PLAYER.get(clazz);
+        classMap = instancesByPlayer().get(clazz);
 
         // Create an AbilityId to Ability map for the target player if it doesn't exist.
         if (!classMap.containsKey(target.getUniqueId())) {
@@ -1267,7 +1580,7 @@ public abstract class CoreAbility implements Ability {
 
         if (!attributeValuesCached) { //Cache initial values
             try {
-                for (AttributeCache cache : ATTRIBUTE_FIELDS.get(this.getClass()).values()) { //Get all attributes for this ability and cache initial values
+                for (AttributeCache cache : attributeFields().get(this.getClass()).values()) { //Get all attributes for this ability and cache initial values
                     cache.getInitialValues().put(this, cache.getField().get(this));
                 }
             } catch (IllegalAccessException e) {
@@ -1277,7 +1590,7 @@ public abstract class CoreAbility implements Ability {
         }
 
         attribute_loop:
-        for (AttributeCache cache : ATTRIBUTE_FIELDS.get(this.getClass()).values()) {
+        for (AttributeCache cache : attributeFields().get(this.getClass()).values()) {
             String attribute = cache.getAttribute();
             Object initialValue = cache.getInitialValues().get(this);
 

@@ -1,5 +1,7 @@
 package me.simplicitee.project.addons.ability.air;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.AirAbility;
@@ -110,7 +112,7 @@ public class GaleGust extends AirAbility implements AddonAbility {
                 playAirbendingParticles(point.getLocation().clone().add(ortho), 1, 0, 0, 0);
             }
 
-            point.setAngle(point.getAngle() + Math.random() * 60).setRadius(radi);
+            point.setAngle(point.getAngle() + RollbackRandom.fraction() * 60).setRadius(radi);
         }
 
         points.removeAll(remove);

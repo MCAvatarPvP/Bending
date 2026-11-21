@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.ability;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -98,7 +100,7 @@ public abstract class AirAbility extends ElementalAbility {
      * @param amount  The amount of particles
      */
     public static void playAirbendingParticles(BendingPlayer bPlayer, final Location loc, final int amount) {
-        playAirbendingParticles(bPlayer, loc, amount, Math.random(), Math.random(), Math.random());
+        playAirbendingParticles(bPlayer, loc, amount, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction());
     }
 
     /**

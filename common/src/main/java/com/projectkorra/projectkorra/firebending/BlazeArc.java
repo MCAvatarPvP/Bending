@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.firebending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.FireAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
@@ -50,7 +53,7 @@ public class BlazeArc extends FireAbility {
         this.location = this.location.clone().add(this.direction);
         this.previousLocation = null;
 
-        this.time = System.currentTimeMillis();
+        this.time = RollbackClock.millis();
         this.start();
     }
 
@@ -83,13 +86,18 @@ public class BlazeArc extends FireAbility {
     }
 
     @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
+    }
+
+    @Override
     public void progress() {
         if (!this.bPlayer.canBendIgnoreBindsCooldowns(this)) {
             this.remove();
             return;
-        } else if (System.currentTimeMillis() - this.time >= this.interval) {
+        } else if (RollbackClock.millis() - this.time >= this.interval) {
             this.location = this.location.clone().add(this.direction);
-            this.time = System.currentTimeMillis();
+            this.time = RollbackClock.millis();
 
             Block topBlock = GeneralMethods.getTopBlock(this.location, heightRadius - 1, heightRadius + 1);
             if (isWater(topBlock) && !canPassThroughWater(topBlock)) {

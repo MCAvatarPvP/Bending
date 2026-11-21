@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.airbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.FireAbility;
@@ -59,7 +62,7 @@ public class AirShield extends AirAbility {
         if (this.duration == 0) {
             this.dynamicCooldown = false;
         }
-        this.random = new Random();
+        this.random = new RollbackRandom();
         this.angles = new HashMap<>();
 
         if (this.bPlayer.isAvatarState() && hasAbility(player, AirShield.class) && this.isToggledByAvatarState) {
@@ -109,7 +112,7 @@ public class AirShield extends AirAbility {
         } else if (!this.bPlayer.isAvatarState() || !this.isToggledByAvatarState) {
             if (!this.player.isSneaking() || !this.bPlayer.canBend(this)) {
                 if (this.dynamicCooldown) {
-                    Long reducedCooldown = this.cooldown - (this.duration - (System.currentTimeMillis() - this.getStartTime()));
+                    Long reducedCooldown = this.cooldown - (this.duration - (RollbackClock.millis() - this.getStartTime()));
                     if (reducedCooldown < 0L) {
                         reducedCooldown = 0L;
                     }
@@ -120,7 +123,7 @@ public class AirShield extends AirAbility {
                 this.remove();
                 return;
             } else if (this.duration != 0) {
-                if (this.getStartTime() + this.duration <= System.currentTimeMillis()) {
+                if (this.getStartTime() + this.duration <= RollbackClock.millis()) {
                     this.bPlayer.addCooldown(this);
                     this.remove();
                     return;

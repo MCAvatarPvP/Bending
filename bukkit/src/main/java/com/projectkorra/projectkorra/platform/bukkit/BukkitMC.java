@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.platform.bukkit;
 
+import com.projectkorra.projectkorra.platform.mc.entity.EntityType;
 import com.projectkorra.projectkorra.BukkitProjectKorraPlugin;
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.chat.ChatMessageType;
@@ -42,6 +43,7 @@ import com.projectkorra.projectkorra.prediction.action.CapturedInputPose;
 import com.projectkorra.projectkorra.prediction.block.DirectBlockSync;
 import com.projectkorra.projectkorra.prediction.block.TempBlockSync;
 import com.projectkorra.projectkorra.prediction.movement.VelocitySync;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership;
 import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
 import com.projectkorra.projectkorra.prediction.server.ServerEntityInterpolation;
 import com.projectkorra.projectkorra.prediction.state.AbilityStateSync;
@@ -86,11 +88,11 @@ public final class BukkitMC {
     }
 
     private static void applyHitStatus(final Entity target, final Runnable commit) {
-        commit.run();
+        if (!RollbackLiveOwnership.blocks(target.getUniqueId())) commit.run();
     }
 
     private static boolean applyHitStatus(final Entity target, final java.util.function.BooleanSupplier commit) {
-        return commit.getAsBoolean();
+        return !RollbackLiveOwnership.blocks(target.getUniqueId()) && commit.getAsBoolean();
     }
 
     private static void setScoreboard(org.bukkit.entity.Player player, Scoreboard board) {
@@ -248,8 +250,27 @@ public final class BukkitMC {
         return value == null ? null : new LocationView(value);
     }
 
+    /** Capture only our exact native-backed wrapper; arbitrary addon Location subclasses retain their own state. */
+    public static org.bukkit.Location nativeLocationView(Object value) {
+        return value instanceof LocationView location ? location.value : null;
+    }
+
+    /** Capture-facing accessor for the exact native block view. */
+    public static org.bukkit.block.BlockState nativeBlockStateView(Object value) {
+        return value instanceof BlockStateView view ? view.value : null;
+    }
+
+    public static BlockState blockState(org.bukkit.block.BlockState value) {
+        return new BlockStateView(value);
+    }
+
+    public static org.bukkit.block.Block nativeBlockView(Object value) {
+        return value instanceof BlockView block ? block.value : null;
+    }
+
     public static World world(final org.bukkit.World value) {
-        return value == null ? null : WORLDS.computeIfAbsent(value.getUID(), ignored -> new WorldView(value));
+        return value == null ? null : WORLDS.compute(value.getUID(), (ignored, current) ->
+                current != null && current.handle() == value ? current : new WorldView(value));
     }
 
     public static Block block(final org.bukkit.block.Block value) {
@@ -280,6 +301,7 @@ public final class BukkitMC {
     public static Entity entity(final org.bukkit.entity.Entity value) {
         if (value instanceof org.bukkit.entity.Player p) return player(p);
         if (value instanceof org.bukkit.entity.LivingEntity living) return living(living);
+        if (value instanceof org.bukkit.entity.AreaEffectCloud cloud) return new AreaEffectCloudView(cloud);
         if (value instanceof org.bukkit.entity.FallingBlock falling) return falling(falling);
         if (value instanceof org.bukkit.entity.ShulkerBullet bullet) return shulkerBullet(bullet);
         if (value instanceof org.bukkit.entity.Snowball snowball) return snowball(snowball);
@@ -659,7 +681,12 @@ public final class BukkitMC {
     }
 
     public static EntityDamageEvent damageEvent(final org.bukkit.event.entity.EntityDamageEvent value) {
-        return new DamageEventView(value);
+        return damageEvent(value, entity(value.getEntity()));
+    }
+
+    /** Uses the supplied private entity identity while exposing the actual native damage modifiers. */
+    public static EntityDamageEvent damageEvent(final org.bukkit.event.entity.EntityDamageEvent value, final Entity target) {
+        return new DamageEventView(value, target);
     }
 
     public static org.bukkit.entity.Player playerHandle(final Player value) {
@@ -668,6 +695,10 @@ public final class BukkitMC {
 
     public static org.bukkit.entity.Entity entityHandle(final Entity value) {
         return (org.bukkit.entity.Entity) value.handle();
+    }
+
+    private static void recordAbilityOwner(org.bukkit.entity.Entity actor, ProjectileSource source) {
+        if (source instanceof org.bukkit.entity.Player owner) PaperPredictionServer.projectileSpawned(owner, actor);
     }
 
     private static Object projectileSource(final ProjectileSource source) {
@@ -801,13 +832,7 @@ public final class BukkitMC {
 
         @Override
         public boolean equals(Object other) {
-            return other instanceof LocationView view
-                    && Double.compare(value.getX(), view.value.getX()) == 0
-                    && Double.compare(value.getY(), view.value.getY()) == 0
-                    && Double.compare(value.getZ(), view.value.getZ()) == 0
-                    && Float.compare(value.getYaw(), view.value.getYaw()) == 0
-                    && Float.compare(value.getPitch(), view.value.getPitch()) == 0
-                    && value.getWorld().getUID().equals(view.value.getWorld().getUID());
+            return super.equals(other);
         }
 
         @Override
@@ -1075,7 +1100,11 @@ public final class BukkitMC {
         }
     }
 
-    private static final class BlockView extends Block {
+    private static final class BlockView extends Block implements com.projectkorra.projectkorra.platform.mc.block.BlockValue,
+            com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockSnapshot.Target {
+        @Override public boolean restoreBlockSnapshot(BlockData data, byte[] tile, boolean force, boolean physics) {
+            return com.projectkorra.projectkorra.prediction.rollback.PaperRollbackBlockSnapshots.restore(value, data, tile, force, physics);
+        }
         private final org.bukkit.block.Block value;
 
         private BlockView(org.bukkit.block.Block value) {
@@ -1253,11 +1282,7 @@ public final class BukkitMC {
 
         @Override
         public boolean equals(Object other) {
-            return other instanceof BlockView view
-                    && value.getX() == view.value.getX()
-                    && value.getY() == view.value.getY()
-                    && value.getZ() == view.value.getZ()
-                    && value.getWorld().getUID().equals(view.value.getWorld().getUID());
+            return com.projectkorra.projectkorra.platform.mc.block.BlockValue.same(this, other);
         }
 
         @Override
@@ -1317,6 +1342,8 @@ public final class BukkitMC {
     private static class EntityView extends Entity {
         protected final org.bukkit.entity.Entity value;
 
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
+
         private EntityView(org.bukkit.entity.Entity value) {
             this.value = value;
         }
@@ -1343,6 +1370,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setVelocity(vector(velocity));
         }
 
@@ -1368,6 +1396,7 @@ public final class BukkitMC {
 
         @Override
         public void setFireTicks(int ticks) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setFireTicks(ticks);
         }
 
@@ -1442,6 +1471,8 @@ public final class BukkitMC {
     private static class LivingView extends LivingEntity {
         protected final org.bukkit.entity.LivingEntity value;
 
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
+
         private LivingView(org.bukkit.entity.LivingEntity value) {
             this.value = value;
         }
@@ -1483,6 +1514,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             VelocitySync.applyDirect(AbilityExecutionContext.current(), this, velocity,
                     () -> value.setVelocity(vector(velocity)));
         }
@@ -1509,6 +1541,7 @@ public final class BukkitMC {
 
         @Override
         public void setFireTicks(int ticks) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             applyHitStatus(this, () -> value.setFireTicks(ticks));
         }
 
@@ -1575,6 +1608,7 @@ public final class BukkitMC {
 
         @Override
         public void setHealth(double health) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setHealth(health);
         }
 
@@ -1585,11 +1619,13 @@ public final class BukkitMC {
 
         @Override
         public void damage(double damage) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.damage(damage);
         }
 
         @Override
         public void damage(double damage, Entity source) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.damage(damage, entityHandle(source));
         }
 
@@ -1725,6 +1761,8 @@ public final class BukkitMC {
     private static final class ArmorStandView extends ArmorStand {
         private final org.bukkit.entity.ArmorStand value;
 
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
+
         private ArmorStandView(org.bukkit.entity.ArmorStand value) {
             this.value = value;
         }
@@ -1761,6 +1799,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setVelocity(vector(velocity));
         }
 
@@ -1801,6 +1840,7 @@ public final class BukkitMC {
 
         @Override
         public void setFireTicks(int ticks) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setFireTicks(ticks);
         }
 
@@ -1912,6 +1952,8 @@ public final class BukkitMC {
     private static final class DroppedItemView extends Item {
         private final org.bukkit.entity.Item value;
 
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
+
         private DroppedItemView(org.bukkit.entity.Item value) {
             this.value = value;
         }
@@ -1943,6 +1985,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setVelocity(vector(velocity));
         }
 
@@ -1968,6 +2011,7 @@ public final class BukkitMC {
 
         @Override
         public void setFireTicks(int ticks) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setFireTicks(ticks);
         }
 
@@ -2073,6 +2117,8 @@ public final class BukkitMC {
     private static class PlayerView extends Player {
         private final org.bukkit.entity.Player value;
 
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
+
         private PlayerView(org.bukkit.entity.Player value) {
             this.value = value;
         }
@@ -2114,6 +2160,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             VelocitySync.applyDirect(AbilityExecutionContext.current(), this, velocity,
                     () -> value.setVelocity(vector(velocity)));
         }
@@ -2135,6 +2182,7 @@ public final class BukkitMC {
 
         @Override
         public void setFireTicks(int ticks) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             applyHitStatus(this, () -> value.setFireTicks(ticks));
         }
 
@@ -2478,10 +2526,12 @@ public final class BukkitMC {
         @SuppressWarnings("unchecked")
         public <T extends Projectile> T launchProjectile(Class<T> type) {
             if (type == Arrow.class) {
-                return (T) arrow(value.launchProjectile(org.bukkit.entity.Arrow.class));
+                return (T) arrow(value.launchProjectile(org.bukkit.entity.Arrow.class, null,
+                        shot -> PaperPredictionServer.projectileSpawned(value, shot)));
             }
             if (type == Snowball.class) {
-                return (T) snowball(value.launchProjectile(org.bukkit.entity.Snowball.class));
+                return (T) snowball(value.launchProjectile(org.bukkit.entity.Snowball.class, null,
+                        shot -> PaperPredictionServer.projectileSpawned(value, shot)));
             }
             throw new IllegalArgumentException("Unsupported projectile type " + type.getName());
         }
@@ -2503,6 +2553,7 @@ public final class BukkitMC {
 
         @Override
         public void setHealth(double health) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setHealth(health);
         }
 
@@ -2513,11 +2564,13 @@ public final class BukkitMC {
 
         @Override
         public void damage(double damage) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.damage(damage);
         }
 
         @Override
         public void damage(double damage, Entity source) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.damage(damage, entityHandle(source));
         }
 
@@ -2805,6 +2858,12 @@ public final class BukkitMC {
     private record NativeMetadata(
             org.bukkit.metadata.MetadataValue nativeValue) implements MetadataValue {
         @Override
+        public Object owner() {
+            var plugin = nativeValue.getOwningPlugin();
+            return plugin != null && plugin == Platform.pluginHandle() ? com.projectkorra.projectkorra.ProjectKorra.plugin : plugin;
+        }
+
+        @Override
         public Object value() {
             return nativeValue.value();
         }
@@ -2862,6 +2921,8 @@ public final class BukkitMC {
     private static final class FallingView extends FallingBlock {
         private final org.bukkit.entity.FallingBlock value;
 
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
+
         private FallingView(org.bukkit.entity.FallingBlock value) {
             this.value = value;
         }
@@ -2893,6 +2954,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setVelocity(vector(velocity));
         }
 
@@ -2981,6 +3043,8 @@ public final class BukkitMC {
     private static class DisplayView extends Display {
         protected final org.bukkit.entity.Display value;
 
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
+
         private DisplayView(org.bukkit.entity.Display value) {
             this.value = value;
         }
@@ -3012,6 +3076,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setVelocity(vector(velocity));
         }
 
@@ -3132,6 +3197,8 @@ public final class BukkitMC {
 
     private static final class BlockDisplayView extends BlockDisplay {
         private final org.bukkit.entity.BlockDisplay value;
+
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
         private final DisplayView display;
 
         private BlockDisplayView(org.bukkit.entity.BlockDisplay value) {
@@ -3166,6 +3233,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             display.setVelocity(velocity);
         }
 
@@ -3287,6 +3355,8 @@ public final class BukkitMC {
 
     private static final class ItemDisplayView extends ItemDisplay {
         private final org.bukkit.entity.ItemDisplay value;
+
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
         private final DisplayView display;
 
         private ItemDisplayView(org.bukkit.entity.ItemDisplay value) {
@@ -3321,6 +3391,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             display.setVelocity(velocity);
         }
 
@@ -3453,6 +3524,8 @@ public final class BukkitMC {
     private static final class AreaEffectCloudView extends AreaEffectCloud {
         private final org.bukkit.entity.AreaEffectCloud value;
 
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
+
         private AreaEffectCloudView(org.bukkit.entity.AreaEffectCloud value) {
             this.value = value;
         }
@@ -3495,6 +3568,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setVelocity(vector(velocity));
         }
 
@@ -3532,6 +3606,7 @@ public final class BukkitMC {
         public void setSource(Entity entity) {
             if (entity != null && entity.handle() instanceof ProjectileSource source) {
                 value.setSource(source);
+                recordAbilityOwner(value, source);
             }
         }
 
@@ -3569,6 +3644,8 @@ public final class BukkitMC {
     private static final class SnowballView extends Snowball {
         private final org.bukkit.entity.Snowball value;
 
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
+
         private SnowballView(org.bukkit.entity.Snowball value) {
             this.value = value;
         }
@@ -3600,6 +3677,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setVelocity(vector(velocity));
         }
 
@@ -3640,6 +3718,7 @@ public final class BukkitMC {
 
         @Override
         public void setFireTicks(int ticks) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setFireTicks(ticks);
         }
 
@@ -3682,8 +3761,10 @@ public final class BukkitMC {
         public void setShooter(Object shooter) {
             if (shooter instanceof ProjectileSource source) {
                 value.setShooter(source);
+                recordAbilityOwner(value, source);
             } else if (shooter instanceof Entity entity && entity.handle() instanceof ProjectileSource source) {
                 value.setShooter(source);
+                recordAbilityOwner(value, source);
             }
         }
 
@@ -3730,6 +3811,8 @@ public final class BukkitMC {
     private static final class ShulkerBulletView extends ShulkerBullet {
         private final org.bukkit.entity.ShulkerBullet value;
 
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
+
         private ShulkerBulletView(org.bukkit.entity.ShulkerBullet value) {
             this.value = value;
         }
@@ -3761,6 +3844,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setVelocity(vector(velocity));
         }
 
@@ -3801,6 +3885,7 @@ public final class BukkitMC {
 
         @Override
         public void setFireTicks(int ticks) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setFireTicks(ticks);
         }
 
@@ -3847,8 +3932,10 @@ public final class BukkitMC {
         public void setShooter(Object shooter) {
             if (shooter instanceof ProjectileSource source) {
                 value.setShooter(source);
+                recordAbilityOwner(value, source);
             } else if (shooter instanceof Entity entity && entity.handle() instanceof ProjectileSource source) {
                 value.setShooter(source);
+                recordAbilityOwner(value, source);
             }
         }
 
@@ -3895,6 +3982,8 @@ public final class BukkitMC {
     private static final class ArrowView extends Arrow {
         private final org.bukkit.entity.Arrow value;
 
+        @Override public EntityType getType() { return EntityType.valueOf(value.getType().name()); }
+
         private ArrowView(org.bukkit.entity.Arrow value) {
             this.value = value;
         }
@@ -3926,6 +4015,7 @@ public final class BukkitMC {
 
         @Override
         public void setVelocity(Vector velocity) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setVelocity(vector(velocity));
         }
 
@@ -3961,6 +4051,7 @@ public final class BukkitMC {
 
         @Override
         public void setFireTicks(int ticks) {
+            if (RollbackLiveOwnership.blocks(getUniqueId())) return;
             value.setFireTicks(ticks);
         }
 
@@ -4018,8 +4109,10 @@ public final class BukkitMC {
         public void setShooter(Object shooter) {
             if (shooter instanceof ProjectileSource source) {
                 value.setShooter(source);
+                recordAbilityOwner(value, source);
             } else if (shooter instanceof Entity entity && entity.handle() instanceof ProjectileSource source) {
                 value.setShooter(source);
+                recordAbilityOwner(value, source);
             }
         }
 
@@ -4171,10 +4264,24 @@ public final class BukkitMC {
     private static final class DamageEventView extends EntityDamageEvent {
         private final org.bukkit.event.entity.EntityDamageEvent value;
 
-        private DamageEventView(org.bukkit.event.entity.EntityDamageEvent value) {
+        private DamageEventView(org.bukkit.event.entity.EntityDamageEvent value, Entity target) {
             this.value = value;
-            setEntity(entity(value.getEntity()));
+            setEntity(target);
+            setCause(switch (value.getCause()) {
+                case ENTITY_ATTACK -> DamageCause.ENTITY_ATTACK;
+                case ENTITY_SWEEP_ATTACK -> DamageCause.ENTITY_SWEEP_ATTACK;
+                case FIRE -> DamageCause.FIRE;
+                case FIRE_TICK -> DamageCause.FIRE_TICK;
+                case LAVA -> DamageCause.LAVA;
+                case FALL -> DamageCause.FALL;
+                case SUFFOCATION -> DamageCause.SUFFOCATION;
+                case FLY_INTO_WALL -> DamageCause.FLY_INTO_WALL;
+                default -> DamageCause.CUSTOM;
+            });
         }
+
+        @Override public boolean isCancelled() { return value.isCancelled(); }
+        @Override public void setCancelled(boolean cancelled) { value.setCancelled(cancelled); }
 
         private static org.bukkit.event.entity.EntityDamageEvent.DamageModifier nativeModifier(DamageModifier modifier) {
             return switch (modifier) {

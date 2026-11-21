@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.airbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
@@ -101,7 +103,7 @@ public class AirBurst extends AirAbility {
             }
             return;
         }
-        if (System.currentTimeMillis() > this.getStartTime() + this.chargeTime) {
+        if (RollbackClock.millis() > this.getStartTime() + this.chargeTime) {
             this.isCharged = true;
         }
         if (!this.player.isSneaking()) {

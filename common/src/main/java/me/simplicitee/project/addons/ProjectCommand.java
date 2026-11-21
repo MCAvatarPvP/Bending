@@ -1,5 +1,7 @@
 package me.simplicitee.project.addons;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.platform.mc.ChatColor;
 import com.projectkorra.projectkorra.platform.mc.command.Command;
@@ -18,7 +20,7 @@ public class ProjectCommand implements CommandExecutor {
             if (args[0].equalsIgnoreCase("active")) {
                 for (CoreAbility ability : CoreAbility.getAbilitiesByInstances()) {
                     if (ability.getPlayer().getUniqueId() == ((Player) sender).getUniqueId()) {
-                        sender.sendMessage(ability.getElement().getColor() + ability.getName() + ChatColor.WHITE + " : " + (System.currentTimeMillis() - ability.getStartTime()));
+                        sender.sendMessage(ability.getElement().getColor() + ability.getName() + ChatColor.WHITE + " : " + (RollbackClock.millis() - ability.getStartTime()));
                     }
                 }
             }

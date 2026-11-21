@@ -1,0 +1,317 @@
+package com.projectkorra.projectkorra.prediction.rollback;
+
+import ca.spottedleaf.moonrise.common.util.TickThread;
+import net.bytebuddy.ByteBuddy;
+import net.bytebuddy.description.modifier.Visibility;
+import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
+import net.bytebuddy.dynamic.scaffold.MethodGraph;
+import net.bytebuddy.dynamic.scaffold.subclass.ConstructorStrategy;
+import net.bytebuddy.implementation.InvocationHandlerAdapter;
+import net.minecraft.network.Connection;
+import net.minecraft.network.PacketListener;
+import net.minecraft.network.PacketProcessor;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.PacketUtils;
+import net.minecraft.network.protocol.common.*;
+import net.minecraft.network.protocol.game.*;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.network.ServerCommonPacketListenerImpl;
+import net.minecraft.server.network.ServerGamePacketListenerImpl;
+import org.objenesis.ObjenesisStd;
+
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
+import java.lang.reflect.*;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
+
+import static net.bytebuddy.matcher.ElementMatchers.*;
+
+/**
+ * Plugin-only interception of native connection ticks and incoming gameplay.
+ * Duplicate vanilla input is discarded; unaudited packets require complete session
+ * teardown before native dispatch. Queued-original-packet drainage and the world
+ * tick gate remain separate required ownership components.
+ */
+public final class PaperRollbackConnectionTickGate {
+    private static final String HANDLER = "rollback$liveTickHandler";
+    private static final VarHandle LISTENER;
+    static {
+        try {
+            LISTENER = MethodHandles.privateLookupIn(Connection.class, MethodHandles.lookup())
+                    .findVarHandle(Connection.class, "packetListener", PacketListener.class);
+        } catch (ReflectiveOperationException failure) { throw new ExceptionInInitializerError(failure); }
+    }
+    private record Layout(Class<?> proxy, Field handler, List<Field> fields, Map<Method, Method> methods) { }
+    private static final ClassValue<Layout> LAYOUTS = new ClassValue<>() {
+        @Override protected Layout computeValue(Class<?> source) {
+            if (!ServerGamePacketListenerImpl.class.isAssignableFrom(source) || Modifier.isFinal(source.getModifiers()))
+                throw new IllegalArgumentException("Unsupported live listener class");
+            try {
+                var fields = new ArrayList<Field>();
+                for (Class<?> type = source; type != Object.class; type = type.getSuperclass()) {
+                    for (var field : type.getDeclaredFields()) if (!Modifier.isStatic(field.getModifiers())) {
+                        field.setAccessible(true); fields.add(field);
+                    }
+                    for (var method : type.getDeclaredMethods()) {
+                        int modifiers = method.getModifiers();
+                        if (Modifier.isFinal(modifiers) && !Modifier.isStatic(modifiers) && !Modifier.isPrivate(modifiers)
+                                && !auditedFinal(method)) throw new IllegalArgumentException("Unroutable final listener method: " + method);
+                    }
+                }
+                var proxy = new ByteBuddy().with(MethodGraph.Compiler.Default.forJVMHierarchy()).ignore(none())
+                        .subclass(source, ConstructorStrategy.Default.NO_CONSTRUCTORS)
+                        .defineField(HANDLER, InvocationHandler.class, Visibility.PUBLIC)
+                        .method(isVirtual().and(not(isFinal())).and(not(isDeclaredBy(Object.class))))
+                        .intercept(InvocationHandlerAdapter.toField(HANDLER))
+                        .make().load(source.getClassLoader(), ClassLoadingStrategy.Default.WRAPPER).getLoaded();
+                return new Layout(proxy, proxy.getField(HANDLER), List.copyOf(fields), new ConcurrentHashMap<>());
+            } catch (ReflectiveOperationException failure) { throw new IllegalStateException("Cannot prepare live listener gate", failure); }
+        }
+    };
+    private PaperRollbackConnectionTickGate() { }
+
+    private static boolean auditedFinal(Method method) {
+        // isDisconnected reads the shared player/connection plus processedDisconnect.
+        // Both final disconnectAsync overloads immediately delegate to a routed virtual method.
+        return (method.getDeclaringClass() == ServerGamePacketListenerImpl.class && method.getName().equals("isDisconnected")
+                    && method.getParameterCount() == 0 && method.getReturnType() == boolean.class)
+                || (method.getDeclaringClass() == ServerCommonPacketListenerImpl.class && method.getName().equals("disconnectAsync")
+                    && method.getReturnType() == void.class);
+    }
+    public static Lease prepare(ServerPlayer player, Runnable stopBeforeMutation) {
+        boundary(); return new Lease(Objects.requireNonNull(player), Objects.requireNonNull(stopBeforeMutation));
+    }
+    /**
+     * Restore all participants before resuming any native connection tick. A failed
+     * listener swap reinstalls already detached facades; callers must stop simulation
+     * and repeat the packet handoff before retrying after such a failure.
+     */
+    public static void restoreAll(Collection<Lease> participants, Runnable restore) {
+        restoreAll(participants, restore, () -> { });
+    }
+
+    static void restoreAll(Collection<Lease> participants, Runnable restore, Runnable releaseOtherGates) {
+        boundary(); Objects.requireNonNull(restore); Objects.requireNonNull(releaseOtherGates);
+        var leases = List.copyOf(participants);
+        if (leases.isEmpty() || new HashSet<>(leases).size() != leases.size())
+            throw new IllegalArgumentException("Connection cleanup roster");
+        for (var lease : leases) {
+            lease.checkThread();
+            if (lease.restoring) throw new IllegalStateException("Recursive connection roster cleanup");
+        }
+        if (leases.stream().allMatch(lease -> lease.released)) return;
+        for (var lease : leases) {
+            lease.requireCurrent();
+            if (lease.releaseRetryNeedsDrain) throw new IllegalStateException("Repeat packet handoff before retrying roster release");
+        }
+        var detached = new ArrayList<Lease>();
+        leases.forEach(lease -> lease.restoring = true);
+        try {
+            restore.run();
+            // Validate the entire roster again after restoration callbacks.
+            for (var lease : leases) lease.requireCurrent();
+            for (var lease : leases) {
+                if (!LISTENER.compareAndSet(lease.connection, lease.proxy, lease.original))
+                    throw new IllegalStateException("Connection roster changed during release");
+                detached.add(lease);
+            }
+            releaseOtherGates.run();
+            for (var lease : leases) { lease.released = true; lease.suspended = false; }
+        } catch (RuntimeException | Error failure) {
+            for (int i = detached.size() - 1; i >= 0; i--) {
+                var lease = detached.get(i);
+                if (!LISTENER.compareAndSet(lease.connection, lease.original, lease.proxy))
+                    failure.addSuppressed(new IllegalStateException("Cannot recover externally replaced connection gate"));
+                // A network callback could have captured the original during the
+                // attempted release. Its queued input must cross a fresh barrier.
+                lease.handoffBarrier = null; lease.packetsDrained = false; lease.releaseRetryNeedsDrain = true;
+            }
+            throw failure;
+        } finally { leases.forEach(lease -> lease.restoring = false); }
+    }
+
+    public static final class Lease {
+        private final Thread owner = Thread.currentThread();
+        private final ServerPlayer player;
+        private final ServerGamePacketListenerImpl original, proxy;
+        private final Connection connection;
+        private final Layout layout;
+        private final Runnable stopBeforeMutation;
+        private volatile boolean suspended;
+        private volatile boolean released;
+        private boolean restoring, packetsDrained, releaseRetryNeedsDrain;
+        private CompletableFuture<Void> handoffBarrier;
+        private PacketProcessor packetProcessor;
+        private io.netty.channel.Channel drainChannel;
+        private Lease(ServerPlayer player, Runnable stopBeforeMutation) {
+            this.player = player;
+            this.stopBeforeMutation = stopBeforeMutation;
+            original = Objects.requireNonNull(player.connection, "Player listener");
+            connection = Objects.requireNonNull(original.connection, "Native connection");
+            requireOriginal();
+            layout = LAYOUTS.get(original.getClass());
+            proxy = (ServerGamePacketListenerImpl) new ObjenesisStd(false).newInstance(layout.proxy());
+            try { layout.handler().set(proxy, (InvocationHandler) this::invoke); copyDirectFields(); }
+            catch (ReflectiveOperationException failure) { throw new IllegalStateException("Cannot initialize live listener gate", failure); }
+        }
+        public void acquire() {
+            checkThread();
+            if (released || restoring) throw new IllegalStateException("Connection tick gate is closed/restoring");
+            if (suspended) { requireCurrent(); return; }
+            requireOriginal();
+            try { copyDirectFields(); }
+            catch (IllegalAccessException failure) { throw new IllegalStateException("Cannot refresh listener gate", failure); }
+            suspended = true;
+            if (!LISTENER.compareAndSet(connection, original, proxy)) {
+                suspended = false; throw new IllegalStateException("Connection listener changed during acquisition");
+            }
+        }
+        /**
+         * Poll before capturing the initial simulation state. The barrier lets any
+         * network callback that already captured the original listener finish queuing
+         * its packet. A marker then crosses the server task queue, after commands
+         * submitted by those callbacks. Arbitrary asynchronous plugin/chat chains
+         * still require lifecycle interception by the loader.
+         */
+        public boolean pollPacketDrain(PacketProcessor processor) {
+            return pollPacketDrain(processor, Objects.requireNonNull(player.level().getServer())::executeIfPossible);
+        }
+
+        boolean pollPacketDrain(PacketProcessor processor, java.util.concurrent.Executor serverQueue) {
+            requireCurrent(); Objects.requireNonNull(processor); Objects.requireNonNull(serverQueue);
+            if (!processor.isSameThread()) throw new IllegalStateException("Foreign packet processor thread");
+            if (packetProcessor != null && packetProcessor != processor)
+                throw new IllegalStateException("Packet processor changed during handoff");
+            if (drainChannel != null && (connection.channel != drainChannel || !drainChannel.isOpen()))
+                throw new IllegalStateException("Connection channel changed/closed during handoff");
+            if (packetsDrained) return true;
+            if (handoffBarrier == null) {
+                var channel = Objects.requireNonNull(connection.channel, "Live connection channel");
+                if (!channel.isOpen()) throw new IllegalStateException("Connection closed during handoff");
+                packetProcessor = processor; drainChannel = channel;
+                var barrier = new CompletableFuture<Void>(); handoffBarrier = barrier;
+                try {
+                    channel.eventLoop().execute(() -> {
+                        try {
+                            serverQueue.execute(() -> {
+                                if (Thread.currentThread() == owner) barrier.complete(null);
+                                else barrier.completeExceptionally(new IllegalStateException("Handoff marker ran outside the server thread"));
+                            });
+                        } catch (RuntimeException failure) { barrier.completeExceptionally(failure); }
+                    });
+                } catch (RuntimeException failure) { barrier.completeExceptionally(failure); }
+                return false;
+            }
+            if (!handoffBarrier.isDone()) return false;
+            handoffBarrier.join();
+            PaperRollbackQueuedPackets.drain(processor, original, proxy);
+            // A queued command may have torn the session down. Never start it again.
+            requireCurrent();
+            packetsDrained = true; releaseRetryNeedsDrain = false;
+            return true;
+        }
+
+        public void requireCurrent() {
+            checkThread();
+            if (!suspended || released || player.connection != original || original.player != player
+                    || connection.getPacketListener() != proxy)
+                throw new IllegalStateException("Connection tick ownership changed");
+        }
+        public void restoreAndRelease(Runnable restore) {
+            checkThread(); Objects.requireNonNull(restore);
+            if (restoring) throw new IllegalStateException("Recursive connection cleanup");
+            if (released) return;
+            if (!suspended) { released = true; return; }
+            requireCurrent();
+            if (releaseRetryNeedsDrain) throw new IllegalStateException("Repeat packet handoff before retrying connection release");
+            restoring = true;
+            try {
+                restore.run(); requireCurrent();
+                if (!LISTENER.compareAndSet(connection, proxy, original))
+                    throw new IllegalStateException("Connection listener changed during cleanup");
+                released = true; suspended = false;
+            } finally { restoring = false; }
+        }
+        private Object invoke(Object receiver, Method method, Object[] args) throws Throwable {
+            if (method.getName().equals("tick") && method.getParameterCount() == 0 && suspended) {
+                requireCurrent();
+                try { PaperRollbackConnectionMaintenance.tick(original); return null; }
+                finally { proxy.processedDisconnect = original.processedDisconnect; }
+            }
+            if (suspended && method.getName().startsWith("handle") && args != null
+                    && args.length == 1 && args[0] instanceof Packet<?> packet) {
+                switch (packetDisposition(packet)) {
+                    case DROP -> { return null; }
+                    case STOP -> {
+                        // Queue against the facade, so main-thread dispatch rechecks ownership.
+                        if (Thread.currentThread() != owner) onMainThread(packet, proxy, player);
+                        requireCurrent();
+                        stopBeforeMutation.run();
+                        if (suspended || !released)
+                            throw new IllegalStateException("Packet teardown did not release connection ownership");
+                        requireOriginal();
+                    }
+                    case PASS -> { }
+                }
+            }
+            Object target = original;
+            if (!suspended && released) {
+                var current = connection.getPacketListener();
+                if (current != original) {
+                    // Queued callbacks can retain an old facade into the next duel.
+                    // They must cross the current gate instead of bypassing it.
+                    if (current == proxy || !layout.proxy().isInstance(current))
+                        throw new IllegalStateException("Stale rollback callback after listener transition");
+                    target = current;
+                }
+            }
+            var callable = layout.methods().computeIfAbsent(method, value -> { value.setAccessible(true); return value; });
+            try { return callable.invoke(target, args); }
+            catch (InvocationTargetException failure) { throw failure.getCause(); }
+            finally { proxy.processedDisconnect = original.processedDisconnect; }
+        }
+        private void requireOriginal() {
+            if (player.connection != original || original.player != player || connection.getPacketListener() != original)
+                throw new IllegalStateException("Player does not own its original connection listener");
+        }
+        private void copyDirectFields() throws IllegalAccessException {
+            for (var field : layout.fields()) field.set(proxy, field.get(original));
+        }
+        private void checkThread() {
+            boundary(); if (Thread.currentThread() != owner) throw new IllegalStateException("Connection tick gate crossed threads");
+        }
+    }
+    enum PacketDisposition { DROP, PASS, STOP }
+
+    static PacketDisposition packetDisposition(Packet<?> packet) {
+        if (packet instanceof ServerboundMovePlayerPacket || packet instanceof ServerboundPlayerInputPacket
+                || packet instanceof ServerboundPlayerActionPacket || packet instanceof ServerboundPlayerCommandPacket
+                || packet instanceof ServerboundPlayerAbilitiesPacket || packet instanceof ServerboundInteractPacket
+                || packet instanceof ServerboundSwingPacket || packet instanceof ServerboundUseItemPacket
+                || packet instanceof ServerboundUseItemOnPacket || packet instanceof ServerboundSetCarriedItemPacket
+                || packet instanceof ServerboundMoveVehiclePacket || packet instanceof ServerboundPaddleBoatPacket
+                || packet instanceof ServerboundClientTickEndPacket) return PacketDisposition.DROP;
+        if (packet instanceof ServerboundKeepAlivePacket || packet instanceof ServerboundPongPacket
+                || packet instanceof ServerboundChatAckPacket || packet instanceof ServerboundChunkBatchReceivedPacket)
+            return PacketDisposition.PASS;
+        if (packet instanceof ServerboundCustomPayloadPacket custom) {
+            String channel = custom.payload().type().id().toString();
+            if (channel.equals(RollbackInputPacket.CHANNEL) || channel.equals(RollbackStartPacket.CLIENT_CHANNEL)
+                    || channel.equals(RollbackBootstrapPacket.CLIENT_CHANNEL)) return PacketDisposition.PASS;
+        }
+        // Includes commands, inventory, teleports, configuration and other plugins' payloads.
+        return PacketDisposition.STOP;
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static void onMainThread(Packet<?> packet, ServerGamePacketListenerImpl listener, ServerPlayer player) {
+        PacketUtils.ensureRunningOnSameThread((Packet) packet, listener, player.level());
+    }
+
+    private static void boundary() {
+        if (!TickThread.isTickThread() || RollbackClock.active() || RollbackDomain.active())
+            throw new IllegalStateException("Change connection tick ownership at the live tick boundary");
+    }
+}

@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.platform.Platform;
 import com.projectkorra.projectkorra.platform.mc.Color;
 import com.projectkorra.projectkorra.platform.mc.Location;
@@ -230,7 +232,7 @@ public enum ParticleEffect {
 
     private Object createParticleData(double offsetX, double offsetY, double offsetZ, double extra, Object data) {
         if (this == ParticleEffect.COOL_AIR_PARTICLE) {
-            Color color = new Random().nextBoolean() ? Color.WHITE : Color.fromRGB(150, 200, 225); // Airy bluish gray
+            Color color = new RollbackRandom().nextBoolean() ? Color.WHITE : Color.fromRGB(150, 200, 225); // Airy bluish gray
             return new Particle.DustOptions(color, 1.1f);
         }
 

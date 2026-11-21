@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.firebending.lightning;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -134,7 +137,7 @@ public class Lightning extends LightningAbility {
         this.charged = false;
         this.hitWater = false;
         this.hitIce = false;
-        this.startTime = System.currentTimeMillis();
+        this.startTime = RollbackClock.millis();
         this.state = State.START;
         this.affectedEntities = new ArrayList<>();
         this.arcs = new ArrayList<>();
@@ -249,6 +252,12 @@ public class Lightning extends LightningAbility {
      * Once all of the arcs have been created then this ability instance gets
      * removed, but the BukkitRunnables continue until they remove themselves.
      **/
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.startTime = shift.time(this.startTime);
+    }
+
     @Override
     public void progress() {
         if (this.player.isDead() || !this.player.isOnline()) {
@@ -274,10 +283,10 @@ public class Lightning extends LightningAbility {
         if (this.state == State.START) {
             if (this.bPlayer.isOnCooldown(this)) {
                 if (!canRedirectOnCD || !player.isSneaking()) remove();
-                if (System.currentTimeMillis() - startTime > this.chargeTime) remove();
-                this.startTime = System.currentTimeMillis();
+                if (RollbackClock.millis() - startTime > this.chargeTime) remove();
+                this.startTime = RollbackClock.millis();
                 return;
-            } else if (System.currentTimeMillis() - this.startTime > this.chargeTime) {
+            } else if (RollbackClock.millis() - this.startTime > this.chargeTime) {
                 if (!charged) {
                     playLightningbendingHitSound(player.getLocation());
                     ParticleEffect.FLASH.display(player.getLocation(), 1);
@@ -638,7 +647,7 @@ public class Lightning extends LightningAbility {
             playLightningbendingSound(this.player.getLocation());
             final Player p = (Player) lent;
             final Lightning light = getAbility(p, Lightning.class);
-            if (light != null && light.state == State.START && System.currentTimeMillis() <= light.getStartTime() + this.redirectionDuration) {
+            if (light != null && light.state == State.START && RollbackClock.millis() <= light.getStartTime() + this.redirectionDuration) {
                 light.charged = true;
                 if (this.damageMultiplierRedirection != 0) {
                     light.setDamage(this.damage * this.damageMultiplierRedirection);

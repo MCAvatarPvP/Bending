@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.ProjectKorra;
@@ -59,10 +61,11 @@ public class RegenHandler implements Runnable {
 
     @Override
     public void run() {
-        long now = System.currentTimeMillis();
+        long now = RollbackClock.millis();
 
         for (Player player : Platform.players().<Player>onlinePlayers()) {
-            if (!player.isOnline() || player.isDead() || player.getHealth() >= player.getMaxHealth())
+            if (com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership.blocks(player.getUniqueId())
+                    || !player.isOnline() || player.isDead() || player.getHealth() >= player.getMaxHealth())
                 continue;
             BendingPlayer bendingPlayer = BendingPlayer.getBendingPlayer(player);
             if (bendingPlayer == null || now - bendingPlayer.getLastHealthRegen() < regenInterval(bendingPlayer))

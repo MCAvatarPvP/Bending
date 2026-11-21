@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.platform.mc.block.Block;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 import com.projectkorra.projectkorra.util.BlockSource.BlockSourceType;
@@ -28,7 +30,7 @@ public class BlockSourceInformation {
         this.player = player;
         this.block = block;
         this.sourceType = sourceType;
-        this.creationTime = System.currentTimeMillis();
+        this.creationTime = RollbackClock.millis();
         this.clickType = clickType;
     }
 

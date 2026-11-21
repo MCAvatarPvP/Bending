@@ -1,5 +1,7 @@
 package com.jedk1.jedcore.ability.waterbending.combo;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JCMethods;
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.ability.waterbending.WaterBlast;
@@ -46,7 +48,7 @@ public class WaterGimbal extends WaterAbility implements AddonAbility, ComboAbil
         CollisionInitializer.abilityMap.put("WaterGimbal", "");
     }
 
-    private final Random rand = new Random();
+    private final Random rand = new RollbackRandom();
     @Attribute(Attribute.SELECT_RANGE)
     private int sourceRange;
     @Attribute(Attribute.COOLDOWN)

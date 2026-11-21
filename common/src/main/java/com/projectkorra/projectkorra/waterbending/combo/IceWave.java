@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.waterbending.combo;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackArenaBlockIndices;
 import com.projectkorra.projectkorra.ability.ComboAbility;
 import com.projectkorra.projectkorra.ability.IceAbility;
 import com.projectkorra.projectkorra.ability.util.ComboManager.AbilityInformation;
@@ -19,7 +20,12 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class IceWave extends IceAbility implements ComboAbility {
 
-    private static final Map<Block, TempBlock> FROZEN_BLOCKS = new ConcurrentHashMap<>();
+    private static final Map<Block, TempBlock> FROZEN_BLOCKS = RollbackArenaBlockIndices.live().iceWave;
+
+    public static Map<Block, TempBlock> frozenLayers() {
+        var indices = RollbackArenaBlockIndices.current();
+        return indices == null ? FROZEN_BLOCKS : indices.iceWave;
+    }
 
     @Attribute(Attribute.COOLDOWN)
     @DayNightFactor(invert = true)
@@ -48,19 +54,19 @@ public class IceWave extends IceAbility implements ComboAbility {
     }
 
     public static boolean canThaw(final Block block) {
-        return FROZEN_BLOCKS.containsKey(block);
+        return frozenLayers().containsKey(block);
     }
 
     public static void thaw(final Block block) {
-        if (FROZEN_BLOCKS.containsKey(block)) {
-            FROZEN_BLOCKS.get(block).revertBlock();
-            FROZEN_BLOCKS.remove(block);
+        if (frozenLayers().containsKey(block)) {
+            frozenLayers().get(block).revertBlock();
+            frozenLayers().remove(block);
         }
     }
 
     /** Drops frozen-sphere ownership after a complete world/runtime shutdown. */
     public static void discardAllTracking() {
-        FROZEN_BLOCKS.clear();
+        frozenLayers().clear();
     }
 
     @Override

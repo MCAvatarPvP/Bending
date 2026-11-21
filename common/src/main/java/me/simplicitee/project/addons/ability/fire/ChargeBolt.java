@@ -1,5 +1,8 @@
 package me.simplicitee.project.addons.ability.fire;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.LightningAbility;
@@ -68,17 +71,17 @@ public class ChargeBolt extends LightningAbility implements AddonAbility {
             return;
         }
 
-        if (player.isSneaking() && System.currentTimeMillis() > getStartTime() + chargeTime) {
+        if (player.isSneaking() && RollbackClock.millis() > getStartTime() + chargeTime) {
             Util.playLightningParticles(GeneralMethods.getMainHandLocation(player), 2, 0.1, 0.1, 0.1);
-            if (Math.random() < 0.3) {
+            if (RollbackRandom.fraction() < 0.3) {
                 playLightningbendingSound(player.getEyeLocation());
             }
-        } else if (!player.isSneaking() && System.currentTimeMillis() > getStartTime() + chargeTime) {
+        } else if (!player.isSneaking() && RollbackClock.millis() > getStartTime() + chargeTime) {
             discharge();
-        } else if (!player.isSneaking() && System.currentTimeMillis() < getStartTime() + chargeTime) {
+        } else if (!player.isSneaking() && RollbackClock.millis() < getStartTime() + chargeTime) {
             remove();
             return;
-        } else if (System.currentTimeMillis() < getStartTime() + chargeTime) {
+        } else if (RollbackClock.millis() < getStartTime() + chargeTime) {
             return;
         }
 
@@ -122,7 +125,7 @@ public class ChargeBolt extends LightningAbility implements AddonAbility {
     public void bolt() {
         if (dischargeBolts < 1) {
             return;
-        } else if (System.currentTimeMillis() < getStartTime() + chargeTime) {
+        } else if (RollbackClock.millis() < getStartTime() + chargeTime) {
             return;
         }
 
@@ -227,7 +230,7 @@ public class ChargeBolt extends LightningAbility implements AddonAbility {
             }
 
             Util.playLightningParticles(loc, 1, 0.1, 0.1, 0.1);
-            if (Math.random() > 0.01) {
+            if (RollbackRandom.fraction() > 0.01) {
                 playLightningbendingSound(loc);
             }
 

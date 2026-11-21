@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.ability;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.Element.SubElement;
@@ -215,7 +217,7 @@ public abstract class FireAbility extends ElementalAbility {
     }
 
     public static void playLightningbendingParticle(final Location loc) {
-        playLightningbendingParticle(loc, Math.random(), Math.random(), Math.random());
+        playLightningbendingParticle(loc, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction());
     }
 
     public static void playLightningbendingParticle(final Location loc, final double xOffset, final double yOffset, final double zOffset) {

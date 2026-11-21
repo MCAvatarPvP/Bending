@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.firebending.combo;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.ComboAbility;
 import com.projectkorra.projectkorra.ability.FireAbility;
@@ -47,7 +50,7 @@ public class JetBlaze extends FireAbility implements ComboAbility, EntityHitboxP
         }
 
         this.firstTime = true;
-        this.time = System.currentTimeMillis();
+        this.time = RollbackClock.millis();
         this.affectedEntities = new ArrayList<>();
         this.tasks = new ArrayList<>();
 
@@ -79,6 +82,11 @@ public class JetBlaze extends FireAbility implements ComboAbility, EntityHitboxP
     }
 
     @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
+    }
+
+    @Override
     public void progress() {
         if (this.firstTime) {
             if (this.bPlayer.isOnCooldown("JetBlaze") && !this.bPlayer.isAvatarState()) {
@@ -86,7 +94,7 @@ public class JetBlaze extends FireAbility implements ComboAbility, EntityHitboxP
                 return;
             }
             this.firstTime = false;
-        } else if (System.currentTimeMillis() - this.time > this.duration) {
+        } else if (RollbackClock.millis() - this.time > this.duration) {
             this.remove();
             return;
         } else if (hasAbility(this.player, FireJet.class)) {

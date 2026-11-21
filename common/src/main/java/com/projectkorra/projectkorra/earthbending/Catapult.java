@@ -1,5 +1,9 @@
 package com.projectkorra.projectkorra.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.EarthAbility;
@@ -68,13 +72,23 @@ public class Catapult extends EarthAbility {
         this.start();
     }
 
+    private static Set<UUID> landings() {
+        return com.projectkorra.projectkorra.prediction.rollback.RollbackAbilityGlobals.landings(AWAITING_LANDING);
+    }
+
+    public static void restoreRollbackLanding(UUID player, boolean pending) {
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active()) throw new IllegalStateException("Restore on live server");
+        if (pending) AWAITING_LANDING.add(player);
+        else AWAITING_LANDING.remove(player);
+    }
+
     public static boolean isAwaitingLanding(final Player player) {
-        return AWAITING_LANDING.contains(player.getUniqueId());
+        return landings().contains(player.getUniqueId());
     }
 
     /** Drops delayed landing ownership from an outgoing logical world. */
     public static void discardAllTracking() {
-        AWAITING_LANDING.clear();
+        landings().clear();
     }
 
     private void setFields() {
@@ -89,7 +103,7 @@ public class Catapult extends EarthAbility {
         this.playRegularSound = getConfig().getBoolean("Abilities.Earth.Catapult.RegularSound", false);
         this.activationHandled = false;
         this.stage = 1;
-        this.stageStart = System.currentTimeMillis();
+        this.stageStart = RollbackClock.millis();
         this.up = new Vector(0, 1, 0);
     }
 
@@ -104,6 +118,11 @@ public class Catapult extends EarthAbility {
             }
         }
         if (bPlayer.areSourceHolesOn()) this.moveEarth(this.origin.clone().subtract(direction), direction, 3, false);
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.stageStart = shift.time(this.stageStart);
     }
 
     @Override
@@ -125,10 +144,10 @@ public class Catapult extends EarthAbility {
             if (this.stage == 4 || !this.player.isSneaking()) {
                 this.charging = false;
             } else {
-                if ((System.currentTimeMillis() - this.stageStart) >= ((Math.max(0, this.stageTimeMult * (this.stage - 1))) * 1000)) {
+                if ((RollbackClock.millis() - this.stageStart) >= ((Math.max(0, this.stageTimeMult * (this.stage - 1))) * 1000)) {
                     this.stage++;
-                    this.stageStart = System.currentTimeMillis();
-                    final Random random = new Random();
+                    this.stageStart = RollbackClock.millis();
+                    final Random random = new RollbackRandom();
                     ParticleEffect.BLOCK_DUST.display(this.player.getLocation(), 15, random.nextFloat(), random.nextFloat(), random.nextFloat(), this.bentBlockData);
                     ParticleEffect.BLOCK_DUST.display(this.player.getLocation().add(0, 0.5, 0), 10, random.nextFloat(), random.nextFloat(), random.nextFloat(), this.bentBlockData);
                     if (playRegularSound) {
@@ -179,7 +198,7 @@ public class Catapult extends EarthAbility {
 
     private void awaitLanding(final Player player) {
         final UUID uuid = player.getUniqueId();
-        AWAITING_LANDING.add(uuid);
+        landings().add(uuid);
 
         new BukkitRunnable() {
             private boolean airborne;
@@ -190,7 +209,7 @@ public class Catapult extends EarthAbility {
                 this.ticks++;
 
                 if (!player.isOnline() || player.isDead()) {
-                    AWAITING_LANDING.remove(uuid);
+                    landings().remove(uuid);
                     this.cancel();
                     return;
                 }
@@ -201,7 +220,7 @@ public class Catapult extends EarthAbility {
                 }
 
                 if (this.airborne || this.ticks > 20) {
-                    AWAITING_LANDING.remove(uuid);
+                    landings().remove(uuid);
                     this.cancel();
                 }
             }

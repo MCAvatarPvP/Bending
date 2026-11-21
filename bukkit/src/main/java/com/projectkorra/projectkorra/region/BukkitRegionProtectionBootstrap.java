@@ -17,12 +17,7 @@ public final class BukkitRegionProtectionBootstrap {
         if (enabled("WorldGuard")) new WorldGuard();
         if (enabled("Factions")) {
             Object raw = Platform.plugins().getPlugin("Factions");
-            String website = null;
-            try {
-                Object description = raw.getClass().getMethod("getDescription").invoke(raw);
-                website = String.valueOf(description.getClass().getMethod("getWebsite").invoke(description));
-            } catch (Throwable ignored) {
-            }
+            String website = raw instanceof org.bukkit.plugin.Plugin plugin ? plugin.getDescription().getWebsite() : null;
             if (website != null && website.toLowerCase().contains("factionsuuid")) {
                 new FactionsUUID();
             } else {
@@ -36,6 +31,21 @@ public final class BukkitRegionProtectionBootstrap {
         if (enabled("GriefPrevention")) new GriefPrevention();
         if (enabled("Residence")) new Residence();
         if (enabled("Lands")) new Lands();
+    }
+
+    public static boolean supportsRollback() {
+        var policies = RegionProtection.getActiveProtections();
+        return policies.isEmpty() || policies.size() == 1 && policies.get("WorldGuard") instanceof WorldGuard;
+    }
+
+    public static com.projectkorra.projectkorra.prediction.rollback.RollbackRegionPolicy captureRollback(
+            java.util.Collection<Player> players, com.projectkorra.projectkorra.prediction.rollback.world.RollbackBlockStore.Bounds bounds) {
+        var policies = RegionProtection.getActiveProtections();
+        if (!supportsRollback()) throw new IllegalStateException("Duel region hooks changed before capture");
+        var rows = new java.util.TreeMap<java.util.UUID, List<RegionProtectionAuthority.Box>>();
+        for (var player : players) rows.put(player.getUniqueId(), policies.isEmpty() ? List.of()
+                : WorldGuard.duelBoxes(player, bounds, (WorldGuard) policies.get("WorldGuard")));
+        return new com.projectkorra.projectkorra.prediction.rollback.RollbackRegionPolicy(rows);
     }
 
     public static List<RegionProtectionAuthority.Box> predictionBoxes(

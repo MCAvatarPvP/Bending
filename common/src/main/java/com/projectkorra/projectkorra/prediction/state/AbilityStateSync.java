@@ -1,7 +1,7 @@
 package com.projectkorra.projectkorra.prediction.state;
 
+import com.projectkorra.projectkorra.prediction.authority.PredictionServices;
 import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
-
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.platform.mc.entity.Player;
 
@@ -20,16 +20,18 @@ public final class AbilityStateSync {
     }
 
     public static void install(Listener value) {
+        PredictionServices.requireGlobalMutation();
         listener = value;
     }
 
     public static void clear(Listener value) {
+        PredictionServices.requireGlobalMutation();
         if (listener == value) listener = null;
     }
 
     public static void apply(CoreAbility ability, Player target, FlightState resultingState, Runnable write) {
         if (write == null) return;
-        final Listener current = listener;
+        final Listener current = PredictionServices.current(Listener.class, listener);
         // Constructors such as AirScooter and WaterSpout change vanilla flight
         // state before their CoreAbility has entered progress()/start(). The
         // native input action still provides exact ownership even though the

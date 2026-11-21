@@ -34,14 +34,14 @@ class GameplayRegressionBoundaryTest {
         String restore = method(earth, "public static void revertAirBlock(Block block)",
                 "public static boolean revertBlock");
 
-        int read = handoff.indexOf("MOVED_EARTH.containsKey(block)");
-        int retain = handoff.indexOf("info = MOVED_EARTH.get(block)", read);
-        int enqueue = handoff.indexOf("TEMP_AIR_LOCATIONS.put", retain);
+        int read = handoff.indexOf("getMovedEarth().containsKey(block)");
+        int retain = handoff.indexOf("info = getMovedEarth().get(block)", read);
+        int enqueue = handoff.indexOf("getTempAirLocations().put", retain);
         assertTrue(read >= 0 && retain > read && enqueue > retain,
                 "EarthBlast must retain a moved source's original snapshot through its temporary-air handoff");
         assertFalse(handoff.contains("retireMovedEarth(block)"),
                 "consuming moved earth here loses the pre-RaiseEarth state before EarthBlast can carry it forward");
-        assertTrue(restore.contains("TEMP_AIR_LOCATIONS.entrySet()")
+        assertTrue(restore.contains("getTempAirLocations().entrySet()")
                         && restore.contains("revertAirBlock(entry.getKey())"));
         assertFalse(restore.contains("i++") || restore.contains("revertAirBlock(i)"),
                 "temp-air restores must use Information's actual map id, not iteration position");
@@ -65,8 +65,8 @@ class GameplayRegressionBoundaryTest {
                 "cancelled and incomplete raises must not leak persistent identity");
         assertTrue(raise.contains("ConcurrentHashMap<BlockKey, Integer> WALL_BLOCKS")
                         && raise.contains("ConcurrentHashMap<BlockKey, Integer> COLUMN_BLOCKS")
-                        && raise.contains("WALL_BLOCKS.merge(blockKey(affected), 1, Integer::sum)")
-                        && raise.contains("COLUMN_BLOCKS.merge(blockKey(affected), 1, Integer::sum)")
+                        && raise.contains("walls().merge(blockKey(affected), 1, Integer::sum)")
+                        && raise.contains("columns().merge(blockKey(affected), 1, Integer::sum)")
                         && raise.contains("references > 1 ? references - 1 : null"),
                 "overlapping raises must share coordinate-based, reference-counted ownership");
         assertTrue(raise.contains("if (!getMovedEarth().containsKey(affected))"),
@@ -175,9 +175,9 @@ class GameplayRegressionBoundaryTest {
         String sources = common("com/projectkorra/projectkorra/util/BlockSource.java");
 
         assertTrue(core.contains("public static void discardAllInstances()")
-                        && core.contains("INSTANCES.clear()")
-                        && core.contains("INSTANCES_BY_PLAYER.clear()")
-                        && core.contains("INSTANCES_BY_CLASS.clear()"),
+                        && core.contains("activeInstances().clear()")
+                        && core.contains("instancesByPlayer().clear()")
+                        && core.contains("instancesByClass().clear()"),
                 "a failed addon remove may not leave an old WaterSpout visible to the next runtime");
         assertTrue(water.contains("public static void discardAllWaterbendingState()")
                         && water.contains("WaterSpout.discardAllTracking()")
@@ -191,7 +191,7 @@ class GameplayRegressionBoundaryTest {
                         && earth.contains("RaiseEarth.clearAllTracking()"),
                 "auxiliary earth ownership may not survive a client-world replacement");
         assertTrue(sources.contains("public static void clearAll()")
-                        && sources.contains("playerSources.clear()"),
+                        && sources.contains("sources().clear()"),
                 "source selections from the outgoing world may not be consumed after a world switch");
     }
 

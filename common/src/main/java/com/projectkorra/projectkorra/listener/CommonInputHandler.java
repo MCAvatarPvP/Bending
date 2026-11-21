@@ -15,6 +15,10 @@ import com.projectkorra.projectkorra.ability.util.PassiveManager;
 import com.projectkorra.projectkorra.airbending.AirBlast;
 import com.projectkorra.projectkorra.airbending.AirScooter;
 import com.projectkorra.projectkorra.airbending.Suffocate;
+import com.projectkorra.projectkorra.airbending.Tornado;
+import com.projectkorra.projectkorra.airbending.flight.FlightMultiAbility;
+import com.projectkorra.projectkorra.avatar.AvatarState;
+import com.projectkorra.projectkorra.firebending.FireJet;
 import com.projectkorra.projectkorra.board.BendingBoardManager;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.earthbending.EarthBlast;
@@ -43,6 +47,23 @@ import java.util.UUID;
 
 public final class CommonInputHandler {
     private CommonInputHandler() {
+    }
+
+    /** Existing flight-toggle listener policy, evaluated before the flight flag changes. */
+    public static InputResult handleToggleFlight(final Player player) {
+        if (CoreAbility.hasAbility(player, Tornado.class) || Bloodbending.isBloodbent(player)
+                || Suffocate.isBreathbent(player) || CoreAbility.hasAbility(player, FireJet.class)
+                || CoreAbility.hasAbility(player, AvatarState.class)) {
+            return new InputResult(player.getGameMode() != GameMode.CREATIVE);
+        }
+        return new InputResult(FlightMultiAbility.getFlyingPlayers().contains(player.getUniqueId()) && player.isFlying());
+    }
+
+    /** Existing glide listener policy, also reached by automatic native glide-stop events. */
+    public static InputResult handleToggleGlide(final Player player) {
+        if (FlightMultiAbility.getFlyingPlayers().contains(player.getUniqueId()) && player.isGliding()) return InputResult.cancel();
+        return new InputResult(ConfigManager.getConfig(BendingPlayer.getBendingPlayer(player)).getBoolean("Abilities.Fire.FireJet.ShowGliding")
+                && CoreAbility.hasAbility(player, FireJet.class));
     }
 
     public static InputResult handleRightClick(final Player player, final ClickType clickType) {

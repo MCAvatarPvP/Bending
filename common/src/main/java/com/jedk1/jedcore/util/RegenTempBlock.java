@@ -1,5 +1,7 @@
 package com.jedk1.jedcore.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.earthbending.passive.DensityShift;
 import com.projectkorra.projectkorra.platform.mc.Material;
@@ -68,7 +70,7 @@ public class RegenTempBlock {
             return;
         }
         if (blocks.containsKey(block)) {
-            blocks.replace(block, new RegenBlockData(System.currentTimeMillis() + delay, callback));
+            blocks.replace(block, new RegenBlockData(RollbackClock.millis() + delay, callback));
             if (temp) {
                 final BlockState directState = states.remove(block);
                 if (directState != null) directState.update(true);
@@ -81,7 +83,7 @@ public class RegenTempBlock {
                 block.setBlockData(data.clone());
             }
         } else {
-            blocks.put(block, new RegenBlockData(System.currentTimeMillis() + delay, callback));
+            blocks.put(block, new RegenBlockData(RollbackClock.millis() + delay, callback));
             // Callers that replace a moving layer must provide its exact
             // handle. Retiring the coordinate's current top here would destroy
             // an unrelated overlapping ability merely because it is on top.
@@ -109,7 +111,7 @@ public class RegenTempBlock {
             Block b = entry.getKey();
             RegenBlockData blockData = entry.getValue();
 
-            if (System.currentTimeMillis() >= blockData.endTime) {
+            if (RollbackClock.millis() >= blockData.endTime) {
                 TempBlock tb = temps.get(b);
                 if (tb != null) {
                     tb.revertBlock();

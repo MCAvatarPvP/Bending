@@ -234,6 +234,10 @@ public final class FabricMC {
         return value instanceof ServerPlayerEntity player ? player(player) : value == null ? null : new LivingView(value);
     }
 
+    static com.projectkorra.projectkorra.platform.mc.entity.EntityType entityType(net.minecraft.entity.Entity value) {
+        return com.projectkorra.projectkorra.platform.mc.entity.EntityType.valueOf(Registries.ENTITY_TYPE.getId(value.getType()).getPath().toUpperCase(java.util.Locale.ROOT));
+    }
+
     public static Entity entity(net.minecraft.entity.Entity value) {
         if (value == null) return null;
         if (value instanceof net.minecraft.entity.LivingEntity living) return living(living);
@@ -553,7 +557,7 @@ public final class FabricMC {
         return new Vec3d(value.getX(), value.getY(), value.getZ());
     }
 
-    static ParticleEffect particle(Particle value, Object data) {
+    public static ParticleEffect particle(Particle value, Object data) {
         if (value == null) return null;
 
         final String particleName = value.name();
@@ -693,6 +697,11 @@ public final class FabricMC {
         }
         net.minecraft.block.Block block = material(data.getMaterial());
         BlockState state = block.getDefaultState();
+        return applyBlockDataProperties(state, data);
+    }
+
+    /** Apply the mutable common facade over a caller-validated native base, preserving other native properties. */
+    public static BlockState applyBlockDataProperties(BlockState state, BlockData data) {
         if (data instanceof Levelled levelled) {
             state = withBestLevel(state, levelled.getLevel());
             if (state.contains(Properties.WATERLOGGED)) {
@@ -741,7 +750,7 @@ public final class FabricMC {
         return state;
     }
 
-    static void setFallingBlockState(FallingBlockEntity entity, BlockState state) {
+    public static void setFallingBlockState(FallingBlockEntity entity, BlockState state) {
         try {
             Field field = null;
             for (Field candidate : FallingBlockEntity.class.getDeclaredFields()) {
@@ -1007,6 +1016,29 @@ public final class FabricMC {
             }
         }
         return nativeStack;
+    }
+
+    public static void cloudColor(net.minecraft.entity.AreaEffectCloudEntity cloud, Color color) {
+        var potion = ((com.projectkorra.projectkorra.fabric.mixin.client.AreaEffectCloudEntityAccessor) cloud).projectkorra$potionContents();
+        cloud.setPotionContents(new net.minecraft.component.type.PotionContentsComponent(potion.potion(), java.util.Optional.of(color.asRGB()), potion.customEffects(), potion.customName()));
+    }
+
+    public static void cloudEffect(net.minecraft.entity.AreaEffectCloudEntity cloud, PotionEffect effect, boolean overwrite) {
+        var potion = ((com.projectkorra.projectkorra.fabric.mixin.client.AreaEffectCloudEntityAccessor) cloud).projectkorra$potionContents();
+        var type = status(effect.getType());
+        var effects = new java.util.ArrayList<>(potion.customEffects());
+        if (!overwrite && effects.stream().anyMatch(current -> current.getEffectType().equals(type))) return;
+        effects.removeIf(current -> current.getEffectType().equals(type));
+        effects.add(new StatusEffectInstance(type, effect.getDuration(), effect.getAmplifier()));
+        cloud.setPotionContents(new net.minecraft.component.type.PotionContentsComponent(potion.potion(), potion.customColor(), effects, potion.customName()));
+    }
+
+    public static boolean arrowInGround(PersistentProjectileEntity arrow) {
+        return ((com.projectkorra.projectkorra.fabric.mixin.client.ProjectileRollbackAccess) arrow).rollback$inGround();
+    }
+
+    public static boolean inWaterOrBubble(net.minecraft.entity.Entity entity) {
+        return entity.isTouchingWater() || entity.getBlockStateAtPos().isOf(net.minecraft.block.Blocks.BUBBLE_COLUMN);
     }
 
     static RegistryEntry<StatusEffect> status(
@@ -1506,7 +1538,7 @@ public final class FabricMC {
         @Override public int hashCode() { return Objects.hash(world.getRegistryKey(), pos); }
     }
 
-    private static final class BlockView extends Block {
+    private static final class BlockView extends Block implements com.projectkorra.projectkorra.platform.mc.block.BlockValue {
         private final ServerWorld world;
         private final BlockPos pos;
 
@@ -1727,10 +1759,8 @@ public final class FabricMC {
             return new BlockRef(world, pos);
         }
 
-        @Override public boolean equals(Object other) {
-            return other instanceof BlockView view && world.getRegistryKey().equals(view.world.getRegistryKey()) && pos.equals(view.pos);
-        }
-        @Override public int hashCode() { return Objects.hash(world.getRegistryKey(), pos); }
+        @Override public boolean equals(Object other) { return com.projectkorra.projectkorra.platform.mc.block.BlockValue.same(this, other); }
+        @Override public int hashCode() { return com.projectkorra.projectkorra.platform.mc.block.BlockValue.hash(this); }
     }
 
     private static final class BlockStateView extends com.projectkorra.projectkorra.platform.mc.block.BlockState {
@@ -1761,6 +1791,8 @@ public final class FabricMC {
 
     private static class EntityView extends Entity {
         protected final net.minecraft.entity.Entity value;
+
+        @Override public com.projectkorra.projectkorra.platform.mc.entity.EntityType getType() { return FabricMC.entityType(value); }
 
         private EntityView(net.minecraft.entity.Entity value) {
             this.value = value;
@@ -1869,6 +1901,8 @@ public final class FabricMC {
 
     private static class LivingView extends LivingEntity {
         protected final net.minecraft.entity.LivingEntity value;
+
+        @Override public com.projectkorra.projectkorra.platform.mc.entity.EntityType getType() { return FabricMC.entityType(value); }
 
         private LivingView(net.minecraft.entity.LivingEntity value) {
             this.value = value;
@@ -1983,6 +2017,8 @@ public final class FabricMC {
     private static final class ArmorStandView extends ArmorStand {
         private final ArmorStandEntity value;
 
+        @Override public com.projectkorra.projectkorra.platform.mc.entity.EntityType getType() { return FabricMC.entityType(value); }
+
         private ArmorStandView(ArmorStandEntity value) {
             this.value = value;
         }
@@ -2038,6 +2074,8 @@ public final class FabricMC {
     private static final class DroppedItemView extends Item {
         private final ItemEntity value;
 
+        @Override public com.projectkorra.projectkorra.platform.mc.entity.EntityType getType() { return FabricMC.entityType(value); }
+
         private DroppedItemView(ItemEntity value) {
             this.value = value;
         }
@@ -2079,6 +2117,8 @@ public final class FabricMC {
 
     private static final class FallingBlockView extends FallingBlock {
         private final FallingBlockEntity value;
+
+        @Override public com.projectkorra.projectkorra.platform.mc.entity.EntityType getType() { return FabricMC.entityType(value); }
 
         private FallingBlockView(FallingBlockEntity value) {
             this.value = value;
@@ -2124,6 +2164,8 @@ public final class FabricMC {
 
     private static class DisplayView extends Display {
         protected final DisplayEntity value;
+
+        @Override public com.projectkorra.projectkorra.platform.mc.entity.EntityType getType() { return FabricMC.entityType(value); }
 
         private DisplayView(DisplayEntity value) {
             this.value = value;
@@ -2185,6 +2227,8 @@ public final class FabricMC {
 
     private static final class BlockDisplayView extends BlockDisplay {
         private final DisplayEntity.BlockDisplayEntity value;
+
+        @Override public com.projectkorra.projectkorra.platform.mc.entity.EntityType getType() { return FabricMC.entityType(value); }
         private final DisplayView display;
 
         private BlockDisplayView(DisplayEntity.BlockDisplayEntity value) {
@@ -2224,6 +2268,8 @@ public final class FabricMC {
 
     private static final class ItemDisplayView extends ItemDisplay {
         private final DisplayEntity.ItemDisplayEntity value;
+
+        @Override public com.projectkorra.projectkorra.platform.mc.entity.EntityType getType() { return FabricMC.entityType(value); }
         private final DisplayView display;
 
         private ItemDisplayView(DisplayEntity.ItemDisplayEntity value) {
@@ -2275,6 +2321,8 @@ public final class FabricMC {
 
     private static final class PlayerView extends Player {
         private ServerPlayerEntity value;
+
+        @Override public com.projectkorra.projectkorra.platform.mc.entity.EntityType getType() { return FabricMC.entityType(value); }
 
         private PlayerView(ServerPlayerEntity value) {
             this.value = value;
@@ -2762,6 +2810,8 @@ public final class FabricMC {
     private static final class ArrowView extends Arrow {
         private final ArrowEntity value;
 
+        @Override public com.projectkorra.projectkorra.platform.mc.entity.EntityType getType() { return FabricMC.entityType(value); }
+
         private ArrowView(ArrowEntity value) {
             this.value = value;
         }
@@ -2806,18 +2856,14 @@ public final class FabricMC {
             return isInGround() ? block((ServerWorld) value.getEntityWorld(), value.getBlockPos()) : null;
         }
         private boolean isInGround() {
-            try {
-                Field field = PersistentProjectileEntity.class.getDeclaredField("inGroundTime");
-                field.setAccessible(true);
-                return field.getInt(value) > 0;
-            } catch (ReflectiveOperationException ignored) {
-                return false;
-            }
+            return FabricMC.arrowInGround(value);
         }
     }
 
     private static final class ShulkerBulletView extends ShulkerBullet {
         private final ShulkerBulletEntity value;
+
+        @Override public com.projectkorra.projectkorra.platform.mc.entity.EntityType getType() { return FabricMC.entityType(value); }
 
         private ShulkerBulletView(ShulkerBulletEntity value) {
             this.value = value;
@@ -2867,6 +2913,8 @@ public final class FabricMC {
 
     private static final class FireballView extends Fireball {
         private final SmallFireballEntity value;
+
+        @Override public com.projectkorra.projectkorra.platform.mc.entity.EntityType getType() { return FabricMC.entityType(value); }
 
         private FireballView(SmallFireballEntity value) {
             this.value = value;

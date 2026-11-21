@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.airbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -98,7 +101,7 @@ public class AirSuction extends AirAbility {
         this.otherAirPush = getConfig().getDouble("Abilities.Air.AirSuction.OtherAirPush");
         this.minimumAirBlastTime = getConfig().getLong("Abilities.Air.AirBlast.MinimumAirBlastTime");
         this.requireSourceTouchingBlock = getConfig().getBoolean("Abilities.Air.AirSuction.RequireSourceTouchingBlock");
-        this.random = new Random();
+        this.random = new RollbackRandom();
         this.origin = this.getTargetLocation();
         this.canAffectSelf = true;
 
@@ -390,7 +393,7 @@ public class AirSuction extends AirAbility {
 
         this.location = target.clone();
         this.direction = GeneralMethods.getDirection(this.location, this.origin).normalize();
-        this.usedStaminaThisShot = System.currentTimeMillis() - this.bPlayer.getLastAirBlastTime() < this.minimumAirBlastTime;
+        this.usedStaminaThisShot = RollbackClock.millis() - this.bPlayer.getLastAirBlastTime() < this.minimumAirBlastTime;
         this.pushed = false;
         this.progressing = true;
         this.bPlayer.addCooldown(this);

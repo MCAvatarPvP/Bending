@@ -1,5 +1,10 @@
 package com.projectkorra.projectkorra.waterbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackArenaBlockIndices;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
@@ -25,7 +30,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class WaterSpout extends WaterAbility {
 
-    private static final Map<Block, Block> AFFECTED_BLOCKS = new ConcurrentHashMap<Block, Block>();
+    private static final Map<Block, Block> AFFECTED_BLOCKS = RollbackArenaBlockIndices.live().spout;
     private final List<TempBlock> blocks = new ArrayList<TempBlock>();
 
     @Attribute("CanBendOnPackedIce")
@@ -71,7 +76,7 @@ public class WaterSpout extends WaterAbility {
         this.height = getConfig().getDouble("Abilities.Water.WaterSpout.Height");
         this.interval = getConfig().getLong("Abilities.Water.WaterSpout.Interval");
         this.duration = getConfig().getLong("Abilities.Water.WaterSpout.Duration");
-        this.startTime = System.currentTimeMillis();
+        this.startTime = RollbackClock.millis();
 
         this.canSpoutHop = getConfig().getBoolean("Abilities.Water.WaterSpout.SpoutHop.Enabled");
         this.spoutHopPower = getConfig().getDouble("Abilities.Water.WaterSpout.SpoutHop.Power");
@@ -131,12 +136,13 @@ public class WaterSpout extends WaterAbility {
     }
 
     public static Map<Block, Block> getAffectedBlocks() {
-        return AFFECTED_BLOCKS;
+        var indices = RollbackArenaBlockIndices.current();
+        return indices == null ? AFFECTED_BLOCKS : indices.spout;
     }
 
     /** Drops old-world column coordinates without writing their blocks. */
     public static void discardAllTracking() {
-        AFFECTED_BLOCKS.clear();
+        getAffectedBlocks().clear();
     }
 
     private void hop() {
@@ -171,21 +177,27 @@ public class WaterSpout extends WaterAbility {
             final Block block = loc.getBlock();
             if ((!TempBlock.isTempBlock(block)) && (ElementalAbility.isAir(block.getType()) || !GeneralMethods.isSolid(block))) {
                 this.blocks.add(new TempBlock(block, GeneralMethods.getWaterData(7), this));
-                AFFECTED_BLOCKS.put(block, block);
+                getAffectedBlocks().put(block, block);
             }
         }
     }
 
     @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
+        this.startTime = shift.time(this.startTime);
+    }
+
+    @Override
     public void progress() {
         for (final TempBlock tb : this.blocks) {
-            AFFECTED_BLOCKS.remove(tb.getBlock());
+            getAffectedBlocks().remove(tb.getBlock());
             tb.revertBlock();
         }
         if (this.player.isDead() || !this.player.isOnline() || !this.bPlayer.canBendIgnoreBindsCooldowns(this)) {
             this.remove();
             return;
-        } else if (this.duration != 0 && System.currentTimeMillis() > this.startTime + this.duration) {
+        } else if (this.duration != 0 && RollbackClock.millis() > this.startTime + this.duration) {
             this.bPlayer.addCooldown(this);
             this.remove();
             if (this.isRemoved()) return;
@@ -193,7 +205,7 @@ public class WaterSpout extends WaterAbility {
         this.blocks.clear();
         this.player.setFallDistance(0);
         this.player.setSprinting(false);
-        if ((new Random()).nextInt(10) == 0) {
+        if ((new RollbackRandom()).nextInt(10) == 0) {
             playWaterbendingSound(this.player.getLocation());
         }
 
@@ -217,7 +229,7 @@ public class WaterSpout extends WaterAbility {
 
                 if (!TempBlock.isTempBlock(block)) {
                     this.blocks.add(new TempBlock(block, Material.WATER.createBlockData(), this));
-                    AFFECTED_BLOCKS.put(block, block);
+                    getAffectedBlocks().put(block, block);
                 }
                 this.rotateParticles(block);
             }
@@ -255,7 +267,7 @@ public class WaterSpout extends WaterAbility {
             final List<TempBlock> ownedBlocks = new ArrayList<>(this.blocks);
             this.blocks.clear();
             for (final TempBlock tb : ownedBlocks) {
-                AFFECTED_BLOCKS.remove(tb.getBlock());
+                getAffectedBlocks().remove(tb.getBlock());
                 try {
                     tb.revertBlock();
                 } catch (RuntimeException failure) {
@@ -309,8 +321,8 @@ public class WaterSpout extends WaterAbility {
             return;
         }
 
-        if (System.currentTimeMillis() >= this.time + this.interval) {
-            this.time = System.currentTimeMillis();
+        if (RollbackClock.millis() >= this.time + this.interval) {
+            this.time = RollbackClock.millis();
 
             Location location = block.getLocation();
             final Location playerLoc = this.player.getLocation();

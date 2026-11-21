@@ -161,7 +161,10 @@ public class Location implements Cloneable {
     public boolean equals(Object other) {
         if (this == other) return true;
         if (!(other instanceof Location location)) return false;
-        return Objects.equals(getWorld(), location.getWorld())
+        World leftWorld = getWorld(), rightWorld = location.getWorld();
+        boolean sameWorld = leftWorld == rightWorld || leftWorld != null && rightWorld != null
+                && leftWorld.handle() != null && leftWorld.handle() == rightWorld.handle();
+        return sameWorld
                 && Double.compare(getX(), location.getX()) == 0
                 && Double.compare(getY(), location.getY()) == 0
                 && Double.compare(getZ(), location.getZ()) == 0
@@ -171,7 +174,9 @@ public class Location implements Cloneable {
 
     @Override
     public int hashCode() {
-        return Objects.hash(getWorld(), getX(), getY(), getZ(), getYaw(), getPitch());
+        // World identity differs between replicas. Equality still checks the world,
+        // while a constant world component keeps hash-backed iteration deterministic.
+        return Objects.hash(0, getX(), getY(), getZ(), getYaw(), getPitch());
     }
 
     public Object handle() {

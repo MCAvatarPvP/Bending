@@ -1,5 +1,7 @@
 package me.simplicitee.project.addons.ability.earth;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.LavaAbility;
@@ -124,11 +126,11 @@ public class MagmaSlap extends LavaAbility implements AddonAbility {
             return;
         }
 
-        if (System.currentTimeMillis() < last + next) {
+        if (RollbackClock.millis() < last + next) {
             return;
         }
 
-        last = System.currentTimeMillis();
+        last = RollbackClock.millis();
         length++;
 
         if (length % 4 == 0) {

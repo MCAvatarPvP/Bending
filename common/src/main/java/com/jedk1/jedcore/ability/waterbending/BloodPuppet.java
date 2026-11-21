@@ -1,5 +1,8 @@
 package com.jedk1.jedcore.ability.waterbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
 import com.projectkorra.projectkorra.BendingPlayer;
@@ -23,7 +26,7 @@ import java.util.Random;
 public class BloodPuppet extends BloodAbility implements AddonAbility {
 
     public LivingEntity puppet;
-    Random rand = new Random();
+    Random rand = new RollbackRandom();
     private boolean nightOnly;
     private boolean fullMoonOnly;
     private boolean undeadMobs;
@@ -44,7 +47,7 @@ public class BloodPuppet extends BloodAbility implements AddonAbility {
         }
 
         setFields();
-        endTime = System.currentTimeMillis() + holdTime;
+        endTime = RollbackClock.millis() + holdTime;
 
         if (grab()) {
             start();
@@ -181,8 +184,8 @@ public class BloodPuppet extends BloodAbility implements AddonAbility {
             return;
 
         long damageCd = 0;
-        if (System.currentTimeMillis() > lastDamageTime + damageCd) {
-            lastDamageTime = System.currentTimeMillis();
+        if (RollbackClock.millis() > lastDamageTime + damageCd) {
+            lastDamageTime = RollbackClock.millis();
 
             if (puppet instanceof Skeleton) {
                 Skeleton skelly = (Skeleton) puppet;
@@ -310,7 +313,7 @@ public class BloodPuppet extends BloodAbility implements AddonAbility {
             return;
         }
 
-        if (System.currentTimeMillis() > endTime) {
+        if (RollbackClock.millis() > endTime) {
             remove();
             return;
         }

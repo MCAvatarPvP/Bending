@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.chiblocking;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.ability.ChiAbility;
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -56,7 +58,7 @@ public class AcrobatStance extends ChiAbility implements StanceAbility {
         if (!this.bPlayer.canBendIgnoreBinds(this) || !this.bPlayer.hasElement(Element.CHI)) {
             this.remove();
             return;
-        } else if (this.duration != 0 && System.currentTimeMillis() > this.getStartTime() + this.duration) {
+        } else if (this.duration != 0 && RollbackClock.millis() > this.getStartTime() + this.duration) {
             this.remove();
             return;
         }

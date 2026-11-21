@@ -1,6 +1,7 @@
 package com.projectkorra.projectkorra.prediction.action;
 
 import com.projectkorra.projectkorra.ability.CoreAbility;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
 
 import java.util.Random;
 import java.util.UUID;
@@ -9,8 +10,32 @@ import java.util.UUID;
 public final class PredictionDeterminism {
     private static final ThreadLocal<Long> ACTION = new ThreadLocal<>();
     private static final ThreadLocal<Long> SEED = new ThreadLocal<>();
+    private static final ThreadLocal<Long> COMBAT_SEED = new ThreadLocal<>();
 
     private PredictionDeterminism() {
+    }
+
+    /** Combat chance belongs to the server session and native action, including replays of its progress. */
+    public static long combatSeed(UUID session, long nativeAction) {
+        if (session == null || nativeAction <= 0) return 0;
+        long seed = random(session, "bending-combat", nativeAction).nextLong() & Long.MAX_VALUE;
+        return seed == 0 ? 1 : seed;
+    }
+
+    public static long combatSeed() {
+        var value = COMBAT_SEED.get();
+        return value == null ? 0 : value;
+    }
+
+    public static void runCombat(long action, long seed, long combatSeed, Runnable task) {
+        var previous = COMBAT_SEED.get();
+        if (combatSeed > 0) COMBAT_SEED.set(combatSeed);
+        else COMBAT_SEED.remove();
+        try { run(action, seed, task); }
+        finally {
+            if (previous != null) COMBAT_SEED.set(previous);
+            else COMBAT_SEED.remove();
+        }
     }
 
     public static void run(final long actionSequence, final Runnable task) {
@@ -58,7 +83,7 @@ public final class PredictionDeterminism {
     }
 
     public static Random random(final UUID owner, final String scope, final long actionSequence) {
-        if (actionSequence <= 0L || owner == null) return new Random();
+        if (actionSequence <= 0L || owner == null) return new RollbackRandom();
         final long sequence = actionSequence;
         long seed = sequence ^ owner.getMostSignificantBits() ^ Long.rotateLeft(owner.getLeastSignificantBits(), 29);
         seed ^= scope == null ? 0L : Integer.toUnsignedLong(scope.hashCode()) * 0x9E3779B97F4A7C15L;
@@ -67,6 +92,6 @@ public final class PredictionDeterminism {
         seed ^= seed >>> 27;
         seed *= 0x94D049BB133111EBL;
         seed ^= seed >>> 31;
-        return new Random(seed);
+        return new RollbackRandom(seed);
     }
 }

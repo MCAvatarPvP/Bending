@@ -1,5 +1,7 @@
 package com.jedk1.jedcore.ability.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -215,7 +217,7 @@ public class MetalShred extends MetalAbility implements AddonAbility {
         if (!stop)
             return;
 
-        lastExtendTime = System.currentTimeMillis();
+        lastExtendTime = RollbackClock.millis();
         fullLength = length;
         if (lastBlock != null)
             lastBlock = lastBlock.getRelative(GeneralMethods.getCardinalDirection(GeneralMethods.getDirection(player.getLocation(), lastBlock.getLocation())).getOppositeFace());
@@ -242,8 +244,8 @@ public class MetalShred extends MetalAbility implements AddonAbility {
                 stop = true;
         }
 
-        if (!horizontal && stop && !stopCoil && extending && System.currentTimeMillis() > lastExtendTime + extendTick) {
-            lastExtendTime = System.currentTimeMillis();
+        if (!horizontal && stop && !stopCoil && extending && RollbackClock.millis() > lastExtendTime + extendTick) {
+            lastExtendTime = RollbackClock.millis();
             if (length > 0) {
 
                 Block b = lastBlock.getRelative(GeneralMethods.getCardinalDirection(GeneralMethods.getDirection(lastBlock.getLocation(), GeneralMethods.getTargetedLocation(player, fullLength))));

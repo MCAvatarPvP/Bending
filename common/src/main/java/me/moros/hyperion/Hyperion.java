@@ -36,8 +36,8 @@ public final class Hyperion implements JavaPlugin {
         new ConfigManager();
         Platform.events().registerListener(LISTENER, PLUGIN);
         CoreMethods.loadAbilities();
-        Platform.scheduler().runTimer(TempArmorStand::manage, 0, 1);
-        Platform.scheduler().runTimer(BendingFallingBlock::manage, 0, 5);
+        Platform.scheduler().runTimer(new TempArmorStand.Manager(), 0, 1);
+        Platform.scheduler().runTimer(new BendingFallingBlock.Manager(), 0, 5);
         Platform.scheduler().runLater(Hyperion::initializeCollisions, 1);
     }
 

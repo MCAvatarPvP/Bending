@@ -1,5 +1,8 @@
 package com.jedk1.jedcore.ability.firebending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JCMethods;
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
@@ -158,7 +161,7 @@ public class FireBreath extends FireAbility implements AddonAbility {
             remove();
             return;
         }
-        if (System.currentTimeMillis() < getStartTime() + duration) {
+        if (RollbackClock.millis() < getStartTime() + duration) {
             createBeam();
         } else {
             bPlayer.addCooldown(this);
@@ -251,8 +254,8 @@ public class FireBreath extends FireAbility implements AddonAbility {
                         displayParticle(getOffsetLocation(loc, offset), 1, 128, 36, 171);
                 }
             } else {
-                playFirebendingParticles(loc, particles, Math.random(), Math.random(), Math.random());
-                ParticleEffect.SMOKE_NORMAL.display(loc, particles, Math.random(), Math.random(), Math.random(), size);
+                playFirebendingParticles(loc, particles, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction());
+                ParticleEffect.SMOKE_NORMAL.display(loc, particles, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), size);
             }
         }
     }
@@ -270,7 +273,7 @@ public class FireBreath extends FireAbility implements AddonAbility {
      * amount.
      */
     private Location getOffsetLocation(Location loc, double offset) {
-        return loc.clone().add((float) ((Math.random() - 0.5) * offset), (float) ((Math.random() - 0.5) * offset), (float) ((Math.random() - 0.5) * offset));
+        return loc.clone().add((float) ((RollbackRandom.fraction() - 0.5) * offset), (float) ((RollbackRandom.fraction() - 0.5) * offset), (float) ((RollbackRandom.fraction() - 0.5) * offset));
     }
 
     @Override

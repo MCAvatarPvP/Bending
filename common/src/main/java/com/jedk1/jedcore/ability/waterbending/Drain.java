@@ -1,5 +1,7 @@
 package com.jedk1.jedcore.ability.waterbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.jedk1.jedcore.JCMethods;
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
@@ -81,7 +83,7 @@ public class Drain extends WaterAbility implements AddonAbility {
         }
         setFields();
         this.usePlants = bPlayer.canPlantbend();
-        endTime = System.currentTimeMillis() + duration;
+        endTime = RollbackClock.millis() + duration;
         if (!canFill()) {
             if (!blastsEnabled)
                 return;
@@ -151,7 +153,7 @@ public class Drain extends WaterAbility implements AddonAbility {
                 remove();
                 return;
             }
-            if (System.currentTimeMillis() > endTime) {
+            if (RollbackClock.millis() > endTime) {
                 bPlayer.addCooldown(this);
                 remove();
                 return;

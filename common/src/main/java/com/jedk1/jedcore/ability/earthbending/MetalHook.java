@@ -1,5 +1,7 @@
 package com.jedk1.jedcore.ability.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.jedk1.jedcore.JCMethods;
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
@@ -102,13 +104,13 @@ public class MetalHook extends MetalAbility implements AddonAbility {
         if (player.isSneaking()) {
             player.setVelocity(new Vector());
 
-            if (System.currentTimeMillis() > (time + 1000)) {
+            if (RollbackClock.millis() > (time + 1000)) {
                 removeAllArrows();
                 remove();
                 return;
             }
         } else {
-            time = System.currentTimeMillis();
+            time = RollbackClock.millis();
         }
 
         Vector target = new Vector();

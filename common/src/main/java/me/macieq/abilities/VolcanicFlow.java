@@ -1,5 +1,7 @@
 package me.macieq.abilities;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.ComboAbility;
 import com.projectkorra.projectkorra.ability.LavaAbility;
@@ -132,7 +134,7 @@ public class VolcanicFlow extends LavaAbility implements AddonAbility, ComboAbil
    }
 
    private void move() {
-      if (System.currentTimeMillis() >= this.getStartTime() + this.duration) {
+      if (RollbackClock.millis() >= this.getStartTime() + this.duration) {
          this.setMonitor();
       } else {
          if (this.random.nextInt() % 20 == 0) {

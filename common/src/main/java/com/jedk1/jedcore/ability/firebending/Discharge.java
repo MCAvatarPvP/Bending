@@ -1,5 +1,8 @@
 package com.jedk1.jedcore.ability.firebending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JCMethods;
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.collision.CollisionDetector;
@@ -101,7 +104,7 @@ public class Discharge extends LightningAbility implements AddonAbility, EntityH
             return;
         }
 
-        if (System.currentTimeMillis() < (getStartTime() + duration) && !hit) {
+        if (RollbackClock.millis() < (getStartTime() + duration) && !hit) {
             advanceLocation();
         } else {
             remove();
@@ -181,7 +184,7 @@ public class Discharge extends LightningAbility implements AddonAbility, EntityH
                         GeneralMethods.setVelocity(this, entity, knockbackVector);
 
                         for (int k = 0; k < 5; k++) {
-                            playLightningbendingParticle(entity.getLocation(), (float) Math.random(), (float) Math.random(), (float) Math.random());
+                            playLightningbendingParticle(entity.getLocation(), (float) RollbackRandom.fraction(), (float) RollbackRandom.fraction(), (float) RollbackRandom.fraction());
                         }
 
                         playLightningbendingSound(location);

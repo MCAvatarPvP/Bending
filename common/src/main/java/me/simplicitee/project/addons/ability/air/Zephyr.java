@@ -1,5 +1,7 @@
 package me.simplicitee.project.addons.ability.air;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.AirAbility;
@@ -28,7 +30,7 @@ public class Zephyr extends AirAbility implements AddonAbility {
     public Zephyr(Player player) {
         super(player);
 
-        this.angle = new Random().nextInt(360);
+        this.angle = new RollbackRandom().nextInt(360);
         this.radius = ProjectAddons.instance.getConfig(bPlayer).getDouble("Abilities.Air.Zephyr.Radius");
         this.cooldown = ProjectAddons.instance.getConfig(bPlayer).getLong("Abilities.Air.Zephyr.Cooldown");
 

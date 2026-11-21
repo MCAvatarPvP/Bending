@@ -1,5 +1,7 @@
 package me.literka.abilities;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.ChiAbility;
@@ -44,7 +46,7 @@ public class Deflect extends ChiAbility implements AddonAbility {
             return;
         }
 
-        if (duration != 0 && System.currentTimeMillis() > getStartTime() + duration) {
+        if (duration != 0 && RollbackClock.millis() > getStartTime() + duration) {
             bPlayer.addCooldown(this);
             remove();
         }

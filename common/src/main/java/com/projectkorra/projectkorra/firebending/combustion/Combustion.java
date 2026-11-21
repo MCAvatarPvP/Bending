@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.firebending.combustion;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AirAbility;
 import com.projectkorra.projectkorra.ability.CombustionAbility;
@@ -82,7 +84,7 @@ public class Combustion extends CombustionAbility {
         final Combustion combustion = getAbility(player, Combustion.class);
         if (combustion != null) {
             combustion.createExplosion(combustion.location, combustion.explosivePower, combustion.breakBlocks);
-            ParticleEffect.EXPLOSION_NORMAL.display(combustion.location, 3, Math.random(), Math.random(), Math.random(), 0);
+            ParticleEffect.EXPLOSION_NORMAL.display(combustion.location, 3, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0);
         }
     }
 

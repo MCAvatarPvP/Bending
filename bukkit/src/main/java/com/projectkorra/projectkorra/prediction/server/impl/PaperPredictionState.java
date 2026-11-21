@@ -63,6 +63,10 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import com.projectkorra.projectkorra.prediction.server.PaperPredictionServer;
+import com.projectkorra.projectkorra.prediction.rollback.PaperRollbackIngress;
+import com.projectkorra.projectkorra.prediction.rollback.PaperRollbackStarts;
+import com.projectkorra.projectkorra.prediction.rollback.PaperRollbackBootstraps;
+import com.projectkorra.projectkorra.prediction.rollback.PaperRollbackLifecycle;
 
 public abstract class PaperPredictionState implements PluginMessageListener, Runnable, TempBlockSync.Listener,
         TempFallingBlockSync.Listener, CooldownSync.Listener, VelocitySync.Listener,
@@ -86,6 +90,10 @@ public abstract class PaperPredictionState implements PluginMessageListener, Run
     protected static final ThreadLocal<Long> INPUT_SEQUENCE = new ThreadLocal<>();
 
     protected final JavaPlugin plugin;
+    protected final PaperRollbackIngress rollbackInputs = new PaperRollbackIngress();
+    protected final PaperRollbackStarts rollbackStarts;
+    protected final PaperRollbackBootstraps rollbackBootstraps;
+    protected final PaperRollbackLifecycle rollbackLifecycle = new PaperRollbackLifecycle();
     protected final Map<UUID, Session> sessions = new ConcurrentHashMap<>();
     protected final Map<UUID, Deque<EntityFrame>> playerHistory = new HashMap<>();
     protected final Map<CoreAbility, Action> abilityActions = Collections.synchronizedMap(new IdentityHashMap<>());
@@ -110,6 +118,8 @@ public abstract class PaperPredictionState implements PluginMessageListener, Run
 
     protected PaperPredictionState(final JavaPlugin plugin) {
         this.plugin = plugin;
+        this.rollbackStarts = new PaperRollbackStarts(plugin);
+        this.rollbackBootstraps = new PaperRollbackBootstraps(plugin, () -> tick);
     }
 
     protected abstract void sendState(Player player, Session session, boolean force);
@@ -178,6 +188,10 @@ public abstract class PaperPredictionState implements PluginMessageListener, Run
         public final LinkedHashMap<Long, Action> actions = new LinkedHashMap<>();
         public final ArrayDeque<PaperPredictionProtocol.InputVeto> inputVetoes = new ArrayDeque<>();
         public final NativeActionTagStream actionTags = new NativeActionTagStream();
+        public final com.projectkorra.projectkorra.prediction.action.NativeMeleeActionStream melee =
+                new com.projectkorra.projectkorra.prediction.action.NativeMeleeActionStream();
+        Action meleeSwing;
+        org.bukkit.event.entity.EntityDamageByEntityEvent meleeEvent;
         public final RateLimiter claimLimiter = new RateLimiter();
         public final LinkedHashMap<DirectBlockCause, Integer> directBlockOrdinals = new LinkedHashMap<>();
         public final Set<String> predictedCooldowns = new HashSet<>();
@@ -236,6 +250,8 @@ public abstract class PaperPredictionState implements PluginMessageListener, Run
         public final Map<String, Integer> directBlockOrdinals = new HashMap<>();
         public final Map<UUID, Claim> claims = new HashMap<>();
         public long clientSequence;
+        public final List<String> meleeCreations = new ArrayList<>();
+        public int projectileOrdinal;
         public int tempFallingBlockOrdinal;
         public int tempBlockOrdinal;
         public boolean locallyPredicted;

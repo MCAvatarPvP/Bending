@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.waterbending.combo;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.ComboAbility;
@@ -69,7 +72,7 @@ public class IceBullet extends IceAbility implements ComboAbility {
     public IceBullet(final Player player) {
         super(player);
 
-        this.time = System.currentTimeMillis();
+        this.time = RollbackClock.millis();
         this.tasks = new ArrayList<>();
         this.affectedBlocks = new ConcurrentHashMap<>();
 
@@ -199,6 +202,11 @@ public class IceBullet extends IceAbility implements ComboAbility {
     }
 
     @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
+    }
+
+    @Override
     public void progress() {
         if (this.player.isDead() || !this.player.isOnline()) {
             this.remove();
@@ -233,10 +241,10 @@ public class IceBullet extends IceAbility implements ComboAbility {
             return;
         } else if (this.waterGrabber.getState() == WaterSourceGrabber.AnimationState.FINISHED) {
             if (this.time == 0) {
-                this.time = System.currentTimeMillis();
+                this.time = RollbackClock.millis();
             }
 
-            final long timeDiff = System.currentTimeMillis() - this.time;
+            final long timeDiff = RollbackClock.millis() - this.time;
             if (this.state == AbilityState.ICE_BULLET_FORMING) {
                 if (timeDiff < 1000 * this.animationSpeed) {
                     final double steps = this.radius * ((timeDiff + 100) / (1000.0 * this.animationSpeed));

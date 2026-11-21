@@ -1,5 +1,7 @@
 package com.jedk1.jedcore.ability.waterbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
 import com.jedk1.jedcore.util.ThrownEntityTracker;
@@ -45,7 +47,7 @@ public class Bloodbending extends BloodAbility implements AddonAbility {
             return;
         }
         setFields();
-        time = System.currentTimeMillis() + holdTime;
+        time = RollbackClock.millis() + holdTime;
         if (grab()) {
             start();
         }
@@ -186,7 +188,7 @@ public class Bloodbending extends BloodAbility implements AddonAbility {
             remove();
             return;
         }
-        if (System.currentTimeMillis() > time) {
+        if (RollbackClock.millis() > time) {
             remove();
             return;
         }

@@ -52,6 +52,7 @@ public class Tremorsense extends EarthAbility {
 
     public static void manage(final Server server) {
         for (final Player player : server.getOnlinePlayers()) {
+            if (com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership.blocks(player.getUniqueId())) continue;
 
             if (canTremorSense(player) && !hasAbility(player, Tremorsense.class)) {
                 new Tremorsense(player, false);

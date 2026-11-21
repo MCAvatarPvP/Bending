@@ -1,5 +1,11 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantStatuses;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership;
+
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.platform.mc.Location;
@@ -12,42 +18,48 @@ import java.util.HashSet;
 import java.util.Set;
 
 public class MovementHandler {
+    public static final String STOP_METADATA = "movement:stop";
 
     public static Set<MovementHandler> handlers = new HashSet<>();
 
     private final LivingEntity entity;
     private final CoreAbility ability;
-    private final long startTime;
+    private long startTime;
     private ResetTask reset = null;
     private Location location;
     private long duration;
     private String message;
 
+    private static Set<MovementHandler> restrictions() {
+        var state = RollbackParticipantStatuses.current();
+        return state == null ? handlers : state.movement();
+    }
+
     public MovementHandler(LivingEntity entity, CoreAbility ability) {
         this.entity = entity;
         this.location = entity.getLocation();
         this.ability = ability;
-        this.startTime = System.currentTimeMillis();
+        this.startTime = RollbackClock.millis();
     }
 
     public static void tickAll() {
-        for (int i = 0; i < handlers.size(); i++) {
-            ((MovementHandler) handlers.toArray()[i]).tick();
+        for (MovementHandler handler : new java.util.ArrayList<>(restrictions())) {
+            if (restrictions().contains(handler)) handler.tick();
         }
     }
 
     public static boolean isStopped(Entity entity) {
-        return entity.hasMetadata("movement:stop");
+        return entity.hasMetadata(STOP_METADATA);
     }
 
     public static void resetAll() {
-        for (MovementHandler handler : handlers) {
+        for (MovementHandler handler : restrictions()) {
             handler.reset();
         }
     }
 
     public static MovementHandler getFromEntityAndAbility(Entity entity, CoreAbility ability) {
-        for (final MovementHandler handler : handlers) {
+        for (final MovementHandler handler : restrictions()) {
             if (handler.getEntity().getEntityId() == entity.getEntityId() && handler.getAbility().equals(ability)) {
                 return handler;
             }
@@ -59,26 +71,28 @@ public class MovementHandler {
     public void stopWithDuration(long duration, String message) {
         this.duration = duration;
         this.message = message;
-        handlers.add(this);
-        this.entity.setMetadata("movement:stop", new FixedMetadataValue(ProjectKorra.plugin, ability));
+        restrictions().add(this);
+        this.entity.setMetadata(STOP_METADATA, new FixedMetadataValue(ProjectKorra.plugin, ability));
     }
 
     public void stop(String message) {
         this.duration = -1;
         this.message = message;
-        handlers.add(this);
-        this.entity.setMetadata("movement:stop", new FixedMetadataValue(ProjectKorra.plugin, ability));
+        restrictions().add(this);
+        this.entity.setMetadata(STOP_METADATA, new FixedMetadataValue(ProjectKorra.plugin, ability));
     }
 
     private void tick() {
-        if (duration != -1 && duration >= 0 && System.currentTimeMillis() > startTime + duration) {
+        if (RollbackLiveOwnership.blocks(entity.getUniqueId())
+                || (ability != null && ability.getPlayer() != null && RollbackLiveOwnership.blocks(ability.getPlayer().getUniqueId()))) return;
+        if (duration != -1 && duration >= 0 && RollbackClock.millis() > startTime + duration) {
             reset();
             return;
         }
         if (entity instanceof Player) {
             Player player = (Player) entity;
             Location loc = player.getLocation();
-            double currTime = (double) (duration - (System.currentTimeMillis() - startTime)) / 1000;
+            double currTime = (double) (duration - (RollbackClock.millis() - startTime)) / 1000;
             ChatUtil.sendActionBar(message.replace("{current_stun_time}", "" + currTime), player);
             if (loc.getX() == location.getX() && loc.getY() == location.getY() && loc.getZ() == location.getZ()) {
                 return;
@@ -96,20 +110,24 @@ public class MovementHandler {
     }
 
     public void reset() {
-        handlers.remove(this);
+        restrictions().remove(this);
         if (!(this.entity instanceof Player)) {
             this.entity.setAI(true);
         }
         if (this.reset != null) {
             this.reset.run();
         }
-        if (this.entity.hasMetadata("movement:stop")) {
-            this.entity.removeMetadata("movement:stop", ProjectKorra.plugin);
+        if (this.entity.hasMetadata(STOP_METADATA)) {
+            this.entity.removeMetadata(STOP_METADATA, ProjectKorra.plugin);
         }
     }
 
     public CoreAbility getAbility() {
         return this.ability;
+    }
+
+    public void rebase(RollbackTimeShift time) {
+        time.once(this, () -> startTime = time.time(startTime));
     }
 
     public LivingEntity getEntity() {

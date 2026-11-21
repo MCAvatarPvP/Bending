@@ -19,6 +19,10 @@
 
 package me.moros.hyperion.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.object.EarthCosmetic;
@@ -35,10 +39,35 @@ import java.util.stream.Collectors;
 
 public class BendingFallingBlock {
     private static final Map<FallingBlock, BendingFallingBlock> instances = new ConcurrentHashMap<>();
-    private static final Queue<BendingFallingBlock> bfbQueue = new PriorityQueue<>(Comparator.comparingLong(BendingFallingBlock::getExpirationTime));
+    public static final class ExpiryOrder implements Comparator<BendingFallingBlock> {
+        @Override public int compare(BendingFallingBlock left, BendingFallingBlock right) {
+            return Long.compare(left.getExpirationTime(), right.getExpirationTime());
+        }
+    }
+    private static final Queue<BendingFallingBlock> bfbQueue = new PriorityQueue<>(new ExpiryOrder());
+    private static Map<FallingBlock, BendingFallingBlock> members() {
+        var duel = com.projectkorra.projectkorra.prediction.rollback.RollbackAddonActors.current();
+        return duel == null ? instances : duel.falling;
+    }
+    private static Queue<BendingFallingBlock> expiry() {
+        var duel = com.projectkorra.projectkorra.prediction.rollback.RollbackAddonActors.current();
+        return duel == null ? bfbQueue : duel.fallingExpiry;
+    }
+    public static Set<BendingFallingBlock> managed() {
+        var result = new HashSet<>(members().values());
+        result.addAll(expiry());
+        return result;
+    }
+    public static void resume(BendingFallingBlock actor) {
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackDomain.active())
+            throw new IllegalStateException("Restore confirmed actors on the live server");
+        var existing = instances.putIfAbsent(actor.fallingBlock, actor);
+        if (existing != null && existing != actor) throw new IllegalStateException("Temporary actor ownership changed");
+        if (existing == null) bfbQueue.add(actor);
+    }
     private final FallingBlock fallingBlock;
     private final CoreAbility ability;
-    private final long expirationTime;
+    private long expirationTime;
 
     public BendingFallingBlock(Location location, BlockData data, Vector velocity, CoreAbility abilityInstance, boolean gravity) {
         this(location, data, velocity, abilityInstance, gravity, 30000);
@@ -59,38 +88,41 @@ public class BendingFallingBlock {
         fallingBlock.setGravity(gravity);
         fallingBlock.setDropItem(false);
 
-        expirationTime = System.currentTimeMillis() + delay;
+        expirationTime = RollbackClock.millis() + delay;
         ability = abilityInstance;
-        instances.put(fallingBlock, this);
-        bfbQueue.add(this);
+        members().put(fallingBlock, this);
+        expiry().add(this);
         TempFallingBlockSync.publish(abilityInstance, fallingBlock, predictionOrdinal);
     }
 
     public static boolean isBendingFallingBlock(FallingBlock fb) {
-        return instances.containsKey(fb);
+        return members().containsKey(fb);
     }
 
     public static BendingFallingBlock get(FallingBlock fb) {
-        return instances.get(fb);
+        return members().get(fb);
     }
 
     public static Set<BendingFallingBlock> getFromAbility(CoreAbility ability) {
-        return instances.values().stream().filter(bfb -> bfb.getAbility().equals(ability)).collect(Collectors.toSet());
+        return members().values().stream().filter(bfb -> bfb.getAbility().equals(ability)).collect(Collectors.toSet());
     }
 
+    public static final class Manager implements Runnable {
+        @Override public void run() { manage(); }
+    }
     public static void manage() {
-        final long currentTime = System.currentTimeMillis();
-        while (!bfbQueue.isEmpty()) {
-            final BendingFallingBlock bfb = bfbQueue.peek();
+        final long currentTime = RollbackClock.millis();
+        while (!expiry().isEmpty()) {
+            final BendingFallingBlock bfb = expiry().peek();
             if (currentTime > bfb.getExpirationTime()) {
-                bfbQueue.poll();
+                expiry().poll();
                 bfb.remove();
             } else {
                 return;
             }
         }
 
-        Iterator<BendingFallingBlock> iterator = instances.values().iterator();
+        Iterator<BendingFallingBlock> iterator = members().values().iterator();
         while (iterator.hasNext()) {
             BendingFallingBlock bfb = iterator.next();
             if (currentTime > bfb.getExpirationTime()) {
@@ -101,9 +133,9 @@ public class BendingFallingBlock {
     }
 
     public static void removeAll() {
-        bfbQueue.clear();
-        instances.keySet().forEach(Entity::remove);
-        instances.clear();
+        expiry().clear();
+        members().keySet().forEach(Entity::remove);
+        members().clear();
     }
 
     public CoreAbility getAbility() {
@@ -114,12 +146,17 @@ public class BendingFallingBlock {
         return fallingBlock;
     }
 
+    public void rebase(RollbackTimeShift time) {
+        time.once(this, () -> expirationTime = time.time(expirationTime));
+    }
+
     public long getExpirationTime() {
         return expirationTime;
     }
 
     public void remove() {
-        instances.remove(fallingBlock);
+        if (com.projectkorra.projectkorra.prediction.rollback.RollbackAddonActors.current() != null) expiry().remove(this);
+        members().remove(fallingBlock, this);
         fallingBlock.remove();
     }
 }

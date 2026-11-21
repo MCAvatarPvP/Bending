@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.earthbending.metal;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.MetalAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
@@ -70,7 +72,7 @@ public class Extraction extends MetalAbility {
     }
 
     private int getAmount(int max) {
-        final Random rand = new Random();
+        final Random rand = new RollbackRandom();
         int chanceMultiplier = rand.nextDouble() * 100 <= this.tripleChance ? 2 : (rand.nextDouble() * 100 <= this.doubleChance ? 1 : 0);
         int min = chanceMultiplier * max + 1;
         return rand.nextInt(max) + min;

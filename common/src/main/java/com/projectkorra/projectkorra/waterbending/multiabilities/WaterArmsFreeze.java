@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.waterbending.multiabilities;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.IceAbility;
@@ -128,7 +130,7 @@ public class WaterArmsFreeze extends IceAbility {
     }
 
     private void progressIce() {
-        ParticleEffect.SNOW_SHOVEL.display(this.location, 5, Math.random(), Math.random(), Math.random(), 0.05);
+        ParticleEffect.SNOW_SHOVEL.display(this.location, 5, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0.05);
         new TempBlock(this.location.getBlock(), getIceData(), this).setCanSuffocate(false).setRevertTime(10);
 
         for (final Entity entity : GeneralMethods.getEntitiesAroundPoint(this.location, 2.5)) {

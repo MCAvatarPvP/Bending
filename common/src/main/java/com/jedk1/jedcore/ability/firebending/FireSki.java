@@ -1,5 +1,8 @@
 package com.jedk1.jedcore.ability.firebending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JCMethods;
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.collision.CollisionDetector;
@@ -129,7 +132,7 @@ public class FireSki extends FireAbility implements AddonAbility {
         }
         if (!collision()) {
             movePlayer();
-            if (System.currentTimeMillis() > getStartTime() + duration || (isWater(player.getLocation().getBlock()) && !FireAbility.canPassThroughWater(player.getLocation().getBlock()))) {
+            if (RollbackClock.millis() > getStartTime() + duration || (isWater(player.getLocation().getBlock()) && !FireAbility.canPassThroughWater(player.getLocation().getBlock()))) {
                 remove();
             }
         } else {
@@ -191,15 +194,15 @@ public class FireSki extends FireAbility implements AddonAbility {
 
         for (Location l : JCMethods.getLinePoints(player.getEyeLocation().add(0, -0.5, 0).add(getRightHeadDirection(player).multiply(0.2)), right1, 6)) {
             size += 0.05;
-            playFirebendingParticles(l, 4, (Math.random() * size + 0.01), (Math.random() * size + 0.01), (Math.random() * size + 0.01));
-            ParticleEffect.SMOKE_NORMAL.display(l, 1, (Math.random() * size + 0.01), (Math.random() * size + 0.01), (Math.random() * size + 0.01), 0.08);
+            playFirebendingParticles(l, 4, (RollbackRandom.fraction() * size + 0.01), (RollbackRandom.fraction() * size + 0.01), (RollbackRandom.fraction() * size + 0.01));
+            ParticleEffect.SMOKE_NORMAL.display(l, 1, (RollbackRandom.fraction() * size + 0.01), (RollbackRandom.fraction() * size + 0.01), (RollbackRandom.fraction() * size + 0.01), 0.08);
         }
 
         size = 0;
         for (Location l : JCMethods.getLinePoints(player.getEyeLocation().add(0, -0.5, 0).add(getLeftHeadDirection(player).multiply(0.2)), left1, 6)) {
             size += 0.05;
-            playFirebendingParticles(l, 4, (Math.random() * size + 0.01), (Math.random() * size + 0.01), (Math.random() * size + 0.01));
-            ParticleEffect.SMOKE_NORMAL.display(l, 1, (Math.random() * size + 0.01), (Math.random() * size + 0.01), (Math.random() * size + 0.01), 0.08);
+            playFirebendingParticles(l, 4, (RollbackRandom.fraction() * size + 0.01), (RollbackRandom.fraction() * size + 0.01), (RollbackRandom.fraction() * size + 0.01));
+            ParticleEffect.SMOKE_NORMAL.display(l, 1, (RollbackRandom.fraction() * size + 0.01), (RollbackRandom.fraction() * size + 0.01), (RollbackRandom.fraction() * size + 0.01), 0.08);
         }
     }
 

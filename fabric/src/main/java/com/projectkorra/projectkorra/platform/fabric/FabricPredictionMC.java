@@ -63,7 +63,6 @@ import com.projectkorra.projectkorra.platform.model.PKPlayer;
 import com.projectkorra.projectkorra.platform.model.PKWorld;
 import com.projectkorra.projectkorra.platform.model.PKVec3;
 import com.projectkorra.projectkorra.util.TempBlock;
-import java.lang.reflect.Field;
 import java.util.HashSet;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
@@ -414,8 +413,7 @@ public final class FabricPredictionMC {
                 return type.cast(new ClientSnowball(entity));
             }
             if (type == AreaEffectCloud.class) {
-                AreaEffectCloudEntity entity = new AreaEffectCloudEntity(
-                        value, location.getX(), location.getY(), location.getZ());
+                AreaEffectCloudEntity entity = new PredictedCloud(value, location);
                 addPredictedEntity(value, entity);
                 return type.cast(new ClientAreaEffectCloud(entity));
             }
@@ -446,7 +444,7 @@ public final class FabricPredictionMC {
         @Override public Difficulty getDifficulty() { return Difficulty.valueOf(value.getDifficulty().name()); }
     }
 
-    public static final class ClientBlockView extends Block implements ClientBacked {
+    public static final class ClientBlockView extends Block implements ClientBacked, com.projectkorra.projectkorra.platform.mc.block.BlockValue {
         private final ClientWorld world;
         private final BlockPos pos;
         private ClientBlockView(ClientWorld world, BlockPos pos) { this.world = world; this.pos = pos; }
@@ -501,8 +499,8 @@ public final class FabricPredictionMC {
         }
         @Override public Object handle() { return new ClientBlockRef(world, pos); }
         @Override public Object nativeHandle() { return handle(); }
-        @Override public boolean equals(Object value) { return value instanceof ClientBlockView block && world == block.world && pos.equals(block.pos); }
-        @Override public int hashCode() { return Objects.hash(pos.getX(), pos.getY(), pos.getZ()); }
+        @Override public boolean equals(Object other) { return com.projectkorra.projectkorra.platform.mc.block.BlockValue.same(this, other); }
+        @Override public int hashCode() { return com.projectkorra.projectkorra.platform.mc.block.BlockValue.hash(this); }
     }
 
     private static final class ClientBlockState extends BlockState {
@@ -527,6 +525,8 @@ public final class FabricPredictionMC {
 
     private static class ClientEntityView extends Entity implements ClientBacked {
         protected final net.minecraft.entity.Entity value;
+
+        @Override public EntityType getType() { return FabricMC.entityType(value); }
         private ClientEntityView(net.minecraft.entity.Entity value) { this.value = value; }
         @Override public UUID getUniqueId() { return value.getUuid(); }
         @Override public Location getLocation() { return location((ClientWorld) value.getEntityWorld(), value.getEntityPos(), value.getYaw(), value.getPitch()); }
@@ -557,6 +557,8 @@ public final class FabricPredictionMC {
 
     private static class ClientLivingView extends LivingEntity implements ClientBacked {
         protected final net.minecraft.entity.LivingEntity value;
+
+        @Override public EntityType getType() { return FabricMC.entityType(value); }
         private ClientLivingView(net.minecraft.entity.LivingEntity value) { this.value = value; }
         @Override public UUID getUniqueId() { return value.getUuid(); }
         @Override public Location getLocation() { return location((ClientWorld) value.getEntityWorld(), value.getEntityPos(), value.getYaw(), value.getPitch()); }
@@ -609,6 +611,8 @@ public final class FabricPredictionMC {
 
     public static final class ClientPlayerView extends Player implements ClientBacked {
         private PlayerEntity value;
+
+        @Override public EntityType getType() { return FabricMC.entityType(value); }
         private final ClientInventory inventory;
         private ClientPlayerView(PlayerEntity value) { this.value = value; this.inventory = new ClientInventory(value); }
         private void rebind(PlayerEntity value) {
@@ -786,15 +790,16 @@ public final class FabricPredictionMC {
                         world, value, new net.minecraft.item.ItemStack(Items.ARROW), null);
                 entity.setVelocity(value, value.getPitch(), value.getYaw(), 0.0F, 3.0F, 1.0F);
                 addPredictedEntity(world, entity);
+                ExactPredictionRuntime.trackLaunchedProjectile(entity, value);
                 return type.cast(new ClientArrow(entity));
             }
             if (type == Snowball.class) {
-                Location spawn = getEyeLocation();
-                Snowball projectile = getWorld().spawn(spawn,
-                        Snowball.class);
-                projectile.setShooter(this);
-                projectile.setVelocity(spawn.getDirection().multiply(1.5));
-                return type.cast(projectile);
+                ClientWorld world = (ClientWorld) value.getEntityWorld();
+                SnowballEntity projectile = new SnowballEntity(world, value, new net.minecraft.item.ItemStack(Items.SNOWBALL));
+                projectile.setVelocity(value, value.getPitch(), value.getYaw(), 0.0F, 1.5F, 1.0F);
+                addPredictedEntity(world, projectile);
+                ExactPredictionRuntime.trackLaunchedProjectile(projectile, value);
+                return type.cast(new ClientSnowball(projectile));
             }
             return super.launchProjectile(type);
         }
@@ -875,6 +880,8 @@ public final class FabricPredictionMC {
 
     private static final class ClientFallingBlock extends FallingBlock implements ClientBacked {
         private final FallingBlockEntity value;
+
+        @Override public EntityType getType() { return FabricMC.entityType(value); }
         private ClientFallingBlock(FallingBlockEntity value) { this.value = value; }
         @Override public UUID getUniqueId() { return value.getUuid(); }
         @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
@@ -899,6 +906,8 @@ public final class FabricPredictionMC {
 
     private static final class ClientItem extends Item implements ClientBacked {
         private final ItemEntity value;
+
+        @Override public EntityType getType() { return FabricMC.entityType(value); }
         private ClientItem(ItemEntity value) { this.value = value; }
         @Override public UUID getUniqueId() { return value.getUuid(); }
         @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
@@ -921,6 +930,8 @@ public final class FabricPredictionMC {
 
     private static final class ClientArmorStand extends ArmorStand implements ClientBacked {
         private final ArmorStandEntity value;
+
+        @Override public EntityType getType() { return FabricMC.entityType(value); }
         private ClientArmorStand(ArmorStandEntity value) { this.value = value; }
         @Override public UUID getUniqueId() { return value.getUuid(); }
         @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
@@ -948,6 +959,8 @@ public final class FabricPredictionMC {
 
     private static final class ClientBlockDisplay extends BlockDisplay implements ClientBacked {
         private final DisplayEntity.BlockDisplayEntity value;
+
+        @Override public EntityType getType() { return FabricMC.entityType(value); }
         private ClientBlockDisplay(DisplayEntity.BlockDisplayEntity value) { this.value = value; }
         @Override public UUID getUniqueId() { return value.getUuid(); }
         @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
@@ -1000,6 +1013,8 @@ public final class FabricPredictionMC {
 
     private static final class ClientItemDisplay extends ItemDisplay implements ClientBacked {
         private final DisplayEntity.ItemDisplayEntity value;
+
+        @Override public EntityType getType() { return FabricMC.entityType(value); }
 
         private ClientItemDisplay(DisplayEntity.ItemDisplayEntity value) {
             this.value = value;
@@ -1066,6 +1081,8 @@ public final class FabricPredictionMC {
 
     private static final class ClientShulkerBullet extends ShulkerBullet implements ClientBacked {
         private final ShulkerBulletEntity value;
+
+        @Override public EntityType getType() { return FabricMC.entityType(value); }
         private ClientShulkerBullet(ShulkerBulletEntity value) { this.value = value; }
         @Override public UUID getUniqueId() { return value.getUuid(); }
         @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
@@ -1074,7 +1091,11 @@ public final class FabricPredictionMC {
         @Override public World getWorld() { return world((ClientWorld) value.getEntityWorld()); }
         @Override public Vector getVelocity() { return commonVector(value.getVelocity()); }
         @Override public void setVelocity(Vector velocity) { ExactPredictionRuntime.setPredictedVelocity(value, nativeVector(velocity)); }
-        @Override public void setShooter(Object shooter) { value.setOwner(nativeEntity(shooter)); }
+        @Override public void setShooter(Object shooter) {
+            var owner = nativeEntity(shooter);
+            value.setOwner(owner);
+            ExactPredictionRuntime.trackLaunchedProjectile(value, owner);
+        }
         @Override public void setGravity(boolean gravity) { value.setNoGravity(!gravity); }
         @Override public void setSilent(boolean silent) { value.setSilent(silent); }
         @Override public void setInvulnerable(boolean invulnerable) { value.setInvulnerable(invulnerable); }
@@ -1095,6 +1116,8 @@ public final class FabricPredictionMC {
 
     private static final class ClientFireball extends Fireball implements ClientBacked {
         private final SmallFireballEntity value;
+
+        @Override public EntityType getType() { return FabricMC.entityType(value); }
         private ClientFireball(SmallFireballEntity value) { this.value = value; }
         @Override public UUID getUniqueId() { return value.getUuid(); }
         @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
@@ -1125,6 +1148,8 @@ public final class FabricPredictionMC {
 
     private static final class ClientSnowball extends Snowball implements ClientBacked {
         private final SnowballEntity value;
+
+        @Override public EntityType getType() { return FabricMC.entityType(value); }
         private ClientSnowball(SnowballEntity value) { this.value = value; }
         @Override public UUID getUniqueId() { return value.getUuid(); }
         @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
@@ -1133,7 +1158,11 @@ public final class FabricPredictionMC {
         @Override public World getWorld() { return world((ClientWorld) value.getEntityWorld()); }
         @Override public Vector getVelocity() { return commonVector(value.getVelocity()); }
         @Override public void setVelocity(Vector velocity) { ExactPredictionRuntime.setPredictedVelocity(value, nativeVector(velocity)); }
-        @Override public void setShooter(Object shooter) { value.setOwner(nativeEntity(shooter)); }
+        @Override public void setShooter(Object shooter) {
+            var owner = nativeEntity(shooter);
+            value.setOwner(owner);
+            ExactPredictionRuntime.trackLaunchedProjectile(value, owner);
+        }
         @Override public void setGravity(boolean gravity) { value.setNoGravity(!gravity); }
         @Override public void setSilent(boolean silent) { value.setSilent(silent); }
         @Override public void setInvulnerable(boolean invulnerable) { value.setInvulnerable(invulnerable); }
@@ -1150,8 +1179,34 @@ public final class FabricPredictionMC {
         @Override public Object nativeHandle() { return value; }
     }
 
+    public static boolean hideOwnedEntityParticles(net.minecraft.entity.Entity entity) {
+        if (!(entity.getEntityWorld() instanceof ClientWorld)
+                || com.projectkorra.projectkorra.fabric.client.prediction.rollback.FabricRollbackPlayerRenderer.isReplicaModel(entity)) return false;
+        boolean localVisuals = com.projectkorra.projectkorra.fabric.client.config.ClientBendingConfig.isVisualsEnabled();
+        if (entity instanceof PredictedCloud || com.projectkorra.projectkorra.fabric.client.prediction.entity.PredictedEntityIdAllocator.isPredictedId(entity.getId()))
+            return !localVisuals;
+        return localVisuals && ExactPredictionRuntime.hideDisplayFallback(entity);
+    }
+
+    /** ClientWorld runs only the particle phase; a predicted cloud owns its original expiry. */
+    private static final class PredictedCloud extends AreaEffectCloudEntity {
+        PredictedCloud(ClientWorld world, Location origin) {
+            super(world, origin.getX(), origin.getY(), origin.getZ());
+        }
+        @Override public void tick() {
+            if (getDuration() != -1 && age - getWaitTime() >= getDuration()) {
+                discard();
+                return;
+            }
+            setWaiting(age < getWaitTime());
+            super.tick();
+        }
+    }
+
     private static final class ClientAreaEffectCloud extends AreaEffectCloud implements ClientBacked {
         private final AreaEffectCloudEntity value;
+
+        @Override public EntityType getType() { return FabricMC.entityType(value); }
         private ClientAreaEffectCloud(AreaEffectCloudEntity value) { this.value = value; }
         @Override public UUID getUniqueId() { return value.getUuid(); }
         @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
@@ -1162,8 +1217,7 @@ public final class FabricPredictionMC {
         @Override public void setVelocity(Vector velocity) { ExactPredictionRuntime.setPredictedVelocity(value, nativeVector(velocity)); }
         @Override public void setParticle(Particle particle) { value.setParticleType(FabricMC.particle(particle, null)); }
         @Override public void setColor(Color color) {
-            value.setParticleType(TintedParticleEffect.create(ParticleTypes.ENTITY_EFFECT,
-                    0xFF000000 | color.asRGB()));
+            FabricMC.cloudColor(value, color);
         }
         @Override public void setDuration(int duration) { value.setDuration(duration); }
         @Override public void setRadius(float radius) {
@@ -1173,6 +1227,7 @@ public final class FabricPredictionMC {
         @Override public void setSource(Entity entity) {
             net.minecraft.entity.Entity owner = nativeEntity(entity);
             value.setOwner(owner instanceof net.minecraft.entity.LivingEntity living ? living : null);
+            ExactPredictionRuntime.trackLaunchedProjectile(value, owner);
         }
         @Override public void setRadiusOnUse(float radius) { value.setRadiusOnUse(radius); }
         @Override public void setRadiusPerTick(float radius) { value.setRadiusGrowth(radius); }
@@ -1182,8 +1237,7 @@ public final class FabricPredictionMC {
         }
         @Override public void setWaitTime(int ticks) { value.setWaitTime(ticks); }
         @Override public void addCustomEffect(PotionEffect effect, boolean overwrite) {
-            value.addEffect(new StatusEffectInstance(FabricMC.status(effect.getType()),
-                    effect.getDuration(), effect.getAmplifier()));
+            FabricMC.cloudEffect(value, effect, overwrite);
         }
         @Override public void remove() { value.discard(); }
         @Override public boolean isDead() { return !value.isAlive(); }
@@ -1196,6 +1250,8 @@ public final class FabricPredictionMC {
 
     private static final class ClientArrow extends Arrow implements ClientBacked {
         private final ArrowEntity value;
+
+        @Override public EntityType getType() { return FabricMC.entityType(value); }
         private ClientArrow(ArrowEntity value) { this.value = value; }
         @Override public UUID getUniqueId() { return value.getUuid(); }
         @Override public boolean equals(Object other) { return other instanceof Entity entity && value.getUuid().equals(entity.getUniqueId()); }
@@ -1214,7 +1270,11 @@ public final class FabricPredictionMC {
         @Override public Vector getVelocity() { return commonVector(value.getVelocity()); }
         @Override public void setVelocity(Vector velocity) { ExactPredictionRuntime.setPredictedVelocity(value, nativeVector(velocity)); }
         @Override public Object getShooter() { return entity(value.getOwner()); }
-        @Override public void setShooter(Object shooter) { value.setOwner(nativeEntity(shooter)); }
+        @Override public void setShooter(Object shooter) {
+            var owner = nativeEntity(shooter);
+            value.setOwner(owner);
+            ExactPredictionRuntime.trackLaunchedProjectile(value, owner);
+        }
         @Override public void setPickupStatus(PickupStatus status) {
             value.pickupType = PersistentProjectileEntity.PickupPermission.valueOf(status.name());
         }
@@ -1230,7 +1290,7 @@ public final class FabricPredictionMC {
         @Override public int getEntityId() { return value.getId(); }
         @Override public boolean isOnGround() { return value.isOnGround(); }
         @Override public Block getAttachedBlock() {
-            if (!isInGround()) return null;
+            if (!isInBlock()) return null;
             return block((ClientWorld) value.getEntityWorld(), value.getBlockPos());
         }
         @Override public BoundingBox getBoundingBox() { return commonBox(value.getBoundingBox()); }
@@ -1240,19 +1300,14 @@ public final class FabricPredictionMC {
         @Override public void removeMetadata(String key, Object owner) { FabricPredictionMC.removeMetadata(value, key); }
         @Override public Object handle() { return value; }
         @Override public Object nativeHandle() { return value; }
-        private boolean isInGround() {
-            try {
-                Field field = PersistentProjectileEntity.class.getDeclaredField("inGroundTime");
-                field.setAccessible(true);
-                return field.getInt(value) > 0;
-            } catch (ReflectiveOperationException ignored) {
-                return false;
-            }
-        }
+        @Override public boolean isInBlock() { return FabricMC.arrowInGround(value); }
+        @Override public boolean isInWaterOrBubbleColumn() { return FabricMC.inWaterOrBubble(value); }
     }
 
     private static final class ClientSlime extends Slime implements ClientBacked {
         private final SlimeEntity value;
+
+        @Override public EntityType getType() { return FabricMC.entityType(value); }
         private ClientSlime(SlimeEntity value) { this.value = value; }
         private boolean suppressRemoteMutation() {
             return !ExactPredictionRuntime.isPredictedOwned(value)

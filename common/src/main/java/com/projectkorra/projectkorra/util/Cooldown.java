@@ -1,12 +1,14 @@
 package com.projectkorra.projectkorra.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 public class Cooldown {
 
     /**
      * The amount of time the cooldown is valid including the system time when
      * the cooldown was created
      */
-    private final long cooldown;
+    private long cooldown;
     /**
      * If the cooldown should be saved in the database
      */
@@ -19,6 +21,10 @@ public class Cooldown {
 
     public long getCooldown() {
         return this.cooldown;
+    }
+
+    public void rebaseRollbackTime(RollbackTimeShift shift) {
+        shift.once(this, () -> cooldown = shift.time(cooldown));
     }
 
     public boolean isDatabase() {

@@ -1,5 +1,7 @@
 package me.literka.abilities;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.ChiAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
@@ -49,7 +51,7 @@ public class Evade extends ChiAbility implements AddonAbility {
             return;
         }
 
-        if (maxDuration != 0 && System.currentTimeMillis() > getStartTime() + maxDuration) {
+        if (maxDuration != 0 && RollbackClock.millis() > getStartTime() + maxDuration) {
             Utils.sendActionBar(failMessage, player);
             bPlayer.addCooldown(this);
             remove();

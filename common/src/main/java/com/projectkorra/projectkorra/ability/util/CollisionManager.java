@@ -71,6 +71,23 @@ public class CollisionManager {
         this.indexCache = new HashMap<Class<? extends CoreAbility>, LBVH>();
     }
 
+    /**
+     * Source for a rollback graph import. Collision rules and settings are retained;
+     * per-pass spatial caches are derived and the live scheduler task is not replayed
+     * (RollbackCombatRuntime invokes detection in its bending tick). The returned
+     * collision objects must still be transferred together with the ability graph.
+     */
+    public CollisionManager rollbackImportSource() {
+        CollisionManager source = new CollisionManager();
+        source.removeMultipleInstances = removeMultipleInstances;
+        source.detectionDelay = detectionDelay;
+        source.certainNoCollisionDistance = certainNoCollisionDistance;
+        source.collisions.addAll(collisions);
+        source.collisionLookup.putAll(collisionLookup);
+        source.disabledCollisionKeys.addAll(disabledCollisionKeys);
+        return source;
+    }
+
     private static boolean isEarthSmashCollision(final Collision collision) {
         return collision.getAbilityFirst() instanceof EarthSmash || collision.getAbilitySecond() instanceof EarthSmash;
     }
@@ -227,7 +244,8 @@ public class CollisionManager {
 
         final ArrayList<CollisionEntry> entries = new ArrayList<CollisionEntry>(instances.size());
         for (final CoreAbility ability : instances) {
-            if (ability.getPlayer() == null || !ability.isCollidable()) {
+            if (ability.getPlayer() == null || !ability.isCollidable()
+                    || com.projectkorra.projectkorra.prediction.rollback.RollbackLiveOwnership.blocks(ability.getPlayer().getUniqueId())) {
                 continue;
             }
 

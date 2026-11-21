@@ -1,5 +1,6 @@
 package me.simplicitee.project.addons.ability.water;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackParticipantAbilityIndices;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
@@ -23,7 +24,6 @@ import java.util.List;
 
 public class BloodGrip extends BloodAbility implements AddonAbility, MultiAbility {
 
-    private static final List<LivingEntity> TARGETS = new ArrayList<>();
 
     @Attribute(Attribute.COOLDOWN)
     private long cooldown;
@@ -66,7 +66,7 @@ public class BloodGrip extends BloodAbility implements AddonAbility, MultiAbilit
             slamSpeed = ProjectAddons.instance.getConfig(bPlayer).getDouble("Abilities.Water.BloodGrip.SlamSpeed");
 
             health = player.getHealth() - ProjectAddons.instance.getConfig(bPlayer).getDouble("Abilities.Water.BloodGrip.DamageThreshold");
-            TARGETS.add(target);
+            RollbackParticipantAbilityIndices.current().bloodGrip.put(target, player);
 
             MultiAbilityManager.bindMultiAbility(player, getName());
             start();
@@ -92,7 +92,7 @@ public class BloodGrip extends BloodAbility implements AddonAbility, MultiAbilit
     }
 
     public static boolean isBloodbent(LivingEntity entity) {
-        return TARGETS.contains(entity);
+        return RollbackParticipantAbilityIndices.current().bloodGrip.containsKey(entity);
     }
 
     private Location getTargetLocation() {
@@ -151,6 +151,7 @@ public class BloodGrip extends BloodAbility implements AddonAbility, MultiAbilit
 
     @Override
     public void remove() {
+        if (target != null) RollbackParticipantAbilityIndices.current().bloodGrip.remove(target, player);
         super.remove();
         bPlayer.addCooldown(this);
         MultiAbilityManager.unbindMultiAbility(player);

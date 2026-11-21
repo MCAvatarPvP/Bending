@@ -1,0 +1,52 @@
+accessWidener v2 named
+
+# Exact checkpoint/import of native border interpolation. No ordinary border behavior is changed.
+accessible class net/minecraft/world/border/WorldBorder$Area
+accessible class net/minecraft/world/border/WorldBorder$MovingArea
+accessible field net/minecraft/world/border/WorldBorder area Lnet/minecraft/world/border/WorldBorder$Area;
+accessible field net/minecraft/world/border/WorldBorder$MovingArea oldSize D
+accessible field net/minecraft/world/border/WorldBorder$MovingArea timeStart J
+accessible field net/minecraft/world/border/WorldBorder$MovingArea timeEnd J
+accessible field net/minecraft/world/border/WorldBorder$MovingArea remainingTimeDuration J
+accessible field net/minecraft/world/border/WorldBorder$MovingArea currentSize D
+accessible field net/minecraft/world/border/WorldBorder$MovingArea lastSize D
+
+# Detached native limb animation inputs for provisional player render extraction.
+accessible field net/minecraft/entity/LimbAnimator lastSpeed F
+accessible field net/minecraft/entity/LimbAnimator speed F
+accessible field net/minecraft/entity/LimbAnimator animationProgress F
+accessible field net/minecraft/entity/LimbAnimator timeScale F
+
+# Native read-only sprint predicates for the private input probe. No client movement tick is invoked.
+accessible method net/minecraft/client/network/ClientPlayerEntity canStartSprinting ()Z
+accessible method net/minecraft/client/network/ClientPlayerEntity isBlockedFromSprinting ()Z
+accessible method net/minecraft/client/network/ClientPlayerEntity shouldStopSprinting ()Z
+accessible method net/minecraft/client/network/ClientPlayerEntity shouldStopSwimSprinting ()Z
+accessible method net/minecraft/entity/player/PlayerEntity canSprintOrFly ()Z
+accessible field net/minecraft/entity/LivingEntity activeItemStack Lnet/minecraft/item/ItemStack;
+
+# Native client formula oracle used to verify the shared input factors against this Minecraft version.
+accessible method net/minecraft/client/network/ClientPlayerEntity applyMovementSpeedFactors (Lnet/minecraft/util/math/Vec2f;)Lnet/minecraft/util/math/Vec2f;
+
+# Native auto-jump query over the private movement body. No ordinary client tick or movement is invoked.
+accessible method net/minecraft/client/network/ClientPlayerEntity autoJump (FF)V
+accessible field net/minecraft/client/network/ClientPlayerEntity ticksToNextAutoJump I
+accessible method net/minecraft/entity/player/PlayerEntity clipAtLedge ()Z
+accessible method net/minecraft/entity/Entity getJumpVelocityMultiplier ()F
+accessible field net/minecraft/entity/Entity pos Lnet/minecraft/util/math/Vec3d;
+accessible field net/minecraft/entity/Entity dimensions Lnet/minecraft/entity/EntityDimensions;
+
+# Native escape-movement oracle for the shared Paper/Fabric phase.
+accessible method net/minecraft/client/network/ClientPlayerEntity pushOutOfBlocks (DD)V
+
+# Execute the native fluid-input body in the client vertical-input oracle.
+accessible method net/minecraft/entity/LivingEntity knockDownwards ()V
+
+# Read native equipment/contact glide eligibility without starting gliding during physical input sampling.
+accessible method net/minecraft/entity/player/PlayerEntity canGlide ()Z
+
+# Apply Paper's captured immediate equipment-update policy after an owned hand swap.
+accessible method net/minecraft/entity/LivingEntity sendEquipmentChanges ()V
+
+# Match native hotbar input immobility checks before private slot selection.
+accessible method net/minecraft/entity/player/PlayerEntity isImmobile ()Z

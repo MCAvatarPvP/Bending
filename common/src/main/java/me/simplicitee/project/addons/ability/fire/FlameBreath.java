@@ -1,5 +1,8 @@
 package me.simplicitee.project.addons.ability.fire;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.ComboAbility;
@@ -114,7 +117,7 @@ public class FlameBreath extends FireAbility implements AddonAbility, ComboAbili
             return;
         }
 
-        if (System.currentTimeMillis() > getStartTime() + duration) {
+        if (RollbackClock.millis() > getStartTime() + duration) {
             remove();
             return;
         }
@@ -140,7 +143,7 @@ public class FlameBreath extends FireAbility implements AddonAbility, ComboAbili
                 playFirebendingParticles(breath, amount, offset, offset, offset);
             }
 
-            if (Math.random() > 0.9) {
+            if (RollbackRandom.fraction() > 0.9) {
                 playFirebendingSound(breath);
             }
 

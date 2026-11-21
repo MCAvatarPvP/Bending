@@ -19,6 +19,8 @@
 
 package me.moros.hyperion.abilities.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.EarthAbility;
@@ -119,7 +121,7 @@ public class EarthGuard extends EarthAbility implements AddonAbility {
         if (!formed) {
             moveBlock();
         } else {
-            if (System.currentTimeMillis() > time + duration) {
+            if (RollbackClock.millis() > time + duration) {
                 player.getLocation().getWorld().playSound(player.getLocation(), Sound.BLOCK_STONE_BREAK, 2, 1);
                 ParticleEffect.BLOCK_CRACK.display(player.getEyeLocation(), 8, 0.1, 0.1, 0.1, blockData);
                 remove();
@@ -180,7 +182,7 @@ public class EarthGuard extends EarthAbility implements AddonAbility {
         originalMode = player.getGameMode();
         player.getInventory().setArmorContents(newArmor.toArray(new ItemStack[4]));
         new TempPotionEffect(player, new PotionEffect(PotionEffectType.RESISTANCE, NumberConversions.round(duration / 50F), resistance));
-        time = System.currentTimeMillis();
+        time = RollbackClock.millis();
         formed = true;
     }
 

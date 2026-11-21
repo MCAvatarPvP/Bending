@@ -56,6 +56,11 @@ public final class ActivationContext {
         return this.boundAbility;
     }
 
+    /** A bound name can be shared by several embedded implementations. */
+    public boolean isBoundTo(Class<? extends CoreAbility> implementation) {
+        return boundAbility != null && boundAbility.getClass() == implementation;
+    }
+
     public String getAbilityName() {
         return this.abilityName;
     }

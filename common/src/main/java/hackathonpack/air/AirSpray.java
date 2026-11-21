@@ -1,5 +1,7 @@
 package hackathonpack.air;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.AirAbility;
@@ -100,7 +102,7 @@ public class AirSpray extends AirAbility implements AddonAbility, ComboAbility {
             Location hand = this.player.getMainHand() == MainHand.RIGHT
                     ? getRightSide(this.player.getLocation().clone().add(0, 1, 0), 0.2)
                     : getLeftSide(this.player.getLocation().clone().add(0, 1, 0), 0.2);
-            hand = hand.add(Math.random() * 0.5 - 0.25, Math.random() * 0.5 - 0.25, Math.random() * 0.5 - 0.25);
+            hand = hand.add(RollbackRandom.fraction() * 0.5 - 0.25, RollbackRandom.fraction() * 0.5 - 0.25, RollbackRandom.fraction() * 0.5 - 0.25);
             this.boids.add(new Boid(this.player, this, hand, this.player.getLocation().getDirection(), this.damage, this.range));
         }
     }

@@ -1,5 +1,9 @@
 package hackathonpack.air;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.AirAbility;
@@ -63,7 +67,7 @@ abstract class AbstractAirFlow extends AirAbility {
 
     protected final void launch() {
         this.state = State.LAUNCHED;
-        this.launchTime = System.currentTimeMillis();
+        this.launchTime = RollbackClock.millis();
         this.flowLocation = this.player.getEyeLocation().add(this.player.getLocation().getDirection().multiply(sourceDistance()));
         this.flowDirection = this.player.getLocation().getDirection().multiply(directionMultiplier());
         this.player.getWorld().playSound(this.flowLocation, Sound.valueOf("ITEM_ELYTRA_FLYING"), 0.05F, 1);
@@ -71,17 +75,22 @@ abstract class AbstractAirFlow extends AirAbility {
     }
 
     @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.launchTime = shift.time(this.launchTime);
+    }
+
+    @Override
     public void progress() {
-        if (this.state == State.LAUNCHED && System.currentTimeMillis() > this.launchTime + this.duration) {
+        if (this.state == State.LAUNCHED && RollbackClock.millis() > this.launchTime + this.duration) {
             remove();
             return;
         }
         if (this.state == State.CHARGING) {
             if (!this.player.isSneaking()) {
                 remove();
-            } else if (System.currentTimeMillis() > getStartTime() + this.chargeTime) {
+            } else if (RollbackClock.millis() > getStartTime() + this.chargeTime) {
                 this.state = State.CHARGED;
-            } else if (Math.random() < 0.2) {
+            } else if (RollbackRandom.fraction() < 0.2) {
                 playAirbendingParticles(this.bPlayer, this.player.getEyeLocation().add(this.player.getLocation().getDirection().multiply(sourceDistance())), 1);
             }
             return;
@@ -100,15 +109,15 @@ abstract class AbstractAirFlow extends AirAbility {
             this.path.extend(this.flowDirection, this.range);
         }
         tickParticles(true);
-        if (Math.random() < 0.05)
+        if (RollbackRandom.fraction() < 0.05)
             this.player.getWorld().playSound(this.flowLocation, Sound.valueOf("ITEM_ELYTRA_FLYING"), 0.05F, 1);
     }
 
     private void tickParticles(final boolean emitParticles) {
         if (emitParticles) {
             for (int i = 0; i < this.particlePerTick; i++) {
-                this.particles.add(new FlowParticle(this.flowLocation.clone().add(rotate(new Vector(Math.random() * this.particleSpawnAreaSize - this.particleSpawnAreaSize / 2,
-                        Math.random() * this.particleSpawnAreaSize - this.particleSpawnAreaSize / 2, 0)))));
+                this.particles.add(new FlowParticle(this.flowLocation.clone().add(rotate(new Vector(RollbackRandom.fraction() * this.particleSpawnAreaSize - this.particleSpawnAreaSize / 2,
+                        RollbackRandom.fraction() * this.particleSpawnAreaSize - this.particleSpawnAreaSize / 2, 0)))));
             }
         }
         this.affectedEntities.clear();

@@ -42,10 +42,14 @@ public abstract class PredictionClientTick extends PredictionClientWorldState {
     protected void tick(MinecraftClient client) {
         clientTick++;
         if (!ClientBendingConfig.isEnabled()) {
-            if (active || sessionId != null || ExactPredictionRuntime.isReady()) reset(client);
+            if (active || sessionId != null || ExactPredictionRuntime.isReady() || rollbackStarts.ownsSession() || rollbackBootstraps.ownsSession()) reset(client);
             sendPredictionDisabled(client);
             return;
         }
+        boolean rollbackOwned = rollbackStarts.ownsSession() || rollbackBootstraps.ownsSession();
+        rollbackBootstraps.tick(client, clientTick);
+        rollbackStarts.tick(clientTick);
+        if (rollbackOwned || rollbackStarts.ownsSession() || rollbackBootstraps.ownsSession()) return;
         // Paper advertises Bukkit plugin channels during play setup. Retry the
         // hello until that registration has reached the Fabric client.
         if (!active && sessionId == null && client.getNetworkHandler() != null

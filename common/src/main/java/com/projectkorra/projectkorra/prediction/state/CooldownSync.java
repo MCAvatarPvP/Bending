@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.prediction.state;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackDomain;
+import com.projectkorra.projectkorra.prediction.authority.PredictionServices;
 import com.projectkorra.projectkorra.prediction.action.AbilityExecutionContext;
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.ability.Ability;
@@ -27,36 +29,38 @@ public final class CooldownSync {
     }
 
     public static void install(Listener newListener) {
+        PredictionServices.requireGlobalMutation();
         listener = newListener;
     }
 
     public static void clear(Listener expected) {
+        PredictionServices.requireGlobalMutation();
         if (listener == expected) listener = null;
     }
 
     public static void added(BendingPlayer player, String ability, long expiresAtMillis) {
-        Listener current = listener;
+        Listener current = PredictionServices.current(Listener.class, listener);
         if (current != null) current.onAdded(AbilityExecutionContext.current(), player, ability, expiresAtMillis);
     }
 
     public static void removed(BendingPlayer player, String ability) {
-        Listener current = listener;
+        Listener current = PredictionServices.current(Listener.class, listener);
         if (current != null) current.onRemoved(player, ability);
     }
 
     /** Publishes a complete authoritative cooldown replacement. */
     public static void synchronize(BendingPlayer player) {
-        Listener current = listener;
-        if (current != null && current.isAuthoritative()) current.onSynchronize(player);
+        Listener current = PredictionServices.current(Listener.class, listener);
+        if (current != null && isAuthoritative()) current.onSynchronize(player);
     }
 
     public static void airBlastReset(BendingPlayer player) {
-        Listener current = listener;
+        Listener current = PredictionServices.current(Listener.class, listener);
         if (current != null) current.onAirBlastReset(player);
     }
 
     public static void airBlastRegenerated(BendingPlayer player) {
-        Listener current = listener;
+        Listener current = PredictionServices.current(Listener.class, listener);
         if (current != null) current.onAirBlastRegenerated(player);
     }
 
@@ -67,7 +71,10 @@ public final class CooldownSync {
      * predicted.
      */
     public static boolean isAuthoritative() {
-        final Listener current = listener;
+        // Both sides of whole-session replay resolve private combat state. Authority
+        // here permits simulation; it does not grant permission to commit live effects.
+        if (RollbackDomain.active()) return true;
+        final Listener current = PredictionServices.current(Listener.class, listener);
         return current == null || current.isAuthoritative();
     }
 
@@ -100,6 +107,7 @@ public final class CooldownSync {
     }
 
     public static boolean isInputVetoed(final UUID playerId, final String ability) {
+        if (RollbackDomain.active()) return false;
         final InputVeto veto = INPUT_VETO.get();
         return veto != null && playerId != null && playerId.equals(veto.playerId)
                 && ability != null && veto.abilities.contains(ability.toLowerCase(Locale.ROOT));
@@ -136,6 +144,7 @@ public final class CooldownSync {
     /** Returns the comparison time for a cooldown check in the current input. */
     public static long effectiveInputTime(final UUID playerId, final String ability,
                                           final long currentTimeMillis) {
+        if (RollbackDomain.active()) return currentTimeMillis;
         final InputLeniency leniency = INPUT_LENIENCY.get();
         if (leniency == null || playerId == null || !playerId.equals(leniency.playerId)
                 || ability == null || !leniency.abilities.contains(ability.toLowerCase(Locale.ROOT))) {

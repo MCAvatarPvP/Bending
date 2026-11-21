@@ -1,5 +1,8 @@
 package me.simplicitee.project.addons.ability.avatar;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.AvatarAbility;
@@ -98,7 +101,7 @@ public class EnergyBeam extends AvatarAbility implements AddonAbility {
             return;
         }
 
-        if (getStartTime() + duration < System.currentTimeMillis()) {
+        if (getStartTime() + duration < RollbackClock.millis()) {
             remove();
             return;
         }
@@ -129,10 +132,10 @@ public class EnergyBeam extends AvatarAbility implements AddonAbility {
                 continue;
             }
 
-            if ((new Random()).nextInt(2) == 0) {
+            if ((new RollbackRandom()).nextInt(2) == 0) {
                 displayParticles(loc);
 
-                if ((new Random()).nextInt(4) == 0) {
+                if ((new RollbackRandom()).nextInt(4) == 0) {
                     player.getWorld().playSound(loc, Sound.ENTITY_WITHER_AMBIENT, 0.2f, 0.7f);
                 }
             }
@@ -190,7 +193,7 @@ public class EnergyBeam extends AvatarAbility implements AddonAbility {
     public void displayParticles(Location loc) {
         EnergyColor use = color;
         if (color == EnergyColor.RAINBOW) {
-            int r = new Random().nextInt(EnergyColor.values().length - 1);
+            int r = new RollbackRandom().nextInt(EnergyColor.values().length - 1);
             use = EnergyColor.values()[r];
         }
 

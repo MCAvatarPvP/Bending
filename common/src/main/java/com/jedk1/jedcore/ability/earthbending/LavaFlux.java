@@ -1,5 +1,8 @@
 package com.jedk1.jedcore.ability.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
 import com.projectkorra.projectkorra.GeneralMethods;
@@ -65,7 +68,7 @@ public class LavaFlux extends LavaAbility implements AddonAbility {
         }
 
         setFields();
-        time = System.currentTimeMillis();
+        time = RollbackClock.millis();
         if (prepareLine()) {
             start();
             if (!isRemoved()) {
@@ -104,7 +107,7 @@ public class LavaFlux extends LavaAbility implements AddonAbility {
                 }
             }
         } else if (duration > cleanup) {
-            if (System.currentTimeMillis() > time + duration) {
+            if (RollbackClock.millis() > time + duration) {
                 for (TempBlock tb : blocks.values()) {
                     if (!tb.isReverted()) tb.setType(Material.STONE);
                 }
@@ -173,7 +176,7 @@ public class LavaFlux extends LavaAbility implements AddonAbility {
                 this.location = location;
                 if (flux.indexOf(location) == step) {
                     Block above = location.getBlock().getRelative(BlockFace.UP);
-                    ParticleEffect.LAVA.display(above.getLocation(), 2, Math.random(), Math.random(), Math.random(), 0);
+                    ParticleEffect.LAVA.display(above.getLocation(), 2, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), 0);
                     applyDamageFromWave(above.getLocation());
 
                     if (isPlant(above) || isSnow(above)) {
@@ -195,7 +198,7 @@ public class LavaFlux extends LavaAbility implements AddonAbility {
         if (step >= flux.size()) {
             wave = false;
             complete = true;
-            time = System.currentTimeMillis();
+            time = RollbackClock.millis();
 
             for (TempBlock tb : blocks.values()) { //Make sure they all revert at the same time because it looks nice
                 long time = duration + cleanup + rand.nextInt(1000);

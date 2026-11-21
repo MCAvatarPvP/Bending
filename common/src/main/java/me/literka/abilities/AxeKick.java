@@ -114,7 +114,7 @@ public class AxeKick extends ModernChiAbility implements AddonAbility {
                     if (pushUpOther != 0) GeneralMethods.setVelocity(this, e, new Vector(0, pushUpOther, 0));
                     if (e instanceof Player p) {
                         if (!fallDmg) FallHandler.stopFall(p);
-                        if (Utils.willChiBlock(p, blockChance)) Utils.blockChi(p, blockDuration);
+                        if (Utils.willChiBlock(this, p, blockChance)) Utils.blockChi(p, blockDuration);
                     }
 
                     hitEntities.add(e);

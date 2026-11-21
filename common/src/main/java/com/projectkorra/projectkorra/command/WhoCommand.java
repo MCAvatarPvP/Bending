@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.command;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.Element.ElementType;
@@ -298,7 +300,7 @@ public class WhoCommand extends PKCommand {
                 }
 
                 Set<SubElement> blockedSubs = bPlayer.getTempSubElements().entrySet().stream()
-                        .filter(entry -> entry.getValue() > System.currentTimeMillis() || entry.getValue() == -1L)
+                        .filter(entry -> entry.getValue() > RollbackClock.millis() || entry.getValue() == -1L)
                         .map(Map.Entry::getKey)
                         .filter(sub -> !bPlayer.hasElement(sub.getParentElement()))
                         .collect(Collectors.toSet());
@@ -344,7 +346,7 @@ public class WhoCommand extends PKCommand {
         if (hasBase || !bPlayer.hasTempElement(element)) return "";
 
         if (element.isAvatarElement() && bPlayer.hasTempElement(Element.AVATAR)) {
-            long time = bPlayer.getTempElements().get(Element.AVATAR) - System.currentTimeMillis();
+            long time = bPlayer.getTempElements().get(Element.AVATAR) - RollbackClock.millis();
             String timeString = TimeUtil.formatTime(time);
             return " " + ChatColor.DARK_GRAY + "(" + timeString + ")";
         }
@@ -353,11 +355,11 @@ public class WhoCommand extends PKCommand {
             long time = bPlayer.getTempSubElements().get(element);
             if (time == -1L) return ""; //The subelement is linked to the parent element, so don't bother adding a time
 
-            String timeString = TimeUtil.formatTime(time - System.currentTimeMillis());
+            String timeString = TimeUtil.formatTime(time - RollbackClock.millis());
             return " " + ChatColor.DARK_GRAY + "(" + timeString + ")";
         }
 
-        long time = bPlayer.getTempElements().get(element) - System.currentTimeMillis();
+        long time = bPlayer.getTempElements().get(element) - RollbackClock.millis();
         String timeString = TimeUtil.formatTime(time);
 
         return " " + ChatColor.DARK_GRAY + "(" + timeString + ")";

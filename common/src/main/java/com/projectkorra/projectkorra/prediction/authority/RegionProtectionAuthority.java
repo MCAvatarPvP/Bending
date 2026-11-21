@@ -23,18 +23,21 @@ public final class RegionProtectionAuthority {
     private static final String POLICY_PREFIX = "@policy:";
     private static volatile Snapshot snapshot = Snapshot.empty();
     private static final RegionProtectionHook AUTHORITY_HOOK =
-            (player, location, ability) -> snapshot.isProtected(location, ability);
+            (player, location, ability) -> PredictionServices
+                    .current(Snapshot.class, snapshot).isProtected(location, ability);
 
     private RegionProtectionAuthority() {
     }
 
     public static void install(final Player player, final Snapshot next) {
+        PredictionServices.requireGlobalMutation();
         snapshot = next == null ? Snapshot.empty() : next;
         RegionProtection.registerRegionProtection(HOOK, AUTHORITY_HOOK);
         RegionProtection.clearCache(player);
     }
 
     public static void clear(final Player player) {
+        PredictionServices.requireGlobalMutation();
         snapshot = Snapshot.empty();
         RegionProtection.unloadPlugin(HOOK);
         RegionProtection.clearCache(player);

@@ -17,6 +17,8 @@ public abstract class EntityRendererPredictionDisplayMixin {
     private void projectkorra$hideDisplayFallback(Entity entity, Frustum frustum,
                                                  double x, double y, double z,
                                                  CallbackInfoReturnable<Boolean> cir) {
+        // An enrolled actor has one render-only model even when ordinary prediction visuals are disabled.
+        if (com.projectkorra.projectkorra.fabric.client.prediction.rollback.FabricRollbackPlayerRenderer.isReplicaModel(entity)) return;
         if (!ClientBendingConfig.isVisualsEnabled()) {
             // Server visuals: predicted entities keep simulating for gameplay
             // but stay unseen, and Paper's own copies are never hidden.

@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.waterbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.ability.WaterAbility;
@@ -52,7 +55,7 @@ public class WaterBubble extends WaterAbility {
 
                     bubble.location = player.getLocation();
                     bubble.isShift = isShift;
-                    bubble.lastActivation = System.currentTimeMillis();
+                    bubble.lastActivation = RollbackClock.millis();
                     return;
                 }
             }
@@ -68,7 +71,7 @@ public class WaterBubble extends WaterAbility {
         this.radius = 0;
         this.isShift = isShift;
         this.location = player.getLocation();
-        this.lastActivation = System.currentTimeMillis();
+        this.lastActivation = RollbackClock.millis();
 
         this.start();
     }
@@ -102,12 +105,17 @@ public class WaterBubble extends WaterAbility {
     }
 
     @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.lastActivation = shift.time(this.lastActivation);
+    }
+
+    @Override
     public void progress() {
         if (!this.bPlayer.canBend(this) || (this.isShift && !this.player.isSneaking()) || !this.location.getWorld().equals(this.player.getWorld())) {
             this.removing = true;
         }
 
-        if (System.currentTimeMillis() - this.lastActivation > this.clickDuration && !this.isShift || this.maxRadius < this.radius) {
+        if (RollbackClock.millis() - this.lastActivation > this.clickDuration && !this.isShift || this.maxRadius < this.radius) {
             this.removing = true;
         }
 

@@ -1,5 +1,7 @@
 package com.jedk1.jedcore.util;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.jedk1.jedcore.JedCore;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.Ability;
@@ -26,7 +28,7 @@ public class ThrownEntityTracker {
     public ThrownEntityTracker(Ability ability, Entity e, Player instigator, long delay) {
         entity = e;
         this.instigator = instigator;
-        fireTime = System.currentTimeMillis();
+        fireTime = RollbackClock.millis();
         this.delay = delay;
         thisVelocity = e.getVelocity();
         this.delay = delay;
@@ -54,7 +56,7 @@ public class ThrownEntityTracker {
     }
 
     public void update() {
-        if (System.currentTimeMillis() < fireTime + delay) {
+        if (RollbackClock.millis() < fireTime + delay) {
             return;
         }
         if (!collisions || GeneralMethods.isOnGround(entity)) {

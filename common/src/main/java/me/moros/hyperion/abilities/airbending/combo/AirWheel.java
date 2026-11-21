@@ -19,6 +19,8 @@
 
 package me.moros.hyperion.abilities.airbending.combo;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.AirAbility;
@@ -95,7 +97,7 @@ public class AirWheel extends AirAbility implements AddonAbility, ComboAbility {
             CoreMethods.displayColoredParticle("ffffff", particleLocation, 1, 0, 0, 0, 2f);
         }
 
-        final long time = System.currentTimeMillis();
+        final long time = RollbackClock.millis();
         for (Entity entity : GeneralMethods.getEntitiesAroundPoint(tempLoc, 1.8)) {
             if (entity instanceof LivingEntity && entity.getEntityId() != player.getEntityId() && !(entity instanceof ArmorStand)) {
                 if (entity instanceof Player && Commands.invincible.contains((entity).getName())) {

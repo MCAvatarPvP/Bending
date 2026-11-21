@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.earthbending.lava;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.ability.LavaAbility;
@@ -60,7 +63,7 @@ public class LavaSurgeWave extends LavaAbility {
                 wave.remove();
             }
             this.start();
-            this.time = System.currentTimeMillis();
+            this.time = RollbackClock.millis();
         }
     }
 
@@ -176,14 +179,19 @@ public class LavaSurgeWave extends LavaAbility {
     }
 
     @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
+    }
+
+    @Override
     public void progress() {
         if (!this.bPlayer.canBendIgnoreCooldowns(this)) {
             this.breakBlock();
             return;
         }
 
-        if (System.currentTimeMillis() - this.time >= this.interval) {
-            this.time = System.currentTimeMillis();
+        if (RollbackClock.millis() - this.time >= this.interval) {
+            this.time = RollbackClock.millis();
             if (!this.progressing) {
                 this.sourceBlock.getWorld().playEffect(this.location, Effect.SMOKE, 4, (int) this.range);
                 return;

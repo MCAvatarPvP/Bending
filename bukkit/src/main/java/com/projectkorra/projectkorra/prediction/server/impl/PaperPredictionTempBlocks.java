@@ -72,6 +72,7 @@ public abstract class PaperPredictionTempBlocks extends PaperPredictionTransport
     protected CommonInputHandler.InputResult handleVanilla0(
             final Player player, final PaperPredictionProtocol.InputKind kind,
             final Supplier<CommonInputHandler.InputResult> nativeInput) {
+        if (rollbackInputs.blocksLegacy(player.getUniqueId())) return CommonInputHandler.InputResult.cancel();
         final Session session = sessions.get(player.getUniqueId());
         if (session == null || !session.ready) return nativeInput.get();
         return processInput(player, session, kind, nativeInput);

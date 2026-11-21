@@ -1,5 +1,8 @@
 package com.jedk1.jedcore.ability.waterbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackRandom;
+
 import com.jedk1.jedcore.JedCore;
 import com.jedk1.jedcore.configuration.JedCoreConfig;
 import com.projectkorra.projectkorra.BendingPlayer;
@@ -97,7 +100,7 @@ public class FrostBreath extends IceAbility implements AddonAbility {
             remove();
         }
 
-        long time = System.currentTimeMillis();
+        long time = RollbackClock.millis();
 
         frozenBlocks.removeIf(frozen -> {
             if (frozen.tempBlock.isReverted() || time >= frozen.endTime) {
@@ -214,7 +217,7 @@ public class FrostBreath extends IceAbility implements AddonAbility {
             frozen.tempBlock.setType(type);
         }
 
-        frozen.endTime = System.currentTimeMillis() + lifetime;
+        frozen.endTime = RollbackClock.millis() + lifetime;
         // Keep an expiry even if this ability stops progressing, and refresh only our own layer.
         frozen.tempBlock.setRevertTime(lifetime);
         if (bendable) addFrozenBlock(frozen.tempBlock);
@@ -288,7 +291,7 @@ public class FrostBreath extends IceAbility implements AddonAbility {
                 return transition();
             }
 
-            if (System.currentTimeMillis() >= getStartTime() + config.duration) {
+            if (RollbackClock.millis() >= getStartTime() + config.duration) {
                 return transition();
             }
 
@@ -370,7 +373,7 @@ public class FrostBreath extends IceAbility implements AddonAbility {
                     freezeGround(loc);
                 }
 
-                ParticleEffect.SNOW_SHOVEL.display(loc, config.particles, Math.random(), Math.random(), Math.random(), size);
+                ParticleEffect.SNOW_SHOVEL.display(loc, config.particles, RollbackRandom.fraction(), RollbackRandom.fraction(), RollbackRandom.fraction(), size);
                 // Prob not good for backporting but it's fine
                 Color color = Color.fromRGB(220, 220, 220);
                 ParticleUtil.spawn(Particle.ENTITY_EFFECT, this.getOffsetLocation(loc, offset), 1, 0.0, 0.0, 0.0, 1.0, color);
@@ -379,7 +382,7 @@ public class FrostBreath extends IceAbility implements AddonAbility {
         }
 
         private Location getOffsetLocation(Location loc, double offset) {
-            return loc.clone().add((float) ((Math.random() - 0.5) * offset), (float) ((Math.random() - 0.5) * offset), (float) ((Math.random() - 0.5) * offset));
+            return loc.clone().add((float) ((RollbackRandom.fraction() - 0.5) * offset), (float) ((RollbackRandom.fraction() - 0.5) * offset), (float) ((RollbackRandom.fraction() - 0.5) * offset));
         }
 
         private void freezeGround(Location loc) {

@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.earthbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.ability.EarthAbility;
 import com.projectkorra.projectkorra.attribute.Attribute;
 import com.projectkorra.projectkorra.platform.mc.Location;
@@ -56,7 +59,7 @@ public class Collapse extends EarthAbility {
         if (this.distance != 0) {
             this.start();
             this.bPlayer.addCooldown("CollapsePillar", this.cooldown);
-            this.time = System.currentTimeMillis() - (long) (1000.0 / this.speed);
+            this.time = RollbackClock.millis() - (long) (1000.0 / this.speed);
         } else {
             this.remove();
         }
@@ -77,7 +80,7 @@ public class Collapse extends EarthAbility {
 
         if (this.distance != 0) {
             this.start();
-            this.time = System.currentTimeMillis() - (long) (1000.0 / this.speed);
+            this.time = RollbackClock.millis() - (long) (1000.0 / this.speed);
         } else {
             this.remove();
         }
@@ -122,9 +125,14 @@ public class Collapse extends EarthAbility {
     }
 
     @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
+    }
+
+    @Override
     public void progress() {
-        if (System.currentTimeMillis() - this.time >= (long) (1000.0 / this.speed)) {
-            this.time = System.currentTimeMillis();
+        if (RollbackClock.millis() - this.time >= (long) (1000.0 / this.speed)) {
+            this.time = RollbackClock.millis();
             if (!this.tryToMoveEarth()) {
                 this.remove();
                 return;

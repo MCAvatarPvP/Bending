@@ -19,6 +19,8 @@
 
 package me.moros.hyperion.abilities.earthbending.combo;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.ComboAbility;
@@ -75,10 +77,10 @@ public class EarthShards extends EarthAbility implements AddonAbility, ComboAbil
         if (hasAbility(player, EarthGlove.class)) {
             getAbility(player, EarthGlove.class).remove();
         }
-        if (System.currentTimeMillis() < lastShotTime + shotCooldown) {
+        if (RollbackClock.millis() < lastShotTime + shotCooldown) {
             return;
         }
-        lastShotTime = System.currentTimeMillis();
+        lastShotTime = RollbackClock.millis();
         for (int i = 0; i < 2; i++) {
             if (shardsLeft < 1) {
                 remove();

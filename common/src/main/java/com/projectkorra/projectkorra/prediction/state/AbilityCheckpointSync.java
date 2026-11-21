@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.prediction.state;
 
+import com.projectkorra.projectkorra.prediction.authority.PredictionServices;
 import com.projectkorra.projectkorra.ability.CoreAbility;
 
 /**
@@ -18,15 +19,17 @@ public final class AbilityCheckpointSync {
     }
 
     public static void install(final Listener value) {
+        PredictionServices.requireGlobalMutation();
         listener = value;
     }
 
     public static void clear(final Listener value) {
+        PredictionServices.requireGlobalMutation();
         if (listener == value) listener = null;
     }
 
     public static void publish(final CoreAbility ability) {
-        final Listener current = listener;
+        final Listener current = PredictionServices.current(Listener.class, listener);
         if (current != null && ability != null && ability.isStarted() && !ability.isRemoved()) {
             current.onCheckpoint(ability);
         }

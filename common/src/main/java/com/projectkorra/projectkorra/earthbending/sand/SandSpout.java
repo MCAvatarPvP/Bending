@@ -1,5 +1,7 @@
 package com.projectkorra.projectkorra.earthbending.sand;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.SandAbility;
 import com.projectkorra.projectkorra.ability.util.Collision;
@@ -100,14 +102,14 @@ public class SandSpout extends SandAbility {
             return;
         }
         if (!this.riding) {
-            if (!this.player.isSneaking() || System.currentTimeMillis() > this.getStartTime() + this.prepareTimeout) {
+            if (!this.player.isSneaking() || RollbackClock.millis() > this.getStartTime() + this.prepareTimeout) {
                 this.remove();
                 return;
             }
             this.renderGatheringSand();
             return;
         }
-        if (this.duration > 0 && System.currentTimeMillis() > this.getStartTime() + this.duration) {
+        if (this.duration > 0 && RollbackClock.millis() > this.getStartTime() + this.duration) {
             this.remove();
             return;
         }

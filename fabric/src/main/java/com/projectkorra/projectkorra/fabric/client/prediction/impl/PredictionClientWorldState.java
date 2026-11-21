@@ -60,6 +60,8 @@ public abstract class PredictionClientWorldState extends PredictionClientServerS
         if (client == null || world == null || sessionId == null || !readySent) return;
         if (active && runtimeWorld == world && runtimePlayer == client.player) return;
 
+        meleeContacts.clear();
+        acceptedAttack = null;
         recordWorldTransition("client world boundary target=" + worldRef(world));
         worldTempBlockResyncPending = true;
         worldTempBlockRequestSent = false;
@@ -140,6 +142,16 @@ public abstract class PredictionClientWorldState extends PredictionClientServerS
 
     protected void onAbilityStateOwner(MinecraftClient client, PredictionPayloads.AbilityStateOwner owner) {
         if (client.player != null) ExactPredictionRuntime.noteAbilityStateOwner(client.player, owner);
+    }
+
+    protected void onProjectileImpact(MinecraftClient client, PredictionPayloads.ProjectileImpact receipt) {
+        if (active && receipt.sessionId().equals(sessionId) && client.player != null
+                && client.player.getUuid().equals(receipt.owner())) ExactPredictionRuntime.noteProjectileImpact(receipt);
+    }
+
+    protected void onProjectileOwner(MinecraftClient client, PredictionPayloads.ProjectileOwner receipt) {
+        if (active && receipt.sessionId().equals(sessionId) && client.player != null
+                && client.player.getUuid().equals(receipt.owner())) ExactPredictionRuntime.noteProjectileOwner(receipt);
     }
 
     protected void onTempFallingBlock(MinecraftClient client,

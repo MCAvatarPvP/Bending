@@ -1,5 +1,7 @@
 package hackathonpack.earth;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.AddonAbility;
@@ -90,7 +92,7 @@ public class Crush extends EarthAbility implements ComboAbility, AddonAbility {
                 remove();
                 return;
             }
-            if (System.currentTimeMillis() - getStartTime() > this.duration) {
+            if (RollbackClock.millis() - getStartTime() > this.duration) {
                 this.bPlayer.addCooldown(this, this.parryCd);
                 remove();
                 return;

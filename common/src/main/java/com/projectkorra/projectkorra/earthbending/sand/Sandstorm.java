@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.earthbending.sand;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ability.SandAbility;
 import com.projectkorra.projectkorra.ability.util.Collision;
@@ -184,7 +187,7 @@ public class Sandstorm extends SandAbility {
         if (this.active || this.source == null || !this.player.isSneaking()
                 || !this.source.reserve(this)) return false;
         this.active = true;
-        this.activeSince = System.currentTimeMillis();
+        this.activeSince = RollbackClock.millis();
         this.center = this.source.block().getLocation().clone().add(0.5, 0.12, 0.5);
         this.stormDirection = this.horizontalFacing();
         this.centerVelocity = new Vector();
@@ -205,12 +208,18 @@ public class Sandstorm extends SandAbility {
         this.centerVelocity = new Vector();
         this.launchTravelled = 0.0;
         this.launched = true;
-        this.launchSince = System.currentTimeMillis();
+        this.launchSince = RollbackClock.millis();
         this.displaySandBurst(this.center.clone().add(0, this.stormHeight * 0.42, 0),
                 22, this.radius * 0.34, 0.48, this.radius * 0.34, 0.04, this.isRedSand());
         this.playSandSound(this.center, Sound.ENTITY_BREEZE_WIND_BURST, 1.0F, 0.56F);
         this.playSandSound(this.center, Sound.BLOCK_SAND_BREAK, 0.92F, 0.62F);
         return true;
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.activeSince = shift.time(this.activeSince);
+        this.launchSince = shift.time(this.launchSince);
     }
 
     @Override
@@ -222,7 +231,7 @@ public class Sandstorm extends SandAbility {
         }
         if (!this.active) {
             if (!this.player.isSneaking()
-                    || System.currentTimeMillis() > this.getStartTime() + this.prepareTimeout) {
+                    || RollbackClock.millis() > this.getStartTime() + this.prepareTimeout) {
                 this.remove();
                 return;
             }
@@ -230,12 +239,12 @@ public class Sandstorm extends SandAbility {
             return;
         }
         final long durationStart = this.launched ? this.launchSince : this.activeSince;
-        if (this.duration > 0 && System.currentTimeMillis() > durationStart + this.duration) {
+        if (this.duration > 0 && RollbackClock.millis() > durationStart + this.duration) {
             this.remove();
             return;
         }
 
-        final long activeTicks = Math.max(0L, (System.currentTimeMillis() - this.activeSince) / 50L);
+        final long activeTicks = Math.max(0L, (RollbackClock.millis() - this.activeSince) / 50L);
         this.radius = this.maximumRadius * Math.min(1.0, activeTicks / (double) this.growthTicks);
         if (this.launched) {
             if (!this.advanceLaunchedStorm()) {

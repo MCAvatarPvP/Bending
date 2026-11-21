@@ -1,5 +1,9 @@
 package com.projectkorra.projectkorra.waterbending;
 
+import com.projectkorra.projectkorra.prediction.rollback.RollbackArenaBlockIndices;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackClock;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackTimeShift;
+
 import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
@@ -34,7 +38,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class WaterSpoutWave extends WaterAbility {
 
-    private static final Map<Block, TempBlock> FROZEN_BLOCKS = new ConcurrentHashMap<>();
+    private static final Map<Block, TempBlock> FROZEN_BLOCKS = RollbackArenaBlockIndices.live().spoutIce;
     @Attribute(Attribute.RADIUS)
     @DayNightFactor
     private double radius;
@@ -121,7 +125,7 @@ public class WaterSpoutWave extends WaterAbility {
             return;
         }
 
-        this.time = System.currentTimeMillis();
+        this.time = RollbackClock.millis();
         this.type = type;
 
         if (type == AbilityType.CLICK && CoreAbility.getAbility(player, WaterSpoutWave.class) != null) {
@@ -173,38 +177,44 @@ public class WaterSpoutWave extends WaterAbility {
     }
 
     public static void progressAllCleanup() {
-        for (final Block block : FROZEN_BLOCKS.keySet()) {
-            final TempBlock tb = FROZEN_BLOCKS.get(block);
+        for (final Block block : getFrozenBlocks().keySet()) {
+            final TempBlock tb = getFrozenBlocks().get(block);
             if (!isIce(block)) {
-                FROZEN_BLOCKS.remove(block);
+                getFrozenBlocks().remove(block);
                 continue;
             }
             if (tb == null || !TempBlock.isTempBlock(block)) {
-                FROZEN_BLOCKS.remove(block);
+                getFrozenBlocks().remove(block);
                 continue;
             }
         }
     }
 
     public static boolean canThaw(final Block block) {
-        return FROZEN_BLOCKS.containsKey(block)
+        return getFrozenBlocks().containsKey(block)
                 || TempBlockSync.hasAuthoritativeEffect(block, "WaterSpout");
     }
 
     public static void thaw(final Block block) {
-        if (FROZEN_BLOCKS.containsKey(block)) {
-            FROZEN_BLOCKS.get(block).revertBlock();
-            FROZEN_BLOCKS.remove(block);
+        if (getFrozenBlocks().containsKey(block)) {
+            getFrozenBlocks().get(block).revertBlock();
+            getFrozenBlocks().remove(block);
         }
     }
 
     public static Map<Block, TempBlock> getFrozenBlocks() {
-        return FROZEN_BLOCKS;
+        var indices = RollbackArenaBlockIndices.current();
+        return indices == null ? FROZEN_BLOCKS : indices.spoutIce;
     }
 
     /** Drops frozen-wave ownership after a complete world/runtime shutdown. */
     public static void discardAllTracking() {
-        FROZEN_BLOCKS.clear();
+        getFrozenBlocks().clear();
+    }
+
+    @Override
+    protected void rebaseRollbackTimers(RollbackTimeShift shift) {
+        this.time = shift.time(this.time);
     }
 
     @Override
@@ -300,7 +310,7 @@ public class WaterSpoutWave extends WaterAbility {
 
             this.removeOldType(this.player, AbilityType.CLICK);
             if (!this.player.isSneaking()) {
-                if (System.currentTimeMillis() - this.time > this.chargeTime) {
+                if (RollbackClock.millis() - this.time > this.chargeTime) {
                     this.setType(AbilityType.RELEASE);
                     this.setAnimation(AnimateState.SHRINK);
                 } else {
@@ -353,19 +363,19 @@ public class WaterSpoutWave extends WaterAbility {
 
                 if (this.radius < 1) {
                     this.revertBlocks();
-                    this.time = System.currentTimeMillis();
+                    this.time = RollbackClock.millis();
                     this.animation = null;
                 }
             } else {
                 this.moving = true;
                 this.collidable = true;
-                if ((System.currentTimeMillis() - this.time > this.flightDuration) || this.player.isSneaking()) {
+                if ((RollbackClock.millis() - this.time > this.flightDuration) || this.player.isSneaking()) {
                     this.remove();
                     return;
                 }
 
                 this.player.setFallDistance(0f);
-                double currentSpeed = this.speed - (this.speed * (System.currentTimeMillis() - this.time) / this.flightDuration);
+                double currentSpeed = this.speed - (this.speed * (RollbackClock.millis() - this.time) / this.flightDuration);
 
                 GeneralMethods.setVelocity(this, this.player, this.player.getEyeLocation().getDirection().normalize().multiply(currentSpeed));
                 for (final Block block : GeneralMethods.getBlocksAroundPoint(this.player.getLocation().add(0, -1, 0), this.waveRadius)) {
@@ -394,11 +404,11 @@ public class WaterSpoutWave extends WaterAbility {
                             }.runTaskLater(ProjectKorra.plugin, 6);
                         }
                     }
-                    for (final Block block : FROZEN_BLOCKS.keySet()) {
-                        final TempBlock tBlock = FROZEN_BLOCKS.get(block);
+                    for (final Block block : getFrozenBlocks().keySet()) {
+                        final TempBlock tBlock = getFrozenBlocks().get(block);
                         if (tBlock.getBlock().getWorld().equals(this.player.getWorld()) && tBlock.getLocation().distance(this.player.getLocation()) >= this.thawRadius) {
                             tBlock.revertBlock();
-                            FROZEN_BLOCKS.remove(block);
+                            getFrozenBlocks().remove(block);
                         }
                     }
                 }
@@ -490,9 +500,9 @@ public class WaterSpoutWave extends WaterAbility {
                         }
                     }
                     if (ElementalAbility.isAir(block.getType()) || isIce(block) || this.isWaterbendable(block)) {
-                        if (!FROZEN_BLOCKS.containsKey(block)) {
+                        if (!getFrozenBlocks().containsKey(block)) {
                             final TempBlock tblock = new TempBlock(block, getIceData(), this).setCanSuffocate(false);
-                            FROZEN_BLOCKS.put(block, tblock);
+                            getFrozenBlocks().put(block, tblock);
                             if (this.revertIceSphere) {
                                 tblock.setRevertTime(this.revertSphereTime + this.random.nextLong(-500, 500));
                             }

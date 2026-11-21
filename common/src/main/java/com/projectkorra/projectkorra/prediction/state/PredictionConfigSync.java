@@ -2,6 +2,7 @@ package com.projectkorra.projectkorra.prediction.state;
 
 import com.projectkorra.projectkorra.configuration.Config;
 import com.projectkorra.projectkorra.platform.Platform;
+import com.projectkorra.projectkorra.prediction.rollback.RollbackDomain;
 
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -19,6 +20,7 @@ public final class PredictionConfigSync {
     }
 
     public static void register(String namespace, Config config) {
+        if (RollbackDomain.active()) throw new IllegalStateException("Cannot register configuration during rollback");
         if (namespace != null && !namespace.isBlank() && config != null) SOURCES.put(normalize(namespace), config);
     }
 

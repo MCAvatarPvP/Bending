@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.prediction.block;
 
+import com.projectkorra.projectkorra.prediction.authority.PredictionServices;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.CoreAbility;
@@ -37,10 +38,12 @@ public final class TempBlockSync {
     }
 
     public static void install(final Listener newListener) {
+        PredictionServices.requireGlobalMutation();
         listener = newListener;
     }
 
     public static void clear(final Listener expected) {
+        PredictionServices.requireGlobalMutation();
         if (listener == expected) listener = null;
     }
 
@@ -50,7 +53,7 @@ public final class TempBlockSync {
 
     public static void publish(final Operation operation, final TempBlock layer, final BlockData effectiveData,
                                final boolean packetExpected) {
-        final Listener current = listener;
+        final Listener current = PredictionServices.current(Listener.class, listener);
         if (current != null && layer != null && effectiveData != null
                 && (!packetExpected || current.receivesPostWorldChange())) {
             try {
@@ -58,6 +61,7 @@ public final class TempBlockSync {
                         current.copiesChangeData(), current.capturesUnderlay(),
                         current.capturesOwnerViews()));
             } catch (RuntimeException failure) {
+                if (PredictionServices.active()) throw failure;
                 ProjectKorra.log.warning("TempBlock lifecycle publication failed: " + failure.getMessage());
             }
         }
@@ -70,13 +74,14 @@ public final class TempBlockSync {
      */
     public static void beforeWorldChange(final Operation operation, final TempBlock layer,
                                          final BlockData effectiveData) {
-        final Listener current = listener;
+        final Listener current = PredictionServices.current(Listener.class, listener);
         if (current != null && layer != null && effectiveData != null) {
             try {
                 current.beforeWorldChange(change(operation, layer, effectiveData, true,
                         current.copiesChangeData(), current.capturesUnderlay(),
                         current.capturesOwnerViews()));
             } catch (RuntimeException failure) {
+                if (PredictionServices.active()) throw failure;
                 ProjectKorra.log.warning("TempBlock pre-mutation publication failed: " + failure.getMessage());
             }
         }
@@ -113,14 +118,14 @@ public final class TempBlockSync {
      * remote layers observed by a predicting Fabric client.
      */
     public static boolean hasAuthoritativeLayer(final Block block) {
-        final Listener current = listener;
+        final Listener current = PredictionServices.current(Listener.class, listener);
         return current != null && block != null && current.hasAuthoritativeLayer(block);
     }
 
     /** True when the visible authoritative layer belongs to the named ability. */
     public static boolean hasAuthoritativeEffect(final Block block, final String ability) {
         if (ability == null || ability.isBlank()) return false;
-        final Listener current = listener;
+        final Listener current = PredictionServices.current(Listener.class, listener);
         if (current == null || block == null) return false;
         final String visible = current.authoritativeEffectAbility(block);
         return visible != null && visible.equalsIgnoreCase(ability);
@@ -130,7 +135,7 @@ public final class TempBlockSync {
     public static boolean hasAuthoritativeEffect(final Block block, final String ability,
                                                  final UUID ownerId) {
         if (ability == null || ability.isBlank() || ownerId == null) return false;
-        final Listener current = listener;
+        final Listener current = PredictionServices.current(Listener.class, listener);
         if (current == null || block == null) return false;
         final String visible = current.authoritativeEffectAbility(block);
         return visible != null && visible.equalsIgnoreCase(ability)
@@ -139,7 +144,7 @@ public final class TempBlockSync {
 
     /** Compact ability lifecycle state associated with the visible server layer. */
     public static String getAuthoritativeEffectState(final Block block) {
-        final Listener current = listener;
+        final Listener current = PredictionServices.current(Listener.class, listener);
         if (current == null || block == null) return "";
         final String state = current.authoritativeEffectState(block);
         return state == null ? "" : state;
@@ -161,7 +166,7 @@ public final class TempBlockSync {
         if (player == null || ability == null || ability.isBlank()
                 || !Double.isFinite(range) || range < 0
                 || !Double.isFinite(radius) || radius < 0) return null;
-        final Listener current = listener;
+        final Listener current = PredictionServices.current(Listener.class, listener);
         if (current == null) return null;
         final Location eye = player.getEyeLocation();
         if (eye == null || eye.getWorld() == null) return null;
@@ -207,7 +212,7 @@ public final class TempBlockSync {
         if (player == null || center == null || center.getWorld() == null
                 || ability == null || ability.isBlank()
                 || !Double.isFinite(radius) || radius < 0) return null;
-        final Listener current = listener;
+        final Listener current = PredictionServices.current(Listener.class, listener);
         if (current == null) return null;
         final UUID viewer = player.getUniqueId();
         Block closest = null;
@@ -238,7 +243,7 @@ public final class TempBlockSync {
                                                                             final double radius) {
         if (seed == null || ability == null || ability.isBlank()
                 || !Double.isFinite(radius) || radius < 0) return null;
-        final Listener current = listener;
+        final Listener current = PredictionServices.current(Listener.class, listener);
         if (current == null) return null;
         final String seedEffect = current.authoritativeEffectAbility(seed);
         if (seedEffect == null || !seedEffect.equalsIgnoreCase(ability)) return null;
