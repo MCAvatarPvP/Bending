@@ -73,8 +73,9 @@ class RollbackClientReplicaTest {
         assertThrows(IllegalStateException.class, () -> server.confirm(0));
         var client = RollbackEngine.replica(new Simulation(), INITIAL, limits(2), 1000, 1000);
         client.submit(A, 1, packet(1, 1).playerInput(A, 99));
-        assertTrue(client.advance().finalizedEffects().isEmpty());
-        assertTrue(client.advance().finalizedEffects().isEmpty());
+        for (int i = 0; i < client.limits().replicaHistoryTicks(); i++) {
+            assertTrue(client.advance().finalizedEffects().isEmpty());
+        }
         assertThrows(IllegalStateException.class, client::advance);
         assertEquals(0, client.confirmed().tick()); assertFalse(client.diagnostics().failed());
         client.correct(A, 1, IDLE);

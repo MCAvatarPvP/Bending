@@ -83,17 +83,6 @@ public abstract class ElementalAbility extends CoreAbility {
         return state == null ? SNOW_BLOCKS : state.materials().snow;
     }
 
-    static {
-        currentTransparent().clear();
-        for (final Material mat : Material.values()) {
-            if (GeneralMethods.isTransparent(mat)) {
-                currentTransparent().add(mat);
-            }
-        }
-        clearBendableMaterials();
-        setupBendableMaterials();
-    }
-
     /** Portable cache roots. References remain shared with ability fields during graph transfer. */
     public static final class RollbackMaterialRegistry {
         private final Set<Material> transparent;
@@ -376,6 +365,12 @@ public abstract class ElementalAbility extends CoreAbility {
     }
 
     public static void setupBendableMaterials() {
+        // The client can load ability classes before a connection supplies its platform and config.
+        var transparent = currentTransparent();
+        transparent.clear();
+        for (Material material : Material.values()) {
+            if (GeneralMethods.isTransparent(material)) transparent.add(material);
+        }
         addTags(currentEarth(), ConfigManager.getConfig().getStringList("Properties.Earth.EarthBlocks"));
         addTags(currentIce(), ConfigManager.getConfig().getStringList("Properties.Water.IceBlocks"));
         addTags(currentMetal(), ConfigManager.getConfig().getStringList("Properties.Earth.MetalBlocks"));

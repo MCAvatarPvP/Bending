@@ -198,7 +198,7 @@ public final class RollbackGraphCodec {
         ATOMIC_INT, ATOMIC_LONG, ATOMIC_BOOLEAN, ATOMIC_REF, OPTIONAL, WEAK, ENTRY, IMMUTABLE_ENTRY,
         ARRAY_LIST, LINKED_LIST, DEQUE, COW_LIST, COW_SET, HASH_SET, LINKED_SET, ENUM_SET, TREE_SET, QUEUE,
         FIXED_LIST, SINGLETON_LIST, EMPTY_LIST, EMPTY_MAP, EMPTY_SET,
-        HASH_MAP, LINKED_MAP, IDENTITY_MAP, ENUM_MAP, CONCURRENT_MAP, WEAK_MAP, TREE_MAP
+        HASH_MAP, LINKED_MAP, IDENTITY_MAP, ENUM_MAP, CONCURRENT_MAP, WEAK_MAP, TREE_MAP, ROLLBACK_RANDOM
     }
 
     private record Entry(Kind kind, int type, Object value, int[] references) { }
@@ -433,6 +433,7 @@ public final class RollbackGraphCodec {
             if (type == AtomicLong.class) return leaf(Kind.ATOMIC_LONG, ((AtomicLong) source).get());
             if (type == AtomicBoolean.class) return leaf(Kind.ATOMIC_BOOLEAN, ((AtomicBoolean) source).get());
             if (type == Date.class) return leaf(Kind.DATE, ((Date) source).getTime());
+            if (source instanceof RollbackRandom stream) return leaf(Kind.ROLLBACK_RANDOM, stream.captureRollbackState());
             if (type.isArray()) {
                 int id = catalog.id(type.getComponentType());
                 int length = Array.getLength(source);
@@ -532,6 +533,7 @@ public final class RollbackGraphCodec {
             case CHAR -> out.writeChar((Character) value);
             case INT, ATOMIC_INT, ENUM -> out.writeInt((Integer) value);
             case LONG, ATOMIC_LONG, DATE -> out.writeLong((Long) value);
+            case ROLLBACK_RANDOM -> ((RollbackRandom.State) value).write(out);
             case FLOAT -> out.writeInt(Float.floatToRawIntBits((Float) value));
             case DOUBLE -> out.writeLong(Double.doubleToRawLongBits((Double) value));
             case UUID -> { UUID id = (UUID) value; out.writeLong(id.getMostSignificantBits()); out.writeLong(id.getLeastSignificantBits()); }
@@ -564,6 +566,7 @@ public final class RollbackGraphCodec {
             case CHAR -> in.readChar();
             case INT, ATOMIC_INT, ENUM -> in.readInt();
             case LONG, ATOMIC_LONG, DATE -> in.readLong();
+            case ROLLBACK_RANDOM -> RollbackRandom.State.read(in);
             case FLOAT -> Float.intBitsToFloat(in.readInt());
             case DOUBLE -> Double.longBitsToDouble(in.readLong());
             case UUID -> new UUID(in.readLong(), in.readLong());
@@ -676,6 +679,7 @@ public final class RollbackGraphCodec {
                 case ARRAY -> Array.newInstance(catalog.type(entry.type), n);
                 case OBJECT -> catalog.layout(entry.type).allocator.newInstance();
                 case DATE -> new Date((Long) entry.value);
+                case ROLLBACK_RANDOM -> ((RollbackRandom.State) entry.value).newStream();
                 case ATOMIC_INT -> new AtomicInteger((Integer) entry.value);
                 case ATOMIC_LONG -> new AtomicLong((Long) entry.value);
                 case ATOMIC_BOOLEAN -> new AtomicBoolean((Boolean) entry.value);
@@ -777,6 +781,7 @@ public final class RollbackGraphCodec {
             case OPTIONAL_LONG -> OptionalLong.class;
             case OPTIONAL_DOUBLE -> OptionalDouble.class;
             case DATE -> Date.class;
+            case ROLLBACK_RANDOM -> RollbackRandom.class;
             case ATOMIC_INT -> AtomicInteger.class;
             case ATOMIC_LONG -> AtomicLong.class;
             case ATOMIC_BOOLEAN -> AtomicBoolean.class;
@@ -819,7 +824,7 @@ public final class RollbackGraphCodec {
 
     private static boolean typed(Kind kind) { return kind == Kind.EXTERNAL || kind == Kind.ENUM || kind == Kind.CLASS || kind == Kind.OBJECT
             || kind == Kind.ARRAY || kind == Kind.PRIMITIVE_ARRAY || kind == Kind.ENUM_SET || kind == Kind.ENUM_MAP; }
-    private static boolean map(Kind kind) { return kind.ordinal() >= Kind.HASH_MAP.ordinal(); }
+    private static boolean map(Kind kind) { return kind.ordinal() >= Kind.HASH_MAP.ordinal() && kind.ordinal() <= Kind.TREE_MAP.ordinal(); }
     private static boolean collection(Kind kind) { return kind.ordinal() >= Kind.ARRAY_LIST.ordinal() && kind.ordinal() <= Kind.QUEUE.ordinal(); }
     private static boolean indexed(Kind kind) { return map(kind) || kind == Kind.COW_SET || kind == Kind.HASH_SET || kind == Kind.LINKED_SET
             || kind == Kind.ENUM_SET || kind == Kind.TREE_SET || kind == Kind.QUEUE; }

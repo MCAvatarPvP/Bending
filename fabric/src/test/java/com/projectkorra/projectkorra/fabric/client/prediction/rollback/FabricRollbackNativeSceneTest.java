@@ -85,7 +85,7 @@ class FabricRollbackNativeSceneTest {
         assertSame(imported.scene().logical(), views.world());
     }
 
-    private RollbackBootstrapData bootstrapData() throws Exception { return bootstrapData(seed()); }
+    RollbackBootstrapData bootstrapData() throws Exception { return bootstrapData(seed()); }
 
     private RollbackBootstrapData bootstrapData(RollbackWorldSeed world) throws Exception {
         RollbackBootstrapData reference;

@@ -30,17 +30,21 @@ class PaperRollbackTerrainImageNativeTest {
             section.setBlockState(2, 10, 3, Blocks.REDSTONE_BLOCK.defaultBlockState());
             var tilePos = new BlockPos(8, 11, 8);
             section.setBlockState(8, 11, 8, Blocks.CHEST.defaultBlockState());
+            var missingTilePos = new BlockPos(9, 11, 8);
+            section.setBlockState(9, 11, 8, Blocks.CHEST.defaultBlockState());
             var tile = new net.minecraft.nbt.CompoundTag();
             tile.putString("id", "minecraft:chest"); tile.putInt("amount", 1);
+            var packed = new HashMap<BlockPos, net.minecraft.nbt.CompoundTag>();
+            packed.put(tilePos, tile);
             var noise = section.getNoiseBiome(0, 0, 0);
             var manager = new BiomeManager((x, y, z) -> noise, 1975);
             var block = new SWMRNibbleArray(); block.setZero(); block.set(2, 10, 3, 6); block.updateVisible();
             var sky = new SWMRNibbleArray(); sky.setFull(); sky.updateVisible();
             var chunk = RollbackNativeQueryShell.create(LevelChunk.class)
                     .constant(LevelChunk::getSections, new LevelChunkSection[]{section})
-                    .constant(LevelChunk::getBlockEntitiesPos, Set.of(tilePos))
+                    .constant(LevelChunk::getBlockEntitiesPos, packed.keySet())
                     .constant(LevelChunk::getBlockEntities, Map.of())
-                    .query(value -> value.getBlockEntityNbt(BlockPos.ZERO), null, args -> tilePos.equals(args[0]) ? tile : null)
+                    .query(value -> value.getBlockEntityNbt(BlockPos.ZERO), null, args -> packed.get(args[0]))
                     .constant(LevelChunk::starlight$getSkyNibbles, new SWMRNibbleArray[]{sky})
                     .constant(LevelChunk::starlight$getBlockNibbles, new SWMRNibbleArray[]{block})
                     .constant(LevelChunk::isLightCorrect, true).instance();
@@ -64,6 +68,13 @@ class PaperRollbackTerrainImageNativeTest {
             assertEquals(12, seed.cell(pos).light());
             assertEquals(15, prepared.light().sky(pos));
             assertEquals(6, prepared.light().block(pos));
+            assertTrue(prepared.matches(level));
+            var missingTile = seed.cell(new Position(9, 11, 8));
+            assertEquals(Material.CHEST, missingTile.data().getMaterial());
+            assertNull(missingTile.blockEntity());
+            packed.put(missingTilePos, tile.copy());
+            assertFalse(prepared.matches(level));
+            packed.remove(missingTilePos);
             assertTrue(prepared.matches(level));
             var tileCell = new Position(8, 11, 8);
             byte[] originalTag = seed.cell(tileCell).blockEntity();

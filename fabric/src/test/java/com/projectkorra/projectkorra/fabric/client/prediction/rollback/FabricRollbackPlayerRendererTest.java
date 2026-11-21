@@ -107,7 +107,7 @@ class FabricRollbackPlayerRendererTest {
         ProbeFrustum() { super(new Matrix4f(), new Matrix4f()); }
         @Override public boolean isVisible(Box box) { seen = box; return true; }
     }
-    private static final class ProbeRenderer extends EntityRenderer<Entity, PlayerEntityRenderState> {
+    static final class ProbeRenderer extends EntityRenderer<Entity, PlayerEntityRenderState> {
         double shadowX;
         private ProbeRenderer(EntityRendererFactory.Context context) { super(context); }
         @Override public PlayerEntityRenderState createRenderState() { return new PlayerEntityRenderState(); }

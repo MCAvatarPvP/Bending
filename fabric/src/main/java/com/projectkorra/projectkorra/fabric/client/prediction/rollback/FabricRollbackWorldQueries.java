@@ -133,7 +133,8 @@ public final class FabricRollbackWorldQueries implements FabricRollbackWorldAcce
     @Override public BlockEntity getBlockEntity(BlockPos pos) {
         var state = getBlockState(pos);
         if (!state.hasBlockEntity()) return null;
-        var tile = Objects.requireNonNull(blockEntities.get(logical.terrain(), key(pos), state), "Missing private block entity");
+        var tile = blockEntities.get(logical.terrain(), key(pos), state);
+        if (tile == null) return null;
         if (!tile.getPos().equals(pos) || tile.getCachedState() != state || tile.getWorld() != null && tile.getWorld() != nativeWorld) {
             throw new IllegalArgumentException("Block entity does not match the private terrain/world");
         }

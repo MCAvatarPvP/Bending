@@ -123,7 +123,9 @@ final class PaperRollbackTerrainImage {
         var tiles = new HashMap<Long, byte[]>();
         if (interior) for (var pos : chunk.getBlockEntitiesPos()) {
             if (!bounds.contains(new Position(pos.getX(), pos.getY(), pos.getZ()))) continue;
-            var bytes = PaperRollbackTerrainCapture.encode(PaperRollbackTerrainCapture.blockEntity(source, chunk, pos), limits.maximumBlockEntityBytes());
+            var tag = PaperRollbackTerrainCapture.blockEntity(source, chunk, pos);
+            if (tag == null) throw new IllegalStateException("Listed block entity has no live or packed data at " + pos);
+            var bytes = PaperRollbackTerrainCapture.encode(tag, limits.maximumBlockEntityBytes());
             reserve(budget, bytes.length); tiles.put(pos.asLong(), bytes);
         }
         return new Chunk(frozen, encoded, tiles);
@@ -206,7 +208,8 @@ final class PaperRollbackTerrainImage {
                     continue;
                 }
                 var quart = climates.get(noise);
-                byte[] tile = state.hasBlockEntity() ? Objects.requireNonNull(chunk.tiles.get(pos.asLong()), "Missing captured native block entity at " + pos) : null;
+                // A block can support a block entity without the chunk actually containing one.
+                byte[] tile = state.hasBlockEntity() ? chunk.tiles.get(pos.asLong()) : null;
                 builder.append(new Cell(states.get(state), tile, quart.common, climate.key, quart.key, (byte)brightness, temperature,
                         quart.definition.climateSettings.downfall()));
                 previous = state; previousNoise = noise; previousSmooth = smooth; previousLight = brightness;

@@ -104,19 +104,66 @@ class RollbackClientRuntimeTest {
         assertFalse(f.runtime.failed());
     }
 
+    @Test void aWarmedDuelPredictsThroughDelayedPublicationsAndReconcilesBothDeliveredAndExpiredInputs() {
+        var limits = RollbackDuelRuntime.ENGINE;
+        var f = new Fixture(limits, limits, false);
+        f.runtime.start(ANCHOR);
+        for (int tick = 1; tick <= 16; tick++) {
+            f.runtime.tick(ANCHOR + tick);
+            assertEquals(RollbackSession.Status.ACCEPTED, f.server.receive(f.connection, f.sent.getLast()).status());
+            f.server.advance();
+            f.runtime.authority(f.server.publish());
+        }
+        assertEquals(16, f.engine.head().tick());
+        assertEquals(8, f.engine.confirmed().tick());
+
+        // Lose downstream publications. Both swings appear on their physical client ticks.
+        for (int tick = 17; tick <= 24; tick++) {
+            if (tick <= 18) f.runtime.action(RollbackInputActions.Kind.SWING, -1, 0, 0);
+            f.runtime.tick(ANCHOR + tick);
+            assertEquals(Math.min(tick, 21), f.outputs.getLast().head().tick());
+            assertEquals(tick == 17 ? 1 : 2, f.outputs.getLast().head().state().actions());
+            assertTrue(f.outputs.getLast().finalizedEffects().isEmpty());
+        }
+        assertEquals(8, f.engine.confirmed().tick());
+        assertEquals(14, f.engine.diagnostics().snapshots());
+        assertEquals(ANCHOR + 21, f.sent.getLast().clientTick());
+        var arrivesLate = f.sent.get(16);
+        var arrivesAfterFinalization = f.sent.get(17);
+
+        var committed = new ArrayList<RollbackEngine.Effect<State>>();
+        for (int tick = 17; tick <= 26; tick++) {
+            if (tick == 20) {
+                assertEquals(RollbackSession.Status.ACCEPTED, f.server.receive(f.connection, arrivesLate).status());
+            }
+            var authoritative = f.server.advance();
+            assertEquals(tick - 8, authoritative.confirmed().tick());
+            assertEquals(tick >= 20 ? 1 : 0, authoritative.head().state().actions());
+            committed.addAll(authoritative.finalizedEffects());
+            var publication = f.server.publish();
+            f.runtime.authority(publication);
+            f.runtime.authority(publication);
+            assertEquals(tick < 26 ? 2 : 1, f.engine.head().state().actions());
+        }
+        assertEquals(RollbackSession.Status.FINALIZED, f.server.receive(f.connection, arrivesAfterFinalization).status());
+        assertEquals(committed, f.outputs.stream().flatMap(update -> update.finalizedEffects().stream())
+                .filter(effect -> effect.tick() > 8).toList());
+        assertEquals(1, f.engine.confirmed().state().actions());
+    }
+
     @Test void fullHistoryWaitsWithoutRetimingInputThenContinuesAfterAuthorityArrives() {
         var f = new Fixture(3); f.runtime.start(ANCHOR);
-        for (int tick = 1; tick <= 4; tick++) f.runtime.tick(ANCHOR + tick);
-        assertEquals(3, f.engine.head().tick()); assertEquals(0, f.engine.confirmed().tick());
+        for (int tick = 1; tick <= 6; tick++) f.runtime.tick(ANCHOR + tick);
+        assertEquals(5, f.engine.head().tick()); assertEquals(0, f.engine.confirmed().tick());
         assertEquals(List.of(1001L, 1002L), f.sent.stream().map(RollbackInputPacket::clientTick).toList());
-        for (int tick = 1; tick <= 4; tick++) {
+        for (int tick = 1; tick <= 6; tick++) {
             assertEquals(RollbackSession.Status.ACCEPTED, f.server.receive(f.connection, f.sent.get(tick - 1)).status());
             f.server.advance(); f.runtime.authority(f.server.publish());
         }
-        assertEquals(List.of(1001L, 1002L, 1003L, 1004L), f.sent.stream().map(RollbackInputPacket::clientTick).toList());
-        f.runtime.tick(ANCHOR + 5);
-        assertEquals(5, f.engine.head().tick()); assertEquals(2, f.engine.confirmed().tick());
-        assertEquals(1005, f.sent.getLast().clientTick()); assertFalse(f.runtime.failed());
+        assertEquals(List.of(1001L, 1002L, 1003L, 1004L, 1005L, 1006L), f.sent.stream().map(RollbackInputPacket::clientTick).toList());
+        f.runtime.tick(ANCHOR + 7);
+        assertEquals(7, f.engine.head().tick()); assertEquals(4, f.engine.confirmed().tick());
+        assertEquals(1007, f.sent.getLast().clientTick()); assertFalse(f.runtime.failed());
     }
 
     @Test void aColdServerFrameRetainsPhysicalTicksAndDeliversAQueuedEdgeExactlyOnce() {
@@ -212,9 +259,7 @@ class RollbackClientRuntimeTest {
         final Object connection = new Object(), opponent = new Object();
         final RollbackEngine<State, RollbackPlayerInput, State> engine;
         final RollbackClientRuntime<State, State> runtime;
-        final RollbackSession<State, State> server = new RollbackSession<>(ID, SEED,
-                new RollbackEngine<>(new Simulation(), INITIAL, new RollbackEngine.Limits(2, 1, 20, 50_000_000), 0, 0),
-                List.of(new RollbackSession.Peer(A, connection, ANCHOR), new RollbackSession.Peer(B, opponent, 0)));
+        final RollbackSession<State, State> server;
         final List<RollbackInputPacket> sent = new ArrayList<>();
         final List<RollbackEngine.Update<State, RollbackPlayerInput, State>> outputs = new ArrayList<>();
         RollbackClientRuntime.Held controls = new RollbackClientRuntime.Held(IDLE.movement(), false);
@@ -222,7 +267,12 @@ class RollbackClientRuntimeTest {
         int stops;
         Fixture(int history) { this(history, false); }
         Fixture(int history, boolean repair) {
-            engine = RollbackEngine.replica(new Simulation(), INITIAL, new RollbackEngine.Limits(history, 1, 20, 50_000_000), 0, 0);
+            this(new RollbackEngine.Limits(history, 1, 20, 50_000_000), new RollbackEngine.Limits(2, 1, 20, 50_000_000), repair);
+        }
+        Fixture(RollbackEngine.Limits clientLimits, RollbackEngine.Limits serverLimits, boolean repair) {
+            engine = RollbackEngine.replica(new Simulation(), INITIAL, clientLimits, 0, 0);
+            server = new RollbackSession<>(ID, SEED, new RollbackEngine<>(new Simulation(), INITIAL, serverLimits, 0, 0),
+                    List.of(new RollbackSession.Peer(A, connection, ANCHOR), new RollbackSession.Peer(B, opponent, 0)));
             runtime = new RollbackClientRuntime<>(ID, A, SEED, engine, () -> controls, packet -> {
                 assertFalse(outputs.isEmpty());
                 assertTrue(engine.head().tick() > 0, "Local simulation must not wait for network send");

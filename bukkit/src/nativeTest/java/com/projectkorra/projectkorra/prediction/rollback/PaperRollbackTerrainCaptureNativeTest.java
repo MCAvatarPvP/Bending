@@ -114,8 +114,17 @@ class PaperRollbackTerrainCaptureNativeTest {
             assertThrows(IllegalArgumentException.class, () -> PaperRollbackTerrainCapture.capture(fixture.world, BOUNDS,
                     new PaperRollbackTerrainCapture.Limits(32, 1, 4096, 1024)));
             assertEquals(0, fixture.blockReads);
-            fixture.blocks.put(new BlockPos(-1, 0, -1), Blocks.CHEST.defaultBlockState());
-            assertThrows(IllegalStateException.class, () -> PaperRollbackTerrainCapture.capture(fixture.world, BOUNDS, LIMITS));
+            var chestPos = new BlockPos(-1, 0, -1);
+            fixture.blocks.put(chestPos, Blocks.CHEST.defaultBlockState());
+            var seed = PaperRollbackTerrainCapture.capture(fixture.world, BOUNDS, LIMITS);
+            var missingTile = seed.cell(position(chestPos));
+            assertEquals(Material.CHEST, missingTile.data().getMaterial());
+            assertNull(missingTile.blockEntity());
+            var store = new RollbackBlockStore(new World(), seed, unusedRules(), 20);
+            var tiles = new PaperRollbackBlockEntities(fixture.registries);
+            tiles.bind(store);
+            assertNull(tiles.get(store, position(chestPos), Blocks.CHEST.defaultBlockState()));
+            assertTrue(store.blockEntityPositions().isEmpty());
             assertTrue(fixture.entities.isEmpty());
             var huge = new CompoundTag(); huge.putString("data", "x".repeat(4096)); fixture.packed.put(new BlockPos(-1, 0, -1), huge);
             assertThrows(IllegalStateException.class, () -> PaperRollbackTerrainCapture.capture(fixture.world, BOUNDS,
@@ -210,6 +219,113 @@ class PaperRollbackTerrainCaptureNativeTest {
             return null;
         });
     }
+
+    @Test void aBlockThatAlreadyMatchesItsFinalStateNeedsNoWriteOrUpdate() throws Exception {
+        onTickThread(() -> {
+            var fixture = new Fixture(true);
+            var seed = PaperRollbackTerrainCapture.capture(fixture.world, BOUNDS, LIMITS);
+            var pos = BlockPos.ZERO;
+            var point = position(pos);
+            var stone = new Cell(new BlockData(Material.STONE), null, seed.cell(point).biome(), (byte) 0, 0, 0);
+            fixture.blocks.put(pos, Blocks.STONE.defaultBlockState());
+            PaperRollbackTerrainWriteback.prepare(fixture.world, seed, List.of(new Change(point, stone))).run();
+            assertEquals(0, fixture.blockWrites);
+            assertTrue(fixture.published.isEmpty());
+            return null;
+        });
+    }
+
+    @Test void absentChestRequiresExplicitDefaultCreationAndRejectsAnExternalTileEvenIfItMatches() throws Exception {
+        onTickThread(() -> {
+            var fixture = new Fixture(true);
+            var pos = BlockPos.ZERO;
+            fixture.blocks.put(pos, Blocks.CHEST.defaultBlockState());
+            var seed = PaperRollbackTerrainCapture.capture(fixture.world, BOUNDS, LIMITS);
+            var point = position(pos);
+            var base = seed.cell(point);
+            var change = new Change(point, new Cell(base.data(), new byte[0], base.biome(), (byte) 0, 0, 0));
+            var writeback = PaperRollbackTerrainWriteback.prepare(fixture.world, seed, List.of(change));
+            assertTrue(fixture.entities.isEmpty());
+
+            var external = new ChestBlockEntity(pos, Blocks.CHEST.defaultBlockState());
+            fixture.entities.put(pos, external);
+            assertThrows(IllegalStateException.class, writeback::run);
+            assertThrows(IllegalStateException.class, () -> PaperRollbackTerrainWriteback.prepare(fixture.world, seed, List.of(change)));
+            assertSame(external, fixture.entities.remove(pos));
+            fixture.rejectNextTile = true;
+            assertThrows(IllegalStateException.class, writeback::run);
+            assertTrue(fixture.entities.isEmpty());
+            fixture.rejectNextPublication = true;
+            assertThrows(IllegalStateException.class, writeback::run);
+            var created = assertInstanceOf(ChestBlockEntity.class, fixture.entities.get(pos));
+            assertTrue(created.getItem(0).isEmpty());
+            writeback.run();
+            writeback.run();
+            assertSame(created, fixture.entities.get(pos));
+            assertEquals(List.of(pos), fixture.published);
+            assertEquals(0, fixture.blockWrites);
+            return null;
+        });
+    }
+
+    @Test void stateWriteRemovesOnlyItsOwnGeneratedDefaultWhenFinalTileIsAbsent() throws Exception {
+        onTickThread(() -> {
+            var fixture = new Fixture(true);
+            var pos = BlockPos.ZERO;
+            var point = position(pos);
+            var seed = PaperRollbackTerrainCapture.capture(fixture.world, BOUNDS, LIMITS);
+            var absent = new Cell(new BlockData(Material.CHEST), null, seed.cell(point).biome(), (byte) 0, 0, 0);
+            var writeback = PaperRollbackTerrainWriteback.prepare(fixture.world, seed, List.of(new Change(point, absent)));
+            fixture.rejectNextRemoval = true;
+            assertThrows(IllegalStateException.class, writeback::run);
+            var generated = assertInstanceOf(ChestBlockEntity.class, fixture.entities.get(pos));
+            generated.setItem(0, new ItemStack(Items.EMERALD));
+            assertThrows(IllegalStateException.class, writeback::run);
+            assertSame(generated, fixture.entities.get(pos));
+            generated.setItem(0, ItemStack.EMPTY);
+            fixture.rejectNextPublication = true;
+            assertThrows(IllegalStateException.class, writeback::run);
+            assertFalse(fixture.entities.containsKey(pos));
+            writeback.run();
+            writeback.run();
+            assertEquals(Blocks.CHEST.defaultBlockState(), fixture.blocks.get(pos));
+            assertFalse(fixture.entities.containsKey(pos));
+            assertFalse(fixture.packed.containsKey(pos));
+            assertEquals(1, fixture.blockWrites);
+            assertEquals(List.of(pos), fixture.published);
+            return null;
+        });
+    }
+
+    @Test void packedDummyRepresentsAPresentDefaultAndCanBePromotedBeforeWriteback() throws Exception {
+        onTickThread(() -> {
+            var fixture = new Fixture(true);
+            var pos = BlockPos.ZERO;
+            fixture.blocks.put(pos, Blocks.CHEST.defaultBlockState());
+            var dummy = new CompoundTag();
+            dummy.putString("id", "DUMMY");
+            dummy.putInt("x", pos.getX()); dummy.putInt("y", pos.getY()); dummy.putInt("z", pos.getZ());
+            fixture.packed.put(pos, dummy);
+            var seed = PaperRollbackTerrainCapture.capture(fixture.world, BOUNDS, LIMITS);
+            var point = position(pos);
+            var cell = seed.cell(point);
+            var empty = new Cell(cell.data(), new byte[0], cell.biome(), (byte) 0, 0, 0);
+            PaperRollbackTerrainWriteback.prepare(fixture.world, seed, List.of(new Change(point, empty))).run();
+            assertSame(dummy, fixture.packed.get(pos));
+            assertTrue(fixture.entities.isEmpty());
+            assertTrue(fixture.published.isEmpty());
+
+            var absent = new Cell(cell.data(), null, cell.biome(), (byte) 0, 0, 0);
+            var writeback = PaperRollbackTerrainWriteback.prepare(fixture.world, seed, List.of(new Change(point, absent)));
+            fixture.packed.remove(pos);
+            fixture.entities.put(pos, new ChestBlockEntity(pos, Blocks.CHEST.defaultBlockState()));
+            writeback.run();
+            assertTrue(fixture.entities.isEmpty());
+            assertEquals(List.of(pos), fixture.published);
+            return null;
+        });
+    }
+
     private static Position position(BlockPos position) { return new Position(position.getX(), position.getY(), position.getZ()); }
     private static CompoundTag tag(byte[] bytes) throws Exception {
         return NbtIo.read(new DataInputStream(new ByteArrayInputStream(bytes)), NbtAccounter.create(1_048_576));
@@ -231,7 +347,7 @@ class PaperRollbackTerrainCaptureNativeTest {
         boolean missing;
         final List<BlockPos> published = new ArrayList<>();
         int blockWrites;
-        boolean rejectNextTile, rejectNextPublication;
+        boolean rejectNextTile, rejectNextRemoval, rejectNextPublication;
         Fixture() { this(false); }
         Fixture(boolean writable) {
             var chunk = RollbackNativeQueryShell.create(LevelChunk.class)
@@ -268,7 +384,11 @@ class PaperRollbackTerrainCaptureNativeTest {
                     if (rejectNextTile) { rejectNextTile = false; throw new IllegalStateException("Interrupted native write"); }
                     var entity = (BlockEntity) args[0];
                     entities.put(entity.getBlockPos(), entity);
-                }).outputQuery(value -> value.blockEntityChanged(BlockPos.ZERO), args -> assertTrue(entities.containsKey(args[0])))
+                }).outputQuery(value -> value.removeBlockEntity(BlockPos.ZERO), args -> {
+                    if (rejectNextRemoval) { rejectNextRemoval = false; throw new IllegalStateException("Interrupted native removal"); }
+                    entities.remove(args[0]);
+                    packed.remove(args[0]);
+                }).outputQuery(value -> value.blockEntityChanged(BlockPos.ZERO), args -> assertTrue(blocks.containsKey(args[0])))
                         .outputQuery(value -> value.sendBlockUpdated(BlockPos.ZERO, null, null, 0), args -> {
                             if (rejectNextPublication) { rejectNextPublication = false; throw new IllegalStateException("Interrupted update"); }
                             published.add((BlockPos) args[0]);

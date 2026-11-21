@@ -1,6 +1,8 @@
 package com.projectkorra.projectkorra.prediction.rollback;
 
+import com.projectkorra.projectkorra.firebending.FireBlast;
 import org.junit.jupiter.api.Test;
+import org.objenesis.ObjenesisStd;
 
 import java.util.List;
 import java.util.Random;
@@ -31,6 +33,39 @@ class RollbackRandomTest {
         snapshot.restore();
         assertEquals(integer, random.nextLong());
         assertEquals(gaussian, random.nextGaussian());
+    }
+
+    @Test void fireBlastKeepsItsOwnRandomSequenceAndAliasesThroughWireAndLiveHandoff() {
+        var codec = new RollbackGraphCodec(new RollbackGraphCodec.Catalog(List.of(FireBlast.class), List.of(), List.of()),
+                new RollbackGraphCodec.Limits(1024, 4096, 65536, 1024));
+        var allocator = new ObjenesisStd();
+        var first = allocator.newInstance(FireBlast.class);
+        var linked = allocator.newInstance(FireBlast.class);
+        var second = allocator.newInstance(FireBlast.class);
+        var random = new RollbackRandom(914);
+        var other = new RollbackRandom(914);
+        first.setRandom(random);
+        linked.setRandom(random);
+        second.setRandom(other);
+        random.nextGaussian();
+        other.nextGaussian();
+
+        var imported = codec.decode(codec.encode(List.of(first, linked, second)));
+        var handoff = codec.rebind(imported, ignored -> null);
+        assertNotSame(random, ((FireBlast) imported.getFirst()).getRandom());
+        assertNotSame(((FireBlast) imported.getFirst()).getRandom(), ((FireBlast) handoff.getFirst()).getRandom());
+        for (var graph : List.of(imported, handoff)) {
+            var restored = ((FireBlast) graph.get(0)).getRandom();
+            var distinct = ((FireBlast) graph.get(2)).getRandom();
+            assertSame(restored, ((FireBlast) graph.get(1)).getRandom());
+            assertNotSame(restored, distinct);
+            var reference = new Random(914);
+            reference.nextGaussian();
+            assertEquals(reference.nextGaussian(), restored.nextGaussian());
+            assertEquals(reference.nextLong(), restored.nextLong());
+            assertEquals(other.captureRollbackState(), ((RollbackRandom) distinct).captureRollbackState());
+        }
+        assertEquals(other.captureRollbackState(), random.captureRollbackState());
     }
 
     @Test void generatorsCreatedDuringReplayReceiveTheSameSeedsInTheSameStep() {

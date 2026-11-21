@@ -25,6 +25,11 @@ public final class RollbackEngine<S, I, E> implements RollbackReplicaTimeline<S,
                 throw new IllegalArgumentException("Invalid rollback limits");
             }
         }
+
+        /** Retain the authority's open frames and the inputs it accepts ahead of its last published tick. */
+        public int replicaHistoryTicks() {
+            return rollbackTicks + 1 + futureTicks;
+        }
     }
 
     public enum Submission {
@@ -80,7 +85,7 @@ public final class RollbackEngine<S, I, E> implements RollbackReplicaTimeline<S,
         this(simulation, initialInputs, limits, epochMillis, epochNanos, false, null);
     }
 
-    /** Client history is retained until explicitly confirmed; rollbackTicks is its unconfirmed capacity. */
+    /** Client history includes speculative frames beyond the latest received authority head. */
     public static <S, I, E> RollbackEngine<S, I, E> replica(RollbackSimulation<S, I, E> simulation,
             Map<UUID, I> initialInputs, Limits limits, long epochMillis, long epochNanos) {
         return new RollbackEngine<>(simulation, initialInputs, limits, epochMillis, epochNanos, true, null);
@@ -170,7 +175,7 @@ public final class RollbackEngine<S, I, E> implements RollbackReplicaTimeline<S,
      */
     public Update<S, I, E> advance() {
         checkUsable();
-        if (replica && head.tick() - confirmed.tick() >= limits.rollbackTicks()) {
+        if (replica && head.tick() - confirmed.tick() >= limits.replicaHistoryTicks()) {
             throw new IllegalStateException("Client prediction history is full; wait for authority confirmation");
         }
         final long replayedFrom = reconcileInternal();

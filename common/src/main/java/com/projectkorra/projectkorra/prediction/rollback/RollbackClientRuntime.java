@@ -104,7 +104,7 @@ public final class RollbackClientRuntime<S, E> implements RollbackStartClientEnd
             admitSamples();
             var state = timeline.diagnostics();
             var update = state.tick() < target && state.tick() < proposedThrough
-                    && state.tick() - state.confirmedTick() < timeline.limits().rollbackTicks()
+                    && state.tick() - state.confirmedTick() < timeline.limits().replicaHistoryTicks()
                     ? replica.advance() : replica.reconcile();
             output.update(update);
             sendAvailable();

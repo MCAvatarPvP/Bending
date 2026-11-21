@@ -197,6 +197,11 @@ public final class RollbackStateTransfer {
         void scan(Node node) {
             Object source = node.source;
             Class<?> type = source.getClass();
+            if (source instanceof RollbackRandom stream) {
+                node.ready(stream.captureRollbackState().newStream());
+                node.populated = true;
+                return;
+            }
             if (source instanceof RollbackStateCell<?>) throw unsupported(type);
             if (type.isArray()) {
                 int length = Array.getLength(source);

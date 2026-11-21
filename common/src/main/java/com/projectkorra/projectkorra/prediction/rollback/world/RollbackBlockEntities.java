@@ -38,7 +38,7 @@ public abstract class RollbackBlockEntities<T, S> implements RollbackStateCell<V
         }
         var entry = opened.get(position);
         if (entry != null) return entry.tile();
-        if (!cell.hasBlockEntity()) throw new IllegalArgumentException("No captured native block entity at " + position);
+        if (!cell.hasBlockEntity()) return null;
         T tile = Objects.requireNonNull(create(position, state, cell.blockEntity()));
         opened.put(position, new Entry<>(tile, state, bounded(encode(tile))));
         return tile;

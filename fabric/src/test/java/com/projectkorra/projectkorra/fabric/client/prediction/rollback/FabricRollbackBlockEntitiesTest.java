@@ -96,6 +96,11 @@ class FabricRollbackBlockEntitiesTest {
         assertEquals("minecraft:chest", tag(terrain.cell(POS).blockEntity()).getString("id").orElseThrow());
         terrain.replace(POS, withTile(cell, new byte[0]), false);
         assertTrue(chest(tiles, terrain).getStack(0).isEmpty());
+        terrain.replace(POS, withTile(cell, null), false);
+        assertNull(chest(tiles, terrain));
+        terrain.block(POS.x(), POS.y(), POS.z()).setBlockData(cell.data(), false);
+        assertFalse(terrain.cell(POS).hasBlockEntity());
+        assertFalse(terrain.blockEntityPositions().contains(POS));
     }
 
     private static ChestBlockEntity chest(FabricRollbackBlockEntities tiles, RollbackBlockStore terrain) {

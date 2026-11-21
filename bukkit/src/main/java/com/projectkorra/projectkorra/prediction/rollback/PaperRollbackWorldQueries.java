@@ -94,7 +94,8 @@ public final class PaperRollbackWorldQueries implements PaperRollbackWorldAccess
     @Override public FluidState getFluidIfLoaded(BlockPos pos) { var state = getBlockStateIfLoaded(pos); return state == null ? null : state.getFluidState(); }
     @Override public BlockEntity getBlockEntity(BlockPos pos) {
         var state = getBlockState(pos); if (!state.hasBlockEntity()) return null;
-        var tile = (BlockEntity) Objects.requireNonNull(blockEntities.get(logical.terrain(), key(pos), state), "Missing private block entity");
+        var tile = (BlockEntity) blockEntities.get(logical.terrain(), key(pos), state);
+        if (tile == null) return null;
         if (!tile.getBlockPos().equals(pos) || tile.getBlockState() != state || tile.getLevel() != null && tile.getLevel() != nativeWorld) {
             throw new IllegalArgumentException("Block entity does not match private terrain/world");
         }

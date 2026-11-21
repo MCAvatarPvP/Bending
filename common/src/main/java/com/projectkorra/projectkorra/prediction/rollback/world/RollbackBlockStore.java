@@ -160,8 +160,7 @@ public final class RollbackBlockStore implements RollbackStateCell<RollbackBlock
         }
 
         private Cell withData(BlockData replacement, boolean hasBlockEntity) {
-            byte[] tile = hasBlockEntity ? (data.getMaterial() == replacement.getMaterial()
-                    && blockEntity != null ? blockEntity : new byte[0]) : null;
+            byte[] tile = hasBlockEntity ? (data.getMaterial() == replacement.getMaterial() ? blockEntity : new byte[0]) : null;
             return new Cell(replacement, tile, biome, biomeKey, noiseBiomeKey, light, temperature, humidity);
         }
     }

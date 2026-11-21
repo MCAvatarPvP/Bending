@@ -1,5 +1,8 @@
 package com.projectkorra.projectkorra.prediction.rollback;
 
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.io.IOException;
 import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
@@ -17,6 +20,25 @@ public final class RollbackRandom extends Random implements RollbackStateCell<Ro
         public State {
             if ((bits & ~MASK) != 0 || !Double.isFinite(gaussian))
                 throw new IllegalArgumentException("Invalid random stream state");
+        }
+
+        void write(DataOutput out) throws IOException {
+            out.writeLong(bits);
+            out.writeBoolean(hasGaussian);
+            out.writeDouble(gaussian);
+        }
+
+        static State read(DataInput in) throws IOException {
+            long bits = in.readLong();
+            int cached = in.readUnsignedByte();
+            if (cached > 1) throw new IllegalArgumentException("Invalid Gaussian cache flag");
+            return new State(bits, cached != 0, in.readDouble());
+        }
+
+        RollbackRandom newStream() {
+            var stream = new RollbackRandom(0L);
+            stream.restoreRollbackState(this);
+            return stream;
         }
     }
 

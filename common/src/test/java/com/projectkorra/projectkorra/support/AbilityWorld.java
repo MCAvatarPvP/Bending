@@ -1,5 +1,6 @@
 package com.projectkorra.projectkorra.support;
 
+import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.configuration.Config;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.platform.PKServer;
@@ -59,6 +60,7 @@ public final class AbilityWorld extends World implements AutoCloseable {
                                 material == Material.STONE || material == Material.GRASS_BLOCK || material == Material.ICE;
                         throw new AssertionError(method);
                     }));
+            ElementalAbility.setupBendableMaterials();
         } catch (ReflectiveOperationException exception) {
             throw new AssertionError(exception);
         }

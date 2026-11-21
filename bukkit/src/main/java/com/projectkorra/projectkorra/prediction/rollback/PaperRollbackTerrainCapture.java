@@ -105,8 +105,8 @@ public final class PaperRollbackTerrainCapture {
                 detached.setExactState(nativeData.getAsString());
                 return detached;
             });
-            byte[] tile = nativeState.hasBlockEntity()
-                    ? encode(blockEntity(source, chunk, position), limits.maximumBlockEntityBytes()) : null;
+            var tag = nativeState.hasBlockEntity() ? blockEntity(source, chunk, position) : null;
+            byte[] tile = tag == null ? null : encode(tag, limits.maximumBlockEntityBytes());
             var key = noise.unwrapKey().orElseThrow(() -> new IllegalStateException("Unregistered biome in terrain capture")).identifier();
             var smoothedKey = smoothed.unwrapKey().orElseThrow(() -> new IllegalStateException("Unregistered smoothed biome in terrain capture")).identifier();
             Biome common = Biome.DESERT;
@@ -129,9 +129,7 @@ public final class PaperRollbackTerrainCapture {
     static CompoundTag blockEntity(ServerLevel source, LevelChunk chunk, BlockPos position) {
         var entity = chunk.getBlockEntities().get(position);
         if (entity != null && entity.isRemoved()) throw new IllegalStateException("Removed block entity at " + position);
-        var tag = entity == null ? chunk.getBlockEntityNbt(position) : entity.saveWithFullMetadata(source.registryAccess());
-        if (tag == null) throw new IllegalStateException("Missing block entity at " + position);
-        return tag;
+        return entity == null ? chunk.getBlockEntityNbt(position) : entity.saveWithFullMetadata(source.registryAccess());
     }
 
     static byte[] encode(CompoundTag tag, int maximumBytes) {

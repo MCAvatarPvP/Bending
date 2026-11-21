@@ -23,31 +23,18 @@ public record RollbackRandomStreams(RollbackRandom.State world, RollbackRandom.S
 
     /** The authenticated roster determines both stream order and the exact number of reads. */
     void write(DataOutput out) throws IOException {
-        write(out, world);
-        write(out, sound);
-        for (var state : players.values()) write(out, state);
+        world.write(out);
+        sound.write(out);
+        for (var state : players.values()) state.write(out);
     }
 
     static RollbackRandomStreams read(DataInput in, Set<UUID> roster) throws IOException {
         if (roster.isEmpty() || roster.size() > RollbackRosterData.MAXIMUM_PLAYERS)
             throw new IllegalArgumentException("Invalid random stream roster");
-        var world = read(in);
-        var sound = read(in);
+        var world = RollbackRandom.State.read(in);
+        var sound = RollbackRandom.State.read(in);
         var players = new TreeMap<UUID, RollbackRandom.State>();
-        for (var id : new java.util.TreeSet<>(roster)) players.put(id, read(in));
+        for (var id : new java.util.TreeSet<>(roster)) players.put(id, RollbackRandom.State.read(in));
         return new RollbackRandomStreams(world, sound, players);
-    }
-
-    private static void write(DataOutput out, RollbackRandom.State state) throws IOException {
-        out.writeLong(state.bits());
-        out.writeBoolean(state.hasGaussian());
-        out.writeDouble(state.gaussian());
-    }
-
-    private static RollbackRandom.State read(DataInput in) throws IOException {
-        long bits = in.readLong();
-        int cached = in.readUnsignedByte();
-        if (cached > 1) throw new IllegalArgumentException("Invalid Gaussian cache flag");
-        return new RollbackRandom.State(bits, cached != 0, in.readDouble());
     }
 }
