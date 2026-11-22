@@ -20,6 +20,8 @@ public final class RollbackTaskOwnership implements Predicate<RollbackLiveSchedu
         @Override protected List<Field> computeValue(Class<?> type) {
             var fields = new ArrayList<Field>();
             for (Class<?> current = type; current != null && current != Object.class && current != Record.class; current = current.getSuperclass()) {
+                // Random's own fields store generator state. A subclass can still capture a player.
+                if (current == Random.class) break;
                 if (current.getClassLoader() == null) throw new IllegalArgumentException("Opaque callback state requires a boundary: " + current.getName());
                 for (var field : current.getDeclaredFields()) if (!Modifier.isStatic(field.getModifiers()) && !field.getType().isPrimitive()) {
                     if (!field.trySetAccessible()) throw new IllegalArgumentException("Inaccessible callback reference: " + field);

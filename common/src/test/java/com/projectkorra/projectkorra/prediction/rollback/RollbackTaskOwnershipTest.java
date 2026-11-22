@@ -29,6 +29,61 @@ class RollbackTaskOwnershipTest {
         backend.advance(); assertEquals(0, mine.calls); assertEquals(1, other.calls);
         lease.restore(); backend.advance(); assertEquals(1, mine.calls); assertEquals(1, other.calls);
     }
+    @Test void enrollingWithRandomCallbacksFreezesOnlyTheDuelistAndPreservesLiveCadence() {
+        var backend = new RollbackLiveSchedulerTest.Backend();
+        var scheduler = new RollbackLiveScheduler(backend, () -> backend.tick, callback -> callback);
+        var plain = new Random(17);
+        var ownedRandom = new RollbackRandom(43);
+        ownedRandom.nextGaussian();
+        var state = ownedRandom.captureRollbackState();
+        var ambient = new Callback(plain);
+        var mine = new Callback(List.of(ownedRandom, player(A)));
+        var outside = new Callback(List.of(new Random(23), player(B)));
+        scheduler.runTimer(ambient, 1, 2);
+        scheduler.runLater(mine, 2);
+        scheduler.runTimer(outside, 2, 2);
+        var lease = scheduler.prepare(ownership());
+        try {
+            var captured = lease.freeze(8);
+            assertEquals(List.of(mine), captured.bindings().entries().stream().map(RollbackTaskBindings.Entry::callback).toList());
+            var late = new Callback(new Random(31));
+            scheduler.runNow(late);
+            lease.requireCurrent();
+            for (int i = 0; i < 3; i++) backend.advance();
+            assertEquals(2, ambient.calls);
+            assertEquals(1, outside.calls);
+            assertEquals(1, late.calls);
+            assertEquals(0, mine.calls);
+        } finally { lease.restore(); }
+        backend.advance();
+        assertEquals(2, outside.calls);
+        assertEquals(0, mine.calls);
+        backend.advance();
+        assertEquals(3, ambient.calls);
+        assertEquals(1, mine.calls);
+        assertEquals(new Random(17).nextLong(), plain.nextLong());
+        assertEquals(state, ownedRandom.captureRollbackState());
+    }
+
+    private static final class PlayerRandom extends Random {
+        private final Player owner;
+        PlayerRandom(Player owner) { this.owner = owner; }
+    }
+
+    @Test void playerReferencesInAnAddonRandomStillGateCallbacksAndRejectMixedOwnership() {
+        var selector = ownership();
+        var mine = new Callback(new PlayerRandom(player(A)));
+        var outside = new Callback(new PlayerRandom(player(B)));
+        var mixed = new Callback(List.of(new PlayerRandom(player(A)), player(B)));
+        assertTrue(selector.test(work(mine)));
+        assertFalse(selector.test(work(outside)));
+        assertThrows(IllegalStateException.class, () -> selector.test(work(mixed)));
+        assertTrue(selector.referencesParticipant(mine));
+        assertTrue(selector.referencesParticipant(mixed));
+        assertFalse(selector.referencesParticipant(outside));
+        assertFalse(selector.referencesParticipant(new Callback(new Random(17))));
+    }
+
     @Test void statisticsPersistenceContinuesOnItsLiveCadenceWhenTheManagerContainsDuelistRows() throws Exception {
         var constructor = com.projectkorra.projectkorra.util.StatisticsManager.class.getDeclaredConstructor();
         constructor.setAccessible(true);
